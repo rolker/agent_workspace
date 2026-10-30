@@ -14,7 +14,25 @@
 # file in the project, the registry, the settings or HOME changes); run
 # from a project root outside the workspace; refusal from an unregistered
 # directory. Also project_setting.sh's write guard (#332 PR 3): from a
-# project root it writes only that project's settings file.
+# project root it writes only that project's settings file. And --facts
+# (#332 PR 4): github from a stub gh's resolving call (gh repo view
+# --json nameWithOwner in the repository's root, GH_HOST pinned to
+# github.com), issues and prs from its later reads, windows from a stub
+# uname, multi_component from the tracked manifests, at a parent root from
+# the chosen instance's repository. The github fact's cases: a plain
+# <owner>/<repo> (yes, printed), any other answer (unknown, a fixed
+# phrase), gh's no-GitHub-remote failure in both wordings (no), any other
+# exit (unknown with the code), gh not logged in (exit 4), gh missing, no
+# remote, a remote not named origin, other remotes named, a local remote's
+# path printed through the allowlist or "unprintable", a remote name
+# outside it, the push URL compared (equal, a pushurl, two, pushInsteadOf)
+# and never printed, and one sweeping check that no run with a network
+# remote prints "://" or the secret, in either format. Also gh's own text
+# in any shape, failed or not parsing (none of it printed: a fixed
+# phrase, the exit code and at most a first word from a fixed list), gh
+# or jq missing, the list calls failing, GH_HOST naming another server,
+# control bytes and "@" in a manifest directory, no commits, and a root
+# nested inside another repository.
 #
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types, skills and user-tier files),
@@ -566,6 +584,542 @@ check "the text says none are registered, not several" grep -qxF "audited: no in
 sed -i '/^lone project /d' "$WS/.agent/projects.local"
 install_ut
 
+echo "TEST: --facts, with stub gh and uname (never the real ones, never the network)"
+FACT_BIN="$SANDBOX/factbin"
+mkdir -p "$FACT_BIN"
+GH_LOG="$SANDBOX/gh.log"
+# gh: logs its arguments and answers from the STUB_GH_* variables.
+#   STUB_GH_RC, STUB_GH_ERR   every call fails with that exit and text
+#   STUB_GH_NAME              the resolving call's answer (gh repo view
+#                             --json nameWithOwner run in the repository);
+#                             unset, it fails the way the real gh does
+#                             when no remote matches GH_HOST
+#   STUB_GH_RESOLVE_RC, STUB_GH_RESOLVE_ERR   the resolving call fails so
+#   STUB_GH_VIEW, STUB_GH_VIEW_RC   repo view github.com/<o>/<r>'s answer,
+#                             or its failure (with STUB_GH_ERR's text)
+#   STUB_GH_ISSUES, STUB_GH_PRS, STUB_GH_LIST_RC   the list calls
+cat > "$FACT_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_GH_LOG"
+if [ "${STUB_GH_RC:-0}" -ne 0 ]; then echo "${STUB_GH_ERR:-error: stub failure}" >&2; exit "$STUB_GH_RC"; fi
+if [ "$*" = "repo view --json nameWithOwner --jq .nameWithOwner" ]; then
+    # The audit pins the host gh resolves the remotes against, and runs
+    # it in the repository's root.
+    pwd -P >> "$STUB_GH_LOG.cwd"
+    [ "${GH_HOST:-}" = github.com ] || { echo "stub gh: GH_HOST is not github.com" >&2; exit 9; }
+    if [ "${STUB_GH_RESOLVE_RC:-0}" -ne 0 ]; then printf '%s\n' "${STUB_GH_RESOLVE_ERR:-}" >&2; exit "$STUB_GH_RESOLVE_RC"; fi
+    if [ -z "${STUB_GH_NAME+x}" ]; then
+        echo "none of the git remotes configured for this repository correspond to the GH_HOST environment variable. Try adding a matching remote or unsetting the variable" >&2
+        exit 1
+    fi
+    printf '%s\n' "$STUB_GH_NAME"
+    exit 0
+fi
+# Like the real gh: a repository named without its host goes to $GH_HOST.
+if [ -n "${GH_HOST:-}" ] && ! grep -qE '(^| )github\.com/[^ ]+/[^ ]+( |$)' <<< "$*"; then
+    echo "HTTP 404: Not Found (https://$GH_HOST/api/v3/...)" >&2; exit 1
+fi
+case "$1 $2" in
+    "issue list"|"pr list")
+        if [ "${STUB_GH_LIST_RC:-0}" -ne 0 ]; then echo "HTTP 502: Bad Gateway" >&2; exit "$STUB_GH_LIST_RC"; fi ;;
+    "repo view")
+        if [ "${STUB_GH_VIEW_RC:-0}" -ne 0 ]; then echo "${STUB_GH_ERR:-error: stub failure}" >&2; exit "$STUB_GH_VIEW_RC"; fi ;;
+esac
+case "$1 $2" in
+    "repo view")  printf '%s\n' "$STUB_GH_VIEW" ;;
+    "issue list") printf '%s\n' "${STUB_GH_ISSUES:-[]}" ;;
+    "pr list")    printf '%s\n' "${STUB_GH_PRS:-[]}" ;;
+    *) echo "stub gh: unexpected call: $*" >&2; exit 9 ;;
+esac
+GHEOF
+printf '#!/usr/bin/env bash\n[ "$1" = "-s" ] || exit 9\necho "${STUB_UNAME:-Linux}"\n' > "$FACT_BIN/uname"
+chmod +x "$FACT_BIN/gh" "$FACT_BIN/uname"
+RESOLVE="repo view --json nameWithOwner --jq .nameWithOwner"
+facts() { # <cwd> <args...>: like audit, with --facts and the fact stubs first on PATH
+    # (FACT_PATH, when set, is the whole PATH instead)
+    local cwd="$1"
+    shift
+    : > "$GH_LOG"
+    : > "$GH_LOG.cwd"
+    AUDIT_RC=0
+    AUDIT_OUT="$(cd "$cwd" && HOME="$HOMEDIR" PATH="${FACT_PATH:-$FACT_BIN:$STUB_BIN:$PATH}" STUB_GH_LOG="$GH_LOG" \
+        "$WS/.agent/scripts/project_integration_audit.sh" --facts "$@" 2>"$SANDBOX/audit.err")" || AUDIT_RC=$?
+    AUDIT_ERR="$(cat "$SANDBOX/audit.err")"
+}
+fval() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' <<< "$AUDIT_OUT"; }
+fev() { awk -F'\t' -v n="$1" '$1 == n { print $3 }' <<< "$AUDIT_OUT"; }
+# Every run with a network remote is also kept here, both formats, gh's
+# arguments and stderr included, for one sweeping check at the end: no
+# evidence ever holds "://" (a remote URL) or the secret.
+NET_ALL=""
+net_facts() { # <cwd>: facts in tsv and text, kept in NET_ALL; leaves the tsv run's output
+    facts "$1" --format text
+    NET_ALL+="$AUDIT_OUT$AUDIT_ERR$(cat "$GH_LOG")"$'\n'
+    facts "$1"
+    NET_ALL+="$AUDIT_OUT$AUDIT_ERR$(cat "$GH_LOG")"$'\n'
+}
+
+FG="$SANDBOX/projects/factgh"
+mkdir -p "$FG/pkgs/a" "$FG/pkgs/b" "$FG/node_modules/dep"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$FG/Makefile"
+printf '<package/>\n' > "$FG/pkgs/a/package.xml"
+printf '<package/>\n' > "$FG/pkgs/b/package.xml"
+printf '{}\n' > "$FG/node_modules/dep/package.json"
+gitq -C "$FG" init --quiet
+gitq -C "$FG" add -A
+gitq -C "$FG" add -f node_modules
+gitq -C "$FG" commit --quiet -m init
+gitq -C "$FG" remote add origin "git@github.com:Someone/FactGH.git"
+register factgh "$FG" "build=make" "test=make test"
+install_ut
+
+FG_YES="yes/gh repo view resolves the repository to github.com/Someone/FactGH; remote 'origin'"
+export STUB_GH_NAME='Someone/FactGH'
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":3},"pullRequests":{"totalCount":0}}'
+export STUB_GH_PRS='[{"number":7}]'
+facts "$FG/pkgs"
+check "exit 0" [ "$AUDIT_RC" -eq 0 ]
+check "five facts in order: github issues prs windows multi_component (got: $(cut -f1 <<< "$AUDIT_OUT" | paste -sd' ' -))" \
+    [ "$(cut -f1 <<< "$AUDIT_OUT" | paste -sd' ' -)" = "github issues prs windows multi_component" ]
+check "every line has three tab-separated fields and a yes/no/unknown value" \
+    awk -F'\t' 'NF != 3 || $2 !~ /^(yes|no|unknown)$/ { bad = 1 } END { exit bad }' <<< "$AUDIT_OUT"
+check "github yes from gh's answer, naming the repository and the remote (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "$FG_YES" ]
+check "issues yes from the open count (got: $(fev issues))" [ "$(fval issues)" = "yes" ]
+check "prs yes from a closed one when none is open (got: $(fev prs))" \
+    [ "$(fval prs)/$(fev prs)" = "yes/none open on github.com/Someone/FactGH, but some were opened before" ]
+check "gh was asked only to read: the resolving repo view, repo view of that repository, then pr list over every state (got: $(paste -sd'|' "$GH_LOG"))" \
+    [ "$(paste -sd'|' "$GH_LOG")" = "$RESOLVE|repo view github.com/Someone/FactGH --json hasIssuesEnabled,issues,pullRequests|pr list -R github.com/Someone/FactGH --state all --limit 1 --json number" ]
+check "the resolving call ran in the repository's root, not the session's subdirectory (got: $(cat "$GH_LOG.cwd"))" \
+    [ "$(cat "$GH_LOG.cwd")" = "$FG" ]
+check "windows no on Linux (got: $(fev windows))" [ "$(fval windows)/$(fev windows)" = "no/this machine: uname -s is Linux" ]
+check "multi_component yes: two package.xml directories, the tracked node_modules one left out (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: pkgs/a, pkgs/b" ]
+
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+export STUB_GH_ISSUES='[]' STUB_GH_PRS='[]'
+facts "$FG"
+check "issues enabled but none ever opened: issues no (got: $(fev issues))" \
+    [ "$(fval issues)/$(fev issues)" = "no/enabled on github.com/Someone/FactGH, but none was ever opened" ]
+check "no pull request ever: prs no" [ "$(fval prs)" = "no" ]
+check "and gh issue list was asked over every state" grep -qxF "issue list -R github.com/Someone/FactGH --state all --limit 1 --json number" "$GH_LOG"
+export STUB_GH_ISSUES='[{"number":1}]'
+facts "$FG"
+check "none open, one closed: issues yes" [ "$(fval issues)" = "yes" ]
+export STUB_GH_VIEW='{"hasIssuesEnabled":false,"issues":{"totalCount":0},"pullRequests":{"totalCount":2}}'
+facts "$FG"
+check "issues disabled: issues no, and no issue list call (got: $(fev issues))" \
+    bash -c '[ "$1" = "no/issues are disabled on github.com/Someone/FactGH" ] && ! grep -q "^issue list" "$2"' _ "$(fval issues)/$(fev issues)" "$GH_LOG"
+check "2 open pull requests: prs yes" [ "$(fval prs)/$(fev prs)" = "yes/2 open on github.com/Someone/FactGH" ]
+STUB_GH_VIEW_RC=1 STUB_GH_ERR="gh: offline" facts "$FG"
+check "the counts call fails: issues and prs unknown, saying why, github still yes (got: $(fev issues))" \
+    bash -c '[ "$1" = yes/unknown/unknown ] && [ "$2" = "gh failed, exit 1: gh repo view github.com/Someone/FactGH (its message is not printed; its first word: gh)" ]' \
+    _ "$(fval github)/$(fval issues)/$(fval prs)" "$(fev issues)"
+check "the audit still exits 0" [ "$AUDIT_RC" -eq 0 ]
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+export STUB_GH_ISSUES='[{"number":1}]' STUB_GH_PRS='[{"number":2}]'
+GH_HOST=ghe.example.invalid facts "$FG"
+check "with GH_HOST naming another server: the resolving call pins github.com, and every later gh call names github.com/<owner>/<repo> (got: $(paste -sd'|' "$GH_LOG"))" \
+    bash -c '[ "$(head -n1 "$1")" = "$2" ] && [ "$(wc -l < "$1")" -eq 4 ] && ! tail -n +2 "$1" | grep -vqE "(^| )github\.com/Someone/FactGH( |$)"' _ "$GH_LOG" "$RESOLVE"
+check "and its answers are github.com's: github yes, issues yes, prs yes (got: $(fval github)/$(fval issues)/$(fval prs))" \
+    [ "$(fval github)/$(fval issues)/$(fval prs)" = "yes/yes/yes" ]
+unset STUB_GH_ISSUES STUB_GH_PRS
+export STUB_GH_VIEW='{"message":"Not Found"}'
+facts "$FG"
+check "an answer without the counts: unknown, not no (got: $(fval issues))" [ "$(fval issues)" = "unknown" ]
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":1}}'
+export STUB_GH_ISSUES='garbage'
+facts "$FG"
+check "a list answer that is not JSON: issues unknown, naming the call, not printing the answer (got: $(fev issues))" \
+    bash -c '[ "$1" = unknown ] && [ "$2" = "gh issue list -R github.com/Someone/FactGH gave no JSON list (its answer is not printed)" ]' _ "$(fval issues)" "$(fev issues)"
+for _notlist in '{"number":1}' '"x"' '1'; do
+    export STUB_GH_ISSUES="$_notlist"
+    facts "$FG"
+    check "a list answer that is JSON but not a list ($_notlist): issues unknown, never yes (got: $(fval issues))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "gave no JSON list" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
+done
+unset STUB_GH_ISSUES STUB_GH_PRS
+STUB_UNAME=MINGW64_NT-10.0-19045 facts "$FG"
+check "uname -s MINGW64: windows yes" [ "$(fval windows)/$(fev windows)" = "yes/this machine: uname -s is MINGW64_NT-10.0-19045" ]
+STUB_UNAME=Darwin facts "$FG"
+check "uname -s Darwin: windows no" [ "$(fval windows)" = "no" ]
+facts "$FG" --format text
+check "--format text: a heading and fact: value -- evidence lines" \
+    bash -c 'grep -qxF "Facts: factgh at $2" <<< "$1" && grep -qxF "github: yes -- gh repo view resolves the repository to github.com/Someone/FactGH; remote '"'"'origin'"'"'" <<< "$1" && [ "$(grep -c -- " -- " <<< "$1")" -eq 5 ]' \
+    _ "$AUDIT_OUT" "$FG"
+
+echo "TEST: --facts: what gh's resolving call answers decides github"
+# gh answers anything but a plain <owner>/<repo>: unknown with a fixed
+# phrase, the answer not printed, and no later gh call.
+for _ans in "Someone/FactGH/extra" "Someone" "" "some one/FactGH" "https://s3cr3tTOKEN@github.com/Someone/FactGH" \
+        "$(printf 'Someone/FactGH\nOther/Repo')" "s3cr3tTOKEN:x/FactGH"; do
+    STUB_GH_NAME="$_ans" facts "$FG"
+    check "gh answering '${_ans//$'\n'/\\n}': github unknown, a fixed phrase, gh asked nothing more (got: $(fval github)/$(fev github))" \
+        bash -c '[ "$1" = "unknown/gh repo view gave no plain <owner>/<repo> (its answer is not printed); remote '"'"'origin'"'"'" ] && [ "$(paste -sd"|" "$2")" = "$3" ] && ! grep -qF s3cr3tTOKEN <<< "$4"' \
+        _ "$(fval github)/$(fev github)" "$GH_LOG" "$RESOLVE" "$AUDIT_OUT$AUDIT_ERR"
+    check "and issues and prs unknown for that reason (got: $(fev issues))" \
+        [ "$(fval issues)/$(fev issues)" = "unknown/github is unknown: gh repo view gave no plain <owner>/<repo> (its answer is not printed)" ]
+done
+# gh's no-GitHub-remote failure, in either of its fixed wordings (with
+# GH_HOST set, and without): no.
+for _err in "none of the git remotes configured for this repository correspond to the GH_HOST environment variable. Try adding a matching remote or unsetting the variable" \
+        "none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use \`gh auth login\`"; do
+    STUB_GH_RESOLVE_RC=1 STUB_GH_RESOLVE_ERR="$_err" facts "$FG"
+    check "gh: '${_err:0:60}...': github no, a fixed phrase (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin'" ]
+    check "and issues and prs no, gh asked nothing more (got: $(fev issues))" \
+        bash -c '[ "$1" = "no/github is no, so gh was not asked about its issues" ] && [ "$2" = no ] && [ "$(paste -sd"|" "$3")" = "$4" ]' \
+        _ "$(fval issues)/$(fev issues)" "$(fval prs)" "$GH_LOG" "$RESOLVE"
+done
+# Any other failure: unknown with the exit code, none of gh's text.
+for _rc_err in "1|GraphQL: Could not resolve to a Repository with the name 's3cr3tTOKEN/FactGH'. (repository)" \
+        "1|error connecting to https://someone:s3cr3tTOKEN@github.com/Someone/FactGH" \
+        "2|none of the git remotes configured s3cr3tTOKEN" \
+        "7|"; do
+    STUB_GH_RESOLVE_RC="${_rc_err%%|*}" STUB_GH_RESOLVE_ERR="${_rc_err#*|}" facts "$FG"
+    check "gh exits ${_rc_err%%|*} otherwise: github unknown with the exit code, gh's text not printed (got: $(fval github)/$(fev github))" \
+        bash -c '[ "$1" = "unknown/gh could not resolve the repository, exit $2 (its message is not printed); remote '"'"'origin'"'"'" ] && ! grep -qF s3cr3tTOKEN <<< "$3"' \
+        _ "$(fval github)/$(fev github)" "${_rc_err%%|*}" "$AUDIT_OUT$AUDIT_ERR"
+done
+# gh not logged in: its exit 4 ("authentication required").
+STUB_GH_RC=4 STUB_GH_ERR="To get started with GitHub CLI, please run:  gh auth login" facts "$FG"
+check "gh not logged in (exit 4): github unknown, saying so (got: $(fval github)/$(fev github))" \
+    [ "$(fval github)/$(fev github)" = "unknown/gh is not logged in (gh repo view exit 4); remote 'origin'" ]
+check "and issues and prs unknown for that reason, gh asked nothing more (got: $(fev prs))" \
+    bash -c '[ "$1" = "unknown/github is unknown: gh is not logged in (gh repo view exit 4)" ] && [ "$(paste -sd"|" "$2")" = "$3" ]' \
+    _ "$(fval prs)/$(fev prs)" "$GH_LOG" "$RESOLVE"
+
+echo "TEST: --facts without GitHub: gh asked only to resolve"
+unset STUB_GH_NAME
+facts "$CLEAN"
+check "a remote on another host: github no from gh's failure, naming the remote (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin'" ]
+check "issues and prs no" [ "$(fval issues)/$(fval prs)" = "no/no" ]
+check "gh was asked only the resolving call (got: $(paste -sd'|' "$GH_LOG"))" [ "$(paste -sd'|' "$GH_LOG")" = "$RESOLVE" ]
+check "one Makefile and no manifest: multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)" = "no" ]
+# No remote URL is printed, whatever it holds, read as GitHub or not: one
+# sweeping check over every network remote below (NET_ALL).
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":1},"pullRequests":{"totalCount":1}}'
+for _net in "https://someone:s3cr3tTOKEN@github.com/someone/clean.git" \
+        "https://github.com/someone/clean?token=s3cr3tTOKEN" \
+        "https://github.com/someone/clean.git#s3cr3tTOKEN" \
+        "ssh://git:s3cr3tTOKEN@ssh.github.com:443/someone/clean.git" \
+        "someone:s3cr3tTOKEN@github.com:someone/clean.git" \
+        "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean" \
+        "https://s3cr3tTOKEN?s3cr3tTOKEN@github.com" \
+        'ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://github.com/someone/clean"' \
+        "git@github.com-work:someone/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_net"
+    STUB_GH_NAME=someone/clean net_facts "$CLEAN"
+    check "gh resolving $_net: github yes, gh's token and the remote's name alone (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "yes/gh repo view resolves the repository to github.com/someone/clean; remote 'origin'" ]
+    net_facts "$CLEAN"
+    check "gh not resolving $_net: github no, the remote's name alone (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin'" ]
+done
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+facts "$HR"
+check "no remote: github no, gh not called (got: $(fev github))" \
+    bash -c '[ "$1" = "no/the repository has no remote" ] && [ ! -s "$2" ]' _ "$(fval github)/$(fev github)" "$GH_LOG"
+check "a root CMakeLists.txt with project(): one directory, multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "no/component manifests in one directory: ." ]
+
+echo "TEST: --facts: a local remote's path, through the allowlist"
+FL="$SANDBOX/projects/factlocal"
+mkdir -p "$FL/sub"
+printf 'cmake_minimum_required(VERSION 3.16)\nproject(fl)\nadd_subdirectory(sub)\n' > "$FL/CMakeLists.txt"
+printf 'add_library(sub sub.c)\n' > "$FL/sub/CMakeLists.txt"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$FL/Makefile"
+gitq -C "$FL" init --quiet
+commit_all "$FL"
+mkdir -p "$FL/untracked"
+printf '[package]\n' > "$FL/untracked/Cargo.toml"
+gitq -C "$FL" remote add origin "$SANDBOX/projects/factgh"
+register factlocal "$FL" "build=make" "test=make test"
+install_ut
+facts "$FL"
+check "a local-path remote: github no, its path printed (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin', a local path: $SANDBOX/projects/factgh" ]
+check "a sub-CMakeLists.txt with no project() and an untracked Cargo.toml do not count (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "no/component manifests in one directory: ." ]
+check "gh was asked only the resolving call" [ "$(paste -sd'|' "$GH_LOG")" = "$RESOLVE" ]
+# Printed when every character is in [A-Za-z0-9._/@+~-]; file:// prints its
+# path (after an optional localhost); else the word unprintable.
+_ctl_dir="$(printf 'pk\033[31mg\rx\177y')"
+for _lp in "$SANDBOX/srv/repo@2|$SANDBOX/srv/repo@2" \
+        "../sibling+x~1|../sibling+x~1" \
+        "file://$SANDBOX/projects/factgh|$SANDBOX/projects/factgh" \
+        "file://localhost$SANDBOX/projects/factgh|$SANDBOX/projects/factgh" \
+        "$SANDBOX/srv/a b|unprintable" \
+        "$SANDBOX/srv/a:b|unprintable" \
+        "$SANDBOX/srv/x?q=s3cr3tTOKEN#f|unprintable" \
+        "$SANDBOX/srv/$_ctl_dir|unprintable" \
+        "file://someone:s3cr3tTOKEN@localhost$SANDBOX/projects/factgh|unprintable" \
+        "file://$SANDBOX/srv/a%20b|unprintable"; do
+    gitq -C "$FL" remote set-url origin "${_lp%|*}"
+    facts "$FL"
+    check "a local remote ${_lp%|*}: its path printed as ${_lp##*|} (got: $(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin', a local path: ${_lp##*|}" ]
+    check "and the secret, if any, is not printed" bash -c '! grep -qF s3cr3tTOKEN <<< "$1"' _ "$AUDIT_OUT"
+done
+# A remote whose name is outside the allowlist (written into .git/config by
+# hand, since git remote add refuses it) is not named.
+gitq -C "$FL" remote remove origin
+gitq -C "$FL" config 'remote.we ird.url' "$SANDBOX/projects/factgh"
+facts "$FL"
+check "a remote name outside the allowlist is not printed (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; a remote whose name is unprintable, a local path: $SANDBOX/projects/factgh" ]
+gitq -C "$FL" config --remove-section 'remote.we ird'
+gitq -C "$FL" remote add origin "$SANDBOX/projects/factgh"
+# An "@" in a manifest directory (an npm scoped package) is printed as it is.
+mkdir -p "$FL/packages/@scope/pkg"
+printf '{}\n' > "$FL/packages/@scope/pkg/package.json"
+gitq -C "$FL" add packages
+gitq -C "$FL" commit --quiet -m scoped
+facts "$FL"
+check "a manifest directory holding '@': printed as it is (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: ., packages/@scope/pkg" ]
+gitq -C "$FL" reset --quiet --hard HEAD~1
+# Control bytes (ESC, CR, DEL) in a manifest directory are dropped: no
+# terminal escape reaches the evidence.
+mkdir -p "$FL/$_ctl_dir"
+printf '{}\n' > "$FL/$_ctl_dir/package.json"
+gitq -C "$FL" add -- "$_ctl_dir"
+gitq -C "$FL" commit --quiet -m ctl
+facts "$FL"
+check "control bytes in a manifest directory are dropped (got: $(fev multi_component | od -c | head -c 300))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: ., pk[31mgxy" ]
+facts "$FL" --format text
+check "and in the text format: no control byte but the line breaks" \
+    bash -c '! LC_ALL=C grep -q "[[:cntrl:]]" <<< "$1"' _ "$AUDIT_OUT"
+gitq -C "$FL" reset --quiet --hard HEAD~1
+
+echo "TEST: --facts: the push URL, compared, never printed"
+gitq -C "$CLEAN" remote set-url origin "https://github.com/someone/clean.git"
+export STUB_GH_NAME=someone/clean
+_gh_yes="yes/gh repo view resolves the repository to github.com/someone/clean; remote 'origin'"
+_differs="; its push URL differs from its fetch URL"
+for _push in "https://github.com/someone/clean.git|" \
+        "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean|$_differs" \
+        "git@github.com:someone/clean.git|$_differs" \
+        "$SANDBOX/srv/mirror|$_differs"; do
+    gitq -C "$CLEAN" config remote.origin.pushurl "${_push%%|*}"
+    net_facts "$CLEAN"
+    check "a pushurl ${_push%%|*}: github evidence $_gh_yes${_push#*|} (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "$_gh_yes${_push#*|}" ]
+done
+gitq -C "$CLEAN" config --unset-all remote.origin.pushurl
+gitq -C "$CLEAN" config --add remote.origin.pushurl "https://github.com/someone/clean.git"
+gitq -C "$CLEAN" config --add remote.origin.pushurl "https://gitlab.example.invalid/someone/clean.git"
+net_facts "$CLEAN"
+check "two push URLs, one the same as the fetch URL: the note, once (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "$_gh_yes$_differs" ]
+gitq -C "$CLEAN" config --unset-all remote.origin.pushurl
+gitq -C "$CLEAN" config url."https://gitlab.example.invalid/".pushInsteadOf "https://github.com/"
+net_facts "$CLEAN"
+check "pushInsteadOf sending the push elsewhere: the note (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "$_gh_yes$_differs" ]
+gitq -C "$CLEAN" config --remove-section url."https://gitlab.example.invalid/"
+net_facts "$CLEAN"
+check "no pushurl: no note (got: $(fev github))" [ "$(fval github)/$(fev github)" = "$_gh_yes" ]
+# Other remotes are named after the push note: gh may have resolved one.
+gitq -C "$CLEAN" config remote.origin.pushurl "https://gitlab.example.invalid/someone/clean.git"
+gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN@github.com/someone/clean?token=s3cr3tTOKEN"
+net_facts "$CLEAN"
+check "another remote: named after the note (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "$_gh_yes$_differs; other remotes: upstream (one of these may be what gh resolved)" ]
+gitq -C "$CLEAN" remote remove upstream
+gitq -C "$CLEAN" config --unset-all remote.origin.pushurl
+# None of gh's own text reaches the evidence, whatever its shape: a URL
+# with a secret, one run over several words by a password or query
+# holding spaces, a remote-helper command, prose holding ":" and "@", or a
+# first word that is itself a secret. A failure gives the fixed phrase,
+# the exit code and at most gh's first word from the fixed list; an answer
+# that does not parse gives a fixed phrase. The secret never appears.
+_gh_fail_phrase='gh failed, exit 1: gh repo view github.com/someone/clean (its message is not printed'
+for _err in "error connecting to https://someone:s3cr3tTOKEN@github.com/someone/clean?access_token=s3cr3tTOKEN and someone:s3cr3tTOKEN@github.com:someone/clean" \
+        'Get "https://user:abc s3cr3tTOKEN@github.com/someone/clean": dial tcp' \
+        'Get https://user:s3cr3tTOKEN s3cr3tTOKEN:s3cr3tTOKEN s3cr3tTOKEN@github.com/someone/clean failed' \
+        'cannot reach user:s3cr3tTOKEN s3cr3tTOKEN@github.com:someone/clean now' \
+        'error: https://user:abc s3cr3tTOKEN tail:xxx@github.com/someone/clean' \
+        'error: https://github.com/someone/clean?tok=abc s3cr3tTOKEN' \
+        'helper ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://x/y" failed' \
+        'failed (exit 1): user s3cr3tTOKEN@example.invalid could not sign in' \
+        'https://someone:s3cr3tTOKEN@github.com/someone/clean refused' \
+        's3cr3tTOKEN is not a valid token'; do
+    STUB_GH_VIEW_RC=1 STUB_GH_ERR="$_err" net_facts "$CLEAN"
+    check "gh's error text is replaced by the fixed phrase ($_err) (got: $(fev issues))" \
+        bash -c '[ "$1" = unknown/unknown ] && [ "$2" = "$3" ] && [[ "$2" == "$4"* ]]' \
+        _ "$(fval issues)/$(fval prs)" "$(fev issues)" "$(fev prs)" "$_gh_fail_phrase"
+done
+STUB_GH_VIEW_RC=1 STUB_GH_ERR='error connecting to https://someone:s3cr3tTOKEN@github.com/someone/clean' facts "$CLEAN"
+check "a first word on the fixed list is named (got: $(fev issues))" \
+    [ "$(fev issues)" = "$_gh_fail_phrase; its first word: error)" ]
+STUB_GH_VIEW_RC=1 STUB_GH_ERR='https://someone:s3cr3tTOKEN@github.com/someone/clean refused' facts "$CLEAN"
+check "a first word not on the list is not (got: $(fev issues))" \
+    [ "$(fev issues)" = "$_gh_fail_phrase)" ]
+# gh exits 0 with an answer that is not the JSON asked for: a fixed
+# phrase, never a cut of the answer (a cut inside a token printed its
+# prefix).
+for _ans in "https://s3cr3tTOKENs3cr3tTOKEN@github.com/someone/clean" "s3cr3tTOKEN"; do
+    STUB_GH_VIEW="$_ans" net_facts "$CLEAN"
+    check "gh repo view answering text, not the counts: a fixed phrase (got: $(fev issues))" \
+        [ "$(fev issues)" = "gh repo view github.com/someone/clean gave no hasIssuesEnabled, issues and pullRequests counts (its answer is not printed)" ]
+done
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+STUB_GH_ISSUES="https://s3cr3tTOKEN@github.com/someone/clean" net_facts "$CLEAN"
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":1},"pullRequests":{"totalCount":1}}'
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+unset STUB_GH_NAME
+check "no evidence of any network-remote run holds a remote URL ('://'), in either format, stderr or gh's arguments ($(grep -c . <<< "$NET_ALL") lines)" \
+    bash -c '[ -n "$1" ] && ! grep -qF "://" <<< "$1"' _ "$NET_ALL"
+check "and none holds the secret" bash -c '! grep -qiF s3cr3tTOKEN <<< "$1"' _ "$NET_ALL"
+facts "$NG"
+check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
+# A colcon-shaped root that is not a git repository: the packages sit six
+# levels down (src/<repo>/<group>/<sub>/<pkg>/package.xml), with no depth
+# cap on the scan; colcon's build/, install/ and log/ are left out.
+for _d in src/repo_a/group/sub/pkg_a src/repo_b/group/sub/pkg_b; do
+    mkdir -p "$NG/$_d"
+    printf '<package/>\n' > "$NG/$_d/package.xml"
+done
+for _d in build/pkg_c install/pkg_c/share/pkg_c log/latest; do
+    mkdir -p "$NG/$_d"
+    printf '<package/>\n' > "$NG/$_d/package.xml"
+done
+facts "$NG"
+check "a colcon-shaped non-git root, manifests six deep: multi_component yes, build/ install/ log/ left out (got: $(fval multi_component)/$(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: src/repo_a/group/sub/pkg_a, src/repo_b/group/sub/pkg_b" ]
+rm -rf "$NG/src" "$NG/build" "$NG/install" "$NG/log"
+# A manifest scan that fails cannot say no: multi_component unknown,
+# saying why. find meeting a directory it cannot read (skipped when
+# running as root, which reads it anyway):
+mkdir -p "$NG/locked"
+chmod 000 "$NG/locked"
+if [ -r "$NG/locked" ]; then
+    echo "  SKIP: running as root, so an unreadable directory cannot be made"
+else
+    facts "$NG"
+    check "find failing: multi_component unknown, saying so (got: $(fval multi_component)/$(fev multi_component))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "find failed (exit" <<< "$2"' _ "$(fval multi_component)" "$(fev multi_component)"
+fi
+chmod 755 "$NG/locked"
+rmdir "$NG/locked"
+# git ls-files failing (a git that fails only that call):
+_REAL_GIT="$(command -v git)"
+mkdir -p "$SANDBOX/gitfail"
+printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = ls-files ] && exit 128; done\nexec "%s" "$@"\n' "$_REAL_GIT" > "$SANDBOX/gitfail/git"
+chmod +x "$SANDBOX/gitfail/git"
+FACT_PATH="$SANDBOX/gitfail:$FACT_BIN:$STUB_BIN:$PATH" facts "$FL"
+check "git ls-files failing: multi_component unknown, saying so (got: $(fval multi_component)/$(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "unknown/git ls-files failed (exit 128), so the tracked manifests were not read" ]
+check "and the other facts are read as before (got: $(fval github))" [ "$(fval github)" = "no" ]
+# A CMakeLists.txt that cannot be read:
+chmod 000 "$FL/CMakeLists.txt"
+if [ -r "$FL/CMakeLists.txt" ]; then
+    echo "  SKIP: running as root, so an unreadable file cannot be made"
+else
+    facts "$FL"
+    check "an unreadable CMakeLists.txt: multi_component unknown, naming it (got: $(fval multi_component)/$(fev multi_component))" \
+        [ "$(fval multi_component)/$(fev multi_component)" = "unknown/CMakeLists.txt could not be read, so whether it declares a project() was not read" ]
+fi
+chmod 644 "$FL/CMakeLists.txt"
+
+echo "TEST: --facts edge cases: gh or jq missing, a list call failing, no commits, no origin, a nested root"
+# PATHs without gh, and without jq: every other command on PATH linked
+# into one directory, the stubs first.
+fact_path_without() { # <dir> <command>
+    local dir="$1" skip="$2" pd x b
+    mkdir -p "$dir"
+    IFS=: read -r -a _pdirs <<< "$FACT_BIN:$STUB_BIN:$PATH"
+    for pd in "${_pdirs[@]}"; do
+        [ -d "$pd" ] || continue
+        for x in "$pd"/*; do
+            b="${x##*/}"
+            [ "$b" = "$skip" ] && continue
+            [ -x "$x" ] && [ ! -e "$dir/$b" ] && ln -s "$x" "$dir/$b"
+        done
+    done
+}
+fact_path_without "$SANDBOX/nogh-bin" gh
+fact_path_without "$SANDBOX/nojq-bin" jq
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+export STUB_GH_NAME='Someone/FactGH'
+if PATH="$SANDBOX/nogh-bin" command -v gh >/dev/null 2>&1; then
+    fail "the PATH without gh still finds gh"
+else
+    FACT_PATH="$SANDBOX/nogh-bin" facts "$FG"
+    check "gh missing: github unknown, saying gh is not installed (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "unknown/gh is not installed, so which repository the remotes name was not read; remote 'origin'" ]
+    check "and issues and prs unknown for that reason (got: $(fev issues))" \
+        [ "$(fval issues)/$(fev issues)/$(fval prs)" = "unknown/github is unknown: gh is not installed, so which repository the remotes name was not read/unknown" ]
+fi
+if PATH="$SANDBOX/nojq-bin" command -v jq >/dev/null 2>&1; then
+    fail "the PATH without jq still finds jq"
+else
+    FACT_PATH="$SANDBOX/nojq-bin" facts "$FG"
+    check "jq missing: github still yes (gh's own --jq), issues and prs unknown, saying gh's answer was not read, gh asked only to resolve (got: $(fev issues))" \
+        bash -c '[ "$1" = "yes/unknown/unknown" ] && grep -qF "jq is not installed" <<< "$2" && [ "$(paste -sd"|" "$3")" = "$4" ]' \
+        _ "$(fval github)/$(fval issues)/$(fval prs)" "$(fev issues)" "$GH_LOG" "$RESOLVE"
+fi
+STUB_GH_LIST_RC=4 facts "$FG"
+check "repo view answers but the list calls fail: issues and prs unknown, naming the list call (got: $(fev issues))" \
+    bash -c '[ "$1" = unknown/unknown ] && [ "$2" = "gh failed, exit 4: gh issue list -R github.com/Someone/FactGH (its message is not printed; its first word: HTTP)" ] && [ "$3" = "gh failed, exit 4: gh pr list -R github.com/Someone/FactGH (its message is not printed; its first word: HTTP)" ]' \
+    _ "$(fval issues)/$(fval prs)" "$(fev issues)" "$(fev prs)"
+
+NC="$SANDBOX/projects/factnocommit"
+mkdir -p "$NC"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$NC/Makefile"
+printf '[package]\n' > "$NC/Cargo.toml"
+gitq -C "$NC" init --quiet
+gitq -C "$NC" remote add upstream "https://github.com/someone/nocommit.git"
+register factnocommit "$NC" "build=make" "test=make test"
+install_ut
+STUB_GH_NAME=someone/nocommit facts "$NC"
+check "a repository with no commits: exit 0 and five facts" \
+    bash -c '[ "$1" -eq 0 ] && [ "$(cut -f1 <<< "$2" | paste -sd" " -)" = "github issues prs windows multi_component" ]' _ "$AUDIT_RC" "$AUDIT_OUT"
+check "its one remote, named upstream, not origin: github yes, naming it (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "yes/gh repo view resolves the repository to github.com/someone/nocommit; remote 'upstream'" ]
+check "nothing tracked yet, so the untracked Cargo.toml does not count: multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)" = "no" ]
+
+OUTER="$SANDBOX/projects/outer"
+NEST="$OUTER/inner"
+mkdir -p "$NEST/a" "$NEST/b"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$NEST/Makefile"
+printf '<package/>\n' > "$NEST/a/package.xml"
+printf '<package/>\n' > "$NEST/b/package.xml"
+gitq -C "$OUTER" init --quiet
+commit_all "$OUTER"
+gitq -C "$OUTER" remote add origin "git@github.com:someone/outer.git"
+# Registered by hand only: the user-tier installer refuses a root inside
+# another repository (skip-enclosed), so the line goes again below.
+register factnested "$NEST" "build=make" "test=make test"
+facts "$NEST"
+check "a root nested inside a larger repository: github no, not the enclosing repository's remote (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/the root is not the top of a git repository, so it has no remote of its own" ]
+check "and gh not called" [ ! -s "$GH_LOG" ]
+check "its manifests read from disk: multi_component yes (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: a, b" ]
+sed -i '/^factnested /d' "$WS/.agent/projects.local"
+rm -f "$WS/.agent/projects.d/factnested"
+
+echo "TEST: --facts at a parent root reads the chosen instance's repository"
+facts "$PAR"
+check "several instances, no default: the repository facts are unknown and say to pass --instance (got: $(fev github))" \
+    bash -c '[ "$1" = unknown ] && grep -qF "pass --instance <name>" <<< "$2"' _ "$(fval github)" "$(fev github)"
+check "windows is still read (got: $(fval windows))" [ "$(fval windows)" = "no" ]
+unset STUB_GH_NAME
+facts "$PAR" --instance fam_a
+check "--instance fam_a: its remote, not the parent's (which has none) (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/gh repo view finds no remote on github.com; remote 'origin'" ]
+check "and gh resolved it in the instance's repository (got: $(cat "$GH_LOG.cwd"))" [ "$(cat "$GH_LOG.cwd")" = "$PAR/a" ]
+check "its one Makefile: multi_component no" [ "$(fval multi_component)" = "no" ]
+facts "$SANDBOX"
+check "a directory under no registered root: exit 2" [ "$AUDIT_RC" -eq 2 ]
+unset STUB_GH_VIEW
+
 echo "TEST: read-only: nothing in the project, the workspace or HOME changes"
 snap() { # <dir>: every path with its content hash, .git included
     (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha1sum)
@@ -573,6 +1127,7 @@ snap() { # <dir>: every path with its content hash, .git included
 before_hr="$(snap "$HR")"; before_ws="$(snap "$WS/.agent")"; before_home="$(snap "$HOMEDIR")"
 audit "$HR"
 audit "$HR" --format text
+audit "$HR" --facts
 check "the project is unchanged" [ "$before_hr" = "$(snap "$HR")" ]
 check "the workspace's .agent (registry, settings) is unchanged" [ "$before_ws" = "$(snap "$WS/.agent")" ]
 check "HOME is unchanged" [ "$before_home" = "$(snap "$HOMEDIR")" ]

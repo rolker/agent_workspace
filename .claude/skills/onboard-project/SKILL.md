@@ -1,6 +1,6 @@
 ---
 name: onboard-project
-description: Onboard a registered project from a session at its root. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes.
+description: Onboard a registered project from a session at its root. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes. Ends by offering audit-project, which holds the hygiene checklist.
 session_scope: project
 ---
 
@@ -72,14 +72,13 @@ says so, and changes nothing without a yes.
   `$WS_ROOT/.agent/scripts/project_setting.sh set`);
 - a line in the clone's `.git/info/exclude`;
 - a project worktree and its branch, files and commits on it, and a push;
-- an issue and a pull request on the project's repository;
-- from the hygiene checklist, changes to the GitHub repository itself:
-  branch protection and Copilot review (`gh api`), labels
-  (`gh label create`), and a git-bug bridge (`git bug bridge new`, then a
-  first pull).
+- an issue and a pull request on the project's repository.
 
 Each is shown before it is made, and made only on the user's yes to that
-write: a yes to the batch, or to one checklist item, covers nothing else.
+write: a yes to the batch covers nothing else. Changes to the GitHub
+repository itself (branch protection, Copilot review, labels, a git-bug
+bridge) belong to the hygiene checklist, which `audit-project` holds
+(#332 D4); onboarding ends by offering it (step 10).
 
 The settings file `.agent/projects.d/<name>` (at a parent root, the
 chosen instance's) lives in the workspace checkout, outside this session's
@@ -151,7 +150,13 @@ registry_default_instance "$WS_ROOT" <name>
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/project_setting.sh" list <settings-name>
 "$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]
+"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]
 ```
+
+The facts (`--facts`) say, read rather than guessed, whether the project's
+repository is on GitHub and uses issues and pull requests (`github`,
+`issues`, `prs`, each `yes`, `no` or `unknown`, with the evidence); steps 6
+and 7 read them.
 
 `--instance` only at a parent root: the audit then reads that instance's
 settings and repository, for categories 1 to 5 alike (without it, the
@@ -274,11 +279,9 @@ no:
    of the Direction section in `$WS_ROOT/docs/roadmap.md`, the grammar in
    the header of `$WS_ROOT/.agent/scripts/sitrep_checks.sh`): the lines that
    must be true for the project's current goal, each with a check.
-3. **Hygiene checklist** — the section below, until `audit-project` takes it
-   (#332 PR 4).
-
 Whatever `instructions` says, offer to run `/agent-workspace:audit-project`
-at the end: it writes nothing.
+at the end (step 10): it holds the hygiene checklist, and is report-only
+unless the user takes its optional final step.
 
 ### 6. Answer each finding and each accepted offer
 
@@ -301,16 +304,17 @@ section in the project's roadmap (an existing `docs/roadmap.md` or
 ```markdown
 ## Onboarding
 
-Queued by /agent-workspace:onboard-project on <date>; picked up like any
-other open roadmap row.
+Queued by /agent-workspace:onboard-project or /agent-workspace:audit-project
+on <date>; picked up like any other open roadmap row.
 
 | Item | Issue |
 |------|-------|
 | <the finding or offer, in plain words> | <#N, or none> |
 ```
 
-When the project uses issues, each row gets its issue; until
-`audit-project` reports whether it does (#332 PR 4), ask. Writing the
+When the project uses issues (`issues=yes` in step 2's facts), each row
+gets its issue; with `issues=no` the cell says `none`; when the fact is
+`unknown`, ask. Writing the
 section is itself a write: it waits for the same yes and rides in the same
 batched pull request as the fix-now items. How many queued rows to take on
 alongside other work is a later rule, not this skill's.
@@ -335,7 +339,7 @@ Show the whole batch (files to add or change, the roadmap section) and ask
 once more before creating anything. Then:
 
 1. Create the project worktree and work there. If the project uses
-   issues, open one issue for the onboarding work first (step 8's
+   issues (`issues=yes`; ask when it is `unknown`), open one issue for the onboarding work first (step 8's
    pattern, title "Onboard the project with the workspace") and create
    the worktree for it, on `feature/issue-<N>`:
 
@@ -378,16 +382,33 @@ once more before creating anything. Then:
      && git commit -m "<what changed>"
    ```
 3. Push and open the pull request only on a yes, from the worktree. For a
-   project with no GitHub remote, leave the edits on the branch, push
-   nothing, and say where the branch is. The branch is pushed first:
-   `gh pr create` run without a terminal does not offer to push it, and
-   stops.
+   project with no remote on github.com (`github=no`), leave the
+   edits on the branch, push nothing, and say where the branch is. With
+   `github=unknown`, ask which repository on github.com and which remote
+   it is before any issue, push or pull request (the fact's evidence
+   says why it is unknown); without an answer, open nothing, push
+   nothing, and say where the branch is. When the `github` fact's
+   evidence says `; its push URL differs from its fetch URL` (a
+   `pushurl`, `insteadOf` or `pushInsteadOf` on that remote), `git push`
+   would send the branch somewhere other than the repository the fact
+   names: say so, show that evidence, have the user check
+   `git remote get-url --push <remote>` themselves (the audit never
+   prints a URL), and push only on a yes to that; without one, push
+   nothing and say where the branch is. When the evidence names other
+   remotes (`; other remotes: <names>`), ask which remote to push to.
+   For a remote the user names, here or in a `github=unknown` answer,
+   compare its push URLs with its fetch URL without printing either:
+   `[ "$(git remote get-url --push --all <remote> | sort -u)" = "$(git remote get-url <remote>)" ] && echo same || echo differs`.
+   On `differs`, handle it as the push note above: say so, have the user
+   check `git remote get-url --push <remote>` themselves, and push only
+   on a yes to that. The branch is pushed first: `gh pr create` run without a terminal
+   does not offer to push it, and stops.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
 [ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
-git push -u origin "$(git branch --show-current)" || exit 1
+git push -u <remote> "$(git branch --show-current)" || exit 1
 PR_BODY_FILE="$(mktemp)"
 cat > "$PR_BODY_FILE" <<'EOF'
 ## Summary
@@ -399,12 +420,18 @@ Onboarding with the workspace:
 Closes #<N>
 EOF
 printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$PR_BODY_FILE"
-gh pr create -R <owner>/<repo> --title "Onboard the project with the workspace" \
+gh pr create -R github.com/<owner>/<repo> --title "Onboard the project with the workspace" \
   --body-file "$PR_BODY_FILE"
 rm -f "$PR_BODY_FILE"
 ```
 
-`<owner>/<repo>` comes from the project's `git remote get-url origin`.
+`<remote>` and `<owner>/<repo>` are the ones step 2's `github` fact
+names (`gh repo view resolves the repository to github.com/<owner>/<repo>;
+remote '<remote>'`), or the user's
+answer when it was `unknown`: a GitHub remote not named `origin` is pushed
+by its own name, and the repository is named with its host because a bare
+`<owner>/<repo>` goes to `$GH_HOST` when that is set. Step 8's issues go
+to the same repository.
 Leave out the `Closes #<N>` line when step 1 opened no issue.
 
 The body's heredoc is quoted (`<<'EOF'`): finding text often carries
@@ -431,11 +458,12 @@ cat > "$BODY_FILE" <<'EOF'
 Found by the `onboard-project` skill.
 EOF
 printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$BODY_FILE"
-gh issue create -R <owner>/<repo> --title "<item title>" --body-file "$BODY_FILE"
+gh issue create -R github.com/<owner>/<repo> --title "<item title>" --body-file "$BODY_FILE"
 rm -f "$BODY_FILE"
 ```
 
-The same rules as step 7's pull request: a quoted heredoc for the text, the
+The same rules as step 7's pull request: the repository the `github` fact
+names, asked for when it is `unknown`, a quoted heredoc for the text, the
 signature appended from the identity sourced in the same shell.
 
 ### 9. Summary
@@ -459,47 +487,21 @@ Report, each line saying whether it is done or still to do:
 - <item>
 
 ### Next
-- /agent-workspace:audit-project (writes nothing)
+- /agent-workspace:audit-project (offered in step 10)
 ```
 
 Look every link up with `gh` (`gh pr view <N> --json url`); never build a
 URL by hand.
 
-## Hygiene checklist (moves to audit-project, #332 PR 4)
+### 10. Offer audit-project
 
-Kept here until `audit-project` takes it, so it always has a home. Offered
-in step 5; each gap found gets the step 6 answers. For a project with
-`instructions=none`, items that add tracked files are offered as open
-issue or skip only.
-
-| Item | Check | Fix approach |
-|------|-------|-------------|
-| **Pre-commit config** | `.pre-commit-config.yaml` exists at the root | Write one for the project's languages, with `no-commit-to-branch` set to the default branch; the workspace has no template, and its own `$WS_ROOT/.pre-commit-config.yaml` is an example |
-| **CI workflow** | `.github/workflows/*.yml` with build and test steps | Write a workflow on the default branch that runs the project's own build and test commands (`project_setting.sh get <settings-name> build` and `test`); the workspace has no template |
-| **Branch protection** | A ruleset requires pull requests on the default branch | `gh api` — needs admin access |
-| **Copilot auto-review** | Copilot reviews pull requests | `gh api` — needs admin access |
-| **Component labels** | `component:` labels (multi-component repositories only) | `gh label create` per component |
-| **git-bug bridge** | `git bug bridge` lists a GitHub bridge | `git bug bridge new` and a first pull |
-| **License headers** | Source files carry copyright and license headers | Too invasive for a batch: always open issue or queue |
-
-Before a GitHub settings item, check the access:
-
-```bash
-gh api repos/<owner>/<repo> --jq '.permissions.admin'
-```
-
-Without admin access, say that branch protection and Copilot review need it
-and move on; a permission problem never fails the run. Labels need write
-access only:
-
-```bash
-gh label create "component:<name>" --description "<what it is>" --color "5319E7" -R <owner>/<repo>
-```
-
-Skip an item already in place, and items that do not apply (no GitHub
-remote: protection, Copilot, labels, bridge; no git-bug installed: bridge).
-Generated CI workflows and pre-commit configs must work in the project on
-their own, with no dependency on workspace scripts or paths.
+End by offering `/agent-workspace:audit-project` (#332 D4), whatever
+`instructions` says. It checks what onboarding does not: governance
+coverage, documentation, tests, and the hygiene checklist (pre-commit, CI,
+branch protection, Copilot review, component labels, git-bug bridge,
+license headers), reporting each item the project's facts make moot as
+skipped, with the reason. It is report-only unless the user takes its
+optional final step, where every write again waits for a yes.
 
 ## Guidelines
 

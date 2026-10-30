@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # .agent/scripts/project_integration_audit.sh
 # How a registered project and the workspace fit together (issue #332, PR
-# 3): the mechanical half of /onboard-project's integration audit. It
-# reports; the skill judges and asks. Read-only.
+# 3): the mechanical half of /onboard-project's integration audit, also
+# run by /audit-project. It reports; the skill judges and asks. Read-only.
 #
 # Usage:
 #   project_integration_audit.sh [--dir D | --project N] [--instance I]
-#                                [--format tsv|text]
+#                                [--facts] [--format tsv|text]
 #
 #   --dir D        audit the registered project whose root contains D
 #                  (default: the current directory)
@@ -23,6 +23,77 @@
 #                  No line at all means no findings.
 #   --format text  the same findings grouped under the category names, and
 #                  a count at the end
+#   --facts        instead of the findings, the facts /audit-project reads
+#                  to skip the hygiene items they make moot (#332 PR 4),
+#                  read rather than guessed, one per line in this order:
+#                  fact<TAB>value<TAB>evidence (text: "fact: value --
+#                  evidence"), value yes, no or unknown:
+#                    github           the audited repository is on
+#                                     github.com, as gh decides: gh repo
+#                                     view --json nameWithOwner, run in
+#                                     the repository with GH_HOST=
+#                                     github.com, resolves it from the
+#                                     git remotes by gh's own reading
+#                                     (every URL form, insteadOf, ssh
+#                                     host aliases). yes when it answers
+#                                     a plain <owner>/<repo>, printed as
+#                                     github.com/<owner>/<repo>; no when
+#                                     it fails saying no remote matches
+#                                     github.com (gh's fixed "none of
+#                                     the git remotes configured for
+#                                     this repository ..." message), or
+#                                     the repository has no remote;
+#                                     unknown when gh is not installed,
+#                                     not logged in (exit 4), fails any
+#                                     other way ("gh could not resolve
+#                                     the repository, exit <N>") or
+#                                     answers anything but <owner>/<repo>.
+#                                     No remote URL is parsed or
+#                                     printed: the evidence names the
+#                                     remote the push step uses (origin,
+#                                     else the first) by its name, a
+#                                     local one (a path, or file://)
+#                                     also by its path when every
+#                                     character is in [A-Za-z0-9._/@+~-]
+#                                     ("unprintable" otherwise), then
+#                                     "; its push URL differs from its
+#                                     fetch URL" when git remote get-url
+#                                     --push gives another string (a
+#                                     pushurl, insteadOf, pushInsteadOf),
+#                                     then the other remotes by name
+#                    issues           it uses GitHub issues: enabled, and
+#                                     at least one ever opened (gh repo
+#                                     view, then gh issue list --state all
+#                                     when none is open)
+#                    prs              it uses pull requests: at least one
+#                                     ever opened (gh repo view, then gh
+#                                     pr list --state all)
+#                    windows          this machine runs Windows (uname -s:
+#                                     MINGW, MSYS or CYGWIN)
+#                    multi_component  component manifests (package.xml,
+#                                     Cargo.toml, package.json,
+#                                     pyproject.toml, setup.py, go.mod, a
+#                                     CMakeLists.txt with project()) in two
+#                                     or more directories, tracked files
+#                                     only, node_modules/, vendor/ and
+#                                     third_party/ left out (a root that
+#                                     is not a git repository: every
+#                                     file at any depth, and colcon's
+#                                     build/, install/ and log/ left out
+#                                     too); unknown
+#                                     when the scan fails (git ls-files
+#                                     or find exits non-zero, or a
+#                                     CMakeLists.txt cannot be read) and
+#                                     it found fewer than two
+#                  issues and prs are no when github is no, unknown when
+#                  github is (gh missing or not logged in makes it so),
+#                  and unknown when jq is missing or a later gh call
+#                  fails (offline); the evidence says which. A gh failure's evidence is "gh failed, exit
+#                  <N>: <the call>", and an answer that does not parse
+#                  is named with a fixed phrase: none of gh's own text
+#                  is printed (it can quote a URL holding a credential),
+#                  at most its first word when that is one of a fixed
+#                  list (GH_WORDS: HTTP, GraphQL, error, ...).
 #
 # Severity: error (the workspace cannot work with the project as it is),
 # warn (worth fixing or deciding), info (for the record; nothing to do
@@ -89,11 +160,16 @@
 #
 # user-tier: inert -- read-only: prints findings and writes nothing. It
 # runs registration_verify.sh, user_tier_install.sh --check, session_root.sh
-# and read-only git queries (check-ignore, ls-files); no gh call and no
-# repo-changing git call. Outside every registered root it exits 2 saying
-# so, which is its job.
+# and read-only git queries (check-ignore, ls-files, remote get-url); no
+# repo-changing git call. Only --facts calls gh, and only to read (repo
+# view, issue list, pr list), and uname. Outside every registered root it
+# exits 2 saying so, which is its job.
 
 set -uo pipefail
+# Byte-based character classes and bracket ranges everywhere, whatever
+# the caller's locale, so printable's allowlist is ASCII alone. Set once,
+# exported, so every child reads the same bytes.
+export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=_project_registry.sh
@@ -107,8 +183,10 @@ DIR=""
 NAME=""
 INSTANCE=""
 FORMAT="tsv"
+FACTS=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --facts)   FACTS=1; shift ;;
         --dir)     [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; DIR="$2"; shift 2 ;;
         --project) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; NAME="$2"; shift 2 ;;
         --instance) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; INSTANCE="$2"; shift 2 ;;
@@ -205,8 +283,10 @@ fi
 FINDINGS=""
 # emit <category> <id> <severity> <subject> <detail>: one TSV line; a tab
 # or a line break inside a field becomes a space or " | " (awk, not GNU
-# sed's ':a;N;$!ba' loop, which BSD sed refuses).
-clean() { printf '%s' "$1" | tr '\t' ' ' | awk 'NR > 1 { printf " | " } { printf "%s", $0 }'; }
+# sed's ':a;N;$!ba' loop, which BSD sed refuses), and every other control
+# byte (below 0x20, and 0x7F: ESC, CR, ...) is dropped, so a directory
+# name or a path cannot carry a terminal escape into what is shown.
+clean() { printf '%s' "$1" | tr '\t' ' ' | tr -d '\001-\011\013-\037\177' | awk 'NR > 1 { printf " | " } { printf "%s", $0 }'; }
 emit() {
     FINDINGS+="$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"$(clean "$3")"$'\t'"$(clean "$4")"$'\t'"$(clean "$5")"$'\n'
 }
@@ -237,6 +317,336 @@ if [ -n "$PROOT_ABS" ] && git -C "$PROOT_ABS" rev-parse --is-inside-work-tree >/
     IS_GIT=1
 fi
 g() { git -C "$PROOT_ABS" "$@"; }
+
+# -------------------------------------------------------------- facts ---
+# --facts: what the audited repository (at a parent root, the chosen
+# instance's) and this machine are, so /audit-project skips the hygiene
+# items a fact makes moot and says why. Printed instead of the findings.
+if [ "$FACTS" -eq 1 ]; then
+    FACT_LINES=""
+    # No evidence line holds a remote's URL or free text from another
+    # program, either of which can hold a credential: a remote is named by
+    # its git remote name (a local one also by its path, through
+    # printable's allowlist), the github fact prints only gh's answer
+    # once it is a plain <owner>/<repo>, and a gh call that fails or gives
+    # an answer that does not parse is reported by gh_failed or a fixed
+    # phrase, never with gh's own text. No URL is parsed: gh resolves the
+    # repository from the remotes itself.
+    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
+
+    # Why the repository cannot be read, if it cannot.
+    REPO_WHY=""
+    if [ -z "$PROOT_ABS" ]; then
+        if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ] && [ -z "$AUD_NAME" ]; then
+            if [ -z "$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null)" ]; then
+                REPO_WHY="the parent root '$NAME' has no instance registered, so there is no repository to read"
+            else
+                REPO_WHY="several instances of the parent root '$NAME' and no default_instance: pass --instance <name>"
+            fi
+        else
+            REPO_WHY="the registered root $PROOT is not on disk"
+        fi
+    fi
+
+    # printable <text>: the text when every character is in
+    # [A-Za-z0-9._/@+~-] (ASCII bytes: the script runs under LC_ALL=C),
+    # else the word "unprintable".
+    printable() {
+        if [[ "$1" =~ ^[A-Za-z0-9._/@+~-]+$ ]]; then printf '%s' "$1"; else printf 'unprintable'; fi
+    }
+    # local_path <remote>: for a local remote, its path through printable;
+    # nothing for any other. Local means git remote get-url gives a path
+    # (no "://" and no ":" before the first "/") or a file:// URL, whose
+    # path is the text after "file://" and an optional "localhost"; a
+    # file:// URL with any other host part, or none, prints "unprintable".
+    # A network remote's URL is never printed and never read further.
+    local_path() {
+        local url p
+        url="$(g remote get-url "$1" 2>/dev/null)" || return 0
+        [ -n "$url" ] || return 0
+        case "$url" in
+            [Ff][Ii][Ll][Ee]://*)
+                p="${url#*://}"
+                p="${p#localhost}"
+                [[ "$p" == /* ]] || p="" ;;
+            *://*) return 0 ;;
+            *)  [[ "${url%%/*}" == *:* ]] && return 0
+                p="$url" ;;
+        esac
+        printable "$p"
+    }
+    # remote_desc <remote>: "remote '<name>'", with ", a local path:
+    # <path>" for a local one; a name outside the allowlist (one written
+    # into .git/config by hand) is not printed.
+    remote_desc() {
+        local d p
+        if [ "$(printable "$1")" = "$1" ]; then d="remote '$1'"; else d="a remote whose name is unprintable"; fi
+        p="$(local_path "$1")"
+        [ -n "$p" ] && d+=", a local path: $p"
+        printf '%s' "$d"
+    }
+    # push_note <remote>: "; its push URL differs from its fetch URL" when
+    # any URL git push sends <remote> to (git remote get-url --push --all:
+    # a pushurl, with insteadOf and pushInsteadOf applied) is not the
+    # string git remote get-url gives; nothing of either URL is printed.
+    # The push step shows the note and asks before pushing.
+    push_note() {
+        local f u
+        f="$(g remote get-url "$1" 2>/dev/null)" || return 0
+        while IFS= read -r u; do
+            if [ "$u" != "$f" ]; then
+                printf '; its push URL differs from its fetch URL'
+                return 0
+            fi
+        done < <(g remote get-url --push --all "$1" 2>/dev/null)
+        return 0
+    }
+
+    # github: gh decides. gh repo view, run in the repository, resolves it
+    # from the git remotes with gh's own reading of every URL form
+    # (insteadOf, ssh host aliases through ssh's configuration) and names
+    # it; its nameWithOwner is printed only when it is a plain
+    # <owner>/<repo>. GH_HOST=github.com pins the host: without it gh also
+    # resolves a remote on a GitHub Enterprise server it is signed in to
+    # (or the one $GH_HOST names), while the reads below go to github.com.
+    # gh's exit decides the rest, its text only picks a fixed phrase:
+    #   0 and a plain <owner>/<repo>   yes
+    #   non-zero, saying no remote matches github.com (gh's fixed "none of
+    #   the git remotes configured for this repository ..." message)   no
+    #   4 (gh's "authentication required")   unknown: not logged in
+    #   any other exit, or an answer that is not <owner>/<repo>   unknown
+    #   gh not installed   unknown
+    # The evidence then names the remote the push step uses (origin, else
+    # the first), with push_note, and the other remotes by name: gh may
+    # have resolved one of those.
+    GH_REPO=""
+    GH_STATE="unknown"
+    GH_WHY="$REPO_WHY"
+    REMOTES=()
+    if [ -n "$REPO_WHY" ]; then
+        fact github unknown "$REPO_WHY"
+    elif [ "$IS_GIT" -eq 0 ]; then
+        GH_STATE="no"
+        fact github no "the root is not the top of a git repository, so it has no remote of its own"
+    else
+        while IFS= read -r _r; do [ -n "$_r" ] && REMOTES+=("$_r"); done < <(g remote 2>/dev/null)
+    fi
+    if [ "$IS_GIT" -eq 1 ] && [ -z "$REPO_WHY" ] && [ "${#REMOTES[@]}" -eq 0 ]; then
+        GH_STATE="no"
+        fact github no "the repository has no remote"
+    elif [ "${#REMOTES[@]}" -gt 0 ]; then
+        REMOTE="${REMOTES[0]}"
+        for _r in "${REMOTES[@]}"; do [ "$_r" = origin ] && REMOTE=origin; done
+        _WHERE="$(remote_desc "$REMOTE")$(push_note "$REMOTE")"
+        _OTHERS=""
+        for _r in "${REMOTES[@]}"; do
+            [ "$_r" = "$REMOTE" ] || _OTHERS+="${_OTHERS:+, }$(printable "$_r")"
+        done
+        [ -n "$_OTHERS" ] && _WHERE+="; other remotes: $_OTHERS (one of these may be what gh resolved)"
+        if ! command -v gh >/dev/null 2>&1; then
+            GH_WHY="gh is not installed, so which repository the remotes name was not read"
+            fact github unknown "$GH_WHY; $_WHERE"
+        else
+            _RC=0
+            # Written out as one gh call, so the read-only check in
+            # test_user_tier_guard.sh sees exactly which gh command runs.
+            _OUT="$(cd "$PROOT_ABS" && GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view --json nameWithOwner --jq .nameWithOwner 2>&1 </dev/null)" || _RC=$?
+            if [ "$_RC" -eq 0 ] && [[ "$_OUT" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+                GH_REPO="$_OUT"
+                GH_STATE="yes"
+                fact github yes "gh repo view resolves the repository to github.com/$GH_REPO; $_WHERE"
+            elif [ "$_RC" -ne 0 ] && [[ "$_OUT" == "none of the git remotes configured for this repository "* ]]; then
+                GH_STATE="no"
+                fact github no "gh repo view finds no remote on github.com; $_WHERE"
+            else
+                if [ "$_RC" -eq 0 ]; then
+                    GH_WHY="gh repo view gave no plain <owner>/<repo> (its answer is not printed)"
+                elif [ "$_RC" -eq 4 ]; then
+                    GH_WHY="gh is not logged in (gh repo view exit 4)"
+                else
+                    GH_WHY="gh could not resolve the repository, exit $_RC (its message is not printed)"
+                fi
+                fact github unknown "$GH_WHY; $_WHERE"
+            fi
+        fi
+    fi
+
+    # issues and prs, always from github.com: the repository is named with
+    # its host, since a bare owner/repo goes to $GH_HOST (or gh's default
+    # host) when that is set, a server the github fact did not name.
+    GH_FULL="github.com/$GH_REPO"
+    # gh_failed <call> <exit> <output>: the evidence for a gh call that
+    # failed: "gh failed, exit <N>: <call>", and none of gh's own text,
+    # which can quote a URL holding a credential (no cut of free text is
+    # safe: a password can hold a space). At most gh's first word is
+    # named, and only when it is one of GH_WORDS, so the reader can tell
+    # an HTTP error from a sign-in or network one.
+    GH_WORDS=(HTTP GraphQL error failed could not no gh To Get Post)
+    gh_failed() {
+        local out="$3" w a
+        out="${out#"${out%%[![:space:]]*}"}"
+        w="${out%%[[:space:]]*}"
+        w="${w%:}"
+        for a in "${GH_WORDS[@]}"; do
+            if [ "$w" = "$a" ]; then
+                printf 'gh failed, exit %s: %s (its message is not printed; its first word: %s)' "$2" "$1" "$w"
+                return 0
+            fi
+        done
+        printf 'gh failed, exit %s: %s (its message is not printed)' "$2" "$1"
+    }
+    # gh repo view counts only open ones, so when none is
+    # open, one list call over every state says whether any ever was.
+    # ever_opened <issue|pr>: 0 yes, 1 no, 2 unknown (the reason on stdout)
+    ever_opened() {
+        local out rc=0 n what
+        # Each call written out, so the read-only check in
+        # test_user_tier_guard.sh sees exactly which gh commands run.
+        case "$1" in
+            issue) what="gh issue list"; out="$(gh issue list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+            *)     what="gh pr list"; out="$(gh pr list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+        esac
+        if [ "$rc" -ne 0 ] || ! n="$(jq -er 'if type == "array" then length else error("not a list") end' <<< "$out" 2>/dev/null)"; then
+            if [ "$rc" -ne 0 ]; then
+                gh_failed "$what -R $GH_FULL" "$rc" "$out"
+            else
+                echo "$what -R $GH_FULL gave no JSON list (its answer is not printed)"
+            fi
+            return 2
+        fi
+        [ "$n" -gt 0 ] 2>/dev/null && return 0
+        return 1
+    }
+    if [ "$GH_STATE" = "unknown" ]; then
+        fact issues unknown "github is unknown: $GH_WHY"
+        fact prs unknown "github is unknown: $GH_WHY"
+    elif [ "$GH_STATE" = "no" ]; then
+        fact issues no "github is no, so gh was not asked about its issues"
+        fact prs no "github is no, so gh was not asked about its pull requests"
+    elif ! command -v jq >/dev/null 2>&1; then
+        fact issues unknown "jq is not installed, so gh's answer was not read"
+        fact prs unknown "jq is not installed, so gh's answer was not read"
+    else
+        _RC=0
+        RV="$(gh repo view "$GH_FULL" --json hasIssuesEnabled,issues,pullRequests 2>&1)" || _RC=$?
+        RV_TSV=""
+        [ "$_RC" -eq 0 ] && RV_TSV="$(jq -r '[.hasIssuesEnabled, .issues.totalCount, .pullRequests.totalCount] | @tsv' <<< "$RV" 2>/dev/null)"
+        if ! [[ "$RV_TSV" =~ ^(true|false)$'\t'[0-9]+$'\t'[0-9]+$ ]]; then
+            if [ "$_RC" -ne 0 ]; then
+                _WHY="$(gh_failed "gh repo view $GH_FULL" "$_RC" "$RV")"
+            else
+                _WHY="gh repo view $GH_FULL gave no hasIssuesEnabled, issues and pullRequests counts (its answer is not printed)"
+            fi
+            fact issues unknown "$_WHY"
+            fact prs unknown "$_WHY"
+        else
+            IFS=$'\t' read -r _EN _OI _OP <<< "$RV_TSV"
+            if [ "$_EN" = "false" ]; then
+                fact issues no "issues are disabled on github.com/$GH_REPO"
+            elif [ "$_OI" -gt 0 ]; then
+                fact issues yes "$_OI open on github.com/$GH_REPO"
+            else
+                _RC=0
+                _WHY="$(ever_opened issue)" || _RC=$?
+                case "$_RC" in
+                    0) fact issues yes "none open on github.com/$GH_REPO, but some were opened before" ;;
+                    1) fact issues no "enabled on github.com/$GH_REPO, but none was ever opened" ;;
+                    *) fact issues unknown "$_WHY" ;;
+                esac
+            fi
+            if [ "$_OP" -gt 0 ]; then
+                fact prs yes "$_OP open on github.com/$GH_REPO"
+            else
+                _RC=0
+                _WHY="$(ever_opened pr)" || _RC=$?
+                case "$_RC" in
+                    0) fact prs yes "none open on github.com/$GH_REPO, but some were opened before" ;;
+                    1) fact prs no "none was ever opened on github.com/$GH_REPO" ;;
+                    *) fact prs unknown "$_WHY" ;;
+                esac
+            fi
+        fi
+    fi
+
+    # windows: this machine, not the repository.
+    _OS=""
+    command -v uname >/dev/null 2>&1 && _OS="$(uname -s 2>/dev/null)"
+    case "$_OS" in
+        "") fact windows unknown "uname -s gave nothing on this machine" ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) fact windows yes "this machine: uname -s is $_OS" ;;
+        *) fact windows no "this machine: uname -s is $_OS" ;;
+    esac
+
+    # multi_component: the directories holding a component manifest.
+    # unknown when the scan fails (git ls-files or find exits non-zero,
+    # read through wait on the process substitution, or a CMakeLists.txt
+    # cannot be read): a scan that saw only part of the tree cannot say no.
+    _SCAN_WHY=""
+    if [ -n "$REPO_WHY" ]; then
+        fact multi_component unknown "$REPO_WHY"
+    else
+        MANIFESTS=(package.xml Cargo.toml package.json pyproject.toml setup.py go.mod CMakeLists.txt)
+        _FILES=()
+        _RC=0
+        if [ "$IS_GIT" -eq 1 ]; then
+            _SPECS=()
+            for m in "${MANIFESTS[@]}"; do _SPECS+=(":(glob)**/$m"); done
+            while IFS= read -r -d '' p; do _FILES+=("$p"); done \
+                < <(g ls-files -z -- "${_SPECS[@]}" 2>/dev/null)
+            wait "$!" || _RC=$?
+            [ "$_RC" -eq 0 ] || _SCAN_WHY="git ls-files failed (exit $_RC), so the tracked manifests were not read"
+        else
+            _NAMES=()
+            for m in "${MANIFESTS[@]}"; do _NAMES+=(-o -name "$m"); done
+            while IFS= read -r -d '' p; do _FILES+=("${p#"$PROOT_ABS"/}"); done \
+                < <(find "$PROOT_ABS" \( -name .git -o -name node_modules -o -name vendor -o -name third_party \
+                        -o -name build -o -name install -o -name log \) -prune \
+                        -o -type f \( -false "${_NAMES[@]}" \) -print0 2>/dev/null)
+            wait "$!" || _RC=$?
+            [ "$_RC" -eq 0 ] || _SCAN_WHY="find failed (exit $_RC; a directory it could not read, perhaps), so not every manifest was seen"
+        fi
+        declare -A _SEEN=()
+        _DIRS=()
+        for p in "${_FILES[@]+"${_FILES[@]}"}"; do
+            case "/$p" in */node_modules/*|*/vendor/*|*/third_party/*) continue ;; esac
+            if [ "$(basename "$p")" = "CMakeLists.txt" ]; then
+                [ -e "$PROOT_ABS/$p" ] || continue
+                _RC=0
+                grep -qiE '^[[:space:]]*project[[:space:]]*\(' "$PROOT_ABS/$p" 2>/dev/null || _RC=$?
+                if [ "$_RC" -eq 1 ]; then
+                    continue
+                elif [ "$_RC" -ne 0 ]; then
+                    _SCAN_WHY="${_SCAN_WHY:-$p could not be read, so whether it declares a project() was not read}"
+                    continue
+                fi
+            fi
+            d="$(dirname "$p")"
+            [ -n "${_SEEN[$d]+set}" ] && continue
+            _SEEN["$d"]=1
+            _DIRS+=("$d")
+        done
+        _ND="${#_DIRS[@]}"
+        _LIST="$(printf '%s\n' "${_DIRS[@]+"${_DIRS[@]}"}" | sort | head -n5 | paste -sd, - | sed 's/,/, /g')"
+        [ "$_ND" -gt 5 ] && _LIST="$_LIST and $((_ND - 5)) more"
+        if [ "$_ND" -ge 2 ]; then
+            fact multi_component yes "component manifests in $_ND directories: $_LIST"
+        elif [ -n "$_SCAN_WHY" ]; then
+            fact multi_component unknown "$_SCAN_WHY"
+        elif [ "$_ND" -eq 1 ]; then
+            fact multi_component no "component manifests in one directory: $_LIST"
+        else
+            fact multi_component no "no component manifest (${MANIFESTS[*]}) found"
+        fi
+    fi
+
+    if [ "$FORMAT" = "tsv" ]; then
+        printf '%s' "$FACT_LINES"
+    else
+        echo "Facts: ${AUD_NAME:-$NAME}${PROOT:+ at $(clean "$PROOT")}"
+        printf '%s' "$FACT_LINES" | awk -F'\t' 'NF { printf "%s: %s -- %s\n", $1, $2, $3 }'
+    fi
+    exit 0
+fi
 
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ] && [ -z "$AUD_NAME" ]; then
     _INST="$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | paste -sd' ' -)"
@@ -606,7 +1016,7 @@ fi
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
     echo "Integration audit: $NAME ($TYPE) at $SESSION_ABS"
     if [ -n "$SNAME" ]; then
-        echo "audited: instance $SNAME at $PROOT, its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
+        echo "audited: instance $SNAME at $(clean "$PROOT"), its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
     else
         if [ -z "$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null)" ]; then
             echo "audited: no instance (none registered; register one first)"
@@ -615,7 +1025,7 @@ if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
         fi
     fi
 else
-    echo "Integration audit: $NAME ($TYPE) at $PROOT"
+    echo "Integration audit: $NAME ($TYPE) at $(clean "$PROOT")"
 fi
 echo "instructions: ${INSTRUCTIONS:-not set}"
 declare -A CAT_NAME=(

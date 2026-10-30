@@ -1559,3 +1559,651 @@ None open.
 **Decision**: merge
 
 Owner's answer: "Merge". PR 413 (part 3 of 4) at 489a94d8, Integrated Review 489a94d8 with nothing open; CI lint still running at the time of the answer, so the host waits for it before merge_pr.sh.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 14:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `03c7a4e6`
+**Commits**: 9c99f086, 274d3423, 562886af, 03c7a4e6
+
+Part 4 of 4 of issue 332 (plan section "PR 4 — `audit-project` takes the hygiene checklist (D4)"), on main at 4bd9ce77. No-SKIP pre-commit over `main...HEAD` on `03c7a4e6`: exit 0 in 618 s, the script suite hook passed (an earlier run on `562886af` failed in `test_user_tier_guard.sh`, which refused every gh call in the read-only audit; fixed in 03c7a4e6).
+
+### Changes
+- [x] `project_integration_audit.sh --facts`: `fact<TAB>value<TAB>evidence` (text: `fact: value -- evidence`), value yes/no/unknown, in the order `github` (origin, else first remote, on github.com), `issues` (enabled and at least one ever opened: `gh repo view`, then `gh issue list --state all` when none is open), `prs` (same with `gh pr list`), `windows` (`uname -s` MINGW/MSYS/CYGWIN), `multi_component` (tracked component manifests in two or more directories; node_modules/vendor/third_party left out; a CMakeLists.txt counts only with project()); at a parent root the chosen instance's repository; gh only reads and is never called without a GitHub remote (9c99f086)
+- [x] Tests in `test_project_integration_audit.sh` (167 pass): synthetic repositories with a stub gh and stub uname; each value, gh failure, malformed answers, local-path and non-GitHub remotes, non-git root, parent-root instance, gh not called without GitHub (9c99f086)
+- [x] `audit-project` SKILL.md rewritten: session_root.sh instead of `project/<repo-name>`; parent root reads, reports and fixes the chosen instance's repository only; step 2 reads `--facts`; the seven checklist items with fix approaches and read-only checks; a facts table of what each fact makes moot, each skipped item reported "skipped: <reason>", unknown makes nothing moot; the stale step 7 replaced by the integration script, report-only; optional step 10 with fix now / open issue / queue in the roadmap / skip, the D6 words, the shared `## Onboarding` section, each queued row a yes, an issue per row when `issues=yes` (274d3423)
+- [x] `onboard-project`: checklist section and its GitHub writes removed; step 2 also runs `--facts`, steps 6 and 7 read `issues`/`github` (ask when unknown); new step 10 offers audit-project (D4) (274d3423)
+- [x] `test_skill_paths.sh` (120 pass): audit-project pins (no `project/<repo-name>` or `project_knowledge`, facts command and table, seven items, the moot reasons, report-only, four answers, D6, cited onboard headings exist, heredocs quoted, bash blocks parse); onboard pins for the checklist's removal, step 10 and the facts; parse and heredoc checks made shared functions (274d3423)
+- [x] `docs/design.md` Sessions and roots bullet for audit-project's job and change-log row (852 lines); `skill_workflows.md` rows; `user_tier_scripts.txt` comment (562886af)
+- [x] `test_user_tier_guard.sh`: the read-only audit may call `gh repo view`, `gh issue list`, `gh pr list` and nothing else, a gh subcommand in a variable refused; the audit's list calls written out (03c7a4e6)
+
+### Host decisions, listed for veto
+- `issues=yes` means at least one issue ever opened, not just enabled (GitHub enables issues by default, so a project that never used them would read yes); this needs `gh issue list`/`gh pr list` beside `gh repo view`, whose counts are open only.
+- The moot table is finer than the plan's line: `issues=no` skips the bridge, `prs=no` skips Copilot, both skip labels; with `prs=no`, branch protection is reported and asked about, not recommended.
+- audit-project's fix-now batch follows onboard-project's steps 7 and 8 by heading (pinned by the test) instead of a second copy; for a project with no issues it uses the `onboard-project` skill worktree, since adding audit-project to the allowlist would need an AGENTS.md edit.
+
+### AGENTS.md (Ask-First, not done)
+- Script Reference row for `project_integration_audit.sh`: "run by `/onboard-project` at the project's root: `[--dir D \| --project N] [--instance I] [--format tsv\|text]`" becomes "run by `/onboard-project` and `/audit-project` at the project's root: `[--dir D \| --project N] [--instance I] [--facts] [--format tsv\|text]`", and before "exits 0 whatever it finds" add: "`--facts` prints instead `fact<TAB>value<TAB>evidence` for `github`, `issues`, `prs`, `windows`, `multi_component` (yes, no or unknown; from the remote, read-only `gh repo view`/`issue list`/`pr list` and `uname`), which `/audit-project` reads to skip the hygiene items they make moot;"
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 14:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `c0bcc8a9`
+**Base**: main
+**Depth**: Deep (reason: part 4 of 4 of #332 is a new diff: 10 files, +865/-139, a user-tier script, its read-only guard and two project skills; the dispatcher said round 16 because parts 1 to 3's pre-push entries, PRs 403, 409 and 413, all merged, are still on this timeline (#384); per the host's correction this is ROUND 1 for part 4, a full Deep review with cross-model reviewers, classified on the whole main...HEAD diff)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix (both mechanical); the first round always re-reviews after fixes (verdict run with --round 1, no --prev-must-fix)
+
+Merge c0bcc8a9 (main at f90d8ffe, PR 411) is clean: its tree equals `git merge-tree` of its parents, and it is not part of the review target. Suites: test_project_integration_audit 167/0, test_user_tier_guard 63/0, test_skill_paths 120/0. shellcheck is clean on the four changed scripts. Cross-model: Gemini ran (1 suggestion), Codex ran (2 must-fix). Claude adversarial ran; it confirmed that `--facts` writes nothing and makes only the three allowed gh calls, that a project with no remote gives github/issues/prs no with evidence and no gh call, that an unknown fact keeps its item checked, and that the fix-batch `--project <settings-name>` resolves to the instance's repository at a parent root. Its AGENTS.md finding is dropped: that row edit is Ask-First and was left for the owner on purpose.
+
+### Findings
+- [x] (must-fix) Credential leak: the evidence for a non-GitHub remote prints the URL verbatim, so `https://user:TOKEN@gitlab.com/...` puts the secret into the audit report. Print the host and path only, and add a fixture with a credential-bearing remote that asserts the secret never appears — `.agent/scripts/project_integration_audit.sh:321`
+- [x] (must-fix) Wrong host: the gh calls pass bare `owner/repo`, so with `GH_HOST` set they query another server while the evidence says github.com. Pass `github.com/<owner>/<repo>` to `gh repo view`, `gh issue list -R` and `gh pr list -R`, and test it with a conflicting GH_HOST — `.agent/scripts/project_integration_audit.sh:334,335,362`
+- [x] (suggestion) `jq -er 'length'` also accepts an object or a string, so an exit-0 non-array answer reads as "yes". Require `type == "array"` (Gemini) — `.agent/scripts/project_integration_audit.sh:337`
+- [x] (suggestion) The gh guard is weaker than its comment says. It exempts a whole line that holds one allowed call, and it misses a flag placed before the subcommand (`gh -R o/r issue close`) and `command gh` / `$GH`. Match every gh token not followed by exactly one of the three allowed subcommands — `.agent/scripts/tests/test_user_tier_guard.sh:289-294`
+- [x] (suggestion) A GitHub SSH host alias (`git@github.com-work:o/r.git`), or a GitHub remote that is not the first one checked, gives `github=no`, and four hygiene items are then skipped as "no GitHub remote". Consider `unknown` when the host only looks like GitHub — `.agent/scripts/project_integration_audit.sh:304-321`
+- [x] (suggestion) Test gaps in `--facts`: gh missing, jq missing, a repository with no commits, a remote not named origin, `ever_opened` failing after a successful `repo view`, and a root nested inside a larger repository — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) The skill blurs which facts go `unknown` for which cause: gh problems make only issues and prs unknown, and `github` is unknown only when the repository cannot be read. Say which facts — `.claude/skills/audit-project/SKILL.md:152`
+- [x] (suggestion) The `windows=yes` row is a partial skip ("shell-script hooks in the pre-commit item"). Say how it is reported, since the pre-commit item keeps its in place / missing status — `.claude/skills/audit-project/SKILL.md:237`
+- [x] (suggestion) Step 10 follows onboard-project step 7 "as written" but overrides only the title. Step 7's pull request body still reads "Onboarding with the workspace", so give the audit's body wording too — `.claude/skills/audit-project/SKILL.md:401-410`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 14:20 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner's answer: "Address". Part 4 of 4, round 1 (15207a51, taken as round 1; the counter says 16 from parts 1 to 3, issue 384): 2 must-fix (a non-GitHub remote URL printed verbatim could leak a credential; gh calls pass bare owner/repo and would hit a configured GH_HOST) and 7 suggestions. The owner was asked only because the host had answered the rounds checkpoint twice in a row on this issue; logged as a loop defect for issue 398. The approved AGENTS.md row edit for project_integration_audit.sh (--facts) goes into this fix pass.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 15:01 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `0526dd91`
+**Addressed**: Local Review (Pre-Push) at `c0bcc8a9` (2026-10-29 14:17 -04:00); also the owner-approved AGENTS.md Script Reference row ("Yes, edit the row", 2026-10-29)
+**Commits**: f7772a19, 5ce71257, 840e6941, 055d4417, f6525b48, 3dc8ede7, 0a7073e8, 27c73d6b, 2692f682, 3135e88d, 0526dd91
+
+### Actions
+- [x] (must-fix) Credential leak: the user part of a remote URL is stripped and the evidence names host/path only; a fixture with three credential-bearing remotes asserts the secret never appears, tsv or text (f7772a19) — `.agent/scripts/project_integration_audit.sh:321`
+- [x] (must-fix) Wrong host: gh repo view, gh issue list -R and gh pr list -R get `github.com/<owner>/<repo>`; the stub gh answers a host-less repository from GH_HOST and a test with a conflicting GH_HOST checks every call; the skill's own gh calls name the host too (5ce71257) — `.agent/scripts/project_integration_audit.sh:334,335,362`
+- [x] (suggestion) The list count requires `type == "array"`; an object, a string and a number each give unknown (840e6941) — `.agent/scripts/project_integration_audit.sh:337`
+- [x] (suggestion) gh guard: `gh_calls_not_read_only` checks every gh word in command position on its own, refuses a flag before the subcommand, `command gh` and a gh named by a variable; a 15-line fixture tests the matcher (gawk and mawk) (055d4417) — `.agent/scripts/tests/test_user_tier_guard.sh:289-294`
+- [x] (suggestion) github is unknown when the checked remote's host only looks like GitHub (ssh alias, GitHub Enterprise) or another remote is on GitHub; issues and prs follow; ssh.github.com counts as github.com; tested (f6525b48) — `.agent/scripts/project_integration_audit.sh:304-321`
+- [x] (suggestion) --facts tests for gh missing, jq missing, list calls failing after repo view, no commits, a remote named upstream, a root nested in a larger repository (3dc8ede7) — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) The skill says which facts go unknown for which cause (0a7073e8; its test_skill_paths check updated in 0526dd91) — `.claude/skills/audit-project/SKILL.md:152`
+- [x] (suggestion) windows=yes skips the git-bug bridge only; the pre-commit item keeps in place / missing with "(windows=yes: language-native hooks only)" (27c73d6b) — `.claude/skills/audit-project/SKILL.md:237`
+- [x] (suggestion) Step 10 gives the audit's pull request body ("Fixes from the project audit:"), the issue body line it replaces, and the -R github.com/... the create calls take (2692f682) — `.claude/skills/audit-project/SKILL.md:401-410`
+- [x] AGENTS.md Script Reference row for project_integration_audit.sh: run by /onboard-project and /audit-project, `[--facts]` in the usage, what --facts prints (3135e88d) — `AGENTS.md`
+
+### Checks
+- Full pass `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: first run failed test_skill_paths (the old "unknown" sentence, fixed in 0526dd91); rerun on the final tree passed every hook, 693 s; the script-test hook ran all 40 suites (`.agent/knowledge/skill_workflows.md` on the branch maps to no suite).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 15:07 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af1efbe1213e3292e, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `485e4628`
+**Base**: main
+**Depth**: Deep (reason: round 2 of part 4 of 4 of #332, classified on the whole main...HEAD diff as in round 1; a full re-review of the 11 fix commits since c0bcc8a9 with the cross-model reviewers, because round 1 had 2 must-fix. The counter reads 17 from parts 1 to 3 (#384); for this part it is round 2)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round (verdict run with --round 2 --prev-must-fix 2 --mechanical)
+
+Round-1 findings checked against the fixes. All nine are addressed:
+- The credential test covers tsv and text.
+- Every gh call names github.com/<owner>/<repo>, in the script (via $GH_FULL) and in the audit-project skill. The GH_HOST stub would fail a call that drops the host.
+- The guard matcher gives identical results under gawk and mawk. It refuses fixture lines 1-9 and raises no false positives on the real scripts.
+- For an alias host or a GitHub remote other than the one checked, github is unknown, and issues and prs follow with no gh call.
+- All six --facts test gaps are covered.
+- The AGENTS.md row matches the argument parser, the outputs and the exit codes.
+
+Suites run under a private TMPDIR: test_project_integration_audit 191/0, test_user_tier_guard 64/0, test_skill_paths 121/0. shellcheck is clean. The branch is not behind main.
+
+Reviewers:
+- Gemini ran: 3 suggestions.
+- Codex ran: 2 must-fix. One is kept as must-fix (branch protection); the other is reclassified as a suggestion: the unconditional `git push -u origin` sits in merged onboard-project step 7 and fails loudly.
+- Claude adversarial ran: 2 must-fix, merged into one below, plus suggestions folded in.
+
+### Findings
+- [x] (must-fix) Credential redaction is still incomplete:
+  - A query or fragment on the URL is kept. `https://github.com/o/r?token=abc` becomes github=yes with GH_REPO `o/r?token=abc`, which goes into the evidence and every `gh -R` call (reproduced).
+  - A `file://user:tok@...` remote is classified local, and its raw URL is printed (reproduced).
+  - The scp form `user:tok@host:path` is not redacted.
+  - The comment's claim that the URL is never printed is false.
+  - Fix: strip `[?#].*` and the user part in every form, require `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` for owner/repo, and add fixtures for ssh://, file://, a query string and a credential on a GitHub remote — `.agent/scripts/project_integration_audit.sh:343-366`
+- [x] (must-fix) The classic protection endpoint returns 404 "Branch not protected" when no protection exists, but the skill treats every failed call as `not checked`. A project with no rulesets and no classic protection is therefore never reported missing. Fix: check `.permissions.admin` first. With admin, a 404 means missing; without admin, the item is not checked. A pull-request rule found in the rulesets stands whatever the classic call returns (Codex) — `.claude/skills/audit-project/SKILL.md:272-276`
+- [x] (suggestion) A github.com remote whose path is not owner/repo (e.g. `https://github.com/owner`) falls into the "host looks like GitHub but is not github.com" reason. The value unknown is safe, but the reason is wrong (Gemini) — `.agent/scripts/project_integration_audit.sh:369`
+- [x] (suggestion) Step 10 says what to do with `github=no` but not with `github=unknown` (alias host, GitHub on another remote). Say to ask which repository and which remote before any issue, push or pull request (Gemini) — `.claude/skills/audit-project/SKILL.md:445`
+- [x] (suggestion) onboard-project steps 7 and 8, which audit-project step 10 follows, still push to `origin` unconditionally and pass a bare `-R <owner>/<repo>` to `gh pr create` and `gh issue create`. A repository whose GitHub remote is `upstream` gets an issue and commits, and the push then fails. Its own create calls go to `$GH_HOST`. Carry the remote and host from the facts (Codex, plus lead) — `.claude/skills/onboard-project/SKILL.md:406,438`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 10:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384): round 17 counts the pre-push reviews of PRs 1 to 3 of 4, all merged; this branch is PR 4 of 4 and the review at 485e4628 is its round 2; two must-fix (credential redaction still incomplete; the classic branch-protection endpoint's 404 read as "not protected") and three suggestions open, all mechanism; first host address in a row at rounds since the owner's answer of 2026-10-29 14:20, so one more host answer is allowed before the next rounds answer is the owner's)
+**After**: rounds
+**Decision**: address
+
+Host-answered within the orchestrator's checkpoint table: all five open boxes are mechanism findings (credential redaction, an HTTP 404 misread, a remote-path edge case, the github=unknown branch of step 10, and a stale push in the onboarding steps), none touches a goal. The owner invoked /run-issue 332 at the start of this drive (2026-10-30) after the three merged parts; this answer is listed in the hand-back for his veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 10:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Branch**: feature/issue-332 at `79fd53c2`
+**Addressed**: Local Review (Pre-Push) at `485e4628` (2026-10-29 15:07 -04:00)
+**Commits**: a7895b3d, ba58149e, dcbbefaf, 79fd53c2
+
+### Actions
+- [x] (must-fix) Credential redaction, class-closed: `redact_url` drops the query and fragment and the user part in the scheme (to the last "@", so a secret holding "/" goes too), file:// and scp forms; `remote_where` is the one reader of a remote URL, so a local remote is printed redacted as well; owner/repo must match `[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`; structural backstop: `fact()` runs every evidence line through `scrub_secrets`, gh's error text included. 15 new fixture cases (query, fragment, https, ssh, scp with and without "/" in the secret, file://, second remote, gh error line), each asserting the secret is in neither format nor in gh's arguments (a7895b3d) — `.agent/scripts/project_integration_audit.sh:290-340`
+- [x] (must-fix) Classic protection: a `pull_request` ruleset rule puts the item in place; otherwise `.permissions.admin` is read first; with admin, 404 "Branch not protected" or protection without required reviews is missing, any other failure not checked; without admin, not checked, never missing. Decision table in the skill, pinned by test_skill_paths (dcbbefaf) — `.claude/skills/audit-project/SKILL.md:272-300`
+- [x] (suggestion) A github.com remote whose path is not owner/repo is unknown with the reason "on github.com, but the path is not <owner>/<repo>"; three fixtures; the skill's unknown list and the script header say so (a7895b3d, ba58149e) — `.agent/scripts/project_integration_audit.sh:398`
+- [x] (suggestion) audit-project step 10 with `github=unknown`: ask which repository on github.com and which remote before any issue, push or pull request; without an answer nothing is opened or pushed. Step 8 also reports the GitHub checks `not checked: github=unknown (<evidence>)` when no repository is named (79fd53c2) — `.claude/skills/audit-project/SKILL.md`
+- [x] (suggestion) onboard-project steps 7 and 8 push to `<remote>` and pass `-R github.com/<owner>/<repo>`, both as the `github` fact names them, and ask when it is unknown; structural backstop: test_skill_paths refuses, in both skills, a gh call without github.com and a push naming origin (checked that it flags the old text) (79fd53c2) — `.claude/skills/onboard-project/SKILL.md:385-445`
+
+### Checks
+- Suites run directly under a private TMPDIR: test_project_integration_audit 220/0 (191 before), test_skill_paths 126/0. shellcheck at the hook's warning severity clean.
+- Full pass `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree: every hook passed, exit 0. The script-test hook ran all 40 suites (suites_for_files.sh: `.agent/knowledge/skill_workflows.md` maps to no suite, so ALL).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 10:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `26d9f0ad`
+**Base**: main
+**Depth**: Deep (reason: round 18 convergence check per handoff; round 3 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the five findings of the review at 485e4628, the fix diff 485e4628..79fd53c2, and the merge resolution in 26d9f0ad; cross-model skipped (round-18 convergence check, per handoff))
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 18 | **Ship**: recommended — round 18: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Round-17 findings checked against the fix diff:
+- Four of the five are closed. These are the classic-protection 404 decision table, the reason for a github.com path that is not owner/repo, step 10 with github=unknown, and onboard-project steps 7 and 8 pushing to `<remote>` with `-R github.com/<owner>/<repo>`.
+- The credential-redaction must-fix is closed for every form its round-17 text named, but a residual leak remains (below).
+
+Merge 26d9f0ad is right:
+- The only design.md change on top of main is this part's bullet and its change-log row.
+- The row comes after main's 2026-10-30 row, so the log stays in date order.
+- Lines 854 equals `wc -l docs/design.md`.
+
+Run here:
+- test_project_integration_audit 220/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the six fix-diff files: every hook passed, shellcheck included
+
+Reviewers:
+- Plan drift: none. The fix diff touches only files in the plan.
+- Claude adversarial ran: 2 must-fix. One is kept as must-fix. The other is reclassified as a suggestion, because the `fact()` backstop removes it from the evidence (reproduced).
+- Cross-model: skipped (round-18 convergence check, per handoff).
+
+### Findings
+- [x] (must-fix) `redact_url` cuts at the first `?` or `#` before it strips the user part.
+  - A password holding either character leaks its prefix, and the GitHub remote is misread as not GitHub: `https://user:pa#ss@github.com/o/r` and `https://user:pa?ss@github.com/o/r.git` both give the evidence `remote 'origin' is https/user:pa`, and the scp form `u:t#k@github.com:o/r` gives `u/t`. `scrub_secrets` does not catch it, because no "@" is left (reproduced).
+  - Fix: strip the user part first, then the query and fragment, in the `://` and scp branches.
+  - Add fixtures with `#`, `?` and `@` inside the password.
+  - `.agent/scripts/project_integration_audit.sh:307`
+- [x] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
+- [x] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 10:45 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner's answer: "Address (Recommended)". Round 18 is the cross-part count (issue 384); this is round 3 of part 4. One must-fix (redact_url strips the query and fragment before the user part, so a password holding ? or # leaks its first part) and two suggestions (file:// password holding /; the branch-protection table's null admin row) open. Second finding in the redaction mechanism: the fix pass closes the class (user part first, then query and fragment, fixtures for ?, #, @ and / inside passwords) rather than the one case.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 10:58 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Branch**: feature/issue-332 at `ab216d9d`
+**Addressed**: Local Review (Pre-Push) at `26d9f0ad` (2026-10-30 10:44 -04:00)
+**Commits**: 62bfdbbe, ab216d9d
+
+### Actions
+- [x] (must-fix) `redact_url` now strips the user part before the query and fragment, in every form: scheme URLs to the last "@" (file:// too, unless it has no host), scp to the last "@" before the last ":"; then "?" and "#". Owner's direction followed: the class, not the one case. 32 new checks: a password holding "?", "#", "@" and "/" in the https, ssh and scp GitHub forms (github yes, gh asked about github.com/someone/clean alone) and in file:// (local path, printed without it); the secret in neither output format nor gh's arguments — `.agent/scripts/project_integration_audit.sh:295`, `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) file:// password holding "/": covered by the same fix (`file://u:t/k@h/p` gives `file://h/p`), pinned by the file:// fixture with "/" — `.agent/scripts/project_integration_audit.sh:315`
+- [x] (suggestion) The branch-protection row now reads "anything but `true` (`false`, or `null` ...)" and the paragraph under the table says only `true` counts as admin access; both pinned in test_skill_paths — `.claude/skills/audit-project/SKILL.md:295`, `.agent/scripts/tests/test_skill_paths.sh`
+
+Checks: test_project_integration_audit 252/0, test_skill_paths 126/0; branch-wide pre-commit with no SKIP passed, every hook, validate-script-tests running every suite (an in-scope file, .agent/knowledge/skill_workflows.md, maps to no suite).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 11:03 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad6c1375fde86ab8d, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `ae8218d8`
+**Base**: main
+**Depth**: Deep (reason: round 19 convergence check per handoff; round 4 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the three findings of the review at 26d9f0ad and the fix diff 199ce189..ab216d9d; cross-model skipped (round-19 convergence check, per handoff))
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 19 | **Ship**: recommended — round 19: 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Round-18 findings checked against the fix diff. All three are closed:
+- A password holding `?`, `#`, `@`, `/`, `:` or `://` no longer leaks, in the https, ssh, scp and file:// forms, and the GitHub remote stays GitHub (probed).
+- `file://u:t/k@h/p` redacts on its own, without the backstop.
+- The table's `null` row is there and pinned.
+
+The fix introduced a regression: an "@" in the query or fragment of a URL with no user part (below).
+
+Run here:
+- test_project_integration_audit 252/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the four fix files: exit 0, shellcheck included
+
+The branch is 0 behind main.
+
+Reviewers:
+- Plan drift: none.
+- Claude adversarial ran: 1 must-fix (kept), and 3 suggestions:
+  - one kept;
+  - the `ext::` transport is dropped, since it is off by default and not GitHub;
+  - the test-list notes are folded into the must-fix.
+- Cross-model: skipped (round-19 convergence check, per handoff).
+
+### Findings
+- [x] (must-fix) `redact_url` now strips to the last "@" in the whole URL, so an "@" in the query or fragment of a URL with no user part is read as the user separator. What follows it reaches the evidence, and `scrub_secrets` does not catch it (reproduced):
+  - `https://github.com/o/r?user=me@x.com&token=SECRET` gives `remote 'origin' is https/x.com&token=secret`;
+  - `https://github.com/o/r#frag@SECRET` gives `https/secret`;
+  - the GitHub remote is also lost.
+  - The header comment's "never a secret" is false.
+  - Fix: the user part ends at the last "@" whose remainder has a "/" before any "?" or "#". With no such "@", there is no user part. Then cut the query and fragment.
+  - Add fixtures: a secret after an "@" in a query and in a fragment, with no user part.
+  - `.agent/scripts/project_integration_audit.sh:301-316`
+- [x] (suggestion) The final `${u%%[?#]*}` also cuts local and `file:///` paths, so `/home/me/repo#1` is printed as `/home/me/repo`. The "local path" evidence then names the wrong directory; classification is unaffected. Apply the cut to network URLs only — `.agent/scripts/project_integration_audit.sh:326`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the cross-part count (issue 384); this is round 4 of part 4; one must-fix, a regression of the round-3 fix (stripping to the last "@" anywhere leaks a query or fragment holding "@" and loses the GitHub remote), and one suggestion (the query cut truncates local and file:/// paths); both mechanism; first host answer at rounds since the owner's of 2026-10-30 (round 3), so the next rounds answer is the owner's; third finding in the redaction mechanism, so this pass is told to close it by construction, not by another case)
+**After**: rounds
+**Decision**: address
+
+Direction to the fix pass: redact by construction. For a scheme URL, the user part is everything to the last "@" whose remainder has a "/" before any "?" or "#"; with no such "@", the authority (up to the first "/", "?" or "#") is stripped to its last "@". Then cut "?" and "#". Backstop: a result that still holds "@", "?", "#", or a ":" after "://" that is not a port is replaced by "<scheme>://<redacted>", so no secret can survive whatever the input; the scp form gets the same backstop (host part must hold no "@" or ":"). Forms with no authority (file:/// and local paths) keep their "?" and "#". Fixtures: the round-4 example, and a table over every form and every secret holding "?", "#", "@", "/", ":" and "://", asserting the secret never appears. Listed for the owner's veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 11:24 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `9a854ec1`
+**Addressed**: Local Review (Pre-Push) at `ae8218d8` (2026-10-30 11:03 -04:00)
+**Commits**: 9a854ec1
+
+### Actions
+- [x] (must-fix) `redact_url` now redacts by construction, following the host's direction. For a scheme URL, the user part ends at the last "@" whose remainder has a "/" before any "?" or "#", or else at the authority's last "@". Then the query and fragment are cut. For the scp form, the user part ends at the last "@" before the last ":". Backstop: `<scheme>://<redacted>` (scp form: `<redacted>`) unless the result is host[:port][/path] (or host:path), with no "@" and no ":" other than a numeric port's. The header now states the rule and the backstop and makes no claim beyond them. Two extra redactions close leaks the stated rule leaves open: a user part holding "?" or "#" (`https://h/o/r?next=a@b/c&token=S`), and an "@" after a "?" or "#" with no path before it (`https://tok?en@host`). A remote that is redacted makes the github fact unknown with the reason, and so does a second remote that could not be read. `scrub_secrets` now runs `redact_url` on each URL-shaped word, so it follows the same rule. New fixtures: the round-4 examples, plus a table of https, ssh, scp and file:// with a secret holding "?", "#", "@", "/", ":" or "://" in the user part, query and fragment. The secret never appears; GitHub is either read or unknown, never a wrong host. audit-project's list of unknown reasons names the new case (pinned in test_skill_paths). Trade-off for the owner's veto: a password holding "?" or "#" now gives github unknown, where round 3 read it as GitHub — `.agent/scripts/project_integration_audit.sh:295`, `.agent/scripts/tests/test_project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md`
+- [x] (suggestion) The "?" and "#" cut now applies only to forms with an authority. file:/// and local paths keep their "?" and "#" (fixture for both) — `.agent/scripts/project_integration_audit.sh:326`
+
+Checks: test_project_integration_audit 382 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 11:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad6c1375fde86ab8d, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `9638dc8d`
+**Base**: main
+**Depth**: Deep (reason: round 20 convergence check per handoff; round 5 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the two findings of the review at ae8218d8 and the fix diff acd0124e..9a854ec1; cross-model skipped (round-20 convergence check, per handoff))
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 20 | **Ship**: recommended — no must-fix findings; the one suggestion can be applied or tracked
+
+Round-19 findings checked against the fix diff. Both are closed (probed):
+- `https://github.com/o/r?user=me@x.com&token=SECRET` and `...#frag@SECRET` give `https://github.com/o/r`.
+- Local and `file:///` paths keep "?", "#" and "@".
+
+The redaction rule matches the host's direction, and the backstop holds:
+- A printed result never holds an "@", so no user part can survive.
+- Any ambiguous input becomes `<scheme>://<redacted>` and github=unknown, with gh never called.
+
+These are probed:
+- password forms, numeric ports, IPv6 (redacted);
+- `scrub_secrets` on quoted, bracketed and `key=` words;
+- legitimate GitHub remotes in scp, https, ssh:443 and x-access-token forms, all read as GitHub.
+
+Run here:
+- test_project_integration_audit 382/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the four fix files: exit 0, shellcheck included
+
+The branch is 0 behind main.
+
+Reviewers:
+- Plan drift: none.
+- Claude adversarial ran (fresh): no must-fix; it also ran the suite, 382/0. Of its four suggestions, one is kept. Three are dropped:
+  - a password holding a raw space, or a URL glued after a "/" in gh's error text: neither is a form git or gh produces;
+  - `scrub_secrets` slowing down on inputs over 1,000 words: gh's error lines are short;
+  - IPv6 going to unknown: it costs only a read.
+- Cross-model: skipped (round-20 convergence check, per handoff).
+
+### Findings
+- [ ] (suggestion) An "@" inside a path that a "/" follows is taken as the user separator, because the user part may hold "/". A wrong host is then printed: `https://github.com/o/r/x@y/z` gives `https://y/z`, and `https://u:S@host/p@x/y` gives `https://x/y`. No secret is printed, but the implementation entry's "never a wrong host" does not hold outside the table. Either document it and pin it with a fixture, or redact when the chosen user part holds a "/" and the remainder's host has no "." — `.agent/scripts/project_integration_audit.sh:339`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner's answer: "Publish (Recommended)". Round 5 of part 4 approved (0 must-fix, 1 suggestion: an "@" inside a URL path can print a wrong host in the evidence, no secret printed; handled in the post-push round if repeated).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 11:43 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #414 at `da86308`
+**Sources**: 2 (Local Review (Pre-Push) @ `9638dc8` (covers `da86308` via bookkeeping), CI rollup). Copilot's review at `da86308` is not a source: its check-run concluded "failure" and its only review body says it could not review for lack of quota (0 inline comments). 0 conversation comments. 10 older local entries with open boxes are stale (code changed since, verified by `sources`) and are not re-listed.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [x] (should-fix, Local Review (Pre-Push) @ 9638dc8, covers da86308 via bookkeeping) Valid, reproduced at the head: `redact_url` takes an "@" inside a path that a "/" follows as the user separator, so a wrong host is printed. `https://github.com/o/r/x@y/z` gives `https://y/z`; `https://host/repos/foo@v2/bar.git` gives `https://v2/bar.git`. It is worse than the round-5 wording: `https://gitlab.com/x@github.com/someone/repo` gives `https://github.com/someone/repo`, so the github fact says yes and `gh repo view` is asked about a repository the remote does not name (read-only, no secret printed). Needs an "@" in a remote's path, which GitHub and GitLab names do not allow, so rare, but the cost is a wrong fact, not only wrong evidence. Fix: redact (github unknown) when the chosen user part holds "/", since that shape is ambiguous (a literal "/" in a password is not a valid URL authority either, so git does not send it as one); move the table's "/" and "://" password rows from read to unread, add the three URLs above as fixtures, and keep the header's backstop list in step. Not a must-fix: the merge gate does not hold on it — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one open should-fix in the Integrated Review at d9ac2f6a, a mechanism finding: a remote whose path holds an "@" can make the github fact wrong, not only the evidence (https://gitlab.com/x@github.com/someone/repo reads as github.com/someone/repo and gh is asked about the wrong repository); no secret printed; the fix is small (redact when the chosen user part holds a "/", github unknown) and the quality standard says a complete fix within reach is not left for later; the owner answered "address" at every findings checkpoint of this issue; listed for his veto)
+**After**: findings
+**Decision**: address
+
+Fix plan from the triage: in redact_url, when the user part it picks holds a "/", redact the URL (github fact unknown with a reason); move the test table's "/" and "://" password rows from "read" to "unread"; add the three reproducing URLs as fixtures; keep the script header's case list matching.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 11:58 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 2 of 3)
+
+**PR**: #414 at `c7577ad4`
+**Addressed**: Integrated Review at `da86308` (2026-10-30 11:43 -04:00)
+**Commits**: c7577ad4
+
+### Actions
+- [x] (should-fix) A user part holding "/" is now redacted, and the github fact is unknown with gh not called. Before this, an "@" in a path followed by a "/" printed another host: `https://gitlab.com/x@github.com/someone/repo` read as GitHub. The scp form follows the same rule. The scp form also redacts a user part that has a ":" after an "@", because that user part has the shape user@host:path itself (`git@gitlab.com:x@github.com:o/r`). The table's "/" and "://" password rows moved from read to unread. The round-3 "s3cr/3t" rows for https and scp were dropped, since the table covers them. New fixtures: the review's three URLs and the scp shape. The header's backstop list, the unknown reason and audit-project's list of unknown reasons all name the new case. The test_skill_paths pin is unchanged and still passes — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md:161`
+
+Checks: test_project_integration_audit 386 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 12:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #414 at `bbba75d`
+**Depth**: Deep (reason: 2081 changed lines in 11 files, governance files AGENTS.md and two skills; fix-round re-review classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 3
+
+### Findings
+- [x] (must-fix) A git remote-helper URL `<transport>::<address>` takes redact_url's scp branch and is printed whole, since the tail regex `[^@?#]*` accepts spaces, quotes and "/": `ext::sh -c "curl -H X-Token:abc123 https://x/y"` reaches the github evidence as `remote 'origin' is ext/:sh -c "curl -h x-token:abc123 ...", not on github.com` (reproduced end to end with the suite's fixtures). Breaks the "printed only when it has the shape of a cut URL" claim. Fix: redact a lead holding "::" and any scp/scheme result holding whitespace or a quote; add fixtures — `.agent/scripts/project_integration_audit.sh:373`
+- [x] (must-fix) An authority-only GitHub URL gives github=no instead of unknown: `https://github.com`, `https://github.com/` and `ssh://git@github.com` normalise through `_records_norm_url` to `https/github.com` (host "https"), so the evidence reads "remote 'origin' is https/github.com, not on github.com" and issues/prs become no, skipping hygiene items; the header and the "on github.com, but the path is not <owner>/<repo>" branch say unknown (reproduced end to end). Fix: in remote_where, treat a scheme-form result with no path as host-only before normalising; add fixtures (Codex) — `.agent/scripts/project_integration_audit.sh:448`
+- [x] (suggestion) scrub_secrets splits gh's error text on whitespace before redacting, so a URL with a space in its password leaks the part after the space: `Get "https://user:abc s3cr3tTOKEN@github.com/o/r"` prints `s3cr3tTOKEN@github.com/o/r` (Go escapes spaces in URLs it prints, so unlikely from gh) (Codex) — `.agent/scripts/project_integration_audit.sh:392`
+- [x] (suggestion) A scheme-form host holding a space is printed and can be misread: `https://local /x/y` normalises to `local /x/y` and the `${_N%% *}` test classes it as a local path; redact a host with whitespace (same fix as the first must-fix) — `.agent/scripts/project_integration_audit.sh:363`
+- [x] (suggestion) An ssh alias or GHE host with no "github" in its name (`git@work:o/r`, `git.corp.example`) gives github=no, and audit-project then skips branch protection, labels and the bridge with "no GitHub remote"; either treat a dotless scp/ssh host as unknown or word the no as "not github.com by name" and state the limit in the skill — `.agent/scripts/project_integration_audit.sh:482`, `.claude/skills/audit-project/SKILL.md:153`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 12:31 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 3 of 3)
+
+**PR**: #414 at `59027ed7`
+**Addressed**: Local Review at `bbba75d` (2026-10-30 12:08 -04:00)
+**Commits**: 59027ed7
+
+### Actions
+- [x] (must-fix) Remote-helper URL printed whole. `redact_url` now redacts any input holding "::" (`<transport>::<address>`, and IPv6 hosts). It prints a result only in plain characters: a host of letters, digits and "._~-", a numeric port, and a path of those plus "/%+=,". No whitespace, quote or "@" can survive in either form. Fixtures: the review's `ext::sh -c "..."` command, `ext::<secret>`, quotes and spaces in a host or path, and IPv6. All give github unknown, with gh not called and the secret never printed. In gh's error text, a remote-helper address redacts the rest of the line — `.agent/scripts/project_integration_audit.sh` (redact_url, scrub_secrets)
+- [x] (must-fix) Authority-only GitHub URL gave github=no. `remote_where` now reads a scheme URL with no path as its host alone, lower-cased and without the port. So `https://github.com`, `https://github.com/`, `ssh://git@github.com` and `HTTPS://GitHub.com:443` are unknown ("on github.com, but the path is not <owner>/<repo>"), with gh not called (fixtures). The header and audit-project's list of unknown reasons say "or it has none" (pinned) — `.agent/scripts/project_integration_audit.sh` (remote_where)
+- [x] (suggestion) A password holding a space leaked through `scrub_secrets`. A word holding "@", with no ":" before it and a host name after it, is now joined back to the nearest word holding "://" (otherwise ":"). The joined run is redacted as one URL. Trailing punctuation is set aside and put back, and a stand-in already in the evidence is kept as it is. Fixtures: quoted, unquoted and scp runs, and an exact check that the scrubbed line still says what failed — `.agent/scripts/project_integration_audit.sh` (scrub_secrets)
+- [x] (suggestion) A scheme host holding a space is redacted by the plain-character backstop from the first item. `https://local /someone/clean` gives github unknown, never a local path (fixture) — `.agent/scripts/project_integration_audit.sh` (redact_url)
+- [x] (suggestion) The choice: github stays read by name. Treating dotless hosts as unknown would still miss GitHub Enterprise servers whose names have dots. A no now says so: the github evidence ends "not github.com by name"; the issues and prs evidence says "no remote is github.com by name, so gh was not asked about its …". audit-project's facts table states the limit (a GitHub Enterprise server, or an ssh alias with no "github" in its name, reads as no), and its skip reason is `skipped: no remote is github.com by name (github=no)`. onboard-project's push step uses the same words. Pinned in test_skill_paths, with fixtures for `git.corp.example` and `git@work:` — `.claude/skills/audit-project/SKILL.md`, `.claude/skills/onboard-project/SKILL.md`
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect, inbox 2026-10-29).
+
+Checks: test_project_integration_audit 411 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook; validate-script-tests ran every suite.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 12:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a11b6bf8cb11fb48d, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #414 at `8398df0`
+**Depth**: Deep (reason: 2240 changed lines in 11 files, governance files AGENTS.md and two skills; PR-mode round 2, classified on the whole diff)
+**Must-fix**: 3 | **Suggestions**: 1
+
+### Findings
+- [x] (must-fix) scrub_secrets' ":" fallback join swallows ordinary evidence: an "@" word is joined back to any earlier word holding ":" (a prose label), so `component manifests in 2 directories: packages/@scope/pkg` (an npm scoped package, common) prints `component manifests in 2 <redacted>`, a local remote `/srv/repo@2` prints `is a local <redacted>`, and `failed (exit 1): user foo@example.com ...` prints `failed (exit <redacted>`; an existing stand-in is joined too (`https://<redacted> then foo@bar.com` gives `https://bar.com`) (Gemini, Claude adversarial) — `.agent/scripts/project_integration_audit.sh:431`
+- [x] (must-fix) scrub_secrets still leaks a password split by whitespace: the join is skipped when the last word's part before "@" holds ":" or a "/" follows the "@", so `Get "https://user:abc SECRET tail:xxx@github.com/o/r"` prints `SECRET` and `cannot reach user:s3cr3t1 part:s3cr3t2@github.com:o/r` prints `user:s3cr3t1`; a query split by a space leaks its tail (`https://github.com/o/r?tok=abc def` keeps `def`). A word join cannot bound a URL holding spaces; redact from an ambiguous URL word to the end of the text, or print no gh text (Gemini, Codex, Claude adversarial) — `.agent/scripts/project_integration_audit.sh:431`
+- [x] (must-fix) The plain-character backstop depends on the locale: host_re/path_re bracket ranges collate under en_US.UTF-8 (this machine's LANG and LC_ALL), so `https://gîthub.com/o/r` is printed whole there and redacted under C.UTF-8; the header's "plain characters" claim is false in the owner's locale. Fix: LC_ALL=C for the script (or explicit sets) and a fixture run under en_US.UTF-8 (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:348`
+- [x] (suggestion) gh output is cut with `head -c 200` before fact() scrubs it, so a cut inside a user part leaves `https://TOKENPREFIX` that reads as a host and is printed; scrub, then cut (needs gh to exit 0 with non-JSON output, so unlikely) (Codex) — `.agent/scripts/project_integration_audit.sh:637`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #414 at `9ecacc2f`
+**Addressed**: Local Review at `8398df0` (2026-10-30 12:38 -04:00)
+**Commits**: e4c55c4d, 9ecacc2f
+
+### Actions
+- [x] (must-fix) scrub_secrets' join over-joined ordinary evidence. Closed as a class, on the host's direction: no text from gh reaches the evidence, so there is nothing to join, and `scrub_secrets` is removed. Evidence that is not gh's is printed as it is: an "@" in a local remote's path (`$SANDBOX/srv/repo@2`) and in a manifest directory (`packages/@scope/pkg`) now print unchanged (fixtures). gh text that held ":" and "@" (`failed (exit 1): user …@…`) gives the fixed phrase. — `.agent/scripts/project_integration_audit.sh` (fact, gh_failed)
+- [x] (must-fix) scrub_secrets under-joined a URL holding spaces. A failed gh call's evidence is now `gh failed, exit <N>: <the call> (its message is not printed[; its first word: W])`, W only from a fixed list (GH_WORDS: HTTP GraphQL error failed could not no gh To Get Post). An answer that does not parse gives a fixed phrase. The round-3 texts (`https://user:abc SECRET tail:xxx@…`, a query split by a space, the scp run, a remote-helper command, a secret as the first word) all give the fixed phrase and never the secret (fixtures). remote_where gains a fail-closed guard: a network remote whose cut still holds "@" or "://" reads as unread (github unknown). The header and audit-project's unknown list describe the gh failure wording (pinned in test_skill_paths). — `.agent/scripts/project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
+- [x] (must-fix) The plain-character backstop depended on the locale. The script exports `LC_ALL=C` once, at the top. A fixture runs it under en_US.UTF-8 and C.UTF-8 with origin `https://gîthub.com/someone/clean`: unknown in both, the host not printed, the two outputs identical. Before the fix, bash under en_US.UTF-8 matched `gîthub.com` against `[A-Za-z0-9._~-]+` (checked by hand). — `.agent/scripts/project_integration_audit.sh:162`, `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) `head -c 200` cut gh's output before it was scrubbed. Removed with the rest of the gh text. gh exiting 0 with a URL or a bare token as its answer gives the fixed "gave no … counts (its answer is not printed)" phrase, with no secret printed (fixtures). — `.agent/scripts/project_integration_audit.sh` (ever_opened, repo view)
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
+
+Checks: test_project_integration_audit 438 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook, validate-script-tests included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 13:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a11b6bf8cb11fb48d, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #414 at `c76005c`
+**Depth**: Deep (reason: 2317 changed lines in 11 files, governance files AGENTS.md and two skills; PR-mode round 3, classified on the whole diff, no convergence-check words in the handoff)
+**Must-fix**: 1 | **Suggestions**: 4
+
+### Findings
+- [x] (must-fix) The scp branch of redact_url reads a user part holding ":" as a user, but git takes the host to the first ":": `x:y@github.com:o/r` and `tok:en@github.com:o/r` print `github.com:o/r`, so github=yes and gh is asked about github.com/o/r while git contacts host `x` (checked with a GIT_SSH stub: `x git-upload-pack 'y@github.com:o/r'`). Fix: in the scp form, redact when the user part holds ":" at all (as the scheme form already does for `x:y@github.com/o/r`); add both as fixtures giving github unknown (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:398`
+- [x] (suggestion) `clean` folds only tabs and line breaks, so an ESC or CR in a manifest directory name or a local remote path reaches the evidence and can inject terminal escapes into what the agent shows; map the other control bytes to "?" (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:271`
+- [x] (suggestion) audit-project's facts table says the github evidence shows "for any remote only host and path, never a user part, query or fragment", but a local remote (`/home/u/tok@en/repo`, `file:///p?x#y`) is printed whole, on purpose; say "for a network remote" (Claude adversarial) — `.claude/skills/audit-project/SKILL.md:146`
+- [x] (suggestion) The push step pushes to `<remote>` after the fact read its fetch URL; a `pushurl` or `pushInsteadOf` can send the branch elsewhere. Show `git remote get-url --push --all <remote>` in the approval question (Codex, raised in round 2 too) — `.claude/skills/onboard-project/SKILL.md:398`
+- [x] (suggestion) The manifest scan drops the exit status of `git ls-files`/`find` (process substitution, stderr to /dev/null), so a failed scan gives multi_component=no rather than unknown (Codex) — `.agent/scripts/project_integration_audit.sh:663`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:33 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a046f6f2efdb9c440, resume 1 of 3)
+
+**PR**: #414 at `3dbbe687`
+**Addressed**: Local Review at `c76005c` (2026-10-30 13:10 -04:00)
+**Commits**: 9c2aca93, da4d4072, 710d872d, 6d7af6ef, 91d5b69e, 3dbbe687
+
+### Actions
+- [x] (must-fix) The scp form printed github.com for `x:y@github.com:o/r`. Fixed for the whole class: redact_url now reads the scp host where git does, as the text before the first ":". That text must be a plain `[user@]host` (letters, digits, ".", "_", "-"). The rest is the path, and it must hold no "@" at all, query or fragment included. Anything else is redacted, so the remote is unread, github unknown and gh not called. The suite's password table showed why the second rule is needed: with the host rule alone, `someone:pw?pw@github.com:o/r` printed `someone:pw` (fixed in da4d4072). Fixtures: `x:y@`, `tok:en@`, `a@b@`, a quoted user and a GitLab scp remote with a password are unread; `user@github.com:o/r` and `github.com:o/r` are read. The password table's scp rows are now unread for every character. An scp query holding "@" moved to the unread fixtures. The header and audit-project's list of unknown reasons state the rule. — `.agent/scripts/project_integration_audit.sh` (redact_url scp branch)
+- [x] (suggestion) `clean` now drops every control byte except tab and line break, which it folds as before: bytes 0x01–0x08 and 0x0B–0x1F (ESC, CR) and 0x7F. Fixture: a manifest directory and a local remote path holding ESC, CR and DEL print without them, in tsv and text. — `.agent/scripts/project_integration_audit.sh` (clean)
+- [x] (suggestion) audit-project's facts table now says the host-and-path cut applies to a network remote, and that a local remote's path is printed whole, on purpose (pinned). — `.claude/skills/audit-project/SKILL.md:146`
+- [x] (suggestion) Where git push goes: the github evidence now ends `; its push URL differs: <where>` when any URL from `git remote get-url --push --all` reads differently through the same url_where reading. That covers a `pushurl`, `insteadOf` and `pushInsteadOf`. A push URL with a credential is cut; one that cannot be cut prints as "a URL that could not be printed safely". onboard-project's push step (which audit-project's fix batch follows) shows that evidence and pushes only on a yes to it. audit-project's facts table says so; both are pinned. I added this as a note on the github fact, not as a sixth fact, so the five-fact contract stays. Fixtures: a pushurl on another host, one with a credential, one that cannot be printed, a local one, the same repository in another form (no note), two push URLs, and pushInsteadOf. — `.agent/scripts/project_integration_audit.sh` (push_note, url_where), `.claude/skills/onboard-project/SKILL.md`
+- [x] (suggestion) A failed manifest scan now gives multi_component unknown. The exit status of `git ls-files` and `find` is read with `wait` on the process substitution. A failure, or a CMakeLists.txt that cannot be read, gives unknown with the reason, unless two directories were already found. The header and audit-project's list of unknown reasons say so (pinned). Fixtures: find meeting an unreadable directory, a git that fails only ls-files, and an unreadable CMakeLists.txt. The permission fixtures print a SKIP line when the suite runs as root. — `.agent/scripts/project_integration_audit.sh` (multi_component)
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
+
+Checks: test_project_integration_audit 468 passed, 0 failed, run on the tree before finding 5 was split out into its own commit; validate-script-tests then ran it again on the final tree and passed. test_skill_paths 127 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:59 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**PR**: #414 at `6f0c9e1b`
+
+Redesign of the `--facts` github fact, on the owner's decision 2026-10-30: "redesign", answering the host's proposal "Do not parse URLs at all. Never print a remote URL. ... Let gh decide the GitHub fact".
+
+- `project_integration_audit.sh`: `redact_url`, `url_where`, `remote_where`, `is_github_host` and the scheme/scp/file/host-token rules removed. `gh repo view --json nameWithOwner --jq .nameWithOwner`, run in the repository root with `GH_HOST=github.com` (pins the host the later `github.com/<owner>/<repo>` reads use), decides: a plain `<owner>/<repo>` is yes and printed; gh's "none of the git remotes configured for this repository ..." failure is no; exit 4 is unknown "gh is not logged in"; any other exit is unknown "gh could not resolve the repository, exit N"; gh missing or a malformed answer is unknown with a fixed phrase. No remote is still no without calling gh. Evidence names the push remote (origin, else first) by name, a local one also by its path through `[A-Za-z0-9._/@+~-]` (else `unprintable`), then "; its push URL differs from its fetch URL" when any `get-url --push --all` string differs from `get-url`, then the other remotes by name. 144 lines added, 286 removed.
+- Suite: parsing fixtures (password tables, "@", "::", locale) replaced by gh-answer, gh-exit, not-logged-in, gh-missing, local-path allowlist, remote-name, push-URL fixtures and one sweeping check that no network-remote run (both formats, stderr, gh args) holds "://" or the secret. 266 added, 401 removed; 278 passed, 0 failed.
+- audit-project and onboard-project wording, test_skill_paths pins, and the plan's PR 4 design-change paragraph follow. docs/design.md describes no redaction, so it is unchanged.
+- Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 14:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #414 at `8b6c4d49`
+**Depth**: Deep (reason: 2165 changed lines in 12 files, governance files AGENTS.md and two skills; PR-mode round 4, whole diff, no convergence-check words in the handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Verified: test_project_integration_audit 278/0, test_skill_paths 127/0, test_user_tier_guard 64/0; shellcheck and pre-commit clean on the changed files. Real gh 2.103.3 gives the lowercase "none of the git remotes configured for this repository ..." text in both wordings. A real `--facts` run on gz4d gives github yes (rolker/geozui4d) with correct issues, prs and multi_component; on p11-jazzy it gives multi_component no although 273 package.xml exist. No evidence line carries a URL or gh text; github prints only gh's regex-checked answer. Skills match the printed strings. Cross-model: Gemini ran (no findings), Codex ran (2 findings, both kept). Claude adversarial ran (1 must-fix, the same as Codex's; 1 suggestion dropped as a false positive, because audit-project step 10 follows onboard-project step 7, which asks about the push URL). Copilot: out of quota, not a source. Not verified: gh's exit 4 when not logged in (an empty GH_CONFIG_DIR still resolved the repository, probably from a keyring token).
+
+### Findings
+- [x] (must-fix) multi_component on a non-git root scans with `find -maxdepth 4`: a ROS colcon root (package.xml 6 deep) prints the false "no component manifest found" and a cut can never be unknown; drop the cap (prune build/install/log) or report unknown when it cut, and add a colcon fixture — `.agent/scripts/project_integration_audit.sh:598`
+- [x] (suggestion) the --facts text heading prints `$PROOT` without clean() (the same pattern as the PR 3 headings at 1012/1023) — `.agent/scripts/project_integration_audit.sh:640`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 14:26 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2149d9b97c0f8f8e, resume 1 of 3)
+
+**PR**: #414 at `9dda5b3f`
+**Addressed**: Local Review at `8b6c4d49` (2026-10-30 14:24 -04:00)
+**Commits**: 931524fc, 74e66042, 9dda5b3f (boxes ticked by hand: `review_progress.sh findings` does not select a PR-mode Local Review)
+
+### Actions
+- [x] multi_component on a non-git root: the `find -maxdepth 4` cap dropped, colcon's build/, install/ and log/ added to the prunes, header updated; a colcon-shaped fixture (package.xml six deep under a non-git root, plus decoys in build/ install/ log/) reads yes with exactly the two src/ directories — `.agent/scripts/project_integration_audit.sh:598`
+- [x] the `--facts` text heading and the two integration-audit headings print `$PROOT` through `clean()` — `.agent/scripts/project_integration_audit.sh:645, 1019, 1028`
+
+Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed (script suites included).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 14:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3846c946c70ef46f, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #414 at `505805d2`
+**Depth**: Deep (reason: whole-diff classification, 2165+ changed lines in 12 files, AGENTS.md and two skills; PR-mode round 2 of the redesign, scope the prior two findings and the fix diff 931524fc..505805d2; no convergence-check words, so cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified: both prior findings fixed. The find depth cap is gone, and build/, install/ and log/ are pruned. A real run on p11-jazzy now gives multi_component yes (124 directories, 0.65 s); gz4d is unchanged (3 directories). The three headings go through clean(). test_project_integration_audit 279/0 (the colcon fixture passes); shellcheck clean. Cross-model: Gemini ran (no findings). Codex ran (2 must-fix): finding 1, an inherited GH_REPO overriding the resolving call, was dropped as a false positive, because real gh 2.103.3 ignores GH_REPO for a bare `gh repo view` (gz4d still resolves to rolker/geozui4d with GH_REPO=rolker/agent_workspace, both raw and through the script) and the script blanks GH_REPO before the call anyway; finding 2 is kept as a suggestion. Claude adversarial ran: no must-fix; its one suggestion (a root directory itself named build/install/log is pruned) was dropped as speculative. Copilot: out of quota, not a source.
+
+### Findings
+- [ ] (suggestion) push_note is computed only for the remote the evidence names (origin, else the first); when the user picks another remote at the "which remote" question, its pushurl is not compared before pushing. Have the push step compare `git remote get-url` with `get-url --push --all` for the chosen remote, printing neither — `.claude/skills/onboard-project/SKILL.md:398`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 14:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a047ea09fe98d2d4c, resume 1 of 3)
+
+**PR**: #414 at `505805d`
+**Sources**: 2 (Local Review @ `505805d` (exact), CI rollup). Copilot is not a source: 7 reviews, one per pushed head including `505805d`, each "unable to review ... insufficient remaining quota", 0 inline comments; its check-run concluded "failure". 0 conversation comments. 11 older local entries with open boxes are stale per `sources` (code changed since), including Local Review (Pre-Push) @ `9638dc8`, whose "@ in a URL path" box the previous Integrated Review @ `da86308` carried and which is ticked: the github-fact redesign (`d30b6876`) parses no remote URL, so it no longer applies.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [x] (suggestion, Local Review @ 505805d) Valid, checked against the head: `push_note` runs only on the remote the github fact's evidence names (`project_integration_audit.sh:440`), and step 3 of onboard-project's pull-request offer asks "which remote" when the evidence lists other remotes, but gives no push-URL check for a remote the user picks there. A pick whose `pushurl`/`insteadOf`/`pushInsteadOf` sends the push elsewhere goes unflagged, which is the case the design's push-URL comparison exists for. Not a must-fix: the merge gate does not hold on it. Fix, skill text only: for a remote chosen at that question, compare `git remote get-url <remote>` with every line of `git remote get-url --push --all <remote>`, printing neither, and on a difference treat it as the named remote's push note (say so, have the user check, push only on a yes). Recommendation: fix in this PR if a short re-review fits the 15:00 target; otherwise merging without it is the owner's call, with a follow-up issue — `.claude/skills/onboard-project/SKILL.md:398`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 14:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Owner's answer: "Fix first". One open suggestion in the Integrated Review at 2878b663: a remote the user picks at onboard-project's "which remote" question gets no push-URL check before the push (onboard-project/SKILL.md:398); skill text only. CI lint pending at the time of the answer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 14:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2149d9b97c0f8f8e, resume 2 of 3)
+
+**PR**: #414 at `a4bfa490`
+**Addressed**: Integrated Review at `505805d` (2026-10-30 14:32 -04:00)
+**Commits**: a4bfa490
+
+### Actions
+- [x] a remote the user picks (from the evidence's other remotes, or in a github=unknown answer) has its push URLs compared with its fetch URL before the push, neither printed; a difference is handled like the github fact's push note (say so, the user checks, push only on a yes); audit-project's facts row and the test_skill_paths pins follow — `.claude/skills/onboard-project/SKILL.md:398`
+
+Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed. test_skill_paths 127 passed, 0 failed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 14:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3846c946c70ef46f, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #414 at `76449e5a`
+**Depth**: Deep (reason: whole-diff classification, AGENTS.md and two skills; PR-mode round 3 of the redesign, scope the push-URL suggestion and the fix diff d7d67d60..76449e5a; no convergence-check words, so cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Verified: the round-2 suggestion is addressed. In onboard-project step 7, before pushing to a remote the user names (here or in a github=unknown answer), the push URLs are compared with the fetch URL by a one-liner that prints only same/differs, and differs is handled like the push note; the audit-project github row says the same. Claude adversarial ran the one-liner in throwaway repos: plain remote same, another pushurl differs, two pushurls differs, a pushurl equal to the fetch URL same, pushInsteadOf differs, no URL printed; it agrees with the script's push_note. test_skill_paths 127/0, with the three new pins matching the text; shellcheck clean. Cross-model: Gemini ran (no findings). Codex failed (usage limit, exit 1; reason in its findings file). Claude adversarial ran (no findings). Copilot: out of quota, not a source.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 14:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a047ea09fe98d2d4c, resume 2 of 3)
+
+**PR**: #414 at `76449e5`
+**Sources**: 2 (Local Review @ `76449e5` (exact; approved, 0 must-fix, 0 suggestions), CI rollup). Its only box, "No issues found. LGTM.", is the reviewer's no-findings line, not a finding. Reviewer outcomes, as the host reported them for that round: Gemini ran, nothing found; Codex failed (usage limit), no review from it; Claude adversarial ran, nothing found; Copilot is not a source (8 reviews on this PR, one per pushed head including `76449e5`, each "insufficient remaining quota", 0 inline comments; check-run "failure"). 0 conversation comments. The previous Integrated Review's push-URL box (Local Review @ `505805d`) is ticked, fixed in `a4bfa490` and verified by the `76449e5` review. 12 older local entries with open boxes are stale per `sources` (code changed since): Local Review @ `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03`, `56d1184`, `94a2c14`, `db76490`, `505805d`; Local Review (Pre-Push) @ `6a92304`, `df3b894`, `680806e`, `9638dc8`.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+None open at `76449e5`.
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 15:02 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "Merge (Recommended)". Final review at 6e9e442e approved with nothing open; Integrated Review at d8dc289b with no open findings; CI green on head 76449e5a including Lint (all files); decision summary on the PR describes the redesign.

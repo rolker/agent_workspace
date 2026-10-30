@@ -53,8 +53,9 @@
 .agent/scripts/session_root.sh
 .agent/scripts/skill_prefix.sh
 
-# /onboard-project, run in a session at a project root (#332 PR 3). The
-# integration audit and the registration gate only read and print, so they
+# /onboard-project and /audit-project, run in a session at a project root
+# (#332 PRs 3 and 4). The integration audit (its --facts too, which calls gh
+# only to read) and the registration gate only read and print, so they
 # carry the inert marker; outside every registered root the audit exits 2
 # saying so. project_setting.sh reads anywhere, and its writes (set, unset)
 # call registry_require_root first and, from a project root, write only
