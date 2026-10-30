@@ -2108,3 +2108,19 @@ Verified: test_project_integration_audit 278/0, test_skill_paths 127/0, test_use
 - [x] the `--facts` text heading and the two integration-audit headings print `$PROOT` through `clean()` — `.agent/scripts/project_integration_audit.sh:645, 1019, 1028`
 
 Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed (script suites included).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 14:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3846c946c70ef46f, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #414 at `505805d2`
+**Depth**: Deep (reason: whole-diff classification, 2165+ changed lines in 12 files, AGENTS.md and two skills; PR-mode round 2 of the redesign, scope the prior two findings and the fix diff 931524fc..505805d2; no convergence-check words, so cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified: both prior findings fixed. The find depth cap is gone, and build/, install/ and log/ are pruned. A real run on p11-jazzy now gives multi_component yes (124 directories, 0.65 s); gz4d is unchanged (3 directories). The three headings go through clean(). test_project_integration_audit 279/0 (the colcon fixture passes); shellcheck clean. Cross-model: Gemini ran (no findings). Codex ran (2 must-fix): finding 1, an inherited GH_REPO overriding the resolving call, was dropped as a false positive, because real gh 2.103.3 ignores GH_REPO for a bare `gh repo view` (gz4d still resolves to rolker/geozui4d with GH_REPO=rolker/agent_workspace, both raw and through the script) and the script blanks GH_REPO before the call anyway; finding 2 is kept as a suggestion. Claude adversarial ran: no must-fix; its one suggestion (a root directory itself named build/install/log is pruned) was dropped as speculative. Copilot: out of quota, not a source.
+
+### Findings
+- [ ] (suggestion) push_note is computed only for the remote the evidence names (origin, else the first); when the user picks another remote at the "which remote" question, its pushurl is not compared before pushing. Have the push step compare `git remote get-url` with `get-url --push --all` for the chosen remote, printing neither — `.claude/skills/onboard-project/SKILL.md:398`
