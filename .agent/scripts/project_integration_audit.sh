@@ -70,7 +70,12 @@
 #                  issues and prs are no when github is no, unknown when
 #                  github is, and unknown when gh or jq is missing or gh
 #                  fails (not signed in, offline); the evidence says
-#                  which.
+#                  which. A gh failure's evidence is "gh failed, exit
+#                  <N>: <the call>", and an answer that does not parse
+#                  is named with a fixed phrase: none of gh's own text
+#                  is printed (it can quote a URL holding a credential),
+#                  at most its first word when that is one of a fixed
+#                  list (GH_WORDS: HTTP, GraphQL, error, ...).
 #
 # Severity: error (the workspace cannot work with the project as it is),
 # warn (worth fixing or deciding), info (for the record; nothing to do
@@ -301,10 +306,12 @@ g() { git -C "$PROOT_ABS" "$@"; }
 # items a fact makes moot and says why. Printed instead of the findings.
 if [ "$FACTS" -eq 1 ]; then
     FACT_LINES=""
-    # Every evidence line passes scrub_secrets, whatever produced it (a
-    # remote, gh's error text), so a URL in gh's error text is redacted by
-    # the same rule as a remote's.
-    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(scrub_secrets "$(clean "$3")")"$'\n'; }
+    # No evidence line holds free text from another program that could
+    # quote a credential: a remote's URL reaches it only through
+    # remote_where (redact_url's cut), and a gh call that fails or gives
+    # an answer that does not parse is reported by gh_failed or a fixed
+    # phrase, never with gh's own text.
+    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
 
     # redact_url <url>: the URL with its user part, query and fragment
     # removed, or a redacted stand-in when it cannot be cut safely.
@@ -407,78 +414,6 @@ if [ "$FACTS" -eq 1 ]; then
         fi
     }
 
-    # scrub_secrets <text>: redact_url applied to each URL-shaped word of
-    # free text (gh's error line): a word, after any leading quote or
-    # bracket, that starts with "<scheme>://", or that has a ":" before
-    # its first "/" and holds an "@", "?" or "#" (the scp form). Other
-    # words, local paths among them, are kept as they are.
-    # A password may hold a space, so a URL can run over several words:
-    # a word holding an "@" with no ":" before it and a host name after
-    # its last "@" may be the end of one.
-    # It is joined to the words back to the nearest one holding "://" (or,
-    # with none, ":"), and the whole run is redacted as one URL. Run
-    # through redact_url, a user part or host holding a space is cut or
-    # redacted, so no part of it is kept. Trailing punctuation (a closing
-    # quote or bracket, ",", ";", ":", ".", "!") is set aside first and
-    # put back after. A remote-helper address (<transport>::...), which
-    # can be a whole command, redacts the rest of the text.
-    scrub_secrets() {
-        local s="$1" w sep lp core tp i j k out=""
-        local stand_in_re='^[A-Za-z][A-Za-z0-9+.-]*://<redacted>[^A-Za-z0-9@:/]*$'
-        local -a W=() S=()
-        while [ -n "$s" ]; do
-            w="${s%%[[:space:]]*}"
-            s="${s:${#w}}"
-            sep="${s%%[^[:space:]]*}"
-            s="${s:${#sep}}"
-            W+=("$w"); S+=("$sep")
-        done
-        for ((i = 0; i < ${#W[@]}; i++)); do
-            w="${W[i]}"
-            [[ "$w" == *@* && "${w%%@*}" != *:* && "${w##*@}" == [A-Za-z0-9]* ]] || continue
-            j=-1
-            for ((k = i - 1; k >= 0; k--)); do
-                [[ "${W[k]}" == *://* ]] && { j=$k; break; }
-            done
-            if [ "$j" -lt 0 ]; then
-                for ((k = i - 1; k >= 0; k--)); do
-                    [[ "${W[k]}" == *:* ]] && { j=$k; break; }
-                done
-            fi
-            [ "$j" -ge 0 ] || continue
-            for ((k = j + 1; k <= i; k++)); do
-                W[j]+="${S[k - 1]}${W[k]}"
-                W[k]=""
-                [ "$k" -lt "$i" ] && S[k]=""
-            done
-            S[j]="${S[i]}"
-            S[i]=""
-        done
-        for ((i = 0; i < ${#W[@]}; i++)); do
-            w="${W[i]}"
-            lp="${w%%[A-Za-z0-9]*}"
-            core="${w:${#lp}}"
-            if [[ "$core" =~ ^[A-Za-z][A-Za-z0-9+.-]*:: ]]; then
-                out+="$lp<redacted>"
-                break
-            fi
-            # Already a stand-in (redact_url's own output in the evidence):
-            # kept, so a second pass does not mangle it.
-            if [[ "$core" =~ $stand_in_re ]]; then
-                out+="$w${S[i]}"
-                continue
-            fi
-            tp="${core##*[!\"\')\]>,;:.!]}"
-            core="${core%"$tp"}"
-            if [[ "$core" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] \
-                || { [[ "${core%%/*}" == *:* ]] && [[ "$core" == *[@?#]* ]]; }; then
-                w="$lp$(redact_url "$core")$tp"
-            fi
-            out+="$w${S[i]}"
-        done
-        printf '%s' "$out"
-    }
-
     # Why the repository cannot be read, if it cannot.
     REPO_WHY=""
     if [ -z "$PROOT_ABS" ]; then
@@ -516,7 +451,7 @@ if [ "$FACTS" -eq 1 ]; then
     # fragment of the URL (https://user:TOKEN@host/..., ?token=...) can
     # reach the evidence or a gh call.
     remote_where() {
-        local url safe
+        local url safe out
         url="$(g remote get-url "$1" 2>/dev/null)" || return 0
         [ -n "$url" ] || return 0
         safe="$(redact_url "$url")"
@@ -524,10 +459,20 @@ if [ "$FACTS" -eq 1 ]; then
             echo "local $safe"
         elif [[ "$safe" == *"<redacted>"* ]]; then
             echo "unread"
-        elif [[ "$safe" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/:]+)(:[0-9]+)?/*$ ]]; then
-            printf '%s\n' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]'
         else
-            _records_norm_url "$safe"
+            if [[ "$safe" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/:]+)(:[0-9]+)?/*$ ]]; then
+                out="$(printf '%s\n' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
+            else
+                out="$(_records_norm_url "$safe")"
+            fi
+            # Fail closed: redact_url's plain-character rule keeps "@" and
+            # "://" out of a network remote's cut; should either survive,
+            # the remote is not printed and not read.
+            if [[ "$out" == *@* || "$out" == *://* ]]; then
+                echo "unread"
+            else
+                printf '%s\n' "$out"
+            fi
         fi
     }
     is_github_host() { [ "$1" = "github.com" ] || [ "$1" = "ssh.github.com" ]; }
@@ -600,6 +545,26 @@ if [ "$FACTS" -eq 1 ]; then
     # its host, since a bare owner/repo goes to $GH_HOST (or gh's default
     # host) when that is set, a server the github fact did not name.
     GH_FULL="github.com/$GH_REPO"
+    # gh_failed <call> <exit> <output>: the evidence for a gh call that
+    # failed: "gh failed, exit <N>: <call>", and none of gh's own text,
+    # which can quote a URL holding a credential (no cut of free text is
+    # safe: a password can hold a space). At most gh's first word is
+    # named, and only when it is one of GH_WORDS, so the reader can tell
+    # an HTTP error from a sign-in or network one.
+    GH_WORDS=(HTTP GraphQL error failed could not no gh To Get Post)
+    gh_failed() {
+        local out="$3" w a
+        out="${out#"${out%%[![:space:]]*}"}"
+        w="${out%%[[:space:]]*}"
+        w="${w%:}"
+        for a in "${GH_WORDS[@]}"; do
+            if [ "$w" = "$a" ]; then
+                printf 'gh failed, exit %s: %s (its message is not printed; its first word: %s)' "$2" "$1" "$w"
+                return 0
+            fi
+        done
+        printf 'gh failed, exit %s: %s (its message is not printed)' "$2" "$1"
+    }
     # gh repo view counts only open ones, so when none is
     # open, one list call over every state says whether any ever was.
     # ever_opened <issue|pr>: 0 yes, 1 no, 2 unknown (the reason on stdout)
@@ -613,9 +578,9 @@ if [ "$FACTS" -eq 1 ]; then
         esac
         if [ "$rc" -ne 0 ] || ! n="$(jq -er 'if type == "array" then length else error("not a list") end' <<< "$out" 2>/dev/null)"; then
             if [ "$rc" -ne 0 ]; then
-                echo "$what -R $GH_FULL failed (exit $rc): $(head -n1 <<< "$out")"
+                gh_failed "$what -R $GH_FULL" "$rc" "$out"
             else
-                echo "$what -R $GH_FULL gave no JSON list: $(head -c 200 <<< "$out")"
+                echo "$what -R $GH_FULL gave no JSON list (its answer is not printed)"
             fi
             return 2
         fi
@@ -640,8 +605,11 @@ if [ "$FACTS" -eq 1 ]; then
         RV_TSV=""
         [ "$_RC" -eq 0 ] && RV_TSV="$(jq -r '[.hasIssuesEnabled, .issues.totalCount, .pullRequests.totalCount] | @tsv' <<< "$RV" 2>/dev/null)"
         if ! [[ "$RV_TSV" =~ ^(true|false)$'\t'[0-9]+$'\t'[0-9]+$ ]]; then
-            _WHY="gh repo view $GH_FULL failed (exit $_RC): $(head -n1 <<< "$RV")"
-            [ "$_RC" -eq 0 ] && _WHY="gh repo view $GH_FULL gave no hasIssuesEnabled, issues and pullRequests counts: $(head -c 200 <<< "$RV")"
+            if [ "$_RC" -ne 0 ]; then
+                _WHY="$(gh_failed "gh repo view $GH_FULL" "$_RC" "$RV")"
+            else
+                _WHY="gh repo view $GH_FULL gave no hasIssuesEnabled, issues and pullRequests counts (its answer is not printed)"
+            fi
             fact issues unknown "$_WHY"
             fact prs unknown "$_WHY"
         else

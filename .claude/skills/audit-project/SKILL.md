@@ -168,7 +168,12 @@ fact could not be read. Which facts go `unknown`, and for what:
 - `issues` and `prs`: whenever `github` is `unknown`, and on any gh
   problem — gh or jq missing, gh not signed in or offline, an answer
   without the counts or the list asked for. A gh problem leaves `github`,
-  `windows` and `multi_component` as they were read.
+  `windows` and `multi_component` as they were read. A failed gh call's
+  evidence is `gh failed, exit <N>: <the call>`, and an answer that does
+  not parse is named with a fixed phrase: none of gh's own text is
+  printed, since it can quote a URL holding a credential, only at most
+  its first word when that is one of a fixed list (`HTTP`, `GraphQL`,
+  `error`, ...). Run the call by hand to see gh's message.
 - `windows`: `uname -s` gave nothing.
 
 ### 3. Check governance coverage
