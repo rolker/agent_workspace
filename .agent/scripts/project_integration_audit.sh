@@ -28,40 +28,39 @@
 #                  read rather than guessed, one per line in this order:
 #                  fact<TAB>value<TAB>evidence (text: "fact: value --
 #                  evidence"), value yes, no or unknown:
-#                    github           the audited repository's remote
-#                                     (origin, else its first) is on
-#                                     github.com, read by name (no: no
-#                                     remote is github.com by name, so
-#                                     a GitHub Enterprise server or an
-#                                     ssh alias not holding "github"
-#                                     reads as no); the evidence names
-#                                     github.com/<owner>/<repo>, and for
-#                                     any remote only host and path (a
-#                                     local one: its path), with no user
-#                                     part, query or fragment, in any
-#                                     URL form (each can hold a
-#                                     credential). unknown when that
-#                                     remote's host only looks like
-#                                     GitHub (an ssh host alias such as
-#                                     github.com-work, GitHub
-#                                     Enterprise), when it is on
-#                                     github.com but its path is not
-#                                     <owner>/<repo> (or it has none),
-#                                     when its URL could
-#                                     not be cut safely (redact_url's
-#                                     rule; in the scp form
-#                                     [user@]host:path the text before
-#                                     the first ":" must be a plain
-#                                     [user@]host, the host git
-#                                     contacts, so x:y@github.com:o/r
-#                                     is not read), or when it is not
-#                                     on GitHub but another remote is
-#                                     or may be. When git push sends
-#                                     that remote somewhere else (a
-#                                     pushurl, insteadOf or
-#                                     pushInsteadOf), the evidence ends
-#                                     "; its push URL differs: <where>",
-#                                     read the same way
+#                    github           the audited repository is on
+#                                     github.com, as gh decides: gh repo
+#                                     view --json nameWithOwner, run in
+#                                     the repository with GH_HOST=
+#                                     github.com, resolves it from the
+#                                     git remotes by gh's own reading
+#                                     (every URL form, insteadOf, ssh
+#                                     host aliases). yes when it answers
+#                                     a plain <owner>/<repo>, printed as
+#                                     github.com/<owner>/<repo>; no when
+#                                     it fails saying no remote matches
+#                                     github.com (gh's fixed "none of
+#                                     the git remotes configured for
+#                                     this repository ..." message), or
+#                                     the repository has no remote;
+#                                     unknown when gh is not installed,
+#                                     not logged in (exit 4), fails any
+#                                     other way ("gh could not resolve
+#                                     the repository, exit <N>") or
+#                                     answers anything but <owner>/<repo>.
+#                                     No remote URL is parsed or
+#                                     printed: the evidence names the
+#                                     remote the push step uses (origin,
+#                                     else the first) by its name, a
+#                                     local one (a path, or file://)
+#                                     also by its path when every
+#                                     character is in [A-Za-z0-9._/@+~-]
+#                                     ("unprintable" otherwise), then
+#                                     "; its push URL differs from its
+#                                     fetch URL" when git remote get-url
+#                                     --push gives another string (a
+#                                     pushurl, insteadOf, pushInsteadOf),
+#                                     then the other remotes by name
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -83,9 +82,9 @@
 #                                     CMakeLists.txt cannot be read) and
 #                                     it found fewer than two
 #                  issues and prs are no when github is no, unknown when
-#                  github is, and unknown when gh or jq is missing or gh
-#                  fails (not signed in, offline); the evidence says
-#                  which. A gh failure's evidence is "gh failed, exit
+#                  github is (gh missing or not logged in makes it so),
+#                  and unknown when jq is missing or a later gh call
+#                  fails (offline); the evidence says which. A gh failure's evidence is "gh failed, exit
 #                  <N>: <the call>", and an answer that does not parse
 #                  is named with a fixed phrase: none of gh's own text
 #                  is printed (it can quote a URL holding a credential),
@@ -164,9 +163,7 @@
 
 set -uo pipefail
 # Byte-based character classes and bracket ranges everywhere, whatever
-# the caller's locale: under en_US.UTF-8 a range such as [A-Za-z] can
-# match a letter outside ASCII (i with a circumflex), so redact_url's
-# plain-character rule would print a host it means to redact. Set once,
+# the caller's locale, so printable's allowlist is ASCII alone. Set once,
 # exported, so every child reads the same bytes.
 export LC_ALL=C
 
@@ -323,130 +320,15 @@ g() { git -C "$PROOT_ABS" "$@"; }
 # items a fact makes moot and says why. Printed instead of the findings.
 if [ "$FACTS" -eq 1 ]; then
     FACT_LINES=""
-    # No evidence line holds free text from another program that could
-    # quote a credential: a remote's URL reaches it only through
-    # remote_where (redact_url's cut), and a gh call that fails or gives
+    # No evidence line holds a remote's URL or free text from another
+    # program, either of which can hold a credential: a remote is named by
+    # its git remote name (a local one also by its path, through
+    # printable's allowlist), the github fact prints only gh's answer
+    # once it is a plain <owner>/<repo>, and a gh call that fails or gives
     # an answer that does not parse is reported by gh_failed or a fixed
-    # phrase, never with gh's own text.
+    # phrase, never with gh's own text. No URL is parsed: gh resolves the
+    # repository from the remotes itself.
     fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
-
-    # redact_url <url>: the URL with its user part, query and fragment
-    # removed, or a redacted stand-in when it cannot be cut safely.
-    #
-    # A URL with a scheme ("<scheme>://"):
-    #   1. The user part is everything to the last "@" whose remainder has
-    #      a "/" before any "?" or "#" (user:secret@host/path). With no
-    #      such "@", it is the authority (up to the first "/", "?" or "#")
-    #      to its last "@" (user:secret@host, no path), if it holds one.
-    #   2. Then the query and fragment: everything from the first "?" or
-    #      "#" left.
-    # The scp form [user@]host:path (no scheme, a ":" before the first
-    # "/"): git takes the host from the text before the first ":", so
-    # that text must be a plain host name, after at most a plain user and
-    # an "@" (letters, digits, ".", "_" and "-"). Anything else there is
-    # redacted: a ":" or "@" in the user part (x:y@github.com:o/r and
-    # tok:en@github.com:o/r make git contact host x or tok, not
-    # github.com), a space, a quote. The rest, after that first ":", is
-    # the path. It must hold no "@" at all, query or fragment included:
-    # git@gitlab.com:x@github.com:o/r is gitlab.com with the path
-    # x@github.com:o/r, never GitHub, and someone:pw?pw@github.com:o/r
-    # holds a password that cannot be told from a query holding "@". Its
-    # query and fragment are then cut, as above, and what is left must be
-    # a plain path.
-    #
-    # Backstop, by construction: the input is printed only when it is
-    # unambiguous and the result has the shape of a cut URL. Otherwise
-    # the result is "<scheme>://<redacted>" (scp form: "<redacted>"),
-    # whatever the input held. Redacted when:
-    #   - the input holds "::" anywhere: a remote-helper URL
-    #     <transport>::<address> (ext::sh -c "..." runs a command, which
-    #     can hold a token), or an IPv6 host, never cut;
-    #   - the user part holds "?" or "#": a password holding one cannot be
-    #     told from a query holding "@" (https://h?q=a@b/c&token=...);
-    #   - the user part holds "/": a password holding one cannot be told
-    #     from a path holding "@", which would print another host
-    #     (https://gitlab.com/x@github.com/o/r would read as GitHub); git
-    #     does not send such a password as one either;
-    #   - scp form: the text before the first ":" is not [user@]host in
-    #     plain characters (git's host would not be the one printed), or
-    #     the text after it holds an "@";
-    #   - an "@" is left after a "?" or "#" with no path before it
-    #     (https://tok?en@host, https://host?q=a@b);
-    #   - the result is not host[:port][/path] (scheme form) or host:path
-    #     (scp form) in plain characters (ASCII bytes: the script runs
-    #     under LC_ALL=C): a host of letters, digits, ".",
-    #     "_", "~" and "-", a numeric port, a path of those and "/", "%",
-    #     "+", "=" and ",". So no "@", no whitespace, no quote, and after
-    #     "://" no ":" but a port's.
-    # So no part of a user part, query or fragment is ever printed; the
-    # cost of the backstop is that such a remote is not read (the github
-    # fact says unknown).
-    #
-    # Forms with no authority keep their "?", "#", "@" and spaces, which
-    # are part of the path there: file:///path, and a local path (no
-    # scheme, no ":" before its first "/"), which git never sends
-    # anywhere; one holding "::" is still redacted.
-    redact_url() {
-        local u="$1" scheme rest user head hasuser=0
-        local host_re='[A-Za-z0-9._~-]+' path_re='[A-Za-z0-9._~%+=,/-]*'
-        if [[ "$u" == *::* ]]; then
-            printf '<redacted>'
-            return 0
-        fi
-        if [[ "$u" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
-            scheme="${BASH_REMATCH[0]}"
-            rest="${u#"$scheme"}"
-            if [[ "$scheme" =~ ^[Ff][Ii][Ll][Ee]://$ ]] && [[ "$rest" == /* ]]; then
-                printf '%s' "$u"
-                return 0
-            fi
-            if [[ "$rest" =~ ^(.*)@[^/?#]*/ ]]; then
-                user="${BASH_REMATCH[1]}"; hasuser=1
-            else
-                head="${rest%%[/?#]*}"
-                [[ "$head" == *@* ]] && { user="${head%@*}"; hasuser=1; }
-            fi
-            if [ "$hasuser" -eq 1 ]; then
-                [[ "$user" == *[/?#]* ]] && { printf '%s<redacted>' "$scheme"; return 0; }
-                rest="${rest#"$user"@}"
-            fi
-            head="${rest%%[/?#]*}"
-            if [[ "$rest" == *@* ]] && [ "${rest:${#head}:1}" != "/" ]; then
-                printf '%s<redacted>' "$scheme"
-                return 0
-            fi
-            rest="${rest%%[?#]*}"
-            if [[ "$rest" =~ ^${host_re}(:[0-9]+)?(/${path_re})?$ ]]; then
-                printf '%s%s' "$scheme" "$rest"
-            else
-                printf '%s<redacted>' "$scheme"
-            fi
-            return 0
-        fi
-        head="${u%%/*}"
-        if [[ "$head" != *:* ]]; then
-            printf '%s' "$u"
-            return 0
-        fi
-        # git's host: the text before the first ":", after at most a
-        # plain user and an "@"; everything after that ":" is the path.
-        if ! [[ "${u%%:*}" =~ ^([A-Za-z0-9._-]+@)?([A-Za-z0-9._-]+)$ ]]; then
-            printf '<redacted>'
-            return 0
-        fi
-        head="${BASH_REMATCH[2]}"
-        rest="${u#*:}"
-        # An "@" anywhere after that ":" is never cut: git reads it as part
-        # of the path, but someone:pw?pw@github.com:o/r is a password, and
-        # it cannot be told from a query holding "@".
-        [[ "$rest" == *@* ]] && { printf '<redacted>'; return 0; }
-        rest="${rest%%[?#]*}"
-        if [[ "$rest" =~ ^${path_re}$ ]]; then
-            printf '%s:%s' "$head" "$rest"
-        else
-            printf '<redacted>'
-        fi
-    }
 
     # Why the repository cannot be read, if it cannot.
     REPO_WHY=""
@@ -462,146 +344,125 @@ if [ "$FACTS" -eq 1 ]; then
         fi
     fi
 
-    # github: the remote's host. origin, else the first remote. yes only
-    # for github.com itself, read by name: no means no remote is
-    # github.com by name, so a GitHub Enterprise server or an ssh host
-    # alias whose name does not hold "github" reads as no, and the
-    # evidence says "not github.com by name". unknown when that remote's
-    # host only looks like GitHub (an ssh host alias such as
-    # github.com-work, GitHub Enterprise), when it is github.com with no
-    # <owner>/<repo> path, or when it is not on GitHub but another remote
-    # is or may be: which server holds the issues and pull requests is
-    # then not read. Also unknown when that remote's URL could not be cut
-    # safely (redact_url's stand-in): which server it names is not read
-    # either.
-    # remote_where <remote>: "host/path" for a network remote, "host"
-    # alone for one with no path (https://github.com, ssh://git@github.com,
-    # so github.com with no <owner>/<repo> reads as unknown, never as a
-    # host named after the scheme), "local <path>" for a local one,
-    # "unread" for a network remote redact_url could not cut safely, or
-    # nothing when the remote has no URL. The
-    # only reader of a remote's URL: what it prints is redact_url's output
-    # (normalised, for a network remote), so no user part, query or
-    # fragment of the URL (https://user:TOKEN@host/..., ?token=...) can
-    # reach the evidence or a gh call.
-    remote_where() {
-        local url
+    # printable <text>: the text when every character is in
+    # [A-Za-z0-9._/@+~-] (ASCII bytes: the script runs under LC_ALL=C),
+    # else the word "unprintable".
+    printable() {
+        if [[ "$1" =~ ^[A-Za-z0-9._/@+~-]+$ ]]; then printf '%s' "$1"; else printf 'unprintable'; fi
+    }
+    # local_path <remote>: for a local remote, its path through printable;
+    # nothing for any other. Local means git remote get-url gives a path
+    # (no "://" and no ":" before the first "/") or a file:// URL, whose
+    # path is the text after "file://" and an optional "localhost"; a
+    # file:// URL with any other host part, or none, prints "unprintable".
+    # A network remote's URL is never printed and never read further.
+    local_path() {
+        local url p
         url="$(g remote get-url "$1" 2>/dev/null)" || return 0
         [ -n "$url" ] || return 0
-        url_where "$url"
+        case "$url" in
+            [Ff][Ii][Ll][Ee]://*)
+                p="${url#*://}"
+                p="${p#localhost}"
+                [[ "$p" == /* ]] || p="" ;;
+            *://*) return 0 ;;
+            *)  [[ "${url%%/*}" == *:* ]] && return 0
+                p="$url" ;;
+        esac
+        printable "$p"
     }
-    # url_where <url>: remote_where's reading of one URL.
-    url_where() {
-        local url="$1" safe out
-        safe="$(redact_url "$url")"
-        if _records_local_remote_path "$PROOT_ABS" "$url" >/dev/null; then
-            echo "local $safe"
-        elif [[ "$safe" == *"<redacted>"* ]]; then
-            echo "unread"
-        else
-            if [[ "$safe" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/:]+)(:[0-9]+)?/*$ ]]; then
-                out="$(printf '%s\n' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
-            else
-                out="$(_records_norm_url "$safe")"
-            fi
-            # Fail closed: redact_url's plain-character rule keeps "@" and
-            # "://" out of a network remote's cut; should either survive,
-            # the remote is not printed and not read.
-            if [[ "$out" == *@* || "$out" == *://* ]]; then
-                echo "unread"
-            else
-                printf '%s\n' "$out"
-            fi
-        fi
+    # remote_desc <remote>: "remote '<name>'", with ", a local path:
+    # <path>" for a local one; a name outside the allowlist (one written
+    # into .git/config by hand) is not printed.
+    remote_desc() {
+        local d p
+        if [ "$(printable "$1")" = "$1" ]; then d="remote '$1'"; else d="a remote whose name is unprintable"; fi
+        p="$(local_path "$1")"
+        [ -n "$p" ] && d+=", a local path: $p"
+        printf '%s' "$d"
     }
-    # push_note <remote> <its remote_where>: "" when every URL git push
-    # sends <remote> to (git remote get-url --push --all: a pushurl, with
-    # insteadOf and pushInsteadOf applied) reads the same as its fetch
-    # URL; otherwise "; its push URL differs: <each that differs>", read
-    # through url_where, so the push step can say where the branch would
-    # go and ask before pushing.
+    # push_note <remote>: "; its push URL differs from its fetch URL" when
+    # any URL git push sends <remote> to (git remote get-url --push --all:
+    # a pushurl, with insteadOf and pushInsteadOf applied) is not the
+    # string git remote get-url gives; nothing of either URL is printed.
+    # The push step shows the note and asks before pushing.
     push_note() {
-        local u w list=""
+        local f u
+        f="$(g remote get-url "$1" 2>/dev/null)" || return 0
         while IFS= read -r u; do
-            [ -n "$u" ] || continue
-            w="$(url_where "$u")"
-            [ "$w" = "$2" ] && continue
-            case "$w" in
-                "local "*) w="a local path: ${w#local }" ;;
-                unread) w="a URL that could not be printed safely" ;;
-            esac
-            list+="${list:+, }$w"
+            if [ "$u" != "$f" ]; then
+                printf '; its push URL differs from its fetch URL'
+                return 0
+            fi
         done < <(g remote get-url --push --all "$1" 2>/dev/null)
-        [ -n "$list" ] && printf '; its push URL differs: %s' "$list"
         return 0
     }
-    is_github_host() { [ "$1" = "github.com" ] || [ "$1" = "ssh.github.com" ]; }
+
+    # github: gh decides. gh repo view, run in the repository, resolves it
+    # from the git remotes with gh's own reading of every URL form
+    # (insteadOf, ssh host aliases through ssh's configuration) and names
+    # it; its nameWithOwner is printed only when it is a plain
+    # <owner>/<repo>. GH_HOST=github.com pins the host: without it gh also
+    # resolves a remote on a GitHub Enterprise server it is signed in to
+    # (or the one $GH_HOST names), while the reads below go to github.com.
+    # gh's exit decides the rest, its text only picks a fixed phrase:
+    #   0 and a plain <owner>/<repo>   yes
+    #   non-zero, saying no remote matches github.com (gh's fixed "none of
+    #   the git remotes configured for this repository ..." message)   no
+    #   4 (gh's "authentication required")   unknown: not logged in
+    #   any other exit, or an answer that is not <owner>/<repo>   unknown
+    #   gh not installed   unknown
+    # The evidence then names the remote the push step uses (origin, else
+    # the first), with push_note, and the other remotes by name: gh may
+    # have resolved one of those.
     GH_REPO=""
     GH_STATE="unknown"
     GH_WHY="$REPO_WHY"
+    REMOTES=()
     if [ -n "$REPO_WHY" ]; then
         fact github unknown "$REPO_WHY"
     elif [ "$IS_GIT" -eq 0 ]; then
         GH_STATE="no"
         fact github no "the root is not the top of a git repository, so it has no remote of its own"
     else
-        REMOTE="origin"
-        g remote get-url origin >/dev/null 2>&1 || REMOTE="$(g remote 2>/dev/null | head -n1)"
-        _N=""
-        [ -n "$REMOTE" ] && _N="$(remote_where "$REMOTE")"
-        PUSH_NOTE=""
-        [ -n "$_N" ] && PUSH_NOTE="$(push_note "$REMOTE" "$_N")"
-        # The github fact for this remote, with where it pushes when that
-        # differs.
-        gfact() { fact github "$1" "$2$PUSH_NOTE"; }
-        _HOST="${_N%%/*}"
-        _PATH="${_N#*/}"
-        # Another remote on GitHub, or one that looks like it, if any.
-        _OTHER=""
-        while IFS= read -r _r; do
-            [ -n "$_r" ] && [ "$_r" != "$REMOTE" ] || continue
-            _o="$(remote_where "$_r")"
-            case "$_o" in
-                "local "*) continue ;;
-                unread) _OTHER="remote '$_r' has a URL that could not be printed safely and may be on GitHub"; break ;;
-            esac
-            case "${_o%%/*}" in
-                *github*) _OTHER="remote '$_r' is $_o"; break ;;
-            esac
-        done < <(g remote 2>/dev/null)
+        while IFS= read -r _r; do [ -n "$_r" ] && REMOTES+=("$_r"); done < <(g remote 2>/dev/null)
+    fi
+    if [ "$IS_GIT" -eq 1 ] && [ -z "$REPO_WHY" ] && [ "${#REMOTES[@]}" -eq 0 ]; then
         GH_STATE="no"
-        if [ -z "$_N" ]; then
-            gfact no "the repository has no remote"
-        elif [ "$_N" = "unread" ]; then
-            GH_STATE="unknown"
-            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a remote-helper <transport>::<address>, an scp-form host that is not a plain name, such as x:y@github.com:o/r, where git contacts host x, a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path, in an scp-form remote's query, or in a query with no path before it, or a host or path not in plain characters, such as one holding a space or a quote), so which server it names was not read"
-            gfact unknown "$GH_WHY"
-        elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-            GH_REPO="$_PATH"
-            GH_STATE="yes"
-            gfact yes "remote '$REMOTE' is github.com/$GH_REPO"
+        fact github no "the repository has no remote"
+    elif [ "${#REMOTES[@]}" -gt 0 ]; then
+        REMOTE="${REMOTES[0]}"
+        for _r in "${REMOTES[@]}"; do [ "$_r" = origin ] && REMOTE=origin; done
+        _WHERE="$(remote_desc "$REMOTE")$(push_note "$REMOTE")"
+        _OTHERS=""
+        for _r in "${REMOTES[@]}"; do
+            [ "$_r" = "$REMOTE" ] || _OTHERS+="${_OTHERS:+, }$(printable "$_r")"
+        done
+        [ -n "$_OTHERS" ] && _WHERE+="; other remotes: $_OTHERS (one of these may be what gh resolved)"
+        if ! command -v gh >/dev/null 2>&1; then
+            GH_WHY="gh is not installed, so which repository the remotes name was not read"
+            fact github unknown "$GH_WHY; $_WHERE"
         else
-            if [ "${_N%% *}" = "local" ]; then
-                _WHERE="remote '$REMOTE' is a local path: ${_N#local }"
+            _RC=0
+            # Written out as one gh call, so the read-only check in
+            # test_user_tier_guard.sh sees exactly which gh command runs.
+            _OUT="$(cd "$PROOT_ABS" && GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view --json nameWithOwner --jq .nameWithOwner 2>&1 </dev/null)" || _RC=$?
+            if [ "$_RC" -eq 0 ] && [[ "$_OUT" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+                GH_REPO="$_OUT"
+                GH_STATE="yes"
+                fact github yes "gh repo view resolves the repository to github.com/$GH_REPO; $_WHERE"
+            elif [ "$_RC" -ne 0 ] && [[ "$_OUT" == "none of the git remotes configured for this repository "* ]]; then
+                GH_STATE="no"
+                fact github no "gh repo view finds no remote on github.com; $_WHERE"
             else
-                _WHERE="remote '$REMOTE' is $_N"
-            fi
-            if [ "${_N%% *}" != "local" ] && is_github_host "$_HOST"; then
-                GH_STATE="unknown"
-                GH_WHY="$_WHERE: on github.com, but the path is not <owner>/<repo>, so which repository it is was not read"
-                gfact unknown "$GH_WHY"
-            elif [ "${_N%% *}" != "local" ] && [[ "$_HOST" == *github* ]]; then
-                GH_STATE="unknown"
-                GH_WHY="$_WHERE: the host looks like GitHub (an ssh host alias, GitHub Enterprise) but is not github.com, so which server it is was not read"
-                gfact unknown "$GH_WHY"
-            elif [ -n "$_OTHER" ]; then
-                GH_STATE="unknown"
-                GH_WHY="$_WHERE, not github.com by name, but $_OTHER: which one holds the issues and pull requests was not read"
-                gfact unknown "$GH_WHY"
-            elif [ "${_N%% *}" = "local" ]; then
-                gfact no "$_WHERE"
-            else
-                gfact no "$_WHERE, not github.com by name"
+                if [ "$_RC" -eq 0 ]; then
+                    GH_WHY="gh repo view gave no plain <owner>/<repo> (its answer is not printed)"
+                elif [ "$_RC" -eq 4 ]; then
+                    GH_WHY="gh is not logged in (gh repo view exit 4)"
+                else
+                    GH_WHY="gh could not resolve the repository, exit $_RC (its message is not printed)"
+                fi
+                fact github unknown "$GH_WHY; $_WHERE"
             fi
         fi
     fi
@@ -656,11 +517,8 @@ if [ "$FACTS" -eq 1 ]; then
         fact issues unknown "github is unknown: $GH_WHY"
         fact prs unknown "github is unknown: $GH_WHY"
     elif [ "$GH_STATE" = "no" ]; then
-        fact issues no "no remote is github.com by name, so gh was not asked about its issues"
-        fact prs no "no remote is github.com by name, so gh was not asked about its pull requests"
-    elif ! command -v gh >/dev/null 2>&1; then
-        fact issues unknown "gh is not installed"
-        fact prs unknown "gh is not installed"
+        fact issues no "github is no, so gh was not asked about its issues"
+        fact prs no "github is no, so gh was not asked about its pull requests"
     elif ! command -v jq >/dev/null 2>&1; then
         fact issues unknown "jq is not installed, so gh's answer was not read"
         fact prs unknown "jq is not installed, so gh's answer was not read"
