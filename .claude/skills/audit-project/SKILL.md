@@ -158,9 +158,10 @@ fact could not be read. Which facts go `unknown`, and for what:
   also `unknown` when its remote's host only looks like GitHub (an ssh
   host alias such as `github.com-work`, GitHub Enterprise), when it is on
   github.com but its path is not `<owner>/<repo>`, when its URL could not
-  be cut to host and path safely (a user part holding `?` or `#`, an `@`
-  in a query with no path before it, or another shape that is not host
-  and path: the URL is not printed and the server it names is not read),
+  be cut to host and path safely (a user part holding `/`, `?` or `#`,
+  an `@` in a path or in a query with no path before it, or another
+  shape that is not host and path: the URL is not printed and the server
+  it names is not read),
   or when that remote is not on GitHub but another one is or may be.
 - `issues` and `prs`: whenever `github` is `unknown`, and on any gh
   problem — gh or jq missing, gh not signed in or offline, an answer

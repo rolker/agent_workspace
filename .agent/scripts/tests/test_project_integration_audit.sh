@@ -745,7 +745,6 @@ export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":1},"pullReq
 for _cred_url in "https://github.com/someone/clean?token=s3cr3tTOKEN" \
         "https://github.com/someone/clean.git#s3cr3tTOKEN" \
         "https://someone:s3cr3tTOKEN@github.com/someone/clean.git" \
-        "https://someone:s3cr/3tTOKEN@github.com/someone/clean.git" \
         "ssh://git:s3cr3tTOKEN@ssh.github.com:443/someone/clean.git" \
         "someone:s3cr3tTOKEN@github.com:someone/clean.git"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
@@ -757,8 +756,7 @@ for _cred_url in "https://github.com/someone/clean?token=s3cr3tTOKEN" \
 done
 for _cred_url in "https://gitlab.example.invalid/someone/clean?private_token=s3cr3tTOKEN" \
         "ssh://someone:s3cr3tTOKEN@gitlab.example.invalid:2222/someone/clean.git" \
-        "someone:s3cr3tTOKEN@gitlab.example.invalid:someone/clean.git" \
-        "someone:s3cr/3tTOKEN@gitlab.example.invalid:someone/clean.git"; do
+        "someone:s3cr3tTOKEN@gitlab.example.invalid:someone/clean.git"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     check "a secret in another host's remote ($_cred_url): github no, host and path only (got: $(fev github))" \
@@ -791,8 +789,9 @@ gh_unread() { # <label>: github unknown, the URL not printed, gh not called
 for _c in '?' '#' '@' '/' ':' '://'; do
     _pw="s3cr3tTOKEN${_c}s3cr3tTOKEN"
     # A password holding "?" or "#" cannot be told from a query holding
-    # "@", so that URL is not read; any other is read past its user part.
-    case "$_c" in '?'|'#') _user_read=0 ;; *) _user_read=1 ;; esac
+    # "@", nor one holding "/" (or "://") from a path holding "@", so that
+    # URL is not read; any other is read past its user part.
+    case "$_c" in '?'|'#'|'/'|'://') _user_read=0 ;; *) _user_read=1 ;; esac
     for _form in https ssh scp; do
         case "$_form" in
             https) _base="https://github.com/someone/clean.git"; _cred="https://someone:${_pw}@github.com/someone/clean.git" ;;
@@ -832,9 +831,11 @@ for _c in '?' '#' '@' '/' ':' '://'; do
         no_secret "a query or fragment holding '$_c' in a file:// remote with a host"
     done
 done
-# No user part, but an "@" in the query or fragment: it is not read as
-# one. With a path before it the remote is read; with none, or when the
-# text after the "@" could be a host and path, the URL is not read.
+# No user part, but an "@" in the query, fragment or path: it is not
+# read as one. In a query or fragment with a path before it the remote is
+# read; with none, or when the text before the "@" holds a "/" (an "@" in
+# a path would otherwise print another host: gitlab.com/x@github.com/...
+# as GitHub), the URL is not read and gh is not called.
 for _cred_url in "https://github.com/someone/clean?user=me@x.com&token=s3cr3tTOKEN" \
         "https://github.com/someone/clean#frag@s3cr3tTOKEN" \
         "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN"; do
@@ -846,11 +847,15 @@ done
 for _cred_url in "https://github.com?user=me@x.com&token=s3cr3tTOKEN" \
         "https://s3cr3tTOKEN?s3cr3tTOKEN@github.com" \
         "https://github.com/someone/clean?next=a@b/c&token=s3cr3tTOKEN" \
-        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN"; do
+        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN" \
+        "https://github.com/someone/clean/x@y/z" \
+        "https://example.invalid/repos/foo@v2/bar.git" \
+        "https://gitlab.com/x@github.com/someone/clean" \
+        "git@gitlab.com:x@github.com:someone/clean.git"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
-    gh_unread "an '@' that may end a user part or sit in a query ($_cred_url)"
-    no_secret "an '@' that may end a user part or sit in a query ($_cred_url)"
+    gh_unread "an '@' that may end a user part or sit in a query or path ($_cred_url)"
+    no_secret "an '@' that may end a user part or sit in a query or path ($_cred_url)"
 done
 # A second remote that could not be read may be on GitHub: unknown.
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"

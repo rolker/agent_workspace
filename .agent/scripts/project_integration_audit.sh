@@ -315,6 +315,12 @@ if [ "$FACTS" -eq 1 ]; then
     # whatever the input held. Redacted when:
     #   - the user part holds "?" or "#": a password holding one cannot be
     #     told from a query holding "@" (https://h?q=a@b/c&token=...);
+    #   - the user part holds "/": a password holding one cannot be told
+    #     from a path holding "@", which would print another host
+    #     (https://gitlab.com/x@github.com/o/r would read as GitHub); git
+    #     does not send such a password as one either;
+    #   - scp form: the user part holds a ":" after an "@", so it has the
+    #     shape user@host:path itself (git@gitlab.com:x@github.com:o/r);
     #   - an "@" is left after a "?" or "#" with no path before it
     #     (https://tok?en@host, https://host?q=a@b);
     #   - the result is not host[:port][/path] (scheme form) or host:path
@@ -343,7 +349,7 @@ if [ "$FACTS" -eq 1 ]; then
                 [[ "$head" == *@* ]] && { user="${head%@*}"; hasuser=1; }
             fi
             if [ "$hasuser" -eq 1 ]; then
-                [[ "$user" == *[?#]* ]] && { printf '%s<redacted>' "$scheme"; return 0; }
+                [[ "$user" == *[/?#]* ]] && { printf '%s<redacted>' "$scheme"; return 0; }
                 rest="${rest#"$user"@}"
             fi
             head="${rest%%[/?#]*}"
@@ -367,7 +373,7 @@ if [ "$FACTS" -eq 1 ]; then
         lead="${u%:*}"
         if [[ "$lead" == *@* ]]; then
             user="${lead%@*}"
-            [[ "$user" == *[?#]* ]] && { printf '<redacted>'; return 0; }
+            [[ "$user" == *[/?#]* || "$user" == *@*:* ]] && { printf '<redacted>'; return 0; }
             u="${u#"$user"@}"
         fi
         u="${u%%[?#]*}"
@@ -476,7 +482,7 @@ if [ "$FACTS" -eq 1 ]; then
             fact github no "the repository has no remote"
         elif [ "$_N" = "unread" ]; then
             GH_STATE="unknown"
-            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a user part holding \"?\" or \"#\", an \"@\" in a query with no path before it, or a shape that is not host and path), so which server it names was not read"
+            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a shape that is not host and path), so which server it names was not read"
             fact github unknown "$GH_WHY"
         elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             GH_REPO="$_PATH"
