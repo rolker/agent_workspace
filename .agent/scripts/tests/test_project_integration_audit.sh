@@ -1058,6 +1058,23 @@ check "a local remote whose path holds '@': printed as it is (got: $(fev github)
 check "a manifest directory holding '@': printed as it is (got: $(fev multi_component))" \
     [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: ., packages/@scope/pkg" ]
 gitq -C "$FL" reset --quiet --hard HEAD~1
+# Control bytes (ESC, CR, DEL) in a manifest directory or a local remote
+# path are dropped: no terminal escape reaches the evidence.
+_ctl_dir="$(printf 'pk\033[31mg\rx\177y')"
+gitq -C "$FL" remote set-url origin "$SANDBOX/srv/$_ctl_dir"
+mkdir -p "$FL/$_ctl_dir"
+printf '{}\n' > "$FL/$_ctl_dir/package.json"
+gitq -C "$FL" add -- "$_ctl_dir"
+gitq -C "$FL" commit --quiet -m ctl
+facts "$FL"
+check "control bytes in a local remote path are dropped (got: $(fev github | od -c | head -c 300))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: $SANDBOX/srv/pk[31mgxy" ]
+check "control bytes in a manifest directory are dropped (got: $(fev multi_component | od -c | head -c 300))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: ., pk[31mgxy" ]
+facts "$FL" --format text
+check "and in the text format: no control byte but the line breaks" \
+    bash -c '! LC_ALL=C grep -q "[[:cntrl:]]" <<< "$1"' _ "$AUDIT_OUT"
+gitq -C "$FL" reset --quiet --hard HEAD~1
 gitq -C "$FL" remote set-url origin "$SANDBOX/projects/factgh"
 facts "$NG"
 check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
