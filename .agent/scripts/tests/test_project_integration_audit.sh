@@ -934,6 +934,36 @@ for _named in "https://git.corp.example/someone/clean.git" "git@work:someone/cle
         bash -c '[ "$1" = no ] && grep -qF ", not github.com by name" <<< "$2" && [ "$3" = "no remote is github.com by name, so gh was not asked about its issues" ] && [ ! -s "$4" ]' \
         _ "$(fval github)" "$(fev github)" "$(fev issues)" "$GH_LOG"
 done
+# Where git push sends the remote: a pushurl or pushInsteadOf that reads
+# differently is named at the end of the github evidence, read the same
+# way as the fetch URL; one that reads the same is not.
+gitq -C "$CLEAN" remote set-url origin "https://github.com/someone/clean.git"
+_gh_yes="remote 'origin' is github.com/someone/clean"
+for _push in "https://gitlab.example.invalid/someone/clean.git|gitlab.example.invalid/someone/clean" \
+        "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean|gitlab.example.invalid/someone/clean" \
+        "x:s3cr3tTOKEN@github.com:someone/clean|a URL that could not be printed safely" \
+        "$SANDBOX/srv/mirror|a local path: $SANDBOX/srv/mirror" \
+        "git@github.com:someone/clean.git|"; do
+    gitq -C "$CLEAN" config remote.origin.pushurl "${_push%%|*}"
+    facts "$CLEAN"
+    _want="yes/$_gh_yes"
+    [ -n "${_push#*|}" ] && _want+="; its push URL differs: ${_push#*|}"
+    check "a pushurl ${_push%%|*}: github evidence $_want (got: $(fval github)/$(fev github))" \
+        [ "$(fval github)/$(fev github)" = "$_want" ]
+    no_secret "a pushurl ${_push%%|*}"
+done
+gitq -C "$CLEAN" config --add remote.origin.pushurl "https://gitlab.example.invalid/someone/clean.git"
+facts "$CLEAN"
+check "two push URLs, one the same: only the other is named (got: $(fev github))" \
+    [ "$(fev github)" = "$_gh_yes; its push URL differs: gitlab.example.invalid/someone/clean" ]
+gitq -C "$CLEAN" config --unset-all remote.origin.pushurl
+gitq -C "$CLEAN" config url."https://gitlab.example.invalid/".pushInsteadOf "https://github.com/"
+facts "$CLEAN"
+check "pushInsteadOf sending the push elsewhere is named (got: $(fev github))" \
+    [ "$(fev github)" = "$_gh_yes; its push URL differs: gitlab.example.invalid/someone/clean" ]
+gitq -C "$CLEAN" config --remove-section url."https://gitlab.example.invalid/"
+facts "$CLEAN"
+check "no pushurl: no note (got: $(fev github))" [ "$(fev github)" = "$_gh_yes" ]
 # Forms with no authority keep their "?" and "#": part of the path there.
 for _local in "$SANDBOX/projects/factgh?x#1" "file://$SANDBOX/projects/factgh?x#1"; do
     gitq -C "$CLEAN" remote set-url origin "$_local"

@@ -387,7 +387,12 @@ once more before creating anything. Then:
    `github=unknown`, ask which repository on github.com and which remote
    it is before any issue, push or pull request (the fact's evidence
    says why it is unknown); without an answer, open nothing, push
-   nothing, and say where the branch is. The branch is pushed first:
+   nothing, and say where the branch is. When the `github` fact's
+   evidence ends `; its push URL differs: <where>` (a `pushurl`,
+   `insteadOf` or `pushInsteadOf` on that remote), `git push` would send
+   the branch there, not to the repository the fact names: say so, show
+   that evidence, and push only on a yes to that; without one, push
+   nothing and say where the branch is. The branch is pushed first:
    `gh pr create` run without a terminal does not offer to push it, and
    stops.
 

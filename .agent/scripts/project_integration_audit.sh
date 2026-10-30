@@ -56,7 +56,12 @@
 #                                     contacts, so x:y@github.com:o/r
 #                                     is not read), or when it is not
 #                                     on GitHub but another remote is
-#                                     or may be
+#                                     or may be. When git push sends
+#                                     that remote somewhere else (a
+#                                     pushurl, insteadOf or
+#                                     pushInsteadOf), the evidence ends
+#                                     "; its push URL differs: <where>",
+#                                     read the same way
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -468,9 +473,14 @@ if [ "$FACTS" -eq 1 ]; then
     # fragment of the URL (https://user:TOKEN@host/..., ?token=...) can
     # reach the evidence or a gh call.
     remote_where() {
-        local url safe out
+        local url
         url="$(g remote get-url "$1" 2>/dev/null)" || return 0
         [ -n "$url" ] || return 0
+        url_where "$url"
+    }
+    # url_where <url>: remote_where's reading of one URL.
+    url_where() {
+        local url="$1" safe out
         safe="$(redact_url "$url")"
         if _records_local_remote_path "$PROOT_ABS" "$url" >/dev/null; then
             echo "local $safe"
@@ -492,6 +502,27 @@ if [ "$FACTS" -eq 1 ]; then
             fi
         fi
     }
+    # push_note <remote> <its remote_where>: "" when every URL git push
+    # sends <remote> to (git remote get-url --push --all: a pushurl, with
+    # insteadOf and pushInsteadOf applied) reads the same as its fetch
+    # URL; otherwise "; its push URL differs: <each that differs>", read
+    # through url_where, so the push step can say where the branch would
+    # go and ask before pushing.
+    push_note() {
+        local u w list=""
+        while IFS= read -r u; do
+            [ -n "$u" ] || continue
+            w="$(url_where "$u")"
+            [ "$w" = "$2" ] && continue
+            case "$w" in
+                "local "*) w="a local path: ${w#local }" ;;
+                unread) w="a URL that could not be printed safely" ;;
+            esac
+            list+="${list:+, }$w"
+        done < <(g remote get-url --push --all "$1" 2>/dev/null)
+        [ -n "$list" ] && printf '; its push URL differs: %s' "$list"
+        return 0
+    }
     is_github_host() { [ "$1" = "github.com" ] || [ "$1" = "ssh.github.com" ]; }
     GH_REPO=""
     GH_STATE="unknown"
@@ -506,6 +537,11 @@ if [ "$FACTS" -eq 1 ]; then
         g remote get-url origin >/dev/null 2>&1 || REMOTE="$(g remote 2>/dev/null | head -n1)"
         _N=""
         [ -n "$REMOTE" ] && _N="$(remote_where "$REMOTE")"
+        PUSH_NOTE=""
+        [ -n "$_N" ] && PUSH_NOTE="$(push_note "$REMOTE" "$_N")"
+        # The github fact for this remote, with where it pushes when that
+        # differs.
+        gfact() { fact github "$1" "$2$PUSH_NOTE"; }
         _HOST="${_N%%/*}"
         _PATH="${_N#*/}"
         # Another remote on GitHub, or one that looks like it, if any.
@@ -523,15 +559,15 @@ if [ "$FACTS" -eq 1 ]; then
         done < <(g remote 2>/dev/null)
         GH_STATE="no"
         if [ -z "$_N" ]; then
-            fact github no "the repository has no remote"
+            gfact no "the repository has no remote"
         elif [ "$_N" = "unread" ]; then
             GH_STATE="unknown"
             GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a remote-helper <transport>::<address>, an scp-form host that is not a plain name, such as x:y@github.com:o/r, where git contacts host x, a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a host or path not in plain characters, such as one holding a space or a quote), so which server it names was not read"
-            fact github unknown "$GH_WHY"
+            gfact unknown "$GH_WHY"
         elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             GH_REPO="$_PATH"
             GH_STATE="yes"
-            fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
+            gfact yes "remote '$REMOTE' is github.com/$GH_REPO"
         else
             if [ "${_N%% *}" = "local" ]; then
                 _WHERE="remote '$REMOTE' is a local path: ${_N#local }"
@@ -541,19 +577,19 @@ if [ "$FACTS" -eq 1 ]; then
             if [ "${_N%% *}" != "local" ] && is_github_host "$_HOST"; then
                 GH_STATE="unknown"
                 GH_WHY="$_WHERE: on github.com, but the path is not <owner>/<repo>, so which repository it is was not read"
-                fact github unknown "$GH_WHY"
+                gfact unknown "$GH_WHY"
             elif [ "${_N%% *}" != "local" ] && [[ "$_HOST" == *github* ]]; then
                 GH_STATE="unknown"
                 GH_WHY="$_WHERE: the host looks like GitHub (an ssh host alias, GitHub Enterprise) but is not github.com, so which server it is was not read"
-                fact github unknown "$GH_WHY"
+                gfact unknown "$GH_WHY"
             elif [ -n "$_OTHER" ]; then
                 GH_STATE="unknown"
                 GH_WHY="$_WHERE, not github.com by name, but $_OTHER: which one holds the issues and pull requests was not read"
-                fact github unknown "$GH_WHY"
+                gfact unknown "$GH_WHY"
             elif [ "${_N%% *}" = "local" ]; then
-                fact github no "$_WHERE"
+                gfact no "$_WHERE"
             else
-                fact github no "$_WHERE, not github.com by name"
+                gfact no "$_WHERE, not github.com by name"
             fi
         fi
     fi

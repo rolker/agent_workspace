@@ -467,6 +467,10 @@ if [[ -f "$ONB" ]]; then
     else
         pass "onboard-project no longer carries the hygiene checklist"
     fi
+    has "$ONB" "onboard-project: a push URL that differs is shown and asked about before pushing" \
+        'evidence ends `; its push URL differs: <where>`' \
+        '`git push` would send the branch there, not to the repository the fact names' \
+        'push only on a yes to that'
     has "$ONB" "onboard-project: ends by offering audit-project, which holds the checklist (D4)" \
         '### 10. Offer audit-project' \
         'End by offering `/agent-workspace:audit-project` (#332 D4), whatever `instructions` says'
@@ -515,6 +519,7 @@ if [[ -f "$AUD" ]]; then
         'skipped: no remote is github.com by name (github=no)' \
         'an ssh host alias with no "github" in its name, reads as `no`' \
         'for a network remote only host and path' 'a local remote'"'"'s path is printed whole' \
+        'the evidence ends `; its push URL differs: <where>`, and the push step asks before pushing' \
         'skipped: the project uses no GitHub issues (issues=no)' \
         'skipped: the project uses no pull requests (prs=no)' \
         'skipped: one component (multi_component=no)' \
