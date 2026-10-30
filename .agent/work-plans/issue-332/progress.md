@@ -2092,3 +2092,19 @@ Verified: test_project_integration_audit 278/0, test_skill_paths 127/0, test_use
 ### Findings
 - [x] (must-fix) multi_component on a non-git root scans with `find -maxdepth 4`: a ROS colcon root (package.xml 6 deep) prints the false "no component manifest found" and a cut can never be unknown; drop the cap (prune build/install/log) or report unknown when it cut, and add a colcon fixture — `.agent/scripts/project_integration_audit.sh:598`
 - [x] (suggestion) the --facts text heading prints `$PROOT` without clean() (the same pattern as the PR 3 headings at 1012/1023) — `.agent/scripts/project_integration_audit.sh:640`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 14:26 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2149d9b97c0f8f8e, resume 1 of 3)
+
+**PR**: #414 at `9dda5b3f`
+**Addressed**: Local Review at `8b6c4d49` (2026-10-30 14:24 -04:00)
+**Commits**: 931524fc, 74e66042, 9dda5b3f (boxes ticked by hand: `review_progress.sh findings` does not select a PR-mode Local Review)
+
+### Actions
+- [x] multi_component on a non-git root: the `find -maxdepth 4` cap dropped, colcon's build/, install/ and log/ added to the prunes, header updated; a colcon-shaped fixture (package.xml six deep under a non-git root, plus decoys in build/ install/ log/) reads yes with exactly the two src/ directories — `.agent/scripts/project_integration_audit.sh:598`
+- [x] the `--facts` text heading and the two integration-audit headings print `$PROOT` through `clean()` — `.agent/scripts/project_integration_audit.sh:645, 1019, 1028`
+
+Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed (script suites included).
