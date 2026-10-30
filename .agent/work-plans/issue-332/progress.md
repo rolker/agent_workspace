@@ -1756,3 +1756,13 @@ Reviewers:
   - `.agent/scripts/project_integration_audit.sh:307`
 - [ ] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
 - [ ] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 10:45 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner's answer: "Address (Recommended)". Round 18 is the cross-part count (issue 384); this is round 3 of part 4. One must-fix (redact_url strips the query and fragment before the user part, so a password holding ? or # leaks its first part) and two suggestions (file:// password holding /; the branch-protection table's null admin row) open. Second finding in the redaction mechanism: the fix pass closes the class (user part first, then query and fragment, fixtures for ?, #, @ and / inside passwords) rather than the one case.
