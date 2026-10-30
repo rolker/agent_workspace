@@ -401,6 +401,9 @@ WSC2="$SANDBOX/ws2"
 mkdir -p "$WSC2"
 cp -r "$WS_ROOT/.agent" "$WSC2/.agent"
 cp -r "$WS_ROOT/.claude" "$WSC2/.claude"
+# As for the first copy: the machine's own registry must never reach it, or
+# --force and --check would walk the owner's real project roots.
+rm -f "$WSC2/.agent/projects.local"
 run2() { HOME="$HOMEDIR" CLAUDE_CONFIG_DIR='' bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
 
 out="$(run2)"; rc=$?
