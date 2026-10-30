@@ -2124,3 +2124,19 @@ Verified: both prior findings fixed. The find depth cap is gone, and build/, ins
 
 ### Findings
 - [ ] (suggestion) push_note is computed only for the remote the evidence names (origin, else the first); when the user picks another remote at the "which remote" question, its pushurl is not compared before pushing. Have the push step compare `git remote get-url` with `get-url --push --all` for the chosen remote, printing neither — `.claude/skills/onboard-project/SKILL.md:398`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 14:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a047ea09fe98d2d4c, resume 1 of 3)
+
+**PR**: #414 at `505805d`
+**Sources**: 2 (Local Review @ `505805d` (exact), CI rollup). Copilot is not a source: 7 reviews, one per pushed head including `505805d`, each "unable to review ... insufficient remaining quota", 0 inline comments; its check-run concluded "failure". 0 conversation comments. 11 older local entries with open boxes are stale per `sources` (code changed since), including Local Review (Pre-Push) @ `9638dc8`, whose "@ in a URL path" box the previous Integrated Review @ `da86308` carried and which is ticked: the github-fact redesign (`d30b6876`) parses no remote URL, so it no longer applies.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review @ 505805d) Valid, checked against the head: `push_note` runs only on the remote the github fact's evidence names (`project_integration_audit.sh:440`), and step 3 of onboard-project's pull-request offer asks "which remote" when the evidence lists other remotes, but gives no push-URL check for a remote the user picks there. A pick whose `pushurl`/`insteadOf`/`pushInsteadOf` sends the push elsewhere goes unflagged, which is the case the design's push-URL comparison exists for. Not a must-fix: the merge gate does not hold on it. Fix, skill text only: for a remote chosen at that question, compare `git remote get-url <remote>` with every line of `git remote get-url --push --all <remote>`, printing neither, and on a difference treat it as the named remote's push note (say so, have the user check, push only on a yes). Recommendation: fix in this PR if a short re-review fits the 15:00 target; otherwise merging without it is the owner's call, with a follow-up issue — `.claude/skills/onboard-project/SKILL.md:398`
+
+### False positives
