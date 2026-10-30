@@ -2042,3 +2042,24 @@ Checks: test_project_integration_audit 438 passed, 0 failed; test_skill_paths 12
 - [x] (suggestion) audit-project's facts table says the github evidence shows "for any remote only host and path, never a user part, query or fragment", but a local remote (`/home/u/tok@en/repo`, `file:///p?x#y`) is printed whole, on purpose; say "for a network remote" (Claude adversarial) — `.claude/skills/audit-project/SKILL.md:146`
 - [x] (suggestion) The push step pushes to `<remote>` after the fact read its fetch URL; a `pushurl` or `pushInsteadOf` can send the branch elsewhere. Show `git remote get-url --push --all <remote>` in the approval question (Codex, raised in round 2 too) — `.claude/skills/onboard-project/SKILL.md:398`
 - [x] (suggestion) The manifest scan drops the exit status of `git ls-files`/`find` (process substitution, stderr to /dev/null), so a failed scan gives multi_component=no rather than unknown (Codex) — `.agent/scripts/project_integration_audit.sh:663`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:33 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a046f6f2efdb9c440, resume 1 of 3)
+
+**PR**: #414 at `3dbbe687`
+**Addressed**: Local Review at `c76005c` (2026-10-30 13:10 -04:00)
+**Commits**: 9c2aca93, da4d4072, 710d872d, 6d7af6ef, 91d5b69e, 3dbbe687
+
+### Actions
+- [x] (must-fix) The scp form printed github.com for `x:y@github.com:o/r`. Fixed for the whole class: redact_url now reads the scp host where git does, as the text before the first ":". That text must be a plain `[user@]host` (letters, digits, ".", "_", "-"). The rest is the path, and it must hold no "@" at all, query or fragment included. Anything else is redacted, so the remote is unread, github unknown and gh not called. The suite's password table showed why the second rule is needed: with the host rule alone, `someone:pw?pw@github.com:o/r` printed `someone:pw` (fixed in da4d4072). Fixtures: `x:y@`, `tok:en@`, `a@b@`, a quoted user and a GitLab scp remote with a password are unread; `user@github.com:o/r` and `github.com:o/r` are read. The password table's scp rows are now unread for every character. An scp query holding "@" moved to the unread fixtures. The header and audit-project's list of unknown reasons state the rule. — `.agent/scripts/project_integration_audit.sh` (redact_url scp branch)
+- [x] (suggestion) `clean` now drops every control byte except tab and line break, which it folds as before: bytes 0x01–0x08 and 0x0B–0x1F (ESC, CR) and 0x7F. Fixture: a manifest directory and a local remote path holding ESC, CR and DEL print without them, in tsv and text. — `.agent/scripts/project_integration_audit.sh` (clean)
+- [x] (suggestion) audit-project's facts table now says the host-and-path cut applies to a network remote, and that a local remote's path is printed whole, on purpose (pinned). — `.claude/skills/audit-project/SKILL.md:146`
+- [x] (suggestion) Where git push goes: the github evidence now ends `; its push URL differs: <where>` when any URL from `git remote get-url --push --all` reads differently through the same url_where reading. That covers a `pushurl`, `insteadOf` and `pushInsteadOf`. A push URL with a credential is cut; one that cannot be cut prints as "a URL that could not be printed safely". onboard-project's push step (which audit-project's fix batch follows) shows that evidence and pushes only on a yes to it. audit-project's facts table says so; both are pinned. I added this as a note on the github fact, not as a sixth fact, so the five-fact contract stays. Fixtures: a pushurl on another host, one with a credential, one that cannot be printed, a local one, the same repository in another form (no note), two push URLs, and pushInsteadOf. — `.agent/scripts/project_integration_audit.sh` (push_note, url_where), `.claude/skills/onboard-project/SKILL.md`
+- [x] (suggestion) A failed manifest scan now gives multi_component unknown. The exit status of `git ls-files` and `find` is read with `wait` on the process substitution. A failure, or a CMakeLists.txt that cannot be read, gives unknown with the reason, unless two directories were already found. The header and audit-project's list of unknown reasons say so (pinned). Fixtures: find meeting an unreadable directory, a git that fails only ls-files, and an unreadable CMakeLists.txt. The permission fixtures print a SKIP line when the suite runs as root. — `.agent/scripts/project_integration_audit.sh` (multi_component)
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
+
+Checks: test_project_integration_audit 468 passed, 0 failed, run on the tree before finding 5 was split out into its own commit; validate-script-tests then ran it again on the final tree and passed. test_skill_paths 127 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook.
