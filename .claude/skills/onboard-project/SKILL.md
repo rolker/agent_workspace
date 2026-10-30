@@ -382,12 +382,12 @@ once more before creating anything. Then:
      && git commit -m "<what changed>"
    ```
 3. Push and open the pull request only on a yes, from the worktree. For a
-   project with no GitHub remote (`github=no`), leave the edits on the branch, push
-   nothing, and say where the branch is. With `github=unknown`, ask which
-   repository on github.com and which remote it is before any issue,
-   push or pull request (the fact's evidence says why it is unknown);
-   without an answer, open nothing, push nothing, and say where the
-   branch is. The branch is pushed first:
+   project whose remote is not github.com by name (`github=no`), leave the
+   edits on the branch, push nothing, and say where the branch is. With
+   `github=unknown`, ask which repository on github.com and which remote
+   it is before any issue, push or pull request (the fact's evidence
+   says why it is unknown); without an answer, open nothing, push
+   nothing, and say where the branch is. The branch is pushed first:
    `gh pr create` run without a terminal does not offer to push it, and
    stops.
 

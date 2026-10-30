@@ -143,7 +143,7 @@ the value `yes`, `no` or `unknown`:
 
 | Fact | Means |
 |------|-------|
-| `github` | The repository's remote (origin, else its first) is on github.com; the evidence names the remote and `github.com/<owner>/<repo>` (`remote '<remote>' is github.com/<owner>/<repo>`), and for any remote only host and path, never a user part, query or fragment. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
+| `github` | The repository's remote (origin, else its first) is on github.com, read by the host's name: `no` means no remote is github.com by name, so a GitHub Enterprise server, or an ssh host alias with no "github" in its name, reads as `no` (its evidence ends `not github.com by name`); the evidence names the remote and `github.com/<owner>/<repo>` (`remote '<remote>' is github.com/<owner>/<repo>`), and for any remote only host and path, never a user part, query or fragment. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
 | `issues` | It uses GitHub issues: enabled, and at least one ever opened |
 | `prs` | It uses pull requests: at least one ever opened |
 | `windows` | This machine runs Windows (`uname -s`) |
@@ -157,12 +157,14 @@ fact could not be read. Which facts go `unknown`, and for what:
   `--instance`) or none registered, or the root not on disk. `github` is
   also `unknown` when its remote's host only looks like GitHub (an ssh
   host alias such as `github.com-work`, GitHub Enterprise), when it is on
-  github.com but its path is not `<owner>/<repo>`, when its URL could not
-  be cut to host and path safely (a user part holding `/`, `?` or `#`,
-  an `@` in a path or in a query with no path before it, or another
-  shape that is not host and path: the URL is not printed and the server
-  it names is not read),
-  or when that remote is not on GitHub but another one is or may be.
+  github.com but its path is not `<owner>/<repo>` or it has none
+  (`https://github.com`), when its URL could not be cut to host and path
+  safely (a remote-helper `<transport>::<address>`, a user part holding
+  `/`, `?` or `#`, an `@` in a path or in a query with no path before it,
+  or a host or path not in plain characters, such as one holding a space
+  or a quote: the URL is not printed and the server it names is not
+  read), or when that remote is not on GitHub but another one is or may
+  be.
 - `issues` and `prs`: whenever `github` is `unknown`, and on any gh
   problem — gh or jq missing, gh not signed in or offline, an answer
   without the counts or the list asked for. A gh problem leaves `github`,
@@ -246,7 +248,7 @@ as a GitHub call without access). An item is never dropped from the report.
 
 | Fact | Items skipped | Reason line |
 |------|---------------|-------------|
-| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no GitHub remote (github=no)` |
+| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no remote is github.com by name (github=no)` |
 | `issues=no` | git-bug bridge (it carries issues) | `skipped: the project uses no GitHub issues (issues=no)` |
 | `prs=no` | Copilot auto-review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
 | `issues=no` and `prs=no` | Component labels (they label issues and pull requests) | `skipped: the project uses no issues or pull requests (issues=no, prs=no)` |

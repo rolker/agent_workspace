@@ -474,7 +474,7 @@ if [[ -f "$ONB" ]]; then
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
         'When the project uses issues (`issues=yes` in step 2'"'"'s facts), each row gets its issue' \
         'when the fact is `unknown`, ask' \
-        'For a project with no GitHub remote (`github=no`)'
+        'For a project whose remote is not github.com by name (`github=no`)'
     has "$ONB" "onboard-project: a project with no GitHub keeps its edits on a branch" \
         'leave the edits on the branch, push nothing'
     bash_blocks_parse "$ONB" onboard-project
@@ -512,7 +512,8 @@ if [[ -f "$AUD" ]]; then
         'gh label create "component:<name>"' 'git bug bridge new' \
         'with no dependency on workspace scripts or paths'
     has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
-        'skipped: no GitHub remote (github=no)' \
+        'skipped: no remote is github.com by name (github=no)' \
+        'an ssh host alias with no "github" in its name, reads as `no`' \
         'skipped: the project uses no GitHub issues (issues=no)' \
         'skipped: the project uses no pull requests (prs=no)' \
         'skipped: one component (multi_component=no)' \
@@ -558,6 +559,8 @@ if [[ -f "$AUD" ]]; then
         'ask which repository on github.com and which remote it is before any issue, push or pull request' \
         'a URL that could not be printed safely' \
         'when its URL could not be cut to host and path safely' \
+        'a remote-helper `<transport>::<address>`' \
+        'its path is not `<owner>/<repo>` or it has none' \
         '`not checked: github=unknown (<the fact'"'"'s evidence>)`' \
         'and the branch is pushed to `<remote>`, both as the `github` fact names them'
     no_unquoted_heredoc "$AUD" audit-project

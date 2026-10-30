@@ -25,8 +25,11 @@
 # "://" in each part of each form, an "@" in a query or fragment with no
 # user part, on origin or another remote, or in gh's error text (never
 # printed, never passed to gh; GitHub read as GitHub, or unknown when the
-# URL cannot be cut safely), local and file:/// paths keeping their "?"
-# and "#", a github.com path that is not
+# URL cannot be cut safely), a remote-helper <transport>::<address>, a
+# host or path holding a space or a quote, a URL run over several words
+# of gh's text by a password holding spaces, local and file:/// paths
+# keeping their "?" and "#", github.com with no path (unknown), a host
+# not github.com by name (no, saying so), a github.com path that is not
 # owner/repo (unknown), GH_HOST naming another server, an ssh host alias or
 # GitHub on a remote other than the one checked (unknown), no commits, a
 # remote not named origin, and a root nested inside another repository.
@@ -710,7 +713,7 @@ check "--format text: a heading and fact: value -- evidence lines" \
 echo "TEST: --facts without GitHub: no gh call at all"
 facts "$CLEAN"
 check "a remote on another host: github no, naming the host (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/clean, not on github.com" ]
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/clean, not github.com by name" ]
 check "issues and prs no" [ "$(fval issues)/$(fval prs)" = "no/no" ]
 check "gh was not called" [ ! -s "$GH_LOG" ]
 check "one Makefile and no manifest: multi_component no (got: $(fev multi_component))" \
@@ -729,7 +732,7 @@ done
 gitq -C "$CLEAN" remote set-url origin "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean.git"
 facts "$CLEAN"
 check "the evidence names host and path only (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not github.com by name" ]
 # Every URL form that can carry a secret, on origin and on a second
 # remote, GitHub or not: the secret never reaches the output (tsv or text)
 # or a gh call.
@@ -760,7 +763,7 @@ for _cred_url in "https://gitlab.example.invalid/someone/clean?private_token=s3c
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     check "a secret in another host's remote ($_cred_url): github no, host and path only (got: $(fev github))" \
-        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
+        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not github.com by name" ]
     no_secret "remote $_cred_url"
 done
 gitq -C "$CLEAN" remote set-url origin "file://someone:s3cr3tTOKEN@localhost$SANDBOX/projects/factgh?s3cr3tTOKEN"
@@ -857,6 +860,22 @@ for _cred_url in "https://github.com?user=me@x.com&token=s3cr3tTOKEN" \
     gh_unread "an '@' that may end a user part or sit in a query or path ($_cred_url)"
     no_secret "an '@' that may end a user part or sit in a query or path ($_cred_url)"
 done
+# Not a plain cut URL: a remote-helper address <transport>::<address>
+# (ext:: runs a command, which can hold a token), an IPv6 host, or a host
+# or path holding a space or a quote (https://local /x would otherwise
+# read as a local path). Not printed, gh not called.
+for _cred_url in 'ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://github.com/someone/clean"' \
+        "ext::s3cr3tTOKEN" \
+        "https://local /someone/clean" \
+        "https://github.com/someone/clean s3cr3tTOKEN" \
+        "https://github.com/someone/\"s3cr3tTOKEN\"" \
+        "git@github.com:some one/clean.git" \
+        "ssh://[::1]/someone/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    gh_unread "not a plain cut URL ($_cred_url)"
+    no_secret "not a plain cut URL ($_cred_url)"
+done
 # A second remote that could not be read may be on GitHub: unknown.
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN?s3cr3tTOKEN@github.com/someone/clean.git"
@@ -866,6 +885,15 @@ check "a second remote whose URL could not be printed safely: github unknown, sa
     _ "$(fval github)" "$(fev github)"
 no_secret "a second remote whose URL could not be printed safely"
 gitq -C "$CLEAN" remote remove upstream
+# github is read by name: a GitHub Enterprise server or an ssh host
+# alias with no "github" in its name reads as no, and says so.
+for _named in "https://git.corp.example/someone/clean.git" "git@work:someone/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_named"
+    facts "$CLEAN"
+    check "a host that is not github.com by name ($_named): github no, saying 'not github.com by name', gh not called (got: $(fval github)/$(fev github) | $(fev issues))" \
+        bash -c '[ "$1" = no ] && grep -qF ", not github.com by name" <<< "$2" && [ "$3" = "no remote is github.com by name, so gh was not asked about its issues" ] && [ ! -s "$4" ]' \
+        _ "$(fval github)" "$(fev github)" "$(fev issues)" "$GH_LOG"
+done
 # Forms with no authority keep their "?" and "#": part of the path there.
 for _local in "$SANDBOX/projects/factgh?x#1" "file://$SANDBOX/projects/factgh?x#1"; do
     gitq -C "$CLEAN" remote set-url origin "$_local"
@@ -887,8 +915,23 @@ STUB_GH_RC=1 STUB_GH_ERR="error connecting to https://someone:s3cr3tTOKEN@github
 STUB_GH_RC=1 STUB_GH_ERR="error connecting to https://someone:s3cr3tTOKEN@github.com/someone/clean?access_token=s3cr3tTOKEN" facts "$CLEAN"
 check "and the scrubbed error line still says what failed (got: $(fev issues))" \
     [ "$(fev issues)" = "gh repo view github.com/someone/clean failed (exit 1): error connecting to https://github.com/someone/clean" ]
+# A password holding spaces runs a URL over several words of gh's text;
+# the words back to the one holding "://" (or ":") are redacted with it.
+# A remote-helper command redacts the rest of the text.
+for _err in 'Get "https://user:abc s3cr3tTOKEN@github.com/someone/clean": dial tcp' \
+        'Get https://user:s3cr3tTOKEN s3cr3tTOKEN:s3cr3tTOKEN s3cr3tTOKEN@github.com/someone/clean failed' \
+        'cannot reach user:s3cr3tTOKEN s3cr3tTOKEN@github.com:someone/clean now' \
+        'helper ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://x/y" failed'; do
+    STUB_GH_RC=1 STUB_GH_ERR="$_err" no_secret "gh's error text: $_err"
+done
+STUB_GH_RC=1 STUB_GH_ERR='Get "https://user:abc s3cr3tTOKEN@github.com/someone/clean": dial tcp' facts "$CLEAN"
+check "a URL run over several words is cut as one, and the line still says what failed (got: $(fev issues))" \
+    [ "$(fev issues)" = 'gh repo view github.com/someone/clean failed (exit 1): Get "https://github.com/someone/clean": dial tcp' ]
 # On github.com, but the path is not <owner>/<repo>: unknown, for that reason.
-for _bad in "https://github.com/someone" "https://github.com/someone/clean/extra" "git@github.com:some one/clean.git"; do
+# With no path at all it is the same: https://github.com reads as host
+# github.com, never as a host named after the scheme.
+for _bad in "https://github.com/someone" "https://github.com/someone/clean/extra" "git@github.com:some+one/clean.git" \
+        "https://github.com" "https://github.com/" "ssh://git@github.com" "HTTPS://GitHub.com:443"; do
     gitq -C "$CLEAN" remote set-url origin "$_bad"
     facts "$CLEAN"
     check "github.com with a path that is not <owner>/<repo> ($_bad): unknown, saying so, gh not called (got: $(fev github))" \
@@ -912,7 +955,7 @@ gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 gitq -C "$CLEAN" remote add upstream "https://github.com/someone/clean.git"
 facts "$CLEAN"
 check "origin elsewhere but another remote on GitHub: github unknown, naming both (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "unknown/remote 'origin' is example.invalid/someone/clean, not on github.com, but remote 'upstream' is github.com/someone/clean: which one holds the issues and pull requests was not read" ]
+    [ "$(fval github)/$(fev github)" = "unknown/remote 'origin' is example.invalid/someone/clean, not github.com by name, but remote 'upstream' is github.com/someone/clean: which one holds the issues and pull requests was not read" ]
 check "issues and prs unknown, gh not called" \
     bash -c '[ "$1" = unknown/unknown ] && [ ! -s "$2" ]' _ "$(fval issues)/$(fval prs)" "$GH_LOG"
 gitq -C "$CLEAN" remote remove upstream
@@ -1024,7 +1067,7 @@ check "several instances, no default: the repository facts are unknown and say t
 check "windows is still read (got: $(fval windows))" [ "$(fval windows)" = "no" ]
 facts "$PAR" --instance fam_a
 check "--instance fam_a: its remote, not the parent's (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/fam-a, not on github.com" ]
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/fam-a, not github.com by name" ]
 check "its one Makefile: multi_component no" [ "$(fval multi_component)" = "no" ]
 facts "$SANDBOX"
 check "a directory under no registered root: exit 2" [ "$AUDIT_RC" -eq 2 ]

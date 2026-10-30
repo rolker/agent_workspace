@@ -30,7 +30,11 @@
 #                  evidence"), value yes, no or unknown:
 #                    github           the audited repository's remote
 #                                     (origin, else its first) is on
-#                                     github.com; the evidence names
+#                                     github.com, read by name (no: no
+#                                     remote is github.com by name, so
+#                                     a GitHub Enterprise server or an
+#                                     ssh alias not holding "github"
+#                                     reads as no); the evidence names
 #                                     github.com/<owner>/<repo>, and for
 #                                     any remote only host and path (a
 #                                     local one: its path), with no user
@@ -42,7 +46,8 @@
 #                                     github.com-work, GitHub
 #                                     Enterprise), when it is on
 #                                     github.com but its path is not
-#                                     <owner>/<repo>, when its URL could
+#                                     <owner>/<repo> (or it has none),
+#                                     when its URL could
 #                                     not be cut safely (redact_url's
 #                                     rule), or when it is not on GitHub
 #                                     but another remote is or may be
@@ -313,6 +318,9 @@ if [ "$FACTS" -eq 1 ]; then
     # unambiguous and the result has the shape of a cut URL. Otherwise
     # the result is "<scheme>://<redacted>" (scp form: "<redacted>"),
     # whatever the input held. Redacted when:
+    #   - the input holds "::" anywhere: a remote-helper URL
+    #     <transport>::<address> (ext::sh -c "..." runs a command, which
+    #     can hold a token), or an IPv6 host, never cut;
     #   - the user part holds "?" or "#": a password holding one cannot be
     #     told from a query holding "@" (https://h?q=a@b/c&token=...);
     #   - the user part holds "/": a password holding one cannot be told
@@ -324,17 +332,25 @@ if [ "$FACTS" -eq 1 ]; then
     #   - an "@" is left after a "?" or "#" with no path before it
     #     (https://tok?en@host, https://host?q=a@b);
     #   - the result is not host[:port][/path] (scheme form) or host:path
-    #     (scp form), with no "@" anywhere and, after "://", no ":" but a
-    #     numeric port's.
+    #     (scp form) in plain characters: a host of letters, digits, ".",
+    #     "_", "~" and "-", a numeric port, a path of those and "/", "%",
+    #     "+", "=" and ",". So no "@", no whitespace, no quote, and after
+    #     "://" no ":" but a port's.
     # So no part of a user part, query or fragment is ever printed; the
     # cost of the backstop is that such a remote is not read (the github
     # fact says unknown).
     #
-    # Forms with no authority keep their "?", "#" and "@", which are
-    # part of the path there: file:///path, and a local path (no scheme,
-    # no ":" before its first "/"), which git never sends anywhere.
+    # Forms with no authority keep their "?", "#", "@" and spaces, which
+    # are part of the path there: file:///path, and a local path (no
+    # scheme, no ":" before its first "/"), which git never sends
+    # anywhere; one holding "::" is still redacted.
     redact_url() {
         local u="$1" scheme rest user head lead hasuser=0
+        local host_re='[A-Za-z0-9._~-]+' path_re='[A-Za-z0-9._~%+=,/-]*'
+        if [[ "$u" == *::* ]]; then
+            printf '<redacted>'
+            return 0
+        fi
         if [[ "$u" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
             scheme="${BASH_REMATCH[0]}"
             rest="${u#"$scheme"}"
@@ -358,7 +374,7 @@ if [ "$FACTS" -eq 1 ]; then
                 return 0
             fi
             rest="${rest%%[?#]*}"
-            if [[ "$rest" =~ ^[^@:/?#]+(:[0-9]+)?(/[^@:?#]*)?$ ]]; then
+            if [[ "$rest" =~ ^${host_re}(:[0-9]+)?(/${path_re})?$ ]]; then
                 printf '%s%s' "$scheme" "$rest"
             else
                 printf '%s<redacted>' "$scheme"
@@ -377,7 +393,7 @@ if [ "$FACTS" -eq 1 ]; then
             u="${u#"$user"@}"
         fi
         u="${u%%[?#]*}"
-        if [[ "$u" =~ ^[^@:/?#]+:[^@?#]*$ ]]; then
+        if [[ "$u" =~ ^${host_re}:${path_re}$ ]]; then
             printf '%s' "$u"
         else
             printf '<redacted>'
@@ -389,20 +405,69 @@ if [ "$FACTS" -eq 1 ]; then
     # bracket, that starts with "<scheme>://", or that has a ":" before
     # its first "/" and holds an "@", "?" or "#" (the scp form). Other
     # words, local paths among them, are kept as they are.
+    # A password may hold a space, so a URL can run over several words:
+    # a word holding an "@" with no ":" before it and a host name after
+    # its last "@" may be the end of one.
+    # It is joined to the words back to the nearest one holding "://" (or,
+    # with none, ":"), and the whole run is redacted as one URL. Run
+    # through redact_url, a user part or host holding a space is cut or
+    # redacted, so no part of it is kept. Trailing punctuation (a closing
+    # quote or bracket, ",", ";", ":", ".", "!") is set aside first and
+    # put back after. A remote-helper address (<transport>::...), which
+    # can be a whole command, redacts the rest of the text.
     scrub_secrets() {
-        local s="$1" out="" w sep lp core
+        local s="$1" w sep lp core tp i j k out=""
+        local stand_in_re='^[A-Za-z][A-Za-z0-9+.-]*://<redacted>[^A-Za-z0-9@:/]*$'
+        local -a W=() S=()
         while [ -n "$s" ]; do
             w="${s%%[[:space:]]*}"
             s="${s:${#w}}"
             sep="${s%%[^[:space:]]*}"
             s="${s:${#sep}}"
+            W+=("$w"); S+=("$sep")
+        done
+        for ((i = 0; i < ${#W[@]}; i++)); do
+            w="${W[i]}"
+            [[ "$w" == *@* && "${w%%@*}" != *:* && "${w##*@}" == [A-Za-z0-9]* ]] || continue
+            j=-1
+            for ((k = i - 1; k >= 0; k--)); do
+                [[ "${W[k]}" == *://* ]] && { j=$k; break; }
+            done
+            if [ "$j" -lt 0 ]; then
+                for ((k = i - 1; k >= 0; k--)); do
+                    [[ "${W[k]}" == *:* ]] && { j=$k; break; }
+                done
+            fi
+            [ "$j" -ge 0 ] || continue
+            for ((k = j + 1; k <= i; k++)); do
+                W[j]+="${S[k - 1]}${W[k]}"
+                W[k]=""
+                [ "$k" -lt "$i" ] && S[k]=""
+            done
+            S[j]="${S[i]}"
+            S[i]=""
+        done
+        for ((i = 0; i < ${#W[@]}; i++)); do
+            w="${W[i]}"
             lp="${w%%[A-Za-z0-9]*}"
             core="${w:${#lp}}"
+            if [[ "$core" =~ ^[A-Za-z][A-Za-z0-9+.-]*:: ]]; then
+                out+="$lp<redacted>"
+                break
+            fi
+            # Already a stand-in (redact_url's own output in the evidence):
+            # kept, so a second pass does not mangle it.
+            if [[ "$core" =~ $stand_in_re ]]; then
+                out+="$w${S[i]}"
+                continue
+            fi
+            tp="${core##*[!\"\')\]>,;:.!]}"
+            core="${core%"$tp"}"
             if [[ "$core" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]] \
                 || { [[ "${core%%/*}" == *:* ]] && [[ "$core" == *[@?#]* ]]; }; then
-                w="$lp$(redact_url "$core")"
+                w="$lp$(redact_url "$core")$tp"
             fi
-            out+="$w$sep"
+            out+="$w${S[i]}"
         done
         printf '%s' "$out"
     }
@@ -422,15 +487,23 @@ if [ "$FACTS" -eq 1 ]; then
     fi
 
     # github: the remote's host. origin, else the first remote. yes only
-    # for github.com itself; unknown when that remote's host only looks
-    # like GitHub (an ssh host alias such as github.com-work, GitHub
-    # Enterprise), or when it is not on GitHub but another remote is or
-    # may be: which server holds the issues and pull requests is then not
-    # read. Also unknown when that remote's URL could not be cut safely
-    # (redact_url's stand-in): which server it names is not read either.
-    # remote_where <remote>: "host/path" for a network remote, "local
-    # <path>" for a local one, "unread" for a network remote redact_url
-    # could not cut safely, or nothing when the remote has no URL. The
+    # for github.com itself, read by name: no means no remote is
+    # github.com by name, so a GitHub Enterprise server or an ssh host
+    # alias whose name does not hold "github" reads as no, and the
+    # evidence says "not github.com by name". unknown when that remote's
+    # host only looks like GitHub (an ssh host alias such as
+    # github.com-work, GitHub Enterprise), when it is github.com with no
+    # <owner>/<repo> path, or when it is not on GitHub but another remote
+    # is or may be: which server holds the issues and pull requests is
+    # then not read. Also unknown when that remote's URL could not be cut
+    # safely (redact_url's stand-in): which server it names is not read
+    # either.
+    # remote_where <remote>: "host/path" for a network remote, "host"
+    # alone for one with no path (https://github.com, ssh://git@github.com,
+    # so github.com with no <owner>/<repo> reads as unknown, never as a
+    # host named after the scheme), "local <path>" for a local one,
+    # "unread" for a network remote redact_url could not cut safely, or
+    # nothing when the remote has no URL. The
     # only reader of a remote's URL: what it prints is redact_url's output
     # (normalised, for a network remote), so no user part, query or
     # fragment of the URL (https://user:TOKEN@host/..., ?token=...) can
@@ -444,6 +517,8 @@ if [ "$FACTS" -eq 1 ]; then
             echo "local $safe"
         elif [[ "$safe" == *"<redacted>"* ]]; then
             echo "unread"
+        elif [[ "$safe" =~ ^[A-Za-z][A-Za-z0-9+.-]*://([^/:]+)(:[0-9]+)?/*$ ]]; then
+            printf '%s\n' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]'
         else
             _records_norm_url "$safe"
         fi
@@ -482,7 +557,7 @@ if [ "$FACTS" -eq 1 ]; then
             fact github no "the repository has no remote"
         elif [ "$_N" = "unread" ]; then
             GH_STATE="unknown"
-            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a shape that is not host and path), so which server it names was not read"
+            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a remote-helper <transport>::<address>, a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a host or path not in plain characters, such as one holding a space or a quote), so which server it names was not read"
             fact github unknown "$GH_WHY"
         elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             GH_REPO="$_PATH"
@@ -504,12 +579,12 @@ if [ "$FACTS" -eq 1 ]; then
                 fact github unknown "$GH_WHY"
             elif [ -n "$_OTHER" ]; then
                 GH_STATE="unknown"
-                GH_WHY="$_WHERE, not on github.com, but $_OTHER: which one holds the issues and pull requests was not read"
+                GH_WHY="$_WHERE, not github.com by name, but $_OTHER: which one holds the issues and pull requests was not read"
                 fact github unknown "$GH_WHY"
             elif [ "${_N%% *}" = "local" ]; then
                 fact github no "$_WHERE"
             else
-                fact github no "$_WHERE, not on github.com"
+                fact github no "$_WHERE, not github.com by name"
             fi
         fi
     fi
@@ -544,8 +619,8 @@ if [ "$FACTS" -eq 1 ]; then
         fact issues unknown "github is unknown: $GH_WHY"
         fact prs unknown "github is unknown: $GH_WHY"
     elif [ "$GH_STATE" = "no" ]; then
-        fact issues no "no GitHub remote, so gh can neither read nor open its issues"
-        fact prs no "no GitHub remote, so gh can neither read nor open its pull requests"
+        fact issues no "no remote is github.com by name, so gh was not asked about its issues"
+        fact prs no "no remote is github.com by name, so gh was not asked about its pull requests"
     elif ! command -v gh >/dev/null 2>&1; then
         fact issues unknown "gh is not installed"
         fact prs unknown "gh is not installed"
