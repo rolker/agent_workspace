@@ -1935,3 +1935,18 @@ Owner's answer: "Publish (Recommended)". Round 5 of part 4 approved (0 must-fix,
 **Decision**: address
 
 Fix plan from the triage: in redact_url, when the user part it picks holds a "/", redact the URL (github fact unknown with a reason); move the test table's "/" and "://" password rows from "read" to "unread"; add the three reproducing URLs as fixtures; keep the script header's case list matching.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 11:58 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 2 of 3)
+
+**PR**: #414 at `c7577ad4`
+**Addressed**: Integrated Review at `da86308` (2026-10-30 11:43 -04:00)
+**Commits**: c7577ad4
+
+### Actions
+- [x] (should-fix) A user part holding "/" is now redacted, and the github fact is unknown with gh not called. Before this, an "@" in a path followed by a "/" printed another host: `https://gitlab.com/x@github.com/someone/repo` read as GitHub. The scp form follows the same rule. The scp form also redacts a user part that has a ":" after an "@", because that user part has the shape user@host:path itself (`git@gitlab.com:x@github.com:o/r`). The table's "/" and "://" password rows moved from read to unread. The round-3 "s3cr/3t" rows for https and scp were dropped, since the table covers them. New fixtures: the review's three URLs and the scp shape. The header's backstop list, the unknown reason and audit-project's list of unknown reasons all name the new case. The test_skill_paths pin is unchanged and still passes — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md:161`
+
+Checks: test_project_integration_audit 386 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
