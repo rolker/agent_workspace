@@ -214,3 +214,40 @@ The second plan review (80134dda) approved the plan: the size table sums to the 
 ### Decisions made (owner may veto)
 - The AGENTS.md line budget is at most 200 lines, closing OQ-4 — undoing it: the number in the hook and the design doc.
 - One AGENTS.md line states that budget, so the design doc's claim that every Rules-table rule is stated in AGENTS.md or the principles stays true — undoing it: drop the line.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 12:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-259 at `56f8824b`
+
+Implemented the plan as written; the five low findings of the final plan review are taken.
+
+### Sizes (for the PR description)
+- `AGENTS.md` before: 448 lines, 33,047 bytes (`wc`, main at 8ac07e28)
+- `AGENTS.md` after: 199 lines, 10,513 bytes (`wc`, at 56f8824b)
+- Trims used: 6a (adapter table to a two-line list) and 6b (grouped References). 6c (Skill Worktree Exception) was not needed; no rule text was shortened.
+
+### Commits
+- `d936b57e` Script Reference moved verbatim to `.agent/knowledge/script_reference.md`; audit-workspace step 3 and its example, and the review guide's script row, repointed; knowledge README indexes it
+- `acbc12ab` git-bug-first Pattern moved verbatim to `.agent/knowledge/git_bug_usage.md`; `_issue_helpers.sh` and ADR-0010 repointed (link fix under ADR-0008's Permitted list)
+- `03cf10f9` GitHub CLI Patterns moved to `.agent/knowledge/github_cli_patterns.md` (subheadings one level up); Boundaries gains Always "use `gh_create_pr.sh` for PRs" and Never "`gh pr merge --delete-branch` from a worktree"
+- `b25cc765` Build & Test details moved to `.agent/knowledge/build_and_test.md`; AGENTS.md keeps a short section naming the config file and `make build`, `make test`, `make lint`, `make validate`
+- `05084c82` Worktree Workflow cut to the rule, `--type`, the two types, the sub-issue and skill exceptions and a pointer; Worktree Entry moved verbatim to `.agent/WORKTREE_GUIDE.md` with the `worktree_list.sh` line (the guide already had the other command blocks); `docs/design.md` Worktrees citation and the review guide's worktree row repointed
+- `d2e3cb17` Trims 6a and 6b
+- `6e123aae` `check_agents_md_budget.sh [<file>]` (exit 0 within budget, 1 over, 2 file missing) and the `agents-md-line-budget` local hook, `files:` matching only `AGENTS.md`, the script and `.pre-commit-config.yaml`, so ordinary commits skip it; `test_agents_md_budget.sh` covers 200 (pass), 201 (fail, count and limit named), 201 without a final newline (fail), missing file (exit 2); the one AGENTS.md budget line ("at most 200 lines"); the script's `script_reference.md` row
+- `56f8824b` `docs/design.md`: Instruction layers `proposed` to `decided`, "Nothing here is built" dropped, measured sizes, the budget and the hook; Rules row (`hook`, principle "Only what's needed"); OQ-4 answered; Change log row
+
+### Decisions made (owner may veto)
+- The always-loaded budget is at most 200 lines for `AGENTS.md`, closing OQ-4; a host decision recorded for the owner's confirmation at the merge. Undoing it: the number in the hook, the AGENTS.md line and the design doc.
+- A new pre-commit hook, `agents-md-line-budget`, holds the budget locally and in CI through `make lint` (no CI workflow change). Undoing it: remove the hook entry, script and suite.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0; every hook passed or had no files, including `validate-script-tests` (every suite, since the branch touches `.pre-commit-config.yaml` and the `_issue_helpers.sh` helper), `check-design-anchors`, `agents-md-line-budget`, shellcheck, yamllint
+- Run by hand before the hook commit: `test_agents_md_budget.sh` (4/4), `test_session_start_layer.sh`, `test_skill_paths.sh`, `test_script_tests_hook_scope.sh`: all passed
+- `make validate` fails in this worktree only because the worktree has no `project/` symlink (the main checkout's points at an existing directory); it reports no other failure. It was not run from the main checkout.
+
+### Not done or noted
+- Issue 323 has not landed on main (checked `origin/main` at 12:20); whichever merges second re-applies its three Script Reference rows, now in `.agent/knowledge/script_reference.md`.
+- Kept as existing rule text, not changed: the Worktree Workflow line "`--type` is **required**", which `WORKTREE_GUIDE.md` Quick Start contradicts since #317 (it says `--type` is optional when the cwd decides). Worth a separate fix.
+- `docs/design.md` Instruction layers item 3 still says "22 skills"; not re-counted here.
