@@ -3,13 +3,18 @@
 #
 # The checker fails a commit when AGENTS.md is over 200 lines. Every case
 # writes a fixture file under a private temp dir and points the checker at
-# it; the suite reads no real AGENTS.md.
+# it, or (cases e and f) runs a sandbox copy of the checker with no argument,
+# the way the hook calls it, beside a fixture AGENTS.md; the suite reads no
+# real AGENTS.md.
 #
 # Cases:
 #   (a) 200 lines passes
 #   (b) 201 lines fails, naming the count and the limit
 #   (c) 201 lines with no final newline still fails
 #   (d) a missing file is an error (exit 2), not a pass
+#   (e) no argument, run from another directory: a 201-line AGENTS.md at
+#       the root of the checker's repository fails, naming that file
+#   (f) no argument, the same way: a 200-line AGENTS.md there passes
 #
 # Run: bash .agent/scripts/tests/test_agents_md_budget.sh
 
@@ -65,6 +70,28 @@ expect "(c) 201 lines without final newline fails" 1 "201 lines"
 
 run_checker "$SANDBOX/missing.md"
 expect "(d) missing file is an error" 2 "cannot read"
+
+# (e)/(f): the hook passes no argument, so the checker finds AGENTS.md from
+# its own location. A sandbox copy at <repo>/.agent/scripts/ must read
+# <repo>/AGENTS.md whatever the current directory is.
+mkdir -p "$SANDBOX/repo/.agent/scripts" "$SANDBOX/elsewhere"
+cp "$CHECKER" "$SANDBOX/repo/.agent/scripts/check_agents_md_budget.sh"
+SANDBOX_REPO="$(cd "$SANDBOX/repo" && pwd)"
+
+# run_checker_no_arg -- runs the sandbox copy from another directory.
+run_checker_no_arg() {
+    RC=0
+    OUT="$(cd "$SANDBOX/elsewhere" && bash "$SANDBOX_REPO/.agent/scripts/check_agents_md_budget.sh" 2>&1)" || RC=$?
+}
+
+seq 1 201 > "$SANDBOX/repo/AGENTS.md"
+run_checker_no_arg
+expect "(e) no argument: 201-line AGENTS.md beside the checker fails" 1 \
+    "201 lines" "$SANDBOX_REPO/AGENTS.md"
+
+seq 1 200 > "$SANDBOX/repo/AGENTS.md"
+run_checker_no_arg
+expect "(f) no argument: 200-line AGENTS.md beside the checker passes" 0
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
