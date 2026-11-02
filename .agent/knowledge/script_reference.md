@@ -28,6 +28,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh (dispatches via adapter) |
 | `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh (dispatches via adapter) |
 | `.agent/scripts/setup_project.sh` | Configure project/ directory (dispatches via adapter) |
+| `.agent/scripts/check_agents_md_budget.sh` | `[<file>]` (default the repository's `AGENTS.md`): fails when the file is over 200 lines; the `agents-md-line-budget` pre-commit hook, run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged (issue #259); exits 0 within budget, 1 over, 2 file missing |
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |

@@ -189,6 +189,8 @@ Before marking a task complete or opening a PR:
 
 ## References (Read When Needed, Not Upfront)
 
+This file stays at most 200 lines (pre-commit hook `agents-md-line-budget`); reference material goes to `.agent/knowledge/`.
+
 - [`README.md`](README.md) — Workspace purpose and goals; [`docs/design.md`](docs/design.md) — System design; [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
 - [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns; [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity; [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
 - [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices; [`.agent/templates/`](.agent/templates/) — Issue and PR templates
