@@ -417,3 +417,22 @@ Checked: the fix resolves the finding (`bash scripts/check_agents_md_budget.sh` 
 
 ### Findings
 - [x] (must-fix) `SANDBOX_REPO` is set with a logical `pwd`, but the checker now reports a `pwd -P` path, so cases (e) and (g) fail wherever TMPDIR's path holds a symlink (macOS by default), failing `validate-script-tests` on every commit there that reaches this suite; set it with `pwd -P` (one line, mechanical; reproduced with TMPDIR through a symlink: 5 passed, 2 failed) — `.agent/scripts/tests/test_agents_md_budget.sh:83`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #416 at `a58e16a1`
+**Addressed**: Local Review at `85ff235b` (2026-11-02 13:27 -05:00)
+**Dispatch**: resumed (agent a2fe8078ba8bcf3a4, resume 2 of 3)
+**Commits**: a58e16a1
+
+### Actions
+- [x] `SANDBOX_REPO` is now built with `pwd -P`, matching the path the checker prints; with TMPDIR through a symlink the suite went from 5 passed, 2 failed to 7 passed, and it passes 7 of 7 with the default TMPDIR — `.agent/scripts/tests/test_agents_md_budget.sh:82`
+
+### Notes
+- The box on the Local Review was ticked by hand in a58e16a1: `review_progress.sh findings`/`check` do not read a post-PR `## Local Review` (issue 415 item 11).
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `a58e16a1`: exit 0, every hook passed, including validate-script-tests (all suites).
