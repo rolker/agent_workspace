@@ -58,3 +58,19 @@ issue: 259
 - [ ] Treat the Script Reference as a moved file with a generation or drift check if cheap; otherwise move verbatim and leave generation as follow-up.
 - [ ] Land before or coordinate with #323: if this merges first, #323 rebases its row into `.agent/knowledge/script_reference.md`.
 - [ ] Add a size ratchet (line count of AGENTS.md) only if the owner wants it; otherwise leave to #258's pattern.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:16 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the review's open actions are mechanism: design-doc update, re-measuring, verbatim move, coordination with issue 323; the two it routed to the owner, line target and size ratchet, are decided below from the recorded design and listed for veto; none changes the issue's scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The issue review (ebfb8718) found the issue well scoped; its dependency on issue 252 no longer holds (closed), the body's sizes are stale (AGENTS.md is 448 lines, 33,047 bytes), and "Documentation Accuracy" is now "Verify Before Claiming". Plan-task takes the six actions as plan inputs.
+
+### Decisions made (owner may veto)
+- Line target: under 200 lines, the reference point docs/design.md OQ-4 records; aim for the issue's 150 where it comes naturally — undoing it: a number in the plan.
+- A size check on AGENTS.md (fails when it passes the budget) is added only if it is one short hook or an existing validator's line; otherwise no ratchet — undoing it: drop the check.
+- The Script Reference table moves verbatim; a drift check against the scripts' own --help is out of scope — undoing it: a follow-up issue.
+- Coordination with issue 323: whichever merges second rebases; 323's new row goes into the moved file if 259 lands first — undoing it: none.
