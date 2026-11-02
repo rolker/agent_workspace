@@ -450,3 +450,18 @@ Pre-push review round 2 (b7d4c216): approved, both round-1 must-fixes resolved, 
 
 ### False positives
 - (adversarial sub-reviewer) `mktemp -t gh_pr_body.XXXXXX.md` breaks on BSD/macOS — GNU accepts the mid-template X's (implied suffix); BSD/macOS `-t` treats its argument as a prefix and appends its own random `.XXXXXXXX`, so the file is still created uniquely under TMPDIR (name ends in random characters rather than `.md`, which gh does not read). It is more portable than main's `mktemp /tmp/gh_pr_body.XXXXXX.md`, which on BSD substitutes nothing.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 14:16 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (integrated review has one confirmed must-fix from Copilot in merge_pr.sh and three smaller valid findings; address is within the checkpoint table; the two follow-up-issue candidates are fixed on this branch instead, a mechanism decision listed for veto, so no issue is opened)
+**After**: findings
+**Decision**: address
+
+Integrated Review (42516c6e): changes needed, 1 must-fix (merge_pr.sh ~1301: when the first review-hold lookup fails, the empty last-seen state lets a green CI target merge past a review still running; the walk-back switch also seeds that state from the CI-target poll, which may not be the review SHA), 3 minor/suggestion (relative attach paths after the body copy; the two other fetches still unbounded; --fill/--template/--recover create an unsigned PR with exit 0). False positive: the mktemp template (BSD -t treats it as a prefix). CI pending.
+
+### Decisions made (owner may veto)
+- The two other fetches get the same bound and prompt suppression on this branch rather than a follow-up issue: the bound exists now and reuse is cheap — undoing it: revert one commit.
+- The PR wrapper refuses (exit 2) --fill, --template and --recover without a body when identity is set, naming --no-signature as the explicit opt-out, so an unsigned PR needs a deliberate flag — undoing it: one commit; the alternative is a warning only.
+- The attach-path limit after the body copy is documented in the helper and warned on stderr when the body holds relative image links; the cwd is not changed because gh's repo targeting reads it — undoing it: one commit.
