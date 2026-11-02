@@ -59,7 +59,7 @@ repos:
       # ADR file needs its register row. Separate from validate-script-tests so
       # docs commits stay fast (issue #354). Hook approved by the owner 2026-10-09.
       - id: check-design-anchors
-        name: Check docs/design.md anchors resolve (issue #335)
+        name: "Check docs/design.md anchors resolve (issue #335)"
         entry: bash .agent/scripts/check_design_anchors.sh
         language: system
         pass_filenames: false
@@ -70,7 +70,7 @@ repos:
       # session, so it stays at most 200 lines. Runs only when AGENTS.md, the
       # check or this config is staged, so ordinary commits do not pay for it.
       - id: agents-md-line-budget
-        name: Check AGENTS.md stays at most 200 lines (issue #259)
+        name: "Check AGENTS.md stays at most 200 lines (issue #259)"
         entry: bash .agent/scripts/check_agents_md_budget.sh
         language: system
         pass_filenames: false
@@ -90,7 +90,7 @@ repos:
       # includes the runner, so CI runs every suite. require_serial keeps the
       # list in one process. --no-verify is never allowed.
       - id: validate-script-tests
-        name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)
+        name: "Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)"
         entry: bash .agent/scripts/tests/run_script_tests.sh --files
         language: system
         pass_filenames: true
