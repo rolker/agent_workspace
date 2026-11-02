@@ -253,3 +253,11 @@ The revision handles the second review's suggestions and the owner-approved `AGE
 **Decision**: revise
 
 Owner, 2026-11-02: "revise 323". The third plan review (affb1bb3) left one should-fix: the two ways step 8 finds the review-hold SHA behave differently and the path-based walk-back breaks ci-32; fix by recording the SHA of each commit this run pushes and walking back from HEAD_NOW over those only. Suggestion: the retitled design Rules row still says comments are signed by habit only.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 12:23 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `885bf4e1`
+
+Third revision: step 8's review-hold SHA is now one rule (merge_pr.sh records SHAs of its own pushed commits and walks back over exactly those; fixture 10c, ci-32 kept), and the retitled Rules row must still say comments are signed by habit only.
