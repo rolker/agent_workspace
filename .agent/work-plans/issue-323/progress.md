@@ -243,3 +243,13 @@ The revision handles the second review's suggestions and the owner-approved `AGE
 
 - [ ] Step 8: define the review-hold SHA by walking back from `HEAD_NOW` over the SHAs this run pushed (recorded after each successful Step 1 / 1.5 push), not by paths and not by a pre-Step-1 capture; say so in the ~1199 comment
 - [ ] Step 3: the retitled Rules row keeps that comments are signed by habit only
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner, 2026-11-02: "revise 323". The third plan review (affb1bb3) left one should-fix: the two ways step 8 finds the review-hold SHA behave differently and the path-based walk-back breaks ci-32; fix by recording the SHA of each commit this run pushes and walking back from HEAD_NOW over those only. Suggestion: the retitled design Rules row still says comments are signed by habit only.
