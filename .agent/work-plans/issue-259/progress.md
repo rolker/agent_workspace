@@ -382,3 +382,20 @@ Reproduced at `300000a`: `bash scripts/check_agents_md_budget.sh` (through the r
 **Decision**: address
 
 Integrated Review (9953d465): changes-requested, 0 must-fix, 1 suggestion, CI pending. The budget checker resolves its default path without following symlinks, so run through the scripts/ symlink it reads the parent folder's AGENTS.md (exit 2 today, a silent wrong-file check wherever that folder holds one); the hook calls the real path so the gate is unaffected. Fix: pwd -P as capture.sh does, a symlink test with a decoy file, and the same one-line fix to check_design_anchors.sh, which has had the fault since before this PR.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #416 at `fdf9c791`
+**Addressed**: Integrated Review at `300000a` (2026-11-02 13:14 -05:00)
+**Dispatch**: resumed (agent a2fe8078ba8bcf3a4, resume 1 of 3)
+**Commits**: 1bec66e0, fdf9c791
+
+### Actions
+- [x] The budget checker resolves its default path physically (`pwd -P` on the script dir and on `../..`, as `capture.sh` does); case (g) runs it with no argument through a sandbox `scripts -> .agent/scripts` symlink with a 201-line repository AGENTS.md and a 1-line decoy in the parent, expecting exit 1 naming the repository's file; the case fails on the old checker (exit 0, read the decoy) and passes on the new one; Cases list updated — `.agent/scripts/check_agents_md_budget.sh:16`, `.agent/scripts/tests/test_agents_md_budget.sh`
+- [x] Same `pwd -P` fix in its own commit for the sibling default root, a fault older than this PR; run through the worktree's `scripts/` symlink from another directory it now exits 0 — `.agent/scripts/check_design_anchors.sh:103`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `fdf9c791`: exit 0, every hook passed, including validate-script-tests (all suites; the branch touches `.pre-commit-config.yaml`). AGENTS.md unchanged at 199 lines.
