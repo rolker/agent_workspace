@@ -165,6 +165,50 @@ else
 fi
 check_base "unreachable origin" "$(git -C "$SB" rev-parse --verify --quiet feature/issue-7 >/dev/null && echo feature/issue-7)" \
     "$LOCAL_MAIN" "local main"
+if [[ "$OUT" == *"WARNING: could not fetch 'main' from origin in "*"(fatal: "*"does not appear to be a git repository)"* ]]; then
+    pass "unreachable origin: the warning carries git's first error line"
+else
+    fail "unreachable origin: the warning does not name git's error: ${OUT:0:400}"
+fi
+
+echo
+echo "=== A fetch that would prompt or hang is bounded ==="
+# An ssh origin whose "ssh" records GIT_TERMINAL_PROMPT and then hangs,
+# as a passphrase or host-key prompt would. WT_FETCH_TIMEOUT=2 must end
+# the fetch and fall back to the local default with the timeout named.
+# The start-point helper is called directly, under set -euo pipefail as
+# worktree_create.sh runs it: the script's other origin calls (the
+# target-branch fetch in _wt_add_repo) are not what this case is about.
+if command -v timeout >/dev/null 2>&1; then
+    SSH_SHIM="$SB/stubbin/hang-ssh"
+    PROMPT_SEEN="$SANDBOX/prompt-seen"
+    printf '#!/usr/bin/env bash\nprintf "%%s" "${GIT_TERMINAL_PROMPT-unset}" > "%s"\nexec sleep 30\n' \
+        "$PROMPT_SEEN" > "$SSH_SHIM"
+    chmod +x "$SSH_SHIM"
+    gitq -C "$SB" remote set-url origin "ssh://git@example.invalid/origin.git"
+    started=$SECONDS
+    OUT="$(GIT_SSH_COMMAND="$SSH_SHIM" WT_FETCH_TIMEOUT=2 bash -c '
+        set -euo pipefail
+        source "$1/.agent/scripts/_worktree_helpers.sh"
+        start=$(_wt_default_start_point "$1")
+        echo "START=$start"' _ "$SB" 2>&1)"
+    RC=$?
+    elapsed=$((SECONDS - started))
+    if [[ "$RC" -eq 0 && "$OUT" == *"could not fetch 'main' from origin in "*"(timed out after 2s)"*"local 'main'"* \
+          && "$OUT" == *"START=main"* && "$elapsed" -lt 20 ]]; then
+        pass "hanging fetch: ended by WT_FETCH_TIMEOUT (${elapsed}s), local 'main' with the timeout named"
+    else
+        fail "hanging fetch: rc=$RC elapsed=${elapsed}s: ${OUT:0:400}"
+    fi
+    if [[ "$(cat "$PROMPT_SEEN" 2>/dev/null)" = "0" ]]; then
+        pass "hanging fetch: git ran with GIT_TERMINAL_PROMPT=0"
+    else
+        fail "hanging fetch: GIT_TERMINAL_PROMPT was '$(cat "$PROMPT_SEEN" 2>/dev/null || echo 'not recorded')'"
+    fi
+    gitq -C "$SB" remote set-url origin "file:///nonexistent/origin.git"
+else
+    echo "  SKIP: hanging fetch (no timeout command on this machine)"
+fi
 
 echo
 echo "=== No resolvable default: refuse with the set-head hint, never HEAD ==="

@@ -130,9 +130,11 @@ legacy `project/` checkout.
 A new branch, for an issue or a skill and in every repo of the worktree,
 starts from that repo's default branch as origin has it (`origin/<default>`,
 fetched first), whichever branch the invoking checkout is on, and is not
-set to track it (the first `git push -u` sets the upstream). When origin
-cannot be reached the local default branch is used, with a warning; when no
-default branch resolves, creation stops and suggests
+set to track it (the first `git push -u` sets the upstream). That fetch
+never asks for credentials (`GIT_TERMINAL_PROMPT=0`) and is ended after
+`WT_FETCH_TIMEOUT` seconds (default 60) where `timeout` is installed. When
+origin cannot be reached or the fetch times out, the local default branch
+is used, with a warning that says why; when no default branch resolves, creation stops and suggests
 `git remote set-head origin -a`. Only `--parent-issue` (below) starts a
 branch elsewhere. An existing branch, local or on origin, is checked out as
 it is.

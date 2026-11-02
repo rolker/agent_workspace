@@ -468,8 +468,14 @@ wt_is_package_worktree() {
 #   - The ref resolve_default_branch returns (`main` or `origin/main`) is
 #     reduced to its name and fetched quietly into origin/<name>.
 #   - Fetched: prints `origin/<name>`.
-#   - Origin unreachable or the ref missing there: prints the local
-#     `<name>` (else a stale `origin/<name>`) with a warning on stderr.
+#   - The fetch never prompts and never hangs: GIT_TERMINAL_PROMPT=0 stops
+#     git asking for HTTPS credentials (a credential helper still answers),
+#     and `timeout` (when installed) ends it after WT_FETCH_TIMEOUT seconds
+#     (default 60), which also bounds an SSH passphrase prompt.
+#   - Origin unreachable, the fetch timed out, or the ref missing there:
+#     prints the local `<name>` (else a stale `origin/<name>`) with a
+#     warning on stderr that names why (the timeout, or git's first error
+#     line).
 #   - Nothing resolves: an error with the `git remote set-head origin -a`
 #     hint, and returns 1 (never a silent HEAD).
 # Callers create the branch with `git worktree add --no-track`, so it stays
@@ -494,18 +500,34 @@ _wt_default_start_point() {
         return 1
     fi
     name="${ref#origin/}"
-    if git -C "$repo" fetch --quiet origin -- "+refs/heads/$name:refs/remotes/origin/$name" >/dev/null 2>&1 \
+    local limit="${WT_FETCH_TIMEOUT:-60}" err="" rc=0 why=""
+    local -a bound=()
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    command -v timeout >/dev/null 2>&1 && bound=(timeout -k 5 "$limit")
+    err="$(GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} \
+           git -C "$repo" fetch --quiet origin -- "+refs/heads/$name:refs/remotes/origin/$name" 2>&1 >/dev/null)" \
+        || rc=$?
+    if [ "$rc" -eq 0 ] \
        && git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$name^{commit}" >/dev/null; then
         echo "origin/$name"
         return 0
     fi
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        why="timed out after ${limit}s"
+    else
+        # git's first error line, without a pipe (a `| sed q` under
+        # pipefail can fail the assignment and so the caller's set -e).
+        why="${err#"${err%%[![:space:]]*}"}"
+        why="${why%%$'\n'*}"
+        why="${why:-git fetch exited $rc}"
+    fi
     if git -C "$repo" rev-parse --verify --quiet "refs/heads/$name^{commit}" >/dev/null; then
-        echo "WARNING: could not fetch '$name' from origin in $repo; starting the new branch from the local '$name', which may be behind origin" >&2
+        echo "WARNING: could not fetch '$name' from origin in $repo ($why); starting the new branch from the local '$name', which may be behind origin" >&2
         echo "$name"
         return 0
     fi
     if git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$name^{commit}" >/dev/null; then
-        echo "WARNING: could not fetch '$name' from origin in $repo; starting the new branch from the last fetched 'origin/$name'" >&2
+        echo "WARNING: could not fetch '$name' from origin in $repo ($why); starting the new branch from the last fetched 'origin/$name'" >&2
         echo "origin/$name"
         return 0
     fi
