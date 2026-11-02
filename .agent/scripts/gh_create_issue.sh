@@ -48,6 +48,8 @@
 #         - a value-taking flag with no value (-R/--repo also refuses an
 #           empty one)
 #         - both a body and a body file provided
+#         - --template / -T or --recover with no body and no --no-signature
+#           (gh would write a body this wrapper cannot sign)
 #         - a --body-file that cannot be read
 #         - repo-safety mismatch (gh would target the wrong remote)
 #         - AGENT_NAME / AGENT_MODEL unset when a body is provided and
@@ -109,6 +111,10 @@ if [ "$GH_BODY_INDEX" -ge 0 ] && [ "$GH_BODY_FILE_INDEX" -ge 0 ]; then
     echo "❌ Error: --body and --body-file are mutually exclusive" >&2
     exit 2
 fi
+
+# --template / -T and --recover with no body let gh write the body itself, out of the wrapper's
+# reach: refuse unless --no-signature says an unsigned issue is meant.
+gh_refuse_unsigned_fill issue && exit 2
 
 # A --body-file is read once into a temp copy (under TMPDIR, removed on
 # exit) before anything looks at it: a pipe or process substitution can be

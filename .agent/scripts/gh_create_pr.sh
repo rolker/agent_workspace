@@ -54,6 +54,9 @@
 #         - a value-taking flag with no value (-R/--repo also refuses an
 #           empty one)
 #         - more than one of {--body, --body-file, --body-stdin} provided
+#         - --fill / -f, --fill-first, --fill-verbose, --template / -T or
+#           --recover with no body and no --no-signature (gh would write
+#           a body this wrapper cannot sign)
 #         - a --body-file that cannot be read
 #         - repo-safety mismatch (gh would target the wrong remote)
 #         - AGENT_NAME / AGENT_MODEL unset when a body is provided and
@@ -118,6 +121,10 @@ if [ "$_BODY_SOURCE_COUNT" -gt 1 ]; then
     echo "❌ Error: --body, --body-file, and --body-stdin are mutually exclusive" >&2
     exit 2
 fi
+
+# --fill / -f, --fill-first, --fill-verbose, --template / -T and --recover with no body let gh write the body itself, out of the wrapper's
+# reach: refuse unless --no-signature says an unsigned PR is meant.
+gh_refuse_unsigned_fill PR && exit 2
 
 # --- Repo-safety check (issue #72) -------------------------------------------
 # Prevent gh from targeting the wrong repo when running inside scratchpad

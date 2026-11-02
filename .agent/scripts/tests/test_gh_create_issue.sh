@@ -422,6 +422,30 @@ else
 fi
 
 echo
+echo "=== gh-written bodies (--template, --recover) need a body or --no-signature ==="
+for args in "--template|tpl" "-T|tpl" "--recover|r.json"; do
+    IFS='|' read -r -a argv <<<"$args"
+    run --title T "${argv[@]}"
+    if [[ "$RC" -eq 2 ]] && ! gh_called && [[ "$OUT" == *"--no-signature"* ]]; then
+        pass "${argv[*]} with no body: exit 2 naming --no-signature, gh not called"
+    else
+        fail "${argv[*]} with no body: rc=$RC gh_called=$(gh_called && echo yes || echo no)"
+    fi
+done
+run --title T --template tpl --no-signature
+if [[ "$RC" -eq 0 ]] && argv_has "--template"; then
+    pass "--template --no-signature: the explicit opt-out creates unsigned"
+else
+    fail "--template --no-signature refused (rc=$RC)"
+fi
+run --title T --template tpl --body B
+if [[ "$RC" -eq 0 ]] && sig_in "$ARGV_LOG"; then
+    pass "--template with a body: the body is signed"
+else
+    fail "--template with a body: rc=$RC"
+fi
+
+echo
 echo "=== The user-tier root guard refuses before signing ==="
 # Same probe as test_user_tier_guard.sh (--title t --body b, AGENT_MODEL
 # unset), from a repo registered nowhere: the guard's refusal must come

@@ -37,6 +37,10 @@
 #                       counting the pr wrapper's --body-stdin)
 #   GH_BODY_STDIN       true when --body-stdin was given (pr only)
 #   GH_TITLE_INDEX      index of the last --title value, or -1
+#   GH_BODY_FROM_GH     the flags given that make gh write the body
+#                       itself, which the wrapper cannot sign: --template /
+#                       -T and --recover (both commands), --fill / -f,
+#                       --fill-first and --fill-verbose (pr); each named once
 # It returns 2, with the error on stderr, when a value-taking flag has no
 # value or -R / --repo has an empty one.
 #
@@ -51,6 +55,10 @@
 #
 # gh_body_is_signed <marker> is true when the body gh will get (the inline
 # value or the copy) already contains <marker>.
+#
+# gh_refuse_unsigned_fill <PR|issue> is true, with the reason on stderr,
+# when GH_BODY_FROM_GH is not empty, no body flag was given and
+# --no-signature was not: the caller exits 2.
 
 # The GH_* variables are this file's output, read by the sourcing wrapper.
 # shellcheck disable=SC2034
@@ -123,8 +131,17 @@ _gh_take() {  # <long name> <value>
         title)     GH_TITLE_INDEX=$idx ;;
         label)     GH_LABELS+=("$2") ;;
         repo)      GH_REPO="$2" ;;
+        template|recover) _gh_note_body_from_gh "--$1" ;;
     esac
     return 0
+}
+
+_gh_note_body_from_gh() {  # <flag>
+    local f
+    for f in ${GH_BODY_FROM_GH[@]+"${GH_BODY_FROM_GH[@]}"}; do
+        [ "$f" = "$1" ] && return 0
+    done
+    GH_BODY_FROM_GH+=("$1")
 }
 
 gh_create_parse() {  # <issue|pr> <arg>...
@@ -139,6 +156,7 @@ gh_create_parse() {  # <issue|pr> <arg>...
     GH_BODY_FILE_GIVEN=false
     GH_BODY_STDIN=false
     GH_TITLE_INDEX=-1
+    GH_BODY_FROM_GH=()
 
     local arg name value rest c long
     while [ $# -gt 0 ]; do
@@ -176,6 +194,13 @@ gh_create_parse() {  # <issue|pr> <arg>...
                     [ "$name" = body-file ] && GH_BODY_FILE_GIVEN=true
                     _gh_take "$name" "$value" || return 2
                 else
+                    if [ "$kind" = pr ]; then
+                        case "$arg" in
+                            --fill|--fill-first|--fill-verbose) _gh_note_body_from_gh "$arg" ;;
+                            --fill=*|--fill-first=*|--fill-verbose=*)
+                                [ "${arg#*=}" = false ] || _gh_note_body_from_gh "${arg%%=*}" ;;
+                        esac
+                    fi
                     GH_ARGS+=("$arg")
                 fi
                 ;;
@@ -201,9 +226,11 @@ gh_create_parse() {  # <issue|pr> <arg>...
                         _gh_take "$long" "$value" || return 2
                     elif _gh_short_is_bool "$kind" "$c"; then
                         if [ ${#rest} -ge 2 ] && [ "${rest:0:1}" = "=" ]; then
+                            [ "$kind:$c" = pr:f ] && [ "${rest:1}" != false ] && _gh_note_body_from_gh --fill
                             GH_ARGS+=("-$c$rest")
                             rest=""
                         else
+                            [ "$kind:$c" = pr:f ] && _gh_note_body_from_gh --fill
                             GH_ARGS+=("-$c")
                         fi
                     else
@@ -236,6 +263,21 @@ gh_body_copy() {  # <mktemp template>
         return 2
     fi
     GH_ARGS[$GH_BODY_FILE_INDEX]="$GH_BODY_COPY"
+    return 0
+}
+
+# True (status 0), with the reason on stderr, when the command would go
+# out with a body gh writes itself (GH_BODY_FROM_GH), no --body /
+# --body-file, and no --no-signature. The wrappers exit 2 on it: that body
+# is not theirs to sign, so an unsigned PR or issue needs the opt-out.
+gh_refuse_unsigned_fill() {  # <"PR"|"issue">
+    [ "$GH_NO_SIGNATURE" = true ] && return 1
+    if [ "$GH_BODY_INDEX" -ge 0 ] || [ "$GH_BODY_FILE_INDEX" -ge 0 ]; then
+        return 1
+    fi
+    [ ${#GH_BODY_FROM_GH[@]} -gt 0 ] || return 1
+    echo "❌ Error: ${GH_BODY_FROM_GH[*]} with no --body / --body-file lets gh write the $1 body, which this wrapper cannot sign." >&2
+    echo "   Give the body with --body or --body-file (it is signed), or pass --no-signature to create the $1 unsigned." >&2
     return 0
 }
 

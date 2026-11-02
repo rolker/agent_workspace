@@ -502,6 +502,29 @@ check "100 KB signed inline body keeps one footer" \
     bash -c '[[ "$(grep -cF "**Authored-By**:" "$1")" -eq 1 ]]' _ "$ARGV_LOG"
 
 echo
+echo "=== gh-written bodies (--fill, --template, --recover) need a body or --no-signature ==="
+# shellcheck disable=SC2016  # the bash -c programs expand their own $1
+for args in "--fill" "-f" "-df" "--fill-first" "--fill-verbose" "--template|tpl.md" "-T|tpl.md" "--recover|r.json"; do
+    IFS='|' read -r -a argv <<<"$args"
+    assert_exit_code "${argv[*]} with no body → exit 2" 2 --title "T" "${argv[@]}"
+    check "${argv[*]} with no body: gh not called" bash -c '[[ ! -f "$1" ]]' _ "$ARGV_LOG"
+done
+out=$(run_wrapper --title "T" --fill 2>&1)
+# shellcheck disable=SC2016
+check "--fill refusal names --fill and --no-signature" \
+    bash -c '[[ "$1" == *"--no-signature"* && "$1" == *"--fill with no"* ]]' _ "$out"
+assert_calls_gh "--fill --no-signature: the explicit opt-out creates unsigned" --title "T" --fill --no-signature
+# shellcheck disable=SC2016
+check "--fill --no-signature: --fill reaches gh" bash -c 'grep -Fxq -- --fill "$1"' _ "$ARGV_LOG"
+assert_calls_gh "--template with a body: the body is signed" --title "T" --template tpl.md --body "B"
+check "--template with a body: footer" body_signed "$ARGV_LOG"
+assert_calls_gh "--fill=false is not a fill" --title "T" --fill=false --body "B"
+unset AGENT_NAME AGENT_MODEL
+assert_exit_code "identity unset + --fill → exit 2" 2 --title "T" --fill
+export AGENT_NAME="Test Agent"
+export AGENT_MODEL="test-model"
+
+echo
 echo "=== Temp files ==="
 if [[ -s "$LEAK_LOG" ]]; then
     echo "  FAIL [tmp]:        temp files left behind:"; sed 's/^/    /' "$LEAK_LOG"
