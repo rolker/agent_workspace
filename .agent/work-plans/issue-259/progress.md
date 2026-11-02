@@ -488,3 +488,19 @@ Checked R6's claim against the code with each checker reverted to its 9953d465 v
 **Decision**: address
 
 Integrated Review (103cdd81): changes-requested, 0 must-fix, 1 suggestion (Copilot at ce1da92): test_design_anchors.sh never runs the anchors checker with no argument, so the pwd -P fix to check_design_anchors.sh is unguarded (46/46 against the old checker). Fix: a test that runs the anchors checker through the scripts/ symlink with no argument. Third host address in a row on this PR; noted for the orchestrator log as a loop that keeps finding adjacent test gaps one at a time.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #416 at `e91d555c`
+**Addressed**: Integrated Review at `8a505ae` (2026-11-02 13:46 -05:00)
+**Dispatch**: resumed (agent a2fe8078ba8bcf3a4, resume 3 of 3)
+**Commits**: e91d555c
+
+### Actions
+- [x] New default-root case in the usage section: a sandbox copy of the anchors checker, run with no argument and `DESIGN_ANCHORS_ROOT` unset through a `scripts -> .agent/scripts` symlink from another directory, must fail exit 1 on its own repository's broken citation (`README.md:1:`, `no-such-section`); the repository's parent has no `docs/design.md`; expected path built with `pwd -P`; header updated. Against the 9953d465 checker the suite gives 46 passed, 1 failed (exit 2, "docs/design.md not found under <sandbox>/sym"); against the current checker 47 of 47 — `.agent/scripts/tests/test_design_anchors.sh`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `e91d555c`: exit 0, every hook passed, including validate-script-tests (all suites).
