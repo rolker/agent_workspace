@@ -386,3 +386,38 @@ Verified: full `run_script_tests.sh` (all 42 suites passed, 555 s); shellcheck -
 ### Not done
 - The target-branch fetch in `_wt_add_repo` (pre-existing on main, not this finding's line) has the same unbounded-prompt shape; left as it is.
 - AGENTS.md's script table has no row for the new `_gh_create_args.sh` helper (several `_*.sh` helpers have none either); AGENTS.md is Ask-First, so it is not edited here.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-02 14:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ad0813040dd155e8e, resume 1 of 3)
+
+**Branch**: feature/issue-323 at `ea6bfb03`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff still holds the enforcement script merge_pr.sh and ~1500 changed lines; fix round classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Both round-1 must-fixes are resolved. The new `_gh_create_args.sh` parser matches gh 2.103.3's value-taking flags and boolean shorthands for `issue create` and `pr create` (checked against `--help` by the Claude adversarial reviewer). Each value-taking flag takes its value whatever it looks like, and `-b=X`, `-bX`, `-F=X`, `-FX`, `-F -`, clusters and `--` all parse as pflag parses them. Every readable body file, a pipe or process substitution included, is read once into a TMPDIR copy and signed; one that cannot be read exits 2. `--no-signature` is consumed and never reaches gh.
+
+The PR wrapper keeps every form its old tests covered. It changes in two ways: `--body-stdin` now goes through the TMPDIR copy, and a missing body file exits 2 instead of being handed to gh.
+
+The fetch runs before `git worktree add`, so a timeout cannot leave a half-made worktree.
+
+Verified:
+- test_gh_create_issue 55/55, test_gh_create_pr 73/73, test_worktree_create 21/21 and test_user_tier_guard 64/64, run here.
+- test_merge_pr_gate 116/116, run by the adversarial reviewer.
+- shellcheck --severity=warning is clean on the fix diff.
+- The implementer's final no-SKIP pre-commit run covered every suite.
+
+Findings dropped:
+- Gemini: `-w=` splits into `-w -=`. gh rejects both spellings.
+- Adversarial, unverified: gh resolving paths relative to the body file's directory.
+- No body flag means unsigned (`--fill`, `-e`, `--template`). This is the documented interactive rule and predates this change.
+- `WT_FETCH_TIMEOUT=0` falls back to 60. This is minor.
+- A BSD `mktemp` template. This workspace runs on Linux.
+
+### Findings
+- [ ] (suggestion) The two fetches that run before the bounded default-branch fetch have no timeout and no `GIT_TERMINAL_PROMPT=0`, so a hanging origin still hangs worktree creation before the new bound is reached. These are `fetch_remote_branch` in worktree_create.sh and the target-branch fetch in `_wt_add_repo`. Both predate this change and the implementer listed them as not done. Bound them the same way, or open a follow-up issue (codex rated it must-fix; downgraded because it is not a regression and the WORKTREE_GUIDE sentence names only the default-branch fetch) — `.agent/scripts/_worktree_helpers.sh:532`
