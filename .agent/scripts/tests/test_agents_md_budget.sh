@@ -79,7 +79,7 @@ expect "(d) missing file is an error" 2 "cannot read"
 # <repo>/AGENTS.md whatever the current directory is.
 mkdir -p "$SANDBOX/repo/.agent/scripts" "$SANDBOX/elsewhere"
 cp "$CHECKER" "$SANDBOX/repo/.agent/scripts/check_agents_md_budget.sh"
-SANDBOX_REPO="$(cd "$SANDBOX/repo" && pwd)"
+SANDBOX_REPO="$(cd "$SANDBOX/repo" && pwd -P)"
 
 # run_checker_no_arg -- runs the sandbox copy from another directory.
 run_checker_no_arg() {
