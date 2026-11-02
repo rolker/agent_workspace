@@ -303,3 +303,13 @@ Checked against the code at `ca89bdb`. The Never line: `session_start_project_la
 
 ### False positives
 - None. Gemini and Codex (recorded in the pre-push entry) raised no issues.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (integrated review has four valid suggestions, two cross-confirmed by Copilot; address is within the checkpoint table and each fix is small)
+**After**: findings
+**Decision**: address
+
+Integrated Review (db3a6e61): changes-requested, 0 must-fix, 4 suggestions, all valid, CI pending (lint still running). Fixes: the Never line names .agent/scripts/merge_pr.sh --pr <N> (Copilot and the pre-push review agree); a no-argument test of the budget checker in Copilot's sandbox form; quote the two hook names cut off at "(issue" by YAML; the OQ-4 row says go-ahead in principle, approval at the merge.
