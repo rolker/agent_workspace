@@ -199,3 +199,47 @@ The second plan review (4c070fb2) resolved both must-fixes and left one should-f
 **Plan**: `.agent/work-plans/issue-323/plan.md` at `a81b3bd7`
 
 Second revision: the Copilot review-hold is now on the host-pushed head (before this run's own pushes) with the ci-32 analogue placing the running review on the host commit; five suites get the default-branch helper and the helper is sourced at call time; WORKTREE_GUIDE change is an added sentence; assertions match the reworded CI-target line and the Rules row is retitled; the owner-approved AGENTS.md row is commit 4.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-02 12:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #323 — Small tooling fixes: skill worktrees branch from default, issue wrapper injects the AI signature, merge-script CI-target wording for host-pushed bookkeeping
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `a81b3bd7`
+**Branch**: `feature/issue-323`
+
+Third review, narrow: only the revision for the second review (`4c070fb2`): step 8 and fixture 10c, the step 5 suites, the step 11 WORKTREE_GUIDE wording, the 10a assertion, the retitled Rules row, and step 12. Findings resolved by the first two reviews are not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four commits: three fixes, then the docs-only `AGENTS.md` row. |
+| Issue alignment | Good | Serves, as checked: "Quality of the work and Trust, control and information; `docs/design.md#worktrees`, `docs/design.md#merge-gate`, `docs/design.md#identity`". Unchanged since review 2. |
+| File targeting | Good | Step 5 now names `test_issue_review_entry.sh` (line 35) and `test_dispatch_phase.sh` (line 40 and others). Both copy `_worktree_helpers.sh` without `_resolve_default_branch.sh`, as the plan says. The other suites that copy the helper either already copy `_resolve_default_branch.sh` (`test_merge_pr.sh`, `test_worktree_enter_stderr.sh`, `test_merge_pr_gate.sh`) or never reach worktree creation (`test_user_tier_guard.sh` stops at the root guard). The full-suite run before commit 2 covers them. |
+| Consequences | Needs work | Step 8's goal is right. One of its two named mechanisms breaks ci-32 (finding 1). |
+| Principle alignment | Good | 10a now asserts the CI-target line and the first "Waiting for CI on" SHA. 10c puts the running review on the host's commit, which review 2 showed the unfixed script merges past. |
+| ADR compliance | Good | ADR-0017: no other file quotes the Rules row title "A pull request carries the AI signature" (grep), so retitling breaks no reference. The `AGENTS.md` row for `gh_create_issue.sh` (line 416) has no copy anywhere else in the repo. Step 12 is the owner-approved Ask First edit, in its own commit. |
+| ROS conventions | N/A | Workspace plan. |
+
+Resolution of the second review: finding 1 (review-hold SHA) is resolved in intent, but the mechanism is open (finding 1 below). Findings 2, 3 and 4 are resolved. Step 11 now says WORKTREE_GUIDE gets an added sentence. Confirmed: the guide states no base, and only line 296 (`--parent-issue`) mentions branching.
+
+Checked in the code. Step 1 (merge_pr.sh ~604-612) and Step 1.5 (~837-839) commit locally and push without a rebase. `_ci_committed_paths` (~984-986) holds paths, not SHAs. `_ci_wt` is resolved at ~689, after Step 1 (~549). Nothing fetches `origin/<branch>` before Step 1: `HEAD_REVIEWED` is gh's `headRefOid` (~539).
+
+Reproduced in a scratch copy: the ci-32 fixture, plus a variant of `merge_pr.sh` that sets `_ci_review_sha` by walking back from `HEAD_NOW` over single-parent commits whose paths are all in `_ci_committed_paths`. Unfixed script: ci-32 passes, and the hold reads `031163c` (the host's checkpoint commit). Path walk-back: ci-32 fails. The walk skips this run's record commit and also skips the host's checkpoint commit, because both touch only `.agent/work-plans/issue-7/progress.md`. So the hold reads an older commit and the PR merges past the running review.
+
+### Findings
+
+1. **[Consequences, should-fix]** Step 8 offers two mechanisms joined by "or", and they are not equivalent. (a) The path-based walk-back cannot tell this run's commits from host commits that touch the same paths. The issue's own `progress.md` is exactly the path a host checkpoint commit touches, and `docs/roadmap.md` is the path in 10a/10c. Reproduced above: it regresses ci-32, which the plan says stays unchanged. (b) Capturing `origin/<branch>` before Step 1 needs a fetch that does not exist today, and `_ci_wt` is resolved only after Step 1. It also misses a push that lands after this run's Step 1.5 push and before Step 2 reads `HEAD_NOW`: the hold would read the pre-run head, not that push. Resolution: identify this run's commits by SHA, not by path. After each successful own push, record that commit's SHA (`git rev-parse HEAD` in `_WT_ROOT` / `_gate_wt`). Set `_ci_review_sha` by walking back from `HEAD_NOW` while the commit is in that set. That gives the host-pushed head in ci-32 and 10c, follows a later concurrent push, never reads this run's own record commit (no deadlock), and needs no new fetch or reordering. Name this one mechanism in step 8 and in the ~1199 comment. The existing ci-32 then pins the same-path case.
+2. **[Consequences, suggestion]** The retitled Rules row (step 3) drops "Issues and comments are signed by habit only". Comments still have no wrapper: there is no comment script in `.agent/scripts`. The new row should still say that comments are signed by habit only, so it does not claim a guard that does not exist.
+
+### Summary
+
+The revision handles the second review's suggestions and the owner-approved `AGENTS.md` commit cleanly, and the review-hold intent is now right. One gap is left. Step 8 lets the implementer pick a path-based walk-back that fails the existing ci-32 test (reproduced), or a pre-push capture that misses a concurrent push. Pinning it to "walk back over this run's own pushed SHAs" is a one-sentence amendment, and a further full review should not be needed.
+
+### Recommended Actions
+
+- [ ] Step 8: define the review-hold SHA by walking back from `HEAD_NOW` over the SHAs this run pushed (recorded after each successful Step 1 / 1.5 push), not by paths and not by a pre-Step-1 capture; say so in the ~1199 comment
+- [ ] Step 3: the retitled Rules row keeps that comments are signed by habit only
