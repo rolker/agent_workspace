@@ -421,3 +421,13 @@ Findings dropped:
 
 ### Findings
 - [ ] (suggestion) The two fetches that run before the bounded default-branch fetch have no timeout and no `GIT_TERMINAL_PROMPT=0`, so a hanging origin still hangs worktree creation before the new bound is reached. These are `fetch_remote_branch` in worktree_create.sh and the target-branch fetch in `_wt_add_repo`. Both predate this change and the implementer listed them as not done. Bound them the same way, or open a follow-up issue (codex rated it must-fix; downgraded because it is not a regression and the WORKTREE_GUIDE sentence names only the default-branch fetch) — `.agent/scripts/_worktree_helpers.sh:532`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 14:06 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (pre-push round 2 approved, ship recommended, 0 must-fix; the one suggestion is a pre-existing gap on main, left open for triage)
+**After**: publish
+**Decision**: publish
+
+Pre-push review round 2 (b7d4c216): approved, both round-1 must-fixes resolved, 0 must-fix, 1 suggestion (two other fetches, fetch_remote_branch in worktree_create.sh and the target-branch fetch in _wt_add_repo, are still unbounded; both on main before this branch; one already in the inbox). Gemini ran, one minor point dropped (gh rejects both spellings). Codex ran, the fetch suggestion. Publishing.
