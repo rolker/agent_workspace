@@ -52,11 +52,17 @@ registry_require_root "$ROOT_DIR" || exit 1
 LAYER=""
 PACKAGE_REPOS=""
 
-# Try to fetch a specific branch from origin.
+# Try to fetch a specific branch from origin, never prompting and bounded
+# by WT_FETCH_TIMEOUT (wt_bounded_git, #323). A branch origin does not have
+# fails quietly, as before; a fetch the limit ended says so on stderr.
 fetch_remote_branch() {
     local git_path="$1"
-    local branch="$2"
-    git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null
+    local branch="$2" rc=0
+    wt_bounded_git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "WARNING: fetching '$branch' from origin in $git_path $(wt_fetch_why "$rc" ""); treating it as not on origin" >&2
+    fi
+    return "$rc"
 }
 
 # extract_gh_slug is provided by _issue_helpers.sh (sourced above)

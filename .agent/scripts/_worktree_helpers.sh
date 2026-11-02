@@ -461,6 +461,40 @@ wt_is_package_worktree() {
     [ "$count" -gt 1 ]
 }
 
+# Every git call worktree creation makes to origin runs through this
+# (#323): GIT_TERMINAL_PROMPT=0 stops git asking for HTTPS credentials (a
+# credential helper still answers), and `timeout` (when installed) ends it
+# after WT_FETCH_TIMEOUT seconds (default 60), which also bounds an SSH
+# passphrase or host-key prompt. The exit status is git's, or 124 (137
+# after the -k grace) when the limit ended it.
+# Usage: wt_bounded_git -C <repo> fetch ...
+wt_fetch_limit() {  # prints the validated WT_FETCH_TIMEOUT
+    local limit="${WT_FETCH_TIMEOUT:-60}"
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    echo "$limit"
+}
+wt_bounded_git() {
+    local -a bound=()
+    if command -v timeout >/dev/null 2>&1; then
+        bound=(timeout -k 5 "$(wt_fetch_limit)")
+    fi
+    GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} git "$@"
+}
+# A one-line reason for a failed wt_bounded_git call: the timeout, or the
+# first non-blank line of its stderr (no pipe: a `| sed q` under pipefail
+# can fail the assignment and so the caller's set -e).
+# Usage: why=$(wt_fetch_why <rc> "<stderr>")
+wt_fetch_why() {
+    local rc="$1" err="$2" why
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "timed out after $(wt_fetch_limit)s"
+        return 0
+    fi
+    why="${err#"${err%%[![:space:]]*}"}"
+    why="${why%%$'\n'*}"
+    echo "${why:-git fetch exited $rc}"
+}
+
 # The start point for a new branch in <repo> that has no parent branch
 # (issue #323): the repo's default branch as origin has it, never the
 # invoking checkout's HEAD, so a worktree created from inside a feature
@@ -468,10 +502,7 @@ wt_is_package_worktree() {
 #   - The ref resolve_default_branch returns (`main` or `origin/main`) is
 #     reduced to its name and fetched quietly into origin/<name>.
 #   - Fetched: prints `origin/<name>`.
-#   - The fetch never prompts and never hangs: GIT_TERMINAL_PROMPT=0 stops
-#     git asking for HTTPS credentials (a credential helper still answers),
-#     and `timeout` (when installed) ends it after WT_FETCH_TIMEOUT seconds
-#     (default 60), which also bounds an SSH passphrase prompt.
+#   - The fetch never prompts and never hangs (wt_bounded_git).
 #   - Origin unreachable, the fetch timed out, or the ref missing there:
 #     prints the local `<name>` (else a stale `origin/<name>`) with a
 #     warning on stderr that names why (the timeout, or git's first error
@@ -500,27 +531,15 @@ _wt_default_start_point() {
         return 1
     fi
     name="${ref#origin/}"
-    local limit="${WT_FETCH_TIMEOUT:-60}" err="" rc=0 why=""
-    local -a bound=()
-    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
-    command -v timeout >/dev/null 2>&1 && bound=(timeout -k 5 "$limit")
-    err="$(GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} \
-           git -C "$repo" fetch --quiet origin -- "+refs/heads/$name:refs/remotes/origin/$name" 2>&1 >/dev/null)" \
+    local err="" rc=0 why=""
+    err="$(wt_bounded_git -C "$repo" fetch --quiet origin -- "+refs/heads/$name:refs/remotes/origin/$name" 2>&1 >/dev/null)" \
         || rc=$?
     if [ "$rc" -eq 0 ] \
        && git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$name^{commit}" >/dev/null; then
         echo "origin/$name"
         return 0
     fi
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-        why="timed out after ${limit}s"
-    else
-        # git's first error line, without a pipe (a `| sed q` under
-        # pipefail can fail the assignment and so the caller's set -e).
-        why="${err#"${err%%[![:space:]]*}"}"
-        why="${why%%$'\n'*}"
-        why="${why:-git fetch exited $rc}"
-    fi
+    why="$(wt_fetch_why "$rc" "$err")"
     if git -C "$repo" rev-parse --verify --quiet "refs/heads/$name^{commit}" >/dev/null; then
         echo "WARNING: could not fetch '$name' from origin in $repo ($why); starting the new branch from the local '$name', which may be behind origin" >&2
         echo "$name"
@@ -551,7 +570,11 @@ _wt_add_repo() {
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
     else
-        out="$(git -C "$origin" fetch origin -- "$branch" 2>&1)"; rc=$?
+        out="$(wt_bounded_git -C "$origin" fetch origin -- "$branch" 2>&1)"; rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            out="fetching '$branch' from origin in $origin: $(wt_fetch_why "$rc" "")"
+            echo "WARNING: $out" >&2
+        fi
         if [ "$rc" -eq 0 ]; then
             out="$(git -C "$origin" worktree add --track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
         fi
@@ -561,9 +584,13 @@ _wt_add_repo() {
             if git -C "$origin" show-ref --verify --quiet "refs/heads/$parent_branch"; then
                 base="$parent_branch"
             else
-                local fetch_out; fetch_out="$(git -C "$origin" fetch origin -- "$parent_branch" 2>&1)"
-                if [ $? -eq 0 ]; then
+                local fetch_out fetch_rc=0
+                fetch_out="$(wt_bounded_git -C "$origin" fetch origin -- "$parent_branch" 2>&1)" || fetch_rc=$?
+                if [ "$fetch_rc" -eq 0 ]; then
                     base="origin/$parent_branch"
+                elif [ "$fetch_rc" -eq 124 ] || [ "$fetch_rc" -eq 137 ]; then
+                    out="fetching '$parent_branch' from origin in $origin: $(wt_fetch_why "$fetch_rc" "")"
+                    echo "WARNING: $out" >&2
                 else
                     out="$fetch_out"
                 fi

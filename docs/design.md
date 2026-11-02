@@ -362,7 +362,7 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1033-1039 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 254-266, 304-310, 458-463, 547-559, 581-593, 1039-1045 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 240-284, 391-430, 574, 691, 707 and 842, 950 and 963, 1716-1732 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
@@ -802,6 +802,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-02 | Rules, Identity | `gh_create_issue.sh` signs an issue body as `gh_create_pr.sh` signs a pull request (`--no-signature`, exit 2 without an identity): the Rules row is retitled to cover issues and still says comments are signed by habit only, and the Identity bullet names both wrappers | #323 | 855 |
 | 2026-11-02 | Registry and adapters, Worktrees | Line citations of `worktree_create.sh`, `merge_pr.sh` and `gh_create_pr.sh` refreshed after #323 moved them (a new branch's start point; the CI target's bookkeeping set and the review-hold SHA; the signing wrappers' shared argument parser, `_gh_create_args.sh`); no statement changes | #323 | 856 |
 | 2026-11-02 | Merge gate, Registry and adapters, Worktrees | Review fix: an unreadable review state holds the merge (refused at the CI grace deadline); `merge_pr.sh` line citations refreshed again | #323 | 858 |
+| 2026-11-02 | Registry and adapters | `worktree_create.sh` line citations refreshed after its branch fetch was bounded like the default-branch fetch; no statement changes | #323 | 859 |
 
 ## Glossary
 
