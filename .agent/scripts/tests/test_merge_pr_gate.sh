@@ -1343,6 +1343,58 @@ else
     fail "(ci-37) (green=${green:0:7} host=${host:0:7} head=${head_now:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
 fi
 
+# The review SHA differs from the CI target here (stale headRefOid: CI on
+# the green head, review on the host's commit under this run's record
+# commit), so its check-runs are a read of their own. Until that read has
+# succeeded once the hold is unresolved: a failed first read must never
+# count as "no review running" (#323 review).
+echo "TEST: review hold — the review SHA's first read fails once, its review finished: merges only after reading it (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY"
+write_checkruns_exit "$sb" "$host" 1 1                               # first read of the review SHA fails
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=10 MERGE_PR_CI_GRACE_SECONDS=10 run_merge_wait "$sb" 2>&1)" || true
+reads=$(grep -cF "api repos//commits/${host}/check-runs" "$sb/gh_calls.log" 2>/dev/null || echo 0)
+if merged_called "$sb" && [[ "$reads" -ge 2 ]] && [[ "$out" != *"still in progress"* ]]; then
+    pass "(ci-41) a one-time failed read of the review SHA: re-read ($reads reads), then merges on its finished review"
+else
+    fail "(ci-41) (green=${green:0:7} host=${host:0:7} reads=$reads merged=$(merged_called "$sb" && echo yes || echo no) lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the review SHA's first read fails once, its review still running: holds (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+write_checkruns_exit "$sb" "$host" 1 1
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=2 MERGE_PR_CI_GRACE_SECONDS=2 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${host:0:7}"* ]]; then
+    pass "(ci-42) a one-time failed read, then a running review: the green CI target does not merge past it"
+else
+    fail "(ci-42) (green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the review SHA's check-runs never read: refuses at the grace deadline (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns_exit "$sb" "$host" 1                                 # every read fails
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=30 MERGE_PR_CI_GRACE_SECONDS=1 run_merge_wait "$sb" 2>&1)"; rc=$?
+if ! merged_called "$sb" && [[ "$rc" -ne 0 ]] \
+    && [[ "$out" == *"could not read the check-runs of \`${host:0:7}\`, the commit the review runs on, within 1s"* ]]; then
+    pass "(ci-43) review SHA unreadable throughout: no merge, refusal at the grace deadline naming the review commit"
+else
+    fail "(ci-43) (rc=$rc green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+echo "TEST: review hold — review SHA unreadable but --allow-pending-review: merges (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns_exit "$sb" "$host" 1
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=30 MERGE_PR_CI_GRACE_SECONDS=1 run_merge_wait "$sb" --allow-pending-review 2>&1)" || true
+if merged_called "$sb" && [[ "$out" != *"could not read the check-runs"* ]]; then
+    pass "(ci-44) --allow-pending-review: an unreadable review state does not hold the merge"
+else
+    fail "(ci-44) (green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
 echo "TEST: CI target — a review re-triggered by this run's own record push does not hold the merge (#323)"
 read -r sb green host <<<"$(make_stale_sandbox progress)"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"

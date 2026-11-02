@@ -38,7 +38,9 @@
 #      not CI is waited on. Copilot's review check-run is never CI (#300):
 #      its conclusion is ignored, but while it is still running the wait
 #      holds the merge until it completes (or the CI timeout) unless
-#      --allow-pending-review (or --no-wait) opts in.
+#      --allow-pending-review (or --no-wait) opts in. Until the review
+#      commit's check-runs have been read once, the hold is unresolved:
+#      no merge, and a refusal at the CI grace deadline (#323).
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -1261,10 +1263,19 @@ if [[ "$NO_WAIT" == false ]]; then
         [[ -n "$_ci_hold" ]] && _ci_review_sha="$_ci_hold"
     fi
     _ci_head_excluded_last=""
+    # Whether the review SHA's check-runs have been read at least once
+    # (#323 review). Until they have, "no review running" is unknown, not
+    # true: an empty last-seen state must never release the hold. The hold
+    # stays unresolved, and at the grace deadline the wait refuses
+    # (review-unreadable) rather than merge past a review it never saw.
+    _ci_review_read=false
     while :; do
         _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
         _ci_state="${_ci_poll_out%%|*}"
         _ci_excluded="${_ci_poll_out#*|}"
+        if [[ "$_ci_review_sha" == "$CI_TARGET_SHA" && "$_ci_state" != error ]]; then
+            _ci_review_read=true
+        fi
         # Bookkeeping walk-back (#300, owner rule), once, on the first poll:
         # when the target has no verdict yet (nothing registered, or still
         # running), a bookkeeping-only ancestor that already reached success
@@ -1273,6 +1284,7 @@ if [[ "$NO_WAIT" == false ]]; then
             _ci_walked=true
             if [[ "$_ci_state" == none || "$_ci_state" == pending ]] && [[ -n "$_ci_wt" ]]; then
                 _ci_switched=false
+                _ci_pre_switch_sha="$CI_TARGET_SHA"
                 for _ci_cand in $(_ci_walk_bookkeeping "$_ci_wt" "$CI_TARGET_SHA"); do
                     _ci_probe=$(_ci_poll_state "$_ci_cand" 2>/dev/null); _ci_probe="${_ci_probe%%|*}"
                     if [[ "$_ci_probe" == success || "$_ci_probe" == failed ]]; then
@@ -1283,12 +1295,19 @@ if [[ "$NO_WAIT" == false ]]; then
                     fi
                 done
                 if [[ "$_ci_switched" == true ]]; then
-                    # This poll read the review SHA itself, so its excluded
+                    # When this poll read the review SHA itself (the
+                    # pre-switch target was the review SHA), its excluded
                     # state is the last one actually seen. Seed the carry-over
                     # before the `continue` drops it: otherwise a failed first
                     # head re-read after the switch falls back to "" and a
                     # green target merges past a running review (#300 round 5).
-                    _ci_head_excluded_last="$_ci_excluded"
+                    # When it read another commit (#323: the review SHA can
+                    # differ from the CI target), that commit's review state
+                    # says nothing about the review SHA's, so nothing is seeded
+                    # and the hold waits for a read of the review SHA itself.
+                    if [[ "$_ci_pre_switch_sha" == "$_ci_review_sha" ]]; then
+                        _ci_head_excluded_last="$_ci_excluded"
+                    fi
                     continue
                 fi
             fi
@@ -1309,6 +1328,7 @@ if [[ "$NO_WAIT" == false ]]; then
             else
                 _ci_excluded="${_ci_head_out#*|}"
                 _ci_head_excluded_last="$_ci_excluded"
+                _ci_review_read=true
             fi
         fi
         # A review check-run that has not finished (`status=...`, no
@@ -1320,6 +1340,11 @@ if [[ "$NO_WAIT" == false ]]; then
         _ci_review_pending=false
         if [[ "$_ci_excluded" == *status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
             _ci_review_pending=true
+        fi
+        # Never read yet: unresolved, so CI's green cannot merge (#323 review).
+        _ci_review_unknown=false
+        if [[ "$_ci_review_read" == false ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
+            _ci_review_unknown=true
         fi
         if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" != "$_ci_excluded" ]]; then
             # Once per distinct state (running -> completed), not once per
@@ -1340,6 +1365,10 @@ if [[ "$NO_WAIT" == false ]]; then
                     if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
                         _ci_result="review-pending"; break
                     fi
+                elif [[ "$_ci_review_unknown" == true ]]; then
+                    if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                        _ci_result="review-unreadable"; break
+                    fi
                 else
                     _ci_result="success"; break
                 fi
@@ -1356,6 +1385,10 @@ if [[ "$NO_WAIT" == false ]]; then
                     if [[ "$_ci_review_pending" == true ]]; then
                         if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
                             _ci_result="review-pending"; break
+                        fi
+                    elif [[ "$_ci_review_unknown" == true ]]; then
+                        if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                            _ci_result="review-unreadable"; break
                         fi
                     else
                         _ci_result="no-ci"; break
@@ -1402,6 +1435,12 @@ if [[ "$NO_WAIT" == false ]]; then
             {
                 echo "ERROR: CI checks did not complete on \`${CI_TARGET_SHA:0:7}\` within ${MERGE_PR_CI_TIMEOUT_SECONDS}s"
                 [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            } >&2
+            exit 1 ;;
+        review-unreadable)
+            {
+                echo "ERROR: could not read the check-runs of \`${_ci_review_sha:0:7}\`, the commit the review runs on, within ${MERGE_PR_CI_GRACE_SECONDS}s, so whether review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' is still in progress is unknown (CI itself is green or absent)"
+                echo "  No merge attempted — re-run once the API is reachable, or pass --allow-pending-review to merge without the review state."
             } >&2
             exit 1 ;;
         review-pending)
