@@ -339,3 +339,25 @@ Four commits, as the plan sets out:
 - `300d51b1` AGENTS.md: the Script Reference row for gh_create_issue.sh (owner-approved 2026-11-02).
 
 Final `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: every hook passed, `validate-script-tests` included.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-02 13:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-323 at `dac47ddf`
+**Base**: main
+**Depth**: Deep (reason: enforcement script merge_pr.sh changed; 1112 lines over 17 files excluding work plans)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Verified: full `run_script_tests.sh` (all 42 suites passed, 555 s); shellcheck --severity=warning clean on the changed scripts; the merge_pr.sh review-hold walk-back traced by hand (never reads this run's record commit, ci-38; stops at the first foreign commit so a late host push is the hold; ci-32 unchanged; empty HEAD_NOW or no local worktree keeps CI_TARGET_SHA as before); the issue wrapper's root guard (line 70) runs before any parse or signing, the EXIT trap is set before the first mktemp and no exec remains, `--body-file -` is signed; refreshed design.md line citations spot-checked. The three additions beyond the plan are justified: ROOT_READERS entries are required by the hook-scope suite for root-reading suites, the citation refresh is ADR-0017 upkeep, and stdin signing closes a hole that `--body-file -` would otherwise leave. Cross-model: gemini ran (no findings, short); codex ran (two findings, both kept below).
+
+### Findings
+- [ ] (must-fix) A readable non-regular `--body-file` (process substitution `<(...)`, a FIFO) fails `-f`, so the issue is created unsigned with exit 0; the comment says gh then fails, which is false for these. Copy every given body file other than a missing path into the temp copy with `cat` and sign that (codex) — `.agent/scripts/gh_create_issue.sh:356` (also 223, 323, 336, 360)
+- [ ] (must-fix) Flag normalisation is value-blind and incomplete: `-b=X`, `-bX`, `-F=X`, `-FX` (accepted by gh) reach gh unsigned with exit 0, and values that look like flags (`--title -b`, `--body '--repo=x'`, a value `--no-signature`) are rewritten or stripped. One parse pass that consumes each value-taking flag's value (cross-confirmed: codex, Claude adversarial) — `.agent/scripts/gh_create_issue.sh:91`
+- [ ] (suggestion) `gh_create_pr.sh` has the same two gaps (same normalisation loop; `-f` check at line 310); fix both wrappers together or open a follow-up issue — `.agent/scripts/gh_create_pr.sh:97`
+- [ ] (suggestion) `printf | grep -q` under pipefail can SIGPIPE on a large body, miss the marker and add a second footer; use a here-string — `.agent/scripts/gh_create_issue.sh:222`
+- [ ] (suggestion) The default-branch fetch has no `GIT_TERMINAL_PROMPT=0` / SSH BatchMode or timeout and discards stderr, so a credential prompt can block and an auth failure shows only as "could not fetch"; include the first error line in the warning — `.agent/scripts/_worktree_helpers.sh:497`
+- [ ] (suggestion) No fixture pins the late concurrent push (a host commit landing on top of this run's record commit before Step 2's fetch: the hold must read that host commit); correct by reading, untested — `.agent/scripts/tests/test_merge_pr_gate.sh:1345`
