@@ -399,3 +399,21 @@ Integrated Review (9953d465): changes-requested, 0 must-fix, 1 suggestion, CI pe
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `fdf9c791`: exit 0, every hook passed, including validate-script-tests (all suites; the branch touches `.pre-commit-config.yaml`). AGENTS.md unchanged at 199 lines.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-02 13:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a441d40b4bc30c7b8, resume 2 of 3)
+
+**PR**: #416 at `85ff235b`
+**Depth**: Deep (reason: whole-PR diff, 17 files, override triggers AGENTS.md and .pre-commit-config.yaml; fix-round rule, issue 320)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the Integrated Review's one finding (9953d465) and its fix commits 1bec66e0 and fdf9c791. The handoff called this round 3 and asked for no cross-model reviewers; counted by the rule for PR mode (complete PR-mode `## Local Review` entries since the newest restart, plus one; pre-push rounds do not carry over) it is PR round 2, so the round-3 exception does not apply and Gemini and Codex ran.
+
+Checked: the fix resolves the finding (`bash scripts/check_agents_md_budget.sh` through the symlink exits 0; `bash scripts/check_design_anchors.sh` exits 0); case (g) fails on the old checker (exit 0, read the decoy) and passes on the new; the design-anchors change is that one line plus a two-line comment, nothing else; AGENTS.md is 199 lines; the suite passes 7/7 here. Run again with TMPDIR set to a path through a symlink (as macOS's default /var/folders -> /private/var and /tmp -> /private/tmp are), cases (e) and (g) fail: the checker now prints the physical path, while the test builds its expected path with a logical `pwd`. Before 1bec66e0 both sides were logical, so (e) passed; the fix introduced this. Cross-model: gemini completed, no issues; codex completed, no issues (read-only, ran no fixtures).
+
+### Findings
+- [ ] (must-fix) `SANDBOX_REPO` is set with a logical `pwd`, but the checker now reports a `pwd -P` path, so cases (e) and (g) fail wherever TMPDIR's path holds a symlink (macOS by default), failing `validate-script-tests` on every commit there that reaches this suite; set it with `pwd -P` (one line, mechanical; reproduced with TMPDIR through a symlink: 5 passed, 2 failed) — `.agent/scripts/tests/test_agents_md_budget.sh:83`
