@@ -200,3 +200,17 @@ The revised plan resolves all five earlier findings: the section table matches t
 - [ ] State the budget in one AGENTS.md line, with one wording ("at most 200 lines") matching the hook
 - [ ] Add a `script_reference.md` row for `check_agents_md_budget.sh`
 - [ ] Correct lever 6c to 2 lines (197) when recording the final count
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:27 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second plan review verdict ready with five low findings only; proceed is within the checkpoint table; the lows go into the implement handoff)
+**After**: plan
+**Decision**: proceed
+
+The second plan review (80134dda) approved the plan: the size table sums to the file's 448 lines and lands at 199 (197 with the last lever); the budget hook runs in CI through make lint with no workflow change; the reference set is complete. Five lows for the implementer: the design doc's Instruction layers section drops "proposed" and "Nothing here is built", and OQ-4 is closed as a host decision for owner confirmation, listed in the decision summary; the hook's files pattern also matches the check script and the pre-commit config, and the script takes an optional path for its test; one AGENTS.md line states the budget, worded "at most 200" everywhere; the new script gets a script_reference.md row; the last trim saves 2 lines, so 197.
+
+### Decisions made (owner may veto)
+- The AGENTS.md line budget is at most 200 lines, closing OQ-4 — undoing it: the number in the hook and the design doc.
+- One AGENTS.md line states that budget, so the design doc's claim that every Rules-table rule is stated in AGENTS.md or the principles stays true — undoing it: drop the line.
