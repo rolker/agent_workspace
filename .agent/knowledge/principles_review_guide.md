@@ -60,7 +60,7 @@ Skip rows that clearly do not apply.
 | An ADR in `docs/decisions/` | This review guide's ADR table |
 | A change to how the parts fit (the design picture) | The matching section of `docs/design.md`, in the same change |
 | `AGENTS.md` | Framework adapters if affected (`.github/copilot-instructions.md`, etc.) |
-| A script in `.agent/scripts/` | Script reference table in `AGENTS.md`; `Makefile` if it has a target |
+| A script in `.agent/scripts/` | Script reference table in `.agent/knowledge/script_reference.md`; `Makefile` if it has a target |
 | The adapter contract (`REQUIRED_VERBS` in `.agent/scripts/adapter`) | Every `.agent/project_types/*/adapter.sh`; ADR-0011 (or a new ADR per ADR-0008 if the verb count changes); `test_adapter.sh` |
 | A template in `.agent/templates/` | Docs that reference the template; skills that use it |
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
