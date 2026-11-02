@@ -331,3 +331,22 @@ Integrated Review (db3a6e61): changes-requested, 0 must-fix, 4 suggestions, all 
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `4bcdc26a`: exit 0, every hook passed, including validate-script-tests (all suites, since the branch touches `.pre-commit-config.yaml`).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-02 13:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a441d40b4bc30c7b8, resume 1 of 3)
+
+**PR**: #416 at `bdfe3575`
+**Depth**: Deep (reason: whole-PR diff, 17 files, 1,151 changed lines, AGENTS.md and .pre-commit-config.yaml are override triggers; fix-round rule, issue 320)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the four fixes of the Implementation entry (bdfe3575, commits 345f1f06, 276f3007, 9f975b3c, 4bcdc26a) against the Integrated Review's findings (db3a6e61). The handoff asked for no cross-model reviewers; this is the PR's first PR-mode Local Review, so the round-3 convergence exception does not apply, and the fix-round rule (classify on the whole diff, never lower) dispatched Gemini and Codex as usual.
+
+Checked: AGENTS.md:62 now names `.agent/scripts/merge_pr.sh --pr <N>` with `make merge-pr` for the workspace; AGENTS.md is 199 lines and the checker exits 0; PyYAML loads all three hook names in full (check-design-anchors, agents-md-line-budget, validate-script-tests) and no other unquoted name holds ` #`; `test_agents_md_budget.sh` 6/6, cases (e) and (f) run a sandbox copy from another directory and (e) asserts the sandbox `<repo>/AGENTS.md` path in the output, so neither reads the real file; `test_session_start_layer.sh` 49/49; shellcheck clean; OQ-4 row matches the recorded go-ahead in principle. Copilot's two comments (at ca89bdb) are the two cross-confirmed findings, both fixed. CI Lint (pre-commit) still pending at review time.
+Cross-model: gemini completed, no issues; codex completed, no issues (read-only, ran no fixtures).
+
+### Findings
+- [ ] No issues found. LGTM.
