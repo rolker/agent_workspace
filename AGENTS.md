@@ -278,30 +278,6 @@ gh pr view <N> --json url --jq '.url'
 gh repo view --json url --jq '.url'
 ```
 
-### git-bug-first Pattern (ADR-0010)
-
-For issue reads, try git-bug first (offline-capable), then fall back to `gh`.
-PR operations (`gh pr view/merge/create/diff`) stay `gh`-only — git-bug
-doesn't track PRs.
-
-**Scripts**: source `.agent/scripts/_issue_helpers.sh` and use:
-- `issue_lookup <N> --repo <owner/repo> [--root <dir>]` — single issue
-- `issue_list_open --repo <owner/repo> [--root <dir>]` — list open issues
-- `issue_count_open --repo <owner/repo> [--root <dir>]` — count open issues
-
-**Sync behavior**:
-- **Reads**: local cache first; on miss, `git bug bridge pull github` + retry,
-  then fall back to `gh`
-- **Writes**: local git-bug op, then immediate `git bug bridge push github`
-- **Periodic**: `make sync` for full bidirectional reconciliation
-
-**git-bug CLI notes** (v0.10.1):
-- Use `git bug bug ...` (not `git bug ...`) for issue commands
-- Use `git bug bridge` (no subcommand) to list bridges — `bridge list` doesn't exist
-- Lookup by GitHub issue number uses metadata filter:
-  `git bug bug -m "github-url=https://github.com/OWNER/REPO/issues/N" --format json`
-- `--format json` works on both list (`bug bug`) and show (`bug bug show`)
-
 ### Repo Targeting in Scratchpad Clones
 
 The `gh` CLI resolves the target repo from the current directory's git remote.
@@ -394,5 +370,6 @@ Before marking a task complete or opening a PR:
 - [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity
 - [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
 - [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices
+- [`.agent/knowledge/git_bug_usage.md`](.agent/knowledge/git_bug_usage.md) — git-bug-first Pattern for issue reads and writes (ADR-0010)
 - [`.agent/knowledge/script_reference.md`](.agent/knowledge/script_reference.md) — Script Reference (every script in `.agent/scripts/`)
 - [`.agent/templates/`](.agent/templates/) — Issue and PR templates

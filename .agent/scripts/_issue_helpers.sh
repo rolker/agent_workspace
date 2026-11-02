@@ -12,7 +12,7 @@
 # jq is only needed for the git-bug path.
 #
 # Pattern: try git-bug first (offline-capable), pull on cache miss,
-# fall back to gh CLI. See ADR-0010 and AGENTS.md "git-bug-first Pattern".
+# fall back to gh CLI. See ADR-0010 and .agent/knowledge/git_bug_usage.md.
 # user-tier: inert -- this file only defines functions and environment
 # variables; it performs no repo-affecting action, so it needs no
 # registry_require_root guard (#265 PR 3, ADR-0016).
