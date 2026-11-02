@@ -100,7 +100,9 @@ if [[ $# -eq 1 ]]; then
 elif [[ -n "${DESIGN_ANCHORS_ROOT:-}" ]]; then
     ROOT="$DESIGN_ANCHORS_ROOT"
 else
-    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    # -P: through the repo-root `scripts/` symlink, a logical path's `../..`
+    # would be the checkout's parent (as in capture.sh).
+    ROOT="$(cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/../.." && pwd -P)"
 fi
 
 if [[ ! -d "$ROOT" ]]; then
