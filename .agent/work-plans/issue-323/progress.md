@@ -318,3 +318,24 @@ Both changes are sound. Step 8's rule (walk back from `HEAD_NOW` over exactly th
 **Decision**: proceed
 
 The fourth plan review (035a1b93) approved the plan: step 8's review-hold rule finds the host-pushed head in ci-32 and fixture 10c, follows a late push and never reads this run's own record commit. Two suggestions go into the implement handoff: add a SHA to the pushed list when its commit succeeds (Step 1's push can fail and Step 1.5's push then carries it), and keep today's fallback for the hold SHA when HEAD_NOW is empty or there is no local worktree to walk.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-323 at `300d51b1`
+
+Four commits, as the plan sets out:
+
+- `45f0f4ce` gh_create_issue.sh signs like gh_create_pr.sh: `--body`/`--body-file`, `-b`/`-F`, the `=` forms and `--body-file -`; `--no-signature` (stripped); exit 2 before any gh call when there is a body but no identity; one TMPDIR temp copy shared with the parent-ref injection, footer last, git-bug path signed; the final `exec` is dropped. New `test_gh_create_issue.sh`: 36 checks. Against the pre-fix script (swapped in, then restored), 27 of them fail. docs/design.md: the Rules row is retitled and still says comments are signed by habit only; the Identity bullet is updated; Change log row. The ROOT_READERS entry is in `test_script_tests_hook_scope.sh`.
+- `e83792eb` worktree_create.sh: a new branch starts from `origin/<default>`, through `_wt_default_start_point` in `_worktree_helpers.sh`, which is used by the workspace path and `_wt_add_repo`, with `--no-track`. Origin unreachable: the local default, with a warning. Nothing resolves: an error with the set-head hint. A missing parent falls back to the same start point. New `test_worktree_create.sh`: 18 checks. Against the pre-fix scripts, 11 fail (the `--no-track` and `--parent-issue` checks pass either way). The five named suites copy `_resolve_default_branch.sh`, and their worktree sandboxes init on `main`. WORKTREE_GUIDE.md gains a section, "Where a New Branch Starts". A full run of `run_script_tests.sh` before this commit passed all 42 suites.
+- `7cf0d9ca` merge_pr.sh: Step 2's allowed set adds `MERGE_PR_CI_BOOKKEEPING_PATTERNS`, now defined once above Step 2, and the success line is reworded. The review-hold SHA walks back from HEAD_NOW over `_RUN_COMMITTED_SHAS`. A SHA is added when its commit lands (review suggestion 1) and removed when a refused Step 1.5 push undoes it. With no HEAD_NOW or no local worktree, the hold is the CI target, as today (suggestion 2). Four comments are updated. New fixtures in `test_merge_pr_gate.sh`:
+  - ci-35: roadmap and another issue's work plan. Fails before: the PR 322 "not a merge-time document file" line, and the first wait is on the new head.
+  - ci-36: code, rename and submodule negatives.
+  - ci-37: review on the host commit. Fails before: the merge went past it.
+  - ci-38: no read of this run's own record commit.
+  - ci-39: Step 1's push is refused. Fails when the SHA is recorded only on a successful push.
+  ci-2b follows the new wording. The line citations in design.md and the runner comment are refreshed, with a Change log row. The suite has 114 checks, all passing; test_merge_pr.sh and test_merge_pr_root_resolution.sh also pass.
+- `300d51b1` AGENTS.md: the Script Reference row for gh_create_issue.sh (owner-approved 2026-11-02).
+
+Final `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: every hook passed, `validate-script-tests` included.
