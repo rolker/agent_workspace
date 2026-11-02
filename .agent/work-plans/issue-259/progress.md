@@ -74,3 +74,11 @@ The issue review (ebfb8718) found the issue well scoped; its dependency on issue
 - A size check on AGENTS.md (fails when it passes the budget) is added only if it is one short hook or an existing validator's line; otherwise no ratchet — undoing it: drop the check.
 - The Script Reference table moves verbatim; a drift check against the scripts' own --help is out of scope — undoing it: a follow-up issue.
 - Coordination with issue 323: whichever merges second rebases; 323's new row goes into the moved file if 259 lands first — undoing it: none.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 12:18 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-259/plan.md` at `4d731111`
+
+Move Script Reference, git-bug notes, GitHub CLI patterns, Build & Test and the worktree command blocks to knowledge files with pointers, one commit each, then a line-budget check and the design-doc update; expected size is near 205 lines before fallback trims reach under 200.
