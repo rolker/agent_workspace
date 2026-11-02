@@ -177,3 +177,17 @@ The revision resolves the first review's findings. Both must-fix resolutions hol
 - [ ] Step 10a: assert the printed CI-target line and the first "Waiting for CI on" SHA (both runs merge, so the merge itself proves nothing)
 - [ ] Step 2/5: source `_resolve_default_branch.sh` at call time in the helper, or add `test_issue_review_entry.sh` / `test_dispatch_phase.sh`; run every suite before commit 2
 - [ ] Step 11: WORKTREE_GUIDE gains a base statement (it has none today)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second plan review needs-work with one should-fix on the review-hold rule; the host's own earlier decision on that rule was wrong and is reversed; second host revise in a row, so the next plan answer is the owner's)
+**After**: plan
+**Decision**: revise
+
+The second plan review (4c070fb2) resolved both must-fixes and left one should-fix: holding the Copilot review-hold on HEAD_NOW is wrong in the stale shape, where HEAD_NOW is this run's own record commit, so a review still running on the host's commit is merged past (reproduced by the reviewer). Revision: hold on the head before this run's own pushes, and the ci-32 analogue puts the running review on the host commit. Suggestions to take: test_issue_review_entry.sh and test_dispatch_phase.sh also copy _worktree_helpers.sh without _resolve_default_branch.sh; WORKTREE_GUIDE.md's change is an added sentence; match the post-fix assertion to the reworded line; retitle the design Rules row. The owner approved the AGENTS.md script-table row (2026-11-02, "Yes"); it enters the plan as its own commit.
+
+### Decisions made (owner may veto)
+- Reversed: the review-hold SHA is the head before this run's own pushes (the host-pushed head), not HEAD_NOW — undoing it: one plan line and one fixture.
+- The AGENTS.md row is in the plan as a separate commit, on the owner's yes — undoing it: drop that commit.
