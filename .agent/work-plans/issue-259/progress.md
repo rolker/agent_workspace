@@ -454,3 +454,27 @@ Checked: a58e16a1 changes one line, `SANDBOX_REPO` built with `pwd -P` at `test_
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-02 13:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested (1 suggestion, 0 must-fix)
+**Dispatch**: resumed (agent ae45e921ddd6df66c, resume 2 of 3)
+
+**PR**: #416 at `8a505ae`
+**Sources**: 6 (Copilot R3 @ `300000a`, Copilot R4 @ `10c34f5`, Copilot R5 @ `85ff235`, Copilot R6 @ `ce1da92`, Local Review @ `ce1da92` (covers `8a505ae` via bookkeeping; round 3, no cross-model reviewers by the round-3 rule), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Round 3. The previous Integrated Review's one finding (9953d465) was fixed in 1bec66e0 (budget checker resolves its default path with `pwd -P`, plus case (g)) and fdf9c791 (the same fix in `check_design_anchors.sh`). The PR-mode Local Review at `85ff235` (80951ab5) had one must-fix, the test's expected path built with logical `pwd`; a58e16a1 fixed it, and that entry is now stale. The round-3 Local Review (8a505aeb) found nothing; its only box is "No issues found. LGTM.", not a finding.
+
+Copilot, per review: R3 @ `300000a` recommends approval, no issues. R4 @ `10c34f5` is "needs a closer look" over the symlink finding at the head before the fix; addressed by 1bec66e0, and `bash scripts/check_agents_md_budget.sh` now exits 0. R5 @ `85ff235`, inline at `test_agents_md_budget.sh:82`: `SANDBOX_REPO` was logical while the checker prints a physical path. It is the same defect as the 80951ab5 must-fix, fixed in a58e16a1 (line 82 uses `pwd -P`), and R6 lists it resolved. R6 @ `ce1da92` has no inline comment; its overview says existing tests skip the changed symlink-resolution branch and would stay green if the fix were reverted, triaged below.
+
+Checked R6's claim against the code with each checker reverted to its 9953d465 version, in a copy in the session scratchpad. `test_agents_md_budget.sh` against the old budget checker gives 6 passed, 1 failed (case (g)), so that fix is covered. `test_design_anchors.sh` against the old `check_design_anchors.sh` gives 46 passed, 0 failed, the same as against the fixed one. Every call in that suite passes a root argument (lines 57, 530, 534) or `DESIGN_ANCHORS_ROOT` (line 541), so the default-root branch fdf9c791 changed never runs. R6's claim holds for that script.
+
+### Findings
+- [ ] (suggestion, Copilot R6 @ `ce1da92`) `test_design_anchors.sh` never runs `check_design_anchors.sh` with no argument and no `DESIGN_ANCHORS_ROOT`, so the fdf9c791 fix (default root resolved with `pwd -P` through the `scripts/` symlink) can be reverted with the suite green (46/46 either way, reproduced). Add a case as `test_agents_md_budget.sh` (g) does: copy the checker to `<repo>/.agent/scripts/`, add a `scripts -> .agent/scripts` symlink, give `<repo>` a fixture whose `docs/design.md` makes the checker fail with a recognisable message (e.g. a reference to a missing anchor, exit 1), leave the repository's parent without `docs/design.md` (a wrong resolution then exits 2, "docs/design.md not found"), build the expected path with `pwd -P`, run `bash <repo>/scripts/check_design_anchors.sh` with no argument and `DESIGN_ANCHORS_ROOT` unset from another directory, and expect exit 1 with that message; confirm the case fails against the 9953d465 checker — `.agent/scripts/tests/test_design_anchors.sh`
+
+### False positives
+- None. R4's symlink concern and R5's path concern are addressed at this head (1bec66e0, a58e16a1), not dismissed.
