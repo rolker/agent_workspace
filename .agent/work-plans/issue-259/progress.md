@@ -129,3 +129,17 @@ The plan is sound in shape: moves, pointers, pinned headings and repoints are co
 - [ ] Add `docs/design.md` line 427 ("Worktree Entry" citation) to step 8 and `audit-workspace/SKILL.md` line 159 to step 1
 - [ ] Cite ADR-0008 for the ADR-0010 pointer fix and drop that Open Question
 - [ ] Order step 6 levers so pinned sections are trimmed last, keeping the onboard-project sentence
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review needs-work with two medium findings; revising is within the checkpoint table; first host revise on this issue)
+**After**: plan
+**Decision**: revise
+
+The plan review (99962a2a) found the size estimate about 20 lines low (about 229 after the moves, 209 after the fallbacks), so the plan needs trims that touch no rule text; the line-budget check placed in validate_workspace.py would run in no gate; two prose references into moved text are missing; the ADR-0010 repoint is allowed (ADR-0008 permits fixing links, precedent 9ad62671); pinned sections are trimmed last.
+
+### Decisions made (owner may veto)
+- The line-budget check becomes a small pre-commit hook with a test, so it runs locally and in CI through make lint without a change to the CI workflow (which is Ask First) — undoing it: move the check.
+- Extra trims that touch no rule text: one pointer list in place of four new sections, the four make targets the issue names, a shorter worktree section; pinned sections last — undoing it: a plan line each.
