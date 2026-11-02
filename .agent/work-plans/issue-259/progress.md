@@ -543,3 +543,13 @@ Copilot: R7 @ `8a505ae` and R8 @ `d9fef03` are overview-only ("needs a closer lo
 
 ### False positives
 - None. R7 and R8 are addressed by e91d555c, not dismissed.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 15:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner, 2026-11-02: "merge it", after the decision summary (the 200-line budget and the new hook confirmed by the merge). CI all green at cae7bc37's head, the fourth Integrated Review approved with no findings.
