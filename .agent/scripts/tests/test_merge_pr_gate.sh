@@ -1388,6 +1388,74 @@ else
     fail "(ci-39) (reviewed=${reviewed:0:7} head=${head_now:0:7} lines: $(grep -E 'Roadmap|CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
 fi
 
+# A host push that lands on top of this run's record commit before Step 2's
+# fetch: the remote's post-receive hook, on this run's push, adds a
+# bookkeeping commit (another work-plan file) on top of it, as a host
+# pushing at that moment would, and writes that commit's check-runs
+# fixture (its SHA is known only then). The hold walks back only over this
+# run's own commits, so it must stop at the host's commit, the head.
+add_late_host_push() {  # <sb> <check-runs json for the host commit>
+    local sb="$1" json="$2" hook="${1}.remote.git/hooks/post-receive"
+    printf '%s' "$json" > "$sb/late_host_checkruns.json"
+    cat > "$hook" <<EOF
+#!/bin/bash
+[ -f "$sb/late_host.sha" ] && exit 0
+while read -r _old new ref; do
+    [ "\$ref" = refs/heads/feature/issue-7 ] || continue
+    export GIT_INDEX_FILE="$sb/late_host.index"
+    git read-tree "\$new"
+    blob=\$(printf 'host notes\n' | git hash-object -w --stdin)
+    git update-index --add --cacheinfo "100644,\$blob,.agent/work-plans/issue-7/host-notes.md"
+    tree=\$(git write-tree)
+    rm -f "\$GIT_INDEX_FILE"
+    late=\$(GIT_AUTHOR_NAME=host GIT_AUTHOR_EMAIL=h@h GIT_COMMITTER_NAME=host GIT_COMMITTER_EMAIL=h@h \
+        git commit-tree "\$tree" -p "\$new" -m "host: notes after the record commit")
+    git update-ref refs/heads/feature/issue-7 "\$late" "\$new"
+    echo "\$new" > "$sb/late_record.sha"
+    echo "\$late" > "$sb/late_host.sha"
+    cp "$sb/late_host_checkruns.json" "$sb/gh_fixtures/api_repos__commits_\${late}_check-runs.json"
+done
+EOF
+    chmod +x "$hook"
+}
+
+echo "TEST: review hold — a host push lands on top of this run's record commit before Step 2: the hold reads the host's commit (#323)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_mergeable_fixture "$sb" "MERGEABLE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY_RUNNING"          # review running on the host's commit
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+late=$(cat "$sb/late_host.sha" 2>/dev/null); record=$(cat "$sb/late_record.sha" 2>/dev/null)
+if [[ -n "$late" && -n "$record" ]] && ! merged_called "$sb" \
+    && [[ "$(git -C "${sb}.remote.git" rev-parse "${late}^")" == "$record" ]] \
+    && [[ "$(git -C "${sb}.remote.git" rev-parse "${record}^")" == "$green" ]] \
+    && [[ "$out" == *"CI target: reviewed head \`${green:0:7}\` — new head \`${late:0:7}\` only touches bookkeeping"* ]] \
+    && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${late:0:7}"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]]; then
+    pass "(ci-40) host commit on top of this run's record commit: the hold reads the host's commit and holds the merge"
+else
+    fail "(ci-40) (green=${green:0:7} record=${record:0:7} late=${late:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the same late host push with its review finished: merges, the hold read the host's commit (#323)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_mergeable_fixture "$sb" "MERGEABLE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY"                  # the host commit's review finished
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+late=$(cat "$sb/late_host.sha" 2>/dev/null); record=$(cat "$sb/late_record.sha" 2>/dev/null)
+if [[ -n "$late" ]] && merged_called "$sb" && [[ "$out" != *"still in progress"* ]] \
+    && grep -qF "api repos//commits/${late}/check-runs" "$sb/gh_calls.log" \
+    && ! grep -qF "api repos//commits/${record}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-40b) late host commit's review finished: merges; the hold read the host's commit, never this run's record commit"
+else
+    fail "(ci-40b) (green=${green:0:7} record=${record:0:7} late=${late:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
