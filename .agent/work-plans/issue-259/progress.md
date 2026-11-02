@@ -281,3 +281,25 @@ Checked: each moved section diffed against `git show main:AGENTS.md` (Script Ref
 **Decision**: publish
 
 Pre-push review (90b0b854): approved, 0 must-fix, 4 suggestions (the Never line names a make target that project sessions do not have; no test runs the checker with no argument; the hook name's unquoted "#259)" reads as a YAML comment; the OQ-4 row's wording on the owner's approval). Gemini ran, no issues; Codex ran, no issues, read-only so it ran no fixtures; the Claude subagent ran, nothing must-fix. Publishing; the suggestions go to triage.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-02 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested (4 suggestions, 0 must-fix)
+
+**PR**: #416 at `ca89bdb`
+**Sources**: 4 (Copilot R1 @ `ca89bdb`, Local Review (Pre-Push) @ `c870cea` (covers `ca89bdb` via bookkeeping), Gemini and Codex via that entry (both no issues), CI rollup)
+**Cross-source confirmations**: 2
+**CI**: pending
+
+Checked against the code at `ca89bdb`. The Never line: `session_start_project_layer.sh` pins Boundaries (WORKSPACE_SECTIONS, line 77) into project sessions, and its workspace-root note (lines 142-151) covers only paths written `.agent/scripts/...` or `.claude/hooks/...`; `merge-pr` is a workspace Makefile target (Makefile:151), so `make merge-pr` from a project cwd hits the project's Makefile or none. `.agent/scripts/merge_pr.sh --pr <N>` is the right replacement: it is in the note's path form, so a project session reaches it as `"$WS_ROOT/.agent/scripts/merge_pr.sh"`; the script finds its root from its own location (SCRIPT_DIR, lines 69 and 183), not the cwd; without `--type` it auto-detects from which worktree exists for the issue and asks when neither or both exist (header lines 15-16), and `/run-issue` already calls it that way (`--pr <M> --type <type>`). YAML: `.venv` PyYAML loads both hook names truncated at `(issue`. OQ-4: plan.md lines 19 and 30 record a go-ahead in principle with the final approval at the merge.
+
+### Findings
+- [ ] (cross-confirmed) The new Never line names `make merge-pr PR=<N>`, a workspace Makefile target that project sessions, which get Boundaries pinned, cannot run; replace with `.agent/scripts/merge_pr.sh --pr <N>` (one line, so AGENTS.md stays 199), e.g. "use `.agent/scripts/merge_pr.sh --pr <N>` (`make merge-pr PR=<N>` in the workspace)" — Copilot R1 @ `ca89bdb` + Local Review (Pre-Push) @ `c870cea` (covers `ca89bdb` via bookkeeping) — `AGENTS.md:62`
+- [ ] (cross-confirmed) No test runs the checker with no argument, the way the hook calls it, so a broken default-path resolution passes; take Copilot's form over the local one (asserting exit 0 on the real AGENTS.md would break the suite header's "reads no real AGENTS.md" and tie the test to the file's content): copy the checker to `$SANDBOX/repo/.agent/scripts/`, write a 201-line `$SANDBOX/repo/AGENTS.md`, run it with no argument from another directory, expect exit 1 naming that file; add a 200-line pass case the same way; update the Cases list in the header — Copilot R1 @ `ca89bdb` + Local Review (Pre-Push) @ `c870cea` (covers `ca89bdb` via bookkeeping) — `.agent/scripts/tests/test_agents_md_budget.sh:57`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c870cea`) The hook name `... (issue #259)` is unquoted, so YAML reads ` #259)` as a comment and loads the name as "Check AGENTS.md stays at most 200 lines (issue"; double-quote it, and the identical pre-existing `check-design-anchors` name two hooks up in the same file (loads as "Check docs/design.md anchors resolve (issue") — `.pre-commit-config.yaml:73`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c870cea`) The OQ-4 row's last column says "the owner approved the #259 trim on 2026-11-02"; the plan records a go-ahead in principle for the drive with the final approval his at the merge; word it as recorded, e.g. "(the owner's go-ahead for the #259 drive is approval in principle; the final approval is his at the merge)" — `docs/design.md:748`
+
+### False positives
+- None. Gemini and Codex (recorded in the pre-push entry) raised no issues.
