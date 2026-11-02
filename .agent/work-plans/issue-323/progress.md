@@ -48,3 +48,11 @@ issue: 323
 - Decide the item 3 variant before planning: folding the bookkeeping patterns into Step 2 is preferred, since it leaves one rule (matching the Merge gate design text) instead of a reworded message over two.
 - For item 1, define the behaviour when `origin/<default>` is unreachable (offline): fall back to the local default branch with a printed warning, never silently to HEAD. For issue worktrees, state in the plan whether `--parent-issue` remains the only way to branch from a feature branch.
 - Item 2 recently recurred (workspace issue 415, "onboard-project fixes from the first real onboarding run", was signed by hand with `gh issue edit`); consider doing it first.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 11:55 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `6e68df19`
+
+Three atomic commits in the host order: issue wrapper signature (new suite), worktree start point from origin default with local-default fallback warning (new suite), Step 2 bookkeeping set folded in (gate fixture). Walk-back kept.
