@@ -308,3 +308,13 @@ Both changes are sound. Step 8's rule (walk back from `HEAD_NOW` over exactly th
 
 - [ ] Implementation: add a SHA to the list on a successful Step 1 / Step 1.5 commit, and drop it when Step 1.5's commit is undone
 - [ ] Implementation: keep today's fallback for the hold SHA when `HEAD_NOW` is empty or there is no local worktree to walk in
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (fourth plan review verdict ready with two suggestions only; proceed is within the checkpoint table)
+**After**: plan
+**Decision**: proceed
+
+The fourth plan review (035a1b93) approved the plan: step 8's review-hold rule finds the host-pushed head in ci-32 and fixture 10c, follows a late push and never reads this run's own record commit. Two suggestions go into the implement handoff: add a SHA to the pushed list when its commit succeeds (Step 1's push can fail and Step 1.5's push then carries it), and keep today's fallback for the hold SHA when HEAD_NOW is empty or there is no local worktree to walk.
