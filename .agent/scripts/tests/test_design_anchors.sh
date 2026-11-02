@@ -18,6 +18,9 @@
 #   (f) guards are live once the register heading exists
 #   (g) a new ADR file without a register row fails only once the register
 #       exists
+#   usage and root selection, including the default root: a sandbox copy of
+#       the checker run with no argument through a `scripts/` symlink checks
+#       its own repository, not the repository's parent
 #
 # Run: bash .agent/scripts/tests/test_design_anchors.sh
 
@@ -540,6 +543,23 @@ printf 'docs/design.md#no-such-section\n' > "$R/README.md"
 RC=0
 OUT="$(DESIGN_ANCHORS_ROOT="$R" bash "$CHECKER" 2>&1)" || RC=$?
 expect "usage: DESIGN_ANCHORS_ROOT selects the root when no argument is given" 1 "no-such-section"
+
+# Default root, as the hook calls it: no argument, DESIGN_ANCHORS_ROOT unset,
+# run through the repo-root `scripts/` symlink from another directory. A
+# lexical `../..` from <repo>/scripts/ is <repo>'s parent, which has no
+# docs/design.md (exit 2); the repository's own fixture fails with exit 1.
+mkdir -p "$SANDBOX/sym/repo/.agent/scripts" "$SANDBOX/sym/elsewhere"
+SYM_REPO="$(cd "$SANDBOX/sym/repo" && pwd -P)"
+cp "$CHECKER" "$SYM_REPO/.agent/scripts/check_design_anchors.sh"
+ln -s .agent/scripts "$SYM_REPO/scripts"
+mkdir -p "$SYM_REPO/docs"
+plain_design "$SYM_REPO/docs/design.md"
+printf 'docs/design.md#no-such-section\n' > "$SYM_REPO/README.md"
+RC=0
+OUT="$(cd "$SANDBOX/sym/elsewhere" && env -u DESIGN_ANCHORS_ROOT \
+    bash "$SYM_REPO/scripts/check_design_anchors.sh" 2>&1)" || RC=$?
+expect "usage: no argument through the scripts/ symlink checks the checker's own repository" 1 \
+    "README.md:1:" "no-such-section"
 
 echo ""
 echo "test_design_anchors: ${PASS} passed, ${FAIL} failed"
