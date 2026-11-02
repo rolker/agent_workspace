@@ -521,3 +521,25 @@ Checked: 103cdd81..2bb4f6b0 touches only `.agent/scripts/tests/test_design_ancho
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-02 14:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved (0 findings)
+**Dispatch**: resumed (agent ae45e921ddd6df66c, resume 3 of 3)
+
+**PR**: #416 at `a08c4b2`
+**Sources**: 5 (Copilot R7 @ `8a505ae`, Copilot R8 @ `d9fef03`, Copilot R9 @ `2bb4f6b`, Local Review @ `2bb4f6b` (covers `a08c4b2` via bookkeeping; round 4, no cross-model reviewers by the round-3 rule), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Round 4. The previous Integrated Review's one finding (103cdd81: no test ran `check_design_anchors.sh` with its default root) was fixed in e91d555c with a new case in `test_design_anchors.sh`. That case runs a sandbox copy of the checker through a `scripts -> .agent/scripts` symlink, with no argument and `DESIGN_ANCHORS_ROOT` unset, and expects exit 1 on its own repository. Reproduced here: in-tree 47 passed, 0 failed; against the 9953d465 checker, in a scratch copy, 46 passed, 1 failed (exit 2, wanted 1), so the case catches the regression. The round-4 Local Review (a08c4b20) found nothing; its only box is "No issues found. LGTM.", not a finding.
+
+Copilot: R7 @ `8a505ae` and R8 @ `d9fef03` are overview-only ("needs a closer look") and repeat the anchors test gap at heads before e91d555c; addressed at this head as above. R9 @ `2bb4f6b`, the code at this head, recommends approval with no open issues. No inline comments, no conversation comments, no open local findings at this head.
+
+### Findings
+- None open. The PR is ready for the merge decision once CI settles.
+
+### False positives
+- None. R7 and R8 are addressed by e91d555c, not dismissed.
