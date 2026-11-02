@@ -413,7 +413,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh (dispatches via adapter) |
 | `.agent/scripts/setup_project.sh` | Configure project/ directory (dispatches via adapter) |
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
-| `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
+| `.agent/scripts/gh_create_issue.sh` | Create issue with AI signature injection + label validation, signing like `gh_create_pr.sh`: appends the footer to `--body` / `--body-file` (and `-b`, `-F`, the `=` forms), `--no-signature` to suppress, exit 2 when a body is given and `AGENT_NAME` / `AGENT_MODEL` are unset (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
 | `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the reviewed head; bookkeeping-only commits after it — progress.md, work plans, roadmap — are exempt), remove worktree, delete branch, sync main; the gate enforces by default on workspace PRs (`--report-only` records and proceeds; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record); a review check-run still running holds the merge (`--allow-pending-review` opts in); `--no-wait` skips the CI wait entirely (the mergeability settle and one merge retry always run) |

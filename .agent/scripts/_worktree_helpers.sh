@@ -461,10 +461,105 @@ wt_is_package_worktree() {
     [ "$count" -gt 1 ]
 }
 
+# Every git call worktree creation makes to origin runs through this
+# (#323): GIT_TERMINAL_PROMPT=0 stops git asking for HTTPS credentials (a
+# credential helper still answers), and `timeout` (when installed) ends it
+# after WT_FETCH_TIMEOUT seconds (default 60), which also bounds an SSH
+# passphrase or host-key prompt. The exit status is git's, or 124 (137
+# after the -k grace) when the limit ended it.
+# Usage: wt_bounded_git -C <repo> fetch ...
+wt_fetch_limit() {  # prints the validated WT_FETCH_TIMEOUT
+    local limit="${WT_FETCH_TIMEOUT:-60}"
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    echo "$limit"
+}
+wt_bounded_git() {
+    local -a bound=()
+    if command -v timeout >/dev/null 2>&1; then
+        bound=(timeout -k 5 "$(wt_fetch_limit)")
+    fi
+    GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} git "$@"
+}
+# A one-line reason for a failed wt_bounded_git call: the timeout, or the
+# first non-blank line of its stderr (no pipe: a `| sed q` under pipefail
+# can fail the assignment and so the caller's set -e).
+# Usage: why=$(wt_fetch_why <rc> "<stderr>")
+wt_fetch_why() {
+    local rc="$1" err="$2" why
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "timed out after $(wt_fetch_limit)s"
+        return 0
+    fi
+    why="${err#"${err%%[![:space:]]*}"}"
+    why="${why%%$'\n'*}"
+    echo "${why:-git fetch exited $rc}"
+}
+
+# The start point for a new branch in <repo> that has no parent branch
+# (issue #323): the repo's default branch as origin has it, never the
+# invoking checkout's HEAD, so a worktree created from inside a feature
+# worktree does not inherit that feature's commits.
+#   - The ref resolve_default_branch returns (`main` or `origin/main`) is
+#     reduced to its name and fetched quietly into origin/<name>.
+#   - Fetched: prints `origin/<name>`.
+#   - The fetch never prompts and never hangs (wt_bounded_git).
+#   - Origin unreachable, the fetch timed out, or the ref missing there:
+#     prints the local `<name>` (else a stale `origin/<name>`) with a
+#     warning on stderr that names why (the timeout, or git's first error
+#     line).
+#   - Nothing resolves: an error with the `git remote set-head origin -a`
+#     hint, and returns 1 (never a silent HEAD).
+# Callers create the branch with `git worktree add --no-track`, so it stays
+# untracked until its first `push -u`, as before.
+# _resolve_default_branch.sh is sourced here, at call time, not when this
+# file is sourced, so callers that never create a branch do not need it.
+# Usage: start=$(_wt_default_start_point <repo>) || exit 1
+_wt_default_start_point() {
+    local repo="$1" ref="" name="" helper=""
+    if ! declare -F resolve_default_branch >/dev/null; then
+        helper="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve_default_branch.sh"
+        if [ ! -f "$helper" ]; then
+            echo "ERROR: cannot pick a start point for a new branch: $helper is missing" >&2
+            return 1
+        fi
+        # shellcheck source=_resolve_default_branch.sh
+        source "$helper"
+    fi
+    if ! ref="$(resolve_default_branch "$repo")" || [ -z "$ref" ]; then
+        echo "ERROR: cannot resolve the default branch of $repo, so a new branch has no start point." >&2
+        echo "  Run: git -C $repo remote set-head origin -a" >&2
+        return 1
+    fi
+    name="${ref#origin/}"
+    local err="" rc=0 why=""
+    err="$(wt_bounded_git -C "$repo" fetch --quiet origin -- "+refs/heads/$name:refs/remotes/origin/$name" 2>&1 >/dev/null)" \
+        || rc=$?
+    if [ "$rc" -eq 0 ] \
+       && git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$name^{commit}" >/dev/null; then
+        echo "origin/$name"
+        return 0
+    fi
+    why="$(wt_fetch_why "$rc" "$err")"
+    if git -C "$repo" rev-parse --verify --quiet "refs/heads/$name^{commit}" >/dev/null; then
+        echo "WARNING: could not fetch '$name' from origin in $repo ($why); starting the new branch from the local '$name', which may be behind origin" >&2
+        echo "$name"
+        return 0
+    fi
+    if git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$name^{commit}" >/dev/null; then
+        echo "WARNING: could not fetch '$name' from origin in $repo ($why); starting the new branch from the last fetched 'origin/$name'" >&2
+        echo "origin/$name"
+        return 0
+    fi
+    echo "ERROR: the default branch '$name' of $repo is neither on origin nor local, so a new branch has no start point." >&2
+    echo "  Run: git -C $repo remote set-head origin -a" >&2
+    return 1
+}
+
 # Create one repo's git worktree, trying (in order): the target branch
 # locally, the target branch on origin, the parent branch (locally then on
 # origin) as the base for a new target branch, and finally a brand new
-# branch off HEAD. Every attempt's stderr is captured; only the final
+# untracked branch off the repo's default branch (_wt_default_start_point,
+# never HEAD). Every attempt's stderr is captured; only the final
 # failure's combined output is printed — never swallowed with 2>/dev/null.
 # Never falls back to a symlink (ADR-0012's structural no-symlink rule).
 # Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>]
@@ -475,7 +570,11 @@ _wt_add_repo() {
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
     else
-        out="$(git -C "$origin" fetch origin -- "$branch" 2>&1)"; rc=$?
+        out="$(wt_bounded_git -C "$origin" fetch origin -- "$branch" 2>&1)"; rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            out="fetching '$branch' from origin in $origin: $(wt_fetch_why "$rc" "")"
+            echo "WARNING: $out" >&2
+        fi
         if [ "$rc" -eq 0 ]; then
             out="$(git -C "$origin" worktree add --track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
         fi
@@ -485,9 +584,13 @@ _wt_add_repo() {
             if git -C "$origin" show-ref --verify --quiet "refs/heads/$parent_branch"; then
                 base="$parent_branch"
             else
-                local fetch_out; fetch_out="$(git -C "$origin" fetch origin -- "$parent_branch" 2>&1)"
-                if [ $? -eq 0 ]; then
+                local fetch_out fetch_rc=0
+                fetch_out="$(wt_bounded_git -C "$origin" fetch origin -- "$parent_branch" 2>&1)" || fetch_rc=$?
+                if [ "$fetch_rc" -eq 0 ]; then
                     base="origin/$parent_branch"
+                elif [ "$fetch_rc" -eq 124 ] || [ "$fetch_rc" -eq 137 ]; then
+                    out="fetching '$parent_branch' from origin in $origin: $(wt_fetch_why "$fetch_rc" "")"
+                    echo "WARNING: $out" >&2
                 else
                     out="$fetch_out"
                 fi
@@ -498,7 +601,15 @@ _wt_add_repo() {
         fi
 
         if [ "$rc" -ne 0 ]; then
-            out="$(git -C "$origin" worktree add -b "$branch" "$dest" 2>&1)"; rc=$?
+            if [ -n "$parent_branch" ]; then
+                echo "WARNING: parent branch '$parent_branch' not found in $origin; starting '$branch' from the default branch" >&2
+            fi
+            local start=""
+            if start="$(_wt_default_start_point "$origin")"; then
+                out="$(git -C "$origin" worktree add --no-track -b "$branch" "$dest" "$start" 2>&1)"; rc=$?
+            else
+                out=""; rc=1
+            fi
         fi
     fi
 

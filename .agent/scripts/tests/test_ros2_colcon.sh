@@ -214,12 +214,14 @@ make_worktree_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_resolve_default_branch.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
     mkdir -p "$sb/stubbin"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/gh"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
     chmod +x "$sb/stubbin/gh" "$sb/stubbin/git-bug"
-    git -C "$sb" init --quiet
+    # `-b main`: new worktree branches start from the default branch (#323).
+    git -C "$sb" init --quiet -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     echo "$sb"
 }

@@ -52,11 +52,17 @@ registry_require_root "$ROOT_DIR" || exit 1
 LAYER=""
 PACKAGE_REPOS=""
 
-# Try to fetch a specific branch from origin.
+# Try to fetch a specific branch from origin, never prompting and bounded
+# by WT_FETCH_TIMEOUT (wt_bounded_git, #323). A branch origin does not have
+# fails quietly, as before; a fetch the limit ended says so on stderr.
 fetch_remote_branch() {
     local git_path="$1"
-    local branch="$2"
-    git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null
+    local branch="$2" rc=0
+    wt_bounded_git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null || rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "WARNING: fetching '$branch' from origin in $git_path $(wt_fetch_why "$rc" ""); treating it as not on origin" >&2
+    fi
+    return "$rc"
 }
 
 # extract_gh_slug is provided by _issue_helpers.sh (sourced above)
@@ -844,12 +850,17 @@ else
             git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         else
-            echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to HEAD"
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to the default branch" >&2
+            START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
+            echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
+            git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
         fi
     else
-        echo "Creating new branch '$BRANCH_NAME' from current HEAD..."
-        git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        # The default branch, never the invoking checkout's HEAD (#323):
+        # run from inside a feature worktree, HEAD is that feature.
+        START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
+        echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
+        git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
     fi
 
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
