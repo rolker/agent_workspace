@@ -12,6 +12,10 @@ checked out in `project/`.
 - **[Host Standing Rules](host_standing_rules.md)**: The owner's standing rules for a session that drives issues and talks to him, each with its reason; read by `/orchestrator` and, by hand, by Codex or Gemini hosts.
 - **[Principles Review Guide](principles_review_guide.md)**: Evaluation criteria for workspace principles and ADRs. Used by lifecycle skills (triage, planning, review) and as a manual checklist.
 - **[Documentation Verification](documentation_verification.md)**: Mandatory verification workflow for writing accurate package documentation. Includes command cookbook and hallucination anti-patterns.
+- **[Build & Test](build_and_test.md)**: `.agent/project_config.sh`, the `make` targets and the project-type adapter they dispatch through (ADR-0011); moved from `AGENTS.md`.
+- **[GitHub CLI Patterns](github_cli_patterns.md)**: The PR wrapper, `--body-file`, looking up URLs, `-R` in scratchpad clones, merging from worktrees; moved from `AGENTS.md`.
+- **[git-bug-first Pattern](git_bug_usage.md)**: The issue-read and issue-write helpers, sync behaviour and git-bug CLI notes; moved from `AGENTS.md`. ADR-0010 is the decision record.
+- **[Script Reference](script_reference.md)**: Every script in `.agent/scripts/` with its purpose; moved from `AGENTS.md`. Add a row when you add a script.
 - **[Inspiration Registry](inspiration_registry.yml)**: Tracked external projects for the `/inspiration-tracker` skill. Per-project digests are created alongside this file on first run.
 
 ## Project-Specific Knowledge

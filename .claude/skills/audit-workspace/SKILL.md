@@ -72,7 +72,7 @@ is expected after a design change and is not an error. For each ADR in
 
 ### 3. Script reference table
 
-Compare the script reference table in `AGENTS.md` against actual scripts
+Compare the script reference table in `.agent/knowledge/script_reference.md` against actual scripts
 in `.agent/scripts/`:
 
 - Scripts listed in the table that don't exist → **stale reference**
@@ -156,7 +156,7 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
   be separate issues with their own worktrees. That includes the Decision
   register's `Re-examined` dates (step 2): the audit reports them, and a
   separate PR writes them.
-- **Be specific** — "AGENTS.md script table lists `generate_knowledge.sh`
+- **Be specific** — "`script_reference.md` lists `generate_knowledge.sh`
   but it was removed in #274" is actionable. "Some references may be stale"
   is not.
 - **Don't nitpick** — focus on things that would confuse agents or humans.

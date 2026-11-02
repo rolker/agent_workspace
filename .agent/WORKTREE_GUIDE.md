@@ -31,6 +31,9 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type project
 .agent/scripts/worktree_create.sh --skill research --type workspace
 source .agent/scripts/worktree_enter.sh --skill research --type workspace
 .agent/scripts/worktree_remove.sh --skill research --type workspace
+
+# List active worktrees
+.agent/scripts/worktree_list.sh
 ```
 
 For Codex or any tool that runs each shell command independently, use one of
@@ -43,6 +46,23 @@ git -C "$WT_PATH" status
 
 eval "$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --shell-snippet)"
 ```
+
+## Worktree Entry
+
+Skills that auto-enter a worktree (currently `/start-task`; potentially others
+in the future) use `Bash cd <path>`, not framework-native worktree-entry tools.
+Native tools that key off `git worktree list` (e.g. Claude Code's
+`EnterWorktree`) only accept worktrees of the *current* repo, so they reject
+project worktrees from a workspace session — the workspace and project are
+separate git repos. Using `cd` uniformly avoids a mode-dependent branch in
+entry skills and keeps behaviour consistent regardless of which repo owns the
+worktree.
+
+- **Exit a worktree**: `cd -` returns the session to the previous directory.
+  Any `cd` works; the worktree stays on disk.
+- **Delete a worktree**: `.agent/scripts/worktree_remove.sh --issue <N> --type
+  <type>` (or `--skill <name> --type workspace`). `make merge-pr PR=<N>` also
+  removes the worktree as part of the merge flow.
 
 ## Why Worktrees?
 

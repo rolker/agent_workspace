@@ -162,6 +162,7 @@ only.
 | The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
+| `AGENTS.md` stays at most 200 lines | Only what's needed | `hook` | `check_agents_md_budget.sh` (`agents-md-line-budget`), run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged; `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
@@ -424,8 +425,8 @@ Status: `decided`
   Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
   marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
 - A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
-  worktrees of the current repository and a project is a separate repository (`AGENTS.md`, "Worktree
-  Entry").
+  worktrees of the current repository and a project is a separate repository (`.agent/WORKTREE_GUIDE.md`,
+  "Worktree Entry").
 - Agents work concurrently in separate worktrees. Work in progress is made visible by a draft pull
   request, which `worktree_create.sh --plan-file` opens, and an agent checks for one before starting
   (`WORKFORCE_PROTOCOL.md` sections 1 to 3). `make lock` is an advisory note shown by the dashboard and
@@ -650,16 +651,13 @@ Status: `decided`
 
 **Now**
 
-Status: `proposed`
+Status: `decided`
 
-Nothing here is built. This section is a proposal, so its one block is labelled `Now` and carries
-`proposed`.
-
-Proposed: this file describes the four layers an agent's instructions load in, and gives the first a
-budget.
+This file describes the four layers an agent's instructions load in, and gives the first a budget.
 
 1. Always loaded. For Claude Code that is `CLAUDE.md`, which imports `AGENTS.md` with `@AGENTS.md`;
-   `AGENTS.md` is 26,564 bytes and 442 lines, `CLAUDE.md` 42 lines (`wc`, 2026-10-09). A session under a
+   `AGENTS.md` is 10,513 bytes and 199 lines, `CLAUDE.md` 42 lines (`wc`, 2026-11-02; `AGENTS.md` was
+   33,047 bytes and 448 lines before #259 moved its reference material out). A session under a
    registered project root gets nine pinned `AGENTS.md` sections instead, rendered by the
    `SessionStart` hook ([Sessions and roots](#sessions-and-roots)).
 2. Path-scoped. Rules that load only when the agent works on matching files. The workspace has none
@@ -668,11 +666,18 @@ budget.
 4. On demand. Files an agent opens because a pointer sent it there: this file, the ADRs, the
    knowledge files. This file is not always loaded.
 
-Proposed: a budget for the always-loaded layer, so that every added rule has to displace or justify
-itself. No number is set here. The reference point is the vendor guidance for Claude Code, a target of
-under 200 lines per instruction file, as recorded in the prior-art notes
-(`prior-art-comparison-2026-10-08/summary.md` item 5; `prior-art-alignment-agent-frameworks.md`, Claude
-Code entry). Changing `AGENTS.md` is Ask First and is not part of this change.
+The always-loaded layer has a budget, so that every added rule has to displace or justify itself:
+`AGENTS.md` stays at most 200 lines, and says so in its References section. It holds rules and
+pointers; reference material lives behind the pointers, in `.agent/knowledge/` (the script reference,
+GitHub CLI patterns, the git-bug-first pattern, build and test configuration) and
+`.agent/WORKTREE_GUIDE.md` (the worktree commands and entry). The `agents-md-line-budget` pre-commit
+hook (`check_agents_md_budget.sh`) fails a commit that takes the file past 200 lines; it runs only
+when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged, and `make lint` runs it again in
+CI. The number follows the vendor guidance for Claude Code, a target of under 200 lines per instruction
+file, as recorded in the prior-art notes (`prior-art-comparison-2026-10-08/summary.md` item 5;
+`prior-art-alignment-agent-frameworks.md`, Claude Code entry). The host set it on 2026-11-02 (#259),
+closing OQ-4, for the owner's confirmation at the merge. `CLAUDE.md` and the other adapter files have
+no budget of their own.
 
 ## Decision register
 
@@ -740,7 +745,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 | C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
-| OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
+| OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file)? Answered by #259, a host decision of 2026-11-02 for the owner's confirmation at the merge: `AGENTS.md` stays at most 200 lines, held by the `agents-md-line-budget` hook | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First (the owner's go-ahead for the #259 drive is approval in principle; the final approval is his at the merge) |
 | OQ-5 | Should the merge gate get a server-side complement, a required status check asserting the same two conditions? | Owner | [Merge gate](#merge-gate); it changes CI and branch protection, which is Ask First (`merge_pr.sh`, Step 1.5 comment) |
 
 ## Change log
@@ -798,6 +803,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
 | 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
+| 2026-11-02 | Instruction layers, Rules, Open questions, Worktrees | `AGENTS.md` trimmed from 448 lines (33,047 bytes) to 199 (10,513) by moving its reference material to `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`; the section's status goes from `proposed` to `decided` with the budget set at most 200 lines (host decision for the owner's confirmation, closing OQ-4) and held by the new `agents-md-line-budget` hook, which gets a Rules row; the Worktrees citation for entering with `cd` now names `WORKTREE_GUIDE.md` | #259 | 860 |
 
 ## Glossary
 
