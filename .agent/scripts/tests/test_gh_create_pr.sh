@@ -70,10 +70,23 @@ export PATH="$SHIM_DIR:$PATH"
 PASS=0
 FAIL=0
 
+LEAK_LOG="$SANDBOX/leaks.log"
+RUN_N=0
 run_wrapper() {
     # Capture all argv from a single invocation. Echoes the script's
-    # stdout/stderr and returns its exit code.
-    "$SCRIPT" "$@"
+    # stdout/stderr and returns its exit code. Each call gets a private
+    # TMPDIR that must be empty afterwards (the body copy honours TMPDIR);
+    # a leak is logged to a file, since a piped call runs in a subshell.
+    local wrap_tmp rc
+    RUN_N=$((RUN_N + 1))
+    wrap_tmp="$SANDBOX/wrap-tmp.$RUN_N.$BASHPID"
+    mkdir -p "$wrap_tmp"
+    TMPDIR="$wrap_tmp" "$SCRIPT" "$@"
+    rc=$?
+    if [[ -n "$(ls -A "$wrap_tmp")" ]]; then
+        echo "$* ($(ls -A "$wrap_tmp" | tr '\n' ' '))" >> "$LEAK_LOG"
+    fi
+    return "$rc"
 }
 
 read_argv() {
@@ -258,7 +271,7 @@ echo
 echo "=== --body-stdin path ==="
 # Signed stdin (env vars set, content not pre-signed)
 reset_capture
-printf '%s\n' "Stdin body content" | "$SCRIPT" --title "T" --body-stdin >/dev/null 2>&1
+printf '%s\n' "Stdin body content" | run_wrapper --title "T" --body-stdin >/dev/null 2>&1
 rc=$?
 if [[ "$rc" -eq 0 ]] && argv_has "--body-file" \
    && [[ -f "$BODY_CAPTURE_DIR/body.md" ]] \
@@ -286,7 +299,7 @@ printf '%s' "Pre-signed stdin
 ---
 **Authored-By**: \`Someone\`
 **Model**: \`x\`
-" | "$SCRIPT" --title "T" --body-stdin >/dev/null 2>&1
+" | run_wrapper --title "T" --body-stdin >/dev/null 2>&1
 SIG_COUNT_STDIN=$(grep -cF '**Authored-By**:' "$BODY_CAPTURE_DIR/body.md" 2>/dev/null || echo 0)
 if [[ "$SIG_COUNT_STDIN" -eq 1 ]]; then
     echo "  PASS [stdin]:      already-signed stdin not duplicated (1 Authored-By)"
@@ -298,7 +311,7 @@ fi
 
 # Stdin + --no-signature → still drained and rewritten, no signature added
 reset_capture
-printf '%s\n' "Stdin no-sig" | "$SCRIPT" --title "T" --body-stdin --no-signature >/dev/null 2>&1
+printf '%s\n' "Stdin no-sig" | run_wrapper --title "T" --body-stdin --no-signature >/dev/null 2>&1
 rc=$?
 if [[ "$rc" -eq 0 ]] && argv_has "--body-file" \
    && [[ -f "$BODY_CAPTURE_DIR/body.md" ]] \
@@ -394,6 +407,109 @@ assert_calls_gh "--base and --head pass through" \
 argv_has "--base" && argv_has "develop" && argv_has "--head" && argv_has "feature/x" \
     && echo "  PASS [argv]:       --base/--head preserved" && PASS=$((PASS + 1)) \
     || { echo "  FAIL [argv]:       --base/--head missing"; FAIL=$((FAIL + 1)); }
+
+echo
+echo "=== Short forms with glued values (-b=X, -bX, -F=X, -FX, -db X) ==="
+body_signed() {  # <file>
+    grep -Fq '**Authored-By**: `Test Agent`' "$1" && grep -Fq '**Model**: `test-model`' "$1"
+}
+check() {  # <label> <command...>: one PASS/FAIL line
+    local label="$1"; shift
+    if "$@"; then
+        echo "  PASS [parse]:      $label"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL [parse]:      $label"; FAIL=$((FAIL + 1))
+        [[ -f "$ARGV_LOG" ]] && sed 's/^/    /' "$ARGV_LOG"
+    fi
+}
+# shellcheck disable=SC2016  # the bash -c programs expand their own $1
+for form in "-b=Glued body" "-bGlued body"; do
+    assert_calls_gh "$form" --title "T" "$form"
+    check "$form read as --body and signed" \
+        bash -c 'grep -Fxq -- --body "$1" && grep -q "^Glued body" "$1" && ! grep -Fxq -- "$2" "$1"' _ "$ARGV_LOG" "$form"
+    check "$form footer" body_signed "$ARGV_LOG"
+done
+TMPF_G=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
+for form in "-F=" "-F"; do
+    echo "Glued file body" > "$TMPF_G"
+    assert_calls_gh "${form}PATH" --title "T" "$form$TMPF_G"
+    # shellcheck disable=SC2016
+    check "${form}PATH read as --body-file and signed through a copy" \
+        bash -c 'grep -Fq "Glued file body" "$1" && ! grep -Fxq -- "$2" "$3"' _ \
+        "$BODY_CAPTURE_DIR/body.md" "$form$TMPF_G" "$ARGV_LOG"
+    check "${form}PATH footer" body_signed "$BODY_CAPTURE_DIR/body.md"
+done
+assert_calls_gh "-db VALUE" --title "T" -db "Cluster body"
+# shellcheck disable=SC2016
+check "-db VALUE: -d kept, body signed" \
+    bash -c 'grep -Fxq -- -d "$1" && grep -q "^Cluster body" "$1"' _ "$ARGV_LOG"
+check "-db VALUE footer" body_signed "$ARGV_LOG"
+
+echo
+echo "=== Values that look like flags are values ==="
+assert_calls_gh "--title -b --body B" --title -b --body B
+# shellcheck disable=SC2016
+check "the title is \"-b\", the body B is signed" \
+    bash -c '[[ "$(sed -n 2p "$1")" = "-b" ]] && grep -qx B "$1"' _ "$ARGV_LOG"
+check "--title -b --body B footer" body_signed "$ARGV_LOG"
+assert_calls_gh "--body '--repo=x'" --title "T" --body '--repo=x'
+# shellcheck disable=SC2016
+check "--body '--repo=x' stays the body, not a repo flag" \
+    bash -c 'grep -qx -- "--repo=x" "$1" && ! grep -Fxq -- --repo "$1"' _ "$ARGV_LOG"
+check "--body '--repo=x' footer" body_signed "$ARGV_LOG"
+assert_calls_gh "a value --no-signature" --title --no-signature --body B
+# shellcheck disable=SC2016
+check "a value --no-signature is kept as the title" \
+    bash -c 'grep -Fxq -- --no-signature "$1"' _ "$ARGV_LOG"
+check "a value --no-signature does not suppress the footer" body_signed "$ARGV_LOG"
+assert_calls_gh "--base --body" --title "T" --base --body --body B
+# shellcheck disable=SC2016
+check "--base --body: \"--body\" is the base branch" \
+    bash -c '[[ "$(sed -n 3p "$1")" = "--base" && "$(sed -n 4p "$1")" = "--body" ]] && grep -qx B "$1"' _ "$ARGV_LOG"
+
+echo
+echo "=== A body file that is a pipe is signed ==="
+assert_calls_gh "--body-file <(...)" --title "T" --body-file <(printf 'Process substitution body\n')
+# shellcheck disable=SC2016
+check "process-substitution body read and signed" \
+    bash -c 'grep -Fq "Process substitution body" "$1"' _ "$BODY_CAPTURE_DIR/body.md"
+check "process-substitution body footer" body_signed "$BODY_CAPTURE_DIR/body.md"
+FIFO="$SANDBOX/body.fifo"
+mkfifo "$FIFO"
+printf 'Fifo body\n' > "$FIFO" &
+assert_calls_gh "-F FIFO" --title "T" -F "$FIFO"
+wait
+# shellcheck disable=SC2016
+check "FIFO body read and signed" \
+    bash -c 'grep -Fq "Fifo body" "$1"' _ "$BODY_CAPTURE_DIR/body.md"
+check "FIFO body footer" body_signed "$BODY_CAPTURE_DIR/body.md"
+rm -f "$FIFO"
+assert_exit_code "missing --body-file → exit 2" 2 \
+    --title "T" --body-file "$SANDBOX/no-such-body.md"
+# shellcheck disable=SC2016
+check "missing --body-file: gh not called" bash -c '[[ ! -f "$1" ]]' _ "$ARGV_LOG"
+assert_exit_code "directory as --body-file → exit 2" 2 \
+    --title "T" --body-file "$SANDBOX"
+
+echo
+echo "=== A long body is checked whole (no pipe to cut short) ==="
+FILLER=$(head -c 100000 /dev/zero | tr '\0' 'x')
+# shellcheck disable=SC2016  # the backticks are literal markdown
+assert_calls_gh "100 KB already-signed inline body" \
+    --title "T" --body "$(printf '**Authored-By**: `Early`\n%s' "$FILLER")"
+# shellcheck disable=SC2016
+check "100 KB signed inline body keeps one footer" \
+    bash -c '[[ "$(grep -cF "**Authored-By**:" "$1")" -eq 1 ]]' _ "$ARGV_LOG"
+
+echo
+echo "=== Temp files ==="
+if [[ -s "$LEAK_LOG" ]]; then
+    echo "  FAIL [tmp]:        temp files left behind:"; sed 's/^/    /' "$LEAK_LOG"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS [tmp]:        every run left its TMPDIR empty"
+    PASS=$((PASS + 1))
+fi
 
 echo
 echo "=== Summary ==="
