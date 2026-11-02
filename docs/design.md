@@ -362,9 +362,9 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1028-1034 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1033-1039 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 238-282, 389-428, 572, 689, 705 and 840, 948 and 961, 1677-1693 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -435,14 +435,14 @@ Status: `decided`
   on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
   An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree) has no
   timeline: a package worktree is a folder of several repositories, not one repository, so `merge_pr.sh`
-  posts its gate record on the pull request (lines 810 and 853). `progress_append.sh` line 87 writes
+  posts its gate record on the pull request (lines 821 and 875). `progress_append.sh` line 87 writes
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 280: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 563 and
-  678), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 694 and 829). The gate is still report-only for project pull requests (lines 926 and
-  939).
+  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 282: the resolved project root, else the legacy
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 572 and
+  689), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 705 and 840). The gate is still report-only for project pull requests (lines 948 and
+  961).
 
 **Target**
 
@@ -484,7 +484,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    368, 370, 428, 520: the exit contract, `--check-exit` and `next`, which is what a resumed session
-   reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
+   reads), `merge_pr.sh` (684-695, 804-885: the gate's lookup and its `Merge` entry),
    `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -799,6 +799,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
 | 2026-11-02 | Rules, Identity | `gh_create_issue.sh` signs an issue body as `gh_create_pr.sh` signs a pull request (`--no-signature`, exit 2 without an identity): the Rules row is retitled to cover issues and still says comments are signed by habit only, and the Identity bullet names both wrappers | #323 | 855 |
+| 2026-11-02 | Registry and adapters, Worktrees | Line citations of `worktree_create.sh` and `merge_pr.sh` refreshed after #323 moved them (a new branch's start point; the CI target's bookkeeping set and the review-hold SHA); no statement changes | #323 | 856 |
 
 ## Glossary
 
