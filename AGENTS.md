@@ -2,14 +2,8 @@
 
 Shared rules for all AI agents working in this workspace. For framework-specific
 setup (environment, identity, features), see your framework's adapter file:
-
-| Framework | Adapter File |
-|-----------|-------------|
-| Claude Code | [`CLAUDE.md`](CLAUDE.md) |
-| Codex CLI | [`CODEX.md`](CODEX.md) |
-| GitHub Copilot | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) |
-| Gemini CLI | [`.agent/instructions/gemini-cli.instructions.md`](.agent/instructions/gemini-cli.instructions.md) |
-| Other | [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md) |
+- Claude Code: [`CLAUDE.md`](CLAUDE.md); Codex CLI: [`CODEX.md`](CODEX.md); GitHub Copilot: [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+- Gemini CLI: [`.agent/instructions/gemini-cli.instructions.md`](.agent/instructions/gemini-cli.instructions.md); other: [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md)
 
 ## Terminology
 
@@ -195,14 +189,9 @@ Before marking a task complete or opening a PR:
 
 ## References (Read When Needed, Not Upfront)
 
-- [`README.md`](README.md) — Workspace purpose and goals
-- [`docs/design.md`](docs/design.md) — System design
-- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
-- [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns
-- [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity
-- [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
-- [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices
+- [`README.md`](README.md) — Workspace purpose and goals; [`docs/design.md`](docs/design.md) — System design; [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
+- [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns; [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity; [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
+- [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices; [`.agent/templates/`](.agent/templates/) — Issue and PR templates
+- [`.agent/knowledge/script_reference.md`](.agent/knowledge/script_reference.md) — Script Reference (every script in `.agent/scripts/`)
 - [`.agent/knowledge/github_cli_patterns.md`](.agent/knowledge/github_cli_patterns.md) — GitHub CLI Patterns (PR wrapper, `--body-file`, URLs, `-R` in scratchpad clones, merging from worktrees)
 - [`.agent/knowledge/git_bug_usage.md`](.agent/knowledge/git_bug_usage.md) — git-bug-first Pattern for issue reads and writes (ADR-0010)
-- [`.agent/knowledge/script_reference.md`](.agent/knowledge/script_reference.md) — Script Reference (every script in `.agent/scripts/`)
-- [`.agent/templates/`](.agent/templates/) — Issue and PR templates
