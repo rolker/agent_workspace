@@ -271,3 +271,13 @@ Checked: each moved section diffed against `git show main:AGENTS.md` (Script Ref
 - [ ] (suggestion) The suite never runs the checker with no argument, the way the hook calls it, so a broken default-path resolution would pass; add a case asserting exit 0 on the repository's AGENTS.md — `.agent/scripts/tests/test_agents_md_budget.sh:57`
 - [ ] (suggestion) Hook name `... (issue #259)` is unquoted, so YAML reads ` #259)` as a comment and the name shows as "...(issue" (same as the existing `check-design-anchors` hook); quote it — `.pre-commit-config.yaml:73`
 - [ ] (suggestion) OQ-4 row says "the owner approved the #259 trim on 2026-11-02"; the timeline records a go-ahead in principle for the drive with the final approval at the merge; word it as recorded — `docs/design.md:748`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:47 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (pre-push review approved, round 1, ship recommended, 0 must-fix; the 4 suggestions stay open on the review entry for triage with the external reviews, per the review-depth rule: a second round only on a must-fix)
+**After**: publish
+**Decision**: publish
+
+Pre-push review (90b0b854): approved, 0 must-fix, 4 suggestions (the Never line names a make target that project sessions do not have; no test runs the checker with no argument; the hook name's unquoted "#259)" reads as a YAML comment; the OQ-4 row's wording on the owner's approval). Gemini ran, no issues; Codex ran, no issues, read-only so it ran no fixtures; the Claude subagent ran, nothing must-fix. Publishing; the suggestions go to triage.
