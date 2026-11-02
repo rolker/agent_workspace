@@ -43,6 +43,7 @@ code being changed:
 - Reference issue numbers in branches and PRs (`Closes #<N>`)
 - Set `GIT_EDITOR=true` for rebase/amend/merge
 - Use `--body-file` for multiline `gh` CLI content (not `--body`)
+- Use `.agent/scripts/gh_create_pr.sh` for PRs (it adds the AI signature and checks the target repo)
 - Include clickable GitHub links in summaries (use `gh` to look up URLs — never guess)
 - Read `.agents/README.md` before modifying any project repo
 - Verify issue matches task before first commit
@@ -64,6 +65,7 @@ code being changed:
 - Commit secrets or credentials
 - Document from assumptions — verify against source code
 - Construct GitHub URLs from directory names — use `gh` CLI to look them up
+- Run `gh pr merge --delete-branch` from a worktree — use `make merge-pr PR=<N>`
 - Run bare `pip install` or use `--break-system-packages` — use `.venv` for dev tools (see ADR-0009)
 
 ## Communication Standards
@@ -227,83 +229,6 @@ All other rules (atomic commits, AI signature, pre-commit hooks) still apply.
 
 Use your actual runtime identity — never copy example model names from docs.
 
-## GitHub CLI Patterns
-
-### Creating pull requests
-
-Use `.agent/scripts/gh_create_pr.sh` for PRs — it injects the AI signature,
-validates labels, and prevents wrong-repo targeting. Heredoc body via stdin
-keeps the whole flow in one allowlisted call:
-
-```bash
-.agent/scripts/gh_create_pr.sh --title "Title" --body-stdin <<'EOF'
-Your markdown content here.
-EOF
-```
-
-For a body already in a file:
-
-```bash
-.agent/scripts/gh_create_pr.sh --title "Title" --body-file path/to/body.md
-```
-
-The signature footer is appended automatically when `AGENT_NAME` and
-`AGENT_MODEL` are set (via `set_git_identity_env.sh`). Pass
-`--no-signature` to suppress — rare; revert PRs or human-authored only.
-
-If a body is provided and identity env vars are unset, the wrapper hard-fails
-with exit code 2 and points to `set_git_identity_env.sh`. This is intentional
-workspace policy: PRs must be signed unless explicitly opted out.
-
-### Use `--body-file`, Not `--body` (for direct `gh` calls)
-
-When invoking `gh issue create` / `gh issue comment` directly (the wrapper
-above covers PRs), prefer `--body-file` so multiline content isn't mangled
-by shell quoting:
-
-```bash
-BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
-cat << 'EOF' > "$BODY_FILE"
-Your markdown content here.
-EOF
-gh issue create --title "Title" --body-file "$BODY_FILE"
-rm "$BODY_FILE"
-```
-
-### Never Guess GitHub URLs
-
-```bash
-gh issue view <N> --json url --jq '.url'
-gh pr view <N> --json url --jq '.url'
-gh repo view --json url --jq '.url'
-```
-
-### Repo Targeting in Scratchpad Clones
-
-The `gh` CLI resolves the target repo from the current directory's git remote.
-Inside scratchpad clones (`.agent/scratchpad/inspiration/<name>/` etc.), this
-targets the cloned external repo — not the workspace or project repo.
-
-When running `gh` commands that target a repo (`issue create`, `pr create`,
-`issue comment`, etc.) from any non-worktree directory, always pass
-`-R <owner/repo>` explicitly. `gh_create_issue.sh` enforces this with a
-safeguard that aborts if the detected repo doesn't match workspace or project.
-
-### Merging PRs from Worktrees
-
-Never use `gh pr merge --delete-branch` from a worktree — `gh` tries to
-checkout `main` locally, which fails because the main tree already has it
-checked out. Use `--merge` without `--delete-branch` and let worktree
-cleanup handle branch deletion:
-
-```bash
-# Preferred: use the merge script (handles worktree removal + sync)
-make merge-pr PR=<N>
-
-# Manual alternative:
-gh pr merge <N> --merge          # no --delete-branch
-```
-
 ## Build & Test
 
 Build and test commands are project-specific. Configure them in `.agent/project_config.sh`
@@ -370,6 +295,7 @@ Before marking a task complete or opening a PR:
 - [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity
 - [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
 - [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices
+- [`.agent/knowledge/github_cli_patterns.md`](.agent/knowledge/github_cli_patterns.md) — GitHub CLI Patterns (PR wrapper, `--body-file`, URLs, `-R` in scratchpad clones, merging from worktrees)
 - [`.agent/knowledge/git_bug_usage.md`](.agent/knowledge/git_bug_usage.md) — git-bug-first Pattern for issue reads and writes (ADR-0010)
 - [`.agent/knowledge/script_reference.md`](.agent/knowledge/script_reference.md) — Script Reference (every script in `.agent/scripts/`)
 - [`.agent/templates/`](.agent/templates/) — Issue and PR templates
