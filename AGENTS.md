@@ -59,7 +59,7 @@ code being changed:
 - Commit secrets or credentials
 - Document from assumptions — verify against source code
 - Construct GitHub URLs from directory names — use `gh` CLI to look them up
-- Run `gh pr merge --delete-branch` from a worktree — use `make merge-pr PR=<N>`
+- Run `gh pr merge --delete-branch` from a worktree — use `.agent/scripts/merge_pr.sh --pr <N>` (`make merge-pr PR=<N>` in the workspace)
 - Run bare `pip install` or use `--break-system-packages` — use `.venv` for dev tools (see ADR-0009)
 
 ## Communication Standards
