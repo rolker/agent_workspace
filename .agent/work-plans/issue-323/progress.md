@@ -465,3 +465,26 @@ Integrated Review (42516c6e): changes needed, 1 must-fix (merge_pr.sh ~1301: whe
 - The two other fetches get the same bound and prompt suppression on this branch rather than a follow-up issue: the bound exists now and reuse is cheap — undoing it: revert one commit.
 - The PR wrapper refuses (exit 2) --fill, --template and --recover without a body when identity is set, naming --no-signature as the explicit opt-out, so an unsigned PR needs a deliberate flag — undoing it: one commit; the alternative is a warning only.
 - The attach-path limit after the body copy is documented in the helper and warned on stderr when the body holds relative image links; the cwd is not changed because gh's repo targeting reads it — undoing it: one commit.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 14:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ada7d3d12ca2640fa, resume 1 of 3)
+
+**PR**: #417 at `07720828`
+**Addressed**: Integrated Review at `b84987a` (2026-11-02 14:16 -05:00)
+**Commits**: 7d6d29ba, 7cec467a, d84c8e64, 07720828
+
+### Actions
+- [x] (must-fix, Copilot) The review hold failed open on an unread review SHA: `merge_pr.sh` now tracks whether the review SHA's check-runs were read once; until then the hold is unresolved (no merge) and the wait refuses at the CI grace deadline (`review-unreadable`, naming the review commit); the walk-back switch seeds the last-seen state only when it polled the review SHA. Fixtures ci-41 (one failed read, finished review: merges after reading), ci-42 (one failed read, running review: holds), ci-43 (never readable: refuses at the grace deadline), ci-44 (`--allow-pending-review` merges); ci-41 to ci-43 fail against the previous script. Design doc Merge gate bullet and line citations updated — `.agent/scripts/merge_pr.sh` (CI wait loop) (7d6d29ba)
+- [x] (minor) Relative paths after the body copy: the limit is documented in `_gh_create_args.sh`'s header, and `gh_body_copy` warns on stderr, naming both directories, when the copy holds `](./` or `](../`; the cwd is not changed (host decision, listed for the owner's veto). One test plus a no-warning case — `.agent/scripts/_gh_create_args.sh` (`gh_body_copy`) (07720828)
+- [x] (suggestion) `fetch_remote_branch` and `_wt_add_repo`'s target and parent fetches go through the new `wt_bounded_git` (`GIT_TERMINAL_PROMPT=0`, `WT_FETCH_TIMEOUT`), as the default-branch fetch now does; a fetch the limit ends warns. Tests: `worktree_create.sh` end to end against a hanging ssh origin, and `_wt_add_repo` directly. WORKTREE_GUIDE covers every fetch; `worktree_create.sh` line citations refreshed — `.agent/scripts/_worktree_helpers.sh`, `.agent/scripts/worktree_create.sh` (7cec467a)
+- [x] (minor) `--fill` / `-f`, `--fill-first`, `--fill-verbose`, `--template` / `-T`, `--recover` (the PR wrapper; `--template` / `-T`, `--recover` the issue wrapper) with no body exit 2 without `--no-signature`, naming it as the opt-out; tests in both suites, including identity unset, `--no-signature` and a body alongside — `.agent/scripts/_gh_create_args.sh` (`gh_refuse_unsigned_fill`), both wrappers (d84c8e64)
+
+### Checks
+- Intermediate commits used `SKIP=validate-script-tests`. Then `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree (07720828): exit 0, every hook passed or had no files, `validate-script-tests` included.
+- Suites run by hand while fixing, 0 failures each: test_merge_pr_gate.sh, test_worktree_create.sh, test_gh_create_pr.sh, test_gh_create_issue.sh.
+
+### Not done
+- AGENTS.md's rows for `gh_create_pr.sh`, `gh_create_issue.sh` and `merge_pr.sh` do not mention the new refusals; AGENTS.md is Ask-First, so it is not edited here.
