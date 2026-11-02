@@ -130,3 +130,50 @@ The plan review (0385ae95) returned needs-work: two must-fix (the new ci-30-shap
 **Plan**: `.agent/work-plans/issue-323/plan.md` at `fe16772b`
 
 Revision after the needs-work plan review: stale-headRefOid fixture that fails pre-fix, Step 2 negatives, review-hold SHA stays the real head (ci-32 analogue), design.md Rules row/Identity bullet/Change log (ADR-0017), existing suites fixed for the default-branch helper, issue wrapper details (no exec, = forms, order after root guard), stale merge_pr.sh comments. AGENTS.md row pending owner approval.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-02 12:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #323 — Small tooling fixes: skill worktrees branch from default, issue wrapper injects the AI signature, merge-script CI-target wording for host-pushed bookkeeping
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `fe16772b`
+**Branch**: `feature/issue-323`
+
+Second review, of the revision after the needs-work review at `6e68df19`. Each first-round finding was checked against the revised text; the two must-fix resolutions were checked in the code.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three separable commits, one PR. |
+| Issue alignment | Good | All three items covered. Serves, as checked: "Quality of the work and Trust, control and information; `docs/design.md#worktrees`, `docs/design.md#merge-gate`, `docs/design.md#identity`". Both goals and all three anchors exist. |
+| File targeting | Good | `docs/design.md` and the three hand-picked-copy suites are now listed (first-round 4, 5). Minor note in finding 3. |
+| Consequences | Needs work | First-round 2, 8 resolved. First-round 3 was resolved by a rule that is wrong in the stale shape (finding 1). |
+| Principle alignment | Good | Test what breaks: the step 10a fixture fails before the fix and passes after it. Verified by running it (below). |
+| ADR compliance | Good | ADR-0017 is now cited. Step 3 names the right rows: `docs/design.md` line 169 (Rules, "A pull request carries the AI signature … `gh_create_issue.sh` does not add one"), line 639 (Identity, "`gh_create_pr.sh` exits 2 for an unsigned body"), and the Change log. 0002/0012 handled. |
+| ROS conventions | N/A | Workspace plan. |
+
+First-round resolution: 1 resolved (verified), 2 resolved, 3 resolved as a decision but the decided rule is flawed (finding 1 below), 4 resolved (verified), 5 resolved (see finding 2), 6 resolved (`--no-track`, strip `origin/`), 7 resolved (no `exec`, `=` forms, missing-value and mutual-exclusion checks, signing after the root guard, `-b`/`-F`), 8 resolved, 9 deferred to the owner (out of scope here by instruction).
+
+Verification of must-fix 1: a copy of the suite's helpers with `make_ci_sandbox` (so `headRefOid` = green) plus a host `docs/roadmap.md` commit pushed on top. Against the unfixed `merge_pr.sh` it prints "CI target: new head `d3895bc` — touches `docs/roadmap.md`, which is not a merge-time document file", then the walk-back. The other-issue work-plan variant (`.agent/work-plans/issue-8/progress.md`) prints the same line. With the fold simulated (the bookkeeping patterns added to Step 2's `_only_bookkeeping_between` call), both variants print "CI target: reviewed head `<green>`" and no "not a merge-time" text. A code commit (`x.sh`) still targets the new head both ways. Note that both runs merge; the observable difference is the printed line and the first "Waiting for CI on" SHA, so 10a must assert those, not the merge.
+
+### Findings
+
+1. **[Consequences, should-fix]** Step 8's review-hold rule keeps `_ci_review_sha` = `HEAD_NOW` "whenever the head differs from the reviewed head by paths this run did not commit". In the stale shape `HEAD_NOW` is this run's own Step 1.5 record commit, on top of the host's commit. So the rule reads the SHA the existing code comment (merge_pr.sh ~1199-1206) says must not be read: a review re-triggered by this script's own push would hold every such merge (deadlock). It also misses a review running on the host's commit. Checked on the unfixed script: stale shape, host `docs/roadmap.md` commit `243ac74` carrying a running Copilot check-run, green code head. The hold read the gate's record commit `de1dc54` and merged past the running review. This happens today, and step 8 keeps it. In ci-32 the hold reads the host's head only because there `HEAD_REVIEWED` *is* the host's head. Resolution: define the review SHA as the head before this run's own pushes, i.e. the newest commit not made by this run. For example, walk back from `HEAD_NOW` over single-parent commits whose paths are all in `_ci_committed_paths`, or capture `origin/<branch>` before Step 1 / 1.5 push. Make the 10c fixture put the running review on the host's commit, not on `HEAD_NOW`. It fails today, as shown. This keeps the owner-visible decision ("stays on the real pushed head") and drops only the deadlock.
+2. **[File targeting, suggestion]** `test_issue_review_entry.sh` and `test_dispatch_phase.sh` also copy `_worktree_helpers.sh` into sandboxes without `_resolve_default_branch.sh`. If the new helper sources it when `_worktree_helpers.sh` is sourced (not when it is called), those suites can break too. Prefer sourcing it inside `_wt_default_start_point` at call time, or add both suites to step 5. Either way, run the full suite set before commit 2, not only the three named. Editing a `_*.sh` helper makes the hook run every suite anyway.
+3. **[Consequences, suggestion]** Step 11 says `.agent/WORKTREE_GUIDE.md` "says new worktrees start from the default branch regardless of cwd". It does not: no line in the guide states the base, and only the `--parent-issue` section (line ~296) mentions branching. The change there is an addition, a one-line statement of the base and the offline fallback warning, not a correction. Likewise the `docs/design.md#worktrees` section never states the base, so no design row changes for item 1 (consistent with the plan's Design Picture).
+4. **[Approach, suggestion]** Step 7 rewords the success line. With the fold, the old "only touches paths this script committed itself (…progress.md)" wording printed even when the host's roadmap commit was in the diff (simulated run). The 10a post-fix assertion should match the new wording, which names that the diff holds bookkeeping as well as this run's paths. Consider renaming the Rules row title from "A pull request carries the AI signature" to cover issues, since its text will now name both wrappers.
+
+### Summary
+
+The revision resolves the first review's findings. Both must-fix resolutions hold in the code. The stale-`headRefOid` fixture prints the PR 322 line against the unfixed script and drops it once the fold is applied. The design.md step names the Rules row at line 169, the Identity bullet at line 639 and the Change log. One structural gap is left: step 8's review-hold SHA rule reads this run's own record commit in the stale shape. That is the deadlock the code comment warns against, and it misses a review running on the host's commit, which today's script already merges past (reproduced). It is a one-paragraph amendment to step 8 and 10c. A full re-review should not be needed if only those change.
+
+### Recommended Actions
+
+- [ ] Step 8: review-hold SHA = the head before this run's own pushes (the newest commit not made by this run), not `HEAD_NOW`; update the code comment at ~1199 to say so
+- [ ] Step 10c: put the running Copilot check-run on the host's commit in the stale shape; confirm it merges past the review on the unfixed script and holds after the fix
+- [ ] Step 10a: assert the printed CI-target line and the first "Waiting for CI on" SHA (both runs merge, so the merge itself proves nothing)
+- [ ] Step 2/5: source `_resolve_default_branch.sh` at call time in the helper, or add `test_issue_review_entry.sh` / `test_dispatch_phase.sh`; run every suite before commit 2
+- [ ] Step 11: WORKTREE_GUIDE gains a base statement (it has none today)
