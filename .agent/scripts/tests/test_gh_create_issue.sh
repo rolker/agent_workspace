@@ -446,6 +446,25 @@ else
 fi
 
 echo
+echo "=== Relative paths in a copied body file are warned about ==="
+mkdir -p "$SANDBOX/docs"
+printf 'See ![shot](./img.png) and [notes](../notes.md)\n' > "$SANDBOX/docs/rel.md"
+run --title T --body-file "$SANDBOX/docs/rel.md" --attach "$SANDBOX/docs/img.png"
+if [[ "$RC" -eq 0 ]] && sig_in "$BODY_CAPTURE" \
+   && [[ "$OUT" == *"--body-file '$SANDBOX/docs/rel.md' has relative paths"*"not the file's directory ($SANDBOX/docs)"* ]]; then
+    pass "relative ](./ and ](../ paths: signed, with a warning naming both directories"
+else
+    fail "relative paths: rc=$RC out=${OUT:0:300}"
+fi
+printf 'No relative links, just [a site](https://example.com)\n' > "$SANDBOX/docs/plain.md"
+run --title T --body-file "$SANDBOX/docs/plain.md"
+if [[ "$RC" -eq 0 ]] && [[ "$OUT" != *"has relative paths"* ]]; then
+    pass "a body file with no relative paths: no warning"
+else
+    fail "no relative paths: rc=$RC out=${OUT:0:300}"
+fi
+
+echo
 echo "=== The user-tier root guard refuses before signing ==="
 # Same probe as test_user_tier_guard.sh (--title t --body b, AGENT_MODEL
 # unset), from a repo registered nowhere: the guard's refusal must come

@@ -52,6 +52,14 @@
 # that can be read only once is still seen whole. A body file that cannot
 # be read returns 2 with the error on stderr. The caller owns removal: set
 # `trap 'rm -f "${GH_BODY_COPY:-}"' EXIT` before calling it.
+# Limit: gh resolves a relative path in a --body-file (an image or link
+# such as `](./img.png)`, which --attach uploads) against that file's
+# directory first, then the current directory. gh is given the copy, under
+# TMPDIR, so such a path resolves against the current directory only. The
+# cwd is not changed to compensate (gh's repository targeting reads it);
+# instead gh_body_copy warns on stderr when the copy holds `](./` or
+# `](../`. Run from the body file's directory, or use paths relative to
+# the cwd, when that matters.
 #
 # gh_body_is_signed <marker> is true when the body gh will get (the inline
 # value or the copy) already contains <marker>.
@@ -263,6 +271,9 @@ gh_body_copy() {  # <mktemp template>
         return 2
     fi
     GH_ARGS[$GH_BODY_FILE_INDEX]="$GH_BODY_COPY"
+    if [ "$src" != "-" ] && grep -Eq -- '\]\(\.\.?/' "$GH_BODY_COPY"; then
+        echo "⚠️  --body-file '$src' has relative paths (\`](./\` or \`](../\`). gh is given a copy of it under TMPDIR, so they resolve against the current directory ($PWD), not the file's directory ($(cd "$(dirname -- "$src")" 2>/dev/null && pwd || dirname -- "$src"))." >&2
+    fi
     return 0
 }
 
