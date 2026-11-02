@@ -313,3 +313,21 @@ Checked against the code at `ca89bdb`. The Never line: `session_start_project_la
 **Decision**: address
 
 Integrated Review (db3a6e61): changes-requested, 0 must-fix, 4 suggestions, all valid, CI pending (lint still running). Fixes: the Never line names .agent/scripts/merge_pr.sh --pr <N> (Copilot and the pre-push review agree); a no-argument test of the budget checker in Copilot's sandbox form; quote the two hook names cut off at "(issue" by YAML; the OQ-4 row says go-ahead in principle, approval at the merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #416 at `4bcdc26a`
+**Addressed**: Integrated Review at `ca89bdb` (2026-11-02 12:53 -05:00)
+**Commits**: 345f1f06, 276f3007, 9f975b3c, 4bcdc26a
+
+### Actions
+- [x] Never line now names `.agent/scripts/merge_pr.sh --pr <N>` (`make merge-pr PR=<N>` in the workspace); AGENTS.md stays 199 lines — `AGENTS.md:62`
+- [x] Added cases (e) and (f): a sandbox copy of the checker at `<repo>/.agent/scripts/`, run with no argument from another directory, fails on a 201-line `<repo>/AGENTS.md` naming that file and passes on 200 lines; header Cases list updated; the suite still reads no real AGENTS.md — `.agent/scripts/tests/test_agents_md_budget.sh`
+- [x] Double-quoted the hook names YAML cut off at ` #`: agents-md-line-budget and check-design-anchors as triaged, plus validate-script-tests, which had the same defect (loaded as "... + issue"); verified with yaml.safe_load — `.pre-commit-config.yaml:62,73,93`
+- [x] OQ-4 row now says the owner's go-ahead for the #259 drive is approval in principle, with the final approval his at the merge — `docs/design.md:748`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `4bcdc26a`: exit 0, every hook passed, including validate-script-tests (all suites, since the branch touches `.pre-commit-config.yaml`).
