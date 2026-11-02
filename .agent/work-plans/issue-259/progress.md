@@ -372,3 +372,13 @@ Reproduced at `300000a`: `bash scripts/check_agents_md_budget.sh` (through the r
 
 ### False positives
 - None. Gemini and Codex (recorded in the Local Review) raised no issues.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 13:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second integrated review has one valid suggestion from Copilot, reproduced in the code; address is within the checkpoint table and the fix is one line plus a test)
+**After**: findings
+**Decision**: address
+
+Integrated Review (9953d465): changes-requested, 0 must-fix, 1 suggestion, CI pending. The budget checker resolves its default path without following symlinks, so run through the scripts/ symlink it reads the parent folder's AGENTS.md (exit 2 today, a silent wrong-file check wherever that folder holds one); the hook calls the real path so the gate is unaffected. Fix: pwd -P as capture.sh does, a symlink test with a decoy file, and the same one-line fix to check_design_anchors.sh, which has had the fault since before this PR.
