@@ -166,7 +166,7 @@ only.
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
 | Ask first: instruction files, CI or branch protection, the project remote URL | Leave a trail; start limits strict | `review only` | Review guide row "Name the rule before bending it" (an Ask-First rule treated as bendable). No code-owner file or hook watches those paths |
-| A pull request or an issue carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` and `gh_create_issue.sh` append it to a given body and exit 2 when `AGENT_NAME` and `AGENT_MODEL` are unset (`--no-signature` skips it); a body gh would write itself (`--fill` and its variants, `--template`, `--recover`) with no body flag also exits 2 without `--no-signature`. An issue made with `gh issue create` directly is not checked. Comments are signed by habit only: no wrapper signs them |
+| A pull request or an issue carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` and `gh_create_issue.sh` append it to a given body and exit 2 when `AGENT_NAME` and `AGENT_MODEL` are unset (`--no-signature` skips it); a body gh would write itself (`--fill` and its variants or `--template` with no body flag, `--recover` with or without one) also exits 2 without `--no-signature`. An issue made with `gh issue create` directly is not checked. Comments are signed by habit only: no wrapper signs them |
 | No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
 
 ## Sessions and roots
@@ -804,6 +804,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-02 | Merge gate, Registry and adapters, Worktrees | Review fix: an unreadable review state holds the merge (refused at the CI grace deadline); `merge_pr.sh` line citations refreshed again | #323 | 858 |
 | 2026-11-02 | Registry and adapters | `worktree_create.sh` line citations refreshed after its branch fetch was bounded like the default-branch fetch; no statement changes | #323 | 859 |
 | 2026-11-02 | Rules | Review fix: the signing row says both wrappers refuse a body gh writes itself (`--fill`, `--template`, `--recover`) without `--no-signature` | #323 | 860 |
+| 2026-11-02 | Rules | Review fix: `--recover` is refused even with a body flag (gh loads the recovered input over it) | #323 | 861 |
 
 ## Glossary
 

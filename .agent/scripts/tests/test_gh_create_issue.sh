@@ -444,6 +444,21 @@ if [[ "$RC" -eq 0 ]] && sig_in "$ARGV_LOG"; then
 else
     fail "--template with a body: rc=$RC"
 fi
+for args in "--recover|r.json|--body|B" "--recover|r.json|--body-file|$PLAINF"; do
+    IFS='|' read -r -a argv <<<"$args"
+    run --title T "${argv[@]}"
+    if [[ "$RC" -eq 2 ]] && ! gh_called && [[ "$OUT" == *"--recover makes gh load"*"--no-signature"* ]]; then
+        pass "${argv[0]} with ${argv[2]}: exit 2 (gh would load it over the signed body)"
+    else
+        fail "${argv[0]} with ${argv[2]}: rc=$RC gh_called=$(gh_called && echo yes || echo no)"
+    fi
+done
+run --title T --recover r.json --no-signature
+if [[ "$RC" -eq 0 ]] && argv_has "--recover"; then
+    pass "--recover --no-signature: the explicit opt-out"
+else
+    fail "--recover --no-signature refused (rc=$RC)"
+fi
 
 echo
 echo "=== Relative paths in a copied body file are warned about ==="

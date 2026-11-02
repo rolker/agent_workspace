@@ -65,8 +65,9 @@
 # value or the copy) already contains <marker>.
 #
 # gh_refuse_unsigned_fill <PR|issue> is true, with the reason on stderr,
-# when GH_BODY_FROM_GH is not empty, no body flag was given and
-# --no-signature was not: the caller exits 2.
+# when --no-signature was not given and either --recover was (gh loads the
+# recovered input over any body flag) or GH_BODY_FROM_GH is not empty and
+# no body flag was given: the caller exits 2.
 
 # The GH_* variables are this file's output, read by the sourcing wrapper.
 # shellcheck disable=SC2034
@@ -278,11 +279,23 @@ gh_body_copy() {  # <mktemp template>
 }
 
 # True (status 0), with the reason on stderr, when the command would go
-# out with a body gh writes itself (GH_BODY_FROM_GH), no --body /
-# --body-file, and no --no-signature. The wrappers exit 2 on it: that body
-# is not theirs to sign, so an unsigned PR or issue needs the opt-out.
+# out with a body gh writes itself (GH_BODY_FROM_GH, with no --body /
+# --body-file; --recover even with one) and no --no-signature. The
+# wrappers exit 2 on it: that body is not theirs to sign, so an unsigned
+# PR or issue needs the opt-out.
 gh_refuse_unsigned_fill() {  # <"PR"|"issue">
     [ "$GH_NO_SIGNATURE" = true ] && return 1
+    local f
+    # --recover is refused with or without a body: gh loads the recovered
+    # input over --body / --body-file after reading them, so the signed
+    # body (and the parent reference) would be replaced.
+    for f in ${GH_BODY_FROM_GH[@]+"${GH_BODY_FROM_GH[@]}"}; do
+        if [ "$f" = --recover ]; then
+            echo "❌ Error: --recover makes gh load the recovered input over any --body / --body-file, so the $1 would go out without the signature this wrapper adds." >&2
+            echo "   Pass --no-signature to recover it unsigned, or create the $1 again with --body / --body-file." >&2
+            return 0
+        fi
+    done
     if [ "$GH_BODY_INDEX" -ge 0 ] || [ "$GH_BODY_FILE_INDEX" -ge 0 ]; then
         return 1
     fi
