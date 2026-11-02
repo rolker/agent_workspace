@@ -170,6 +170,17 @@ if [[ "$OUT" == *"WARNING: could not fetch 'main' from origin in "*"(fatal: "*"d
 else
     fail "unreachable origin: the warning does not name git's error: ${OUT:0:400}"
 fi
+# origin is unreachable, but an earlier fetch left origin/feature/issue-15:
+# the branch exists there, so creation stops rather than start a new one.
+gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-15 "$LOCAL_MAIN"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 15 --type workspace
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not fetch 'feature/issue-15' from origin"*"as of the last fetch (origin/feature/issue-15)"* ]] \
+   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-15 >/dev/null; then
+    pass "unreachable origin that had the branch: stops, no new branch started"
+else
+    fail "unreachable origin that had the branch: rc=$RC: ${OUT:0:400}"
+fi
+gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-15
 
 echo
 echo "=== A fetch that would prompt or hang is bounded ==="
@@ -208,21 +219,23 @@ if command -v timeout >/dev/null 2>&1; then
 
     # The other origin calls are bounded the same way: worktree_create.sh's
     # fetch_remote_branch (the issue branch on origin) end to end, and
-    # _wt_add_repo's target and parent fetches (the package-worktree path).
+    # _wt_add_repo's target fetch (the package-worktree path). A named
+    # branch whose fetch timed out may exist on origin, so creation stops
+    # instead of starting a branch that would diverge from it.
     : > "$PROMPT_SEEN"
     started=$SECONDS
     OUT="$(cd "$FEAT" && PATH="$SB/stubbin:$PATH" GIT_SSH_COMMAND="$SSH_SHIM" WT_FETCH_TIMEOUT=2 \
         "$FEAT_SCRIPT" --issue 13 --type workspace 2>&1)"
     RC=$?
     elapsed=$((SECONDS - started))
-    if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: fetching 'feature/issue-13' from origin in "*"timed out after 2s"* \
-          && "$elapsed" -lt 20 ]] && git -C "$SB" rev-parse --verify --quiet feature/issue-13 >/dev/null; then
-        pass "hanging fetch: worktree_create.sh's branch fetch is bounded too (${elapsed}s end to end)"
+    if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: fetching 'feature/issue-13' from origin in "*"timed out after 2s"*"not started in its place"* \
+          && "$elapsed" -lt 20 ]] && ! git -C "$SB" rev-parse --verify --quiet feature/issue-13 >/dev/null; then
+        pass "hanging fetch: worktree_create.sh's branch fetch is bounded (${elapsed}s) and stops, no branch started"
     else
         fail "hanging fetch, worktree_create.sh end to end: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
     fi
     if [[ "$(cat "$PROMPT_SEEN" 2>/dev/null)" = "0" ]]; then
-        pass "hanging fetch: worktree_create.sh's fetches ran with GIT_TERMINAL_PROMPT=0"
+        pass "hanging fetch: worktree_create.sh's fetch ran with GIT_TERMINAL_PROMPT=0"
     else
         fail "hanging fetch: worktree_create.sh's fetch GIT_TERMINAL_PROMPT was '$(cat "$PROMPT_SEEN" 2>/dev/null)'"
     fi
@@ -231,18 +244,16 @@ if command -v timeout >/dev/null 2>&1; then
         set -euo pipefail
         source "$1/.agent/scripts/_worktree_helpers.sh"
         # As worktree_create.sh calls it: inside an `if`, so set -e is off.
-        if _wt_add_repo "$1" "$2" feature/issue-14 feature/issue-404; then echo "ADDED"; fi' _ "$SB" "$SANDBOX/pkg-wt-14" 2>&1)"
+        if _wt_add_repo "$1" "$2" feature/issue-14 feature/issue-404; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$SANDBOX/pkg-wt-14" 2>&1)"
     RC=$?
     elapsed=$((SECONDS - started))
-    if [[ "$RC" -eq 0 && "$OUT" == *"ADDED"* && "$elapsed" -lt 25 ]] \
-       && [[ "$OUT" == *"fetching 'feature/issue-14' from origin in "*"timed out after 2s"* ]] \
-       && [[ "$OUT" == *"fetching 'feature/issue-404' from origin in "*"timed out after 2s"* ]] \
-       && [[ "$(git -C "$SB" rev-parse feature/issue-14 2>/dev/null)" = "$LOCAL_MAIN" ]]; then
-        pass "hanging fetch: _wt_add_repo's target and parent fetches are bounded (${elapsed}s), local main used"
+    if [[ "$RC" -eq 0 && "$OUT" == *"REFUSED"* && "$elapsed" -lt 20 ]] \
+       && [[ "$OUT" == *"ERROR: fetching 'feature/issue-14' from origin in "*"timed out after 2s"* ]] \
+       && ! git -C "$SB" rev-parse --verify --quiet feature/issue-14 >/dev/null && [[ ! -e "$SANDBOX/pkg-wt-14" ]]; then
+        pass "hanging fetch: _wt_add_repo's target fetch is bounded (${elapsed}s) and refuses, no branch or worktree"
     else
         fail "hanging fetch, _wt_add_repo: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
     fi
-    gitq -C "$SB" worktree remove --force "$SANDBOX/pkg-wt-14"
     gitq -C "$SB" remote set-url origin "file:///nonexistent/origin.git"
 else
     echo "  SKIP: hanging fetch (no timeout command on this machine)"

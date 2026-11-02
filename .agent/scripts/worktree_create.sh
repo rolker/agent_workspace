@@ -53,15 +53,15 @@ LAYER=""
 PACKAGE_REPOS=""
 
 # Try to fetch a specific branch from origin, never prompting and bounded
-# by WT_FETCH_TIMEOUT (wt_bounded_git, #323). A branch origin does not have
-# fails quietly, as before; a fetch the limit ended says so on stderr.
+# by WT_FETCH_TIMEOUT (wt_fetch_named_branch, #323). Status 0 fetched, 1
+# not on origin; when the fetch timed out or failed while origin has the
+# branch, creation stops here (exit 1, before anything is made) rather
+# than start a branch that would diverge from it.
 fetch_remote_branch() {
     local git_path="$1"
     local branch="$2" rc=0
-    wt_bounded_git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-        echo "WARNING: fetching '$branch' from origin in $git_path $(wt_fetch_why "$rc" ""); treating it as not on origin" >&2
-    fi
+    wt_fetch_named_branch "$git_path" "$branch" || rc=$?
+    [ "$rc" -eq 3 ] && exit 1
     return "$rc"
 }
 
@@ -867,7 +867,7 @@ else
         if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
            git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
             PARENT_BRANCH_FOUND=true
-        elif fetch_remote_branch "$ROOT_DIR" "$PARENT_BRANCH" && \
+        elif wt_fetch_named_branch "$ROOT_DIR" "$PARENT_BRANCH" 2>/dev/null && \
              git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
             PARENT_BRANCH_FOUND=true
         fi

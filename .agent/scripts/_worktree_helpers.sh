@@ -495,6 +495,44 @@ wt_fetch_why() {
     echo "${why:-git fetch exited $rc}"
 }
 
+# Fetch one named branch (an issue's or a parent's) from origin, bounded
+# by wt_bounded_git (#323). Status:
+#   0  fetched (origin/<branch> is current);
+#   1  not on origin (`ls-remote --exit-code` says so, or there is no
+#      origin remote), or origin could not
+#      be reached and nothing says it has the branch (a warning on
+#      stderr): the caller may start the branch afresh;
+#   3  the fetch timed out, or failed while origin has the branch (by
+#      ls-remote, or origin/<branch> from an earlier fetch): the reason is
+#      on stderr and the caller must stop, because a branch started afresh
+#      would diverge from the existing one and its first push would be
+#      rejected. Only the default-branch lookup (_wt_default_start_point)
+#      falls back on a failed fetch.
+# Usage: wt_fetch_named_branch <repo> <branch>; rc=$?
+wt_fetch_named_branch() {
+    local repo="$1" branch="$2" err="" rc=0 lrc=0 why=""
+    # No origin remote at all: nothing to fetch and nothing to diverge from.
+    git -C "$repo" remote get-url origin >/dev/null 2>&1 || return 1
+    err="$(wt_bounded_git -C "$repo" fetch --quiet origin -- "$branch" 2>&1 >/dev/null)" || rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    why="$(wt_fetch_why "$rc" "$err")"
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        echo "ERROR: fetching '$branch' from origin in $repo $why; origin may have it, so a new '$branch' is not started in its place. Retry when origin answers (or raise WT_FETCH_TIMEOUT)." >&2
+        return 3
+    fi
+    wt_bounded_git -C "$repo" ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1 || lrc=$?
+    if [ "$lrc" -eq 2 ]; then
+        return 1
+    fi
+    if [ "$lrc" -eq 0 ] \
+       || git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/$branch^{commit}" >/dev/null; then
+        echo "ERROR: could not fetch '$branch' from origin in $repo ($why), and origin has it$([ "$lrc" -eq 0 ] || echo " as of the last fetch (origin/$branch)"); a new '$branch' is not started in its place. Retry when origin answers." >&2
+        return 3
+    fi
+    echo "WARNING: could not fetch '$branch' from origin in $repo ($why); nothing says origin has it, so it is treated as not on origin" >&2
+    return 1
+}
+
 # The start point for a new branch in <repo> that has no parent branch
 # (issue #323): the repo's default branch as origin has it, never the
 # invoking checkout's HEAD, so a worktree created from inside a feature
@@ -570,12 +608,12 @@ _wt_add_repo() {
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
     else
-        out="$(wt_bounded_git -C "$origin" fetch origin -- "$branch" 2>&1)"; rc=$?
-        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-            out="fetching '$branch' from origin in $origin: $(wt_fetch_why "$rc" "")"
-            echo "WARNING: $out" >&2
+        local frc=0
+        wt_fetch_named_branch "$origin" "$branch" || frc=$?
+        if [ "$frc" -eq 3 ]; then
+            return 1
         fi
-        if [ "$rc" -eq 0 ]; then
+        if [ "$frc" -eq 0 ]; then
             out="$(git -C "$origin" worktree add --track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
         fi
 
@@ -584,16 +622,12 @@ _wt_add_repo() {
             if git -C "$origin" show-ref --verify --quiet "refs/heads/$parent_branch"; then
                 base="$parent_branch"
             else
-                local fetch_out fetch_rc=0
-                fetch_out="$(wt_bounded_git -C "$origin" fetch origin -- "$parent_branch" 2>&1)" || fetch_rc=$?
-                if [ "$fetch_rc" -eq 0 ]; then
-                    base="origin/$parent_branch"
-                elif [ "$fetch_rc" -eq 124 ] || [ "$fetch_rc" -eq 137 ]; then
-                    out="fetching '$parent_branch' from origin in $origin: $(wt_fetch_why "$fetch_rc" "")"
-                    echo "WARNING: $out" >&2
-                else
-                    out="$fetch_out"
+                local prc=0
+                wt_fetch_named_branch "$origin" "$parent_branch" || prc=$?
+                if [ "$prc" -eq 3 ]; then
+                    return 1
                 fi
+                [ "$prc" -eq 0 ] && base="origin/$parent_branch"
             fi
             if [ -n "$base" ]; then
                 out="$(git -C "$origin" worktree add -b "$branch" "$dest" "$base" 2>&1)"; rc=$?
