@@ -361,3 +361,28 @@ Verified: full `run_script_tests.sh` (all 42 suites passed, 555 s); shellcheck -
 - [x] (suggestion) `printf | grep -q` under pipefail can SIGPIPE on a large body, miss the marker and add a second footer; use a here-string — `.agent/scripts/gh_create_issue.sh:222`
 - [x] (suggestion) The default-branch fetch has no `GIT_TERMINAL_PROMPT=0` / SSH BatchMode or timeout and discards stderr, so a credential prompt can block and an auth failure shows only as "could not fetch"; include the first error line in the warning — `.agent/scripts/_worktree_helpers.sh:497`
 - [x] (suggestion) No fixture pins the late concurrent push (a host commit landing on top of this run's record commit before Step 2's fetch: the hold must read that host commit); correct by reading, untested — `.agent/scripts/tests/test_merge_pr_gate.sh:1345`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-02 13:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-323 at `7694fb15`
+**Addressed**: Local Review (Pre-Push) at `dac47ddf` (2026-11-02 13:33 -05:00)
+**Commits**: e6e0d5d4, c57f71f5, 487b1a04, 7694fb15
+
+### Actions
+- [x] (must-fix) A pipe, FIFO or process-substitution `--body-file` went out unsigned: any body file is now read once into the temp copy (stdin for `-`) and signed there; an unreadable one exits 2 — `.agent/scripts/_gh_create_args.sh` (`gh_body_copy`), `.agent/scripts/gh_create_issue.sh` (e6e0d5d4)
+- [x] (must-fix) Value-blind flag normalisation: one pflag-shaped parse in the new sourced helper `_gh_create_args.sh` (each value-taking flag consumes its value; `-b=X`, `-bX`, `-F=X`, `-FX`, clusters such as `-wb X`; nothing after `--`), with tests for each form and for `--title -b`, `--body '--repo=x'`, a value `--no-signature`, `--label --body` — `.agent/scripts/gh_create_issue.sh`, `.agent/scripts/tests/test_gh_create_issue.sh` (e6e0d5d4)
+- [x] (suggestion) `gh_create_pr.sh` moved onto the same helper (`--body-stdin` becomes `--body-file -`, one temp copy under TMPDIR via `mktemp -t`), its suite gains the same cases plus a per-run TMPDIR leak check; the runner's absolute-/tmp mktemp list and the design doc's repo-safety line citation updated (host decision, listed for the owner's veto) — `.agent/scripts/gh_create_pr.sh`, `.agent/scripts/tests/test_gh_create_pr.sh` (c57f71f5)
+- [x] (suggestion) Marker and parent-reference checks no longer pipe into `grep -q`: a bash match on the inline value, grep on the copy; 100 KB body tests — `.agent/scripts/_gh_create_args.sh` (`gh_body_is_signed`), `.agent/scripts/gh_create_issue.sh` (e6e0d5d4)
+- [x] (suggestion) The default-branch fetch runs with `GIT_TERMINAL_PROMPT=0` and `timeout` (`WT_FETCH_TIMEOUT`, default 60 s); the fallback warning names the timeout or git's first error line; tests for both, WORKTREE_GUIDE.md says so — `.agent/scripts/_worktree_helpers.sh` (`_wt_default_start_point`) (487b1a04)
+- [x] (suggestion) Fixtures ci-40 / ci-40b: the remote's post-receive hook answers this run's record push with a host bookkeeping commit on top; the hold reads that commit (holds while its review runs, merges once it finished, never reads the record commit) — `.agent/scripts/tests/test_merge_pr_gate.sh` (7694fb15)
+
+### Checks
+- Intermediate commits used `SKIP=validate-script-tests` (dispatched-pass rule). Then `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree (7694fb15): exit 0, every hook passed or had no files, `validate-script-tests` included (every suite: the branch touches shared helpers).
+- Suites also run by hand while fixing: test_gh_create_issue.sh, test_gh_create_pr.sh, test_worktree_create.sh, test_merge_pr_gate.sh, all 0 failures.
+
+### Not done
+- The target-branch fetch in `_wt_add_repo` (pre-existing on main, not this finding's line) has the same unbounded-prompt shape; left as it is.
+- AGENTS.md's script table has no row for the new `_gh_create_args.sh` helper (several `_*.sh` helpers have none either); AGENTS.md is Ask-First, so it is not edited here.
