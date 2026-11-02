@@ -3,7 +3,7 @@
 #
 # The checker fails a commit when AGENTS.md is over 200 lines. Every case
 # writes a fixture file under a private temp dir and points the checker at
-# it, or (cases e and f) runs a sandbox copy of the checker with no argument,
+# it, or (cases e to g) runs a sandbox copy of the checker with no argument,
 # the way the hook calls it, beside a fixture AGENTS.md; the suite reads no
 # real AGENTS.md.
 #
@@ -15,6 +15,9 @@
 #   (e) no argument, run from another directory: a 201-line AGENTS.md at
 #       the root of the checker's repository fails, naming that file
 #   (f) no argument, the same way: a 200-line AGENTS.md there passes
+#   (g) no argument, run through the repo-root `scripts/` symlink: the
+#       checker reads its repository's 201-line AGENTS.md and fails, not
+#       the 1-line decoy in the repository's parent folder
 #
 # Run: bash .agent/scripts/tests/test_agents_md_budget.sh
 
@@ -92,6 +95,16 @@ expect "(e) no argument: 201-line AGENTS.md beside the checker fails" 1 \
 seq 1 200 > "$SANDBOX/repo/AGENTS.md"
 run_checker_no_arg
 expect "(f) no argument: 200-line AGENTS.md beside the checker passes" 0
+
+# (g): a lexical `../..` from <repo>/scripts/ is the repository's parent,
+# where a 1-line decoy AGENTS.md would make a wrong resolution pass.
+ln -s .agent/scripts "$SANDBOX_REPO/scripts"
+seq 1 201 > "$SANDBOX_REPO/AGENTS.md"
+echo decoy > "$SANDBOX/AGENTS.md"
+RC=0
+OUT="$(cd "$SANDBOX/elsewhere" && bash "$SANDBOX_REPO/scripts/check_agents_md_budget.sh" 2>&1)" || RC=$?
+expect "(g) no argument through the scripts/ symlink reads the repository's AGENTS.md" 1 \
+    "201 lines" "$SANDBOX_REPO/AGENTS.md"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

@@ -13,7 +13,10 @@
 set -euo pipefail
 
 LIMIT=200
-FILE="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/AGENTS.md}"
+# -P: through the repo-root `scripts/` symlink, a logical path's `../..`
+# would be the checkout's parent (as in capture.sh).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+FILE="${1:-$(cd "$SCRIPT_DIR/../.." && pwd -P)/AGENTS.md}"
 
 if [[ ! -f "$FILE" || ! -r "$FILE" ]]; then
     echo "check_agents_md_budget: cannot read $FILE" >&2
