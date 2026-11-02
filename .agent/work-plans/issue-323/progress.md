@@ -261,3 +261,50 @@ Owner, 2026-11-02: "revise 323". The third plan review (affb1bb3) left one shoul
 **Plan**: `.agent/work-plans/issue-323/plan.md` at `885bf4e1`
 
 Third revision: step 8's review-hold SHA is now one rule (merge_pr.sh records SHAs of its own pushed commits and walks back over exactly those; fixture 10c, ci-32 kept), and the retitled Rules row must still say comments are signed by habit only.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-02 12:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #323 — Small tooling fixes: skill worktrees branch from default, issue wrapper injects the AI signature, merge-script CI-target wording for host-pushed bookkeeping
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `885bf4e1`
+**Branch**: `feature/issue-323`
+
+Fourth review, narrow: only the revision for the third review (`885bf4e1`): step 8's review-hold SHA rule and the step 3 Rules-row wording. Findings resolved by the first three reviews are not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: three fixes plus the `AGENTS.md` row commit. |
+| Issue alignment | Good | Serves unchanged since review 2: "Quality of the work and Trust, control and information; `docs/design.md#worktrees`, `docs/design.md#merge-gate`, `docs/design.md#identity`". |
+| File targeting | Good | Unchanged. |
+| Consequences | Good | Step 8 now names one mechanism, by SHA. Checked against merge_pr.sh below. |
+| Principle alignment | Good | Fixture 10c pins step 8. ci-32 pins the same-path case. |
+| ADR compliance | Good | Step 3 now keeps "comments are signed by habit only" in the retitled row (`docs/design.md` line 169). |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked in the code:
+- Each commit this run makes has a known point to read its SHA: Step 1's roadmap commit (`git -C "$_WT_ROOT" commit`, ~603) and Step 1.5's record commit (`progress_append.sh -C "$_gate_wt"`, ~837). The Step 1.5 commit is undone when its push is refused (~845), so it never reaches origin.
+- `HEAD_NOW` is fetched fresh from origin (~958-959), so a host push that lands after this run's push is the head and is not in the list: the hold follows it.
+- In ci-32 (test_merge_pr_gate.sh ~1192-1204), the host's checkpoint commit and this run's record commit touch the same `progress.md`. A walk by SHA stops at the host commit, so the hold reads `head_now` and ci-32 keeps passing. A walk by path would not stop there, as review 3 reproduced.
+- In the stale shape, the hold reads the host commit, where 10c puts the running review. Today `_ci_review_sha` is `CI_TARGET_SHA` (~1207), which is this run's record commit before the fold and gh's lagging `headRefOid` after it. So 10c fails on the unfixed script and would also fail with the fold alone, which means 10c pins step 8 on its own.
+- With no own commits on the head, the walk is empty and the hold is `HEAD_NOW`. That matches today's non-exempt case.
+
+Step 3: no script in `.agent/scripts` signs comments (only `gh_create_pr.sh` carries `SIG_MARKER` today), so "comments are signed by habit only" is still true and the row must keep saying it.
+
+### Findings
+
+1. **[Consequences, suggestion]** Record a SHA when its commit succeeds, not when its own push succeeds. Step 1 commits even when its push fails (~603-612). Step 1.5's later push then carries that roadmap commit to origin. If the list were filled only on a successful own push, the walk would stop at that roadmap commit and read the hold from a commit no review runs on. The plan's wording ("each commit this run itself pushes") already covers this. The implementation should keep to that wording.
+2. **[Consequences, suggestion]** Say what happens when `HEAD_NOW` is empty or came from the gh fallback with no local worktree (~961-967). The walk needs `git rev-parse <sha>^` in `_ci_wt`. With no local repo, the hold should be `HEAD_NOW`, or `CI_TARGET_SHA` when `HEAD_NOW` is empty, as today. This can be settled in implementation.
+
+### Summary
+
+Both changes are sound. Step 8's rule (walk back from `HEAD_NOW` over exactly the SHAs this run committed) gives the host-pushed head in ci-32 and in 10c. It follows a late concurrent push and never reads this run's own record commit. Step 3 keeps the comments caveat. Ready for implementation. The two suggestions are edge cases for the implementer.
+
+### Recommended Actions
+
+- [ ] Implementation: add a SHA to the list on a successful Step 1 / Step 1.5 commit, and drop it when Step 1.5's commit is undone
+- [ ] Implementation: keep today's fallback for the hold SHA when `HEAD_NOW` is empty or there is no local worktree to walk in
