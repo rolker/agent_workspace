@@ -66,7 +66,7 @@ Skip rows that clearly do not apply.
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
 | Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |
 | Project interfaces or public APIs | Downstream consumers, documentation, tests |
-| Worktree scripts | `.agent/WORKTREE_GUIDE.md`; `AGENTS.md` worktree section |
+| Worktree scripts | `.agent/WORKTREE_GUIDE.md` (the command blocks); `AGENTS.md` Worktree Workflow (the rule) |
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
 | Review depth classification doc | `review-code` skill (if tier definitions change) |
 | Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; the work-plans description in `docs/design.md` (Review loop and timeline) |

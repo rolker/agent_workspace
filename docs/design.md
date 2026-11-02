@@ -424,8 +424,8 @@ Status: `decided`
   Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
   marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
 - A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
-  worktrees of the current repository and a project is a separate repository (`AGENTS.md`, "Worktree
-  Entry").
+  worktrees of the current repository and a project is a separate repository (`.agent/WORKTREE_GUIDE.md`,
+  "Worktree Entry").
 - Agents work concurrently in separate worktrees. Work in progress is made visible by a draft pull
   request, which `worktree_create.sh --plan-file` opens, and an agent checks for one before starting
   (`WORKFORCE_PROTOCOL.md` sections 1 to 3). `make lock` is an advisory note shown by the dashboard and

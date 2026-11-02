@@ -117,82 +117,11 @@ reviews apply it through
 ## Worktree Workflow
 
 Every task must use an isolated worktree. `--type` is **required** on all
-worktree scripts (create, enter, remove). Two types are available:
-
-**Workspace worktrees** — for changes to workspace infrastructure (`.agent/`, `docs/`, skills):
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
-# work here; this is a git worktree of the workspace repo
-
-# Codex / per-command shells:
-WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --print-path)
-# or:
-eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --shell-snippet)"
-```
-
-**Project worktrees** — for changes to the managed project repo:
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type project [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N> --type project
-# work here; this is a git worktree of project/
-# PRs target the project repo (created with -R <project-remote>)
-
-# Codex / per-command shells:
-WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
-# or:
-eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
-```
-
-**Sub-issue work** (branches from parent's feature branch):
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace --parent-issue <parent_N>
-.agent/scripts/worktree_create.sh --issue <N> --type project --parent-issue <parent_N>
-```
-
-**Skill worktrees** (no issue needed, allowlist-enforced):
-
-```bash
-.agent/scripts/worktree_create.sh --skill research --type workspace
-source .agent/scripts/worktree_enter.sh --skill research --type workspace
-.agent/scripts/worktree_remove.sh --skill research --type workspace
-```
-
-**List / remove**:
-
-```bash
-.agent/scripts/worktree_list.sh
-.agent/scripts/worktree_remove.sh --issue <N> --type workspace
-.agent/scripts/worktree_remove.sh --issue <N> --type project
-```
-
-**Multi-project** — use `--project` when multiple projects are registered:
-
-```bash
-.agent/scripts/worktree_enter.sh --issue <N> --type project --project <name>
-```
-
-See [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) for disambiguation and troubleshooting.
-
-### Worktree Entry
-
-Skills that auto-enter a worktree (currently `/start-task`; potentially others
-in the future) use `Bash cd <path>`, not framework-native worktree-entry tools.
-Native tools that key off `git worktree list` (e.g. Claude Code's
-`EnterWorktree`) only accept worktrees of the *current* repo, so they reject
-project worktrees from a workspace session — the workspace and project are
-separate git repos. Using `cd` uniformly avoids a mode-dependent branch in
-entry skills and keeps behaviour consistent regardless of which repo owns the
-worktree.
-
-- **Exit a worktree**: `cd -` returns the session to the previous directory.
-  Any `cd` works; the worktree stays on disk.
-- **Delete a worktree**: `.agent/scripts/worktree_remove.sh --issue <N> --type
-  <type>` (or `--skill <name> --type workspace`). `make merge-pr PR=<N>` also
-  removes the worktree as part of the merge flow.
+worktree scripts (create, enter, remove). Two types: **workspace** (`.agent/`, `docs/`,
+skills) and **project** (the managed project repo; its PRs use `-R <project-remote>`).
+Sub-issue work branches from the parent's feature branch (`--parent-issue`); skill
+worktrees need no issue (Skill Worktree Exception, below). Commands, entry and removal:
+[`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md).
 
 ## Issue-First Policy
 
