@@ -151,3 +151,52 @@ The plan review (99962a2a) found the size estimate about 20 lines low (about 229
 **Plan**: `.agent/work-plans/issue-259/plan.md` at `6150c64b`
 
 Revised after plan review: size arithmetic shown section by section (about 199 lines, 196 with the last pinned lever), a pre-commit line-budget hook with a test replaces the validator check, missing references added, ADR-0010 repoint cited to ADR-0008.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-02 12:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #259 — Trim AGENTS.md to policy + pointers; move reference tables to .agent/knowledge/
+**Plan**: `.agent/work-plans/issue-259/plan.md` at `6150c64b`
+**Branch**: `feature/issue-259`
+
+Second review, of the plan revised after the first `## Plan Review` (99962a2a, needs-work). All five earlier findings are resolved; what remains is low.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, eight atomic commits; the hook adds one script, one config entry and one suite |
+| Issue alignment | Good | Every move the issue lists, the hard CLI rules in Boundaries (the "never guess URLs" rule is already in Never), the four `make` targets, the adapter-file check, before/after measurement. Serves, as checked: "Goal "Know whether it works" (keeping the always-loaded instructions lean), `docs/design.md#instruction-layers`." |
+| File targeting | Good | Repointed references are the complete set (verified below) |
+| Consequences | Good | Size arithmetic now reaches the target; one small consequence missing (finding 4) |
+| Principle alignment | Good | The budget now has a check that fails the PR that breaks it, with a test; pinned sections are trimmed last |
+| ADR compliance | Good | ADR-0008 cited for the ADR-0010 link fix; ADR-0016 headings kept; ADR-0017 step 8 (finding 1 sharpens it) |
+| ROS conventions | N/A | Workspace plan |
+
+Verified in the code, as asked:
+- Size table: measured AGENTS.md (awk over `## ` headings) gives preamble 13, Terminology 22, Boundaries 33, Communication 8, Quality 24, Tool Usage 14, Worktree Workflow 80, Issue-First 25, AI Signature 10, GitHub CLI 101, Build & Test 28, Verify 11, Cleanliness 6, Post-Task 12, Script Reference 51, References 10: sum 448 = `wc -l`, and 33,047 bytes. The After column sums to 199. Each After figure is reachable: the preamble as H1, sentence, two-line adapter list (8); References as three grouped doc bullets plus four pointers (the current eight doc links group naturally); Build & Test 6; Worktree Workflow 8 is the tightest. Lever 6c saves 2 lines, not 3 (the joined lines are "Branch naming", a blank, "All other rules"), so 197, not 196 (finding 5).
+- Hook in CI: `.github/workflows/validate.yml` job "Lint (pre-commit)" runs `make lint`, which is `$(PRE_COMMIT) run --all-files` (Makefile line 116). A local hook with `files: ^AGENTS\.md$` runs under `--all-files` because AGENTS.md matches, and the job's `SKIP` list names only the four local-state hooks. `language: system` local hooks already run there (`check-design-anchors`, `validate-adapter-contract`). No workflow change needed. The new suite is found by `run_script_tests.sh` (globs `test_*.sh`) and is mapped to the new script by `suites_for_files.sh`'s reference derivation, since both sit under the `validate-script-tests` scope `^\.agent/`.
+- References: `git grep -i` over the tree (outside AGENTS.md and work plans) for the moved section names ("Script Reference", "script table", "GitHub CLI Patterns", "git-bug-first", "Build & Test", "Worktree Workflow", "Worktree Entry", "Repo Targeting", "Merging PRs from Worktrees", `AGENTS.md#`) and every `AGENTS.md` mention finds exactly the plan's set: `docs/design.md` 427, `audit-workspace/SKILL.md` 75 and 159, `principles_review_guide.md` 63 and 69, `_issue_helpers.sh` 15, ADR-0010 69. The other hits stay true: `cross_model_review.sh` 639 (branch naming, in Boundaries), `merge_pr.sh` 687/826 (Never), design.md 647 ("adapter file listed in AGENTS.md", still listed after 6a), `CODEX.md` "Worktree Entry" (its own section, no link into AGENTS.md), `.agent/templates/project_agents_guide.md` "Build & Test" (a template heading), the inspiration digest (a record), ADR-0006 line 12 (history).
+
+### Findings
+
+1. **[ADR compliance]** (low) Step 8 does not say the Instruction layers block changes status. It is labelled `proposed` and opens "Nothing here is built"; once the hook lands, the budget is built, so the status and that sentence change (ADR-0017). OQ-4's row names the Owner as decider and AGENTS.md changes as Ask First; the budget number and the new hook (precedent: `check-design-anchors` was "approved by the owner 2026-10-09") were host decisions listed for veto. Close OQ-4 citing that, and put both in the PR's decision summary so the merge checkpoint is where the owner confirms them.
+2. **[Principle alignment]** (low) The hook's `files: ^AGENTS\.md$` means a commit that edits only `check_agents_md_budget.sh` or the hook entry does not run the check locally; `check-design-anchors` lists its own script and `.pre-commit-config.yaml` in `files:`. Do the same. Also say the script's interface (an optional path, default the repo root's `AGENTS.md`), since the 200/201/missing-file test needs to point it at a fixture.
+3. **[Consequences]** (low) `docs/design.md` line 142 says each Rules-table rule "is stated in `AGENTS.md` or the principles"; the new row's rule would be stated in neither. One line in AGENTS.md (for example in References: "this file stays at most 200 lines; reference material goes to `.agent/knowledge/`") fixes that and tells the next editor why the hook fails. Use one wording throughout: the plan says "under 200" but the hook passes at 200.
+4. **[Consequences]** (low) `principles_review_guide.md` line 63: a new script in `.agent/scripts/` gets a Script reference row. Add `check_agents_md_budget.sh` to `script_reference.md` (and the consequences table).
+5. **[Consequences]** (low) Arithmetic: lever 6c gives 23 for Issue-First, total 197, not 22 and 196. With 199 as the estimate and 200 as the limit, the margin is one line; the real count after the trim decides, as the plan says.
+
+### Summary
+
+The revised plan resolves all five earlier findings: the section table matches the file and reaches 199, the budget check runs in CI through `make lint` with no workflow change, and the repointed references are complete. The remaining findings are low and can be taken during implementation. Ready.
+
+### Recommended Actions
+
+- [ ] Step 8: change the Instruction layers status and "Nothing here is built", close OQ-4 as host-decided for owner confirmation, and list the budget and the new hook in the PR's decision summary
+- [ ] Hook `files:` also matches `check_agents_md_budget.sh` and `.pre-commit-config.yaml`; script takes an optional path for the test
+- [ ] State the budget in one AGENTS.md line, with one wording ("at most 200 lines") matching the hook
+- [ ] Add a `script_reference.md` row for `check_agents_md_budget.sh`
+- [ ] Correct lever 6c to 2 lines (197) when recording the final count
