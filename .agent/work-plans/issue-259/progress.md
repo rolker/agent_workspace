@@ -478,3 +478,13 @@ Checked R6's claim against the code with each checker reverted to its 9953d465 v
 
 ### False positives
 - None. R4's symlink concern and R5's path concern are addressed at this head (1bec66e0, a58e16a1), not dismissed.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 13:47 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (third integrated review has one valid suggestion, a missing test that would let the anchors-checker symlink fix be reverted unnoticed; address is within the checkpoint table; the owner may veto to merge with it deferred)
+**After**: findings
+**Decision**: address
+
+Integrated Review (103cdd81): changes-requested, 0 must-fix, 1 suggestion (Copilot at ce1da92): test_design_anchors.sh never runs the anchors checker with no argument, so the pwd -P fix to check_design_anchors.sh is unguarded (46/46 against the old checker). Fix: a test that runs the anchors checker through the scripts/ symlink with no argument. Third host address in a row on this PR; noted for the orchestrator log as a loop that keeps finding adjacent test gaps one at a time.
