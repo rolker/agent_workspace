@@ -143,3 +143,11 @@ The plan review (99962a2a) found the size estimate about 20 lines low (about 229
 ### Decisions made (owner may veto)
 - The line-budget check becomes a small pre-commit hook with a test, so it runs locally and in CI through make lint without a change to the CI workflow (which is Ask First) — undoing it: move the check.
 - Extra trims that touch no rule text: one pointer list in place of four new sections, the four make targets the issue names, a shorter worktree section; pinned sections last — undoing it: a plan line each.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 12:23 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-259/plan.md` at `6150c64b`
+
+Revised after plan review: size arithmetic shown section by section (about 199 lines, 196 with the last pinned lever), a pre-commit line-budget hook with a test replaces the validator check, missing references added, ADR-0010 repoint cited to ADR-0008.
