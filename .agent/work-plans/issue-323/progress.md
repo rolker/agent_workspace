@@ -108,3 +108,17 @@ The plan is well scoped and follows the review's decisions. Its central item-3 t
 - [ ] Item 2: drop the final `exec`, normalise `=` forms, missing-value and mutual-exclusion checks, sign after the root guard
 - [ ] Update the three stale Step 2 comments in `merge_pr.sh`
 - [ ] Use `--no-track` for the default start point; strip `origin/` before fetching
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-02 12:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review verdict needs-work with two must-fix findings; revising the plan is a mechanism answer within /orchestrator's checkpoint table)
+**After**: plan
+**Decision**: revise
+
+The plan review (0385ae95) returned needs-work: two must-fix (the new ci-30-shape fixture passes against the unfixed script and needs the lagging-headRefOid shape; docs/design.md's Rules row and Identity bullet become false under item 2 and need a Change log row), six should-fix (review-hold SHA under the fold, Step 2 negative tests, three suites that copy scripts without _resolve_default_branch.sh and registry repos on master, the issue wrapper's exec skipping the cleanup trap and its flag forms, stale merge_pr.sh comments) and suggestions. Host decisions for the revision: the Copilot review-hold check keeps reading the real pushed head, the fold changes only the CI target and Step 2's allowed set; the AGENTS.md script-table row is deferred to the owner as an Ask First edit.
+
+### Decisions made (owner may veto)
+- The review-hold SHA (Copilot still-running check) stays on the real head, not the walked-back reviewed head — undoing it: one plan line and one fixture.
+- The AGENTS.md script-table row for gh_create_issue.sh is not in the plan until the owner approves that instruction-file edit — undoing it: add the row.
