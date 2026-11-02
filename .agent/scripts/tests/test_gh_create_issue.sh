@@ -286,6 +286,142 @@ else
 fi
 
 echo
+echo "=== Short forms with glued values (-b=X, -bX, -F=X, -FX, -wb X) ==="
+for form in "-b=Glued body" "-bGlued body"; do
+    run --title T "$form"
+    if [[ "$RC" -eq 0 ]] && argv_has "--body" && grep -q '^Glued body' "$ARGV_LOG" \
+       && sig_in "$ARGV_LOG" && ! argv_has "$form"; then
+        pass "$form: read as --body, signed"
+    else
+        fail "$form: not signed (rc=$RC)"
+        sed 's/^/    /' "$ARGV_LOG" 2>/dev/null
+    fi
+done
+run --title T "-b="
+if [[ "$RC" -eq 0 ]] && grep -qx '=' "$ARGV_LOG" && sig_in "$ARGV_LOG"; then
+    pass "-b= is the body \"=\" (as pflag reads it), signed"
+else
+    fail "-b= handling broken (rc=$RC)"
+fi
+for form in "-F=" "-F"; do
+    printf 'Glued file\n' > "$BODYF"
+    run --title T "$form$BODYF"
+    if [[ "$RC" -eq 0 ]] && [[ -f "$BODY_CAPTURE" ]] && grep -Fq 'Glued file' "$BODY_CAPTURE" \
+       && sig_in "$BODY_CAPTURE" && ! argv_has "$form$BODYF"; then
+        pass "${form}PATH: read as --body-file, signed through a copy"
+    else
+        fail "${form}PATH: not signed (rc=$RC): $OUT"
+    fi
+done
+run --title T -wb "Cluster body"
+if [[ "$RC" -eq 0 ]] && argv_has "-w" && grep -q '^Cluster body' "$ARGV_LOG" && sig_in "$ARGV_LOG"; then
+    pass "-wb VALUE: boolean shorthand kept, body signed"
+else
+    fail "-wb VALUE: not signed (rc=$RC)"
+fi
+
+echo
+echo "=== Values that look like flags are values ==="
+run --title -b --body B
+if [[ "$RC" -eq 0 ]] && [[ "$(sed -n 2p "$ARGV_LOG")" = "-b" ]] && grep -qx 'B' "$ARGV_LOG" \
+   && sig_in "$ARGV_LOG"; then
+    pass "--title -b: the title is \"-b\", the body is signed"
+else
+    fail "--title -b misread (rc=$RC)"
+    sed 's/^/    /' "$ARGV_LOG" 2>/dev/null
+fi
+run --title -b
+if [[ "$RC" -eq 0 ]] && gh_called && ! grep -Fq '**Authored-By**:' "$ARGV_LOG"; then
+    pass "--title -b alone: no body, nothing signed, no missing-value error"
+else
+    fail "--title -b alone: rc=$RC"
+fi
+run --title T --body '--repo=x'
+if [[ "$RC" -eq 0 ]] && grep -qx -- '--repo=x' "$ARGV_LOG" && ! argv_has "--repo" \
+   && ! argv_has "x" && sig_in "$ARGV_LOG"; then
+    pass "--body '--repo=x': kept as the body, not split into a repo flag"
+else
+    fail "--body '--repo=x' rewritten (rc=$RC)"
+    sed 's/^/    /' "$ARGV_LOG" 2>/dev/null
+fi
+run --title --no-signature --body B
+if [[ "$RC" -eq 0 ]] && argv_has "--no-signature" && sig_in "$ARGV_LOG"; then
+    pass "a value --no-signature: kept as the title, body still signed"
+else
+    fail "a value --no-signature was stripped or suppressed signing (rc=$RC)"
+fi
+run --title T --body --no-signature
+if [[ "$RC" -eq 0 ]] && grep -qx -- '--no-signature' "$ARGV_LOG" && sig_in "$ARGV_LOG"; then
+    pass "--body --no-signature: the body is \"--no-signature\", signed"
+else
+    fail "--body --no-signature misread (rc=$RC)"
+fi
+run --title T --label --body
+# No metadata file in this checkout's tracked tree, so labels go to gh.
+if [[ "$RC" -eq 0 || "$RC" -eq 1 ]] && [[ "$OUT" != *"requires a value"* ]] \
+   && { ! gh_called || { [[ "$(sed -n 3p "$ARGV_LOG")" = "--label" ]] \
+        && [[ "$(sed -n 4p "$ARGV_LOG")" = "--body" ]] \
+        && ! grep -Fq '**Authored-By**:' "$ARGV_LOG"; }; }; then
+    pass "--label --body: \"--body\" is the label's value, not a body flag"
+else
+    fail "--label --body: rc=$RC out=${OUT:0:200}"
+fi
+
+echo
+echo "=== A body file that is a pipe is signed ==="
+run --title T --body-file <(printf 'Process substitution body\n')
+if [[ "$RC" -eq 0 ]] && [[ -f "$BODY_CAPTURE" ]] && grep -Fq 'Process substitution body' "$BODY_CAPTURE" \
+   && sig_in "$BODY_CAPTURE"; then
+    pass "--body-file <(...) (a pipe) signed through a copy"
+else
+    fail "--body-file <(...) not signed (rc=$RC): $OUT"
+fi
+FIFO="$SANDBOX/body.fifo"
+mkfifo "$FIFO"
+printf 'Fifo body\n' > "$FIFO" &
+run --title T -F "$FIFO"
+wait
+if [[ "$RC" -eq 0 ]] && [[ -f "$BODY_CAPTURE" ]] && grep -Fq 'Fifo body' "$BODY_CAPTURE" \
+   && sig_in "$BODY_CAPTURE"; then
+    pass "-F FIFO signed through a copy"
+else
+    fail "-F FIFO not signed (rc=$RC): $OUT"
+fi
+rm -f "$FIFO"
+WORKTREE_ISSUE=4242 run --title T --body-file <(printf 'Piped sub-issue\n')
+if [[ "$RC" -eq 0 ]] && grep -Fq 'Piped sub-issue' "$BODY_CAPTURE" \
+   && grep -Fq 'Part of #4242' "$BODY_CAPTURE" \
+   && [[ "$(tail -n1 "$BODY_CAPTURE")" == '**Model**: `test-model`' ]]; then
+    pass "pipe body + WORKTREE_ISSUE: read once, parent reference and footer both added"
+else
+    fail "pipe body + WORKTREE_ISSUE broken (rc=$RC)"
+fi
+for missing in "$SANDBOX/no-such-body.md" "$SANDBOX"; do
+    run --title T --body-file "$missing"
+    if [[ "$RC" -eq 2 ]] && ! gh_called && [[ "$OUT" == *"cannot read --body-file"* ]]; then
+        pass "unreadable --body-file ($(basename "$missing")): exit 2, gh not called"
+    else
+        fail "unreadable --body-file ($(basename "$missing")): rc=$RC gh_called=$(gh_called && echo yes || echo no)"
+    fi
+done
+
+echo
+echo "=== A long body is checked whole (no pipe to cut short) ==="
+FILLER=$(head -c 100000 /dev/zero | tr '\0' 'x')
+run --title T --body "$(printf '**Authored-By**: `Early`\n%s' "$FILLER")"
+if [[ "$RC" -eq 0 ]] && [[ "$(sig_count "$ARGV_LOG")" -eq 1 ]]; then
+    pass "100 KB inline body signed at the top keeps one footer"
+else
+    fail "100 KB signed inline body got $(sig_count "$ARGV_LOG") footers (rc=$RC)"
+fi
+WORKTREE_ISSUE=4242 run --title T --body "$(printf 'Part of #4242\n%s' "$FILLER")"
+if [[ "$RC" -eq 0 ]] && [[ "$(grep -c 'Part of #4242' "$ARGV_LOG")" -eq 1 ]]; then
+    pass "100 KB inline body that names the parent gets no second reference"
+else
+    fail "100 KB inline body: parent reference added twice (rc=$RC)"
+fi
+
+echo
 echo "=== The user-tier root guard refuses before signing ==="
 # Same probe as test_user_tier_guard.sh (--title t --body b, AGENT_MODEL
 # unset), from a repo registered nowhere: the guard's refusal must come
