@@ -122,3 +122,11 @@ The plan review (0385ae95) returned needs-work: two must-fix (the new ci-30-shap
 ### Decisions made (owner may veto)
 - The review-hold SHA (Copilot still-running check) stays on the real head, not the walked-back reviewed head — undoing it: one plan line and one fixture.
 - The AGENTS.md script-table row for gh_create_issue.sh is not in the plan until the owner approves that instruction-file edit — undoing it: add the row.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 12:03 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `fe16772b`
+
+Revision after the needs-work plan review: stale-headRefOid fixture that fails pre-fix, Step 2 negatives, review-hold SHA stays the real head (ci-32 analogue), design.md Rules row/Identity bullet/Change log (ADR-0017), existing suites fixed for the default-branch helper, issue wrapper details (no exec, = forms, order after root guard), stale merge_pr.sh comments. AGENTS.md row pending owner approval.
