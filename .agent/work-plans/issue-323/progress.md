@@ -191,3 +191,11 @@ The second plan review (4c070fb2) resolved both must-fixes and left one should-f
 ### Decisions made (owner may veto)
 - Reversed: the review-hold SHA is the head before this run's own pushes (the host-pushed head), not HEAD_NOW — undoing it: one plan line and one fixture.
 - The AGENTS.md row is in the plan as a separate commit, on the owner's yes — undoing it: drop that commit.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-02 12:10 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-323/plan.md` at `a81b3bd7`
+
+Second revision: the Copilot review-hold is now on the host-pushed head (before this run's own pushes) with the ci-32 analogue placing the running review on the host commit; five suites get the default-branch helper and the helper is sourced at call time; WORKTREE_GUIDE change is an added sentence; assertions match the reworded CI-target line and the Rules row is retitled; the owner-approved AGENTS.md row is commit 4.
