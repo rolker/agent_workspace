@@ -504,3 +504,20 @@ Integrated Review (103cdd81): changes-requested, 0 must-fix, 1 suggestion (Copil
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `e91d555c`: exit 0, every hook passed, including validate-script-tests (all suites).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-02 13:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #416 at `2bb4f6b0`
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the previous Integrated Review's one finding (103cdd81, Copilot R6: no test ran `check_design_anchors.sh` with its default root) and its fix e91d555c. PR-mode round 4 (three complete PR-mode Local Reviews before it, no restart checkpoint), and the handoff says no cross-model reviewers, so this is the round-3-or-later convergence check. Cross-model: skipped (round-4 convergence check, per handoff).
+
+Checked: 103cdd81..2bb4f6b0 touches only `.agent/scripts/tests/test_design_anchors.sh` (+20: one new case and a header line) and progress.md (the Implementation entry and the addressed box ticked). The new case runs a sandbox copy of the checker through a `scripts -> .agent/scripts` symlink, no argument, `DESIGN_ANCHORS_ROOT` unset, from another directory, and expects exit 1 on its own repository's broken citation. Reproduced in a scratch copy: against the 9953d465 checker the suite gives 46 passed, 1 failed (exit 2, "docs/design.md not found under <sandbox>/sym"); against the current checker 47 of 47; the same with TMPDIR through a symlink; in-tree 47 of 47. shellcheck (pre-commit hook) passed. AGENTS.md 199 lines; `check_agents_md_budget.sh` exits 0.
+
+### Findings
+- [ ] No issues found. LGTM.
