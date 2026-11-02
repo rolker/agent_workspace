@@ -350,3 +350,25 @@ Cross-model: gemini completed, no issues; codex completed, no issues (read-only,
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-02 13:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested (1 suggestion, 0 must-fix)
+**Dispatch**: resumed (agent ae45e921ddd6df66c, resume 1 of 3)
+
+**PR**: #416 at `300000a`
+**Sources**: 3 (Copilot R2 @ `bdfe357`, Local Review @ `bdfe357` (covers `300000a` via bookkeeping; Gemini and Codex via that entry, no issues), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Round 2. The four findings of the previous Integrated Review (db3a6e61, at `ca89bdb`) were fixed in 345f1f06, 276f3007, 9f975b3c and 4bcdc26a; the PR-mode Local Review (300000af) checked each and found nothing, and Copilot R2 lists both of its R1 comments as resolved. The pre-push entry (`c870cea`) is stale and was ruled on in db3a6e61. The Local Review's only box is "No issues found. LGTM.", which is not a finding. Copilot R2 has no inline comments; its overview raises one "previously missed issue" in unchanged code, triaged below.
+
+Reproduced at `300000a`: `bash scripts/check_agents_md_budget.sh` (through the repo-root `scripts -> .agent/scripts` symlink, which `.agent/knowledge/script_reference.md:6` documents) exits 2 with "cannot read /home/roland/agent_workspace/worktrees/workspace/AGENTS.md", the checkout's parent, from the worktree root and from another cwd; `bash .agent/scripts/check_agents_md_budget.sh` exits 0. `cd "$(dirname ...)/../.."` resolves `..` lexically, so `scripts/../..` is the parent of the checkout. Where that parent holds an AGENTS.md (a checkout inside another repository using the cross-vendor convention), the check passes or fails on the wrong file with no error. The hook's `entry` uses the `.agent/scripts/` path, so the commit gate itself is unaffected. `cd -P "scripts/../.."` gives the checkout root (tested). `.agent/scripts/capture.sh:42-45` is the workspace precedent, with a comment naming this exact case. `check_design_anchors.sh:103` has the same defect, pre-existing (`bash scripts/check_design_anchors.sh` exits 2, "docs/design.md not found under .../worktrees/workspace").
+
+### Findings
+- [ ] (suggestion, Copilot R2 @ `bdfe357`) The checker's default path resolves `../..` lexically, so a run through the documented `scripts/` symlink reads the checkout's parent's AGENTS.md (exit 2 today, a silent check of an unrelated file where one exists); resolve physically as `capture.sh` does: `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"`, then `$(cd "$SCRIPT_DIR/../.." && pwd -P)/AGENTS.md`. Add case (g) to the suite: in the sandbox repo, a `scripts -> .agent/scripts` symlink, a 201-line `<repo>/AGENTS.md` and a 1-line AGENTS.md in the sandbox repo's parent (so the wrong resolution would pass), run `bash <repo>/scripts/check_agents_md_budget.sh` with no argument from another directory, expect exit 1 naming `<repo>/AGENTS.md`; update the Cases list. Apply the same `pwd -P` fix to the identical sibling at `check_design_anchors.sh:103` (one line, same defect, as the hook-name quoting fix took its siblings) — `.agent/scripts/check_agents_md_budget.sh:16`
+
+### False positives
+- None. Gemini and Codex (recorded in the Local Review) raised no issues.
