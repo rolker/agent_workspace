@@ -202,6 +202,9 @@ declare -A ROOT_READERS=(
     # files:/exclude: regex could cover.
     [test_cross_model_review.sh]=""
     [test_dispatch_phase.sh]=".agent/project_types .agent/scripts"
+    # Runs the real wrapper against the real worktree (its remote and repo
+    # root); copies the wrapper and the registry helper into a sandbox.
+    [test_gh_create_issue.sh]=".agent/scripts"
     [test_merge_pr_gate.sh]=".agent/scripts"
     [test_merge_pr_root_resolution.sh]=""
     [test_merge_pr.sh]=".agent/scripts"

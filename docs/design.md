@@ -166,7 +166,7 @@ only.
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
 | Ask first: instruction files, CI or branch protection, the project remote URL | Leave a trail; start limits strict | `review only` | Review guide row "Name the rule before bending it" (an Ask-First rule treated as bendable). No code-owner file or hook watches those paths |
-| A pull request carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` appends it and exits 2 when `AGENT_NAME` and `AGENT_MODEL` are unset. Issues and comments are signed by habit only: `gh_create_issue.sh` does not add one |
+| A pull request or an issue carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` and `gh_create_issue.sh` append it to a given body and exit 2 when `AGENT_NAME` and `AGENT_MODEL` are unset (`--no-signature` skips it). An issue made with `gh issue create` directly is not checked. Comments are signed by habit only: no wrapper signs them |
 | No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
 
 ## Sessions and roots
@@ -636,8 +636,8 @@ Status: `decided`
 - Three things refuse to run without an identity or with a wrong one: the `check-commit-identity` hook
   (accepted emails are the agent pattern and the owner's two addresses), `dispatch_phase.sh` (exit 2
   when `AGENT_NAME` or `AGENT_EMAIL` is unset, with no fallback to the owner's git config) and
-  `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` exits 2 for an unsigned body
-  ([Rules](#rules)).
+  `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` and `gh_create_issue.sh` exit 2
+  for an unsigned body ([Rules](#rules)).
 - The work is kept tool-neutral (principle "Use the main tool fully; keep the work tool-neutral"):
   plans, reviews and progress are plain files any tool reads. What needs Claude Code is the
   `/run-issue` and `/start-task` skills (their descriptions say so), the user tier in `~/.claude`
@@ -798,6 +798,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
 | 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
+| 2026-11-02 | Rules, Identity | `gh_create_issue.sh` signs an issue body as `gh_create_pr.sh` signs a pull request (`--no-signature`, exit 2 without an identity): the Rules row is retitled to cover issues and still says comments are signed by habit only, and the Identity bullet names both wrappers | #323 | 855 |
 
 ## Glossary
 
