@@ -251,3 +251,23 @@ Implemented the plan as written; the five low findings of the final plan review 
 - Issue 323 has not landed on main (checked `origin/main` at 12:20); whichever merges second re-applies its three Script Reference rows, now in `.agent/knowledge/script_reference.md`.
 - Kept as existing rule text, not changed: the Worktree Workflow line "`--type` is **required**", which `WORKTREE_GUIDE.md` Quick Start contradicts since #317 (it says `--type` is optional when the cwd decides). Worth a separate fix.
 - `docs/design.md` Instruction layers item 3 still says "22 skills"; not re-counted here.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-02 12:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-259 at `c870ceae`
+**Base**: main
+**Depth**: Deep (reason: 17 files, 1,040 changed lines; AGENTS.md and .pre-commit-config.yaml are override triggers)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Checked: each moved section diffed against `git show main:AGENTS.md` (Script Reference, git-bug-first, GitHub CLI Patterns, Build & Test identical apart from headings, intro lines and the new budget-script row; Worktree Entry identical in WORKTREE_GUIDE.md, whose existing blocks already held the other worktree commands); repoints in design.md, audit-workspace, the review guide, `_issue_helpers.sh` and ADR-0010 present, no stale AGENTS.md section references found by grep; all nine pinned headings present, `test_session_start_layer.sh` 49/49; `test_agents_md_budget.sh` 4/4; checker exit 0 on the 199-line file; shellcheck clean; the hook's `files:` matches only AGENTS.md, the script and the config; `wc` confirms 199 lines / 10,513 bytes and design.md 860 lines. Cross-model: gemini and codex both completed, no issues.
+
+### Findings
+- [ ] (suggestion) The new Never line points to `make merge-pr PR=<N>`, a workspace Makefile target; Boundaries is pinned into project sessions, where the hook's workspace-root note covers `.agent/scripts/...` paths but not make targets — name `.agent/scripts/merge_pr.sh --pr <N>` instead — `AGENTS.md:62`
+- [ ] (suggestion) The suite never runs the checker with no argument, the way the hook calls it, so a broken default-path resolution would pass; add a case asserting exit 0 on the repository's AGENTS.md — `.agent/scripts/tests/test_agents_md_budget.sh:57`
+- [ ] (suggestion) Hook name `... (issue #259)` is unquoted, so YAML reads ` #259)` as a comment and the name shows as "...(issue" (same as the existing `check-design-anchors` hook); quote it — `.pre-commit-config.yaml:73`
+- [ ] (suggestion) OQ-4 row says "the owner approved the #259 trim on 2026-11-02"; the timeline records a go-ahead in principle for the drive with the final approval at the merge; word it as recorded — `docs/design.md:748`
