@@ -40,7 +40,7 @@ mk_ws() {  # a workspace-shaped repo with a worktree
     cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/validate_adapter.sh" "$sb/.agent/scripts/"
     cp -r "$REAL_ROOT/.agent/project_types/single_project" "$sb/.agent/project_types/"
-    for f in worktree_create.sh worktree_enter.sh _worktree_helpers.sh _issue_helpers.sh; do
+    for f in worktree_create.sh worktree_enter.sh _worktree_helpers.sh _resolve_default_branch.sh _issue_helpers.sh; do
         cp "$REAL_ROOT/.agent/scripts/$f" "$sb/.agent/scripts/"
     done
     mkdir -p "$sb/stubbin"

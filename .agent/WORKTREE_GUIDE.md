@@ -125,6 +125,18 @@ legacy `project/` checkout.
 - Branch: `feature/issue-<N>` in the project repo
 - PRs target the project repo with `-R <project-remote>`
 
+### Where a New Branch Starts
+
+A new branch, for an issue or a skill and in every repo of the worktree,
+starts from that repo's default branch as origin has it (`origin/<default>`,
+fetched first), whichever branch the invoking checkout is on, and is not
+set to track it (the first `git push -u` sets the upstream). When origin
+cannot be reached the local default branch is used, with a warning; when no
+default branch resolves, creation stops and suggests
+`git remote set-head origin -a`. Only `--parent-issue` (below) starts a
+branch elsewhere. An existing branch, local or on origin, is checked out as
+it is.
+
 ## Naming Convention
 
 | Mode | Directory name |

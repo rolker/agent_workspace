@@ -83,7 +83,10 @@ make_sandbox() {
 make_git_repo() {
     local dir="$1" url="$2"
     mkdir -p "$dir"
-    git -C "$dir" init --quiet
+    # `-b main`: a new worktree branch starts from the repo's default
+    # branch (#323), which resolve_default_branch finds as `main` here
+    # (no origin/HEAD, and the origin URLs are fake).
+    git -C "$dir" init --quiet -b main
     git -C "$dir" remote add origin "$url"
 }
 
@@ -645,13 +648,14 @@ make_worktree_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/worktree_create.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_enter.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_resolve_default_branch.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
     mkdir -p "$sb/stubbin"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/gh"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
     chmod +x "$sb/stubbin/gh" "$sb/stubbin/git-bug"
     # The sandbox root itself must be a git repo (workspace repo stand-in).
-    git -C "$sb" init --quiet
+    git -C "$sb" init --quiet -b main
     echo "$sb"
 }
 

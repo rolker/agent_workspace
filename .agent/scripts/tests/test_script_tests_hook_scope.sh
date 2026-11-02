@@ -244,6 +244,9 @@ declare -A ROOT_READERS=(
     # test_user_tier_install.sh below).
     [test_user_tier_guard.sh]="manifest:.agent/user_tier_scripts.txt .agent/ .claude/"
     [test_user_tier_install.sh]=".agent/ .claude/"
+    # Copies the real worktree scripts and the single_project type into its
+    # sandbox workspace.
+    [test_worktree_create.sh]=".agent/scripts .agent/project_types"
 )
 
 for suite in "${ROOT_DERIVING[@]}"; do

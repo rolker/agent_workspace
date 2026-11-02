@@ -844,12 +844,17 @@ else
             git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         else
-            echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to HEAD"
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to the default branch" >&2
+            START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
+            echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
+            git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
         fi
     else
-        echo "Creating new branch '$BRANCH_NAME' from current HEAD..."
-        git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        # The default branch, never the invoking checkout's HEAD (#323):
+        # run from inside a feature worktree, HEAD is that feature.
+        START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
+        echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
+        git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
     fi
 
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
