@@ -242,3 +242,13 @@ The pre-push suggestion is confirmed against the code: `suites_for_files.sh` (th
 - [ ] (suggestion, Local Review (Pre-Push) @ `5cd5b14`, covers via bookkeeping) The real-tree expected set (`doc_want`) omits the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites in the dump), but adding one would fail this check spuriously. Add the test_*.sh suites missing from the dump to `doc_want` and to the pass/fail text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one open suggestion box, a few lines in test_script_tests_hook_scope.sh so its expected set includes suites absent from --dump; Copilot did not run on this PR (quota), so the branch has only the pre-push Gemini and Codex coverage; fixing it costs one small round and merging past an open box is the owner's answer only, so address)
+**After**: findings
+**Decision**: address
+
+Host answer under /orchestrator's checkpoint table. The open box of the Integrated Review at feb72bbc goes to address-findings.
