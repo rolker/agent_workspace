@@ -55,3 +55,13 @@ issue: 418
 - [ ] Settle in the plan how S2 finds the root's remote for `gh pr list -R` when the root is a multi-repo hosting directory with no remote of its own (ADR-0016: the registered hosting directory is the root, not a nested package repo); say "no pull-request source" rather than guessing.
 - [ ] Decide S3's "where the root has those files" test as a file-exists check per workspace-shaped check, so the skip line names which check and why.
 - [ ] In the plan, decide the S7 deferral fate (revisit check or Decided Against) and order the work after #388 or state the rebase.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 09:49 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the three open actions are mechanism: how the pull-request source is found for a root with no single remote, a per-check skip line in Problems, and the deferral row's fate plus ordering against #388; none adds or drops a behaviour the owner asked for)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The owner's scope (2026-11-09, quoted in the issue) stands: the session root only. The three actions go to plan-task as plan inputs.
