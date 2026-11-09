@@ -1291,6 +1291,12 @@ step5 'No number here' '`gh-issue acme/other#5 closed`'
 step5 'Two at once (#7, #9), then (#11, see below) and #8' ''
 [[ "$OUT" == *"issues_named=7 9 11"* && "$OUT" != *"issue	8"* ]] \
     && pass "(skill 5) every number of a list (#N, #M) is taken, and (#N, text) still is" || fail "(skill 5) list '$OUT'"
+step5 'No number here' 'file-contains docs/a.md gh-issue 9 closed ; gh-issue 12 later'
+[[ "$OUT" == *"issues_named=none"* ]] \
+    && pass "(skill 5) gh-issue inside another check's argument, or with no open/closed state, is not a check: no number" || fail "(skill 5) grammar '$OUT'"
+step5 'No number here' '`gh-issue 9 Closed`'
+[[ "$OUT" == *"issues_named=9"* ]] \
+    && pass "(skill 5) a whole backticked gh-issue check (state in any case) names its number" || fail "(skill 5) whole check '$OUT'"
 echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
 case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
     cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
@@ -1391,14 +1397,15 @@ cat > "$SB/prs.json" <<'EOF'
  {"number":21,"title":"Branch match","headRefName":"feature/issue-7","isCrossRepository":false,"isDraft":true,"closingIssuesReferences":null},
  {"number":22,"title":"Closes it","headRefName":"other","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"widgets"}}]},
  {"number":23,"title":"Closes another repository's 7","headRefName":"x","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"other"}}]},
+ {"number":27,"title":"Closes it, named in another case","headRefName":"v","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"ACME"},"name":"Widgets"}}]},
  {"number":24,"title":"Reference without repository","headRefName":"y","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7}]},
  {"number":25,"title":"No references","headRefName":"z","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[]},
  {"number":26,"title":"From a fork","headRefName":"feature/issue-7","isCrossRepository":true,"isDraft":false,"closingIssuesReferences":[]}]
 EOF
 reset_marks
 step5 'A line (#7)' ''
-[[ $RC -eq 0 && "$(grep '^pull_request' <<< "$OUT")" == $'pull_request\t21\tBranch match\tdraft\npull_request\t22\tCloses it\tready' ]] \
-    && pass "(skill 5) pull requests: null references do not stop the lookup; branch match, closing reference here; not another repository's, a bare reference, or a fork" \
+[[ $RC -eq 0 && "$(grep '^pull_request' <<< "$OUT")" == $'pull_request\t21\tBranch match\tdraft\npull_request\t22\tCloses it\tready\npull_request\t27\tCloses it, named in another case\tready' ]] \
+    && pass "(skill 5) pull requests: null references do not stop the lookup; branch match, closing reference here (in any case, as GitHub names compare); not another repository's, a bare reference, or a fork" \
     || fail "(skill 5) pull requests rc=$RC '$OUT'"
 [[ "$OUT" == *$'issue\t7\tLive title'* ]] && pass "(skill 5) gh up: the live title" || fail "(skill 5) live title '$OUT'"
 mv "$SB/gh.saved" "$SB/bin/gh"
@@ -1517,6 +1524,20 @@ listed="$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d | cut -f4)"
     && pass "(project 2) the last record is the project's, not a later workspace one" || fail "(project 2) record '$OUT'"
 [[ "$listed" == $'b\nd\n--- other lines\na\nc' ]] \
     && pass "(project 2) the project's inbox lines first, then the others, each oldest first" || fail "(project 2) inbox '$listed'"
+cp "$SB/notes/inbox.txt" "$SB/inbox4.saved"
+{ for i in $(seq 1 19); do printf '2026-11-02 10:00 -0400\tproj\t-\tp%s\n' "$i"; done
+  for i in 1 2 3; do printf '2026-11-02 10:00 -0400\tworkspace\t-\tw%s\n' "$i"; done; } > "$SB/notes/inbox.txt"
+run_step 2
+listed="$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d | cut -f4)"
+[[ "$(grep -vc '^--- other lines$' <<< "$listed")" -eq 20 && "$(tail -n2 <<< "$listed")" == $'--- other lines\nw1' ]] \
+    && pass "(project 2) 19 own lines: the marker is not counted, one other line follows it" || fail "(project 2) 19 own: '$listed'"
+{ for i in $(seq 1 20); do printf '2026-11-02 10:00 -0400\tproj\t-\tp%s\n' "$i"; done
+  printf '2026-11-02 10:00 -0400\tworkspace\t-\tw1\n'; } > "$SB/notes/inbox.txt"
+run_step 2
+listed="$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d | cut -f4)"
+[[ "$(grep -c . <<< "$listed")" -eq 20 && "$listed" != *"other lines"* ]] \
+    && pass "(project 2) 20 own lines: no marker with nothing under it" || fail "(project 2) 20 own: '$listed'"
+cp "$SB/inbox4.saved" "$SB/notes/inbox.txt"
 AT="" run_step 2
 [[ "$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d | cut -f4)" == $'a\nb\nc\nd' ]] \
     && pass "(workspace 2) a workspace session lists the inbox in file order, as before" || fail "(workspace 2) inbox '$OUT'"
@@ -1602,7 +1623,7 @@ run_step 6
 echo "TEST: the sit-rep outside every root says so and stops"
 AT="$SB/elsewhere"
 run_step 1
-[[ $RC -eq 1 && "$OUT" == *"no sit-rep: this directory is outside every root"* && "$OUT" != *rows_file=* ]] \
+[[ $RC -eq 1 && "$OUT" == *"no sit-rep: no root could be decided for this directory"* && "$OUT" != *rows_file=* ]] \
     && pass "(outside) no sit-rep, no fallback to the workspace" || fail "(outside) rc=$RC '$OUT'"
 AT=""
 rm -f "$WS/.agent/projects.local"

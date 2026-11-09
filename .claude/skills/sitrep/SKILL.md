@@ -35,9 +35,10 @@ workspace session, the registered project root in a project session.
 prints it with the facts the steps below need (`root=`, `type=`,
 `record_name=`, `roadmap=`, `own_repo=`, `default_branch=`, `pr_source=`
 and which Problems checks the root's files allow; the script's header
-has the rules). Outside every root it prints nothing and exits non-zero;
-there is then no sit-rep, and the report says so rather than fall back
-to the workspace.
+has the rules). When it decides no root (the directory is outside every
+root, or the project registry cannot be parsed) it prints nothing, gives
+the reason, and exits non-zero; there is then no sit-rep, and the report
+says so, with that reason, rather than fall back to the workspace.
 
 ## Usage
 
@@ -97,13 +98,14 @@ the roadmap (not found, or not readable): its rows are shown, but there is
 no count to record, since no Direction line was looked at. If this block
 itself is interrupted (INT or TERM), it stops the check runner and removes
 the rows file before it exits. The block first prints the root's facts
-(`sitrep_root.sh`), then `---`; outside every root it prints "no
-sit-rep" and stops, and so does the sit-rep.
+(`sitrep_root.sh`), then `---`; when no root is decided (outside every
+root, or a registry that cannot be parsed) it prints "no sit-rep" and
+stops, and so does the sit-rep.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 if ! r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")"; then
-    echo "no sit-rep: this directory is outside every root (reason above)"
+    echo "no sit-rep: no root could be decided for this directory (reason above)"
     exit 1
 fi
 printf '%s\n---\n' "$r"
@@ -166,7 +168,7 @@ lists them in file order.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 name="$(sed -n 's/^record_name=//p' <<< "$r")"
 mine=""; [ "$(sed -n 's/^type=//p' <<< "$r")" != project ] || mine="$(sed -n 's/^project=//p' <<< "$r")"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
@@ -204,14 +206,20 @@ if [ -n "$inbox" ] && [ -f "$inbox" ]; then
         fi
     fi
     echo "---"
+    # The first 20 inbox lines in listing order; the marker is not one of
+    # them, and is printed only when an other line follows it.
     M="$mine" awk -F'\t' '
-        !/^[[:space:]]*$/ { if (ENVIRON["M"] == "" || $2 == ENVIRON["M"]) print; else rest[++n] = $0 }
-        END { if (n) { print "--- other lines"; for (i = 1; i <= n; i++) print rest[i] } }' "$inbox" | head -n 20
+        !/^[[:space:]]*$/ { if (ENVIRON["M"] == "" || $2 == ENVIRON["M"]) mine[++m] = $0; else rest[++n] = $0 }
+        END { k = 0
+              for (i = 1; i <= m && k < 20; i++) { print mine[i]; k++ }
+              if (n && k < 20) print "--- other lines"
+              for (i = 1; i <= n && k < 20; i++) { print rest[i]; k++ } }' "$inbox"
 fi
 ```
 
 Inbox lines are `date`, `project`, `issue`, `text`. The first 20 (oldest)
-are shown; say how many more there are. New lines are appended at the end,
+are shown, in listing order (the `--- other lines` marker is not counted
+among them); say how many more there are. New lines are appended at the end,
 so the new ones are those after the last line the previous run saw, which
 its record keeps (step 4). `inbox_new` counts the lines after that line,
 found at the position recorded or, when lines above it were removed, as
@@ -228,7 +236,11 @@ check names that project's worktrees, a `gh-issue <owner/repo>#N` check
 the worktree of that issue). Project worktrees no Direction line of this
 root names are not listed, in a workspace session either. Each entry
 carries `own`: `yes` for a checkout of the root's own repository, whose
-issues are this root's. The rows of step 1 tell the named ones apart, so
+issues are this root's. It also carries the GitHub repository its issue
+belongs to (`repository`, with the checkouts of it, and why there is none),
+the branch its pull request would have (`pr_branch`), and, with step 1's
+rows, whether a Direction line names it (`named`); the helper's header
+has the rules, and a check is read as the check runner reads it. The rows of step 1 tell the named ones apart, so
 put step 1's `rows_file` value in place of the placeholder (leave it as
 it is when step 1 printed none: then only the root's own worktrees are
 listed, and the report says the work its Direction lines name could not
@@ -236,7 +248,7 @@ be listed).
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 src="$(sed -n 's/^pr_source=//p' <<< "$r")"
 "$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "<rows_file printed in step 1>" \
     || echo "worktrees: could not be listed (reason above)"
@@ -266,7 +278,7 @@ it is when step 1 printed none):
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 stype="$(sed -n 's/^type=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 rows="<rows_file printed in step 1>"
@@ -277,63 +289,28 @@ if [ -n "$roadmap" ] && awk '/^## Direction/ { d = 1; next } d && /^## / { exit 
         d && /^\*\*Path [0-9]+/ { f = 1; exit } END { exit !f }' "$roadmap" 2>/dev/null; then
     haspaths=yes
 fi
-# Path 1 is work a Direction line's own cells name: "(#N" in a line's item,
-# every number of a list "(#N, #M)", or "gh-issue N " in its check (this
-# repository's issue N, step 5's
-# match), "gh-issue <owner/repo>#N" (that repository's), and the project
-# an "adapter --project <name>" check names. Read from step 1's rows, over
-# every line row; with no rows the path cannot be told.
-p1=""
-if [ -f "$rows" ]; then
-    p1=" $( { awk -F'\t' '$1 == "line" { print $2 }' "$rows" | grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' | grep -oE '[0-9]+'
-              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' | grep -oE '[0-9]+'
-              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'gh-issue [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+' | cut -d' ' -f2
-              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'adapter --project [A-Za-z0-9._-]+' | sed 's/^adapter --project /project:/'
-            } | sort -u | tr '\n' ' ')"
-fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
     || { echo "worktrees: could not be listed (reason above); work in flight not known this run"; exit 1; }
 jq -c '.worktrees[]? | select(.type != "main" and .issue)' <<< "$wl" |
 while IFS= read -r w; do
     # Each field by its name, never by position: a worktree with no branch
-    # (detached) or no repo keeps its other fields where they belong.
-    field() { jq -r --arg k "$1" '.[$k] // "" | tostring' <<< "$w"; }
+    # (detached) or no repo keeps its other fields where they belong. A
+    # list field comes back one item per line.
+    field() { jq -r --arg k "$1" '.[$k] // "" | if type == "array" then join("\n") else tostring end' <<< "$w"; }
     type="$(field type)"; repo="$(field repo)"; branch="$(field branch)"
-    issue="$(field issue)"; path="$(field path)"; own="$(field own)"
-    # The issue lives in the repository the worktree belongs to. A package
-    # worktree (ADR-0012, a .worktree-repos manifest) is an aggregate
-    # directory, not a checkout: its header names the issue's repository
-    # (issue=<owner/repo>#<N>). A bare issue=<N> header gives the
-    # repository only when every listed checkout has the same GitHub
-    # remote; one with none disagrees. The title cache and the timeline
-    # come from that repository's checkouts only: work plans are written
-    # at the issue's checkout, and another repository can have its own
-    # issue <N>.
-    slug=""; cache="$path"; dirs="$path"; why="no GitHub remote"; latest="no progress record yet"
-    if [ -f "$path/.worktree-repos" ]; then
-        hdr="$(head -n1 "$path/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')"
-        [[ "$hdr" == */*#* ]] && slug="${hdr%#*}"
-        listed=""; agree=""
-        # The second column (the checkout's path in the worktree), by
-        # position with cut, which never folds an empty column.
-        while IFS= read -r rel; do
-            [ -n "$rel" ] || continue
-            d="$path"; [ "$rel" = "." ] || d="$path/$rel"
-            s="$(extract_gh_slug "$(git -C "$d" remote get-url origin 2>/dev/null)")"
-            listed="$listed$s"$'\t'"$d"$'\n'
-            if [ -z "$s" ] || { [ -n "$agree" ] && [ "$agree" != "$s" ]; }; then agree="-"
-            elif [ -z "$agree" ]; then agree="$s"; fi
-        done < <(tail -n +2 "$path/.worktree-repos" | cut -f2)
-        if [ -z "$slug" ]; then
-            if [ -n "$agree" ] && [ "$agree" != "-" ]; then slug="$agree"
-            elif [ -n "$listed" ]; then why="its checkouts are not all in one GitHub repository"; fi
-        fi
-        dirs="$(S="$slug" awk -F'\t' 'ENVIRON["S"] != "" && $1 == ENVIRON["S"] { print $2 }' <<< "$listed")"
-        cache="$(head -n1 <<< "$dirs")"
-        [ -n "$slug" ] || latest="unknown (no repository to read it from)"
-    else
-        slug="$(extract_gh_slug "$(git -C "$path" remote get-url origin 2>/dev/null)")"
-    fi
+    issue="$(field issue)"; path="$(field path)"
+    # The issue lives in the repository the worktree belongs to, which
+    # sitrep_root.sh names ("repository", with "repository_dirs", the
+    # checkouts of it, and "repository_why" when there is none). The
+    # title cache and the timeline come from that repository's checkouts
+    # only: work plans are written at the issue's checkout, and another
+    # repository can have its own issue <N>. "named" is "yes" when one of
+    # the root's own Direction lines names this work (Path 1), and is
+    # absent when step 1 saved no rows.
+    slug="$(field repository)"; dirs="$(field repository_dirs)"; why="$(field repository_why)"
+    named="$(field named)"
+    cache="$(head -n1 <<< "$dirs")"; latest="no progress record yet"
+    [ -n "$slug" ] || [ ! -f "$path/.worktree-repos" ] || latest="unknown (no repository to read it from)"
     title="unknown ($why)"
     if [ -n "$slug" ]; then
         # gh first: the git-bug cache can hold a title the issue no longer has.
@@ -426,13 +403,9 @@ except ValueError:
               else if (s !~ /[^[:space:]]/) print "unstated"
               else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
               else print "goal" }' "$f")"
-    # A bare number ("(#N)", "gh-issue N") is an issue of the root's own
-    # repository, so it names only the root's own worktrees (own = yes).
     if [ "$haspaths" != yes ]; then wpath=""
-    elif [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
-    elif [ "$own" = yes ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
-    elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
-    elif [ "$type" = project ] && [ -n "$repo" ] && [[ "$p1" == *" project:$repo "* ]]; then wpath="Path 1"
+    elif [ -z "$named" ]; then wpath="path unknown (steps not checked)"
+    elif [ "$named" = yes ]; then wpath="Path 1"
     elif [ "$serves" = goal ] && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
     elif [ "$serves" = goal ]; then wpath="Path 2"
     elif [ "$serves" = none ]; then wpath="no path"
@@ -446,9 +419,9 @@ Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
 reads `(no branch)`. The path is empty when the root's Direction section
 has no Paths paragraph (the last block of this step prints `paths=none`):
-no path word is printed then. Otherwise it is `Path 1` (a Direction line
-names the issue, in its own cells, or a check names the project the
-worktree belongs to; a bare `(#N)` or `gh-issue N` names an issue of the
+no path word is printed then. Otherwise it is `Path 1` (`named` is
+`yes`: a Direction line names the issue, in its own cells, or a check
+names the project the worktree belongs to; a bare `(#N)` or `gh-issue N` names an issue of the
 root's own repository, so it matches only a worktree whose `own` is
 `yes`, and another repository's worktree is named only by its
 `<owner/repo>#N` or `adapter --project` check), else `Path 2` (the newest complete Issue Review on its
@@ -506,9 +479,9 @@ guessed at. No `progress.md`, or one with no entries, reads "no
 progress record yet". A worktree with no issue (a skill worktree) gets
 no row; its line names the branch only. A package worktree's `branch` is
 its checkouts' branches, comma-separated, as the worktree list gives it.
-Its title and state come from the issue's repository only, the one its
-header names, or with a bare `issue=<N>` the one every listed checkout
-shares; a checkout of another repository is never read, since that
+Its title and state come from the issue's repository only (its
+`repository`), the one its header names, or with a bare `issue=<N>` the
+one every listed checkout shares; a checkout of another repository is never read, since that
 repository can have an issue with the same number. When no single
 repository can be told, the title is "unknown (its checkouts are not
 all in one GitHub repository)" and the state "unknown (no repository to
@@ -518,9 +491,12 @@ writes.
 
 The report gives one line per branch. The pull requests listed are the
 session root's, so only one of the root's own worktrees (`own` is `yes`)
-is matched to one: when its `branch` equals the pull request's
+is matched to one: when its `pr_branch` equals the pull request's
 `headRefName` and the pull request's `isCrossRepository` is false, they
-are the same work and share that line. A pull request from a fork
+are the same work and share that line. `pr_branch` is the worktree's
+branch, except for a package worktree, whose `branch` is every
+checkout's branch joined by commas and so never a `headRefName`: its
+`pr_branch` is the branch of its checkouts of the root's repository. A pull request from a fork
 (`isCrossRepository` true) can reuse a local branch name, so it is never
 joined: it gets its own line, with "from a fork" after its title and no
 worktree part. A worktree that is not the root's own (`own` is `no`: a
@@ -542,7 +518,7 @@ number, its bold name and its first sentence, as written.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
      d && /^\*\*Path [0-9]+/ { p = 1; s = "" }
@@ -587,7 +563,7 @@ source "$WS_ROOT/.agent/scripts/_settings.sh"
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
 inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
 if [ -z "$name" ]; then
-    echo "run record: not written (this directory is outside every root)"
+    echo "run record: not written (no root could be decided for this directory)"
 elif [ -z "$record" ]; then
     echo "run record: not written (run_record not set)"
 elif [ ! -d "$(dirname "$record")" ]; then
@@ -646,7 +622,7 @@ check="$(cat <<'ROW'
 ROW
 )"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 src="$(sed -n 's/^pr_source=//p' <<< "$r")"
 # The root's own worktrees only (own = yes): the numbers below are issues
@@ -655,11 +631,20 @@ src="$(sed -n 's/^pr_source=//p' <<< "$r")"
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees)" || wl=""
 [ -n "$wl" ] || echo "branches: could not be listed (reason above)"
 # Issue numbers from the line's own cells only: "(#N)", "(#N," or each of
-# a list "(#N, #M)" in the item, "gh-issue N" (this repository) in the
-# check. Never from the
+# a list "(#N, #M)" in the item, and a whole "gh-issue N <open|closed>"
+# check (this repository) in the check cell, split as the check runner
+# splits it (at " ; ", backticks unwrapped), so a gh-issue inside another
+# check's argument is not one. Never from the
 # section's prose, which holds the Format paragraph's literal (#N).
-nums="$( { grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' <<< "$item"; grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' <<< "$check"; } \
-    | grep -oE '[0-9]+' | sort -un)"
+nums="$( { grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' <<< "$item" | grep -oE '[0-9]+'
+           awk '{ c = $0; gsub(/^[ \t]+|[ \t]+$/, "", c)
+                  if (c ~ /^`[^`]*`$/) c = substr(c, 2, length(c) - 2)
+                  n = split(c, part, / ; /)
+                  for (i = 1; i <= n; i++) {
+                      p = part[i]; gsub(/^[ \t]+|[ \t]+$/, "", p)
+                      if (length(p) >= 2 && p ~ /^`.*`$/) { p = substr(p, 2, length(p) - 2); gsub(/^[ \t]+|[ \t]+$/, "", p) }
+                      if (split(p, w, /[ \t]+/) == 3 && w[1] == "gh-issue" && w[2] ~ /^[0-9]+$/ && tolower(w[3]) ~ /^(open|closed)$/) print w[2] + 0
+                  } }' <<< "$check"; } | sort -un)"
 echo "issues_named=$(echo ${nums:-none})"
 for n in $nums; do
     t=""
@@ -685,7 +670,7 @@ for w in json.load(sys.stdin).get("worktrees", []):
         --jq ".[] | select(.isCrossRepository | not)
             | select(.headRefName == \"feature/issue-$n\"
                 or ([(.closingIssuesReferences // [])[] | select(.repository != null)
-                    | select((.repository.owner.login + \"/\" + .repository.name) == \"$src\") | .number] | index($n)))
+                    | select((.repository.owner.login + \"/\" + .repository.name | ascii_downcase) == (\"$src\" | ascii_downcase)) | .number] | index($n)))
             | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
 done
 ```
@@ -722,7 +707,7 @@ line, in order.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 text="$(cat <<'TEXT'
@@ -780,7 +765,7 @@ naming the file.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 rv() { sed -n "s/^$1=//p" <<< "$r"; }
 ROOT="$(rv root)"
 DB="$(rv default_branch)"
