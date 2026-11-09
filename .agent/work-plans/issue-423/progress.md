@@ -183,3 +183,21 @@ Verified: sitrep_checks.sh reads the onboarding, loop and promoted Direction lin
 - Whole-repo grep (`provisional|not (yet )?proven`, work-plans excluded): no remaining claim that ADR-0016 is Provisional or the user tier unproven. Left as they are: ADR-0016's own Status (past tense), OQ-2 and the change log (past tense), roadmap line 79 (the Direction check, true), the Status key's generic `decided, not proven` row, and `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md:47` (a dated survey note saying ADR-0016 "already uses" the Provisional status; outside this issue's scope)
 - `check_design_anchors.sh`: exit 0
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, `.agent/scripts/tests/` suite Passed
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 13:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae7f85a4544edf5da, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-423 at `c7f4c154`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification as round 1: 300+ changed lines; docs/decisions ADR governance file)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] No issues found. LGTM.
+
+Verified: 1ba49a5c fixes the user-tier sentence (under `# How it works`, line 1 heading; the round-1 "Purpose" label was mine) and the #423 change-log row names How it works; b98ddbc1 makes the review guide's 0016 row Accepted and the 0018 row Provisional with its condition met and promotion the owner's call; 70b63763 adds the ADR-0018 clause, faithful to ADR-0018 Status and Acceptance; design.md is 867 lines (main 865: row +1, C1-c -1, Now block +2), matching the row; check_design_anchors.sh exit 0; sitrep_checks.sh reads the onboarding, loop and promoted lines true. The ros2 digest line 47 is a dated survey note (Last checked 2026-09-29) about the status mechanism, not a current-state claim: left as is. Adversarial reviewer's one suggestion (0018 row "promoted with 0016") was checked and is a false positive: that wording is gone at HEAD. Cross-model: gemini and codex both completed, no issues.
