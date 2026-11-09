@@ -61,3 +61,11 @@ issue: 421
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 14:05 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-421/plan.md` at `c695ece8`
+
+Add a Dialog layout template (header, labelled bold-ID items continuous across questions, one-sentence question) to run-issue step 6, point to it from the orchestrator skill and the standing-rules row, and add three presence tests; acceptance stays the owner's judgment at issue 398.
