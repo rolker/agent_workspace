@@ -488,3 +488,21 @@ Prior timeline: round 1 (2 must-fix) and round 2 (7 suggestions) were closed by 
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. The two open boxes of the Integrated Review at 5a362625 go to address-findings; then a PR-mode review-code and a re-triage.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 12:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9e55aba568895538, resume 2 of 3)
+
+**PR**: #420 at `423f644d`
+**Addressed**: Integrated Review at `e9fa0ef5` (2026-11-09 12:05 -05:00)
+**Commits**: c5664111, 423f644d
+
+### Actions
+- [x] (should-fix, Copilot) An adapter check naming a parent root named nothing: before the Python pass, each project an `adapter --project <name>` check names goes through `registry_resolve_project_arg` (a parent becomes its default or only instance, the name worktree_list.sh gives its worktrees; a parent with several instances and no default is dropped, as the adapter fails on it), and both the keep rule (b) and `named` use the resolved names. Header and skill step 3 updated. Test with the host/inst fixture (one instance: kept, named yes; fails on the previous code) and a new two-instance parent with no default (names nothing) — `.agent/scripts/sitrep_root.sh`
+- [x] (should-fix, Copilot) Step 1's project-session rule now names the two section rows it covers, `(roadmap not found: ...)` and `(no Direction section)`. `(roadmap not readable: ...)` gives its reason as printed with no onboarding offer. `(no Line or Deferral table)` and `(no rows in the Line or Deferral tables)` have no next step but still report the acceptance case and Paths from the section's prose. test_skill_paths.sh pins the restriction and fails if the blanket wording comes back — `.claude/skills/sitrep/SKILL.md`
+
+### Verification
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, no hook failed; the script suite hook passed.
+- Run directly: test_sitrep_root.sh 54 passed, test_sitrep_checks.sh 210 passed, test_skill_paths.sh 131 passed.
