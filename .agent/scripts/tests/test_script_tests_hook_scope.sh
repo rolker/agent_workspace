@@ -689,11 +689,13 @@ done
 
 # Issue #419: a Markdown document no suite names is documentation. It
 # does not run everything; it selects exactly the required suite, the
-# '# covers: ALL' suites and the suites whose '# scans:' prefix covers it
-# (read from the derived map, so no suite is named here). The candidate is
-# chosen without the mapper: a tracked .agent/knowledge/*.md whose basename
-# appears in no tracked non-markdown file, so no suite or code file can
-# name it.
+# '# covers: ALL' suites, the suites whose '# scans:' prefix covers it and
+# the suites with no derived references (no reference, no '# covers:', no
+# '# scans:': on disk but absent from the derived map). All are read from
+# the derived map and the suites on disk, so no further suite is named
+# here. The candidate is chosen without the mapper: a tracked
+# .agent/knowledge/*.md whose basename appears in no tracked non-markdown
+# file, so no suite or code file can name it.
 unmapped=""
 while IFS= read -r f; do
     base="$(basename "$f")"
@@ -709,16 +711,23 @@ else
     u_out="$map_out" u_err="$map_err"
     doc_scanners="$(awk -F'\t' -v f="$unmapped" \
         '$2 == "scans" && (f == $3 || index(f, $3 "/") == 1) { print $1 }' <<<"$DUMP" | sort -u)"
+    # Suites with no derived references have no --dump row; the selector
+    # joins them to every scoped run, so they belong in the expected set.
+    doc_unreferenced="$(for sp in "${ALL_SUITES[@]}"; do
+        sn="$(basename "$sp")"
+        grep -qP "^\Q$sn\E\t" <<<"$DUMP" || printf '%s\n' "$sn"
+    done)"
     doc_want="$( { printf 'test_checkpoint_269.sh\n'; awk -F'\t' '$2 == "always" { print $1 }' <<<"$DUMP"
-        [[ -n "$doc_scanners" ]] && printf '%s\n' "$doc_scanners"; } | sort -u)"
+        [[ -n "$doc_scanners" ]] && printf '%s\n' "$doc_scanners"
+        [[ -n "$doc_unreferenced" ]] && printf '%s\n' "$doc_unreferenced"; } | sort -u)"
     if [[ -z "$doc_scanners" ]]; then
         fail "no '# scans:' prefix covers $unmapped -- the check below would not show a scanning suite joining"
     fi
     if [[ "$u_out" != "ALL" && "$u_err" == *"is documentation and reaches no suite"* \
             && "$(sort -u <<<"$u_out")" == "$doc_want" ]]; then
-        pass "unmapped document $unmapped selects only the required, '# covers: ALL' and scanning suites ($(tr '\n' ' ' <<<"$doc_want" | sed 's/ $//')), not ALL"
+        pass "unmapped document $unmapped selects only the required, '# covers: ALL', scanning and unreferenced suites ($(tr '\n' ' ' <<<"$doc_want" | sed 's/ $//')), not ALL"
     else
-        fail "unmapped document $unmapped should select exactly $(tr '\n' ' ' <<<"$doc_want") as documentation; got: $(tr '\n' ' ' <<<"$u_out") / $u_err"
+        fail "unmapped document $unmapped should select exactly $(tr '\n' ' ' <<<"$doc_want") as documentation (the required, '# covers: ALL', scanning and unreferenced suites); got: $(tr '\n' ' ' <<<"$u_out") / $u_err"
     fi
 fi
 

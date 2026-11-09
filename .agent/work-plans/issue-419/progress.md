@@ -239,7 +239,7 @@ Copilot's review is an outcome line, not a finding: it ran no review (quota), so
 The pre-push suggestion is confirmed against the code: `suites_for_files.sh` (the `for s in suites` loop after selection) adds any suite with no closure, no `# covers:` and no `# scans:` to every scoped run as "always (no derived references)"; such a suite has no `--dump` row, so the real-tree check's `doc_want` (required suite + `always` rows + scanners) would omit it and fail spuriously. Latent, not failing: 41 suites on disk, 41 in the dump. Kept open rather than deferred: the fix is a few lines in the test, and the merge waits on the owner either way.
 
 ### Findings
-- [ ] (suggestion, Local Review (Pre-Push) @ `5cd5b14`, covers via bookkeeping) The real-tree expected set (`doc_want`) omits the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites in the dump), but adding one would fail this check spuriously. Add the test_*.sh suites missing from the dump to `doc_want` and to the pass/fail text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
+- [x] (suggestion, Local Review (Pre-Push) @ `5cd5b14`, covers via bookkeeping) The real-tree expected set (`doc_want`) omits the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites in the dump), but adding one would fail this check spuriously. Add the test_*.sh suites missing from the dump to `doc_want` and to the pass/fail text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
 
 ### False positives
 
