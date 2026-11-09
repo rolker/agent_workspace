@@ -152,7 +152,7 @@ Final pass:
 **Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
 
 ### Findings
-- [ ] (suggestion) "Until then this ADR was Provisional" has no antecedent for "then": the nearest "until" is "until issue #351 moves the hooks" in the paragraph above, so it can be read as Provisional-until-#351; reword to "Before 2026-11-09 this ADR was Provisional." and split the 8-line evidence sentence after "found the prefixed skills" — `docs/decisions/0018-plugin-based-skill-delivery.md:11`
+- [x] (suggestion) "Until then this ADR was Provisional" has no antecedent for "then": the nearest "until" is "until issue #351 moves the hooks" in the paragraph above, so it can be read as Provisional-until-#351; reword to "Before 2026-11-09 this ADR was Provisional." and split the 8-line evidence sentence after "found the prefixed skills" — `docs/decisions/0018-plugin-based-skill-delivery.md:11`
 
 Checked clean: ADR diff confined to Status (lines 5-19; Decision, Consequences, Alternatives and the Acceptance subsection untouched); `adr-status ... accepted` true and `... provisional` false via a scratch roadmap row; `check_design_anchors.sh` exit 0; `wc -l docs/design.md` 868 and Sessions and roots 116 lines, as the change-log row says; repo-wide grep finds no live Provisional/waits-on-a-run claim about ADR-0018 apart from the Acceptance subsection's "Until then" (by design, ADR-0008); geozui4d PRs 14 and 15 merged closing #9 and #7, PR 424 merged closing #423, the GeoZui4D root enables `agent-workspace@agent-workspace`; pre-commit on the three docs files passed. Cross-model: Gemini and Codex both completed, no findings.
 
