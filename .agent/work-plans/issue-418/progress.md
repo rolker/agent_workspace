@@ -237,3 +237,13 @@ The revision resolves round-2 suggestions 2-4. The host's worktree rule is sound
 - [ ] Correct the "today's set" claim: un-named project worktrees drop out of the workspace report; add that workspace-root test case; name `worktrees/workspace/` as the workspace's part (a); update step 3/step 8 text in Approach 7; record the acceptance-bullet narrowing for veto
 - [ ] Restrict step 5's issue match to the root's own worktrees (part (a)) and add a skill_step case for a same-number worktree from another repository
 - [ ] Decide step 7's offer for a due project Decision register and a due project research digest so it names a skill that does that check, or nothing
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 10:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner's answer to the AskUserQuestion dialog: "Revise (Recommended)". The dialog offered: revise with the two must-fixes (the workspace list is not today's set, so the acceptance bullet "unchanged from today" is narrowed to "the workspace's own worktrees plus project work its Direction lines name", with a test for the dropped case; step 5 matches issue numbers only against the root's own worktrees, with a test for a same-numbered worktree from another repository) and the suggestion (step 7 offers nothing, or names what audit-project checks, for a due design-decision review; say what is offered when a project's research digest is due). The owner accepted the narrowing of the acceptance bullet.
