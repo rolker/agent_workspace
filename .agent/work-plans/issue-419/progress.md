@@ -54,3 +54,13 @@ issue: 419
 - [ ] Keep a documentation file that a suite does reference (derivation or `# covers:`) mapped to that suite as today; only an otherwise-unmapped document stops triggering ALL. A doc under a `# scans:` prefix still selects the scanning suites, so acceptance case 2 ("nothing more") means the suites that reach `sitrep_root.sh` plus those scan/required suites the selector already adds; say so in the plan so the test expectation is exact.
 - [ ] Update `test_run_script_tests.sh:702` (unmapped `.md` no longer yields ALL) and add the issue's three cases plus: a deleted `.md` still yields ALL, an unmapped `.json` still yields ALL, a doc referenced by a suite still selects it.
 - [ ] Update the stderr note, the header's full-run list, and the two `script_reference.md` rows named above in the same PR.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 11:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the four open actions are mechanism: documentation defined as Markdown in the hook's scope from the tracked file list, a referenced doc stays mapped, one existing test rewritten plus new cases, the stderr note, header and reference rows updated; none changes what the owner asked for, a doc edit not costing the full suite run)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
