@@ -80,7 +80,8 @@ repos:
       # skipped by design. It receives the commit's in-scope files and runs
       # only the suites they reach (issue #410: suites_for_files.sh decides;
       # a deleted in-scope path, a helper, the runner or this file runs them
-      # all). Dispatched workspace implement and address-findings passes
+      # all; a documentation file no suite reads does not, issue #419).
+      # Dispatched workspace implement and address-findings passes
       # (owner-decided 2026-10-20, issue #399) set SKIP=validate-script-tests
       # on intermediate commits only, then run the main checkout's
       # .venv/bin/pre-commit once, with no SKIP, before their progress entry,
