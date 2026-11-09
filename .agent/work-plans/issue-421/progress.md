@@ -176,3 +176,13 @@ Both round-1 must-fix findings and all six suggestions are resolved in the plan 
 
 - [ ] Worked example header: "phase 5 of 8 (review-code)" instead of "phase 4 of 8".
 - [ ] Bold-rendering check: assign it to the host at the next real dialog (sub-agents cannot raise `AskUserQuestion`); the PR states the result or that it is not yet checked.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review round 2 approved; two suggestions carried to implementation: the example header says "phase 5 of 8", and the bold-rendering check is the host's at the next real dialog, with the PR saying whether it has been checked)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table.
