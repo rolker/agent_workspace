@@ -408,3 +408,27 @@ Specialists: static analysis (shellcheck --severity=warning, clean), governance,
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. Fix pass to take the 7 suggestions of the round-2 Local Review (Pre-Push) at 4fff0169; round 3 is a narrow convergence check with no cross-model reviewers.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 11:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9e55aba568895538, resume 1 of 3)
+
+**Branch**: feature/issue-418 at `f1208634`
+**Addressed**: Local Review (Pre-Push) at `7f198a74` (2026-11-09 11:33 -05:00)
+**Commits**: 4746ce3e, f1208634
+
+### Actions
+- [x] (suggestion) Two registries: --worktrees now runs the main checkout's worktree_list.sh (the copy next to the registry the root was decided from), falling back to its own copy only when the main checkout has none; test runs a worktree copy of the helper and gets the same Direction-named project worktrees (fails on the old code) — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) History checks go by `git cat-file -e "<default branch>:<file>"`: a root on an older branch is still checked; a file only in the working tree reads "not on the default branch <name>"; tests for both — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) A pull-request-only branch gets no path word when the Direction section has no Paths paragraph, like every other line; the text test updated — `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) New `pr_source_why`: "this root is not a git repository of its own", "no origin remote" or "origin not recognised as GitHub" (the URL is never printed, since it can hold a credential); step 3 prints it after "no pull-request source for this root"; tests in both suites — `.agent/scripts/sitrep_root.sh`, `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) Header fixed to match the code: a plain worktree's `repository_dirs` is always its own path (its timeline is read there with no GitHub remote too) — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) Step 5's branch row prints `pr_branch` (the joined `branch` only when that is empty); skill test with an own package worktree — `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) Parity test: 15 cells (NBSP inside and after a check, backticks, ` ; `, case, leading zeros, extra words, malformed states, adapter forms) go through sitrep_checks.sh (stub gh and adapter record what is asked) and through names_of; the two lists must match. It found the drift: names_of now trims ASCII space only and splits on space/tab/newline, as bash's trim and read -ra do, and the item regex is ASCII-only. A package fixture whose checkouts disagree on the branch gives an empty pr_branch — `.agent/scripts/tests/test_sitrep_root.sh`
+
+### Verification
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped (none failed), the script suite included.
+- Run directly: test_sitrep_root.sh 52 passed (the registry and parity tests fail when the old code is put back), test_sitrep_checks.sh 210 passed, test_skill_paths.sh 130 passed.
+- Two commits (helper, then skill), as in round 1: the helper commit carries several findings at once.
