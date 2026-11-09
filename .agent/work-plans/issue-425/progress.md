@@ -64,3 +64,11 @@ issue: 425
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 14:07 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-425/plan.md` at `a014caf1`
+
+Status-line promotion of ADR-0018 (condition folded into history with one evidence sentence), plus the design.md Now clause, register row and Change log row, and the review-guide row; ADR-0016 needs no edit. Single docs-only PR, no owner questions.
