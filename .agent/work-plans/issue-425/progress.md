@@ -110,3 +110,13 @@ The plan is complete and correctly targeted: the grep finds no Provisional claim
 - [ ] Run the adr-status check through a scratch roadmap (`--roadmap`), not as a bare subcommand
 - [ ] Change-log row says Sessions and roots is past 60 lines and that a status edit moves no detail
 - [ ] PR description notes ADR-0018:341 "Until then" stays under ADR-0008; the Status evidence sentence names the run under "Acceptance"
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review approved with no must-fix; three suggestions carried to implementation: the adr-status check runs through a scratch roadmap row, the change-log row carries the over-60-lines clause for Sessions and roots, and the PR explains why the Acceptance subsection's "Until then" sentence stays under ADR-0008)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table.
