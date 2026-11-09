@@ -213,3 +213,13 @@ Verified: test_run_script_tests.sh 105 passed 0 failed; test_script_tests_hook_s
 
 ### Findings
 - [ ] (suggestion) The real-tree expected set (`doc_want`) mirrors the required, `# covers: ALL` and scanning suites but not the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites are in the dump), but adding one would fail this check spuriously. Add the suites missing from the dump to `doc_want` and to the header/pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh:710`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 1 approved, Ship recommended, Gemini and Codex clean; the one suggestion guards a test against a suite class that does not exist today, 41 of 41 suites are in the dump, so it is carried to the PR as a noted follow-up rather than a fix round)
+**After**: publish
+**Decision**: publish
+
+Host answer under /orchestrator's checkpoint table. Push and open the pull request; the host edits the issue's acceptance command 2 to name sitrep_checks.sh.
