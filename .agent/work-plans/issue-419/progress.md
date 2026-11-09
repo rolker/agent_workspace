@@ -371,3 +371,13 @@ CI: no check has run at `71d7223`, so there is no verdict yet and the field abov
 
 ### False positives
 - (Local Review @ `5714e2e`) The unchecked line "- [ ] No issues found. LGTM." is read back by `review_progress.sh sources` as an open finding. It is the reviewer's no-findings marker (that entry records Must-fix 0, Suggestions 0), not a finding, so nothing is left to act on.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "merge,merge,yes" (the first word, for PR 422). Presented with: CI green at the head, no open findings, review record (two plan reviews, one pre-push review approved with Gemini and Codex clean, two fix rounds re-reviewed and re-triaged clean, Copilot quota notices only).
