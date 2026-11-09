@@ -145,3 +145,22 @@ Host answer under /orchestrator's checkpoint table. Suggestions carried to imple
 - `.agent/work-plans/issue-423/plan.md` (0c9ad7e2): #265 comment no longer implies `register_project.sh` is unbuilt (review 6); #295 comment says the deferral is now due.
 - Final pass (review 7): `check_design_anchors.sh` exit 0; `sitrep_checks.sh --root <worktree>` reads the onboarding, loop and promoted lines true and both ADR-0016 deferrals true (due); adapter line unknown and user-tier line false, as at baseline in a worktree; step-5 block: `acceptance_first` identical to main's. Widened grep (`provisional`, `not proven`, `acceptance run`, `OQ-2`): remaining hits are ADR-0018 (not touched), ADR-0016's kept history paragraphs, the vocabulary definitions, the records-default "provisional", the deferral rows and historical change-log rows. Pre-commit on the branch's changed files, no SKIP: passed (no script suite reached).
 - Not done here, by design: the #265 and #295 comments (host posts); ADR-0018 untouched.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 13:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-423 at `7126b1f2`
+**Base**: main
+**Depth**: Deep (reason: 305 changed lines incl. plan/progress; docs/decisions ADR governance file)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Purpose paragraph still says the user tier "is built and not yet proven", contradicting the now-`decided` Sessions and roots it links; fix the sentence and add Purpose to the #423 change-log row's section list (recheck the 866 line count) — `docs/design.md:31-33`
+- [ ] (must-fix) Review guide ADR table still says ADR-0016 "Status **Provisional** until #317's acceptance run in a registered project passes", and ADR-0018's row says "Provisional, promoted with 0016", which no longer holds; reviewers apply this table — `.agent/knowledge/principles_review_guide.md:51,53`
+- [ ] (suggestion) Now block says ADR-0018 "is still Provisional; promoting it is the owner's call" without saying its own promotion condition (ADR-0018 Status and Acceptance: the same run) is now met; one clause would keep a reader from thinking it waits on another run — `docs/design.md:188-189`
+
+Verified: sitrep_checks.sh reads the onboarding, loop and promoted Direction lines true and both ADR-0016 deferrals due; adr-status reads `**Accepted** (2026-11-09).` as accepted; ADR diff is one hunk in Status (ADR-0008 and ADR-0018 paragraphs intact); roadmap acceptance first sentence unchanged; check_design_anchors.sh exit 0; design.md 865 -> 866; pre-commit (venv) passed on the three docs; gh confirms geozui4d#8 closed 11-02 by PR 10, #9 closed by PR 14 and #7 by PR 15 on 11-09. Cross-model: gemini and codex both completed, no issues.
