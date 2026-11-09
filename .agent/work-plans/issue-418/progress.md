@@ -137,3 +137,45 @@ Host answer under /orchestrator's checkpoint table, first host revise on this is
 **Plan**: `.agent/work-plans/issue-418/plan.md` at `203069df`
 
 Revision after plan review: no #388 gate (418 lands first, S4 reuses the existing inbox pass); project-root path words and pr_source title lookup; git facts guarded by own_repo and default branch; project-sandbox tests through skill_step; missed SKILL.md and design.md text covered; worktrees filtered by the root's directories; exit 1 outside every root stops. Still one PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 09:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #418 — sitrep: report the session's own root, so a project session gets the project's sit-rep
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `203069df`
+**Branch**: `feature/issue-418`
+
+Second review, of the revised plan. Round-1 must-fix findings 1-5 are resolved in the plan text: (1) no #388 gate, 418 lands first, S4 inside step 2's existing listing pass; (2) Approach 4 gives project-root path words (Path 1 from this root's Direction, Path 2 not said, none with `paths=none`) and step 5's title lookup through `pr_source` and git-bug at `$ROOT`; (3) step 6 git facts gated by `own_repo`, `default_branch` with "cannot tell"; (4) project-sandbox cases through `skill_step` for steps 2-5, rationale corrected (`skill_step` exists at test_sitrep_checks.sh line 782); (5) SKILL.md lines 193, 890, 965-969 and a `docs/design.md` Change log row (section at line 751) are in Approach 7. Suggestions 6-9 are all answered (filter by worktree directories, exit 1 outside every root with a test, Decided Against quoting the owner plus Measures "per root", Documentation fact skipped by name). One new gap comes from adopting suggestion 6.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, ~8 files, session root only, as the owner narrowed it (2026-11-09). No combined view. |
+| Issue alignment | Needs work | Serves, as checked: Goals "Easy to use" and "The long view"; `docs/design.md#documentation-layers`, `docs/design.md#sessions-and-roots`. Acceptance "From the workspace root the report is unchanged from today" is put at risk by the workspace's worktree filter (finding 1). |
+| File targeting | Good | Right files; the helper, its test, the skill, the two tests, design, roadmap and script reference. |
+| Consequences | Needs work | Finding 1; smaller items in findings 2-4. |
+| Principle alignment | Good | "Test what breaks": one case per acceptance bullet plus skill blocks through `skill_step`. "Only what's needed": helper justified by de-duplication. "Keep one current design": Documentation layers, Measures and Change log in the same PR. |
+| ADR compliance | Good | 0003 (sandbox only), 0016 (root from `session_root.sh`, no nested-package fallback), 0017 (design in the same PR). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences: workspace worktree list] must-fix** — The plan's premise "replaces the `type == "workspace"` filters in steps 3 and 5" is wrong for step 3: its filter is `select(.type != "main" and .issue)` (SKILL.md line 223), so today's workspace sit-rep lists every worktree, project ones included, and marks them Path 1 through `project:$repo` (an `adapter --project <name>` check) or `<slug>#N`. The workspace roadmap's own Paths paragraph defines Path 1 as including "work in the project a line's check names", and the current acceptance case is a project (GeoZui4D) run. `sitrep_root.sh --worktrees` keeping "for the workspace, its own worktrees" would drop that project work from the workspace report, breaking the acceptance bullet "From the workspace root the report is unchanged from today" and the workspace's Path 1. Say what the workspace session lists: keep today's step 3 set there (filter only in a project session), or keep the workspace's own worktrees plus those of the projects its Direction lines name; then add a `--worktrees` test case for the workspace root holding a project worktree named by an `adapter --project` check. Step 5's filter (`type == "workspace"`, line 619) is the one that does need replacing.
+2. **[Consequences: ADR titles] suggestion** — Step 5's render block looks up ADR titles in `os.environ["WS_ROOT"]/docs/decisions` (lines 623-630). The plan says step 5 takes `ROOT` while "`$WS_ROOT` stays for scripts"; this lookup is not a script, so name it, or a project's "ADR-0003" prints the workspace's ADR-0003 title, a workspace fact in a project report.
+3. **[Consequences: Problems words in a project root] suggestion** — When a project root has its own `docs/design.md` with a Decision register, the audit fact runs and step 7 offers "/audit-workspace from the workspace", which audits the wrong root; and the report template's "<c> commits since changed the workspace's scripts, skills or docs" (SKILL.md ~line 873) would name the workspace. Say what step 7 offers for a project root's facts (audit-project, or nothing) and that the Documentation words name the root.
+4. **[Approach: helper output] suggestion** — Say that `sitrep_root.sh --worktrees` prints the same JSON shape as `worktree_list.sh --json` (`{"worktrees": [...]}`), so step 3's `jq '.worktrees[]?'` and step 5's python read it unchanged, and that an error from `worktree_list.sh` is passed through rather than read as "no worktrees".
+
+### Summary
+
+The revision resolves every round-1 must-fix and answers every suggestion. One new must-fix: the worktree filter adopted from suggestion 6 would drop project worktrees that the workspace's own Path 1 counts, changing the workspace report the acceptance says stays unchanged. A one-paragraph plan fix plus one test case; the rest are suggestions.
+
+### Recommended Actions
+
+- [ ] Say what the workspace session's worktree list holds (today's set, or its own plus projects its Direction names) so the workspace report stays unchanged; add the `--worktrees` workspace-root test case
+- [ ] Name step 5's ADR-title lookup as reading `$ROOT/docs/decisions`
+- [ ] Say what step 7 offers, and how the Documentation fact is worded, for a project root with its own design document
+- [ ] Fix `--worktrees` output to `worktree_list.sh --json`'s shape and pass its errors through
