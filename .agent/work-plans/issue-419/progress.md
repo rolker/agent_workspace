@@ -270,3 +270,19 @@ Host answer under /orchestrator's checkpoint table. The open box of the Integrat
 - Throwaway probe (an unreferenced `test_*.sh` placed on disk, removed after): the unmapped-document check passed with the probe in its expected set; only check (a) failed, as designed.
 - `test_run_script_tests.sh` not touched, so not run on its own; it ran inside the full hook run below.
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: every hook passed, including the script-suite hook.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-09 12:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a99c63f450f5114b1, resume 1 of 3)
+
+**PR**: #422 at `e3b74369`
+**Depth**: Standard (reason: narrow convergence check of the round-1 suggestion and fix commit 632c5f71, per handoff; whole diff unchanged otherwise)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the one open box of the Integrated Review at feb72bbc and the fix diff 632c5f71. Cross-model: skipped (convergence check, per handoff). The round-1 suggestion is resolved: `doc_unreferenced` takes every on-disk suite with no `--dump` row, using the same `grep -qP` test as drift check (a), and joins it into `doc_want`; no suite name is written into the test. Verified: test_script_tests_hook_scope.sh 263 passed, 0 failed on the real tree; shellcheck --severity=warning clean. CI at e3b74369: Validate Documentation and ros-manifest tests pass; Lint (pre-commit) and Validate Adapter Contract still pending when read. Copilot did not review (quota).
+
+### Findings
+- [ ] (suggestion) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; add "and unreferenced" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh:74`
