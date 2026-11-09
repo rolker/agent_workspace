@@ -522,3 +522,21 @@ Scope: the two should-fix boxes of the Integrated Review at 5a362625 and the fix
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 12:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abd723cbf6dcc08ad, resume 1 of 3)
+
+**PR**: #420 at `4ca61ada`
+**Sources**: 3 (Copilot R2 @ `3b19d5f4` (covers `4ca61ada` via bookkeeping; overview body, no inline comments, one "previously missed issue"); Local Review @ `3b19d5f4` (covers `4ca61ada` via bookkeeping), 0 findings (its "No issues found" box is a placeholder, not a finding); CI rollup). Copilot's 17:29 review at `4ca61ada` is a quota notice, not a source.
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Earlier boxes: both should-fix findings of the Integrated Review at `e9fa0ef5` are closed by c5664111 (adapter check names resolved through `registry_resolve_project_arg`, PROJECT_MAP used in keep rule (b) and `named`) and 423f644d (SKILL.md step 1 names only the two missing-section rows); Copilot R2 lists both as resolved; re-run here: test_sitrep_root 54/54, test_skill_paths 131/131. CI on `4ca61ada`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests pass; the `copilot-pull-request-reviewer` run reads failure because of the quota notice, which is not a code check.
+
+### Findings
+- [ ] (should-fix, Copilot) `--worktrees` runs the main checkout's worktree_list.sh from `$DIR` (`cd "$DIR" && bash "$WL" --json`). That lister's user-tier guard, `registry_require_root "$ROOT_DIR"`, checks `$PWD` and refuses anything neither inside the main checkout nor under a registered project root. A workspace session in a linked worktree outside the main checkout's tree is a supported session (session_root.sh decides it is the workspace's, test_session_root.sh "a linked worktree of the workspace outside its tree"), so sitrep_root decides the root and then `--worktrees` exits non-zero: the sit-rep cannot list work in flight there. Loud, not silent, but a real failure of a supported case. worktree_list.sh `cd`s to its own ROOT_DIR right after the guard, so `$PWD` matters only to the guard, and the validated `$ROOT` always passes it (the main checkout for a workspace root, a registered root for a project). Fix: run the lister from `$ROOT` (`cd "$ROOT" && bash "$WL" --json`), say why in the comment above it, and add a test in test_sitrep_root.sh: a linked worktree of the sandbox workspace created outside its tree, `--worktrees` from there exits 0 and lists the workspace's worktrees (fails on the current code) — `.agent/scripts/sitrep_root.sh`
+
+### False positives
