@@ -655,6 +655,21 @@ else
     pass "run-issue: the resumed drive checks for the restart comment before asking"
 fi
 
+# --- Checkpoint dialogs (#421): run-issue step 6 holds the header and the
+# layout (bold stable IDs that count across questions, Qn per question);
+# the orchestrator and the standing rules point at it, not restate it.
+has "$RI" "run-issue: every dialog opens with the orientation header" \
+    'Open every `AskUserQuestion` (and every message ending a turn) with: ``` <repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state> ```'
+has "$RI" "run-issue: the Dialog layout gives bold stable IDs that continue across questions, and Qn per question" \
+    '**Dialog layout.**' '- **F1** <label>:' '**Q1** <the one-sentence question>' \
+    'F numbers count across the whole dialog and never restart' \
+    '- **F4** README.md' '**Q2** Open a separate issue for F4' \
+    'Each `options[].description` says what that answer changes and how hard it is to undo'
+has "$ORCH" "orchestrator: dialogs point at run-issue's Dialog layout" \
+    '`/run-issue` step 6, "Dialog layout"'
+has "$WS_ROOT/.agent/knowledge/host_standing_rules.md" "host standing rules: the dialog row's source names run-issue's Dialog layout" \
+    '`run-issue/SKILL.md` step 6, Dialog layout'
+
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only
 # literally (the 2026-10-15 audit the issue cites); an empty Reason cell
