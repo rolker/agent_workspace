@@ -307,3 +307,15 @@ The third revision resolves all three round-3 findings, and the new `own` field 
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. Suggestions carried to implementation: step 3's bare-number test becomes own == yes before the "serves a project goal" branch, own is the string yes/no; own for a package worktree with a bare issue=<N> header uses the slug its checkouts agree on, else no; step 7's project-session test is a text check in test_skill_paths.sh and the "offer it" branch stays for a workspace session with no Agent tool. The host edits the issue's acceptance bullets when the PR opens: keep "the run record's second column stays workspace", and reconcile "nothing in the report is the workspace's" with workspace work the project's Direction lines name.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 10:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-418 at `278b6ec1`
+
+- New `.agent/scripts/sitrep_root.sh` (read-only): the session's own root from `session_root.sh` (exit non-zero, nothing on stdout, outside every root), `record_name` (`project:workspace` for a project of that name), `roadmap` (`docs/roadmap.md`, else `ROADMAP.md`), `own_repo`, `default_branch`, `pr_source`, and a `check_<name>=run|skipped (<why>)` line per Problems check; `--worktrees [--rows <file>]` keeps the root's own worktrees plus those its Direction lines name, each with `"own": "yes"|"no"` (a bare-header package worktree uses the slug its checkouts agree on), and passes `worktree_list.sh` errors through.
+- `.claude/skills/sitrep/SKILL.md`: every step takes its root from the helper; step 3's bare-number Path 1 test is `own == yes`, before the project-goal branch; no Path 2 in a project session; no path word when the Direction section has no Paths paragraph; step 5 matches own worktrees only, titles from `pr_source`, ADR titles from the root; step 6 reads the root's default branch and skips checks its files do not allow; step 7 starts or offers only in a workspace session (offer kept for a workspace session with no Agent tool); run record column 2 is `record_name`; the four "workspace only" sentences replaced.
+- Deviation, for veto: step 2 lists a project session's own inbox lines first (matched on the project's registered name, as `capture.sh` writes it), and keeps file order in a workspace session.
+- `docs/design.md` (Documentation layers, Measures row, Change log), `docs/roadmap.md` (deferral removed, Decided Against entry quoting the owner, row for #418), `script_reference.md`.
+- Tests: new `test_sitrep_root.sh` (31 cases); `test_sitrep_checks.sh` skill-step tests run from their sandbox root, plus project-session section 14; `test_skill_paths.sh` guards. Final `pre-commit run --files` (no SKIP) passed, every suite selected (ALL).
