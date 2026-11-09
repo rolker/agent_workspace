@@ -232,8 +232,9 @@ line is told by its place in the file, not in the listing.
 
 The worktrees are this root's (`sitrep_root.sh --worktrees`): its own,
 plus those its own Direction lines name (an `adapter --project <name>`
-check names that project's worktrees, a `gh-issue <owner/repo>#N` check
-the worktree of that issue). Project worktrees no Direction line of this
+check names that project's worktrees, a parent root's being those of the
+instance the adapter resolves it to, its default or only one; a
+`gh-issue <owner/repo>#N` check the worktree of that issue). Project worktrees no Direction line of this
 root names are not listed, in a workspace session either. Each entry
 carries `own`: `yes` for a checkout of the root's own repository, whose
 issues are this root's. It also carries the GitHub repository its issue

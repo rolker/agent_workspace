@@ -84,7 +84,11 @@
 #         (b) one of this root's own Direction lines names it, read from the
 #             `line` rows of <file> (the rows the sit-rep's step 1 saved):
 #             an `adapter --project <name>` check keeps that project's
-#             worktrees (`repo` equal to <name>), a `gh-issue <owner/repo>#N`
+#             worktrees (`repo` equal to <name> as the adapter resolves it,
+#             registry_resolve_project_arg: a parent root is its default
+#             or only instance, the name worktree_list.sh gives its
+#             worktrees; a parent with several instances and no default
+#             names nothing, since the adapter fails on it), a `gh-issue <owner/repo>#N`
 #             check keeps the worktree of issue N whose repository is
 #             <owner/repo>. Without a readable <file>, only (a) is kept.
 #       A check is read as sitrep_checks.sh reads it: a cell is split into
@@ -122,7 +126,8 @@
 #             number, `(#N)` in a line's item or `gh-issue N` in its check,
 #             for an "own" entry; `gh-issue <owner/repo>#N` for the entry's
 #             "repository" and issue; `adapter --project <name>` for a
-#             project entry whose `repo` is <name>), else "no".
+#             project entry whose `repo` is <name> as resolved in (b)),
+#             else "no".
 #       An error from worktree_list.sh (a non-zero exit, or output that is
 #       not its JSON) is passed through on stderr with a non-zero exit;
 #       it is never printed as an empty list.
@@ -376,7 +381,26 @@ if [[ $rc -ne 0 ]]; then
 fi
 
 [[ -n "$ROWS" && -f "$ROWS" && -r "$ROWS" ]] || ROWS=""
-JSON="$json" TYPE="$TYPE" PR_SOURCE="$PR_SOURCE" OWN_DIRS="$OWN_DIRS" \
+# The projects an `adapter --project <name>` check names, as the adapter
+# resolves <name> (registry_resolve_project_arg): a parent root is its
+# default or only instance, the name worktree_list.sh gives its worktrees;
+# a parent with several instances and no default names nothing, since the
+# adapter fails on it. One "<name><TAB><resolved>" line each.
+PROJECT_MAP=""
+if [[ -n "$ROWS" ]]; then
+    while IFS= read -r n; do
+        [[ -n "$n" ]] || continue
+        res="$(registry_resolve_project_arg "$WS_ROOT" "$n" 2>/dev/null)" || continue
+        [[ -n "$res" ]] && PROJECT_MAP="$PROJECT_MAP$n"$'\t'"$res"$'\n'
+    done < <(python3 -c "$PYLIB"$'\n''import sys
+out = set()
+for row in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    f = row.rstrip("\n").split("\t")
+    if len(f) >= 4 and f[0] == "line":
+        out |= names_of(f[1], f[3])[2]
+print("\n".join(sorted(out)))' "$ROWS")
+fi
+JSON="$json" TYPE="$TYPE" PR_SOURCE="$PR_SOURCE" OWN_DIRS="$OWN_DIRS" PROJECT_MAP="$PROJECT_MAP" \
     ROOT_GIT="$ROOT_GIT" ROWS="$ROWS" python3 -c "$PYLIB"$'\n'"$(cat <<'PY'
 import json, sys
 
@@ -408,6 +432,9 @@ if have_rows:
             named_bare |= b
             named_issues |= i
             named_projects |= p
+# Each through the registry, as the adapter resolves it (PROJECT_MAP).
+resolved = dict(l.split("\t", 1) for l in os.environ["PROJECT_MAP"].splitlines() if "\t" in l)
+named_projects = {resolved[p] for p in named_projects if p in resolved}
 
 memo = {}
 def repository(path):

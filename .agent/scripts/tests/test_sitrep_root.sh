@@ -82,6 +82,9 @@ mkroot forms https://github.com/acme/forms.git
 mkroot gitlab git@gitlab.com:acme/proj.git
 mkdir -p "$R/host"
 mkroot host/inst https://github.com/acme/inst.git
+mkdir -p "$R/fam"
+mkroot fam/fam1 https://github.com/acme/fam1.git
+mkroot fam/fam2 https://github.com/acme/fam2.git
 cat > "$WSC/.agent/projects.local" <<REG
 proj        single_project  $R/proj
 noroad      single_project  $R/noroad
@@ -97,6 +100,9 @@ forms       single_project  $R/forms
 gitlab      single_project  $R/gitlab
 inst        single_project  $R/host/inst  parent=host
 host        project         $R/host
+fam1        single_project  $R/fam/fam1  parent=fam
+fam2        single_project  $R/fam/fam2  parent=fam
+fam         project         $R/fam
 inner       single_project  $WSC/projects/inner
 REG
 
@@ -285,7 +291,7 @@ wt() {  # <root dir> <name> <issue>: a plain worktree in the root's worktrees/
     g -C "$1" worktree add -q -b "feature/issue-$3" "$1/worktrees/issue-$2-$3" 2>/dev/null
 }
 wt "$R/proj" proj 4; wt "$R/proj" proj 12; wt "$R/proj" proj 13
-wt "$R/other" other 6; wt "$R/host/inst" inst 5
+wt "$R/other" other 6; wt "$R/host/inst" inst 5; wt "$R/fam/fam1" fam1 7
 pkg() {  # <n> <header issue> <origin of checkout b>
     local d="$R/proj/worktrees/issue-proj-$1"
     mkdir -p "$d/src"
@@ -448,6 +454,15 @@ before="$(g -C "$WSC" status --porcelain; g -C "$R/proj" status --porcelain)"
 after="$(g -C "$WSC" status --porcelain; g -C "$R/proj" status --porcelain)"
 [[ -z "$(ls -A "$SB/tmpcheck")" && "$before" == "$after" ]] \
     && pass "both modes: nothing in TMPDIR, git status unchanged" || fail "writes: tmp='$(ls -A "$SB/tmpcheck")' before='$before' after='$after'"
+
+echo "TEST: an adapter check naming a parent root names the instance the adapter resolves it to"
+printf '%s\n' $'line\tHost validates\tfalse\tscript adapter --project host validate\t2026-11-09' \
+    $'line\tFamily validates\tfalse\tscript adapter --project fam validate\t2026-11-09' > "$SB/rows-parent.tsv"
+wts "$WSC" "$SB/rows-parent.tsv"
+[[ $RC -eq 0 && "$OUT" == *"project inst 5 no"* && "$(field 5 named)" == yes ]] \
+    && pass "a parent with one instance: its instance's worktree is kept and named" || fail "parent one instance: rc=$RC '$OUT' named='$(field 5 named)'"
+[[ "$OUT" != *fam1* ]] \
+    && pass "a parent with several instances and no default: names nothing, as the adapter fails on it" || fail "parent several instances: '$OUT'"
 
 echo "TEST: --worktrees from a hosting root: its instances' worktrees, none its own"
 wts "$R/host"
