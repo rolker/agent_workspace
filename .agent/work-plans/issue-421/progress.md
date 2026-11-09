@@ -186,3 +186,17 @@ Both round-1 must-fix findings and all six suggestions are resolved in the plan 
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 14:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-421 at `6b705d17`
+
+- `.claude/skills/run-issue/SKILL.md` step 6 (b218b979): header block unchanged; added the `**Dialog layout.**` paragraph, scoped to the `question` text of `AskUserQuestion` (end-of-turn messages stay on `/orchestrator`'s hand-back shape): header on every question, bold stable IDs in bullets (wrap allowed, one item per line start), F numbers count across the dialog and never restart, `Qn` per question, option descriptions say what changes and how hard to undo with the recommended option first. Template block plus a worked example for the made-up `acme-widgets`: header "phase 5 of 8 (review-code)" (plan review suggestion 1), Q1 with F1-F3 and its three options, and a second question with F4 and Q2 to show the numbering continuing.
+- `.claude/skills/orchestrator/SKILL.md` (cab12f79): one sentence after the six-item hand-back list, pointing dialogs at `/run-issue` step 6, "Dialog layout"; the six items untouched.
+- `.agent/knowledge/host_standing_rules.md` (cab12f79): the dialog row's Source column gains "`run-issue/SKILL.md` step 6, Dialog layout"; Reason cell and "Already enforced" list untouched.
+- `.agent/scripts/tests/test_skill_paths.sh` (6b705d17): four `has` assertions: the step 6 header, anchored to its opening sentence (the template block repeats the header line, so a bare-string check did not fail when the original was removed); the layout marker, template `**F1**`/`**Q1**`, the never-restart wording, the example's `**F4**`/`**Q2**` and the option-description rule; the orchestrator pointer; the standing-rules pointer.
+- Each new assertion was checked to fail alone: each of the three files reverted to main gives exactly one FAIL; removing the step 6 header line, the F4 bullet, the never-restart wording or the template Q1 each gives exactly one FAIL. The header text is present on main, so that assertion guards existing text.
+- Tests: `test_skill_paths.sh` 135 passed, 0 failed. `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP exited 0, its script-test suite hook Passed.
+- For the PR description: whether the dialog renders `**F1**` as bold is not yet checked (plan review suggestion 2: the host checks at the next real owner dialog; dispatched sub-agents have no `AskUserQuestion`). The skill text reads either way.
