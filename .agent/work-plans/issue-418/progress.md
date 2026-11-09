@@ -478,3 +478,13 @@ Prior timeline: round 1 (2 must-fix) and round 2 (7 suggestions) were closed by 
 - [ ] (should-fix, Copilot) The project-session rule for `section` rows reads as blanket: the parenthetical "(no roadmap, or a roadmap with no Direction section)" looks explanatory, and the paragraph above lists four `section` reasons. Applied to `(roadmap not readable: ...)` it reports "no Direction section; onboarding offers one", which is false; applied to `(no Line or Deferral table)` / `(no rows in the Line or Deferral tables)` it suppresses the acceptance case and Paths, which come from the Direction section's prose that does exist (SKILL.md steps 3 and 5). Fix: name the rows the rule applies to (`(roadmap not found: ...)` and `(no Direction section)`) explicitly; for the unreadable roadmap report the reason as printed, with no onboarding offer; for a section with no tables or no rows say so and still report the acceptance case and Paths from the section prose, with no next step; add a skill-text assertion in test_skill_paths.sh pinning the restriction — `.claude/skills/sitrep/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (two valid Copilot findings, both should-fix with a known fix: a parent root named by an adapter check resolves to no worktree, and the project-session rule for section rows misreports an unreadable roadmap; a review with open findings is never merged past without the owner, and the fixes are small, so address)
+**After**: findings
+**Decision**: address
+
+Host answer under /orchestrator's checkpoint table. The two open boxes of the Integrated Review at 5a362625 go to address-findings; then a PR-mode review-code and a re-triage.
