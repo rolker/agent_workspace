@@ -567,3 +567,18 @@ Host answer under /orchestrator's checkpoint table. The open box of the Integrat
 ### Verification
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, no hook failed; the script suite hook passed.
 - Run directly: test_sitrep_root.sh 55 passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-09 12:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #420 at `421233d8`
+**Depth**: Deep (reason: convergence check of the worktree-lister fix round per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the one should-fix box of the Integrated Review at 515c89d8 and the fix diff since it, 14f9508e (with the Implementation entry at 421233d8). The finding is closed: `--worktrees` now runs worktree_list.sh from the decided `$ROOT`. `$ROOT` always passes the lister's guard: for a workspace session it is session_root.sh's `$WS_ROOT` (the main checkout, pwd -P, also for a linked worktree outside the tree), which is the lister's own ROOT_DIR; for a project session it is the pwd -P of a registered path, which registry_resolve_from_dir matches exactly (a session reached through a `worktrees=` directory resolves to that same path; a probe with `worktrees=` under the workspace exits 0; one outside both the root and the workspace is refused by the registry parser, so it cannot arise). No other path changes: the `cd` sits inside the `$(...)` subshell, so `$PWD`, `$DIR` and everything sitrep_root.sh resolves after it are untouched, and worktree_list.sh reads nothing from the starting directory between its guard (line 31) and its `cd "$ROOT_DIR"` (line 100), only argument parsing and function definitions. `$ROOT` is absolute, so a set CDPATH prints nothing into the JSON (the old `cd "$DIR"` with a relative `--dir` could). The regression test passes at HEAD and fails on the old line (restored in a scratch copy: 54 passed, 1 failed, the new test, rc=1). Specialists: static analysis (pre-commit shellcheck hook on both files: passed), governance and plan drift inline (helper comment says why; no doc or design change needed); Claude adversarial not spawned (one-line fix, read in full). Cross-model skipped per the handoff; by the PR-mode count this is round 2, below the skill's round-3 threshold for that exception. Suite re-run: test_sitrep_root 55 passed, 0 failed.
+
+### Findings
+- [ ] No issues found. LGTM.
