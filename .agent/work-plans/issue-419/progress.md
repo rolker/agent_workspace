@@ -415,3 +415,13 @@ CI: at `1272085` the push, pull_request and Copilot runs were in progress when t
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's merge answer ("merge,merge,yes", first word, recorded at 639179fd) carried forward: the merge then failed on a GitHub conflict; since that answer the branch gained only a merge-from-main (5befb1e2, one table hunk resolved by keeping both sides' rows) reviewed approved with 0 findings (1272085a) and re-triaged with no open findings (a831221f). No code of the branch's own changed. The host did not re-ask.
