@@ -308,3 +308,13 @@ CI at `9e3a44d` when this entry was written: Validate Documentation passes. Lint
 - [ ] (suggestion, non-blocking, Local Review @ `e3b7436`, covers via bookkeeping) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; make it "required, '# covers: ALL', scanning and unreferenced suites" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 13:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Owner's answer: "address 422". The one open box of the Integrated Review at 1a28c8ce (the file summary at test_script_tests_hook_scope.sh:74-75 lists three suite classes where the check covers four) goes to address-findings.
