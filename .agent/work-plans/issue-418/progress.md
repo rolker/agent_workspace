@@ -119,3 +119,13 @@ The approach is sound and the scope matches the owner's narrowing. Revise before
 - [ ] Guard step 6's git facts with the top-level test; handle a default branch other than `main`
 - [ ] Add project-sandbox tests that run the skill's steps via `skill_step`; correct the helper's rationale
 - [ ] Add the missed consequences: SKILL.md lines 193, 890, 967-969; `docs/design.md` Change log row
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 09:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the plan review's five must-fix findings are mechanism gaps in how the project root is handled: the 388 ordering, path words for a project root, the local-main check on a root with no repository, tests through the skill's own bash blocks, and skill text the plan missed; none touches the owner's scope)
+**After**: plan
+**Decision**: revise
+
+Host answer under /orchestrator's checkpoint table, first host revise on this issue. The plan goes back to plan-task with the review's findings 1-9 as inputs; the owner's scope (session root only) is unchanged.
