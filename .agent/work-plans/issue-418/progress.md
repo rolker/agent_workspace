@@ -179,3 +179,13 @@ The revision resolves every round-1 must-fix and answers every suggestion. One n
 - [ ] Name step 5's ADR-title lookup as reading `$ROOT/docs/decisions`
 - [ ] Say what step 7 offers, and how the Documentation fact is worded, for a project root with its own design document
 - [ ] Fix `--worktrees` output to `worktree_list.sh --json`'s shape and pass its errors through
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 09:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one must-fix on which worktrees a root lists; the roadmap's Path 1 text already answers it: "work in the project a line's check names" is Path 1 work, so a root lists its own worktrees plus any worktree its own Direction lines name, which keeps the workspace report unchanged as the acceptance bullet requires; second host revise in a row, so a third revise would be the owner's)
+**After**: plan
+**Decision**: revise
+
+Host answer under /orchestrator's checkpoint table. Rule for the revision: a root lists its own worktrees plus the worktrees its own Direction lines name (adapter --project <name> checks, <owner/repo>#N checks); the same rule for both root types. Suggestions 2-4 (ADR titles from the root's docs/decisions, step 7 offer and Documentation wording name the root, --worktrees output pinned to worktree_list.sh's JSON shape with errors passed through) to be answered too.
