@@ -129,3 +129,11 @@ The approach is sound and the scope matches the owner's narrowing. Revise before
 **Decision**: revise
 
 Host answer under /orchestrator's checkpoint table, first host revise on this issue. The plan goes back to plan-task with the review's findings 1-9 as inputs; the owner's scope (session root only) is unchanged.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 09:56 -0500
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `203069df`
+
+Revision after plan review: no #388 gate (418 lands first, S4 reuses the existing inbox pass); project-root path words and pr_source title lookup; git facts guarded by own_repo and default branch; project-sandbox tests through skill_step; missed SKILL.md and design.md text covered; worktrees filtered by the root's directories; exit 1 outside every root stops. Still one PR.
