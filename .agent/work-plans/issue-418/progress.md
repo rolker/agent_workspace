@@ -297,3 +297,13 @@ The third revision resolves all three round-3 findings, and the new `own` field 
 - [ ] Compute `own` for a bare-header package worktree from the slug its checkouts agree on, as step 3 does
 - [ ] Test step 7's project-session wording with a text guard in `test_skill_paths.sh`; keep the offer branch for a workspace session with no Agent tool
 - [ ] Host: in the issue edit, keep the run-record clause and reconcile bullet 1's "nothing is the workspace's" with Direction-named work
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 10:28 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review round 4 approved with no must-fix; the four suggestions are implementation-level and go into the implement handoff; the owner's narrowed acceptance bullet from the previous checkpoint stands)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. Suggestions carried to implementation: step 3's bare-number test becomes own == yes before the "serves a project goal" branch, own is the string yes/no; own for a package worktree with a bare issue=<N> header uses the slug its checkouts agree on, else no; step 7's project-session test is a text check in test_skill_paths.sh and the "offer it" branch stays for a workspace session with no Agent tool. The host edits the issue's acceptance bullets when the PR opens: keep "the run record's second column stays workspace", and reconcile "nothing in the report is the workspace's" with workspace work the project's Direction lines name.
