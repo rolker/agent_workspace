@@ -245,3 +245,21 @@ Host answer under /orchestrator's checkpoint table. Both suggestions of the Loca
 ### Checks
 - `.agent/scripts/tests/test_skill_paths.sh`: 136 passed, 0 failed
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0 (script suite hook Passed)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 14:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad0aa5467eeedcec2, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-421 at `fb5476cc`
+**Base**: origin/main
+**Depth**: Standard (reason: round 2 convergence check per handoff, on the two round-1 suggestions and fix commits 437fac89, 509ac5a9)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings
+
+Cross-model: skipped (round-2 convergence check on two wording fixes, per handoff). Checked: the header code block is byte-for-byte unchanged (the diff touches only the sentence before it and the prose after it); step 6 now says one thing for turn-ending messages (the header line when the host drives `/run-issue` alone, the hand-back shape under `/orchestrator`), its description of that shape's two orientation lines matches `orchestrator/SKILL.md` item 1, and the Dialog layout defers to it; no other file quotes the old "(and every message ending a turn)" clause (grep). Example headers now say "(F4 in Q2)" and "(F1 to F3 in Q1)", so each question stands alone. `test_skill_paths.sh` 136 passed, 0 failed. Fail-alone on an exported copy (whose only other failure is the copy's missing `.git` for the live-pointer git grep): removing the header code line, dropping "on its own" from the turn-ending sentence, and restoring the old parenthetical each give exactly one new FAIL.
+
+### Findings
+- [x] No issues found. Both round-1 suggestions are resolved.
