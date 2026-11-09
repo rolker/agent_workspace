@@ -170,3 +170,13 @@ The revised plan is ready for implementation. Acceptance case 2 now names a scri
 ### Recommended Actions
 
 - [ ] None before implementation. At PR open, the host edits the issue's acceptance bullet to name `sitrep_checks.sh`, as the plan states.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review round 2 approved with no findings; every claim was checked on the branch by the reviewer)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The host edits the issue's acceptance command 2 to name sitrep_checks.sh when the PR opens.
