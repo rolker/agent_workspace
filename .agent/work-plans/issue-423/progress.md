@@ -122,3 +122,13 @@ The plan is complete and correctly targeted: the `adr-status` read, the ` ; ` co
 - [ ] OQ-2 answer: say who ran the run, as well as where it was tracked.
 - [ ] #265 comment: do not describe the registration script as pending PR 4 work.
 - [ ] Final pass: run the sit-rep step-5 acceptance block and widen the grep.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 13:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review approved with no must-fix; its seven suggestions are wording and verification details carried into the implement handoff)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. Suggestions carried to implementation: correct change-log section names; soften the Status-key parenthetical so it does not claim a Provisional ADR has had no test; note ADR-0018's supersession in the 0016 register row; keep the original promotion condition visible as history in the ADR Status; OQ-2's answer also says who ran the acceptance run; reword the #265 comment since register_project.sh already exists; final pass runs the sit-rep's step-5 block and widens the grep.
