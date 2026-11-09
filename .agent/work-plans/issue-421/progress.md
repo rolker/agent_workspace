@@ -118,3 +118,13 @@ The approach is the right size and the tests are sound, but the plan misses the 
 - [ ] Replace the "existing header assertions" claim by adding the header text to the run-issue assertion.
 - [ ] Standing rules: row 36 Source column only. Orchestrator: one sentence after the six-item hand-back list; run-issue's paragraph scoped to dialogs.
 - [ ] Record the other-skills grep result in the plan and how those questions are covered (row 36 pointer, or a follow-up issue).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (two must-fix plan edits, both mechanism: a worked example with a made-up repository name, and the ID scheme across a multi-question dialog; six suggestions on wording, option descriptions, the header assertion, the standing-rules edit scope, the orchestrator pointer placement and the four other skills that ask questions; first host revise on this issue)
+**After**: plan
+**Decision**: revise
+
+Host answer under /orchestrator's checkpoint table. Findings F1-F2 and S1-S6 of the Plan Review at e7ce085e go to plan-task.
