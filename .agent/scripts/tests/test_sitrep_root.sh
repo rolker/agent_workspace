@@ -142,7 +142,20 @@ echo "TEST: a project root's own design files turn its checks on"
 mkdir -p "$R/other/docs" "$R/other/.agent/knowledge"
 printf '# D\n' > "$R/other/docs/design.md"; printf '# R\n' > "$R/other/.agent/knowledge/research_digest.md"
 root_of "$R/other"
-[[ "$(grep -c '^check_.*=run$' <<< "$OUT")" -eq 4 ]] && pass "project with its own docs/design.md and digest: the checks run" || fail "other checks: '$OUT'"
+[[ "$(val check_decision_register)" == "skipped (docs/design.md not on the default branch main)" \
+    && "$(val check_research_digest)" == "skipped (.agent/knowledge/research_digest.md not on the default branch main)" \
+    && "$(val check_documentation)" == "skipped (docs/design.md not on the default branch main)" \
+    && "$(val check_design_anchors)" == run ]] \
+    && pass "design files only in the working tree: the history checks say they are not on the default branch" || fail "other uncommitted: '$OUT'"
+g -C "$R/other" add -A && g -C "$R/other" commit -q -m design
+root_of "$R/other"
+[[ "$(grep -c '^check_.*=run$' <<< "$OUT")" -eq 4 ]] && pass "project with its own docs/design.md and digest committed: the checks run" || fail "other checks: '$OUT'"
+g -C "$R/other" checkout -q -b older HEAD~1
+root_of "$R/other"
+[[ "$(val check_decision_register)" == run && "$(val check_research_digest)" == run && "$(val check_documentation)" == run \
+    && "$(val check_design_anchors)" == "skipped (docs/design.md not in this root)" ]] \
+    && pass "the root checked out on an older branch: the history checks read the default branch, which has the files" || fail "other on older branch: '$OUT'"
+g -C "$R/other" checkout -q main
 
 echo "TEST: no roadmap, or a roadmap with no Direction section"
 root_of "$R/noroad"
@@ -201,6 +214,14 @@ echo "TEST: the pull-request source is a github.com repository only"
 root_of "$R/gitlab"
 [[ $RC -eq 0 && "$(val own_repo)" == yes && "$(val pr_source)" == none ]] \
     && pass "an origin on another host (scp-style gitlab.com): pr_source=none, never a guess" || fail "gitlab: rc=$RC '$OUT'"
+why_ok=true
+for c in "gitlab|origin not recognised as GitHub" "nodefault|no origin remote" "host|this root is not a git repository of its own" "proj|"; do
+    root_of "$R/${c%%|*}"
+    [[ "$OUT" == *$'\npr_source_why='"${c#*|}"$'\n'* ]] || { why_ok=false; echo "    ${c%%|*}: '$OUT'"; }
+done
+root_of "$R/gitlab"
+$why_ok && [[ "$OUT" != *gitlab.com* ]] \
+    && pass "pr_source_why: an origin not recognised as GitHub, no origin, no repository of its own; empty with a source; the URL never printed" || fail "pr_source_why (cases above)"
 forms_ok=true
 while IFS='|' read -r url want; do
     g -C "$R/forms" remote set-url origin "$url"
@@ -277,6 +298,8 @@ pkg 21 acme/pkgx#21 https://github.com/acme/pkgx.git
 pkg 22 22 https://github.com/acme/pkgx.git
 pkg 23 ACME/Proj#23 https://github.com/acme/pkgx.git
 pkg 24 24 git@gitlab.com:acme/proj.git
+pkg 25 acme/proj#25 https://github.com/acme/proj.git
+printf '# project=proj issue=acme/proj#25 layer=l1\n/o/a\tsrc/a\tfeature/issue-25\n/o/b\tsrc/b\tfeature/issue-25-b\n' > "$R/proj/worktrees/issue-proj-25/.worktree-repos"
 g -C "$R/proj/worktrees/issue-proj-24/src/a" remote set-url origin git@gitlab.com:acme/proj.git
 
 # wts <dir> [rows file]: --worktrees from <dir>; sets RC, OUT (one
@@ -309,7 +332,7 @@ wts "$WSC" "$SB/missing.tsv"
 echo "TEST: --worktrees from a project root: its own, plus workspace work its Direction names"
 printf 'line\tWorkspace work\tfalse\tgh-issue acme/ws#3 closed\t2026-11-09\n' > "$SB/rows-p.tsv"
 wts "$R/proj" "$SB/rows-p.tsv"
-want=$'project proj 12 yes\nproject proj 13 yes\nproject proj 20 yes\nproject proj 21 no\nproject proj 22 no\nproject proj 23 yes\nproject proj 24 no\nproject proj 4 yes\nworkspace workspace 3 no'
+want=$'project proj 12 yes\nproject proj 13 yes\nproject proj 20 yes\nproject proj 21 no\nproject proj 22 no\nproject proj 23 yes\nproject proj 24 no\nproject proj 25 yes\nproject proj 4 yes\nworkspace workspace 3 no'
 [[ $RC -eq 0 && "$OUT" == "$want" ]] \
     && pass "project: its plain worktrees own; a package worktree own when its header or agreeing checkouts are this repository; another root's dropped; a named workspace worktree kept, not own" \
     || fail "project --worktrees: rc=$RC got '$OUT' err='$(cat "$SB/err")'"
@@ -364,6 +387,58 @@ wts "$R/proj" "$SB/rows-c.tsv"
 printf 'line\tW\tfalse\tgh-issue ACME/proj#12 closed\t2026-11-09\n' > "$SB/rows-wc.tsv"
 wts "$WSC" "$SB/rows-wc.tsv"
 [[ "$OUT" == *"project proj 12 no"* ]] && pass "(b): gh-issue ACME/proj#12 keeps acme/proj's worktree 12" || fail "(b) case: '$OUT'"
+
+echo "TEST: a package worktree whose checkouts of its repository disagree on the branch"
+wts "$R/proj"
+[[ "$(field 25 own)" == yes && "$(field 25 pr_branch)" == "" && "$(field 25 branch)" == "feature/issue-25,feature/issue-25-b" ]] \
+    && pass "two branches in its repository's checkouts: pr_branch empty, never one picked" || fail "pkg 25: own='$(field 25 own)' pr_branch='$(field 25 pr_branch)' branch='$(field 25 branch)'"
+
+echo "TEST: a copy of the helper in a workspace worktree lists from the main checkout's registry"
+WTC="$WSC/worktrees/workspace/issue-workspace-3"
+[[ -f "$WTC/.agent/scripts/sitrep_root.sh" && ! -e "$WTC/.agent/projects.local" ]] || fail "fixture: the worktree copy is missing, or has a registry of its own"
+RC=0; JSON="$(cd "$WSC" && bash "$WTC/.agent/scripts/sitrep_root.sh" --worktrees --rows "$SB/rows-ws.tsv" 2>"$SB/err")" || RC=$?
+OUT="$(python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["worktrees"]:
+    print("%s %s %s %s" % (w["type"], w.get("repo"), w.get("issue"), w.get("own")))' <<< "$JSON" 2>&1 | sort)"
+[[ $RC -eq 0 && "$OUT" == $'main None None yes\nproject other 6 no\nproject proj 12 no\nworkspace workspace 3 yes' ]] \
+    && pass "the worktree copy keeps the Direction-named project worktrees, as the main checkout's copy does" || fail "worktree copy: rc=$RC '$OUT' err='$(cat "$SB/err")'"
+
+echo "TEST: names_of reads a check cell as sitrep_checks.sh does"
+# The same cells go through the runner (a stub gh records each reference
+# it is asked about; a stub adapter each project it validates) and through
+# names_of; the two lists must agree. NBSP is no space to the runner.
+NB=$'\xc2\xa0'
+PAR="$SB/parity"
+mkdir -p "$PAR/bin" "$PAR/runner/.agent/scripts" "$PAR/mark"
+cp "$SRC/sitrep_checks.sh" "$SRC/_issue_helpers.sh" "$SRC/_project_registry.sh" "$PAR/runner/.agent/scripts/"
+printf 'proj  single_project  %s\nother  single_project  %s\n' "$R/proj" "$R/other" > "$PAR/runner/.agent/projects.local"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$2" >> "%s/mark/adapter"\n' "$PAR" > "$PAR/runner/.agent/scripts/adapter"
+printf '#!/usr/bin/env bash\nprintf "%%s#%%s\\n" "$2" "$5" >> "%s/mark/gh"\necho CLOSED\n' "$PAR" > "$PAR/bin/gh"
+chmod +x "$PAR/runner/.agent/scripts/adapter" "$PAR/bin/gh"
+{ printf '## Direction\n\n| Line | Check |\n|---|---|\n'
+  for c in 'gh-issue 31 closed' '`gh-issue 32 open`' '`file-exists a.md` ; `gh-issue Acme/Other#33 closed`' \
+           'file-contains docs/a.md gh-issue 34 closed' 'gh-issue 35 later' "gh-issue${NB}36 closed" "gh-issue 37 closed${NB}" \
+           '` gh-issue acme/proj#38 CLOSED `' 'gh-issue   039   closed' 'gh-issue acme/proj#40 closed extra' \
+           'gh-issue 41 closed ; script adapter --project proj validate' 'script adapter --project other extra validate' \
+           '`script adapter --project other validate`' "script adapter --project${NB}other validate" 'gh-issue #42 closed'; do
+      printf '| L | %s |\n' "$c"
+  done; } > "$PAR/roadmap.md"
+PATH="$PAR/bin:$PATH" SITREP_SCRIPTS_DIR="$PAR/runner/.agent/scripts" \
+    bash "$PAR/runner/.agent/scripts/sitrep_checks.sh" --root "$R/proj" --roadmap "$PAR/roadmap.md" > "$PAR/rows" 2>/dev/null
+runner="$( { sed 's/#0*\([0-9]\)/#\1/' "$PAR/mark/gh" 2>/dev/null | tr 'A-Z' 'a-z'; sed 's/^/project:/' "$PAR/mark/adapter" 2>/dev/null; } | sort -u)"
+lib="$(sed -n "/^read -r -d '' PYLIB <<'PY'\$/,/^PY\$/p" "$SRC/sitrep_root.sh" | sed '1d;$d')"
+ours="$(python3 -c "$lib"$'\n''import sys
+out = set()
+for row in open(sys.argv[1], encoding="utf-8"):
+    f = row.rstrip("\n").split("\t")
+    if len(f) >= 4 and f[0] == "line":
+        b, i, p = names_of("", f[3])
+        out |= {"acme/proj#" + n for n in b} | i | {"project:" + x for x in p}
+print("\n".join(sorted(out)))' "$PAR/rows")"
+[[ -n "$runner" && "$runner" == "$ours" ]] \
+    && pass "names_of and the runner name the same references and projects, NBSP, backticks, case and malformed checks included" \
+    || fail "parity: runner='$runner' names_of='$ours'"
 
 echo "TEST: the helper writes nothing: no temporary file, the roots' trees unchanged"
 mkdir -p "$SB/tmpcheck"

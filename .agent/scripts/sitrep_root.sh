@@ -39,6 +39,13 @@
 #                                          own_repo, and none when origin is
 #                                          not a github.com repository (see
 #                                          "GitHub repositories" below)
+#         pr_source_why=<why>              empty with a pr_source, else why
+#                                          there is none: "this root is not a
+#                                          git repository of its own", "no
+#                                          origin remote", or "origin not
+#                                          recognised as GitHub" (the URL is
+#                                          not printed: it can hold a
+#                                          credential)
 #         check_<name>=run | skipped (<why>)
 #                                          one line per check the sit-rep's
 #                                          Problems step makes from files a
@@ -47,11 +54,17 @@
 #                                            research_digest    .agent/knowledge/research_digest.md
 #                                            design_anchors     docs/design.md
 #                                            documentation      docs/design.md
-#                                          each also needs own_repo=yes and a
-#                                          default branch (they read the
-#                                          default branch), except
-#                                          design_anchors, which reads the
-#                                          files as they are.
+#                                          design_anchors reads the file as it
+#                                          is in the root. The other three
+#                                          read it from the default branch, so
+#                                          they need own_repo=yes, a default
+#                                          branch, and the file committed on
+#                                          it (`git cat-file -e`), whatever
+#                                          branch the root has checked out;
+#                                          a file in neither place is "not in
+#                                          this root", one only in the working
+#                                          tree is "not on the default branch
+#                                          <name>".
 #       When no root is decided (session_root.sh exits non-zero: 1 outside
 #       the workspace and every registered root, 2 when the project registry
 #       cannot be parsed) nothing is printed on stdout, the reason is on
@@ -92,10 +105,10 @@
 #             to, or "": a plain worktree's origin; a package worktree's
 #             header (issue=<owner/repo>#N), else, for a bare issue=<N>
 #             header, the one every listed checkout's origin agrees on.
-#         "repository_dirs": the directories holding that repository's
-#             checkout (a plain worktree: its own path; a package
-#             worktree: its listed checkouts of "repository", none when it
-#             is "").
+#         "repository_dirs": where the issue's timeline and title cache
+#             are read: a plain worktree's own path, always (with no GitHub
+#             remote too); a package worktree's listed checkouts of
+#             "repository", none when it is "".
 #         "repository_why": "" when "repository" is set, else why not: "no
 #             GitHub remote", or "its checkouts are not all in one GitHub
 #             repository" (a package worktree with a bare header whose
@@ -113,6 +126,13 @@
 #       An error from worktree_list.sh (a non-zero exit, or output that is
 #       not its JSON) is passed through on stderr with a non-zero exit;
 #       it is never printed as an empty list.
+#
+# Registry: the root is decided from the main checkout's project registry
+# (session_root.sh), and the worktrees are listed by the main checkout's
+# worktree_list.sh, which reads that same registry; a copy of this script
+# in a worktree of the workspace never reads its own checkout's registry
+# (projects.local is not in a worktree). Without that copy in the main
+# checkout, this script's own copy lists them.
 #
 # GitHub repositories: an origin is read with `git ls-remote --get-url`
 # (git's own insteadOf rewriting, no network) and is a GitHub repository
@@ -208,24 +228,32 @@ def gh_slug(url):
 def origin_slug(d):
     return gh_slug(git(d, "ls-remote", "--get-url", "origin"))
 
+# sitrep_checks.sh trims [:space:] (ASCII: space, tab, newline, CR, VT,
+# FF) and splits words with read -ra (space, tab, newline); Python's own
+# strip() and split() also take NBSP and other Unicode spaces, so they are
+# not used here.
+TRIM = " \t\n\r\v\f"
+def words_of(p):
+    return [w for w in re.split(r"[ \t\n]+", p) if w]
+
 def checks_of(cell):
     """The checks of a cell, each as its words, split as sitrep_checks.sh does."""
-    c = cell.strip()
+    c = cell.strip(TRIM)
     m = re.fullmatch(r"`([^`]*)`", c)
     if m:
         c = m.group(1)
     out = []
     for part in c.split(" ; "):
-        p = part.strip()
+        p = part.strip(TRIM)
         if len(p) >= 2 and p.startswith("`") and p.endswith("`"):
-            p = p[1:-1].strip()
-        out.append(p.split())
+            p = p[1:-1].strip(TRIM)
+        out.append(words_of(p))
     return out
 
 def names_of(item, check):
     """(bare issue numbers, owner/repo#N lowercased, project names) a line names."""
     bare, issues, projects = set(), set(), set()
-    for lst in re.findall(r"\(#[0-9]+(?:,\s*#[0-9]+)*[,)]", item):
+    for lst in re.findall(r"\(#[0-9]+(?:,[ \t]*#[0-9]+)*[,)]", item):
         bare.update(re.findall(r"[0-9]+", lst))
     for w in checks_of(check):
         if len(w) == 3 and w[0] == "gh-issue" and w[2].lower() in ("open", "closed"):
@@ -249,6 +277,7 @@ top="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" || top=""
 has_branch() { git -C "$ROOT" rev-parse -q --verify "refs/heads/$1" >/dev/null 2>&1; }
 DEFAULT_BRANCH=""
 PR_SOURCE=none
+PR_SOURCE_WHY="this root is not a git repository of its own"
 if [[ "$OWN_REPO" == yes ]]; then
     head_ref="$(git -C "$ROOT" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)" || head_ref=""
     head_ref="${head_ref#refs/remotes/origin/}"
@@ -263,7 +292,13 @@ if [[ "$OWN_REPO" == yes ]]; then
         [[ -n "$found" && "$found" != *" "* ]] && DEFAULT_BRANCH="$found"
     fi
     slug="$(python3 -c "$PYLIB"$'\nimport sys\nprint(origin_slug(sys.argv[1]))' "$ROOT")" || slug=""
-    [[ -n "$slug" ]] && PR_SOURCE="$slug"
+    if [[ -n "$slug" ]]; then
+        PR_SOURCE="$slug"; PR_SOURCE_WHY=""
+    elif git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+        PR_SOURCE_WHY="origin not recognised as GitHub"
+    else
+        PR_SOURCE_WHY="no origin remote"
+    fi
 fi
 
 if [[ "$WORKTREES" != true ]]; then
@@ -278,14 +313,20 @@ if [[ "$WORKTREES" != true ]]; then
     done
     # check <name> <file> <reads the default branch: yes|no>
     check() {
-        if [[ ! -e "$ROOT/$2" ]]; then
+        local on_db=no
+        [[ -n "$DEFAULT_BRANCH" ]] && git -C "$ROOT" cat-file -e "$DEFAULT_BRANCH:$2" 2>/dev/null && on_db=yes
+        if [[ "$3" != yes ]]; then
+            if [[ -e "$ROOT/$2" ]]; then echo "check_$1=run"; else echo "check_$1=skipped ($2 not in this root)"; fi
+        elif [[ "$on_db" == yes ]]; then
+            echo "check_$1=run"
+        elif [[ ! -e "$ROOT/$2" ]]; then
             echo "check_$1=skipped ($2 not in this root)"
-        elif [[ "$3" == yes && "$OWN_REPO" != yes ]]; then
+        elif [[ "$OWN_REPO" != yes ]]; then
             echo "check_$1=skipped (this root is not a git repository of its own)"
-        elif [[ "$3" == yes && -z "$DEFAULT_BRANCH" ]]; then
+        elif [[ -z "$DEFAULT_BRANCH" ]]; then
             echo "check_$1=skipped (no default branch)"
         else
-            echo "check_$1=run"
+            echo "check_$1=skipped ($2 not on the default branch $DEFAULT_BRANCH)"
         fi
     }
     echo "root=$ROOT"
@@ -296,6 +337,7 @@ if [[ "$WORKTREES" != true ]]; then
     echo "own_repo=$OWN_REPO"
     echo "default_branch=$DEFAULT_BRANCH"
     echo "pr_source=$PR_SOURCE"
+    echo "pr_source_why=$PR_SOURCE_WHY"
     check decision_register docs/design.md yes
     check research_digest .agent/knowledge/research_digest.md yes
     check design_anchors docs/design.md no
@@ -321,10 +363,13 @@ fi
 ROOT_GIT=""
 [[ "$OWN_REPO" == yes ]] && ROOT_GIT="$(phys "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")"
 
-# worktree_list.sh's stderr (its warnings, a malformed registry say, or
-# the reason it failed) goes straight to ours.
+# The main checkout's worktree_list.sh, which reads the registry the root
+# was decided from (the header's "Registry"). Its stderr (its warnings, a
+# malformed registry say, or the reason it failed) goes straight to ours.
+WL="$WS_ROOT/.agent/scripts/worktree_list.sh"
+[[ -f "$WL" ]] || WL="$SCRIPT_DIR/worktree_list.sh"
 rc=0
-json="$(cd "$DIR" && bash "$SCRIPT_DIR/worktree_list.sh" --json)" || rc=$?
+json="$(cd "$DIR" && bash "$WL" --json)" || rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "sitrep_root: worktree_list.sh --json failed (exit $rc)" >&2
     exit "$rc"
