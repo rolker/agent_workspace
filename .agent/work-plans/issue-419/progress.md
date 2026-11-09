@@ -396,3 +396,22 @@ Scope: merge commit 5befb1e2 (origin/main 33fc05e3, PR 420 sit-rep own root, int
 
 ### Findings
 - [x] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 14:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba630c34fe2c05e6, resume 3 of 3)
+
+**PR**: #422 at `1272085`
+**Sources**: 3 (Copilot @ `2f0acaa` through `5befb1e`: nine reviews, each the quota notice "unable to review this pull request because the user who requested the review has insufficient remaining quota", 0 inline comments, so not a review source; Local Review @ `5befb1e` (covers `1272085` via bookkeeping), approved, 0 must-fix, 0 suggestions; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+This round covers merge commit 5befb1e, which brought origin/main (PR 420, the sit-rep's own root) into the branch. I checked the conflict resolution in `.agent/knowledge/script_reference.md`. Against the branch side (1feb33f), the merge adds exactly one row, main's `sitrep_root.sh` row. The branch's updated `run_script_tests.sh` row and its new `suites_for_files.sh` row are intact. This agrees with the Local Review at `5befb1e`, which checked it row by row and ran the two suites on the merged tree (105 and 264 passed, 0 failed). From `5befb1e` to the head, only this issue's progress.md changes. `review_progress.sh sources` at the head returns no local findings. The earlier Local Review entries (`5cd5b14`, `e3b7436`, `5714e2e`) are stale, and their findings were closed by the previous Integrated Reviews. No open findings remain.
+
+CI: at `1272085` the push, pull_request and Copilot runs were in progress when this was written. Validate Documentation already passes in both Workspace Validation runs, and ros-manifest tests passes in the push run. Lint (pre-commit) and Validate Adapter Contract were still pending in both runs. At the merge commit `5befb1e`, the push and pull_request runs of Workspace Validation passed all 4 jobs. Its Copilot run failed on quota, which is not a CI check. The earlier Actions outage has passed: those runs ran their jobs normally. The head changes nothing outside progress.md compared with `5befb1e`, but CI has to be re-checked at the head before the merge. The merge gate checks it either way.
+
+### Findings
+
+### False positives
