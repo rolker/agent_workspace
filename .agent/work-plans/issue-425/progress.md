@@ -226,3 +226,13 @@ None open. The R1 suggestion (ADR-0018 Status "Until then" had no referent — `
 
 ### False positives
 - (CI) `copilot-pull-request-reviewer` check reports failure — it is the quota notice, not a code check; Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests all pass at f9c8d11a
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "merge them" (PRs 426 and 427). Presented with: triage clean, CI green at the head, decision summary in the PR body, two pre-push rounds with Gemini and Codex clean.
