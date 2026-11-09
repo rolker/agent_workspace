@@ -51,3 +51,13 @@ issue: 421
 - [ ] Make the template's `question` example show real line breaks and state that bold stable IDs are reused across the dialog's questions (a multi-question dialog numbers IDs continuously, e.g. `**F1**`..`**F4**`, then `**Q1**`, so his reply can name an ID), since the failure included multi-question dialogs with no IDs.
 - [ ] Add the test assertions for three things: the template marker in run-issue step 6, the orchestrator pointer to it, and the standing-rules row naming it, so removing any one fails.
 - [ ] Keep the `options[].description` guidance to one sentence of consequence per option, and leave the existing orientation header format byte-for-byte so existing tests on it stay green.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:04 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the three open actions are mechanism: the template example's shape and continuous stable IDs across multi-question dialogs, three text assertions, and one consequence sentence per option description; none changes what the owner asked for)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
