@@ -200,3 +200,21 @@ Host answer under /orchestrator's checkpoint table.
 - Each new assertion was checked to fail alone: each of the three files reverted to main gives exactly one FAIL; removing the step 6 header line, the F4 bullet, the never-restart wording or the template Q1 each gives exactly one FAIL. The header text is present on main, so that assertion guards existing text.
 - Tests: `test_skill_paths.sh` 135 passed, 0 failed. `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP exited 0, its script-test suite hook Passed.
 - For the PR description: whether the dialog renders `**F1**` as bold is not yet checked (plan review suggestion 2: the host checks at the next real owner dialog; dispatched sub-agents have no `AskUserQuestion`). The skill text reads either way.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 14:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-421 at `5fd7923a`
+**Base**: origin/main
+**Depth**: Standard (reason: governance files changed: `.claude/skills/*/SKILL.md`, `.agent/knowledge/*.md`)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Specialists: static analysis (shellcheck --severity=warning on test_skill_paths.sh: clean; no linter profile for the .md files), governance, plan drift, Claude adversarial (fresh sub-agent; 2 suggestions kept, test-strength notes dropped as acceptable for a presence test), cross-model Gemini (agy) and Codex: both ran, both "No issues found" (short, but each summary names the files and the F4/Q2 numbering, so they read the diff). Checked: the step 6 header block is unchanged (the hunk only adds lines after it); the worked example names a made-up `acme-widgets` and says "phase 5 of 8 (review-code)", matching the description's phase list; F numbers continue (F1-F3 in Q1, F4 in Q2); the standing-rules edit is the Source cell only and the every-row-has-a-reason check passes (22 rows, 0 bad); `test_skill_paths.sh` 135 passed, 0 failed. Not checked (for the PR description): whether `AskUserQuestion` renders `**F1**` as bold; with literal asterisks the example still reads unambiguously. Plan drift: one addition beyond the plan's example, the second question (F4, Q2), which shows the plan's own numbering rule; no file outside the plan.
+
+### Findings
+- [ ] (suggestion) The unchanged clause "Open every `AskUserQuestion` (and every message ending a turn) with:" the header sits three lines above the new "a message ending a turn follows `/orchestrator`'s hand-back shape instead", whose item 1 is two orientation lines, not the header; say whether a turn-ending message keeps the header (and what a run-issue host without `/orchestrator` follows), and adjust the header test string if the clause changes — `.claude/skills/run-issue/SKILL.md:519-532`
+- [ ] (suggestion) The first example question's header says "round 1 found 4 issues" but lists F1-F3, while the layout says each question stands alone; e.g. "round 1 found 4 issues (F4 in Q2)" — `.claude/skills/run-issue/SKILL.md:562`
