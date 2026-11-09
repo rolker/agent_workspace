@@ -64,3 +64,11 @@ issue: 419
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 12:10 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-419/plan.md` at `257cb3f9`
+
+An unreferenced Markdown file reaching no suite no longer triggers a full run (one extension test at the empty-hits branch of suites_for_files.sh); non-Markdown, deleted, and under-tests/ files keep ALL. Rewrites both tests that pinned the old rule (test_run_script_tests.sh:702 and the real-tree check in test_script_tests_hook_scope.sh), and updates header, stderr note, config comment and script_reference rows.
