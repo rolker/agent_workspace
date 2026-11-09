@@ -197,3 +197,43 @@ Host answer under /orchestrator's checkpoint table. Rule for the revision: a roo
 **Plan**: `.agent/work-plans/issue-418/plan.md` at `27b4bf65`
 
 Second revision: a root lists its own worktrees plus those its Direction lines name (workspace set unchanged, with a project-worktree test); step 5 ADR titles from the root; step 7 offers audit-project and Documentation wording names the root; --worktrees pinned to worktree_list.sh's JSON shape with errors passed through. Still one PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 10:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #418 — sitrep: report the session's own root, so a project session gets the project's sit-rep
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `27b4bf65`
+**Branch**: `feature/issue-418`
+
+Third review, a convergence check scoped to the round-2 items and the text the revision changed. Suggestions 2-4 are resolved: step 5's ADR titles read `$ROOT/docs/decisions` (bare number when absent); step 7 offers `/audit-project`, never `/audit-workspace`, for a project root, and the Documentation words name the root by `type`; `--worktrees` prints `{"worktrees": [...]}` and passes `worktree_list.sh` errors through. The must-fix (what a workspace session lists) is answered with the host's rule, but the plan's claim that the rule gives today's workspace set is not true, and replacing step 5's filter with the rule's output adds a wrong match.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one PR, ~8 files, session root only, as the owner narrowed it (2026-11-09). |
+| Issue alignment | Needs work | Serves, as checked: Goals "Easy to use" and "The long view"; `docs/design.md#documentation-layers`, `docs/design.md#sessions-and-roots`. Acceptance "From the workspace root the report is unchanged from today" does not hold for project worktrees no Direction line names (finding 1). |
+| File targeting | Good | Unchanged. |
+| Consequences | Needs work | Findings 1 and 2. |
+| Principle alignment | Good | "Test what breaks": new cases for the workspace-root `--worktrees` set, the JSON shape, error pass-through and ADR titles; finding 1 asks for one more. |
+| ADR compliance | Good | 0003, 0016, 0017 as in round 2. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment: workspace worktree list] must-fix** — "For the workspace this is today's step 3 set" is not true. `worktree_list.sh --json` lists every root's worktrees (it walks `wt_registry_worktree_dirs` and `wt_legacy_worktree_dirs`, worktree_list.sh line 359), and step 3's filter `.type != "main" and .issue` (SKILL.md line 223) keeps them all, so today's workspace sit-rep shows every project worktree with an issue, including ones no Direction line names (they read "no path (serves a project goal)", SKILL.md line 361; step 8's `myproject/feature/issue-12` example). Under the rule, the workspace keeps (a) its own worktrees plus (b) Direction-named ones, so a project worktree no workspace Direction line names drops out of the workspace report. The planned test only places Direction-named project worktrees in the workspace sandbox, so it cannot see this. The rule's result matches the owner's words ("one in the workspace is just for the workspace"); the plan's claim and the acceptance bullet "unchanged from today" do not. Resolution: keep the rule, correct the claim to say un-named project worktrees no longer show in the workspace report, add that case to the workspace-root `--worktrees` test (expected: dropped), say in Approach 7 that step 3's and step 8's text about project worktrees in the workspace report now covers only Direction-named ones, and record this one narrowing of the acceptance bullet at the checkpoint for veto. Also say what (a) is for the workspace root (`worktrees/workspace/`, from `wt_workspace_base`), since `wt_registry_worktree_dirs` lists only project roots' directories.
+2. **[Consequences: step 5 issue match] must-fix** — Approach 4 replaces step 5's `type == "workspace"` filter (SKILL.md line 579, not ~619) with the `--worktrees` output. Step 5's numbers come from `(#N)` and `gh-issue N`, which are this root's own repository's issues; the `--worktrees` set also holds the (b) worktrees of other repositories. In a workspace session, a Direction-named project worktree for its issue 12 would then match a workspace line naming `(#12)` and print as the next step's in-flight branch; in a project session, a workspace worktree named by an `<owner/repo>#N` line can match the project's `(#N)`. Step 5 must match only part (a), the root's own worktrees (for a package worktree, its header slug equal to `pr_source`), and a skill_step case should cover it.
+3. **[Consequences: step 7 offer] suggestion** — `/audit-project` does not re-examine a Decision register (its SKILL.md never mentions the register or the Re-examined column), so offering it when a project's "last design-decision review" is due offers a skill that does not do that review. Report the fact and offer nothing for it, or name what audit-project would actually check. Also say what step 7 offers when a project root has its own research digest that is due (the plan covers only the Decision register and absent files).
+
+### Summary
+
+The revision resolves round-2 suggestions 2-4. The host's worktree rule is sound and matches the owner's words, but it does change the workspace report (un-named project worktrees drop out), which the plan denies and does not test, and feeding the rule's output into step 5's issue match introduces a cross-repository number collision. Both are short plan fixes; the first also needs the acceptance bullet's narrowing recorded at the checkpoint.
+
+### Recommended Actions
+
+- [ ] Correct the "today's set" claim: un-named project worktrees drop out of the workspace report; add that workspace-root test case; name `worktrees/workspace/` as the workspace's part (a); update step 3/step 8 text in Approach 7; record the acceptance-bullet narrowing for veto
+- [ ] Restrict step 5's issue match to the root's own worktrees (part (a)) and add a skill_step case for a same-number worktree from another repository
+- [ ] Decide step 7's offer for a due project Decision register and a due project research digest so it names a skill that does that check, or nothing
