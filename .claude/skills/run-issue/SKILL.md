@@ -562,7 +562,7 @@ A worked example, for a made-up repository: a two-question dialog after
 a first code review. The first question:
 
 ```
-acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues
+acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues (F4 in Q2)
 
 - **F1** upload.py:88 (must-fix): "the retry loop never stops when the server answers 413"
 - **F2** upload.py:121 (suggestion): "the backoff delay is not capped, so the tenth retry waits 17 minutes"
@@ -575,11 +575,11 @@ Its options, recommended first: "Fix F1 now (recommended)": adds one fix
 commit and a second review round, undone by reverting that commit; "Fix
 F1, F2 and F3": the same plus two small changes, undone the same way;
 "Publish as is": F1 ships, which fails on a 413 and needs a new pull
-request to undo. The second question opens with the same header and
-continues the numbering:
+request to undo. The second question opens with the same header, its
+pointer turned to Q1, and continues the numbering:
 
 ```
-acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues
+acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues (F1 to F3 in Q1)
 
 - **F4** README.md (out of scope): "the setup section still names the old upload endpoint"
 

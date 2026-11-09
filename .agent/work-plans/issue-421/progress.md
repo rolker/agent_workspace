@@ -217,7 +217,7 @@ Specialists: static analysis (shellcheck --severity=warning on test_skill_paths.
 
 ### Findings
 - [x] (suggestion) The unchanged clause "Open every `AskUserQuestion` (and every message ending a turn) with:" the header sits three lines above the new "a message ending a turn follows `/orchestrator`'s hand-back shape instead", whose item 1 is two orientation lines, not the header; say whether a turn-ending message keeps the header (and what a run-issue host without `/orchestrator` follows), and adjust the header test string if the clause changes — `.claude/skills/run-issue/SKILL.md:519-532`
-- [ ] (suggestion) The first example question's header says "round 1 found 4 issues" but lists F1-F3, while the layout says each question stands alone; e.g. "round 1 found 4 issues (F4 in Q2)" — `.claude/skills/run-issue/SKILL.md:562`
+- [x] (suggestion) The first example question's header says "round 1 found 4 issues" but lists F1-F3, while the layout says each question stands alone; e.g. "round 1 found 4 issues (F4 in Q2)" — `.claude/skills/run-issue/SKILL.md:562`
 
 ## Checkpoint
 **Status**: complete
