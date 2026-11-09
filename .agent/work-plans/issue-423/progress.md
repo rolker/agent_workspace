@@ -68,3 +68,11 @@ issue: 423
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 13:20 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-423/plan.md` at `9c6c9830`
+
+Flip ADR-0016 Status to Accepted (evidence: GeoZui4D PRs 14 and 15), update every dependent design.md and roadmap line (including the four extra design.md spots and a name-free glossary definition), give the two Direction lines checks (geozui4d#8 plus #332 for onboarding, geozui4d#9 for the loop), draft signed comments for #265 and #295 for the host to post, then grep, anchor check and sit-rep check. Open question: ADR-0018's promotion condition is now met too.
