@@ -134,3 +134,39 @@ Host answer under /orchestrator's checkpoint table. Findings 1-7 of the Plan Rev
 **Plan**: `.agent/work-plans/issue-419/plan.md` at `29e038fb`
 
 Revision after the plan review (fc4651c6): acceptance case 2 now uses sitrep_checks.sh (host edits the issue bullet at PR open); a scan-free doc fixture pins the doc-only case and fixes 4(b); added lone.sh, .json, tests/notes.md and runtime-built new_uncovered cases; hook-scope header and comment updates; all-in-scope-.md breadth, the worktree_create.sh:348 residual-risk example and a real design.md anchor recorded.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 12:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #419 — Pre-commit suite selector: a documentation file under .agent/ runs every suite because it maps to no suite
+**Plan**: `.agent/work-plans/issue-419/plan.md` at `29e038fb`
+**Branch**: `feature/issue-419`
+
+Second review (convergence check on findings 1-7 of the Plan Review at fc4651c6); scoped to those items and what the revision changed.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one branch at `if not hits:` in `suites_for_files.sh` `main()`, comments, two suites, one doc file. Single PR. |
+| Issue alignment | Good | Serves (as checked): Goal "Easy to use" (`README.md#workspace-goals`), under `docs/design.md#registry-and-adapters` (heading exists at line 287; the `test` verb row names the runner). Finding 1 resolved: run here, `suites_for_files.sh .agent/scripts/sitrep_checks.sh` selects `test_checkpoint_269.sh test_script_tests_hook_scope.sh test_sitrep_checks.sh test_skill_paths.sh`, with `test_skill_paths.sh` joined through its `# scans: .agent/` prefix; the only real-tree scan prefixes are `.claude/skills/`, `.agent/scripts/tests/` and `.agent/ .claude/ AGENTS.md Makefile`, so after the fix `script_reference.md` adds only `test_skill_paths.sh` and doc plus script equals script alone, as the plan says. Today both print `ALL` (doc maps to no suite). Finding 2 resolved: the synthetic scan prefixes are `.agent/docs/` and `.agent/scripts/tests/` only (`test_scanner.sh`), so `.agent/guide.md` is outside all of them; traced through `main()`, the doc alone yields required + `# covers: ALL` + no-reference suites = `$BASE_ALWAYS test_noref.sh`, and doc plus `beta.sh` equals `beta.sh` alone. No synthetic case enumerates tracked files, so the new fixture does not disturb others. Finding 3 resolved: `lone.sh` case added; `.agent/scripts/new_uncovered_$$.sh` is built at runtime (checked: a runtime name prints `ALL` "maps to no suite"); `.agent/scripts/tests/notes.md` prints `ALL` through the under-`tests/` rule; `.json` and `notes.md` need no tracked fixtures. Finding 7 resolved (anchor). |
+| File targeting | Good | Files table now lists the hook-scope header (~73) and check comment (~689); `make_syn_repo` changes only for `.agent/guide.md`. |
+| Consequences | Good | Finding 4 resolved. The full-run pin at ~664 still holds after the fix: the all-files list includes `.pre-commit-config.yaml`, `Makefile` and unmapped `.sh` files, each of which still runs `ALL`. |
+| Principle alignment | Good | Finding 5 resolved and checked by running the selector on each of the 72 in-scope tracked `.md` files: 41 print `ALL` today, all under `.agent/` (28 knowledge, 7 templates, 4 top-level guides, 1 instructions, 1 workflows); none under `.claude/`, `AGENTS.md` or `.github/`. Finding 6 resolved and checked: `worktree_create.sh:348` builds `.agent/workflows/${WORKFLOW}.md` at runtime, and no suite passes `--workflow`. |
+| ADR compliance | Good | ADR-0013, ADR-0017 (no design change), ADR-0005 (CI backstop) as in round 1. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+None. All seven round-1 findings are resolved in the plan and the claims they depend on hold on this branch.
+
+### Summary
+
+The revised plan is ready for implementation. Acceptance case 2 now names a script that exists here and its "same as the script alone" criterion holds on the real tree; the scan-free synthetic fixture makes the doc-only case testable exactly.
+
+### Recommended Actions
+
+- [ ] None before implementation. At PR open, the host edits the issue's acceptance bullet to name `sitrep_checks.sh`, as the plan states.
