@@ -26,7 +26,10 @@
 #
 # The what-next guards at the end (#389) read more than SKILL.md files:
 #  (a) the sitrep frontmatter `description` line names the trigger phrases
-#      ("what's next?", "what should I work on?", "where are we?");
+#      ("what's next?", "what should I work on?", "where are we?"), and
+#      (#418) the sitrep takes the session root from sitrep_root.sh, no
+#      longer says it reads the workspace root only, and its step 7 offers
+#      a project session nothing;
 #  (b) the .claude/skills directory of the old skill does not exist;
 #  (c) no live pointer to the old skill -- its slash command or its skills
 #      path -- in tracked files under .agent/, .claude/, AGENTS.md or
@@ -199,6 +202,45 @@ else
             fail "sitrep description does not name the trigger \"$phrase\""
         fi
     done
+fi
+
+# --- The sit-rep reports the session's own root (#418) ------------------
+# Its blocks take the root from sitrep_root.sh, the "workspace root only"
+# wording is gone, and step 7 starts or offers a due check only in a
+# workspace session (a project session states the facts; no skill checks
+# them for a project). Step 7 is prose, so these are text checks.
+SITREP="$SKILLS/sitrep/SKILL.md"
+if grep -qF '$WS_ROOT/.agent/scripts/sitrep_root.sh' "$SITREP" 2>/dev/null; then
+    pass "sitrep takes the session root from sitrep_root.sh"
+else
+    fail "sitrep does not call \$WS_ROOT/.agent/scripts/sitrep_root.sh"
+fi
+if grep -qiE 'workspace root only|reads the workspace root only' "$SITREP" 2>/dev/null; then
+    fail "sitrep still says it reads the workspace root only"
+else
+    pass "sitrep no longer says it reads the workspace root only"
+fi
+step7="$(awk '/^### 7\. / { s = 1; next } s && /^### / { exit } s' "$SITREP" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+if grep -qF '**In a project session, nothing is started or offered** for a due design-decision review or a due research digest' <<< "$step7" \
+        && grep -qF '**Offer it** in a workspace session with no Agent tool, as in Codex or agy' <<< "$step7" \
+        && ! grep -qF '**Offer it** otherwise (a project session' <<< "$step7"; then
+    pass "sitrep step 7: a project session is offered nothing; the offer stays for a workspace session with no Agent tool"
+else
+    fail "sitrep step 7: the project-session rule or the workspace offer is missing, or a project session is still offered a check"
+fi
+
+# The project-session onboarding offer is for a missing roadmap or
+# Direction section only: an unreadable roadmap gives its reason, and a
+# section with no tables or rows still reports the acceptance case and
+# Paths (#418).
+sk1="$(awk '/^### 1\. / { s = 1; next } s && /^### / { exit } s' "$SITREP" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+if grep -qF 'the `section` rows `(roadmap not found: ...)` and `(no Direction section)`, and only those two, are reported as "no Direction section in this project; onboarding (`onboard-project`) offers one"' <<< "$sk1" \
+        && grep -qF '`(roadmap not readable: ...)`: the report gives the reason as printed (the Direction lines could not be read) and offers nothing' <<< "$sk1" \
+        && grep -qF 'so there is no next step; the acceptance case and the Paths still come from the section'"'"'s prose (steps 3 and 5 read them) and are reported' <<< "$sk1" \
+        && ! grep -qF 'a `section` row (no roadmap, or a roadmap with no Direction section) is reported as' <<< "$sk1"; then
+    pass "sitrep step 1: the onboarding offer is limited to a missing roadmap or Direction section"
+else
+    fail "sitrep step 1: the section-row rule is blanket again, or the unreadable / no-rows cases are missing"
 fi
 
 # (b) The skill directory is gone.
