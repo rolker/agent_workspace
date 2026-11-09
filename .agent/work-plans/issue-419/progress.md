@@ -194,3 +194,22 @@ Host answer under /orchestrator's checkpoint table. The host edits the issue's a
 - `script_reference.md`: runner row states the exception; new `suites_for_files.sh` row.
 - Acceptance on the real tree: `suites_for_files.sh .agent/knowledge/script_reference.md` -> `test_checkpoint_269.sh test_skill_paths.sh` (no ALL); with `.agent/scripts/sitrep_checks.sh` added -> `test_checkpoint_269.sh test_script_tests_hook_scope.sh test_sitrep_checks.sh test_skill_paths.sh`, byte-identical to the script alone (substitute for the issue's `sitrep_root.sh`, which is not on main).
 - Branch pre-commit (`.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP): every hook Passed or no-files Skipped, exit 0; the selector chose ALL (the runner is a full-run trigger), so all 41 suites ran.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 12:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-419 at `5cd5b140`
+**Base**: main
+**Depth**: Standard (reason: override-trigger files `.pre-commit-config.yaml` and `.agent/knowledge/script_reference.md`)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 1 | **Ship**: recommended — no must-fix findings; the suggestion can be applied or tracked
+
+Specialists: static analysis (shellcheck --severity=warning on the 4 changed .sh, yamllint on .pre-commit-config.yaml: clean); governance (pass; consequences all done); plan drift (none: files match the plan table, steps 1-6 present; the issue's acceptance bullet 2 edit to `sitrep_checks.sh` is left to the host at PR open, as planned); Claude adversarial (nothing of substance); cross-model Gemini (agy) and Codex (both complete, no issues found).
+
+Verified: test_run_script_tests.sh 105 passed 0 failed; test_script_tests_hook_scope.sh 263 passed 0 failed. Real tree: `suites_for_files.sh .agent/knowledge/script_reference.md` prints test_checkpoint_269.sh + test_skill_paths.sh with "is documentation and reaches no suite"; adding `.agent/scripts/sitrep_checks.sh` selects exactly what the script alone selects; `.agent/scripts/new_uncovered.sh` prints ALL ("maps to no suite"); a new `.claude/skills/<x>/SKILL.md` stays mapped (16 suites); `.MD` and `.json` still give ALL.
+
+### Findings
+- [ ] (suggestion) The real-tree expected set (`doc_want`) mirrors the required, `# covers: ALL` and scanning suites but not the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites are in the dump), but adding one would fail this check spuriously. Add the suites missing from the dump to `doc_want` and to the header/pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh:710`
