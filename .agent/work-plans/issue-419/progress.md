@@ -286,3 +286,25 @@ Scope: the one open box of the Integrated Review at feb72bbc and the fix diff 63
 
 ### Findings
 - [ ] (suggestion) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; add "and unreferenced" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh:74`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 12:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba630c34fe2c05e6, resume 1 of 3)
+
+**PR**: #422 at `9e3a44d`
+**Sources**: 3 (Copilot @ `2f0acaa`, `6684ded`, `e3b7436`: all three are the quota notice "unable to review this pull request because the user who requested the review has insufficient remaining quota", 0 inline comments, so not a review source; Local Review @ `e3b7436` (covers `9e3a44d` via bookkeeping); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The box left open in the previous Integrated Review (at `2f0acaa`) is closed by commit 632c5f7, checked against the code. `doc_unreferenced` collects every `test_*.sh` in `ALL_SUITES` (line 549) that has no `--dump` row, and `doc_want` now includes them, so it matches the selector's "always (no derived references)" class. The comment above the check and the pass/fail text name that class, and no suite name is written into the test. The pre-push entry at `5cd5b14` is now stale (the test file changed since), and its one finding was ruled on and fixed through that Integrated Review.
+
+The new suggestion holds. Lines 74-75 of `test_script_tests_hook_scope.sh` still say a Markdown document no code names "runs only the required, '# covers: ALL' and scanning suites", which disagrees with the check's own comment and pass text. It changes a comment only, with no behaviour or test outcome affected. **It does not block a merge call; the owner may defer it.** It is still kept as an open box rather than deferred, because the fix is a single wording change that can go in the same commit as any other change.
+
+CI at `9e3a44d` when this entry was written: Validate Documentation passes. Lint (pre-commit), Validate Adapter Contract and ros-manifest tests were still pending. Earlier heads passed those last two.
+
+### Findings
+- [ ] (suggestion, non-blocking, Local Review @ `e3b7436`, covers via bookkeeping) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; make it "required, '# covers: ALL', scanning and unreferenced suites" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
+
+### False positives
