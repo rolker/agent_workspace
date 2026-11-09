@@ -516,16 +516,75 @@ place and does **not** commit — the host commits the flipped file itself
 source), after the `## Checkpoint` entry and before the next
 `dispatch_phase.sh next` call.
 
-**Every dialog is self-contained.** Open every `AskUserQuestion` (and every
-message ending a turn) with:
+**Every dialog is self-contained.** Open every `AskUserQuestion` with:
 
 ```
 <repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state>
 ```
 
 embedding the finding text verbatim — never "the four findings above" or
-"as triaged". Every Bash tool-call description opens with `<repo>#<N>
-<phase>:` so the user can orient from the permission prompt alone.
+"as triaged". A message ending a turn opens with the same header line when
+the host drives `/run-issue` on its own; under `/orchestrator` it follows
+that skill's hand-back shape instead, whose two orientation lines say what
+the work is, with the issue number and its label, and what is needed from
+him. Every Bash tool-call description opens with `<repo>#<N> <phase>:` so
+the user can orient from the permission prompt alone.
+
+**Dialog layout.** This shapes the `question` text of every
+`AskUserQuestion`; a message ending a turn opens as the paragraph above
+says. A dialog is never one dense string: real line breaks, and a blank
+line between the header, the items and the question.
+
+- Every `questions[i].question` opens with the header line above. The
+  dialog shows one question at a time, so each one stands alone.
+- Each finding or other item being decided is a bullet with a bold stable
+  ID (`- **F1** ...`), never a numbered list, which the terminal renumbers.
+  The verbatim text may wrap onto further lines; each item starts a new
+  line, never two items on one line.
+- F numbers count across the whole dialog and never restart: if the first
+  question holds F1 to F3, the next one starts at F4. `Qn` names each
+  question, one per `questions[]` entry, and opens its closing sentence, so
+  a reply such as "F3 no, Q2 yes" has one meaning. A `Qn` is the question,
+  not an item.
+- Each `options[].description` says what that answer changes and how hard
+  it is to undo. The recommended option comes first.
+
+```
+<repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state>
+
+- **F1** <label>: <finding text, verbatim; may wrap onto further lines>
+- **F2** <label>: <finding text, verbatim>
+
+**Q1** <the one-sentence question>
+```
+
+A worked example, for a made-up repository: a two-question dialog after
+a first code review. The first question:
+
+```
+acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues (F4 in Q2)
+
+- **F1** upload.py:88 (must-fix): "the retry loop never stops when the server answers 413"
+- **F2** upload.py:121 (suggestion): "the backoff delay is not capped, so the tenth retry waits 17 minutes"
+- **F3** tests/test_upload.py (suggestion): "no test covers a retry that succeeds on the second try"
+
+**Q1** Fix F1 now and leave F2 and F3 for a later pull request?
+```
+
+Its options, recommended first: "Fix F1 now (recommended)": adds one fix
+commit and a second review round, undone by reverting that commit; "Fix
+F1, F2 and F3": the same plus two small changes, undone the same way;
+"Publish as is": F1 ships, which fails on a 413 and needs a new pull
+request to undo. The second question opens with the same header, its
+pointer turned to Q1, and continues the numbering:
+
+```
+acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); round 1 found 4 issues (F1 to F3 in Q1)
+
+- **F4** README.md (out of scope): "the setup section still names the old upload endpoint"
+
+**Q2** Open a separate issue for F4 rather than fix it in this pull request?
+```
 
 ### 7. Publish
 
