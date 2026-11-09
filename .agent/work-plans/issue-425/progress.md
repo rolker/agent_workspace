@@ -54,3 +54,13 @@ issue: 425
 - [ ] design.md: rewrite the Now-block clause (~188-190) to say ADR-0018 is Accepted too, set register row 0018 to `in force`, and add a 2026-11-09 Change log row (Sessions and roots, Decision register) with the correct `wc -l`.
 - [ ] Review guide row 0018: replace the Provisional sentence with Accepted (2026-11-09, #425).
 - [ ] Leave ADR-0016 untouched (it names no status for 0018); verify with `adr-status` for 0018, `check_design_anchors.sh`, and `sitrep_checks.sh --root <worktree>`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:06 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the five open actions are mechanism: which design.md spots change, the ADR Status wording with the condition kept as history, the review-guide row, leaving ADR-0016 alone, and the verification commands; the owner decided the promotion)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
