@@ -247,3 +247,11 @@ The revision resolves round-2 suggestions 2-4. The host's worktree rule is sound
 **Decision**: revise
 
 Owner's answer to the AskUserQuestion dialog: "Revise (Recommended)". The dialog offered: revise with the two must-fixes (the workspace list is not today's set, so the acceptance bullet "unchanged from today" is narrowed to "the workspace's own worktrees plus project work its Direction lines name", with a test for the dropped case; step 5 matches issue numbers only against the root's own worktrees, with a test for a same-numbered worktree from another repository) and the suggestion (step 7 offers nothing, or names what audit-project checks, for a due design-decision review; say what is offered when a project's research digest is due). The owner accepted the narrowing of the acceptance bullet.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 10:35 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `185449db`
+
+Third revision: the workspace report narrows to its own worktrees plus Direction-named project worktrees (acceptance bullet narrowed by the owner, dropped-worktree test added); step 5 matches issue numbers only against the root's own worktrees (same-number test added); step 7 offers nothing for a due project design-decision review or research digest. Still one PR.
