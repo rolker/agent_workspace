@@ -35,11 +35,22 @@ inbox lines are shown first inside that pass, with no extra read of the inbox.
    every registered root) the helper prints nothing on stdout, says why on stderr and
    exits 1; the skill stops and says "no sit-rep: this directory is outside every
    root", never falling back to the workspace. A second mode, `sitrep_root.sh
-   --worktrees`, reads `worktree_list.sh --json` and keeps the entries whose path is
+   --worktrees`, reads `worktree_list.sh --json` and prints the same shape,
+   `{"worktrees": [...]}`, so step 3's `jq '.worktrees[]?'` and step 5's python read
+   it unchanged. One rule for both root types: it keeps (a) the entries whose path is
    under the root's worktree directories (`wt_registry_worktree_dirs`, as
-   `worktree_list.sh` does; for the workspace, its own worktrees). This covers a
-   parent root's instances and package worktrees whose `repo` comes from the
-   manifest header, which a `repo == <project>` test would miss.
+   `worktree_list.sh` does; this covers a parent root's instances and package
+   worktrees whose `repo` comes from the manifest header, which a `repo == <project>`
+   test would miss) plus (b) the worktrees this root's own Direction lines name: an
+   `adapter --project <name>` check keeps that project's worktrees, a
+   `<owner/repo>#N` check keeps the worktree for that issue. For the workspace this
+   is today's step 3 set (its filter is `.type != "main" and .issue`, so project
+   worktrees named by a Direction line are listed and marked Path 1, as the roadmap's
+   Paths text defines), so the workspace report is unchanged; a project session lists
+   its own worktrees plus any its Direction names. An error from `worktree_list.sh`
+   (non-zero exit or non-JSON output) is passed through on stderr with its exit
+   status, never printed as an empty list; the skill shows it as a problem, not as
+   "no worktrees".
 2. **S2 pull-request source and git facts** -- `own_repo` is `yes` only when
    `git -C <root> rev-parse --show-toplevel` equals the root itself (a hosting
    directory, or a registered root inside the workspace tree, with no repository of
@@ -60,8 +71,10 @@ inbox lines are shown first inside that pass, with no extra read of the inbox.
    offers one" and invents nothing. Acceptance paragraph, Paths and Suggested next
    read the same file; no Paths paragraph gives the existing `paths=none` branch.
 4. **Step 3 path words and step 5 titles for a project root** -- worktrees come from
-   `sitrep_root.sh --worktrees` (replaces the `type == "workspace"` filters in steps 3
-   and 5). In a workspace session nothing changes. In a project session: Path 1 when
+   `sitrep_root.sh --worktrees` (step 3's `.type != "main" and .issue` filter keeps
+   applying to its output; step 5's `type == "workspace"` filter, SKILL.md ~line 619,
+   is the one replaced). In a workspace session the set is today's, as Approach 1
+   states. In a project session: Path 1 when
    this root's Direction lines name the issue (`(#N)`, `gh-issue N`, `<slug>#N`, same
    matching as now but for any worktree of this root, not only `type = workspace`);
    Path 2 is not said, because it is defined by the workspace README's goals, so a
@@ -69,7 +82,10 @@ inbox lines are shown first inside that pass, with no extra read of the inbox.
    `serves` words for `none`/`unstated`/`unreviewed` are unchanged; with `paths=none`
    no path words are printed at all. Step 5's issue-title lookup uses `pr_source` in
    place of `$WS_REPO` and looks up git-bug at `$ROOT` instead of `$WS_ROOT`; with
-   `pr_source=none` the title is "unknown (no repository to read it from)".
+   `pr_source=none` the title is "unknown (no repository to read it from)". Step 5's
+   ADR-title lookup (`os.environ["WS_ROOT"]/docs/decisions`, SKILL.md ~lines 623-630)
+   reads `$ROOT/docs/decisions`, so a project's "ADR-0003" never prints the
+   workspace's title; when that directory is absent the ADR number is printed bare.
 5. **S3 Problems** -- per-check file-exists tests in the helper: Decision register
    (`docs/design.md`), research digest (`.agent/knowledge/research_digest.md`),
    design anchors (`check_design_anchors.sh` and `docs/design.md`), and the
@@ -78,8 +94,13 @@ inbox lines are shown first inside that pass, with no extra read of the inbox.
    file is absent prints one skip line naming the check and the file. Direction
    `format`/`unknown` rows and local-main-behind run for any root with `own_repo=yes`.
    The Problems rule "in a project session the section is the workspace's only" is
-   replaced by this. Step 7 stays: start a due check only in a workspace session,
-   offer otherwise.
+   replaced by this. Step 7: start a due check only in a workspace session. In a
+   project session whose root has its own `docs/design.md` Decision register, step 7
+   offers `/audit-project` (never `/audit-workspace`, which audits the wrong root),
+   and offers nothing for a check whose file is absent. The report template's
+   Documentation wording (~line 873, "<c> commits since changed the workspace's
+   scripts, skills or docs") names the root instead: "<c> commits since changed this
+   project's scripts, skills or docs" / "the workspace's ..." chosen by `type`.
 6. **S4/S5 inbox and run record** -- step 2 shows inbox lines whose `project` field
    equals `record_name` first, inside the existing listing pass (workspace:
    unchanged). The run record's column 2 is `record_name`; `awk '$2 == "workspace"'`
@@ -130,6 +151,8 @@ Helper and runner (`test_sitrep_root.sh`, `test_sitrep_checks.sh`):
 - Default branch `trunk` (no `main`): `default_branch=trunk`, behind-check works; no `origin/HEAD` and neither `main` nor `master`: "cannot tell".
 - Directory outside every root: exit 1, nothing on stdout, no workspace fallback.
 - `--worktrees`: a parent root's instance worktree and a package worktree are kept; another root's worktree is dropped.
+- `--worktrees` from the workspace root with a project worktree named by an `adapter --project <name>` Direction line (and one named by a `<owner/repo>#N` line): both are kept and the workspace set equals today's step 3 set; a project worktree no Direction line names is dropped for a project root session. Output is `{"worktrees": [...]}`; a failing `worktree_list.sh` gives a non-zero exit and its stderr, never `{"worktrees": []}`.
+- Step 5 in a project sandbox with its own `docs/decisions`: the ADR title comes from the project's directory, not the workspace's; with a Decision register in the project, step 7 offers `/audit-project`.
 
 The skill's own blocks for a project sandbox, run through `skill_step` as section 13 does for the workspace:
 - Step 2: the last-record filter picks the last line whose column 2 is the project's `record_name`, ignoring workspace lines; project-first inbox lines come first with the same single pass.
@@ -176,7 +199,7 @@ far" sentence), in this PR. `docs/design.md#sessions-and-roots` is unchanged.
 |---|---|---|
 | Skill description and usage line | `test_skill_paths.sh` trigger-phrase guard (phrases kept) | Yes |
 | Run-record column 2 | Step 2 awk filter, step 4 printf | Yes |
-| Worktree filter | Steps 3 and 5 join rule text | Yes |
+| Worktree filter | Steps 3 and 5 join rule text; workspace keeps today's set via the Direction-named rule; step 5 ADR-title path | Yes |
 | New script | `script_reference.md`, exec bit | Yes |
 | Inbox listing (#388 follows) | S4 reuses the existing pass so #388 stays the same size | Yes |
 | Path words, title lookup, step 6 git facts | Approach 2 and 4 | Yes |
