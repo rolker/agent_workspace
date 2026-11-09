@@ -103,7 +103,7 @@ root and `.agent/knowledge/`).
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
 | Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored |
-| Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
+| Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run, per root, with the counts of lines true and deferrals due, so the next run says what moved for that root |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
 healthy and the right direction mean and that it is known whether a change helped). Both are narrower
@@ -130,8 +130,12 @@ Proposed: a project records its own mapping of the seven roles, seeded from the 
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
 unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
 section in the workspace's format, by its own choice: `onboard-project` offers one to a project whose
-settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads only the
-workspace root so far, and reading every registered root with such a section is a follow-up to #386.
+settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads the session's
+own root (#418): in a project session it checks that project's Direction section (`docs/roadmap.md`,
+else `ROADMAP.md`), lists its worktrees and pull requests and reports the problems its own files allow,
+and in the workspace it reports the workspace, with project work only where a workspace Direction line
+names it; `sitrep_root.sh` decides the root once. A view that combines the workspace and every project
+is not part of it (owner, 2026-11-09); it belongs with a later skill for the personal root.
 
 ## Rules
 
@@ -804,6 +808,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
 | 2026-11-02 | Instruction layers, Rules, Open questions, Worktrees | `AGENTS.md` trimmed from 448 lines (33,047 bytes) to 199 (10,513) by moving its reference material to `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`; the section's status goes from `proposed` to `decided` with the budget set at most 200 lines (host decision for the owner's confirmation, closing OQ-4) and held by the new `agents-md-line-budget` hook, which gets a Rules row; the Worktrees citation for entering with `cd` now names `WORKTREE_GUIDE.md` | #259 | 860 |
+| 2026-11-09 | Documentation layers | The sit-rep reads the session's own root (owner, 2026-11-09): a project session gets the project's Direction lines, worktrees, pull requests and the problems its own files allow, the workspace report lists project work only where a workspace Direction line names it, and a combined view is left to a later personal-root skill; the Measures row says the run record is per root; `sitrep_root.sh` named | #418 | 865 |
 
 ## Glossary
 
