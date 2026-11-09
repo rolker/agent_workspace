@@ -29,8 +29,8 @@ is meant to choose how much footprint the workspace leaves in it: agent instruct
 project only if the user chose that, and a project can be developed without the agents. Today an issue's
 records are always committed in the repository that owns the issue; the choice is proposed under
 [Worktrees](#worktrees). A session starts in the workspace or in a project's own root,
-and a user tier gives a project session the workspace's skills and rules; that is built and not yet
-proven ([Sessions and roots](#sessions-and-roots)).
+and a user tier gives a project session the workspace's skills and rules; that is built and has passed
+its acceptance run ([Sessions and roots](#sessions-and-roots)).
 
 **Tools.** The work is tool-neutral. Plans, reviews and progress are plain files any tool can read, and a
 Codex or Gemini session walks the phases by hand ([Identity](#identity)). GitHub is not a project
@@ -67,7 +67,7 @@ builds it.
 |---|---|
 | `decided` | An owner decision is on record, cited (ADR number or issue and date), and the code does it |
 | `decided, not built` | Decided and cited; the code does not do it yet |
-| `decided, not proven` | Decided and built, but the acceptance test has not run (ADR-0016 is Provisional until the `/run-issue` run from a project root in #317) |
+| `decided, not proven` | Decided and built, but the acceptance test named in the deciding ADR's Status has not run; that ADR stays Provisional at least until it does |
 | `proposed` | Agent or owner suggestion, not decided |
 | `open` | A question, listed under Open questions. An `open` block holds only a pointer to where the question is tracked (an issue number or the Open questions row), no question text |
 
@@ -178,15 +178,17 @@ only.
 
 **Now**
 
-Status: `decided, not proven`
+Status: `decided`
 
 A session runs in one of two places, the workspace checkout or a project's own root; the user tier in
 `~/.claude` is the layer injected into those sessions, not a place a session runs (ADR-0016 decisions 1
 and 3). The mechanisms below are built and tested
-hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Provisional until a
-`/run-issue` run started from a project root passes through the merge checkpoint (the acceptance test
-named in #317), so none of this is marked `decided` yet. [Open questions](#open-questions) OQ-2 asks
-where that run is tracked.
+hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Accepted (2026-11-09,
+#423): a `/run-issue` run started from a project root passed through the merge checkpoint, the
+acceptance test named in #317. [ADR-0018](decisions/0018-plugin-based-skill-delivery.md), which
+supersedes ADR-0016 decision 3 for skills, is still Provisional; its own promotion condition, the same
+run, is met, and promoting it is the owner's call.
+[Open questions](#open-questions) OQ-2 records where that run was tracked and who ran it.
 
 - The workspace and each project are separate session roots. A session is in exactly one, found from
   its cwd by the longest-prefix match against the registry; registered project roots are checked before
@@ -359,7 +361,7 @@ Status: `decided`
 **Inventory: where the workspace path differs from the registered-project path**
 
 Owner decision 2026-10-09 (C2). It is here so the open question of making the workspace a registered
-project (#295) is decided by reading these two tables after the ADR-0016 acceptance run, not by a hunch.
+project (#295) is decided by reading these two tables after the ADR-0016 acceptance run of 2026-11-09, not by a hunch.
 The tables are cut back once #295 is decided. Line numbers are as of this commit; they are a dated
 probe, not a description to keep current.
 
@@ -720,7 +722,7 @@ no section of this file carries that ADR.
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
-| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
+| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
 | [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-27 |
 
@@ -729,8 +731,7 @@ is not already stated in a section above with its issue.
 
 **For the owner, one at a time (C1-c).** Four ADRs are `superseded in practice` (0002, 0011, 0013,
 0014). Each is a candidate for a superseding ADR, and each supersession is the owner's call, made one
-ADR at a time; none is made here. ADR-0016 stays `Provisional` until the acceptance run
-([Sessions and roots](#sessions-and-roots)).
+ADR at a time; none is made here.
 
 ## Open questions
 
@@ -745,7 +746,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 | ID | Question | Who decides | What it changes |
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
-| OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
+| OQ-2 | ADR-0016 stayed Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? Answered by #423: the run was tracked in the roadmap's Direction section, and the owner ran it, through `/orchestrator` and `/run-issue` in a session started at the registered project's root, answering the merge checkpoint himself; it passed on 2026-11-09 and ADR-0016 is Accepted | Owner | The [Sessions and roots](#sessions-and-roots) Now block is `decided`; the Registry inventory can now be read to settle #295 |
 | C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
@@ -809,6 +810,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
 | 2026-11-02 | Instruction layers, Rules, Open questions, Worktrees | `AGENTS.md` trimmed from 448 lines (33,047 bytes) to 199 (10,513) by moving its reference material to `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`; the section's status goes from `proposed` to `decided` with the budget set at most 200 lines (host decision for the owner's confirmation, closing OQ-4) and held by the new `agents-md-line-budget` hook, which gets a Rules row; the Worktrees citation for entering with `cd` now names `WORKTREE_GUIDE.md` | #259 | 860 |
 | 2026-11-09 | Documentation layers | The sit-rep reads the session's own root (owner, 2026-11-09): a project session gets the project's Direction lines, worktrees, pull requests and the problems its own files allow, the workspace report lists project work only where a workspace Direction line names it, and a combined view is left to a later personal-root skill; the Measures row says the run record is per root; `sitrep_root.sh` named | #418 | 865 |
+| 2026-11-09 | How it works, The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions | ADR-0016 is Accepted (owner, 2026-11-09): the `/run-issue` acceptance run from a project root passed the merge checkpoint. How it works says the user tier has passed its acceptance run, no longer that it is not yet proven; the Status key's `decided, not proven` row names no ADR and no longer says a Provisional ADR is untested; Sessions and roots is `decided`, its Now block says ADR-0016 is Accepted and ADR-0018 is still Provisional with its own promotion condition (the same run) met; the Registry inventory sentence names the run's date; register row 0016 is `in force` and notes ADR-0018's supersession of decision 3 for skills; the C1-c sentence keeping ADR-0016 Provisional is dropped; OQ-2 is answered in place (tracked in the roadmap's Direction section, run by the owner through `/orchestrator` and `/run-issue` from the project root). Sessions and roots grows by two lines and is a status edit, so no detail moves | #423 | 867 |
 
 ## Glossary
 
