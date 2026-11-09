@@ -138,3 +138,20 @@ Final pass:
 - `sitrep_checks.sh --root <worktree>`: exit 0, all rows parse (one pre-existing `unknown` and one `false` row on machine-local user-tier and registry state, unrelated).
 - Repo-wide `git grep -niE provisional` outside work-plans: no live claim about ADR-0018 remains. ADR-0018 hits are the Status history sentence (line 11), the dated Change log rows 799 and 813 and the new row 814; the rest are generic (design.md:70 Status key, :701 register key, audit-workspace SKILL.md:65), the digests, ADR-0016's own history, the roadmap's ADR-0016 line, or the unrelated records-default "provisional". No plugin doc says unproven.
 - `pre-commit run --files $(git diff --name-only main...HEAD)` (no SKIP): exit 0, script-test suite Passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 14:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-425 at `32412211`
+**Base**: origin/main
+**Depth**: Standard (reason: touches `docs/decisions/*.md` and `principles_review_guide.md`, governance override triggers)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) "Until then this ADR was Provisional" has no antecedent for "then": the nearest "until" is "until issue #351 moves the hooks" in the paragraph above, so it can be read as Provisional-until-#351; reword to "Before 2026-11-09 this ADR was Provisional." and split the 8-line evidence sentence after "found the prefixed skills" — `docs/decisions/0018-plugin-based-skill-delivery.md:11`
+
+Checked clean: ADR diff confined to Status (lines 5-19; Decision, Consequences, Alternatives and the Acceptance subsection untouched); `adr-status ... accepted` true and `... provisional` false via a scratch roadmap row; `check_design_anchors.sh` exit 0; `wc -l docs/design.md` 868 and Sessions and roots 116 lines, as the change-log row says; repo-wide grep finds no live Provisional/waits-on-a-run claim about ADR-0018 apart from the Acceptance subsection's "Until then" (by design, ADR-0008); geozui4d PRs 14 and 15 merged closing #9 and #7, PR 424 merged closing #423, the GeoZui4D root enables `agent-workspace@agent-workspace`; pre-commit on the three docs files passed. Cross-model: Gemini and Codex both completed, no findings.
