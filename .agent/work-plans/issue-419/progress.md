@@ -305,7 +305,7 @@ The new suggestion holds. Lines 74-75 of `test_script_tests_hook_scope.sh` still
 CI at `9e3a44d` when this entry was written: Validate Documentation passes. Lint (pre-commit), Validate Adapter Contract and ros-manifest tests were still pending. Earlier heads passed those last two.
 
 ### Findings
-- [ ] (suggestion, non-blocking, Local Review @ `e3b7436`, covers via bookkeeping) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; make it "required, '# covers: ALL', scanning and unreferenced suites" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
+- [x] (suggestion, non-blocking, Local Review @ `e3b7436`, covers via bookkeeping) The file-top summary still says an unnamed Markdown document "runs only the required, '# covers: ALL' and scanning suites"; make it "required, '# covers: ALL', scanning and unreferenced suites" to match the check comment and pass text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
 
 ### False positives
 

@@ -72,7 +72,7 @@
 # (a hub guard on register_project.sh, the all-files list runs everything,
 # every .agent/scripts/_*.sh helper runs everything, a script no code names
 # runs everything, and a Markdown document no code names (issue #419) runs
-# only the required, '# covers: ALL' and scanning suites).
+# only the required, '# covers: ALL', scanning and unreferenced suites).
 #
 # Hermetic: reads only the real .pre-commit-config.yaml, the real
 # .agent/scripts/tests/ directory, .agent/user_tier_scripts.txt and the
