@@ -128,3 +128,11 @@ The approach is the right size and the tests are sound, but the plan misses the 
 **Decision**: revise
 
 Host answer under /orchestrator's checkpoint table. Findings F1-F2 and S1-S6 of the Plan Review at e7ce085e go to plan-task.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 14:20 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-421/plan.md` at `8d70f2fa`
+
+Revision after the plan review: added a worked example with a made-up repository, stated the multi-question ID scheme (header on every question, F numbers continue, Qn names each question), bullets that may wrap, option descriptions with consequence and undo cost, a header assertion in the run-issue test, narrower standing-rules and orchestrator edits, and recorded how the four other question-asking skills are covered (standing-rules row and pointer, no follow-up issue now).
