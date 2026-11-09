@@ -69,3 +69,52 @@ Host answer under /orchestrator's checkpoint table. The actions go to plan-task 
 **Plan**: `.agent/work-plans/issue-421/plan.md` at `c695ece8`
 
 Add a Dialog layout template (header, labelled bold-ID items continuous across questions, one-sentence question) to run-issue step 6, point to it from the orchestrator skill and the standing-rules row, and add three presence tests; acceptance stays the owner's judgment at issue 398.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 14:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #421 — run-issue dialogs: step 6 gives a one-line header and no layout, so checkpoint dialogs are one dense string
+**Plan**: `.agent/work-plans/issue-421/plan.md` at `c695ece8`
+**Branch**: `feature/issue-421`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four files, one PR; matches the issue's "What to change" list. |
+| Issue alignment | Needs work | Serves (as checked): "Easy to use (README workspace goals); `docs/design.md#review-loop-and-timeline`" (both exist). The issue's acceptance asks for the template *and* a worked five-line example; the plan has only a placeholder template. The multi-question ID scheme (issue review Action 1) is stated in one clause but the template contradicts it (`**Q1**` is both an item and, implicitly, the closing question). |
+| File targeting | Needs work | Right four files. Approach 3 names two places in `host_standing_rules.md` (the line 59 "Already enforced" pointer and the row 36 Source column); the issue asks for the row's Source column only. Approach 2 places the orchestrator pointer under "What it is"; the issue asks for it under "Hand-back shape". |
+| Consequences | Needs work | The plan says "existing header assertions stay green"; `grep` of `.agent/scripts/tests/` finds no assertion on the orientation header at all, while `host_standing_rules.md` lines 59–60 list that line as "Already enforced". The other-skills check was left to implementation (see finding 8). |
+| Principle alignment | Good | Tests prove presence only and the plan says so (acceptance stays the owner's judgment at issue 398). The self-check names "Enforcement over documentation", which is not a current principle; the current one is "Enforce what matters, as simply as possible". Design picture: no change, agreed (`docs/design.md#review-loop-and-timeline` describes checkpoint kinds, not dialog text). |
+| ADR compliance | Good | ADR-0013 and ADR-0014 not triggered, agreed. |
+| ROS conventions | N/A | Workspace plan. |
+
+Tests: the three `has` assertions each read a different file, and none of `**Dialog layout.**`, `**F1**`, `**F4**`, `**Q1**`, `Dialog layout` appears in run-issue, orchestrator or the standing-rules file today (grep; row 37's `- **Q1** ...` is in the standing-rules file but the plan asserts `Dialog layout` there), so each fails alone. `has` reads the whole file, not step 6 only; the label should not claim "step 6".
+
+### Findings
+
+1. **[Issue alignment]** must-fix — The issue's acceptance requires "the template with line breaks and a worked example" ("A five-line good example"); the plan's Approach 1 is "one code block" of placeholders. Add a filled-in example next to the template. Per standing-rules row 42 (mechanism text names no project), use a generic repo name, not the gz4d dialog the issue quotes.
+2. **[Issue alignment]** must-fix — The multi-question ID scheme is ambiguous. The template lists `**Q1** <label>: <what he is deciding>` as an item and then a separate closing question, so it is unclear what Q1 names. `AskUserQuestion` shows one question at a time, so the plan should say: (a) every `questions[i].question` opens with the header line (step 6's "open every AskUserQuestion" read per question); (b) finding IDs continue across the dialog's questions and never restart (F1–F4 in the first, F5… in the second); (c) `Qn` names the question itself, one per `questions[]` entry, so a reply like "F3 no, Q2 yes" is unambiguous. Show this in the template or the example.
+3. **[Issue alignment]** suggestion — "verbatim, one line" conflicts for any finding longer than a line. Say instead: one item per line start, the item may wrap, never two items joined on one line. Standing-rules row 37 writes the IDs as bullets (`- **Q1** ...`); use `- **F1** ...` or say why not. Whether the dialog renders `**…**` as bold or as literal asterisks is unverified; one test dialog during implementation settles it, and bare `F1` labels are the fallback.
+4. **[Principle alignment]** suggestion — "each `options[].description` is one sentence of consequence": per "Ask about what matters, and show how much" and standing-rules row 40, make it what the answer changes and how hard it is to undo, with the recommended option first.
+5. **[Consequences]** suggestion — Drop the "existing header assertions stay green" claim (none exist), or better, add the header text (for example `phase X of Y (<phase>); <state>`) to the run-issue `has` assertion, which makes the standing-rules "Already enforced" claim at lines 59–60 true at no extra cost.
+6. **[File targeting]** suggestion — Edit only row 36's Source column (add "`run-issue/SKILL.md` step 6, Dialog layout"); leave the "Already enforced" list alone, since the layout is not enforced by a check beyond presence. The row stays a pointer.
+7. **[File targeting]** suggestion — Put the orchestrator pointer where the issue asks: one sentence after the six-item hand-back list, not a seventh item. In run-issue, scope the Dialog layout paragraph to the `AskUserQuestion` `question` field and say end-of-turn messages follow `/orchestrator`'s hand-back shape, so step 6's "(and every message ending a turn)" clause does not set two shapes for hand-backs.
+8. **[Consequences]** suggestion — Do the other-skills check now, not at implementation. Done here: only run-issue names `AskUserQuestion` among the skills, but onboard-project step 3 (footprint questions), audit-project's final step (fix now / open issue / queue / skip per finding), audit-workspace (line 69) and inspiration-tracker (line 249) ask the owner questions. Record in the plan that they are reached through standing-rules row 36 and its new pointer (no edit), or name a follow-up issue; a "put each thing at the level it applies to" reader may otherwise ask why the layout lives in run-issue only.
+
+### Summary
+
+The approach is the right size and the tests are sound, but the plan misses the issue's worked example and leaves the multi-question ID scheme (the failure the issue names) ambiguous in its own template. Fix those two in the plan; the rest can be settled during implementation.
+
+### Recommended Actions
+
+- [ ] Add a filled-in five-line worked example (generic repo name) beside the placeholder template in Approach 1.
+- [ ] State the multi-question scheme: header on every question, finding IDs continue across questions, `Qn` names each question; make the template match.
+- [ ] Allow a verbatim item to wrap (one item per line start); align with row 37's bullet form or say why not; check bold rendering in one test dialog.
+- [ ] Option descriptions: what the answer changes and how hard to undo; recommended option first.
+- [ ] Replace the "existing header assertions" claim by adding the header text to the run-issue assertion.
+- [ ] Standing rules: row 36 Source column only. Orchestrator: one sentence after the six-item hand-back list; run-issue's paragraph scoped to dialogs.
+- [ ] Record the other-skills grep result in the plan and how those questions are covered (row 36 pointer, or a follow-up issue).
