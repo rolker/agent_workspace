@@ -550,3 +550,20 @@ Earlier boxes: both should-fix findings of the Integrated Review at `e9fa0ef5` a
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. The open box of the Integrated Review at 515c89d8 goes to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 12:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9e55aba568895538, resume 3 of 3)
+
+**PR**: #420 at `14f9508e`
+**Addressed**: Integrated Review at `4ca61ada` (2026-11-09 12:38 -05:00)
+**Commits**: 14f9508e
+
+### Actions
+- [x] (should-fix, Copilot) `--worktrees` ran the main checkout's worktree_list.sh from `$DIR`, whose user-tier guard refuses a linked worktree of the workspace outside its tree (a session session_root.sh accepts). It now runs from the decided `$ROOT`, which always passes the guard; the lister moves to its own checkout right after the guard, so nothing else changes. The comment says why. Regression test: a linked worktree of the sandbox workspace outside its tree, `--worktrees` exits 0 and lists main and the workspace worktree; it fails (exit 1) with the old starting directory put back — `.agent/scripts/sitrep_root.sh`
+
+### Verification
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, no hook failed; the script suite hook passed.
+- Run directly: test_sitrep_root.sh 55 passed.
