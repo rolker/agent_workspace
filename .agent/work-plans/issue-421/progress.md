@@ -218,3 +218,13 @@ Specialists: static analysis (shellcheck --severity=warning on test_skill_paths.
 ### Findings
 - [ ] (suggestion) The unchanged clause "Open every `AskUserQuestion` (and every message ending a turn) with:" the header sits three lines above the new "a message ending a turn follows `/orchestrator`'s hand-back shape instead", whose item 1 is two orientation lines, not the header; say whether a turn-ending message keeps the header (and what a run-issue host without `/orchestrator` follows), and adjust the header test string if the clause changes — `.claude/skills/run-issue/SKILL.md:519-532`
 - [ ] (suggestion) The first example question's header says "round 1 found 4 issues" but lists F1-F3, while the layout says each question stands alone; e.g. "round 1 found 4 issues (F4 in Q2)" — `.claude/skills/run-issue/SKILL.md:562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 1 approved with two suggestions; the first is a contradiction in step 6 between the unchanged header clause "(and every message ending a turn)" and the new paragraph sending turn-ending messages to the hand-back shape, which is exactly the mixed instruction this issue removes, so it is fixed before publishing; the second is a count in the example header; the fix costs one short round since only the skill-paths suite runs)
+**After**: publish
+**Decision**: address
+
+Host answer under /orchestrator's checkpoint table. Both suggestions of the Local Review (Pre-Push) at 5a214b6f go to address-findings.
