@@ -164,3 +164,22 @@ Host answer under /orchestrator's checkpoint table. Suggestions carried to imple
 - [x] (suggestion) Now block says ADR-0018 "is still Provisional; promoting it is the owner's call" without saying its own promotion condition (ADR-0018 Status and Acceptance: the same run) is now met; one clause would keep a reader from thinking it waits on another run — `docs/design.md:188-189`
 
 Verified: sitrep_checks.sh reads the onboarding, loop and promoted Direction lines true and both ADR-0016 deferrals due; adr-status reads `**Accepted** (2026-11-09).` as accepted; ADR diff is one hunk in Status (ADR-0008 and ADR-0018 paragraphs intact); roadmap acceptance first sentence unchanged; check_design_anchors.sh exit 0; design.md 865 -> 866; pre-commit (venv) passed on the three docs; gh confirms geozui4d#8 closed 11-02 by PR 10, #9 closed by PR 14 and #7 by PR 15 on 11-09. Cross-model: gemini and codex both completed, no issues.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 13:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-423 at `70b63763`
+**Addressed**: Local Review (Pre-Push) at `7126b1f2` (2026-11-09 13:30 -05:00)
+**Commits**: 1ba49a5c, b98ddbc1, 70b63763
+
+### Actions
+- [x] (must-fix) The user-tier sentence now says it "is built and has passed its acceptance run"; the #423 change-log row lists the section and says so. The paragraph sits under `# How it works`, not `## Purpose` (the finding's label), so the row names How it works, as earlier rows do; line count unchanged by this fix — `docs/design.md:31-33`, `docs/design.md:813`
+- [x] (must-fix) Review guide row 0016: Status **Accepted** (2026-11-09, #423), the `/run-issue` acceptance run from the GeoZui4D root passed the merge checkpoint; row 0018: still **Provisional**, its own promotion condition (the same run) met, promotion the owner's call — `.agent/knowledge/principles_review_guide.md:51,53`
+- [x] (suggestion) Sessions and roots Now block: ADR-0018 "is still Provisional; its own promotion condition, the same run, is met, and promoting it is the owner's call"; change-log row updated to match (Sessions and roots grows by two lines, file 867 lines, `wc -l` checked) — `docs/design.md:188-190`
+
+### Checks
+- Whole-repo grep (`provisional|not (yet )?proven`, work-plans excluded): no remaining claim that ADR-0016 is Provisional or the user tier unproven. Left as they are: ADR-0016's own Status (past tense), OQ-2 and the change log (past tense), roadmap line 79 (the Direction check, true), the Status key's generic `decided, not proven` row, and `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md:47` (a dated survey note saying ADR-0016 "already uses" the Provisional status; outside this issue's scope)
+- `check_design_anchors.sh`: exit 0
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, `.agent/scripts/tests/` suite Passed
