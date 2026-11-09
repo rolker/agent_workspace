@@ -31,7 +31,8 @@
 #   rules): only those the files can reach, plus test_checkpoint_269.sh, or
 #   every suite when in doubt (no files, more than $FILES_MAX files, a
 #   full-run trigger such as this runner or a .agent/scripts/_*.sh helper,
-#   an in-scope file no suite maps, a deleted in-scope path, or any error).
+#   an in-scope file no suite maps other than a Markdown document, which
+#   only adds its scanning suites, a deleted in-scope path, or any error).
 #   The run prints which suites it chose and why.
 #
 # Deletions and renames (issue #410): pre-commit passes only files that

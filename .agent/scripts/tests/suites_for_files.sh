@@ -115,8 +115,9 @@
 #     test_*.sh suite and not an exact-file `# covers:` path,
 #     .pre-commit-config.yaml, Makefile, .agent/scripts/set_git_identity_env.sh,
 #     or any .agent/scripts/_*.sh helper (matched by glob);
-#   - an in-scope changed file maps to no suite (by derivation or an
-#     exact-file `# covers:`);
+#   - a non-Markdown in-scope changed file maps to no suite (by derivation
+#     or an exact-file `# covers:`). A `.md` file that reaches no suite is
+#     documentation: it only adds its `# scans:` suites (issue #419);
 #   - an error.
 # In a scoped run, test_checkpoint_269.sh always joins (the runner's
 # required suite), and so does any suite with `# covers: ALL` or with no
@@ -127,7 +128,13 @@
 # variables, with no literal name anywhere (including a module loaded with
 # `__import__` or `importlib`), is invisible to this derivation; the drift
 # check in test_script_tests_hook_scope.sh catches it only for suites that
-# read the real repository root (ROOT_READERS).
+# read the real repository root (ROOT_READERS). The same holds for a
+# Markdown document: a suite that reads a doc through a path built at
+# runtime is invisible too, and since an unmapped `.md` no longer runs
+# everything, a doc edit such a suite would catch is not run until CI's
+# all-files run (the backstop; the drift check covers ROOT_READERS only).
+# Live example: worktree_create.sh builds `.agent/workflows/${WORKFLOW}.md`
+# at runtime; no suite exercises `--workflow`, so nothing is lost today.
 
 set -uo pipefail
 
@@ -640,7 +647,13 @@ def main():
             hits.add(suite_paths[f])
         hits |= {s for s in suites if f in closure[s]}
         if not hits:
-            run_all(f"'{f}' maps to no suite")
+            if f.endswith(".md"):
+                # A Markdown document no suite references or declares is
+                # documentation: it adds only its `# scans:` suites below
+                # (issue #419). Code and config still fail safe to ALL.
+                note(f"'{f}' is documentation and reaches no suite")
+            else:
+                run_all(f"'{f}' maps to no suite")
         for s in hits:
             selected.setdefault(s, f)
         for s in suites:

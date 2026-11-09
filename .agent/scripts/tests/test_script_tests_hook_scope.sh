@@ -70,8 +70,9 @@
 # ROOT_READERS prefix agrees with the derived map; every `# covers:` /
 # `# scans:` path is tracked), and real-tree checks of the mapper itself
 # (a hub guard on register_project.sh, the all-files list runs everything,
-# every .agent/scripts/_*.sh helper runs everything, a file no code names
-# runs everything).
+# every .agent/scripts/_*.sh helper runs everything, a script no code names
+# runs everything, and a Markdown document no code names (issue #419) runs
+# only the required, '# covers: ALL' and scanning suites).
 #
 # Hermetic: reads only the real .pre-commit-config.yaml, the real
 # .agent/scripts/tests/ directory, .agent/user_tier_scripts.txt and the
@@ -686,11 +687,13 @@ for h in "${helpers[@]}"; do
     fi
 done
 
-# A currently unmapped in-scope file still runs everything, despite the
-# '# scans:' prefixes (which cover nearly the whole scope). The candidate
-# is chosen without the mapper: a tracked .agent/knowledge/*.md whose
-# basename appears in no tracked non-markdown file, so no suite or code
-# file can name it.
+# Issue #419: a Markdown document no suite names is documentation. It
+# does not run everything; it selects exactly the required suite, the
+# '# covers: ALL' suites and the suites whose '# scans:' prefix covers it
+# (read from the derived map, so no suite is named here). The candidate is
+# chosen without the mapper: a tracked .agent/knowledge/*.md whose basename
+# appears in no tracked non-markdown file, so no suite or code file can
+# name it.
 unmapped=""
 while IFS= read -r f; do
     base="$(basename "$f")"
@@ -704,11 +707,32 @@ if [[ -z "$unmapped" ]]; then
 else
     map_once "$unmapped"
     u_out="$map_out" u_err="$map_err"
-    if [[ "$u_out" == "ALL" && "$u_err" == *"maps to no suite"* ]]; then
-        pass "unmapped in-scope file $unmapped selects ALL (scan prefixes do not count as a mapping)"
-    else
-        fail "unmapped in-scope file $unmapped should select ALL as unmapped; got: $(tr '\n' ' ' <<<"$u_out") / $u_err"
+    doc_scanners="$(awk -F'\t' -v f="$unmapped" \
+        '$2 == "scans" && (f == $3 || index(f, $3 "/") == 1) { print $1 }' <<<"$DUMP" | sort -u)"
+    doc_want="$( { printf 'test_checkpoint_269.sh\n'; awk -F'\t' '$2 == "always" { print $1 }' <<<"$DUMP"
+        [[ -n "$doc_scanners" ]] && printf '%s\n' "$doc_scanners"; } | sort -u)"
+    if [[ -z "$doc_scanners" ]]; then
+        fail "no '# scans:' prefix covers $unmapped -- the check below would not show a scanning suite joining"
     fi
+    if [[ "$u_out" != "ALL" && "$u_err" == *"is documentation and reaches no suite"* \
+            && "$(sort -u <<<"$u_out")" == "$doc_want" ]]; then
+        pass "unmapped document $unmapped selects only the required, '# covers: ALL' and scanning suites ($(tr '\n' ' ' <<<"$doc_want" | sed 's/ $//')), not ALL"
+    else
+        fail "unmapped document $unmapped should select exactly $(tr '\n' ' ' <<<"$doc_want") as documentation; got: $(tr '\n' ' ' <<<"$u_out") / $u_err"
+    fi
+fi
+
+# A non-Markdown in-scope file no suite maps still runs everything, despite
+# the '# scans:' prefixes (which cover nearly the whole scope). The path is
+# built at runtime: written literally here it would be a reference from
+# this suite and map to it.
+uncovered=".agent/scripts/new_uncovered_${$}.sh"
+map_once "$uncovered"
+n_out="$map_out" n_err="$map_err"
+if [[ "$n_out" == "ALL" && "$n_err" == *"maps to no suite"* ]]; then
+    pass "an unmapped in-scope script selects ALL (scan prefixes do not count as a mapping)"
+else
+    fail "an unmapped in-scope script ($uncovered) should select ALL as unmapped; got: $(tr '\n' ' ' <<<"$n_out") / $n_err"
 fi
 
 echo ""
