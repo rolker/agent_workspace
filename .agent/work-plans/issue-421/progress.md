@@ -289,3 +289,13 @@ None open. The `sources` helper returned no local findings, no dropped entries a
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "merge them" (PRs 426 and 427). Presented with: triage clean, CI green at the head, decision summary in the PR body, two plan reviews and two pre-push rounds with Gemini and Codex clean.
