@@ -2,15 +2,21 @@
 
 ## Status
 
-**Provisional.** Supersedes decision 3 of
+**Accepted** (2026-11-09). Supersedes decision 3 of
 [ADR-0016](0016-session-roots-and-the-user-tier.md) for **skills only**; the
 rest of ADR-0016 section 3 (the `SessionStart` hook, the `PreToolUse` hook, the
 permission allow-rules) stands until issue #351 moves the hooks into the
 plugin too. Records one scoped exception to ADR-0016 decision 2.
 
-Promote to Accepted when ADR-0016's own acceptance run passes (see
-"Acceptance" below). As with ADR-0016, flipping this line is a status-line
-edit, not a substantive one, and ADR-0008 permits it.
+Before 2026-11-09 this ADR was Provisional. The promotion condition was
+ADR-0016's own acceptance run (see "Acceptance" below). It passed on
+2026-11-09: the `/run-issue` loop ran from the GeoZui4D root through the
+merge checkpoint for rolker/geozui4d#9 (PR 14) and rolker/geozui4d#7
+(PR 15), reaching the workspace skills through the plugin, and the GeoZui4D
+session's own report that day was that every dispatched phase found the
+prefixed skills. ADR-0016 was promoted by #423 (PR 424), and the owner
+promoted this ADR the same day (#425). As with ADR-0016, flipping this line
+was a status-line edit, not a substantive one, and ADR-0008 permits it.
 
 ## Context
 
