@@ -1002,7 +1002,7 @@ echo "TEST: sit-rep step 3 with no GitHub remote does not call gh"
 printf '#!/usr/bin/env bash\necho "[]"\n' > "$WS/.agent/scripts/worktree_list.sh"; chmod +x "$WS/.agent/scripts/worktree_list.sh"
 reset_marks
 run_step 3
-[[ ! -e "$MARK/gh" && "$OUT" == *"no pull-request source for this root"* ]] && pass "(skill 3) no pull-request source: gh not called, said so" || fail "(skill 3) '$OUT' gh=$(cat "$MARK/gh" 2>/dev/null)"
+[[ ! -e "$MARK/gh" && "$OUT" == *"no pull-request source for this root ("*")"* && "$OUT" != *"reason not given"* ]] && pass "(skill 3) no pull-request source: gh not called, said so with the reason" || fail "(skill 3) '$OUT' gh=$(cat "$MARK/gh" 2>/dev/null)"
 
 echo "TEST: sit-rep step 3 gives each worktree with an issue its title and latest timeline entry"
 cp "$SCRIPT_DIR/../progress_read.py" "$WS/.agent/scripts/"
@@ -1253,7 +1253,7 @@ grep -qF 'By default it is the focus: Path 1, Path' "$SKILL" && grep -qF '`no pa
 # `no path` (work that serves neither path): Path 1 by a Direction line,
 # else path unknown.
 sk_flat="$(tr '\n' ' ' < "$SKILL" | tr -s ' ')"
-grep -qF 'A branch with only a pull request has no timeline here, so no Serves line was read: `Path 1` when a Direction line names its issue, else "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a `feature/issue-<N>` head branch, or an issue in step 3'"'"'s `closingIssuesReferences` whose repository is this one' <<< "$sk_flat" \
+grep -qF 'A branch with only a pull request has no timeline here, so no Serves line was read: with no Paths paragraph it gets no path word either, like every other line; otherwise `Path 1` when a Direction line names its issue, else "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a `feature/issue-<N>` head branch, or an issue in step 3'"'"'s `closingIssuesReferences` whose repository is this one' <<< "$sk_flat" \
     && grep -qF 'Never `no path`, which says the work serves neither path.' <<< "$sk_flat" \
     && grep -qF 'isDraft,reviewDecision,updatedAt,closingIssuesReferences' "$SKILL" \
     && pass "(skill 8) a pull request with no worktree is Path 1 by a Direction line, else path unknown, never no path" \
@@ -1297,6 +1297,22 @@ step5 'No number here' 'file-contains docs/a.md gh-issue 9 closed ; gh-issue 12 
 step5 'No number here' '`gh-issue 9 Closed`'
 [[ "$OUT" == *"issues_named=9"* ]] \
     && pass "(skill 5) a whole backticked gh-issue check (state in any case) names its number" || fail "(skill 5) whole check '$OUT'"
+# A package worktree of the root's own repository: its branch row is its
+# pr_branch, not its checkouts' branches joined by commas.
+cp "$WS/.agent/scripts/worktree_list.sh" "$SB/wl-s5.saved"
+for r in a b; do
+    git init -q "$SB/w9pkg/src/$r"
+    git -C "$SB/w9pkg/src/$r" remote add origin https://github.com/acme/widgets.git
+done
+printf '# project=p issue=acme/widgets#9 layer=l1\n/o/a\tsrc/a\tfeature/issue-9\n/o/b\tsrc/b\tfeature/issue-9\n' > "$SB/w9pkg/.worktree-repos"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":9,"branch":"feature/issue-9,feature/issue-9","path":"$SB/w9pkg"}]}'
+EOF
+step5 'A package (#9)' ''
+[[ "$OUT" == *$'branch\tfeature/issue-9\t'"$SB/w9pkg"* && "$OUT" != *"feature/issue-9,"* ]] \
+    && pass "(skill 5) a package worktree's branch row is its pr_branch, not the comma-joined branches" || fail "(skill 5) package branch '$OUT'"
+cp "$SB/wl-s5.saved" "$WS/.agent/scripts/worktree_list.sh"
 echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
 case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
     cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"

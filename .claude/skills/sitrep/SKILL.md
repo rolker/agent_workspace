@@ -34,7 +34,7 @@ workspace session, the registered project root in a project session.
 `$WS_ROOT/.agent/scripts/sitrep_root.sh` decides it, once per block, and
 prints it with the facts the steps below need (`root=`, `type=`,
 `record_name=`, `roadmap=`, `own_repo=`, `default_branch=`, `pr_source=`
-and which Problems checks the root's files allow; the script's header
+with `pr_source_why=` and which Problems checks the root's files allow; the script's header
 has the rules). When it decides no root (the directory is outside every
 root, or the project registry cannot be parsed) it prints nothing, gives
 the reason, and exits non-zero; there is then no sit-rep, and the report
@@ -250,6 +250,7 @@ be listed).
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 src="$(sed -n 's/^pr_source=//p' <<< "$r")"
+why="$(sed -n 's/^pr_source_why=//p' <<< "$r")"
 "$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "<rows_file printed in step 1>" \
     || echo "worktrees: could not be listed (reason above)"
 echo "---"
@@ -257,15 +258,16 @@ if [ -n "$src" ] && [ "$src" != none ]; then
     gh pr list -R "$src" --state open \
         --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt,closingIssuesReferences
 else
-    echo "pull requests: no pull-request source for this root"
+    echo "pull requests: no pull-request source for this root (${why:-reason not given})"
 fi
 ```
 
 `-R` names the session root's own repository (`pr_source`), so the pull
 requests listed are this root's. A root that is not a git repository of
-its own, or whose `origin` is not on GitHub, has no pull-request source:
-the report says "pull requests: no pull-request source for this root",
-never a guess. When the worktrees could not be listed, the report says
+its own, or with no `origin`, or whose `origin` is not recognised as a
+github.com repository (an ssh host alias, say), has no pull-request
+source: the report says "pull requests: no pull-request source for this
+root" with that reason (`pr_source_why`), never a guess. When the worktrees could not be listed, the report says
 so under Problems; it never reads that as "nothing in flight". In a
 workspace session the list includes the main checkout (`type: "main"`);
 it is not work in flight and is left out of the report. For each other worktree with an
@@ -664,7 +666,10 @@ for n in $nums; do
 import json, os, sys
 for w in json.load(sys.stdin).get("worktrees", []):
     if w.get("own") == "yes" and str(w.get("issue")) == os.environ["N"]:
-        print("branch\t%s\t%s" % (w.get("branch"), w.get("path")))' <<< "$wl"
+        # pr_branch: for a package worktree, the branch of its checkouts of
+        # this repository, not every checkout branch joined by commas
+        # (the joined list only when they disagree).
+        print("branch\t%s\t%s" % (w.get("pr_branch") or w.get("branch"), w.get("path")))' <<< "$wl"
     [ -z "$src" ] || [ "$src" = none ] || gh pr list -R "$src" --state open \
         --json number,title,headRefName,isCrossRepository,isDraft,closingIssuesReferences \
         --jq ".[] | select(.isCrossRepository | not)
@@ -761,7 +766,10 @@ read from the enclosing repository. With no default branch (no
 `origin/HEAD`, and not exactly one of `main` and `master`) they are
 "cannot tell". A check whose file the root does not have
 (`sitrep_root.sh`'s `check_<name>=skipped (...)`) prints one skip line
-naming the file.
+naming the file; the checks that read the default branch go by the file
+as committed there, so a root checked out on another branch is still
+checked, and a file only in the working tree reads "not on the default
+branch".
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -1117,9 +1125,10 @@ Rules for the report:
     `no path` or one of its "path unknown (...)" labels; nothing when
     step 3 printed an empty path (the root's Direction section has no
     Paths paragraph). A branch with only a
-    pull request has no timeline here, so no Serves line was read:
-    `Path 1` when a Direction line names its issue, else "path unknown
-    (no worktree, timeline not read)". Its issue is the `<N>` of a
+    pull request has no timeline here, so no Serves line was read: with
+    no Paths paragraph it gets no path word either, like every other
+    line; otherwise `Path 1` when a Direction line names its issue, else
+    "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a
     `feature/issue-<N>` head branch, or an issue in step 3's
     `closingIssuesReferences` whose repository is this one (the match
     step 5 makes); with neither, it is path unknown. Never `no path`,
