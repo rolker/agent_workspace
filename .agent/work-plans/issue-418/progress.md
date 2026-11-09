@@ -398,3 +398,13 @@ Specialists: static analysis (shellcheck --severity=warning, clean), governance,
 - [ ] (suggestion) Header says repository_dirs is empty when repository is "", but a plain worktree with no GitHub remote gets [path]; fix the header or the code (Claude adversarial) — `.agent/scripts/sitrep_root.sh:375`
 - [ ] (suggestion) Step 5's branch row prints the comma-joined `branch` for an own package worktree; print `pr_branch` (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:666`
 - [ ] (suggestion) No test feeds the same cells to names_of and sitrep_checks.sh, so grammar drift goes unnoticed (Python strip/split also treat NBSP and \r as spaces, bash does not); add a parity case and a disagreeing-branch package fixture (Claude adversarial) — `.agent/scripts/tests/test_sitrep_root.sh:215`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 11:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 2 approved with 7 suggestions; two of them are failure modes the quality standard says not to dismiss: project work named by Direction lines drops out silently when the helper's worktree_list.sh copy reads a different registry than the root decision, and the history checks report a file "not in this root" from the working tree of an older branch when the default branch has it; both have one-line fixes, so one fix pass and a narrow round-3 convergence check cost less than publishing them)
+**After**: publish
+**Decision**: address
+
+Host answer under /orchestrator's checkpoint table. Fix pass to take the 7 suggestions of the round-2 Local Review (Pre-Push) at 4fff0169; round 3 is a narrow convergence check with no cross-model reviewers.
