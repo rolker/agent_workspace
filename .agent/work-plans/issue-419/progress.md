@@ -126,3 +126,11 @@ The approach is right and matches the selector code: a referenced `.md` keeps it
 **Decision**: revise
 
 Host answer under /orchestrator's checkpoint table. Findings 1-7 of the Plan Review at fc4651c6 go to plan-task.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 12:02 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-419/plan.md` at ``
+
+Revision after the plan review (fc4651c6): acceptance case 2 now uses sitrep_checks.sh (host edits the issue bullet at PR open); a scan-free doc fixture pins the doc-only case and fixes 4(b); added lone.sh, .json, tests/notes.md and runtime-built new_uncovered cases; hook-scope header and comment updates; all-in-scope-.md breadth, the worktree_create.sh:348 residual-risk example and a real design.md anchor recorded.
