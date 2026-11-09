@@ -180,3 +180,17 @@ The revised plan is ready for implementation. Acceptance case 2 now names a scri
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The host edits the issue's acceptance command 2 to name sitrep_checks.sh when the PR opens.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 12:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-419 at `946335a0`
+
+- `suites_for_files.sh`: at `if not hits:`, a `.md` file prints "is documentation and reaches no suite" to stderr and falls through to the `# scans:` loop; any other unmapped in-scope file still prints `ALL` ("maps to no suite"). Header full-run bullet and residual-risk paragraph updated (runtime-built doc paths, live example `worktree_create.sh` `.agent/workflows/${WORKFLOW}.md`, no suite exercises `--workflow`).
+- `run_script_tests.sh` header and the `validate-script-tests` comment in `.pre-commit-config.yaml` state the exception.
+- `test_run_script_tests.sh`: old line 702 rewritten; new fixture `.agent/guide.md` (outside every scan prefix); cases for unmapped `.md` alone and with `beta.sh` (inside and outside a scan prefix), deleted `.md` -> ALL, unmapped `.json` -> ALL, undeclared `lone.sh` -> ALL, `.md` under `tests/` -> ALL, plus both stderr notes. 105 passed, 0 failed.
+- `test_script_tests_hook_scope.sh`: real-tree check now expects an unnamed `.agent/knowledge/*.md` to select exactly the required, `# covers: ALL` and scanning suites (derived from `--dump`, so no suite is named) with the documentation note; a runtime-built `.agent/scripts/new_uncovered_$$.sh` still selects ALL; header updated. 263 passed, 0 failed.
+- `script_reference.md`: runner row states the exception; new `suites_for_files.sh` row.
+- Acceptance on the real tree: `suites_for_files.sh .agent/knowledge/script_reference.md` -> `test_checkpoint_269.sh test_skill_paths.sh` (no ALL); with `.agent/scripts/sitrep_checks.sh` added -> `test_checkpoint_269.sh test_script_tests_hook_scope.sh test_sitrep_checks.sh test_skill_paths.sh`, byte-identical to the script alone (substitute for the issue's `sitrep_root.sh`, which is not on main).
+- Branch pre-commit (`.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP): every hook Passed or no-files Skipped, exit 0; the selector chose ALL (the runner is a full-run trigger), so all 41 suites ran.
