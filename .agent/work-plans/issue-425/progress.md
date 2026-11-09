@@ -120,3 +120,21 @@ The plan is complete and correctly targeted: the grep finds no Provisional claim
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 14:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-425 at `38098e72`
+
+- `docs/decisions/0018-plugin-based-skill-delivery.md` (8b1c8937): Status only. `**Accepted** (2026-11-09).`, supersession text kept; the "Promote to Accepted when ..." paragraph folded into history: the condition (ADR-0016's own acceptance run, pointing at "Acceptance" below), one evidence sentence (rolker/geozui4d#9 PR 14 and #7 PR 15 from the GeoZui4D root through the merge checkpoint, the GeoZui4D session's own report that every dispatched phase found the prefixed skills, ADR-0016 promoted by #423 PR 424, owner promoted this ADR the same day #425), and the ADR-0008 sentence in past form. The Acceptance subsection, including "Until then, the opt-in `plugin_acceptance.sh` covers:", is unchanged (ADR-0008 permits only the Status edit). PR 14/15 titles and closing issues checked with `gh pr view`.
+- `docs/design.md` (572be629): Sessions and roots Now block says ADR-0018 is Accepted too (2026-11-09, #425), its condition was the same run; register row 0018 `in force`; 2026-11-09 Change log row (Sessions and roots, Decision register; #425; 868 lines) with the over-60-lines clause: Sessions and roots is 116 lines, length unchanged, a status edit, so no detail moves.
+- `.agent/knowledge/principles_review_guide.md` (38098e72): row 0018 Status **Accepted** (2026-11-09, #425).
+- ADR-0016 untouched.
+
+Final pass:
+- adr-status through a scratch roadmap Direction table: `adr-status docs/decisions/0018-plugin-based-skill-delivery.md accepted` true; `... provisional` false.
+- `check_design_anchors.sh`: exit 0.
+- `sitrep_checks.sh --root <worktree>`: exit 0, all rows parse (one pre-existing `unknown` and one `false` row on machine-local user-tier and registry state, unrelated).
+- Repo-wide `git grep -niE provisional` outside work-plans: no live claim about ADR-0018 remains. ADR-0018 hits are the Status history sentence (line 11), the dated Change log rows 799 and 813 and the new row 814; the rest are generic (design.md:70 Status key, :701 register key, audit-workspace SKILL.md:65), the digests, ADR-0016's own history, the roadmap's ADR-0016 line, or the unrelated records-default "provisional". No plugin doc says unproven.
+- `pre-commit run --files $(git diff --name-only main...HEAD)` (no SKIP): exit 0, script-test suite Passed.
