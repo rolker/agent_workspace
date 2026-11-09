@@ -351,3 +351,23 @@ Scope: the one open box of the Integrated Review at 1a28c8ce and the fix diff b4
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba630c34fe2c05e6, resume 2 of 3)
+
+**PR**: #422 at `71d7223`
+**Sources**: 3 (Copilot @ `2f0acaa` through `929f23c`: six reviews, each the quota notice "unable to review this pull request because the user who requested the review has insufficient remaining quota", 0 inline comments, so not a review source; Local Review @ `5714e2e` (covers `71d7223` via bookkeeping), approved, 0 must-fix, 0 suggestions; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The box left open in the previous Integrated Review (at `9e3a44d`) is closed by commit b4ddfb1, which I checked against the code. The file-top summary of `test_script_tests_hook_scope.sh` (lines 74-75) now reads "only the required, '# covers: ALL', scanning and unreferenced suites", which matches the check's comment and pass text. Since 929f23c the only non-progress change is that comment line. No open findings remain.
+
+CI: no check has run at `71d7223`, so there is no verdict yet and the field above stays `pending`. Its push run of Workspace Validation (42674347814) ended as a failure with zero jobs started ("likely failed because of a workflow file issue"), no pull_request run has been created, and `gh pr checks 422` reports no checks. GitHub status shows Actions in a major outage ("Incident with Actions and Checks API", investigating). That explains the odd failures. The push run at `929f23c` is marked failure although its three listed jobs passed and Validate Documentation never started. The push run at `5714e2e` failed with zero jobs ("likely failed because of a workflow file issue"), but this branch changes no file under `.github/`, and issue 418's runs failed in the same window. The last complete CI on this PR is the pull_request run at `929f23c`, which passed all 4 jobs. The code differs from that run only by the comment line above. CI has to be re-checked at the head once Actions recovers. The merge gate checks it either way.
+
+### Findings
+
+### False positives
+- (Local Review @ `5714e2e`) The unchecked line "- [ ] No issues found. LGTM." is read back by `review_progress.sh sources` as an open finding. It is the reviewer's no-findings marker (that entry records Must-fix 0, Suggestions 0), not a finding, so nothing is left to act on.
