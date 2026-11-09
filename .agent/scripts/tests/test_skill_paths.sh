@@ -659,7 +659,9 @@ fi
 # layout (bold stable IDs that count across questions, Qn per question);
 # the orchestrator and the standing rules point at it, not restate it.
 has "$RI" "run-issue: every dialog opens with the orientation header" \
-    'Open every `AskUserQuestion` (and every message ending a turn) with: ``` <repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state> ```'
+    'Open every `AskUserQuestion` with: ``` <repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state> ```'
+has "$RI" "run-issue: a turn-ending message opens with the header, or under /orchestrator with its hand-back shape" \
+    'A message ending a turn opens with the same header line when the host drives `/run-issue` on its own; under `/orchestrator` it follows that skill'"'"'s hand-back shape instead'
 has "$RI" "run-issue: the Dialog layout gives bold stable IDs that continue across questions, and Qn per question" \
     '**Dialog layout.**' '- **F1** <label>:' '**Q1** <the one-sentence question>' \
     'F numbers count across the whole dialog and never restart' \

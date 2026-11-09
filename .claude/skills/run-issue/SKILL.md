@@ -516,21 +516,24 @@ place and does **not** commit — the host commits the flipped file itself
 source), after the `## Checkpoint` entry and before the next
 `dispatch_phase.sh next` call.
 
-**Every dialog is self-contained.** Open every `AskUserQuestion` (and every
-message ending a turn) with:
+**Every dialog is self-contained.** Open every `AskUserQuestion` with:
 
 ```
 <repo>#<N> (PR #M): <title> — phase X of Y (<phase>); <state>
 ```
 
 embedding the finding text verbatim — never "the four findings above" or
-"as triaged". Every Bash tool-call description opens with `<repo>#<N>
-<phase>:` so the user can orient from the permission prompt alone.
+"as triaged". A message ending a turn opens with the same header line when
+the host drives `/run-issue` on its own; under `/orchestrator` it follows
+that skill's hand-back shape instead, whose two orientation lines say what
+the work is, with the issue number and its label, and what is needed from
+him. Every Bash tool-call description opens with `<repo>#<N> <phase>:` so
+the user can orient from the permission prompt alone.
 
 **Dialog layout.** This shapes the `question` text of every
-`AskUserQuestion`; a message ending a turn follows `/orchestrator`'s
-hand-back shape instead. A dialog is never one dense string: real line
-breaks, and a blank line between the header, the items and the question.
+`AskUserQuestion`; a message ending a turn opens as the paragraph above
+says. A dialog is never one dense string: real line breaks, and a blank
+line between the header, the items and the question.
 
 - Every `questions[i].question` opens with the header line above. The
   dialog shows one question at a time, so each one stands alone.
