@@ -116,3 +116,13 @@ The approach is right and matches the selector code: a referenced `.md` keeps it
 - [ ] Add a firm undeclared-`.sh` `ALL` case (no passed-`lone.sh` case exists); on the real tree use a runtime-built `new_uncovered` path, never a literal one.
 - [ ] Update the `test_script_tests_hook_scope.sh` header and check comment that describe the old rule.
 - [ ] Record that the rule covers all in-scope `.md`, not only `.agent/`; optionally cite the `worktree_create.sh` workflow read as the residual-risk example; cite a real design section anchor in Serves.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (two must-fix plan edits, both mechanism: acceptance command 2 names a script that exists only on the open sit-rep branch, so it must name one on main; test case 4(b)'s expectation contradicts itself and needs a doc fixture outside every scan prefix; first host revise on this issue)
+**After**: plan
+**Decision**: revise
+
+Host answer under /orchestrator's checkpoint table. Findings 1-7 of the Plan Review at fc4651c6 go to plan-task.
