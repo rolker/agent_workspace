@@ -223,3 +223,22 @@ Verified: test_run_script_tests.sh 105 passed 0 failed; test_script_tests_hook_s
 **Decision**: publish
 
 Host answer under /orchestrator's checkpoint table. Push and open the pull request; the host edits the issue's acceptance command 2 to name sitrep_checks.sh.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 12:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #422 at `2f0acaa`
+**Sources**: 3 (Copilot @ `2f0acaa` — did not review: "unable to review this pull request because the user who requested the review has insufficient remaining quota", 0 inline comments; Local Review (Pre-Push) @ `5cd5b14` (covers `2f0acaa` via bookkeeping); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot's review is an outcome line, not a finding: it ran no review (quota), so this PR has no GitHub-side review coverage; its `copilot-pull-request-reviewer` check reports failure for the same reason. CI at triage time: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass; Lint (pre-commit) still running.
+
+The pre-push suggestion is confirmed against the code: `suites_for_files.sh` (the `for s in suites` loop after selection) adds any suite with no closure, no `# covers:` and no `# scans:` to every scoped run as "always (no derived references)"; such a suite has no `--dump` row, so the real-tree check's `doc_want` (required suite + `always` rows + scanners) would omit it and fail spuriously. Latent, not failing: 41 suites on disk, 41 in the dump. Kept open rather than deferred: the fix is a few lines in the test, and the merge waits on the owner either way.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `5cd5b14`, covers via bookkeeping) The real-tree expected set (`doc_want`) omits the selector's fourth joining class, suites with no derived references (absent from `--dump`); none exists today (41 of 41 suites in the dump), but adding one would fail this check spuriously. Add the test_*.sh suites missing from the dump to `doc_want` and to the pass/fail text — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
+
+### False positives
