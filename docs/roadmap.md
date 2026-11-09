@@ -18,12 +18,12 @@ ran them.
 **Acceptance case.** A bare project that was never onboarded is made ready
 and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
 through the loop with the workspace's goals and principles visibly driving
-the work. Until that run passes the merge checkpoint, ADR-0016 (Session roots
-and the user tier) stays Provisional
+the work. That run passed the merge checkpoint on 2026-11-09, and ADR-0016
+(Session roots and the user tier) is Accepted
 ([Sessions and roots](design.md#sessions-and-roots)).
 
 Design question OQ-2
-([Open questions](design.md#open-questions)) asks where that run is tracked:
+([Open questions](design.md#open-questions)) asked where that run was tracked:
 here. The run's target is the `gz4d` project, as step 5 of the Workspace
 Redesign table below says.
 
@@ -74,8 +74,8 @@ README.
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
 | The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
 | The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all suites | `gh-issue 410 closed` |
-| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | |
-| A `/run-issue` run started from the project root reaches the merge checkpoint | |
+| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | `gh-issue 332 closed ; gh-issue rolker/geozui4d#8 closed` |
+| A `/run-issue` run started from the project root reaches the merge checkpoint | `gh-issue rolker/geozui4d#9 closed` |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 
 | Deferral | Revisit check |
