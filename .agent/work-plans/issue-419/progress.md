@@ -318,3 +318,20 @@ CI at `9e3a44d` when this entry was written: Validate Documentation passes. Lint
 **Decision**: address
 
 Owner's answer: "address 422". The one open box of the Integrated Review at 1a28c8ce (the file summary at test_script_tests_hook_scope.sh:74-75 lists three suite classes where the check covers four) goes to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 13:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a32dba1198562f5ef, resume 1 of 3)
+
+**PR**: #422 at `b4ddfb1`
+**Addressed**: Integrated Review at `9e3a44d` (2026-11-09 12:46 -05:00)
+**Commits**: b4ddfb1
+
+### Actions
+- [x] File-top summary now says an unnamed Markdown document runs "only the required, '# covers: ALL', scanning and unreferenced suites", matching the check's comment and pass text; comment only, no behaviour change — `.agent/scripts/tests/test_script_tests_hook_scope.sh:75`
+
+### Verification
+- `test_script_tests_hook_scope.sh`: 263 passed, 0 failed.
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, every hook passed, including the script-suite hook. The run went past the 600 s tool timeout and finished in the background; I waited for it to exit before recording this.
