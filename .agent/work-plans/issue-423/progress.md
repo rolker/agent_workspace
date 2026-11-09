@@ -58,3 +58,13 @@ issue: 423
 - [ ] Choose the onboarding-line check from the actual record of the run and state the choice and reason in the PR description; cite geozui4d PRs 14 and 15 for the loop line evidence.
 - [ ] Post one signed comment each on #265 and #295 saying ADR-0016 is Accepted and the deferral is now unblocked.
 - [ ] Verify with grep that no "Provisional" claim about ADR-0016 remains in docs/design.md or docs/roadmap.md, and run check_design_anchors.sh and a sit-rep dry-run before publishing.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 13:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the five open actions are mechanism: more design.md spots to update, which check records the onboarding run, citing the GeoZui4D pull requests, signed comments on #265 and #295, and a final grep plus anchor check; the owner decided the promotion itself)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. The actions go to plan-task as plan inputs.
