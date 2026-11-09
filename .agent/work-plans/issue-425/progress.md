@@ -210,3 +210,19 @@ Checked: adr-status `accepted` true and `provisional` false via a scratch roadma
 **Decision**: publish
 
 Host answer under /orchestrator's checkpoint table.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 14:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #426 at `f9c8d11a`
+**Sources**: 2 (Local Review (Pre-Push) R1 @ `32412211`, Local Review (Pre-Push) R2 @ `511f5caf` (covers f9c8d11a via bookkeeping), CI rollup); no GitHub review source: Copilot posted only a quota notice ("unable to review ... insufficient remaining quota"), no inline or conversation comments
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+None open. The R1 suggestion (ADR-0018 Status "Until then" had no referent — `docs/decisions/0018-plugin-based-skill-delivery.md`) was fixed at 58e8f94e and confirmed closed by R2. Gemini and Codex clean in R1; cross-model skipped in R2 (convergence check).
+
+### False positives
+- (CI) `copilot-pull-request-reviewer` check reports failure — it is the quota notice, not a code check; Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests all pass at f9c8d11a
