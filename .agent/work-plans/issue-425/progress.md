@@ -165,3 +165,20 @@ Checked clean: ADR diff confined to Status (lines 5-19; Decision, Consequences, 
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. The suggestion of the Local Review (Pre-Push) at accaf169 goes to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 14:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-425 at `58e8f94e`
+**Addressed**: Local Review (Pre-Push) at `32412211` (2026-11-09 14:25 -05:00)
+**Commits**: 58e8f94e
+
+### Actions
+- [x] (suggestion) "Until then this ADR was Provisional" had no clear referent; now "Before 2026-11-09 this ADR was Provisional.", and the long evidence sentence is split after "found the prefixed skills" — `docs/decisions/0018-plugin-based-skill-delivery.md:11`
+
+### Checks
+- `sitrep_checks.sh --root . --roadmap <scratch>` with a Direction row `adr-status docs/decisions/0018-plugin-based-skill-delivery.md accepted`: true (negative control with `provisional`: false)
+- `check_design_anchors.sh`: exit 0
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0 (script suite Passed)
