@@ -132,3 +132,16 @@ The plan is complete and correctly targeted: the `adr-status` read, the ` ; ` co
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. Suggestions carried to implementation: correct change-log section names; soften the Status-key parenthetical so it does not claim a Provisional ADR has had no test; note ADR-0018's supersession in the 0016 register row; keep the original promotion condition visible as history in the ADR Status; OQ-2's answer also says who ran the acceptance run; reword the #265 comment since register_project.sh already exists; final pass runs the sit-rep's step-5 block and widens the grep.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 13:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-423 at `0c9ad7e2`
+
+- `docs/decisions/0016-session-roots-and-the-user-tier.md` (994f1f1a): first Status paragraph starts `**Accepted** (2026-11-09)`; the original promotion condition stays as history beside the evidence (rolker/geozui4d#9 PR 14, rolker/geozui4d#7 PR 15, owner decision, #423). ADR-0008 note, ADR-0018 paragraph and all other sections untouched.
+- `docs/roadmap.md` (7bbcb981): acceptance-case sentence "That run passed the merge checkpoint on 2026-11-09, and ADR-0016 (...) is Accepted"; OQ-2 sentence to past tense; onboarding line checked by `gh-issue 332 closed ; gh-issue rolker/geozui4d#8 closed`, loop line by `gh-issue rolker/geozui4d#9 closed`.
+- `docs/design.md` (565effc6): Status-key `decided, not proven` row names no ADR and is softened (plan review 2); Sessions and roots `decided`, Now sentence says ADR-0016 Accepted and ADR-0018 still Provisional; Registry inventory sentence dated; register row 0016 `in force` with ADR-0018's supersession of decision 3 noted (review 3); C1-c Provisional sentence dropped; OQ-2 answered in place with where and who (review 5); change-log row names The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions (review 1), 866 lines.
+- `.agent/work-plans/issue-423/plan.md` (0c9ad7e2): #265 comment no longer implies `register_project.sh` is unbuilt (review 6); #295 comment says the deferral is now due.
+- Final pass (review 7): `check_design_anchors.sh` exit 0; `sitrep_checks.sh --root <worktree>` reads the onboarding, loop and promoted lines true and both ADR-0016 deferrals true (due); adapter line unknown and user-tier line false, as at baseline in a worktree; step-5 block: `acceptance_first` identical to main's. Widened grep (`provisional`, `not proven`, `acceptance run`, `OQ-2`): remaining hits are ADR-0018 (not touched), ADR-0016's kept history paragraphs, the vocabulary definitions, the records-default "provisional", the deferral rows and historical change-log rows. Pre-commit on the branch's changed files, no SKIP: passed (no script suite reached).
+- Not done here, by design: the #265 and #295 comments (host posts); ADR-0018 untouched.
