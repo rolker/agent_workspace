@@ -65,3 +65,11 @@ issue: 418
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. The owner's scope (2026-11-09, quoted in the issue) stands: the session root only. The three actions go to plan-task as plan inputs.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 09:51 -0500
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `8e866811`
+
+One PR: a small read-only helper (sitrep_root.sh) decides the session's root, roadmap, pull-request source (none for a hosting root without its own repository), record name and per-check skips; the skill uses it. Deferral row becomes Decided Against; work lands after #388.
