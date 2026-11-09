@@ -226,3 +226,13 @@ Host answer under /orchestrator's checkpoint table. Push, open the pull request,
 
 ### False positives
 - (Local Review (Pre-Push) R2 @ `c7f4c154`) "No issues found. LGTM." read as an open finding by `review_progress.sh sources` — it is the round's no-findings marker written as an unchecked box (known loop defect), not a finding; the same entry records Must-fix 0, Suggestions 0, Verdict approved.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "merge,merge,yes" (the second word, for PR 424). Presented with: CI green, no open findings, decision summary in the PR body, two pre-push rounds with Gemini and Codex clean, Copilot quota notice only. (A first copy of this entry was written by mistake on the issue 419 branch and reverted there.)
