@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts, easy to take in: what the acceptance case is for, the next step towards it (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox; each piece of work in flight is marked with the path it serves, and the closing question asks which path to focus on. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report for the session's own root (the workspace, or the project the session was started in) from checked facts, easy to take in: what the acceptance case is for, the next step towards it (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox; each piece of work in flight is marked with the path it serves, and the closing question asks which path to focus on. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
 session_scope: both
 ---
 
@@ -28,6 +28,17 @@ hook stdout is context text and never reaches a tool call's shell (ADR-0016).
 With no user tier, or an empty file, the fallback makes `$WS_ROOT` the cwd,
 which is right in a workspace session.
 
+`$WS_ROOT` is where the scripts are, not what the report is about. The
+report is about the session's own root, `$ROOT`: the workspace in a
+workspace session, the registered project root in a project session.
+`$WS_ROOT/.agent/scripts/sitrep_root.sh` decides it, once per block, and
+prints it with the facts the steps below need (`root=`, `type=`,
+`record_name=`, `roadmap=`, `own_repo=`, `default_branch=`, `pr_source=`
+and which Problems checks the root's files allow; the script's header
+has the rules). Outside every root it prints nothing and exits non-zero;
+there is then no sit-rep, and the report says so rather than fall back
+to the workspace.
+
 ## Usage
 
 ```
@@ -35,7 +46,10 @@ which is right in a workspace session.
 /sitrep inbox    # the report, with a proposed sort of the inbox
 ```
 
-This first mode reads the workspace root only.
+The sit-rep covers the session's own root only: a sit-rep in a project
+is just for that project, and one in the workspace is just for the
+workspace (owner, 2026-11-09). A view that combines the workspace and
+every project is not part of it.
 
 ## What it is
 
@@ -50,15 +64,17 @@ its own is a read-only check that is due (step 7), and the report says
 so. Every statement in the report comes from a command run in this
 invocation: the check runner's rows, the roadmap's acceptance-case
 paragraph, the inbox file, the worktree list, the open pull requests,
-the issue timelines, and the files and history of local `main`. The
+the issue timelines, and the files and history of the root's local
+default branch. The
 words those facts are put in come from fixed tables (step 3's states,
 step 8's results); the one free rewording is Suggested next, which
 restates the next line, printed as written just above it, as an action.
 Memory notes, earlier conversation and earlier reports are not sources. If something could not be checked, say so; never fill
 the gap.
 
-The authored part lives in the `## Direction` section at the top of
-`docs/roadmap.md`: lines that must be true for the acceptance case, each
+The authored part lives in the `## Direction` section of the root's
+roadmap (`docs/roadmap.md`, else `ROADMAP.md`): lines that must be true
+for the acceptance case, each
 with a check, and deferrals, each with a revisit check. The check runner
 reads that section and prints one row per item. The result words are a
 trial: `true`, `false`, `partial` (a cell of several checks that disagree),
@@ -80,10 +96,20 @@ nothing from it can be recorded. Neither does a run that could not read
 the roadmap (not found, or not readable): its rows are shown, but there is
 no count to record, since no Direction line was looked at. If this block
 itself is interrupted (INT or TERM), it stops the check runner and removes
-the rows file before it exits.
+the rows file before it exits. The block first prints the root's facts
+(`sitrep_root.sh`), then `---`; outside every root it prints "no
+sit-rep" and stops, and so does the sit-rep.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+if ! r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")"; then
+    echo "no sit-rep: this directory is outside every root (reason above)"
+    exit 1
+fi
+printf '%s\n---\n' "$r"
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
+roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 rows="$(mktemp -t sitrep-rows.XXXXXX)" || rows=""
 pid=""
 stop() { [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; [ -z "$rows" ] || rm -f -- "$rows"; trap - INT TERM; exit "$1"; }
@@ -92,7 +118,7 @@ trap 'stop 143' TERM
 if [ -z "$rows" ]; then
     echo "could not create a temporary file; checks not run"
 else
-    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows" &
+    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" > "$rows" &
     pid=$!
     rc=0; wait "$pid" || rc=$?
     pid=""
@@ -123,16 +149,32 @@ needs. When the block prints `checks failed` or `no summary` instead,
 report that the Direction lines were not checked this run, with the reason
 printed, and that the run record was not written, and skip step 4.
 
+In a project session, a `section` row (no roadmap, or a roadmap with no
+Direction section) is reported as "no Direction section in this project;
+onboarding (`onboard-project`) offers one", and nothing is invented in
+its place: no next step, no Paths, no acceptance case.
+
 ### 2. Read the inbox and the last run record
+
+The last run record is the last line for this root: its second column is
+the root's `record_name` (`workspace`, or the project's registered name).
+In a project session the inbox lines captured in that project (their
+`project` field is its registered name, as `capture.sh` writes it) are
+listed first, then the other lines after a `--- other lines` marker,
+each group oldest first, in the one listing pass; a workspace session
+lists them in file order.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+name="$(sed -n 's/^record_name=//p' <<< "$r")"
+mine=""; [ "$(sed -n 's/^type=//p' <<< "$r")" != project ] || mine="$(sed -n 's/^project=//p' <<< "$r")"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
 inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
 last=""
 if [ -n "$record" ] && [ -f "$record" ]; then
-    last="$(awk -F'\t' '$2 == "workspace"' "$record" | tail -n1)"
+    last="$(N="$name" awk -F'\t' '$2 == ENVIRON["N"]' "$record" | tail -n1)"
 fi
 echo "record_file=${record:-unset}"
 echo "last_record=${last:-none}"
@@ -162,7 +204,9 @@ if [ -n "$inbox" ] && [ -f "$inbox" ]; then
         fi
     fi
     echo "---"
-    awk '!/^[[:space:]]*$/' "$inbox" | head -n 20
+    M="$mine" awk -F'\t' '
+        !/^[[:space:]]*$/ { if (ENVIRON["M"] == "" || $2 == ENVIRON["M"]) print; else rest[++n] = $0 }
+        END { if (n) { print "--- other lines"; for (i = 1; i <= n; i++) print rest[i] } }' "$inbox" | head -n 20
 fi
 ```
 
@@ -172,39 +216,67 @@ so the new ones are those after the last line the previous run saw, which
 its record keeps (step 4). `inbox_new` counts the lines after that line,
 found at the position recorded or, when lines above it were removed, as
 the one line equal to it. It is `unknown`, with the reason, when that line
-is gone or appears more than once, or the last record has no count.
+is gone or appears more than once, or the last record has no count. In a
+project session the listing puts this project's lines first, so a new
+line is told by its place in the file, not in the listing.
 
 ### 3. Read what is in flight
 
+The worktrees are this root's (`sitrep_root.sh --worktrees`): its own,
+plus those its own Direction lines name (an `adapter --project <name>`
+check names that project's worktrees, a `gh-issue <owner/repo>#N` check
+the worktree of that issue). Project worktrees no Direction line of this
+root names are not listed, in a workspace session either. Each entry
+carries `own`: `yes` for a checkout of the root's own repository, whose
+issues are this root's. The rows of step 1 tell the named ones apart, so
+put step 1's `rows_file` value in place of the placeholder (leave it as
+it is when step 1 printed none: then only the root's own worktrees are
+listed, and the report says the work its Direction lines name could not
+be listed).
+
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-"$WS_ROOT/.agent/scripts/worktree_list.sh" --json
-WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
-    && extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+src="$(sed -n 's/^pr_source=//p' <<< "$r")"
+"$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "<rows_file printed in step 1>" \
+    || echo "worktrees: could not be listed (reason above)"
 echo "---"
-if [ -n "$WS_REPO" ]; then
-    gh pr list -R "$WS_REPO" --state open \
+if [ -n "$src" ] && [ "$src" != none ]; then
+    gh pr list -R "$src" --state open \
         --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt,closingIssuesReferences
 else
-    echo "pull requests: not checked (no GitHub remote for $WS_ROOT)"
+    echo "pull requests: no pull-request source for this root"
 fi
 ```
 
-`-R` names the workspace repository from its own remote, so a project
-session does not list the project's pull requests by mistake. With no
-GitHub remote the pull requests are reported as not checked. The list
-always includes the main checkout (`type: "main"`); it is not work in
-flight and is left out of the report. For each other worktree with an
+`-R` names the session root's own repository (`pr_source`), so the pull
+requests listed are this root's. A root that is not a git repository of
+its own, or whose `origin` is not on GitHub, has no pull-request source:
+the report says "pull requests: no pull-request source for this root",
+never a guess. When the worktrees could not be listed, the report says
+so under Problems; it never reads that as "nothing in flight". In a
+workspace session the list includes the main checkout (`type: "main"`);
+it is not work in flight and is left out of the report. For each other worktree with an
 issue, where the work stands is the issue's title and the latest entry on
 its timeline (`progress.md`, read by `progress_read.py`), and which path
-it serves (the roadmap's Paths paragraphs, under `## Direction`). Put step
-1's `rows_file` value in place of the placeholder (leave it as it is when
-step 1 printed none):
+it serves (the root's roadmap's Paths paragraphs, under `## Direction`).
+Put step 1's `rows_file` value in place of the placeholder (leave it as
+it is when step 1 printed none):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+stype="$(sed -n 's/^type=//p' <<< "$r")"
+roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 rows="<rows_file printed in step 1>"
+# With no **Path <n>** paragraph in the root's Direction section (the
+# last block of this step prints paths=none), no path word is printed.
+haspaths=no
+if [ -n "$roadmap" ] && awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
+        d && /^\*\*Path [0-9]+/ { f = 1; exit } END { exit !f }' "$roadmap" 2>/dev/null; then
+    haspaths=yes
+fi
 # Path 1 is work a Direction line's own cells name: "(#N" in a line's item,
 # every number of a list "(#N, #M)", or "gh-issue N " in its check (this
 # repository's issue N, step 5's
@@ -219,14 +291,15 @@ if [ -f "$rows" ]; then
               awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'adapter --project [A-Za-z0-9._-]+' | sed 's/^adapter --project /project:/'
             } | sort -u | tr '\n' ' ')"
 fi
-"$WS_ROOT/.agent/scripts/worktree_list.sh" --json \
-    | jq -c '.worktrees[]? | select(.type != "main" and .issue)' |
+wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
+    || { echo "worktrees: could not be listed (reason above); work in flight not known this run"; exit 1; }
+jq -c '.worktrees[]? | select(.type != "main" and .issue)' <<< "$wl" |
 while IFS= read -r w; do
     # Each field by its name, never by position: a worktree with no branch
     # (detached) or no repo keeps its other fields where they belong.
     field() { jq -r --arg k "$1" '.[$k] // "" | tostring' <<< "$w"; }
     type="$(field type)"; repo="$(field repo)"; branch="$(field branch)"
-    issue="$(field issue)"; path="$(field path)"
+    issue="$(field issue)"; path="$(field path)"; own="$(field own)"
     # The issue lives in the repository the worktree belongs to. A package
     # worktree (ADR-0012, a .worktree-repos manifest) is an aggregate
     # directory, not a checkout: its header names the issue's repository
@@ -333,7 +406,8 @@ except ValueError:
     # Serves line naming a goal (every Issue Review writes one, naming the
     # README goals it serves). A project worktree's Serves line names the
     # project's own goals (review-issue), not the workspace README's that
-    # Path 2 is defined by, so it is never Path 2. Only the newest complete Issue Review counts,
+    # Path 2 is defined by, so it is never Path 2, and in a project
+    # session nothing is. Only the newest complete Issue Review counts,
     # so a later "none" outranks an older goal, and a partial or failed one
     # (which may have stopped before its Serves line) changes nothing;
     # "none" means no path. With no complete Issue Review, or one with no
@@ -352,11 +426,14 @@ except ValueError:
               else if (s !~ /[^[:space:]]/) print "unstated"
               else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
               else print "goal" }' "$f")"
-    if [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
-    elif [ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
+    # A bare number ("(#N)", "gh-issue N") is an issue of the root's own
+    # repository, so it names only the root's own worktrees (own = yes).
+    if [ "$haspaths" != yes ]; then wpath=""
+    elif [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
+    elif [ "$own" = yes ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
     elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
     elif [ "$type" = project ] && [ -n "$repo" ] && [[ "$p1" == *" project:$repo "* ]]; then wpath="Path 1"
-    elif [ "$serves" = goal ] && [ "$type" = project ]; then wpath="no path (serves a project goal)"
+    elif [ "$serves" = goal ] && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
     elif [ "$serves" = goal ]; then wpath="Path 2"
     elif [ "$serves" = none ]; then wpath="no path"
     elif [ "$serves" = unstated ]; then wpath="path unknown (its issue review has no Serves line)"
@@ -367,9 +444,14 @@ done
 
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
-reads `(no branch)`. The path is `Path 1` (a Direction line names the
-issue, in its own cells, or a check names the project the worktree
-belongs to), else `Path 2` (the newest complete Issue Review on its
+reads `(no branch)`. The path is empty when the root's Direction section
+has no Paths paragraph (the last block of this step prints `paths=none`):
+no path word is printed then. Otherwise it is `Path 1` (a Direction line
+names the issue, in its own cells, or a check names the project the
+worktree belongs to; a bare `(#N)` or `gh-issue N` names an issue of the
+root's own repository, so it matches only a worktree whose `own` is
+`yes`, and another repository's worktree is named only by its
+`<owner/repo>#N` or `adapter --project` check), else `Path 2` (the newest complete Issue Review on its
 timeline has a `**Serves**:` line naming a goal), else `no path` when
 that Serves line is `none` (the review template's word for no goal),
 which is itself worth seeing: work that serves neither. Only the newest
@@ -381,11 +463,11 @@ partial or failed Issue Review leaves the older one's Serves in place.
 "path unknown (no complete issue review)", and with a complete one that
 has no Serves line it is "path unknown (its issue review has no Serves
 line)". It is `path unknown (steps not checked)` when step 1 printed no
-rows. A project worktree is never `Path 2`: review-issue writes a project
-issue's Serves line from the project's own goals, and Path 2 is work that
-serves a goal in the workspace README. With such a goal it reads
-"no path (serves a project goal)", which says what it serves and that
-no Direction line names it.
+rows. A project worktree is never `Path 2`, and in a project session
+nothing is: review-issue writes a project issue's Serves line from the
+project's own goals, and Path 2 is work that serves a goal in the
+workspace README. With such a goal it reads "no path (serves a project
+goal)", which says what it serves and that no Direction line names it.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -408,7 +490,7 @@ unchecked on an approval, is not a finding and is not counted:
 | Checkpoint after merge-refused, retriage | merge refused; reviews being triaged again |
 | Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
 | Checkpoint, any step: restart (the owner restated the goal, `/orchestrator` recipe (a)) | goal restated by the owner; issue review starts again |
-| Implementation | implemented (for a workspace worktree with no pull request, the report adds "no pull request yet") |
+| Implementation | implemented (for one of the root's own worktrees with no pull request, when the root has a pull-request source, the report adds "no pull request yet") |
 | Local Review, Local Review (Pre-Push), with <k> open boxes | code reviewed, <k> findings to address (1: "1 finding to address") |
 | Local Review, Local Review (Pre-Push), no open box | code reviewed, nothing open |
 | Integrated Review (or the older External Review), with <k> open boxes | reviews triaged, <k> findings to address |
@@ -435,14 +517,16 @@ Reading across roots is allowed (`session_root.sh`); nothing here
 writes.
 
 The report gives one line per branch. The pull requests listed are the
-workspace's, so only a workspace worktree (`type: "workspace"`) is matched
-to one: when its `branch` equals the pull request's `headRefName` and the
-pull request's `isCrossRepository` is false, they are the same work and
-share that line. A pull request from a fork (`isCrossRepository` true)
-can reuse a local branch name, so it is never joined: it gets its own
-line, with "from a fork" after its title and no worktree part. A project
-worktree (`type: "project"`) gets its own line, named with its project
-(`repo`), and no pull request: project branches use the same `feature/issue-<N>`
+session root's, so only one of the root's own worktrees (`own` is `yes`)
+is matched to one: when its `branch` equals the pull request's
+`headRefName` and the pull request's `isCrossRepository` is false, they
+are the same work and share that line. A pull request from a fork
+(`isCrossRepository` true) can reuse a local branch name, so it is never
+joined: it gets its own line, with "from a fork" after its title and no
+worktree part. A worktree that is not the root's own (`own` is `no`: a
+worktree a Direction line names, of another repository) gets its own
+line, named with its `repo` (`workspace` for a workspace worktree), and
+no pull request: other repositories use the same `feature/issue-<N>`
 names with their own numbers, so a name match would join unrelated work.
 Branches with a ready pull request (open and not a draft; every one needs
 the owner's merge) come first; then the rest (a draft pull request, or a
@@ -453,16 +537,18 @@ first, in the worktree list's order, then branches with only a pull
 request, in the order `gh pr list` printed them.
 
 The paths themselves, for the report's closing question: each paragraph of
-the Direction section that opens with `**Path <n>`, printed as its number,
-its bold name and its first sentence, as written.
+the root's Direction section that opens with `**Path <n>`, printed as its
+number, its bold name and its first sentence, as written.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
      d && /^\*\*Path [0-9]+/ { p = 1; s = "" }
      p && /^[[:space:]]*$/ { print s; p = 0; next }
      p { s = s (s == "" ? "" : " ") $0 }
-     END { if (p) print s }' "$WS_ROOT/docs/roadmap.md" 2>/dev/null | python3 -c '
+     END { if (p) print s }' "${roadmap:-/dev/null}" 2>/dev/null | python3 -c '
 import re, sys
 n = 0
 for l in sys.stdin:
@@ -487,17 +573,22 @@ Put step 1's `rows_file` value and step 2's `inbox_lines` value (`0` when
 step 2 printed none) in place of the placeholders. The rows file is removed
 either way.
 
-The record line is `<when>`, `workspace`, `<summary>`, `inbox <n>`, then
-that inbox line's own four fields, TAB-separated.
+The record line is `<when>`, the root's `record_name` (`workspace` for the
+workspace, the project's registered name for a project, so the next run
+compares with the last line for the same root), `<summary>`, `inbox <n>`,
+then that inbox line's own four fields, TAB-separated.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 rows="<rows_file printed in step 1>"
 n="<inbox_lines printed in step 2>"
+name="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" | sed -n 's/^record_name=//p')"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
 inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
-if [ -z "$record" ]; then
+if [ -z "$name" ]; then
+    echo "run record: not written (this directory is outside every root)"
+elif [ -z "$record" ]; then
     echo "run record: not written (run_record not set)"
 elif [ ! -d "$(dirname "$record")" ]; then
     echo "run record: not written (directory missing: $(dirname "$record"))"
@@ -512,8 +603,8 @@ elif summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows
     # A record whose last line has no newline (a hand edit) gets one
     # first, so the new line is not glued to it.
     if { [ ! -s "$record" ] || [ -z "$(tail -c1 "$record")" ] || printf '\n' >> "$record"; } \
-        && printf '%s\tworkspace\t%s\tinbox %s\t%s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
-            "$summary" "$n" "$seen_line" >> "$record"; then
+        && printf '%s\t%s\t%s\tinbox %s\t%s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
+            "$name" "$summary" "$n" "$seen_line" >> "$record"; then
         echo "run record: written to $record"
     else
         echo "run record: not written (could not append to $record)"
@@ -538,8 +629,8 @@ summary`), there is no next line; skip this step and say so in the
 report.
 
 Look up what that line's own cells name: the title of each issue it names,
-and the workspace worktree branch and open pull request for that issue
-(an ADR it names gets its title from the next block). Paste the row's `item` and `check` fields
+and the branch of the root's own worktree and the open pull request for
+that issue (an ADR it names gets its title from the next block). Paste the row's `item` and `check` fields
 between the `ROW` markers, as step 1 printed them (the check is `none`
 when the cell was empty; leave it empty here). The quoted here-document
 keeps any quote or `$` in the text as written.
@@ -555,7 +646,14 @@ check="$(cat <<'ROW'
 ROW
 )"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
-WS_REPO="$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
+src="$(sed -n 's/^pr_source=//p' <<< "$r")"
+# The root's own worktrees only (own = yes): the numbers below are issues
+# of the root's own repository, and a worktree of another repository can
+# carry the same number.
+wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees)" || wl=""
+[ -n "$wl" ] || echo "branches: could not be listed (reason above)"
 # Issue numbers from the line's own cells only: "(#N)", "(#N," or each of
 # a list "(#N, #M)" in the item, "gh-issue N" (this repository) in the
 # check. Never from the
@@ -565,31 +663,38 @@ nums="$( { grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' <<< "$item"; grep -oE
 echo "issues_named=$(echo ${nums:-none})"
 for n in $nums; do
     t=""
-    [ -n "$WS_REPO" ] && t="$(gh issue view "$n" -R "$WS_REPO" --json title --jq .title 2>/dev/null)"
-    if [ -z "$t" ] && [ -n "$WS_REPO" ]; then
-        # The cache only: issue_lookup pulls from GitHub on a miss, a write.
-        ISSUE_TITLE=""
-        _issue_lookup_gitbug "$WS_ROOT" "https://github.com/$WS_REPO/issues/$n" >/dev/null 2>&1
-        t="${ISSUE_TITLE:+$ISSUE_TITLE (offline: git-bug cache)}"
+    if [ -z "$src" ] || [ "$src" = none ]; then
+        t="unknown (no repository to read it from)"
+    else
+        t="$(gh issue view "$n" -R "$src" --json title --jq .title 2>/dev/null)"
+        if [ -z "$t" ]; then
+            # The cache only: issue_lookup pulls from GitHub on a miss, a write.
+            ISSUE_TITLE=""
+            _issue_lookup_gitbug "$ROOT" "https://github.com/$src/issues/$n" >/dev/null 2>&1
+            t="${ISSUE_TITLE:+$ISSUE_TITLE (offline: git-bug cache)}"
+        fi
     fi
     printf 'issue\t%s\t%s\n' "$n" "${t:-unknown (lookup failed)}"
-    "$WS_ROOT/.agent/scripts/worktree_list.sh" --json | N="$n" python3 -c '
+    [ -z "$wl" ] || N="$n" python3 -c '
 import json, os, sys
 for w in json.load(sys.stdin).get("worktrees", []):
-    if w.get("type") == "workspace" and str(w.get("issue")) == os.environ["N"]:
-        print("branch\t%s\t%s" % (w.get("branch"), w.get("path")))'
-    [ -z "$WS_REPO" ] || gh pr list -R "$WS_REPO" --state open \
+    if w.get("own") == "yes" and str(w.get("issue")) == os.environ["N"]:
+        print("branch\t%s\t%s" % (w.get("branch"), w.get("path")))' <<< "$wl"
+    [ -z "$src" ] || [ "$src" = none ] || gh pr list -R "$src" --state open \
         --json number,title,headRefName,isCrossRepository,isDraft,closingIssuesReferences \
         --jq ".[] | select(.isCrossRepository | not)
             | select(.headRefName == \"feature/issue-$n\"
                 or ([(.closingIssuesReferences // [])[] | select(.repository != null)
-                    | select((.repository.owner.login + \"/\" + .repository.name) == \"$WS_REPO\") | .number] | index($n)))
+                    | select((.repository.owner.login + \"/\" + .repository.name) == \"$src\") | .number] | index($n)))
             | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
 done
 ```
 
-A `branch` row is in-flight work for that line; a `pull_request` row is
-its open pull request (ready or draft). A pull request with no closing
+A `branch` row is in-flight work for that line, in one of the root's own
+worktrees; a `pull_request` row is its open pull request (ready or
+draft), from the root's pull-request source. With no pull-request source
+the title is "unknown (no repository to read it from)" and no pull
+request is looked up. A pull request with no closing
 references (`null` or empty), or a reference without its repository, is
 matched by its branch name only. Matching is by the issue number
 only, through `feature/issue-<N>` worktrees and pull requests that close
@@ -609,22 +714,28 @@ between the `TEXT` markers, one per line, as step 1 printed them. The
 words stay as written; two things are made readable. A markdown link
 prints as its text, and an ADR number gets its title in parentheses (the
 ADR file's first line, after `ADR-<NNNN>: `), unless a parenthesis
-already follows it. An ADR number with no file stays as written. Each
-pasted line comes back as a `text=` line, in order.
+already follows it. The ADR files are the root's own (`docs/decisions/`
+under the root), so a project's ADR number never gets the workspace's
+title; an ADR number with no file there, or a root with no such
+directory, stays as written. Each pasted line comes back as a `text=`
+line, in order.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
+roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 text="$(cat <<'TEXT'
 <the Direction lines and deferrals the report prints, one per line>
 TEXT
 )"
 awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
      d && /^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
-    "$WS_ROOT/docs/roadmap.md" 2>/dev/null | WS_ROOT="$WS_ROOT" TEXT="$text" python3 -c '
+    "${roadmap:-/dev/null}" 2>/dev/null | ROOT="$ROOT" TEXT="$text" python3 -c '
 import glob, os, re, sys
 def title(n):
     # The first line of the ADR file: "# ADR-<NNNN>: <title>".
-    for f in sorted(glob.glob(os.path.join(os.environ["WS_ROOT"], "docs", "decisions", n + "-*.md"))):
+    for f in sorted(glob.glob(os.path.join(os.environ["ROOT"], "docs", "decisions", n + "-*.md"))):
         try:
             with open(f, encoding="utf-8") as fh:
                 return re.sub(r"^#\s*(ADR-\d{4}:\s*)?", "", fh.readline().strip())
@@ -653,60 +764,85 @@ the paragraph, for the counts section.
 
 ### 6. Read problems
 
-Read-only facts, once per sit-rep, from local `main` in `$WS_ROOT` (a
-worktree session's own branch is not what has landed). Commit counts
-leave out merge commits and commits that touch only work plans, and are
-counted from the commit that set the date: the last commit on `main` on or
-before that date, or the commit that last changed the file.
+Read-only facts, once per sit-rep, from the root's local default branch
+(`default_branch`, usually `main`; a worktree session's own branch is not
+what has landed). Commit counts leave out merge commits and commits that
+touch only work plans, and are counted from the commit that set the
+date: the last commit on the default branch on or before that date, or
+the commit that last changed the file. A root that is not a git
+repository of its own (a hosting directory, or a root inside another
+repository) has no such facts: they are skipped with one line, never
+read from the enclosing repository. With no default branch (no
+`origin/HEAD`, and not exactly one of `main` and `master`) they are
+"cannot tell". A check whose file the root does not have
+(`sitrep_root.sh`'s `check_<name>=skipped (...)`) prints one skip line
+naming the file.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: this directory is outside every root (reason above)"; exit 1; }
+rv() { sed -n "s/^$1=//p" <<< "$r"; }
+ROOT="$(rv root)"
+DB="$(rv default_branch)"
+echo "session_type=$(rv type)"
 days_since() { python3 -c 'import datetime, sys; print((datetime.date.today() - datetime.date.fromisoformat(sys.argv[1])).days)' "$1"; }
-# Commits on main after <sha>, under the given paths: no merges, no work-plan-only commits.
-since() { local sha="$1"; shift; git -C "$WS_ROOT" rev-list --count --no-merges "$sha..main" -- "$@" ':!.agent/work-plans'; }
-sha_at() { git -C "$WS_ROOT" log -1 --format=%H --until="$1 23:59:59" main; }
-# show <$WS_ROOT/path>: that file as committed on main.
-show() { git -C "$WS_ROOT" show "main:${1#"$WS_ROOT"/}" 2>/dev/null; }
+# Commits on the default branch after <sha>, under the given paths: no merges, no work-plan-only commits.
+since() { local sha="$1"; shift; git -C "$ROOT" rev-list --count --no-merges "$sha..$DB" -- "$@" ':!.agent/work-plans'; }
+sha_at() { [ -z "$DB" ] || git -C "$ROOT" log -1 --format=%H --until="$1 23:59:59" "$DB"; }
+# show <$ROOT/path>: that file as committed on the default branch.
+show() { [ -z "$DB" ] || git -C "$ROOT" show "$DB:${1#"$ROOT"/}" 2>/dev/null; }
 
-st="$("$WS_ROOT/.agent/scripts/session_root.sh" 2>/dev/null | sed -n 's/^type=//p')"
-echo "session_type=${st:-unknown}"
+if [ "$(rv own_repo)" != yes ]; then
+    echo "git_facts=skipped (this root is not a git repository of its own)"
+elif [ -z "$DB" ]; then
+    echo "default_branch=cannot tell (no origin/HEAD, and not exactly one of main and master)"
+    echo "main_behind_origin=cannot tell (no default branch)"
 # Local main can lag GitHub. Nothing is fetched (a fetch writes refs): this
-# compares with origin/main as last fetched.
-if git -C "$WS_ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null 2>&1; then
-    echo "main_behind_origin=$(git -C "$WS_ROOT" rev-list --count main..refs/remotes/origin/main 2>/dev/null || echo unknown)"
+# compares with origin's branch as last fetched.
+elif git -C "$ROOT" rev-parse -q --verify "refs/remotes/origin/$DB" >/dev/null 2>&1; then
+    echo "default_branch=$DB"
+    echo "main_behind_origin=$(git -C "$ROOT" rev-list --count "$DB..refs/remotes/origin/$DB" 2>/dev/null || echo unknown)"
 else
-    echo "main_behind_origin=unknown (no origin/main)"
+    echo "default_branch=$DB"
+    echo "main_behind_origin=unknown (no origin/$DB)"
 fi
 
 # Audit: the Re-examined column of docs/design.md's Decision register.
 # An escaped pipe (\|) inside a cell is not a column break: drop it before
 # the line is split. Separator rows (| --- | :-: |) are skipped.
-reg="$(show "$WS_ROOT/docs/design.md" | awk -F'|' '
-    { gsub(/\\\|/, "") }
-    /^## Decision register/ { s = 1; next }
-    s && /^## / { exit }
-    s && /^\|/ && col == "" { for (i = 2; i < NF; i++) if ($i ~ /Re-examined/) col = i; next }
-    s && /^\|/ && col != "" && $2 !~ /^[ :-]+$/ { gsub(/^ +| +$/, "", $col); print $col }')"
-if [ -z "$reg" ]; then
-    echo "audit=cannot tell (no Decision register with a Re-examined column on main)"
+if [ "$(rv check_decision_register)" != run ]; then
+    echo "audit=$(rv check_decision_register)"
 else
-    echo "audit_adrs=$(grep -c . <<< "$reg") not_yet_reexamined=$(grep -c '^not yet' <<< "$reg")"
-    newest="$(grep -oE '^yes [0-9]{4}-[0-9]{2}-[0-9]{2}' <<< "$reg" | cut -d' ' -f2 | sort | tail -n1)"
-    sha=""; [ -z "$newest" ] || sha="$(sha_at "$newest")"
-    if [ -n "$sha" ]; then
-        echo "newest_adr_reexamination=$newest days=$(days_since "$newest") commits_since=$(since "$sha" .)"
+    reg="$(show "$ROOT/docs/design.md" | awk -F'|' '
+        { gsub(/\\\|/, "") }
+        /^## Decision register/ { s = 1; next }
+        s && /^## / { exit }
+        s && /^\|/ && col == "" { for (i = 2; i < NF; i++) if ($i ~ /Re-examined/) col = i; next }
+        s && /^\|/ && col != "" && $2 !~ /^[ :-]+$/ { gsub(/^ +| +$/, "", $col); print $col }')"
+    if [ -z "$reg" ]; then
+        echo "audit=cannot tell (no Decision register with a Re-examined column on the default branch)"
     else
-        echo "newest_adr_reexamination=cannot tell (no 'yes <date>' cell, or no commit on main by then)"
+        echo "audit_adrs=$(grep -c . <<< "$reg") not_yet_reexamined=$(grep -c '^not yet' <<< "$reg")"
+        newest="$(grep -oE '^yes [0-9]{4}-[0-9]{2}-[0-9]{2}' <<< "$reg" | cut -d' ' -f2 | sort | tail -n1)"
+        sha=""; [ -z "$newest" ] || sha="$(sha_at "$newest")"
+        if [ -n "$sha" ]; then
+            echo "newest_adr_reexamination=$newest days=$(days_since "$newest") commits_since=$(since "$sha" .)"
+        else
+            echo "newest_adr_reexamination=cannot tell (no 'yes <date>' cell, or no commit on the default branch by then)"
+        fi
     fi
 fi
 
 # Research: the research skill's own staleness rule (Last verified, else
 # Added; stale past 30 days, flagged for review past 90).
-show "$WS_ROOT/.agent/knowledge/research_digest.md" | python3 -c '
+if [ "$(rv check_research_digest)" != run ]; then
+    echo "research=$(rv check_research_digest)"
+else
+    show "$ROOT/.agent/knowledge/research_digest.md" | python3 -c '
 import datetime, re, sys
 text = sys.stdin.read()
 if not text:
-    print("research=cannot tell (no research digest on main)"); sys.exit()
+    print("research=cannot tell (no research digest on the default branch)"); sys.exit()
 today = datetime.date.today()
 m = re.search(r"Last full refresh: (\d{4}-\d{2}-\d{2})", text)
 print("last_full_refresh=" + (m.group(1) if m else "none"))
@@ -722,16 +858,23 @@ for line in text.splitlines():
 print("digest_entries=%d past_30_days=%d past_90_days=%d oldest_days=%s undated=%d" % (
     len(ages) + undated, sum(a > 30 for a in ages), sum(a > 90 for a in ages),
     max(ages) if ages else "none", undated))'
+fi
 
-# Documentation: work since docs/design.md last changed on main.
-d="$(git -C "$WS_ROOT" log -1 --format='%H %cs' main -- docs/design.md)"
-if [ -z "$d" ]; then
-    echo "design_doc=cannot tell (docs/design.md has no commit on main)"
+# Documentation: work since docs/design.md last changed on the default branch.
+if [ "$(rv check_documentation)" != run ]; then
+    echo "design_doc=$(rv check_documentation)"
 else
-    echo "design_doc_changed=${d#* } days=$(days_since "${d#* }") commits_since_touching_agent_claude_docs=$(since "${d%% *}" .agent .claude docs)"
+    d=""; [ -z "$DB" ] || d="$(git -C "$ROOT" log -1 --format='%H %cs' "$DB" -- docs/design.md)"
+    if [ -z "$d" ]; then
+        echo "design_doc=cannot tell (docs/design.md has no commit on the default branch)"
+    else
+        echo "design_doc_changed=${d#* } days=$(days_since "${d#* }") commits_since_touching_agent_claude_docs=$(since "${d%% *}" .agent .claude docs)"
+    fi
 fi
 # The anchor check passes in pre-commit and CI; only a failure is news.
-if ! out="$("$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$WS_ROOT" 2>&1)"; then
+if [ "$(rv check_design_anchors)" != run ]; then
+    echo "design_anchors=$(rv check_design_anchors)"
+elif ! out="$("$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$ROOT" 2>&1)"; then
     echo "design_anchors=failed"
     printf '%s\n' "$out" | head -n 10
 fi
@@ -754,19 +897,24 @@ due", "recent" or "cannot tell" (a date or count is missing).
 - **Documentation**: days since `docs/design.md` last changed and the
   commits since that touched `.agent/`, `.claude/` or `docs/`: work that
   may have outrun the design. Judge from the numbers. The report names
-  them in words, "the design document" and "the workspace's scripts,
+  them in words, "the design document" and, by the root's `type`, "the
+  workspace's scripts, skills or docs" or "this project's scripts,
   skills or docs", not as paths. A failed anchor check is printed with
   its first lines; a passing one is not mentioned.
 - **Direction**: `format` rows from step 1 and `unknown` lines (a check
   that could not run) are problems too.
-- **Local main**: these facts are from local `main`. When
-  `main_behind_origin` is a number above 0, a Problems line says "local
-  main is <n> commits behind GitHub, as last fetched; the facts above are
-  from local main". When it is `unknown`, the Problems heading reads
+- **Local main**: these facts are from the root's local default branch
+  (named in the report, e.g. "local main"). When `main_behind_origin` is
+  a number above 0, a Problems line says "local main is <n> commits
+  behind GitHub, as last fetched; the facts above are from local main".
+  When it is `unknown` or "cannot tell", the Problems heading reads
   "Problems (as of local main)". At 0 nothing is said.
-- In a project session (`session_type=project`), the Problems section is
-  the workspace's only, and the report says so; nothing is read from the
-  project.
+- **Skipped**: every Problems fact is the session root's. A check the
+  root's files do not allow (`audit=skipped (...)`, `research=skipped
+  (...)`, `design_doc=skipped (...)`, `design_anchors=skipped (...)`) is
+  one line naming what is missing, e.g. "Audit: skipped, this project has
+  no docs/design.md". `git_facts=skipped` is one line too: "No history
+  read: this root is not a git repository of its own".
 
 ### 7. Start a due check, or offer it
 
@@ -778,10 +926,16 @@ When the audit or research fact is "probably due":
   it) with the prompt below, and say in its Problems line "started in the
   background". Do not start the same check twice in one session; say
   "already started this session" instead.
-- **Offer it** otherwise (a project session, `session_type` unknown, or
-  no Agent tool, as in Codex or agy): name the command and where to run
-  it, e.g. "run /audit-workspace from the workspace". These skills have no
-  `session_scope`, so a project session does not have them.
+- **Offer it** in a workspace session with no Agent tool, as in Codex or
+  agy: name the command and where to run it, e.g. "run /audit-workspace
+  from the workspace".
+- **In a project session, nothing is started or offered** for a due
+  design-decision review or a due research digest: the Problems line
+  states the facts and its judgment only. No skill checks them for a
+  project: `/audit-project` does not read a Decision register's
+  Re-examined column, `/audit-workspace` audits the workspace, not the
+  project, and the `research` skill's digest is the workspace's. A
+  check skipped for a missing file is not offered either.
 
 Only read-only checks start on their own. Anything that writes to a
 repository or GitHub (a digest edit, a Decision-register pull request, an
@@ -870,11 +1024,13 @@ Running: <branch>: <its state>.
   ago (<m> more than 90). Last full refresh <date>. <Judgment>
   [, the 3 oldest started in the background | , offered: ...].
 - Documentation: the design document last changed <date>, <d> days
-  ago. <c> commits since changed the workspace's scripts, skills or
-  docs. <Judgment>.
+  ago. <c> commits since changed <the workspace's | this project's>
+  scripts, skills or docs. <Judgment>.
 - Deferral due: <the deferral, as written>.
 - <only when present: local main behind GitHub, a failed anchor check,
-  a malformed Direction section, a step whose check could not run>
+  a malformed Direction section, a step whose check could not run, a
+  check skipped for a file this root does not have, worktrees that
+  could not be listed>
 
 **Steps**: <t> of <n> done.
 
@@ -886,9 +1042,6 @@ e.g. "steps done: 3 of 6 on 2026-10-10, 4 of 6 now"; "first run" when
 there is no earlier line.>
 
 <acceptance_rest, when not empty>
-
-Workspace root only: registered project roots are not read in this mode,
-so Path 1 work that lives in a project root does not show here.
 
 **Inbox**: <n> lines, <k> new since the last run (or "new since the last
 run: unknown", with the reason). `/sitrep inbox` for a proposed sort.
@@ -940,8 +1093,9 @@ Rules for the report:
   fact. When none has one: "Next: nothing from this run's
   facts." When step 1 checked nothing, it says the steps were not
   checked this run, and why.
-  - The main checkout is not work in flight: the worktree list always
-    includes it (`type: "main"`), so it is never a candidate. The
+  - The main checkout is not work in flight: the worktree list of a
+    workspace session includes it (`type: "main"`), so it is never a
+    candidate. The
     worktree this session runs in counts like any other.
 - **Titles once.** An issue's title is printed once, in its In flight
   line; everywhere else the issue is "issue <N>". An issue the report
@@ -954,23 +1108,30 @@ Rules for the report:
   bullet per name under it. The next step's branch is always among the five shown (it
   takes the fifth place when it would fall below). A line is filled in
   part by part, and a part the branch does not have is left out:
-  - `<name>` is the branch, or for a project worktree its project
-    (`repo`), a slash and the branch, e.g. `myproject/feature/issue-12`.
+  - `<name>` is the branch, or for a worktree that is not the root's
+    own (`own` is `no`: another repository's work a Direction line of
+    this root names) its `repo` (`workspace` for a workspace worktree),
+    a slash and the branch, e.g. `myproject/feature/issue-12` in the
+    workspace's report.
   - Then the issue's title and "(issue <N>)", then ", the next step"
     when step 5 matched this branch, then the state from step 3's
     table (e.g. "plan approved, implementing").
   - A branch with a pull request adds "; pull request <M>: <draft or
     ready>", then "from a fork" if `isCrossRepository` is true, then the
     review state in words if `reviewDecision` is set ("approved",
-    "changes requested", "review required"). A workspace worktree
-    (`type: "workspace"`) with no pull request whose state is
-    "implemented" reads "implemented, no pull request yet". A project
-    worktree's pull requests are not looked up (they are the project's,
-    not the workspace's), so its line says nothing about one.
+    "changes requested", "review required"). One of the root's own
+    worktrees with no pull request whose state is "implemented" reads
+    "implemented, no pull request yet", when the root has a
+    pull-request source. A worktree that is not the root's own has its
+    pull requests in another repository, which are not looked up, so
+    its line says nothing about one; with no pull-request source for
+    the root, no line says anything about pull requests.
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
-    `no path` or one of its "path unknown (...)" labels. A branch with only a
+    `no path` or one of its "path unknown (...)" labels; nothing when
+    step 3 printed an empty path (the root's Direction section has no
+    Paths paragraph). A branch with only a
     pull request has no timeline here, so no Serves line was read:
     `Path 1` when a Direction line names its issue, else "path unknown
     (no worktree, timeline not read)". Its issue is the `<N>` of a
