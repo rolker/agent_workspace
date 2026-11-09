@@ -200,3 +200,13 @@ Host answer under /orchestrator's checkpoint table. The suggestion of the Local 
 - [x] No issues found. LGTM. The round 1 suggestion is closed by 58e8f94e: "Before 2026-11-09 this ADR was Provisional." has a dated referent, and the evidence sentence is split after "found the prefixed skills" with no wording change otherwise; the edit stays inside the Status section (lines 11-19, before `## Context`).
 
 Checked: adr-status `accepted` true and `provisional` false via a scratch roadmap row; `check_design_anchors.sh` exit 0. Cross-model: skipped (round-2 convergence check, per handoff).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 14:27 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 2 approved, Ship recommended, no findings; Gemini and Codex clean in round 1)
+**After**: publish
+**Decision**: publish
+
+Host answer under /orchestrator's checkpoint table.
