@@ -252,3 +252,21 @@ The pre-push suggestion is confirmed against the code: `suites_for_files.sh` (th
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. The open box of the Integrated Review at feb72bbc goes to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 12:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #422 at `632c5f7`
+**Addressed**: Integrated Review at `2f0acaa` (2026-11-09 12:32 -05:00)
+**Commits**: 632c5f7
+
+### Actions
+- [x] The real-tree unmapped-document check's expected set (`doc_want`) now adds the suites on disk with no `--dump` row (the selector's "always (no derived references)" class); header and pass/fail text name that class; no further suite is named — `.agent/scripts/tests/test_script_tests_hook_scope.sh:712`
+
+### Verification
+- `test_script_tests_hook_scope.sh`: 263 passed, 0 failed on the real tree.
+- Throwaway probe (an unreferenced `test_*.sh` placed on disk, removed after): the unmapped-document check passed with the probe in its expected set; only check (a) failed, as designed.
+- `test_run_script_tests.sh` not touched, so not run on its own; it ran inside the full hook run below.
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: every hook passed, including the script-suite hook.
