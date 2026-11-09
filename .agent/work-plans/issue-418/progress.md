@@ -189,3 +189,11 @@ The revision resolves every round-1 must-fix and answers every suggestion. One n
 **Decision**: revise
 
 Host answer under /orchestrator's checkpoint table. Rule for the revision: a root lists its own worktrees plus the worktrees its own Direction lines name (adapter --project <name> checks, <owner/repo>#N checks); the same rule for both root types. Suggestions 2-4 (ADR titles from the root's docs/decisions, step 7 offer and Documentation wording name the root, --worktrees output pinned to worktree_list.sh's JSON shape with errors passed through) to be answered too.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-09 09:59 -0500
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `27b4bf65`
+
+Second revision: a root lists its own worktrees plus those its Direction lines name (workspace set unchanged, with a project-worktree test); step 5 ADR titles from the root; step 7 offers audit-project and Documentation wording names the root; --worktrees pinned to worktree_list.sh's JSON shape with errors passed through. Still one PR.
