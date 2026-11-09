@@ -201,3 +201,13 @@ Verified: sitrep_checks.sh reads the onboarding, loop and promoted Direction lin
 - [ ] No issues found. LGTM.
 
 Verified: 1ba49a5c fixes the user-tier sentence (under `# How it works`, line 1 heading; the round-1 "Purpose" label was mine) and the #423 change-log row names How it works; b98ddbc1 makes the review guide's 0016 row Accepted and the 0018 row Provisional with its condition met and promotion the owner's call; 70b63763 adds the ADR-0018 clause, faithful to ADR-0018 Status and Acceptance; design.md is 867 lines (main 865: row +1, C1-c -1, Now block +2), matching the row; check_design_anchors.sh exit 0; sitrep_checks.sh reads the onboarding, loop and promoted lines true. The ros2 digest line 47 is a dated survey note (Last checked 2026-09-29) about the status mechanism, not a current-state claim: left as is. Adversarial reviewer's one suggestion (0018 row "promoted with 0016") was checked and is a false positive: that wording is gone at HEAD. Cross-model: gemini and codex both completed, no issues.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 13:46 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 2 approved, Ship recommended, no findings; Gemini and Codex clean both rounds)
+**After**: publish
+**Decision**: publish
+
+Host answer under /orchestrator's checkpoint table. Push, open the pull request, and post the drafted unblock comments on #265 and #295 (plan step 4).
