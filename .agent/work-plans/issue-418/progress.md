@@ -506,3 +506,19 @@ Host answer under /orchestrator's checkpoint table. The two open boxes of the In
 ### Verification
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, no hook failed; the script suite hook passed.
 - Run directly: test_sitrep_root.sh 54 passed, test_sitrep_checks.sh 210 passed, test_skill_paths.sh 131 passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-09 12:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent af2d5f3d256c954bd, resume 3 of 3)
+
+**PR**: #420 at `3b19d5f4`
+**Depth**: Deep (reason: convergence check of the Copilot fix round per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the two should-fix boxes of the Integrated Review at 5a362625 and the fix diff since it, c5664111 (helper) and 423f644d (skill). (1) Adapter-check project names go through registry_resolve_project_arg before the Python pass (parent -> default or only instance; several instances and no default -> dropped; an unregistered name stays itself), and both the (b) keep rule and `named` use the resolved set; tests with the host/inst fixture and a two-instance parent pass. (2) Step 1's project-session rule names only `(roadmap not found: ...)` and `(no Direction section)`; an unreadable roadmap reports its reason with no offer; a section with no tables or rows keeps its acceptance case and Paths with no next step; test_skill_paths pins it and rejects the old blanket wording. No new defect found. Specialists: static analysis (shellcheck --severity=warning, clean), governance and plan drift inline; cross-model skipped (convergence round, per handoff); Claude adversarial not spawned (fix diff small, read in full). Suites re-run: test_sitrep_root 54/54, test_sitrep_checks 210/210, test_skill_paths 131/131.
+
+### Findings
+- [ ] No issues found. LGTM.
