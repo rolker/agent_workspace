@@ -344,3 +344,29 @@ Specialists: static analysis (shellcheck --severity=warning, clean), governance,
 - [x] (suggestion) Project-first inbox listing: the `--- other lines` divider counts toward `head -n 20`, and with exactly 19 own lines it is printed with nothing under it — `.claude/skills/sitrep/SKILL.md:207`
 - [x] (suggestion) session_root.sh exit 2 (malformed registry) is passed through but every skill block says "outside every root"; the header's exit list omits it — `.agent/scripts/sitrep_root.sh:124`
 - [x] (suggestion) Header says the helper writes nothing, but `--worktrees` creates and removes a mktemp file; reword or capture stderr without a file, and no test asserts read-only behaviour — `.agent/scripts/sitrep_root.sh:211`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 11:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-418 at `7b7a0dbd`
+**Addressed**: Local Review (Pre-Push) at `f8334fa1` (2026-11-09 11:03 -05:00)
+**Commits**: 5fb57961, 7b7a0dbd
+
+### Actions
+- [x] (must-fix) Non-GitHub origin gave a bogus pull-request source: the helper's one Python definition (used for pr_source and every worktree) accepts only a github.com URL in git's forms (https, ssh://, git://, scp-like; optional user, port, .git), read through `git ls-remote --get-url` so insteadOf applies; anything else (another host, a lookalike host, a path, an ssh alias) is none. No gh call added: the helper runs once per skill block and must work offline, and the gh-decides route would add a network call to each. Tests: a gitlab.com root, 18 URL forms, an insteadOf shorthand, a package worktree with gitlab checkouts. Step 3 no longer parses remotes itself; it reads the helper's `repository` — `.agent/scripts/sitrep_root.sh`
+- [x] (must-fix) A package worktree never joined its pull request: the helper adds `pr_branch` (a plain worktree's branch; a package worktree's branch of its repository's checkouts, from its manifest, when they name one), and step 3's join rule uses it; tested on plain, package and not-own entries — `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) No default branch with docs/design.md present: the three checks that read it say `skipped (no default branch)`; tested — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) origin/HEAD counts only when its branch exists locally, else the main/master rule; tested with a remote-only develop — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) Direction checks read by the runner's grammar (cell split at ` ; `, backticks unwrapped, whole three-word gh-issue with open/closed, five-word adapter form): in the helper's (b) and its new `named` field, which replaces step 3's substring Path 1 extraction; step 5's bare gh-issue numbers use the same split. Tests in both suites — `.agent/scripts/sitrep_root.sh`, `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) Repository names compare without regard to case in (b), `own`, `named`, and step 5's closing-reference match; tested — `.agent/scripts/sitrep_root.sh`, `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) Inbox listing: 20 lines not counting the `--- other lines` marker, printed only with a line under it; tests for 19 and 20 own lines — `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) session_root.sh exit 2: the helper says "could not be decided (exit 2)" rather than "in no root", the header lists exit 2, and the skill's blocks say "no root could be decided for this directory"; tested with a malformed registry — `.agent/scripts/sitrep_root.sh`
+- [x] (suggestion) No temporary file: worktree_list.sh's stderr goes straight through; a test runs both modes with an empty TMPDIR and checks it stays empty and git status is unchanged (the old file was removed on exit too, so the test guards the property; it did not catch the old code) — `.agent/scripts/sitrep_root.sh`
+
+### Verification
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script suite (validate-script-tests) included.
+- Run directly before committing: test_sitrep_root.sh 46 passed (13 of the new checks fail on the pre-fix helper), test_sitrep_checks.sh 209 passed, test_skill_paths.sh 130 passed.
+- Two commits rather than one per finding: the helper rewrite carries several findings at once, and the skill commit depends on its new fields.
+- Not changed: `extract_gh_slug` in _issue_helpers.sh still accepts any host. sitrep_checks.sh's `gh-issue N` (and other scripts) use it, so a bare gh-issue check in a non-GitHub root makes a gh call that fails and reads `unknown`, not a wrong answer. Widening the fix to the shared helper is outside this finding.
