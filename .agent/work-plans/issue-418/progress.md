@@ -370,3 +370,31 @@ Specialists: static analysis (shellcheck --severity=warning, clean), governance,
 - Run directly before committing: test_sitrep_root.sh 46 passed (13 of the new checks fail on the pre-fix helper), test_sitrep_checks.sh 209 passed, test_skill_paths.sh 130 passed.
 - Two commits rather than one per finding: the helper rewrite carries several findings at once, and the skill commit depends on its new fields.
 - Not changed: `extract_gh_slug` in _issue_helpers.sh still accepts any host. sitrep_checks.sh's `gh-issue N` (and other scripts) use it, so a bare gh-issue check in a non-GitHub root makes a gh call that fails and reads `unknown`, not a wrong answer. Widening the fix to the shared helper is outside this finding.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 11:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent af2d5f3d256c954bd, resume 1 of 3)
+
+**Branch**: feature/issue-418 at `7f198a74`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff over 200 lines and 10 files; fix round re-classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 7
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-1 must-fixes verified closed: non-GitHub origin gives pr_source=none (gitlab root and 18-form URL table in test_sitrep_root.sh; regex probed by hand, lookalike hosts rejected); package worktrees join on pr_branch (test_sitrep_root.sh:329). All 7 round-1 suggestions checked as addressed.
+
+Host-test vs gh (owner rule of 2026-10-30): a bounded, tested allowlist, not the smell. Its input is git's own resolved URL (`ls-remote --get-url`, insteadOf applied, no network), it accepts four of git's URL forms for one host, and every miss fails closed to "none", never a wrong repository; it replaces the looser shared extract_gh_slug rather than adding a parser, and per-worktree lookups need it offline. Residual cost: a GitHub origin behind an ssh host alias, www., or an https port reads "no pull-request source" (see suggestion). Listed for veto.
+
+Specialists: static analysis (shellcheck --severity=warning, clean), governance, plan drift, Claude adversarial (fresh, no must-fix), cross-model (gemini: complete, no issues; codex: complete, 2 must-fix claims downgraded to suggestions after verification, 1 suggestion). Suites re-run: test_sitrep_root 46/46, test_sitrep_checks 209/209, test_skill_paths 130/130.
+
+### Findings
+- [ ] (suggestion) The helper decides the root from the main checkout's registry but runs its own copy's worktree_list.sh, whose registry is script-relative; from a feature-worktree copy (no user tier, $WS_ROOT = cwd) Direction-named project worktrees drop out silently. Same fallback lost them on main, and the user-tier path is unaffected; pass the resolved workspace root through or call the main checkout's lister (Codex, verified worktree_list.sh:21) — `.agent/scripts/sitrep_root.sh:327`
+- [ ] (suggestion) History checks gate on the file in the working tree, not on the default branch: a root checkout on an older branch (common in projects that do not use worktrees) reports "docs/design.md not in this root" while main has it; test with `git cat-file -e "$DB:<file>"` (Codex) — `.agent/scripts/sitrep_root.sh:281`
+- [ ] (suggestion) A pull-request-only branch still gets "Path 1" / "path unknown" when the root's Direction section has no Paths paragraph; apply the no-Paths rule there too (Codex) — `.claude/skills/sitrep/SKILL.md:1116`
+- [ ] (suggestion) An origin that exists but is not a recognised github.com URL (ssh host alias, www., https port) reads "no pull-request source for this root"; say the origin was not recognised as GitHub so the reason is visible — `.agent/scripts/sitrep_root.sh:201`
+- [ ] (suggestion) Header says repository_dirs is empty when repository is "", but a plain worktree with no GitHub remote gets [path]; fix the header or the code (Claude adversarial) — `.agent/scripts/sitrep_root.sh:375`
+- [ ] (suggestion) Step 5's branch row prints the comma-joined `branch` for an own package worktree; print `pr_branch` (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:666`
+- [ ] (suggestion) No test feeds the same cells to names_of and sitrep_checks.sh, so grammar drift goes unnoticed (Python strip/split also treat NBSP and \r as spaces, bash does not); add a parity case and a disagreeing-branch package fixture (Claude adversarial) — `.agent/scripts/tests/test_sitrep_root.sh:215`
