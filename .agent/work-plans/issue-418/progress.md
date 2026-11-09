@@ -582,3 +582,20 @@ Scope: the one should-fix box of the Integrated Review at 515c89d8 and the fix d
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-09 12:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abd723cbf6dcc08ad, resume 2 of 3)
+
+**PR**: #420 at `c31e5a7f`
+**Sources**: 2 (Local Review @ `421233d8` (covers `c31e5a7f` via bookkeeping), 0 findings (its "No issues found" box is a placeholder, not a finding); CI rollup). No new code review: Copilot's reviews at `4ca61ada`, `6a7644a5` and `421233d8` are quota notices, not sources.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Earlier box: the one should-fix finding of the Integrated Review at `4ca61ada` (worktree lister run from `$DIR`, refused for a linked worktree of the workspace outside its tree) is closed by 14f9508e: `--worktrees` runs the lister from the decided `$ROOT` (`.agent/scripts/sitrep_root.sh:383`), with a regression test for the linked worktree outside the tree; re-run here: test_sitrep_root 55/55. Since 14f9508e only `.agent/work-plans/issue-418/progress.md` changed. CI at `c31e5a7f` when written: Validate Documentation and ros-manifest tests pass; Lint (pre-commit) and Validate Adapter Contract still running in one run (the other run's Adapter Contract passed, its Lint still running). The caller re-checks CI before the merge checkpoint.
+
+### Findings
+
+### False positives
