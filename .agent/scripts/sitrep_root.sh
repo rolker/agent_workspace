@@ -371,10 +371,16 @@ ROOT_GIT=""
 # The main checkout's worktree_list.sh, which reads the registry the root
 # was decided from (the header's "Registry"). Its stderr (its warnings, a
 # malformed registry say, or the reason it failed) goes straight to ours.
+# It runs from $ROOT, not $DIR: its user-tier guard refuses a directory
+# neither in the main checkout nor under a registered root, such as a
+# linked worktree of the workspace outside its tree, which session_root.sh
+# accepts as the workspace's; the lister moves to its own checkout right
+# after that guard, so the starting directory matters only to the guard,
+# and $ROOT, already decided, always passes it.
 WL="$WS_ROOT/.agent/scripts/worktree_list.sh"
 [[ -f "$WL" ]] || WL="$SCRIPT_DIR/worktree_list.sh"
 rc=0
-json="$(cd "$DIR" && bash "$WL" --json)" || rc=$?
+json="$(cd "$ROOT" && bash "$WL" --json)" || rc=$?
 if [[ $rc -ne 0 ]]; then
     echo "sitrep_root: worktree_list.sh --json failed (exit $rc)" >&2
     exit "$rc"

@@ -464,6 +464,19 @@ wts "$WSC" "$SB/rows-parent.tsv"
 [[ "$OUT" != *fam1* ]] \
     && pass "a parent with several instances and no default: names nothing, as the adapter fails on it" || fail "parent several instances: '$OUT'"
 
+echo "TEST: --worktrees from a linked worktree of the workspace outside its tree"
+# session_root.sh takes such a worktree as the workspace's; the lister's
+# guard would refuse it as a starting directory.
+g -C "$WSC" worktree add -q -b feature/issue-9 "$SB/outside-wt" 2>/dev/null
+RC=0; JSON="$(cd "$SB/outside-wt" && bash "$SR" --worktrees 2>"$SB/err")" || RC=$?
+OUT="$(python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["worktrees"]:
+    print("%s %s %s %s" % (w["type"], w.get("repo"), w.get("issue"), w.get("own")))' <<< "$JSON" 2>&1 | sort)"
+[[ $RC -eq 0 && "$OUT" == *"main None None yes"* && "$OUT" == *"workspace workspace 3 yes"* ]] \
+    && pass "a linked worktree outside the tree: exit 0, the workspace's worktrees listed" || fail "outside worktree: rc=$RC '$OUT' err='$(cat "$SB/err")'"
+g -C "$WSC" worktree remove --force "$SB/outside-wt"
+
 echo "TEST: --worktrees from a hosting root: its instances' worktrees, none its own"
 wts "$R/host"
 [[ $RC -eq 0 && "$OUT" == "project inst 5 no" ]] \
