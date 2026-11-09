@@ -269,6 +269,9 @@ Every message that hands control back to him:
 5. `Parked:` the items captured this turn, or nothing.
 6. At most one question, the one whose answer changes the most.
 
+A dialog to him (`AskUserQuestion`) is laid out as `/run-issue` step 6,
+"Dialog layout", gives it.
+
 Every issue or pull request number carries its label. A sub-agent's own
 report shape is `dispatch_phase.sh`'s exit contract, not this list.
 
