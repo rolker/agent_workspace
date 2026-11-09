@@ -151,10 +151,20 @@ needs. When the block prints `checks failed` or `no summary` instead,
 report that the Direction lines were not checked this run, with the reason
 printed, and that the run record was not written, and skip step 4.
 
-In a project session, a `section` row (no roadmap, or a roadmap with no
-Direction section) is reported as "no Direction section in this project;
-onboarding (`onboard-project`) offers one", and nothing is invented in
-its place: no next step, no Paths, no acceptance case.
+In a project session, the `section` rows `(roadmap not found: ...)` and
+`(no Direction section)`, and only those two, are reported as "no
+Direction section in this project; onboarding (`onboard-project`) offers
+one", and nothing is invented in its place: no next step, no Paths, no
+acceptance case. The other `section` rows are not that, in either kind
+of session:
+
+- `(roadmap not readable: ...)`: the report gives the reason as printed
+  (the Direction lines could not be read) and offers nothing; the
+  roadmap exists, so onboarding has nothing to add.
+- `(no Line or Deferral table)` and `(no rows in the Line or Deferral
+  tables)`: the report says the Direction section has no lines to check,
+  so there is no next step; the acceptance case and the Paths still come
+  from the section's prose (steps 3 and 5 read them) and are reported.
 
 ### 2. Read the inbox and the last run record
 

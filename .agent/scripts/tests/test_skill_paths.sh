@@ -229,6 +229,20 @@ else
     fail "sitrep step 7: the project-session rule or the workspace offer is missing, or a project session is still offered a check"
 fi
 
+# The project-session onboarding offer is for a missing roadmap or
+# Direction section only: an unreadable roadmap gives its reason, and a
+# section with no tables or rows still reports the acceptance case and
+# Paths (#418).
+sk1="$(awk '/^### 1\. / { s = 1; next } s && /^### / { exit } s' "$SITREP" 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+if grep -qF 'the `section` rows `(roadmap not found: ...)` and `(no Direction section)`, and only those two, are reported as "no Direction section in this project; onboarding (`onboard-project`) offers one"' <<< "$sk1" \
+        && grep -qF '`(roadmap not readable: ...)`: the report gives the reason as printed (the Direction lines could not be read) and offers nothing' <<< "$sk1" \
+        && grep -qF 'so there is no next step; the acceptance case and the Paths still come from the section'"'"'s prose (steps 3 and 5 read them) and are reported' <<< "$sk1" \
+        && ! grep -qF 'a `section` row (no roadmap, or a roadmap with no Direction section) is reported as' <<< "$sk1"; then
+    pass "sitrep step 1: the onboarding offer is limited to a missing roadmap or Direction section"
+else
+    fail "sitrep step 1: the section-row rule is blanket again, or the unreadable / no-rows cases are missing"
+fi
+
 # (b) The skill directory is gone.
 if [[ -e "$SKILLS/$OLD" ]]; then
     fail ".claude/skills/$OLD still exists -- the sit-rep replaced it (#389)"
