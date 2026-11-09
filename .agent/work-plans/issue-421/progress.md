@@ -228,3 +228,20 @@ Specialists: static analysis (shellcheck --severity=warning on test_skill_paths.
 **Decision**: address
 
 Host answer under /orchestrator's checkpoint table. Both suggestions of the Local Review (Pre-Push) at 5a214b6f go to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-09 14:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-421 at `509ac5a9`
+**Addressed**: Local Review (Pre-Push) at `5fd7923a` (2026-11-09 14:22 -05:00)
+**Commits**: 437fac89, 509ac5a9
+
+### Actions
+- [x] Turn-ending messages: the header clause now covers `AskUserQuestion` only, and a new sentence says a message ending a turn opens with the same header line when the host drives `/run-issue` on its own, and under `/orchestrator` follows its hand-back shape (two orientation lines: the work with issue number and label, what is needed). The Dialog layout points back to that paragraph. Header assertion in `test_skill_paths.sh` follows the reworded opening sentence; a new assertion pins the turn-ending rule. Negative check: on a copy of the skill with the header line removed, the header assertion fails — `.claude/skills/run-issue/SKILL.md:519-536`, `.agent/scripts/tests/test_skill_paths.sh:661-664`
+- [x] Example Q1 header now reads "round 1 found 4 issues (F4 in Q2)", and Q2's "(F1 to F3 in Q1)", with the prose adjusted, so each question stands alone — `.claude/skills/run-issue/SKILL.md:565,582`
+
+### Checks
+- `.agent/scripts/tests/test_skill_paths.sh`: 136 passed, 0 failed
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0 (script suite hook Passed)
