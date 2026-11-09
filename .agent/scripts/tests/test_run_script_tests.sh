@@ -438,6 +438,8 @@ EOF
     chmod +x "$r/.agent/scripts/tool"
     printf '# scanned\n' > "$r/.agent/docs/scanned.md"
     printf '# unmapped\n' > "$r/.agent/docs/unmapped.md"
+    # A document no suite names and no '# scans:' prefix covers (issue #419).
+    printf '# guide\n' > "$r/.agent/guide.md"
     printf 'data\n' > "$t/fixture_data.txt"
     mkdir -p "$r/.agent/work-plans/issue-1"
     printf '# plan\n' > "$r/.agent/work-plans/issue-1/plan.md"
@@ -699,7 +701,34 @@ expect_sel "a passed file outside the hook scope yields ALL" "ALL" -- README.md 
 expect_sel "an absolute path (outside the scope as parsed) yields ALL" "ALL" -- "$SYN/.agent/scripts/beta.sh"
 expect_sel "an out-of-scope deleted path does not force ALL" \
     "test_alpha.sh $BASE_ALWAYS test_noref.sh" --deleted outside/gone.sh -- .agent/scripts/beta.sh
-expect_sel "an unmapped in-scope file yields ALL, even under a '# scans:' prefix" "ALL" -- .agent/docs/unmapped.md
+# Issue #419: a Markdown file that reaches no suite is documentation, not
+# an undeclared file. It adds only its '# scans:' suites; every other
+# unmapped in-scope file still yields ALL.
+expect_sel "an unmapped .md is documentation: no ALL, only the scanning suite joins" \
+    "$BASE_ALWAYS test_noref.sh test_scanner.sh" -- .agent/docs/unmapped.md
+expect_sel "an unmapped .md outside every '# scans:' prefix selects no extra suite" \
+    "$BASE_ALWAYS test_noref.sh" -- .agent/guide.md
+BETA_ALONE="$(sfor -- .agent/scripts/beta.sh)"
+expect_sel "an unmapped .md with a script selects what the script alone selects" \
+    "$BETA_ALONE" -- .agent/guide.md .agent/scripts/beta.sh
+expect_sel "an unmapped .md under a '# scans:' prefix with a script adds only the scanning suite" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh test_scanner.sh" -- .agent/docs/unmapped.md .agent/scripts/beta.sh
+expect_sel "a deleted in-scope .md still yields ALL" "ALL" --deleted .agent/docs/gone.md -- .agent/scripts/beta.sh
+expect_sel "an unmapped in-scope .json yields ALL, even under a '# scans:' prefix" "ALL" -- .agent/docs/unmapped.json
+expect_sel "an undeclared script yields ALL" "ALL" -- .agent/scripts/lone.sh
+expect_sel "an undeclared .md under tests/ yields ALL" "ALL" -- .agent/scripts/tests/notes.md
+doc_err="$(bash "$MAPPER" --tests-dir "$SYN_T" -- .agent/guide.md 2>&1 >/dev/null)"
+if [[ "$doc_err" == *"'.agent/guide.md' is documentation and reaches no suite"* ]]; then
+    pass "(l) the mapper says an unmapped .md is documentation"
+else
+    fail "(l) the mapper says an unmapped .md is documentation: stderr was '$doc_err'"
+fi
+lone_err="$(bash "$MAPPER" --tests-dir "$SYN_T" -- .agent/scripts/lone.sh 2>&1 >/dev/null)"
+if [[ "$lone_err" == *"'.agent/scripts/lone.sh' maps to no suite"* ]]; then
+    pass "(l) the mapper says an undeclared script maps to no suite"
+else
+    fail "(l) the mapper says an undeclared script maps to no suite: stderr was '$lone_err'"
+fi
 expect_sel "no files yields ALL" "ALL" --
 expect_sel "a deleted in-scope path yields ALL" "ALL" --deleted .agent/scripts/lone.sh -- .agent/scripts/beta.sh
 for trig in .agent/scripts/tests/run_script_tests.sh .agent/scripts/tests/suites_for_files.sh \
