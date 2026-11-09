@@ -255,3 +255,45 @@ Owner's answer to the AskUserQuestion dialog: "Revise (Recommended)". The dialog
 **Plan**: `.agent/work-plans/issue-418/plan.md` at `185449db`
 
 Third revision: the workspace report narrows to its own worktrees plus Direction-named project worktrees (acceptance bullet narrowed by the owner, dropped-worktree test added); step 5 matches issue numbers only against the root's own worktrees (same-number test added); step 7 offers nothing for a due project design-decision review or research digest. Still one PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 10:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #418 — sitrep: report the session's own root, so a project session gets the project's sit-rep
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `185449db`
+**Branch**: `feature/issue-418`
+
+Fourth review, a convergence check scoped to the three round-3 items and the text the revision changed (diff `27b4bf65..185449db`). All three are resolved. Round-3 finding 1: the plan now says the workspace report narrows (un-named project worktrees drop out), names `worktrees/workspace/` from `wt_workspace_base` as the workspace's part (a), records the owner's narrowing of the acceptance bullet (Checkpoint 10:24, "Revise", narrowing accepted), adds the dropped-worktree test, and updates step 3/step 8 text in Approach 7. Round-3 finding 2: step 5 matches only `own=yes` worktrees, with a same-number skill_step case in both sandboxes; for the workspace root `own=yes` is exactly today's `type == "workspace"` set (SKILL.md line 579), so the workspace's step 5 is unchanged. Round-3 finding 3: step 7 offers nothing in a project session for a due design-decision review or research digest, with the reason stated. Adding an `own` field to the `{"worktrees": [...]}` entries breaks neither consumer: step 3 reads fields by name with `jq` (SKILL.md lines 222-231) and step 5 reads `.get("worktrees", [])` in python. The remaining items are wording gaps to settle during implementation, not a further plan round.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one PR, ~8 files, session root only, per the owner (2026-11-09). |
+| Issue alignment | Good | Serves, as checked: Goals "Easy to use" and "The long view"; `docs/design.md#documentation-layers`, `docs/design.md#sessions-and-roots`. Workspace acceptance bullet narrowed by the owner and recorded in Approach 1 and Open Questions; suggestion 4 on the edit's wording. |
+| File targeting | Good | Unchanged. |
+| Consequences | Good | Step 5's own-only match and the step 3/step 8 text are in the Consequences table; suggestions 1-2 pin how step 3 and the helper compute `own`. |
+| Principle alignment | Good | "Test what breaks": the dropped-worktree case and the same-number case would each fail without their change; suggestion 3 on how the step 7 case is tested. |
+| ADR compliance | Good | 0003, 0016, 0017 as in rounds 2 and 3. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences: step 3 uses `own`] suggestion** — Approach 4 states the rule for step 3 ("a Direction-named worktree of another repository is matched by its `<slug>#N` or `adapter --project` line only, never by a bare `(#N)`") but not the mechanism. Today the bare-number Path 1 test is `[ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]` (SKILL.md line 352). Say that condition becomes `own == yes`, placed before the "no path (serves a project goal)" branch, so a project root's own type=project worktrees reach Path 1 from a bare `(#N)`. Also pin `own`'s JSON form (string `"yes"`/`"no"`), since both step 3's `jq` and step 5's python compare it.
+2. **[Consequences: `own` for a bare-header package worktree] suggestion** — `own=yes` "when its manifest-header slug equals `pr_source`" leaves a package worktree whose header is a bare `issue=<N>` undefined; `worktree_create.sh` (line 311, header written at line 756 via `wt_write_manifest`) writes a bare number when `--issue` is unqualified and the adapter returns several repositories. Step 3 already resolves that case to the slug every listed checkout agrees on (SKILL.md lines 253-256). Use the same derivation for `own` (header slug, else the agreed checkouts' slug, else `own=no`), so such a worktree in the root's own folder does not silently lose its Path 1 and step 5 branch.
+3. **[Principle alignment: step 7 test] suggestion** — Step 7 is prose with no block, so "step 7 states the facts and offers nothing, and does not offer `/audit-workspace`" cannot run through the helper/runner list it sits in. Name the check: a text guard in `test_skill_paths.sh` on step 7's project-session sentence (no `/audit-workspace` offer there). Also say the "Offer it otherwise" branch stays for a workspace session with no Agent tool (Codex, agy); the plan's "offers nothing" applies to project sessions only, and `session_type` unknown can no longer occur once `sitrep_root.sh` exits 1 outside every root.
+4. **[Issue alignment: the acceptance-bullet edit] suggestion** — The issue's bullet reads "From the workspace root the report is unchanged from today, and the run record's second column stays `workspace`". The host's edit should keep the run-record clause. Bullet 1's "nothing in the report is the workspace's" can also say "except workspace work the project's own Direction lines name", so the same rule for both root types does not contradict it.
+
+### Summary
+
+The third revision resolves all three round-3 findings, and the new `own` field fits both consumers of `--worktrees` without breaking either. The four suggestions are wording and mechanism details the implementer can settle in the PR. The plan is ready for implementation.
+
+### Recommended Actions
+
+- [ ] In step 3, replace the `type = workspace` bare-number condition with `own == yes` (before the project-goal branch); pin `own` as the string `"yes"`/`"no"`
+- [ ] Compute `own` for a bare-header package worktree from the slug its checkouts agree on, as step 3 does
+- [ ] Test step 7's project-session wording with a text guard in `test_skill_paths.sh`; keep the offer branch for a workspace session with no Agent tool
+- [ ] Host: in the issue edit, keep the run-record clause and reconcile bullet 1's "nothing is the workspace's" with Direction-named work
