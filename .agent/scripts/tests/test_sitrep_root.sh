@@ -75,6 +75,11 @@ g -C "$R/nodefault" branch -q -m main dev
 mkroot twodefault -
 g -C "$R/twodefault" branch -q master
 mkroot other https://github.com/acme/other.git
+mkroot dangling https://github.com/acme/dangling.git
+g -C "$R/dangling" update-ref refs/remotes/origin/develop HEAD
+g -C "$R/dangling" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
+mkroot forms https://github.com/acme/forms.git
+mkroot gitlab git@gitlab.com:acme/proj.git
 mkdir -p "$R/host"
 mkroot host/inst https://github.com/acme/inst.git
 cat > "$WSC/.agent/projects.local" <<REG
@@ -87,6 +92,9 @@ trunk       single_project  $R/trunk
 nodefault   single_project  $R/nodefault
 twodefault  single_project  $R/twodefault
 other       single_project  $R/other
+dangling    single_project  $R/dangling
+forms       single_project  $R/forms
+gitlab      single_project  $R/gitlab
 inst        single_project  $R/host/inst  parent=host
 host        project         $R/host
 inner       single_project  $WSC/projects/inner
@@ -177,6 +185,62 @@ root_of "$R/nodefault"
 root_of "$R/twodefault"
 [[ "$OUT" == *$'\ndefault_branch=\n'* ]] && pass "both main and master: default branch empty, never a guess" || fail "twodefault: '$OUT'"
 
+root_of "$R/dangling"
+[[ "$(val default_branch)" == main ]] \
+    && pass "origin/HEAD names a branch with no local branch: falls through to the one of main/master" || fail "dangling: '$OUT'"
+mkdir -p "$R/nodefault/docs" "$R/nodefault/.agent/knowledge"
+printf '# D\n' > "$R/nodefault/docs/design.md"; printf '# R\n' > "$R/nodefault/.agent/knowledge/research_digest.md"
+root_of "$R/nodefault"
+[[ "$(val check_decision_register)" == "skipped (no default branch)" \
+    && "$(val check_research_digest)" == "skipped (no default branch)" \
+    && "$(val check_documentation)" == "skipped (no default branch)" \
+    && "$(val check_design_anchors)" == run ]] \
+    && pass "no default branch: the checks that read it are skipped, saying so; design_anchors still runs" || fail "nodefault checks: '$OUT'"
+
+echo "TEST: the pull-request source is a github.com repository only"
+root_of "$R/gitlab"
+[[ $RC -eq 0 && "$(val own_repo)" == yes && "$(val pr_source)" == none ]] \
+    && pass "an origin on another host (scp-style gitlab.com): pr_source=none, never a guess" || fail "gitlab: rc=$RC '$OUT'"
+forms_ok=true
+while IFS='|' read -r url want; do
+    g -C "$R/forms" remote set-url origin "$url"
+    root_of "$R/forms"
+    [[ "$(val pr_source)" == "$want" ]] || { forms_ok=false; echo "    $url: got '$(val pr_source)', want '$want'"; }
+done <<'URLS'
+https://github.com/acme/forms.git|acme/forms
+https://github.com/acme/forms|acme/forms
+https://token@github.com/acme/forms.git|acme/forms
+git@github.com:acme/forms.git|acme/forms
+git@GitHub.com:Acme/Forms.git|Acme/Forms
+ssh://git@github.com/acme/forms.git|acme/forms
+ssh://git@github.com:22/acme/forms.git|acme/forms
+git://github.com/acme/forms.git|acme/forms
+https://github.com/acme/my.repo.git|acme/my.repo
+https://gitlab.com/acme/forms.git|none
+git@gitlab.com:acme/forms.git|none
+ssh://git@github.com.evil.example/acme/forms.git|none
+git@github.com.evil.example:acme/forms.git|none
+https://evil.example/github.com/acme/forms.git|none
+https://github.com/acme/forms/extra|none
+/srv/git/acme/forms.git|none
+acme/forms|none
+github-work:acme/forms.git|none
+URLS
+$forms_ok && pass "each github.com form gives <owner>/<repo>; another host, a lookalike host, a path or an ssh alias gives none" || fail "URL forms (cases above)"
+g -C "$R/forms" config url."https://github.com/".insteadOf "gh:"
+g -C "$R/forms" remote set-url origin "gh:acme/viaalias.git"
+root_of "$R/forms"
+[[ "$(val pr_source)" == acme/viaalias ]] \
+    && pass "a git insteadOf shorthand is read as git rewrites it" || fail "insteadOf: '$OUT'"
+
+echo "TEST: a malformed registry: exit 2, the reason said, no root"
+cp "$WSC/.agent/projects.local" "$SB/projects.saved"
+printf 'broken\n' >> "$WSC/.agent/projects.local"
+root_of "$R/proj"
+[[ $RC -eq 2 && -z "$OUT" && "$ERR" == *"could not be decided"* && "$ERR" != *"is in no root"* ]] \
+    && pass "malformed registry: exit 2, nothing printed, not called outside every root" || fail "malformed: rc=$RC '$OUT' err='$ERR'"
+cp "$SB/projects.saved" "$WSC/.agent/projects.local"
+
 echo "TEST: a directory outside every root: nothing on stdout, exit 1, no workspace fallback"
 mkdir -p "$SB/elsewhere"
 root_of "$SB/elsewhere"
@@ -211,6 +275,9 @@ pkg() {  # <n> <header issue> <origin of checkout b>
 pkg 20 20 git@github.com:acme/proj.git
 pkg 21 acme/pkgx#21 https://github.com/acme/pkgx.git
 pkg 22 22 https://github.com/acme/pkgx.git
+pkg 23 ACME/Proj#23 https://github.com/acme/pkgx.git
+pkg 24 24 git@gitlab.com:acme/proj.git
+g -C "$R/proj/worktrees/issue-proj-24/src/a" remote set-url origin git@gitlab.com:acme/proj.git
 
 # wts <dir> [rows file]: --worktrees from <dir>; sets RC, OUT (one
 # "<type> <repo> <issue> <own>" line per kept entry), JSON
@@ -242,13 +309,70 @@ wts "$WSC" "$SB/missing.tsv"
 echo "TEST: --worktrees from a project root: its own, plus workspace work its Direction names"
 printf 'line\tWorkspace work\tfalse\tgh-issue acme/ws#3 closed\t2026-11-09\n' > "$SB/rows-p.tsv"
 wts "$R/proj" "$SB/rows-p.tsv"
-want=$'project proj 12 yes\nproject proj 13 yes\nproject proj 20 yes\nproject proj 21 no\nproject proj 22 no\nproject proj 4 yes\nworkspace workspace 3 no'
+want=$'project proj 12 yes\nproject proj 13 yes\nproject proj 20 yes\nproject proj 21 no\nproject proj 22 no\nproject proj 23 yes\nproject proj 24 no\nproject proj 4 yes\nworkspace workspace 3 no'
 [[ $RC -eq 0 && "$OUT" == "$want" ]] \
     && pass "project: its plain worktrees own; a package worktree own when its header or agreeing checkouts are this repository; another root's dropped; a named workspace worktree kept, not own" \
     || fail "project --worktrees: rc=$RC got '$OUT' err='$(cat "$SB/err")'"
 wts "$R/proj/worktrees/issue-proj-4"
 [[ $RC -eq 0 && "$OUT" == *"project proj 4 yes"* && "$OUT" != *workspace* ]] \
     && pass "project: a session in one of its worktrees lists the same root" || fail "project from a worktree: rc=$RC '$OUT' err='$(cat "$SB/err")'"
+
+# field <issue> <name>: a field of the kept entry with that issue, from $JSON
+field() { python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["worktrees"]:
+    if str(w.get("issue")) == sys.argv[1]:
+        v = w.get(sys.argv[2], "(absent)")
+        print("\n".join(v) if isinstance(v, list) else v)' "$1" "$2" <<< "$JSON"; }
+PKG="$R/proj/worktrees/issue-proj"
+wts "$R/proj" "$SB/rows-p.tsv"
+[[ "$(field 4 pr_branch)" == feature/issue-4 && "$(field 20 pr_branch)" == feature/issue-20 \
+    && "$(field 23 pr_branch)" == feature/issue-23 && "$(field 21 pr_branch)" == "" && "$(field 3 pr_branch)" == "" ]] \
+    && pass "pr_branch: a plain own worktree's branch; an own package worktree's branch of its repository's checkouts, not the comma-joined list; none when not own" \
+    || fail "pr_branch: 4='$(field 4 pr_branch)' 20='$(field 20 pr_branch)' 23='$(field 23 pr_branch)' 21='$(field 21 pr_branch)' 3='$(field 3 pr_branch)'"
+[[ "$(field 20 branch)" == "feature/issue-20,feature/issue-20" ]] || fail "fixture: package 20's branch is not the comma-joined list: '$(field 20 branch)'"
+[[ "$(field 4 repository)" == acme/proj && "$(field 4 repository_dirs)" == "$PKG-4" && "$(field 4 repository_why)" == "" \
+    && "$(field 21 repository)" == acme/pkgx && "$(field 21 repository_dirs)" == "$PKG-21/src/b" \
+    && "$(field 20 repository)" == acme/proj && "$(field 20 repository_dirs)" == "$PKG-20/src/a"$'\n'"$PKG-20/src/b" \
+    && "$(field 22 repository)" == "" && "$(field 22 repository_dirs)" == "" \
+    && "$(field 22 repository_why)" == "its checkouts are not all in one GitHub repository" \
+    && "$(field 24 repository)" == "" && "$(field 24 own)" == no ]] \
+    && pass "repository: a plain worktree's origin; a package worktree's header or agreeing checkouts, with those checkouts; none (with why) when they disagree or are not on GitHub" \
+    || fail "repository fields: $JSON"
+[[ "$(field 4 named)" == no && "$(field 12 named)" == no && "$(field 3 named)" == yes ]] \
+    && pass "named: workspace work a gh-issue <owner/repo>#N check names is named; the root's own unnamed work is not" \
+    || fail "named: 4='$(field 4 named)' 12='$(field 12 named)' 3='$(field 3 named)'"
+wts "$R/proj"
+[[ "$(field 4 named)" == "(absent)" ]] && pass "named: absent without a rows file (the path cannot be told)" || fail "named without rows: '$(field 4 named)'"
+
+echo "TEST: --worktrees reads Direction checks by the check runner's grammar, names without regard to case"
+printf '%s\n' \
+    $'line\tBare numbers (#4, #13)\tfalse\tgh-issue 12 closed\t2026-11-09' \
+    $'line\tAn argument\tfalse\tfile-contains docs/a.md gh-issue acme/ws#3 closed\t2026-11-09' \
+    $'line\tTwo checks\tfalse\t`file-exists a.md` ; `gh-issue ACME/Proj#21 closed`\t2026-11-09' \
+    $'line\tNot a state\tfalse\tgh-issue acme/proj#22 later\t2026-11-09' > "$SB/rows-g.tsv"
+wts "$R/proj" "$SB/rows-g.tsv"
+[[ $RC -eq 0 && "$OUT" != *workspace* ]] \
+    && pass "a gh-issue reference inside a file-contains argument names nothing (the workspace worktree is not kept)" || fail "grammar keep: rc=$RC '$OUT'"
+[[ "$(field 4 named)" == yes && "$(field 13 named)" == yes && "$(field 12 named)" == yes \
+    && "$(field 21 named)" == no && "$(field 22 named)" == no && "$(field 20 named)" == no ]] \
+    && pass "named: (#N) lists and gh-issue N name own work; another repository's issue of the same number is not named by a bare number; a malformed state names nothing" \
+    || fail "named by grammar: 4='$(field 4 named)' 13='$(field 13 named)' 12='$(field 12 named)' 21='$(field 21 named)' 22='$(field 22 named)' 20='$(field 20 named)'"
+printf '%s\n' $'line\tCased\tfalse\t`file-exists a.md` ; `gh-issue Acme/PkgX#21 closed`\t2026-11-09' > "$SB/rows-c.tsv"
+wts "$R/proj" "$SB/rows-c.tsv"
+[[ "$(field 21 named)" == yes ]] && pass "named: a backticked check after \` ; \` with Acme/PkgX matches acme/pkgx" || fail "named by case: '$(field 21 named)'"
+printf 'line\tW\tfalse\tgh-issue ACME/proj#12 closed\t2026-11-09\n' > "$SB/rows-wc.tsv"
+wts "$WSC" "$SB/rows-wc.tsv"
+[[ "$OUT" == *"project proj 12 no"* ]] && pass "(b): gh-issue ACME/proj#12 keeps acme/proj's worktree 12" || fail "(b) case: '$OUT'"
+
+echo "TEST: the helper writes nothing: no temporary file, the roots' trees unchanged"
+mkdir -p "$SB/tmpcheck"
+before="$(g -C "$WSC" status --porcelain; g -C "$R/proj" status --porcelain)"
+(cd "$R/proj" && TMPDIR="$SB/tmpcheck" bash "$SR" >/dev/null 2>&1; TMPDIR="$SB/tmpcheck" bash "$SR" --worktrees --rows "$SB/rows-g.tsv" >/dev/null 2>&1)
+(cd "$WSC" && TMPDIR="$SB/tmpcheck" bash "$SR" --worktrees --rows "$SB/rows-ws.tsv" >/dev/null 2>&1)
+after="$(g -C "$WSC" status --porcelain; g -C "$R/proj" status --porcelain)"
+[[ -z "$(ls -A "$SB/tmpcheck")" && "$before" == "$after" ]] \
+    && pass "both modes: nothing in TMPDIR, git status unchanged" || fail "writes: tmp='$(ls -A "$SB/tmpcheck")' before='$before' after='$after'"
 
 echo "TEST: --worktrees from a hosting root: its instances' worktrees, none its own"
 wts "$R/host"
