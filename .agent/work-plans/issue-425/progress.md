@@ -72,3 +72,41 @@ Host answer under /orchestrator's checkpoint table. The actions go to plan-task 
 **Plan**: `.agent/work-plans/issue-425/plan.md` at `a014caf1`
 
 Status-line promotion of ADR-0018 (condition folded into history with one evidence sentence), plus the design.md Now clause, register row and Change log row, and the review-guide row; ADR-0016 needs no edit. Single docs-only PR, no owner questions.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 14:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #425 — Promote ADR-0018 to Accepted: its condition (ADR-0016's acceptance run) passed on 2026-11-09
+**Plan**: `.agent/work-plans/issue-425/plan.md` at `a014caf1`
+**Branch**: `feature/issue-425`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three docs files, status text only; same shape as #423 / PR 424 |
+| Issue alignment | Good | Every "What to change" bullet and all review-issue actions are covered. Serves: "The long view (README Workspace goals): what is proven is recorded as proven. `docs/design.md#sessions-and-roots`" — README `### The long view` (line 106) and `## Sessions and roots` (design.md:177) both exist; no stated rule is broken |
+| File targeting | Good | Repo-wide `git grep -niE provisional` outside work-plans: the only live claims about ADR-0018 are ADR-0018:5 and 11-13, design.md:189 and 727, principles_review_guide.md:53, all in the plan. Other hits are generic (design.md:70 Status key, :701 register key, audit-workspace SKILL.md:65), dated history (design.md:799, 813), the digests, or the unrelated records-default "provisional". `git grep 0018` shows no status claim elsewhere; docs/roadmap.md has no ADR-0018 line. ADR-0016:22-27 names no status for 0018 (confirmed) |
+| Consequences | Needs work | Change-log row misses the Change log section's own rule for long sections (finding 2) |
+| Principle alignment | Good | Verify before claiming: the route is backed by records — the GeoZui4D root's `.claude/settings.local.json` enables `agent-workspace@agent-workspace` from this checkout, `~/.claude/skills` holds no workspace symlinks, and both GeoZui4D timelines (issue-9, issue-7) carry entries from every dispatched phase; the timelines do not name the prefix, so wording "found the prefixed skills" as the session's own report is correct. Test what breaks: docs-only, no test needed; the adr-status check is the proof |
+| ADR compliance | Good | ADR-0008: only the Status section is edited; the Acceptance subsection (under Consequences, line 337) correctly stays. ADR-0017: design.md and Change log row in the same change. ADR-0016 untouched |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Principle alignment]** (suggestion) — Step 5's `sitrep_checks.sh adr-status docs/decisions/0018-... accepted` is not a valid invocation; the script reads check rows from a roadmap's `## Direction` table. Run it as `sitrep_checks.sh --root . --roadmap <scratch file>` with a row `| 18 | adr-status docs/decisions/0018-plugin-based-skill-delivery.md accepted |`. Verified with that form today: ADR-0016's `**Accepted** (2026-11-09).` reads `true`; ADR-0018 reads `false` for accepted and `true` for provisional (the baseline the edit must flip).
+2. **[Consequences]** (suggestion) — The Change log Now rule says "a section past about 60 lines says in its row whether its detail should move next to the code". Sessions and roots is well past 60 lines; the row should say so, as the #423 row did ("a status edit, so no detail moves").
+3. **[Issue alignment]** (suggestion) — The issue's acceptance says no sentence still "waits on a run", but ADR-0018:341 ("Until then, the opt-in `plugin_acceptance.sh` covers:") stays, rightly, since ADR-0008 permits only the Status edit and the Acceptance subsection sits under Consequences. Say this in the PR description against that acceptance line, and let the Status evidence sentence point at the run named under "Acceptance" below, so the reader sees it resolved there.
+
+### Summary
+
+The plan is complete and correctly targeted: the grep finds no Provisional claim about ADR-0018 outside the four spots it names, the `**Accepted** (2026-11-09).` form reads as accepted, and the plugin route is backed by the GeoZui4D root's records. The three findings are verification and bookkeeping wording the implementer can fold in; none blocks implementation.
+
+### Recommended Actions
+
+- [ ] Run the adr-status check through a scratch roadmap (`--roadmap`), not as a bare subcommand
+- [ ] Change-log row says Sessions and roots is past 60 lines and that a status edit moves no detail
+- [ ] PR description notes ADR-0018:341 "Until then" stays under ADR-0008; the Status evidence sentence names the run under "Acceptance"
