@@ -73,3 +73,49 @@ Host answer under /orchestrator's checkpoint table. The owner's scope (2026-11-0
 **Plan**: `.agent/work-plans/issue-418/plan.md` at `8e866811`
 
 One PR: a small read-only helper (sitrep_root.sh) decides the session's root, roadmap, pull-request source (none for a hosting root without its own repository), record name and per-check skips; the skill uses it. Deferral row becomes Decided Against; work lands after #388.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 09:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #418 — sitrep: report the session's own root, so a project session gets the project's sit-rep
+**Plan**: `.agent/work-plans/issue-418/plan.md` at `8e866811`
+**Branch**: `feature/issue-418`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, ~8 files, session root only, as the owner narrowed it (2026-11-09). No combined view. |
+| Issue alignment | Needs work | Serves, as checked: Goals "Easy to use" and "The long view"; `docs/design.md#documentation-layers`, `docs/design.md#sessions-and-roots` (both README goals and both anchors exist). All three issue-review actions are answered (pull-request source, per-check skips, deferral fate and ordering). S2's "path marking reads the session root" is not planned (finding 2), and the acceptance bullet "a sit-rep test covers the project-root case" is met only for the helper (finding 4). |
+| File targeting | Needs work | `docs/design.md` Change log row missing (finding 5); otherwise the right files. |
+| Consequences | Needs work | Several workspace-only sentences in the skill are not in the plan (finding 5); git facts in step 6 for a root that is not its own repository (finding 3). |
+| Principle alignment | Needs work | "Test what breaks": the helper's rationale ("skill prose cannot be tested") is false; `test_sitrep_checks.sh` section 13 already runs the skill's blocks with `skill_step` (finding 4). "Only what's needed": the helper is still justified, by de-duplication (every step block re-derives the root, since shell state does not persist). "Keep one current design": the Documentation layers change is named; the Change log row is not. |
+| ADR compliance | Good | 0003 (sandbox only), 0016 (root from `session_root.sh`, hosting directory never a nested package), 0017 (design in the same PR). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach: ordering] must-fix** — Drop the gate on #388. #388 has no branch, worktree or pull request, so "start after #388 merges" blocks this issue on a whole loop that has not started, and "rebase onto it if still open" has nothing to rebase onto. Land #418 first; #388 (a small, fully specified snapshot change to steps 2 and 4 plus one test) is planned against the post-#418 steps. To keep #388 the same size, S4's project-first ordering must reuse the existing listing pass in step 2, not add a fifth unlocked read of the inbox.
+2. **[Issue alignment: path marking] must-fix** — Step 3's path logic (SKILL.md lines 355-363) is workspace-shaped and the plan does not touch it: Path 1 by a `(#N` number matches only `type = workspace` worktrees; a project worktree is "never Path 2" and reads "no path (serves a project goal)". In a project session a project worktree named in that project's own Direction line would never be Path 1. Step 5's issue-title lookup also uses `$WS_REPO` and `_issue_lookup_gitbug "$WS_ROOT"`. The plan must say how path words work for a project root (Path 1 by this root's Direction lines for this root's worktrees; what Path 2 means there or that it is not said; no path words when `paths=none`) and that step 5's title lookup uses `pr_source`.
+3. **[Consequences: step 6 git facts] must-fix** — The plan runs local-main-behind "for any root", but a registered root may sit inside the workspace tree (`session_root.sh`: "a root inside the workspace tree is its own root"); for one with no repository of its own, `git -C <root>` resolves upward and reports the workspace's main. Apply the same top-level test as `pr_source` to step 6's git facts, and say what happens when the project's default branch is not `main` (report "cannot tell", not a wrong count).
+4. **[Test what breaks] must-fix** — The tests listed exercise the helper and the runner only. Add project-sandbox cases that run the skill's own steps through `skill_step` (test_sitrep_checks.sh section 13): step 2's last-record filter by `record_name`, step 4's record column, step 3's worktree filter and path words. Correct the plan's rationale: skill blocks are tested today; the helper earns its place by removing duplicated root logic from six blocks.
+5. **[Consequences: missed text] must-fix** — Not in the plan: the report template's paragraph "Workspace root only: registered project roots are not read in this mode, so Path 1 work that lives in a project root does not show here" (SKILL.md line 890); step 3's "`-R` names the workspace repository ... so a project session does not list the project's pull requests by mistake" (line 193); step 8's "A project worktree's pull requests are not looked up" (lines 967-969); and a `docs/design.md` Change log row (the section's decided rule: one row per change, with the line count).
+6. **[File targeting: worktree filter] suggestion** — `type == "project" and repo == <project>` misses a parent root's instances (a parent-root session owns them; `wt_registry_worktree_dirs` lists instances under their own names) and can miss package worktrees whose `repo` comes from the manifest header. Filter by membership in the root's worktree directories instead.
+7. **[Approach: helper edge] suggestion** — `session_root.sh` exits 1 outside the workspace and every registered root; say what `sitrep_root.sh` and the skill do then (stop and say so, never fall back to the workspace silently) and test it.
+8. **[Approach: deferral] suggestion** — Decided Against is the right home: the owner put the combined view outside `/sitrep`, and a revisit check has nothing to test until a personal-root skill exists. Its Reason should quote the owner and name where the idea went, because the inbox line that captured it is machine-local and not tracked. The design's Measures row ("one machine-local line per run") could add "per root".
+9. **[Consequences: Problems] suggestion** — The Documentation fact (days since `docs/design.md` changed, commits since touching `.agent .claude docs`) is workspace-shaped too; list it among the per-check skips by name, not only the anchor check.
+
+### Summary
+
+The approach is sound and the scope matches the owner's narrowing. Revise before implementing: drop the #388 gate (this issue lands first), plan the project-root path marking and step 6 git facts, test the skill's own steps in a project sandbox, and add the missed sentences and the Change log row.
+
+### Recommended Actions
+
+- [ ] Remove the #388 gate; land #418 first; keep S4 inside the existing inbox listing pass (no new read)
+- [ ] Plan step 3's path words and step 5's issue-title lookup for a project root
+- [ ] Guard step 6's git facts with the top-level test; handle a default branch other than `main`
+- [ ] Add project-sandbox tests that run the skill's steps via `skill_step`; correct the helper's rationale
+- [ ] Add the missed consequences: SKILL.md lines 193, 890, 967-969; `docs/design.md` Change log row
