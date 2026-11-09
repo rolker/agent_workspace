@@ -540,3 +540,13 @@ Earlier boxes: both should-fix findings of the Integrated Review at `e9fa0ef5` a
 - [ ] (should-fix, Copilot) `--worktrees` runs the main checkout's worktree_list.sh from `$DIR` (`cd "$DIR" && bash "$WL" --json`). That lister's user-tier guard, `registry_require_root "$ROOT_DIR"`, checks `$PWD` and refuses anything neither inside the main checkout nor under a registered project root. A workspace session in a linked worktree outside the main checkout's tree is a supported session (session_root.sh decides it is the workspace's, test_session_root.sh "a linked worktree of the workspace outside its tree"), so sitrep_root decides the root and then `--worktrees` exits non-zero: the sit-rep cannot list work in flight there. Loud, not silent, but a real failure of a supported case. worktree_list.sh `cd`s to its own ROOT_DIR right after the guard, so `$PWD` matters only to the guard, and the validated `$ROOT` always passes it (the main checkout for a workspace root, a registered root for a project). Fix: run the lister from `$ROOT` (`cd "$ROOT" && bash "$WL" --json`), say why in the comment above it, and add a test in test_sitrep_root.sh: a linked worktree of the sandbox workspace created outside its tree, `--worktrees` from there exits 0 and lists the workspace's worktrees (fails on the current code) — `.agent/scripts/sitrep_root.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-09 12:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one valid should-fix from Copilot's second review: --worktrees runs the lister from the helper's directory, which the lister refuses outside the main checkout or a registered root, so a workspace session in a linked worktree outside the main checkout, a supported case, loses its in-flight list; the fix is a cd to the checked root plus a test; open findings never merge past without the owner, so address)
+**After**: findings
+**Decision**: address
+
+Host answer under /orchestrator's checkpoint table. The open box of the Integrated Review at 515c89d8 goes to address-findings.
