@@ -76,3 +76,49 @@ Host answer under /orchestrator's checkpoint table. The actions go to plan-task 
 **Plan**: `.agent/work-plans/issue-423/plan.md` at `9c6c9830`
 
 Flip ADR-0016 Status to Accepted (evidence: GeoZui4D PRs 14 and 15), update every dependent design.md and roadmap line (including the four extra design.md spots and a name-free glossary definition), give the two Direction lines checks (geozui4d#8 plus #332 for onboarding, geozui4d#9 for the loop), draft signed comments for #265 and #295 for the host to post, then grep, anchor check and sit-rep check. Open question: ADR-0018's promotion condition is now met too.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 13:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #423 — Promote ADR-0016 to Accepted: the GeoZui4D acceptance run passed the merge checkpoint (2026-11-09)
+**Plan**: `.agent/work-plans/issue-423/plan.md` at `9c6c9830`
+**Branch**: `feature/issue-423`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three docs files plus two drafted comments; one PR. |
+| Issue alignment | Good | Covers every issue bullet and all six Issue Review actions (extra design.md spots at 181, 723, 732 and the Status-key row; onboarding check from the run's record; PRs 14 and 15 cited; #265/#295 comments; grep plus anchor check). Serves (as checked): "The long view (README Workspace goals) ... `docs/design.md#sessions-and-roots`, `docs/design.md#open-questions`"; both anchors are real headings. |
+| File targeting | Good | ADR-0016, roadmap, design.md. Repo-wide grep (excluding work plans) finds no other ADR-0016 Provisional claim outside these three files. ADR-0018 not touched (file not listed; its paragraph in ADR-0016 and its register row stay Provisional). |
+| Consequences | Good | `adr-status` strips leading `*`/`_` and reads the first word (`check_adr_status`, sitrep_checks.sh:380-410), so `**Accepted.**` reads `accepted`; the two deferral rows share that check and turn due. `combine` needs every ` ; ` part true, so the onboarding cell reads true only with both issues closed (verified: #332 CLOSED; geozui4d#8 CLOSED COMPLETED 2026-11-02T17:47:42Z by PR 10, merged 17:47:40Z). geozui4d#9 CLOSED COMPLETED 16:43:47Z by PR 14; #7 by PR 15; #265 and #295 OPEN. Baseline sitrep_checks on the worktree: the three target lines read unchecked/unchecked/false today. |
+| Principle alignment | Good | Keep one current design, Verify before claiming, Only what's needed, project-agnostic: addressed. Docs-only, no test planned, which is correct. Small accuracy points below. |
+| ADR compliance | Good | ADR-0008: first Status paragraph only; ADR-0017: design.md and Change log in the same PR; ADR-0018 left Provisional and raised as an owner question. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences]** (suggestion) — Change log row section names are off. The `decided, not proven` row at design.md:70 is in the Status key under `# The design` (line 46), not `## Glossary` (line 813); the line-362 tense edit is in `## Registry and adapters` (line 291), which the row omits. Name "The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions".
+2. **[Principle alignment]** (suggestion) — Status-key wording "(that ADR is `Provisional` until it does)" reads as Provisional implies not run, which ADR-0018 now contradicts (its condition, "when ADR-0016's own acceptance run passes", is met, yet it stays Provisional pending the owner). Drop the parenthetical or say "stays Provisional at least until then".
+3. **[Consequences]** (suggestion) — Decision register row 0016: `in force` is right (definition at design.md:696), but the row says nothing of ADR-0018 superseding decision 3 for skills, which ADR-0016's own Status records. Follow the 0001 pattern ("Its trigger is scoped by ADR-0017") in the Decision cell, e.g. "Decision 3 is superseded for skills by ADR-0018".
+4. **[Principle alignment]** (suggestion) — ADR-0016 Status: keep the original promotion condition visible as history (ADR-0001: accepted ADRs are history), e.g. "**Accepted** (2026-11-09). The promotion condition, the acceptance test named in #317 ..., was met by ...", rather than replacing it with evidence alone. Still within ADR-0008's status-note allowance.
+5. **[Issue alignment]** (suggestion) — OQ-2 asks two things, "where is the acceptance run tracked, and who runs it?"; the planned answer covers only where. Add who ran it (the owner, through `/orchestrator` and `/run-issue` from the registered gz4d root).
+6. **[Consequences]** (suggestion) — Drafted #265 comment calls PR 4 "the registration script, retiring `project/` and `projects/`". `register_project.sh` already exists (built by #332 PR 2, per design.md); #265's plan describes PR 4 as removal plus migration (the legacy fallback, project11 registration). Reword so the comment does not imply the script is unbuilt.
+7. **[Consequences]** (suggestion) — Final pass: `sitrep_checks.sh` does not read the acceptance paragraph; the sit-rep skill's step-5 awk/python block does (`.claude/skills/sitrep/SKILL.md` ~728-756). Run that block on the worktree roadmap to confirm `acceptance_first` is unchanged. Widen the grep beyond `provisional` to `not proven`, `acceptance run` and `OQ-2` so line 362-style future-tense claims are caught. Expect the adapter and user-tier lines to stay unknown/false in a worktree (baseline today); they are not this PR's.
+
+### Summary
+
+The plan is complete and correctly targeted: the `adr-status` read, the ` ; ` combine rule and every external record it relies on check out, and ADR-0018 is left alone. The findings are wording and bookkeeping accuracy the implementer can fold in; none blocks implementation.
+
+### Recommended Actions
+
+- [ ] Change log row names The design (Status key) and Registry and adapters instead of Glossary.
+- [ ] Status-key row: drop or soften "(that ADR is `Provisional` until it does)".
+- [ ] Register row 0016: note ADR-0018's supersession of decision 3 for skills in the Decision cell.
+- [ ] ADR-0016 Status: keep the promotion condition as history alongside the evidence.
+- [ ] OQ-2 answer: say who ran the run, as well as where it was tracked.
+- [ ] #265 comment: do not describe the registration script as pending PR 4 work.
+- [ ] Final pass: run the sit-rep step-5 acceptance block and widen the grep.
