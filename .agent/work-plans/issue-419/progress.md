@@ -72,3 +72,47 @@ Host answer under /orchestrator's checkpoint table. The actions go to plan-task 
 **Plan**: `.agent/work-plans/issue-419/plan.md` at `257cb3f9`
 
 An unreferenced Markdown file reaching no suite no longer triggers a full run (one extension test at the empty-hits branch of suites_for_files.sh); non-Markdown, deleted, and under-tests/ files keep ALL. Rewrites both tests that pinned the old rule (test_run_script_tests.sh:702 and the real-tree check in test_script_tests_hook_scope.sh), and updates header, stderr note, config comment and script_reference rows.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-09 12:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #419 — Pre-commit suite selector: a documentation file under .agent/ runs every suite because it maps to no suite
+**Plan**: `.agent/work-plans/issue-419/plan.md` at `257cb3f9`
+**Branch**: `feature/issue-419`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One branch in `main()` of `suites_for_files.sh`, comments, two test files, one doc file. Single PR. |
+| Issue alignment | Needs work | Serves (as written): Goal "Easy to use" (`README.md#workspace-goals`), "under the hook and test-gate part of `docs/design.md#the-design`". All four Issue Review actions are addressed. Two gaps: acceptance command 2 cannot pass on this branch (finding 1), and "a doc-only change selects no extra suite" is never tested where it can hold (finding 2). |
+| File targeting | Good | Checked against the code: the rule change sits at `if not hits:` (line 642); `hits` comes from `closure`, which holds every vocabulary file a suite or its reachable code names, documents included as leaves, so a referenced `.md` still has hits and stays mapped. Deleted paths (line 607), fixed triggers, `_*.sh` helpers and the under-`tests/` rule (line 636) all run before line 642, so the plan's claims about deleted `.md`, `.md` under tests/ and scans-joining are right. |
+| Consequences | Needs work | Selector header, stderr note, runner header (line 34), config comment and the `script_reference.md` runner row (line 51) are listed; no selector row exists today, so adding one is right. Missed: the header of `test_script_tests_hook_scope.sh` (line ~73, "a file no code names runs everything") and the comment above the rewritten check (~689) state the old rule (finding 4). |
+| Principle alignment | Good | Only what's needed: one extension test, no list. Enforce what matters: code and config still fail safe to `ALL`. Residual-risk statement is accurate: in-scope tracked `.md` today = 72, 41 unmapped, all under `.agent/` (28 knowledge, 7 templates, 4 top-level guides, 1 instructions, 1 workflows); every `.claude/` `.md` is already mapped (SKILL.md files by basename through scripts that name `SKILL.md`). Real-tree readers declare `ROOT_READERS`, and the suites that glob docs (`test_plugin_manifest.sh`, `test_skill_paths.sh`) declare `# scans:`. |
+| ADR compliance | Good | ADR-0013 (timeline entries), ADR-0017 (no design change; `docs/design.md` checked, line 389 only names the runner), ADR-0005 (CI all-files run stays the backstop). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment] must-fix** — Acceptance command 2 names `.agent/scripts/sitrep_root.sh`, which is not on `main` or this branch: it arrives with the open sit-rep PR for issue 418 (PR 420). Run here, `suites_for_files.sh .agent/scripts/sitrep_root.sh` prints `ALL` ("maps to no suite": a passed path nothing references), so step 7's real-tree check of case 2 prints `ALL` whatever the fix does. Substitute a mapped script that exists on `main`, e.g. `.agent/scripts/sitrep_checks.sh` (today it selects `test_checkpoint_269.sh test_script_tests_hook_scope.sh test_sitrep_checks.sh test_skill_paths.sh`), say so in the plan, and state the criterion as "the doc plus the script selects exactly what the script alone selects".
+2. **[Issue alignment / Test what breaks] must-fix** — Step 4(b)'s expected set contradicts itself: "beta's suites plus the same additions, equal to beta alone". `unmapped.md` sits under `test_scanner.sh`'s `# scans: .agent/docs/` and `beta.sh` does not, so doc plus beta is beta alone plus `test_scanner.sh`, not equal to beta alone. The issue's first test case, "a doc-only change selects no extra suite (the runner's required suite still joins)", is also untested in any place it can be true: on the real tree `test_skill_paths.sh` scans all of `.agent/`, and the only synthetic doc case uses a scanned doc. Add a doc fixture outside every scan prefix (e.g. `.agent/guide.md`) and pin it exactly: doc only gives `$BASE_ALWAYS test_noref.sh`, doc plus `beta.sh` gives exactly beta's set. Keep `unmapped.md` for the "scanning suite joins" case.
+3. **[Issue alignment] suggestion** — Step 4(f) says "the existing `lone.sh` cases; confirm one exists". There is none: `lone.sh` appears only in the deleted-path case (line 704). Add `expect_sel "... undeclared script yields ALL" "ALL" -- .agent/scripts/lone.sh` with the "maps to no suite" stderr. On the real tree, step 5 needs no candidate search for the non-Markdown side: passed files join the vocabulary, so the issue's own `.agent/scripts/new_uncovered.sh` command works. Build that name at runtime in the suite (e.g. `".agent/scripts/new_uncovered_$$.sh"`): a literal path in `test_script_tests_hook_scope.sh`'s own text is a reference, which maps the file to that suite and turns the expected `ALL` into a selection. The same applies to the new `.json` and `tests/notes.md` synthetic cases: they need not be tracked fixtures, a passed path is enough, which keeps `make_syn_repo` unchanged.
+4. **[Consequences] suggestion** — Update the `test_script_tests_hook_scope.sh` header (line ~73, "a file no code names runs everything") and the comment above the check at ~689 along with the check itself.
+5. **[Scope] suggestion** — The rule covers every in-scope `.md` (`.claude/`, `AGENTS.md`, `.github/PULL_REQUEST_TEMPLATE.md`), wider than the issue's "`.md` under `.agent/`". This matches the Issue Review's recommendation and is safe today (all `.claude/` Markdown is mapped, see Principle alignment), but the plan should say it is wider, so the choice is on record.
+6. **[Principle alignment] suggestion** — The residual risk has a live instance worth naming in the header: `worktree_create.sh:348` reads `.agent/workflows/${WORKFLOW}.md` through a path built at runtime. `collaborative.md` is unmapped and no suite exercises `--workflow`, so nothing is lost today.
+7. **[Issue alignment] suggestion** — The Serves line cites `docs/design.md#the-design` and a "hook and test-gate part" that has no heading. Cite the section by anchor: `docs/design.md#registry-and-adapters` (the `test` verb row naming the runner, line 389) or `#rules`.
+
+### Summary
+
+The approach is right and matches the selector code: a referenced `.md` keeps its hits through the closure, and only the empty-hits branch changes. Two plan edits are needed before implementation: acceptance case 2 uses a script that does not exist on this branch, and the synthetic expectations neither agree with each other nor test a doc-only change outside a scan prefix.
+
+### Recommended Actions
+
+- [ ] Replace `sitrep_root.sh` in acceptance case 2 (steps 2 and 7) with a mapped script that exists on `main` (e.g. `.agent/scripts/sitrep_checks.sh`) and state the criterion as "same selection as the script alone".
+- [ ] Add a synthetic doc fixture outside every `# scans:` prefix; pin doc-only = `$BASE_ALWAYS test_noref.sh` and doc + `beta.sh` = beta's set exactly; fix 4(b)'s contradictory expectation.
+- [ ] Add a firm undeclared-`.sh` `ALL` case (no passed-`lone.sh` case exists); on the real tree use a runtime-built `new_uncovered` path, never a literal one.
+- [ ] Update the `test_script_tests_hook_scope.sh` header and check comment that describe the old rule.
+- [ ] Record that the rule covers all in-scope `.md`, not only `.agent/`; optionally cite the `worktree_create.sh` workflow read as the residual-risk example; cite a real design section anchor in Serves.
