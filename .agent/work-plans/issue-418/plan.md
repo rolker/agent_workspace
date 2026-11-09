@@ -15,78 +15,127 @@ the change is in the skill's root handling plus one small testable helper.
 
 ## Approach
 
-One PR, five commits. Gate: start after #388 (inbox read once under a lock) merges;
-it rewrites step 2 and step 4's inbox reads, which S4/S5 also touch. If #388 is
-still open when work starts, rebase onto it before editing steps 2 and 4 and apply
-S4/S5 to the snapshot values, not the old four passes.
+One PR, five commits. No gate on #388: #418 lands first and #388 (inbox read once
+under a lock; no branch, worktree or PR yet) is planned against the post-#418 steps.
+To keep #388 the same size, S4 reuses step 2's existing listing pass: the root's
+inbox lines are shown first inside that pass, with no extra read of the inbox.
 
-1. **`.agent/scripts/sitrep_root.sh` (new, read-only, `chmod +x`)** — the one place
-   the root is decided, so tests can reach it (skill prose cannot be tested; the
-   issue's "no new script" would leave S1/S2/S3/S5 untested). It calls
-   `session_root.sh` and prints `key=value` lines: `root=`, `type=`, `project=`,
-   `record_name=` (the registered name; `workspace` for the workspace; a project
-   literally named `workspace` is printed `project:workspace` so it cannot collide
-   with the run-record column), `roadmap=` (first existing of `docs/roadmap.md`,
-   `ROADMAP.md`, else empty), `pr_source=` (see 2), and one `check_<name>=run` or
-   `check_<name>=skipped (<file> not in this root)` line per workspace-shaped check.
-2. **S2 pull-request source** — `pr_source` is the GitHub slug of `origin` only when
+1. **`.agent/scripts/sitrep_root.sh` (new, read-only, `chmod +x`)** -- the one place
+   the root is decided. Justification: it removes root logic that six step blocks
+   would otherwise each repeat (shell state does not persist between tool calls),
+   so the decisions are made once and one test covers them. (Skill blocks themselves
+   are testable through `skill_step`; see Tests.) It calls `session_root.sh` and
+   prints `key=value` lines: `root=`, `type=`, `project=`, `record_name=` (the
+   registered name; `workspace` for the workspace; a project literally named
+   `workspace` is printed `project:workspace` so it cannot collide with the run-record
+   column), `roadmap=` (first existing of `docs/roadmap.md`, `ROADMAP.md`, else
+   empty), `own_repo=yes|no`, `default_branch=`, `pr_source=`, and one
+   `check_<name>=run` or `check_<name>=skipped (<file> not in this root)` line per
+   workspace-shaped check. When `session_root.sh` exits 1 (outside the workspace and
+   every registered root) the helper prints nothing on stdout, says why on stderr and
+   exits 1; the skill stops and says "no sit-rep: this directory is outside every
+   root", never falling back to the workspace. A second mode, `sitrep_root.sh
+   --worktrees`, reads `worktree_list.sh --json` and keeps the entries whose path is
+   under the root's worktree directories (`wt_registry_worktree_dirs`, as
+   `worktree_list.sh` does; for the workspace, its own worktrees). This covers a
+   parent root's instances and package worktrees whose `repo` comes from the
+   manifest header, which a `repo == <project>` test would miss.
+2. **S2 pull-request source and git facts** -- `own_repo` is `yes` only when
    `git -C <root> rev-parse --show-toplevel` equals the root itself (a hosting
-   directory with no repository of its own would otherwise resolve upward into the
-   workspace repository, or a nested package). Otherwise `pr_source=none` and the
-   report says "pull requests: no pull-request source for this root", never a guess.
-   Step 3 and step 5's `gh pr list -R` use it. Worktrees come from
-   `worktree_list.sh --json` filtered to the root: `type == "workspace"` for the
-   workspace, `type == "project" and repo == <project>` for a project (replaces the
-   hard-coded `type == "workspace"` filters in steps 3 and 5 and the join rule's
-   wording).
-3. **S1/S6 root and roadmap** — steps 1, 5, 6 take `ROOT` from the helper instead of
+   directory, or a registered root inside the workspace tree, with no repository of
+   its own would otherwise resolve upward into the workspace repository or a nested
+   package). `pr_source` is the GitHub slug of `origin` when `own_repo=yes`, else
+   `none`; the report says "pull requests: no pull-request source for this root",
+   never a guess. Step 3 and step 5's `gh pr list -R` use it. Step 6's git facts
+   (`since`, `sha_at`, `show`, main-behind-origin) use the same test: with
+   `own_repo=no` they are skipped with one line, never read from the enclosing
+   repository. `default_branch` is `origin/HEAD`'s target when set, else `main` or
+   `master` if exactly one exists, else empty; step 6 replaces its hard-coded `main`
+   with it, and with it empty prints "cannot tell" for main-behind-origin and for the
+   commit counts, not a wrong number.
+3. **S1/S6 root and roadmap** -- steps 1, 5, 6 take `ROOT` from the helper instead of
    `$WS_ROOT` (`$WS_ROOT` stays for scripts). Step 1 passes `--root "$ROOT"
    --roadmap "$roadmap"`; with `roadmap=` empty the runner's `section` row already
    says why and the report says "no Direction section in this project; onboarding
    offers one" and invents nothing. Acceptance paragraph, Paths and Suggested next
    read the same file; no Paths paragraph gives the existing `paths=none` branch.
-4. **S3 Problems** — per-check file-exists tests in the helper: Decision register
+4. **Step 3 path words and step 5 titles for a project root** -- worktrees come from
+   `sitrep_root.sh --worktrees` (replaces the `type == "workspace"` filters in steps 3
+   and 5). In a workspace session nothing changes. In a project session: Path 1 when
+   this root's Direction lines name the issue (`(#N)`, `gh-issue N`, `<slug>#N`, same
+   matching as now but for any worktree of this root, not only `type = workspace`);
+   Path 2 is not said, because it is defined by the workspace README's goals, so a
+   worktree that serves a goal reads "no path (serves a project goal)" as today; the
+   `serves` words for `none`/`unstated`/`unreviewed` are unchanged; with `paths=none`
+   no path words are printed at all. Step 5's issue-title lookup uses `pr_source` in
+   place of `$WS_REPO` and looks up git-bug at `$ROOT` instead of `$WS_ROOT`; with
+   `pr_source=none` the title is "unknown (no repository to read it from)".
+5. **S3 Problems** -- per-check file-exists tests in the helper: Decision register
    (`docs/design.md`), research digest (`.agent/knowledge/research_digest.md`),
-   design anchors (`check_design_anchors.sh` and `docs/design.md`). A check whose
+   design anchors (`check_design_anchors.sh` and `docs/design.md`), and the
+   Documentation fact (days since `docs/design.md` changed, commits since touching
+   `.agent .claude docs`; needs `docs/design.md` and `own_repo=yes`). A check whose
    file is absent prints one skip line naming the check and the file. Direction
-   `format`/`unknown` rows and local-main-behind run for any root. The Problems rule
-   "in a project session the section is the workspace's only" is replaced by this.
-   Step 7 stays: start a due check only in a workspace session, offer otherwise.
-5. **S4/S5 inbox and run record** — step 2 shows inbox lines whose `project` field
-   equals the root's registered name first (workspace: unchanged). The run record's
-   column 2 is `record_name`; `awk '$2 == "workspace"'` in step 2 and the `printf`
-   in step 4 use it, so "since last run" compares with the last line for the same
-   root and old records stay valid.
-6. **S7 docs** — drop "This first mode reads the workspace root only" and fix the
-   frontmatter description ("in a workspace session it may start..." keeps its
-   meaning but adds "for the session's own root"). `docs/design.md` Documentation
-   layers: the sit-rep reads the session's own root; a combined view is not part of
-   it. Roadmap: delete the deferral row and add a Decided Against entry (combined
-   cross-root sit-rep stays out of `/sitrep`; the owner placed it with a personal-
-   root skill, 2026-11-09). Decided Against, not a revisit check: there is nothing
-   to test for until that skill exists, and a blank check is what the row has today.
-7. **S8 tests** — see Files; all on a synthetic sandbox root.
+   `format`/`unknown` rows and local-main-behind run for any root with `own_repo=yes`.
+   The Problems rule "in a project session the section is the workspace's only" is
+   replaced by this. Step 7 stays: start a due check only in a workspace session,
+   offer otherwise.
+6. **S4/S5 inbox and run record** -- step 2 shows inbox lines whose `project` field
+   equals `record_name` first, inside the existing listing pass (workspace:
+   unchanged). The run record's column 2 is `record_name`; `awk '$2 == "workspace"'`
+   in step 2 and the `printf` in step 4 use it, so "since last run" compares with the
+   last line for the same root and old records stay valid.
+7. **S7 docs** -- drop "This first mode reads the workspace root only" (line 38),
+   the report template's "Workspace root only: registered project roots are not read
+   in this mode..." paragraph (~line 890), step 3's "`-R` names the workspace
+   repository ... so a project session does not list the project's pull requests by
+   mistake" (~line 193; now: `-R` names the session root's repository from
+   `pr_source`), and step 8's "A project worktree's pull requests are not looked up"
+   (~lines 965-969; now: looked up from `pr_source` when the root's own repository
+   has one, else the line says nothing). Frontmatter description gains "for the
+   session's own root". `docs/design.md`: Documentation layers says the sit-rep reads
+   the session's own root and a combined view is not part of it; the Measures row
+   says "one machine-local line per run, per root"; a Change log row (date, sections,
+   one line, #418, line count after the change). Roadmap: delete the deferral row and
+   add a Decided Against entry whose Reason quotes the owner (2026-11-09: "a sit rep
+   in gz4d is just for that project and one in the workspace is just for the
+   workspace. The idea of having a personal assistant type skill or something for ~ is
+   where a sitrep that combines workspace and all projects might belong") and names
+   the personal-root skill as where the idea went (the inbox line that first held it
+   is machine-local, so the roadmap carries the record). Decided Against, not a
+   revisit check: there is nothing to test until that skill exists.
+8. **S8 tests** -- see Tests; all on synthetic sandbox roots.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/sitrep_root.sh` | New helper (step 1-4); `chmod +x` |
-| `.claude/skills/sitrep/SKILL.md` | Steps 1-7, usage line, frontmatter description |
+| `.agent/scripts/sitrep_root.sh` | New helper (steps 1-5); `chmod +x` |
+| `.claude/skills/sitrep/SKILL.md` | Steps 1-8 (lines ~38, 193, 890, 965-969 named above), usage line, frontmatter description |
 | `.agent/scripts/tests/test_sitrep_root.sh` | New, `chmod +x`: sandbox registry, project root with `.git`, `HOME` redirected |
 | `.agent/scripts/tests/test_skill_paths.sh` | Guard: sitrep no longer says "workspace root only"; calls the helper |
-| `.agent/scripts/tests/test_sitrep_checks.sh` | Case: project-shaped `ROADMAP.md` run via `--roadmap` |
-| `docs/design.md` | Documentation layers sentence |
+| `.agent/scripts/tests/test_sitrep_checks.sh` | Project-shaped `ROADMAP.md` via `--roadmap`; project-sandbox cases through `skill_step` (section 13 pattern) |
+| `docs/design.md` | Documentation layers sentence, Measures row ("per root"), Change log row |
 | `docs/roadmap.md` | Remove deferral row; Decided Against entry; roadmap row for #418 |
 | `.agent/knowledge/script_reference.md` | List `sitrep_root.sh` |
 
 ## Tests (one case per acceptance bullet, sandbox only, ADR-0003)
 
-- Project root with a Direction section in `docs/roadmap.md`: `roadmap=` set, `type=project`, `record_name=<name>`, workspace-shaped checks skipped with named reasons; runner returns that project's rows.
-- Project root without a Direction section: `roadmap=` set or empty, runner emits a `section` row, no lines invented.
+Helper and runner (`test_sitrep_root.sh`, `test_sitrep_checks.sh`):
+- Project root with a Direction section in `docs/roadmap.md`: `roadmap=` set, `type=project`, `record_name=<name>`, workspace-shaped checks skipped with named reasons (including the Documentation fact); runner returns that project's rows.
+- Project root without a Direction section: runner emits a `section` row, no lines invented.
 - Workspace root (sandbox copy of the layout): `record_name=workspace`, all checks `run`, unchanged output.
 - Order: both `docs/roadmap.md` and `ROADMAP.md` present gives `docs/roadmap.md`; only `ROADMAP.md` gives it.
-- Hosting root with no repository: `pr_source=none`. Project named `workspace`: `project:workspace`.
+- Hosting root with no repository, and a registered root inside the sandbox workspace tree with no repository of its own: `own_repo=no`, `pr_source=none`, step 6 git facts skipped. Project named `workspace`: `project:workspace`.
+- Default branch `trunk` (no `main`): `default_branch=trunk`, behind-check works; no `origin/HEAD` and neither `main` nor `master`: "cannot tell".
+- Directory outside every root: exit 1, nothing on stdout, no workspace fallback.
+- `--worktrees`: a parent root's instance worktree and a package worktree are kept; another root's worktree is dropped.
+
+The skill's own blocks for a project sandbox, run through `skill_step` as section 13 does for the workspace:
+- Step 2: the last-record filter picks the last line whose column 2 is the project's `record_name`, ignoring workspace lines; project-first inbox lines come first with the same single pass.
+- Step 4: the record line written has the project's `record_name` in column 2 and leaves workspace lines alone.
+- Step 3: the worktree filter keeps only the root's worktrees; path words: Path 1 from the project's Direction, "no path (serves a project goal)", and none printed when `paths=none`.
+- Step 5: title lookup uses `pr_source` (`none` gives the "unknown" title).
 
 ## Prior Art
 
@@ -108,9 +157,9 @@ far" sentence), in this PR. `docs/design.md#sessions-and-roots` is unchanged.
 
 | Principle | Consideration |
 |---|---|
-| A change includes its consequences | Step 6 and the Consequences table cover description, Problems rule, awk/printf/worktree filters, record-name collision |
+| A change includes its consequences | Step 7 and the Consequences table cover description, Problems rule, the four workspace-only sentences, awk/printf/worktree filters, path words, record-name collision, Change log row |
 | Test what breaks | One test per acceptance bullet plus the two edge cases |
-| Only what's needed | No combined view; one helper, justified because prose is untestable |
+| Only what's needed | No combined view; one helper, justified by removing root logic repeated across six step blocks |
 | Leave in a project only what it chose to carry | Nothing written to the project; no Direction section reports and invents nothing |
 
 ## ADR Compliance
@@ -129,13 +178,15 @@ far" sentence), in this PR. `docs/design.md#sessions-and-roots` is unchanged.
 | Run-record column 2 | Step 2 awk filter, step 4 printf | Yes |
 | Worktree filter | Steps 3 and 5 join rule text | Yes |
 | New script | `script_reference.md`, exec bit | Yes |
-| Inbox reads (#388) | Rebase order above | Yes |
+| Inbox listing (#388 follows) | S4 reuses the existing pass so #388 stays the same size | Yes |
+| Path words, title lookup, step 6 git facts | Approach 2 and 4 | Yes |
+| Design Documentation layers and Measures | Change log row | Yes |
 
 ## Open Questions
 
 None for the owner. Decided as mechanism, listed for veto: new helper script despite
-the issue's "no new script"; deferral becomes Decided Against; #388 lands first.
+the issue's "no new script"; deferral becomes Decided Against; #418 lands before #388. Out of scope, per the owner: any combined cross-root view.
 
 ## Estimated Scope
 
-Single PR (~8 files). Split only if the #388 rebase becomes tangled.
+Single PR (~8 files). Still one PR: every part is the same change to the skill's root and shares the tests.
