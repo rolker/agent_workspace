@@ -159,7 +159,7 @@ Host answer under /orchestrator's checkpoint table. Suggestions carried to imple
 **Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) Purpose paragraph still says the user tier "is built and not yet proven", contradicting the now-`decided` Sessions and roots it links; fix the sentence and add Purpose to the #423 change-log row's section list (recheck the 866 line count) — `docs/design.md:31-33`
+- [x] (must-fix) Purpose paragraph still says the user tier "is built and not yet proven", contradicting the now-`decided` Sessions and roots it links; fix the sentence and add Purpose to the #423 change-log row's section list (recheck the 866 line count) — `docs/design.md:31-33`
 - [ ] (must-fix) Review guide ADR table still says ADR-0016 "Status **Provisional** until #317's acceptance run in a registered project passes", and ADR-0018's row says "Provisional, promoted with 0016", which no longer holds; reviewers apply this table — `.agent/knowledge/principles_review_guide.md:51,53`
 - [ ] (suggestion) Now block says ADR-0018 "is still Provisional; promoting it is the owner's call" without saying its own promotion condition (ADR-0018 Status and Acceptance: the same run) is now met; one clause would keep a reader from thinking it waits on another run — `docs/design.md:188-189`
 
