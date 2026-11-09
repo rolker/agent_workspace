@@ -319,3 +319,28 @@ Host answer under /orchestrator's checkpoint table. Suggestions carried to imple
 - Deviation, for veto: step 2 lists a project session's own inbox lines first (matched on the project's registered name, as `capture.sh` writes it), and keeps file order in a workspace session.
 - `docs/design.md` (Documentation layers, Measures row, Change log), `docs/roadmap.md` (deferral removed, Decided Against entry quoting the owner, row for #418), `script_reference.md`.
 - Tests: new `test_sitrep_root.sh` (31 cases); `test_sitrep_checks.sh` skill-step tests run from their sandbox root, plus project-session section 14; `test_skill_paths.sh` guards. Final `pre-commit run --files` (no SKIP) passed, every suite selected (ALL).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-09 11:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-418 at `f8334fa1`
+**Base**: main
+**Depth**: Deep (reason: 1687 changed lines, 10 files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck --severity=warning, clean), governance, plan drift, Claude adversarial, cross-model (gemini: complete, 4 findings; codex: complete, 2 findings). Suites re-run: test_sitrep_root 31/31, test_sitrep_checks 205/205, test_skill_paths 130/130.
+
+### Findings
+- [ ] (must-fix) A non-GitHub scp-style origin (`git@gitlab.com:acme/proj.git`) gives `pr_source=git@gitlab.com:acme/proj` (extract_gh_slug strips nothing without github.com, then the slug regex passes), so step 3/5 run `gh -R` on it, contradicting "not on GitHub: no pull-request source, never a guess"; accept only github.com URLs with an owner/repo slug (helper and its Python gh_slug mirror) and add a non-GitHub-remote test — `.agent/scripts/sitrep_root.sh:154`
+- [ ] (must-fix) An own=yes package worktree's `branch` is its checkouts' branches comma-joined (worktree_list.sh:301), so step 3's join (`branch` equals `headRefName`) never matches its pull request: it gets a separate line and a false "no pull request yet"; match on the branch of the checkouts belonging to `pr_source` (or any comma element) and test it — `.claude/skills/sitrep/SKILL.md:521`
+- [ ] (suggestion) With own_repo=yes, docs/design.md present and no default branch, the audit/research/documentation checks report `run` and step 6 prints wrong reasons ("no Decision register ... on the default branch", "docs/design.md has no commit on the default branch"); skip them with "no default branch" in the helper and add a test — `.agent/scripts/sitrep_root.sh:186`
+- [ ] (suggestion) origin/HEAD is trusted when its target has no local branch, so a dangling origin/HEAD gives a default branch every step-6 read fails on, even when exactly one of main/master exists; require refs/heads/<name> or fall through — `.agent/scripts/sitrep_root.sh:143`
+- [ ] (suggestion) (b) references are found by substring over the check text, not by the runner's check grammar (a `file-contains ... gh-issue acme/other#12` argument keeps that worktree); same approach as step 3's existing Path-1 extraction, so fix both together or anchor to a check boundary — `.agent/scripts/sitrep_root.sh:250`
+- [ ] (suggestion) Slug comparisons are case-sensitive (`Acme/Proj` vs `acme/proj`) in (b) matching, `own`, and step 3's Path 1; GitHub names are not — `.agent/scripts/sitrep_root.sh:304`
+- [ ] (suggestion) Project-first inbox listing: the `--- other lines` divider counts toward `head -n 20`, and with exactly 19 own lines it is printed with nothing under it — `.claude/skills/sitrep/SKILL.md:207`
+- [ ] (suggestion) session_root.sh exit 2 (malformed registry) is passed through but every skill block says "outside every root"; the header's exit list omits it — `.agent/scripts/sitrep_root.sh:124`
+- [ ] (suggestion) Header says the helper writes nothing, but `--worktrees` creates and removes a mktemp file; reword or capture stderr without a file, and no test asserts read-only behaviour — `.agent/scripts/sitrep_root.sh:211`
