@@ -166,3 +166,55 @@ Host read the Plan Review of 2026-11-10 (needs-work, 3 must-fix, 8 suggestions) 
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `067cb744`
 
 Revision after the plan review: part 1's lookup now takes and returns the issue's full identity (directory, committing repository, key, identity), resolved from the .worktree-repos header inside a package worktree and from the repository elsewhere; every reader, writer and the merge gate consume it, with a test for each way a bare number failed. Part 1 still honours only the default records combination; the eight suggestions are taken and the owner question is replaced by veto item 1.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 10:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `067cb744`
+**Branch**: `feature/issue-429`
+
+Second review, after the host's revise of 10:55. Scope: the revise directions only; points the first review accepted are not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | About 25 files: 9 scripts, 3 to 5 test suites, design, script reference, ADR-0013, 9 skills. At the upper edge for one pull request; the clean cut is the merge gate (finding 2). |
+| Issue alignment | Good | Serves, as checked: workspace goal "A project can be worked from its own root", `docs/design.md#worktrees` (Records, Target), `docs/design.md#review-loop-and-timeline`. Open Question to the owner dropped; decision 1 lists his project's default for veto. |
+| File targeting | Needs work | Script readers and writers named, but several call sites that build the path or take the repository from the container are not (finding 1). |
+| Consequences | Good | Test flip at `test_merge_pr_gate.sh:483-509`, no project name in the new fixture, repo-wide stale search, 393 reversal in PR text. Grep answer for the wording below. |
+| Principle alignment | Needs work | One mechanism, as directed: `resolve_issue_records` returning dir, commit_repo, key, identity, with `records_layout` as the one place other combinations land. Right mechanism. Two gaps: not every caller goes through it yet (finding 1), and the same bare-number confusion recurs one level down, in the pull request number inside a shared timeline (finding 2). |
+| ADR compliance | Good | ADR-0013 note scoped to the default combination; ADR-0003 synthetic fixture; ADR-0016/0018 unchanged. Finding 2 touches ADR-0013's `**PR**: #M` correlation key if the gate stays in part 1. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked against the scripts: `_resolve_work_plans_dir.sh` (sourced only, refuses execution at 128); `progress_append.sh` 65, 73, 87; `review_progress.sh` 113-117, 267-305, 392; `dispatch_phase.sh` 271, 352, 365-368, 396-398, 452-502, 544-548; `find_worktree_by_issue` (`_worktree_helpers.sh:315`) takes a qualified ref; `merge_pr.sh` 443, 456-528 (header via `head -n1` at 497), 673-683, 726-727, 805, 818-853, 887-893, 986; `_bookkeeping.sh:190`; `worktree_create.sh` 756 (manifest) before 880 (`--workflow`); manifest header `issue=<owner/repo#N|N>` (`_worktree_helpers.sh:405`); `extract_gh_slug` returns empty for a non-GitHub origin (`_issue_helpers.sh:22-28`).
+
+Test coverage asked for: bare number from the package worktree's top folder (case 1) yes; from inside a second package repository (case 2, with a pre-existing sibling `issue-N`) yes; sibling `feature/<repo>-issue-N` pull request at the gate including where `_gate_record` writes (case 4) yes; two repositories with the same issue number: yes inside one package worktree (case 2) and for the outside layout (case 5), not for two package worktrees under one root (finding 4).
+
+### Findings
+
+1. **[File targeting / must-fix]** Not every caller goes through the lookup. Script sites the plan does not name: `dispatch_phase.sh:367` (`git -C "$wt" symbolic-ref` for the round count's branch) and `:502` (`check-exit` prints `sha=` from `git -C "$wt" rev-parse HEAD`): for a package worktree `$wt` is the container, so both read the enclosing hosting repository; take them from `commit_repo`. `merge_pr.sh:839,847` and `_bookkeeping.sh:190` build `.agent/work-plans/issue-N` relative to the repository by hand; derive it from `dir` relative to `commit_repo`. Skills that build the path themselves, not just cite it: `sitrep/SKILL.md:341` (`$d/.agent/work-plans/issue-$issue/progress.md` over worktree dirs, misses a package timeline), `triage-reviews/SKILL.md:138` (`$(git rev-parse --show-toplevel)/...`), `address-findings/SKILL.md:91`, `review-plan/SKILL.md:102-107` (worktree glob to the container). Skills cannot call the lookup today, since `_resolve_work_plans_dir.sh` refuses to run unsourced; add one executable entry point (for example `review_progress.sh records --issue <ref> [--from <dir>]` printing the four fields) and route these sites through it. The plan's "each verified against the lookup" is not routing.
+2. **[Principle alignment / must-fix]** The identity defect recurs one level down. Once the owning repository's timeline holds entries for pull requests from several repositories, the pull request number is a bare number too: gate condition (a) takes the `last` review entry of any pull request (`merge_pr.sh:726-727`), `_gate_already_recorded` matches `.correlation.pr == PR_NUMBER` (887-893), and `_gate_record` writes `**PR**: #${PR_NUMBER}` (805). A sibling pull request is judged against the owning pull request's review, and sibling #M and owning #M share one idempotency key. The lookup mechanism is still right; the identity has to reach the pull request correlation as well. Either (a) the gate keeps the sibling case in part 1 and selects and writes entries by the pull request's repository and number (`**PR**: owner/repo#M` for a pull request outside the owning repository, parsed by `progress_read.py:183-189`, ADR-0013 note), with a test where owning #M and sibling #M share the timeline; or (b) recommended, cut the merge gate to part 3, which already owns the package pull request path and decides blocking: part 1 leaves `merge_pr.sh` and `_bookkeeping.sh` unchanged (report-only, PR comment, as today, as the first review allowed), and part 3 does gate, `_gate_record` and pull-request identity together.
+3. **[Principle alignment]** Owning-repository selection (step 3) requires slug match and branch. The header may carry a bare `issue=N` (`_worktree_helpers.sh:405`) and a non-GitHub origin gives an empty slug, so the lookup fails loudly for such a project. Select by the `feature/issue-N` branch (the adapter's owning-repository rule), and use the slug as a cross-check only when both header and origin carry one. In `records_layout`'s outside branch, do not build the key from an empty owner/repo (`----N` collides).
+4. **[Test what breaks]** Add two package worktrees under one root for different repositories with the same number (`pkg_a#7`, `pkg_b#7`): `dispatch_phase.sh --issue owner/pkg_a#7` and `owner/pkg_b#7` each find their own worktree and records, and a bare `7` from the project session is refused as ambiguous.
+5. **[Principle alignment]** "One more branch, not new return fields" holds for `location=outside` and `tracking=untracked`, not obviously for `tracking=repo`, whose writer also needs the branch and push timing (decision 9 defers it). Soften the claim to "the other combinations land in `records_layout`; `tracking=repo` may add a branch field".
+
+Suggestions of the first review (findings 4 to 10 and the Consequences items): dispatch qualified-ref and its test both in part 1, taken. `worktree_create.sh --workflow` through the lookup after the manifest write, taken. `extract_gh_slug` and `head -n1` reuse, taken (see finding 3). Step 5 trimmed to the stale clause, taken. Open Question dropped, taken. Settings rc 2 refuses and project-name rule per worktree kind, taken. Nine skills named, taken in name, routing is finding 1. No project name in the new fixture and the flipped gate expectation, taken.
+
+Wording ("until the records lookup lands"), checked by grep: `register_project.sh:798` prints it itself ("not stored until the records lookup lands"), asserted by `tests/test_register_project.sh:347`, so it changes with `_project_registry.sh:1449,1700` (whose 1700 text is asserted by `tests/test_project_file.sh:1243`); the `_project_registry.sh:1470` comment and the `project_setting.sh:20-23` header comment carry it too. `registration_verify.sh:131` and `dashboard.sh:199` print only "valid but not yet honoured (#393)", which stays true after part 1: leave them.
+
+### Summary
+
+The revision answers the three must-fixes with one mechanism, the right one, and the return shape gives the other records combinations a clean place to land. Not yet ready: several call sites, mostly in skills that have no way to call the lookup, still build the path or take the repository from the container, and the gate carries the same bare-number confusion in the pull request number; cutting the gate to part 3 fixes that and brings part 1 to a fair size.
+
+### Recommended Actions
+
+- [ ] Route `dispatch_phase.sh:367,502`, `merge_pr.sh:839,847`, `_bookkeeping.sh:190` and the skills at `sitrep:341`, `triage-reviews:138`, `address-findings:91`, `review-plan:102-107` through the lookup, with one executable entry point for skills (finding 1)
+- [ ] Move the merge gate to part 3, or key gate selection, idempotency and `**PR**:` by the pull request's repository and number with a shared-timeline test (finding 2)
+- [ ] Select the owning repository by branch, slug as cross-check; no empty-slug key in `records_layout` (finding 3)
+- [ ] Add the two-package-worktrees same-number test (finding 4); soften the return-shape claim (finding 5)
+- [ ] Edit `register_project.sh:798` with its test and the two comments; leave `registration_verify.sh` and `dashboard.sh`
