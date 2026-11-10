@@ -106,3 +106,11 @@ issue: 436
 **Decision**: proceed
 
 Host read the Issue Review. Accepted as plan inputs: three pull requests (1: the adapter route, settings keys, resolver install, a `repo_pin` verb, synthetic tests, the design section; 2: the roadmap Direction line, the step 4 row, the west entry under Decided Against, the west design note; 3: the manifest text and the drafted project issue as records here). Host decisions listed for the owner's veto: the resolver itself writes `layers.txt` and marks an optional layer, so the adapter reads one generated directory for both routes; the resolver is installed into the workspace venv from a make target (ADR-0009) and the adapter calls it by the venv path. The role model for the test (groups or dependency closure) is asked of the owner; the plan passes a role name through and does not depend on the answer.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 13:22 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `6206a900`
+
+Three pull requests. PR 1 (detailed): the resolver emits `layers.txt`, `optional_layers.txt` and `--repos-subdir`; `make install-ros-manifest`; keys `manifest`, `manifest_ref`, `manifest_path` (role and distro stay on the registry line, where the dispatcher already reads them); a manifest route in the `ros2_colcon` adapter reading one generated directory; optional verb `repo_pin`; synthetic tests; design section. PR 2: roadmap and west-variant records. PR 3: manifest text and drafted issue as records. Ten decisions listed for the owner's veto in the plan.
