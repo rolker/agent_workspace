@@ -356,7 +356,7 @@ Both round-1 must-fixes are resolved. The Cutover pointer states that Direction 
 
 ### Findings
 - [x] (suggestion) Path 1's first sentence joins two fragments with ", to", which reads awkwardly alone in the sit-rep, and the paragraph repeats the full quote ("His full words: ..."), which the acceptance case already carries; open with the full quote and drop the repeat — `docs/roadmap.md:33-39`
-- [ ] (suggestion) Path 2's first sentence is his 2026-10-15 words with "making" changed to "make", unquoted; quote it verbatim if he is to read it as his exact words — `docs/roadmap.md:41-43`
+- [x] (suggestion) Path 2's first sentence is his 2026-10-15 words with "making" changed to "make", unquoted; quote it verbatim if he is to read it as his exact words — `docs/roadmap.md:41-43`
 - [ ] (suggestion) The Cutover ordering rule "each row starts when the rows above it are done" still reads against row 7 running before the deferred rows 5–6; add "row 7 does not wait for them" to the pointer (Codex, Claude adversarial) — `docs/roadmap.md:192-195,210`
 
 ## Checkpoint

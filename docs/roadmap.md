@@ -36,9 +36,8 @@ its check). Work in a project11 package repository that no line names is
 not listed in this workspace's sit-rep.
 
 **Path 2, the workspace reflects the goals.** Implementing the missing
-pieces to make this workspace reflect the goals we set (the owner,
-2026-10-15). Path 2 work is any other work that serves a goal in the
-README. In the owner's words (2026-11-10):
+pieces to make this workspace reflect the goals we set. Path 2 work is
+any other work that serves a goal in the README. In the owner's words (2026-11-10):
 "the orchestrator skill which we are trialing and the use of the
 workspace for the agents I run in ~ as my overall work managers", and
 "follow up on the findings during the gz4d tests and Path 2 mentioned
