@@ -88,7 +88,7 @@ findings across entries, never falls back to an older one:
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/review_progress.sh findings \
-    --progress $WS_ROOT/.agent/work-plans/issue-<N>/progress.md
+    --progress "$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>/progress.md"
 ```
 
 The JSON has `source` (`type`, `when`, `correlation` — the SHA the review
