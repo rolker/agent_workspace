@@ -144,7 +144,9 @@ git -C "$sb3/project" -c user.name=t -c user.email=t@t commit --quiet --allow-em
 git -C "$sb3/project" remote add origin "file:///nonexistent/legacyrepo.git"
 printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' "$sb3/gone/.venv/bin/python3" > "$sb3/project/.git/hooks/pre-commit"
 chmod +x "$sb3/project/.git/hooks/pre-commit"                     # project hook broken
-rc=0; out="$(cd "$sb3" && PATH="$sb3/stubbin:$PATH" "$sb3/.agent/scripts/worktree_create.sh" --issue 8 --type project 2>&1)" || rc=$?
+# origin is unreachable, so origin cannot say whether it has feature/issue-8:
+# --allow-unverified-branch starts it anyway (this case is about the hook).
+rc=0; out="$(cd "$sb3" && PATH="$sb3/stubbin:$PATH" "$sb3/.agent/scripts/worktree_create.sh" --issue 8 --type project --allow-unverified-branch 2>&1)" || rc=$?
 if [[ "$rc" -eq 0 && "$out" == *"shared pre-commit hook points to a Python that no longer exists"*"$sb3/gone/.venv/bin/python3"*"make -C \"$sb3/project\" repair"* ]]; then
     pass "project worktree: the warning names the PROJECT repo's broken hook and its repair root"
 else

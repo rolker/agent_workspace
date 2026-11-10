@@ -641,7 +641,10 @@ test_single_project_legacy_validate() {
 # ---- worktree_create.sh --project wiring ----
 
 # Worktree sandboxes get the worktree scripts, their helpers, and a failing
-# gh stub so issue lookups degrade gracefully offline.
+# gh stub so issue lookups degrade gracefully offline. Their origins cannot
+# be reached, so origin cannot say whether it has a branch: every
+# worktree_create.sh call below passes --allow-unverified-branch (#323),
+# since these tests are about the registry wiring, not the branch lookup.
 make_worktree_sandbox() {
     local sb
     sb="$(make_sandbox)"
@@ -672,7 +675,7 @@ test_worktree_create_unknown_repo() {
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --project nope 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 999 --type project --project nope 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the unknown project" "'nope' is not registered" "$out"
     assert_contains "lists registered projects" "alpha" "$out"
@@ -686,7 +689,7 @@ test_worktree_create_skill_project() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0 ($(tail -n3 <<< "$out"))" "0" "$rc"
     wtp="$(find "$sb/projects/alpha/worktrees" -maxdepth 1 -name 'skill-alpha-onboard-project-*' -type d 2>/dev/null | head -n1)"
     assert_eq "worktree under the root's worktrees/" "yes" "$([ -n "$wtp" ] && echo yes || echo no)"
@@ -709,24 +712,24 @@ test_worktree_create_skill_project() {
     echo "TEST: worktree_create --skill: a skill not on the allowlist is refused; a root that is not the top of a repo is refused"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill plan-task --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill plan-task --type project --project alpha 2>&1)" || rc=$?
     assert_eq "plan-task: exit 1" "1" "$rc"
     assert_contains "says the allowlist" "is not in the allowlist" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill research --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill research --type project --project alpha 2>&1)" || rc=$?
     assert_eq "research --type project: exit 1" "1" "$rc"
     assert_contains "says research is for workspace worktrees" "--skill research is for --type workspace worktrees, not --type project" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type workspace 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type workspace 2>&1)" || rc=$?
     assert_eq "onboard-project --type workspace: exit 1" "1" "$rc"
     assert_contains "says onboard-project is for project worktrees" "--skill onboard-project is for --type project worktrees, not --type workspace" "$out"
     mkdir -p "$sb/projects/alpha/sub"
     echo "sub single_project $sb/projects/alpha/sub" >> "$sb/.agent/projects.local"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project sub 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project sub 2>&1)" || rc=$?
     assert_eq "a root inside another repo: exit 1" "1" "$rc"
     assert_contains "says why" "is not the top of one" "$out"
 
@@ -737,7 +740,7 @@ test_worktree_create_skill_project() {
     seed_commit "$mp"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
     assert_eq "skill worktree of my-proj.x: exit 0 ($(tail -n2 <<< "$out"))" "0" "$rc"
     git -C "$mp" worktree add --quiet -b feature/issue-7 "$mp/worktrees/issue-my-proj.x-7" 2>/dev/null
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
@@ -754,7 +757,7 @@ test_worktree_create_registry_repo() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 999 --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree exists under the registry name" \
         "yes" "$([ -d "$sb/projects/alpha/worktrees/issue-alpha-999" ] && echo yes || echo no)"
@@ -770,7 +773,7 @@ test_worktree_create_single_registry_autoselect() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 998 --type project 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 998 --type project 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "announces the auto-selection" "Using registered project 'alpha'" "$out"
     assert_eq "worktree created" \
@@ -784,7 +787,7 @@ test_worktree_create_dashed_name_roundtrip() {
     make_registered_project "$sb" my-proj >/dev/null
     seed_commit "$sb/projects/my-proj"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --project my-proj 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 996 --type project --project my-proj 2>&1)" || rc=$?
     assert_eq "create exit 0" "0" "$rc"
     assert_eq "worktree dir uses the raw name" \
         "yes" "$([ -d "$sb/projects/my-proj/worktrees/issue-my-proj-996" ] && echo yes || echo no)"
@@ -803,7 +806,7 @@ test_worktree_create_repo_alias() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project --repo alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 995 --type project --repo alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree exists under the registry name" \
         "yes" "$([ -d "$sb/projects/alpha/worktrees/issue-alpha-995" ] && echo yes || echo no)"
@@ -816,7 +819,7 @@ test_worktree_create_single_repo_no_manifest_file() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 994 --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 994 --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     wt="$sb/projects/alpha/worktrees/issue-alpha-994"
     assert_eq "no .worktree-repos file written" \
@@ -832,7 +835,7 @@ test_worktree_create_multiple_requires_repo() {
     make_registered_project "$sb" alpha >/dev/null
     make_registered_project "$sb" beta >/dev/null
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 997 --type project 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 997 --type project 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "asks for --project" "Use --project to specify" "$out"
     assert_contains "lists alpha" "--project alpha" "$out"
@@ -1204,7 +1207,7 @@ test_worktree_create_parent_default_instance() {
     make_parent_layout "$sb" p11-rolling
     seed_commit "$sb/p11-ng/rolling"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --project p11 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 996 --type project --project p11 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "announces the instance" "Using instance 'p11-rolling' of 'p11'" "$out"
     assert_eq "worktree keyed by the instance name" \
@@ -1219,7 +1222,7 @@ test_worktree_parent_round_trip() {
     make_parent_layout "$sb" p11-rolling
     seed_commit "$sb/p11-ng/rolling"
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 994 --type project --project p11 >/dev/null 2>&1) || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 994 --type project --project p11 >/dev/null 2>&1) || rc=$?
     assert_eq "create exit 0" "0" "$rc"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
@@ -1241,7 +1244,7 @@ test_worktree_create_parent_not_autoselected() {
     make_git_repo "$sb/one/a" "file:///nonexistent/a.git"
     seed_commit "$sb/one/a"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 995 --type project 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "auto-selects the instance, not the parent" "Using registered project 'only'" "$out"
 }
@@ -1253,7 +1256,7 @@ test_worktree_create_legacy_still_uses_old_location() {
     make_git_repo "$sb/project" "file:///nonexistent/legacyrepo.git"
     seed_commit "$sb/project"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 993 --type project 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 993 --type project 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree lands in the pre-#265 legacy location" \
         "yes" "$([ -d "$sb/worktrees/project/legacyrepo/issue-legacyrepo-993" ] && echo yes || echo no)"
@@ -1272,7 +1275,7 @@ test_legacy_create_never_uses_a_registered_root_on_slug_collision() {
     # A different checkout, registered under the same name as project/'s slug.
     other="$(make_registered_project "$sb" myrepo)"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 995 --type project 2>&1)" || rc=$?
     assert_eq "exit 0 (out: ${out:0:160})" "0" "$rc"
     assert_eq "worktree created under the transition location for the legacy checkout" \
         "yes" "$([ -d "$sb/worktrees/project/myrepo/issue-myrepo-995" ] && echo yes || echo no)"
@@ -1335,7 +1338,7 @@ test_worktree_create_outoftree_root_exclusion() {
     make_registered_project "$sb" faraway "$outside/faraway"
     seed_commit "$outside/faraway"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 111 --type project --project faraway 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 111 --type project --project faraway 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree created under the out-of-tree root's own worktrees/ dir" \
         "yes" "$([ -d "$outside/faraway/worktrees/issue-faraway-111" ] && echo yes || echo no)"
@@ -1347,7 +1350,7 @@ test_worktree_create_outoftree_root_exclusion() {
     # A second worktree in the same root must not duplicate the exclude line.
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 112 --type project --project faraway 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 112 --type project --project faraway 2>&1)" || rc=$?
     assert_eq "second create exit 0" "0" "$rc"
     assert_eq "exclude file still has exactly one 'worktrees/' line (idempotent)" \
         "1" "$(grep -cxF 'worktrees/' "$outside/faraway/.git/info/exclude")"
@@ -1441,7 +1444,7 @@ test_registry_worktree_enumeration_for_dashboard() {
     assert_eq "count is 0" "0" "$(wt "$sb" wt_count_project_worktrees "$sb")"
 
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 222 --type project --project gz4d >/dev/null 2>&1)
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 222 --type project --project gz4d >/dev/null 2>&1)
     out="$(wt "$sb" wt_registry_worktree_dirs "$sb")"
     assert_eq "enumerates the out-of-tree root by name and worktree dir" \
         "gz4d	$outside/gz4d/worktrees" "$out"
@@ -1461,7 +1464,7 @@ test_merge_pr_finds_worktree_under_registered_root() {
     make_registered_project "$sb" faraway2 "$outside/faraway2"
     seed_commit "$outside/faraway2"
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 333 --type project --project faraway2 >/dev/null 2>&1)
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 333 --type project --project faraway2 >/dev/null 2>&1)
     assert_eq "worktree exists under the out-of-tree root" \
         "yes" "$([ -d "$outside/faraway2/worktrees/issue-faraway2-333" ] && echo yes || echo no)"
 
@@ -1514,7 +1517,7 @@ test_review_plan_issue_fallback_finds_plan_under_registered_root() {
     make_registered_project "$sb" faraway3 "$outside/faraway3"
     seed_commit "$outside/faraway3"
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 444 --type project --project faraway3 >/dev/null 2>&1)
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 444 --type project --project faraway3 >/dev/null 2>&1)
     local plan_dir="$outside/faraway3/worktrees/issue-faraway3-444/.agent/work-plans/issue-444"
     mkdir -p "$plan_dir"
     echo "plan body" > "$plan_dir/plan.md"

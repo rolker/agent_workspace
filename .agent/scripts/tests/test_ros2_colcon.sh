@@ -241,10 +241,13 @@ make_committed_pkg_repo() {
     git -C "$dir" branch -m main 2>/dev/null || true
 }
 
+# The fixtures' origins cannot be reached, so origin cannot say whether it
+# has a branch: --allow-unverified-branch starts it anyway (#323); these
+# tests are about the manifest and layout, not the branch lookup.
 run_worktree_create() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch "$@")
 }
 
 run_worktree_remove() {
@@ -533,7 +536,7 @@ test_worktree_create_issue_lookup_uses_qualified_repo() {
     log="$sb/issue_lookup.log"
     : > "$log"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue rolker/ros2_network_monitor#27 \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue rolker/ros2_network_monitor#27 \
         --type project --project p11 --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "issue_lookup called with exactly the qualified repo" \
