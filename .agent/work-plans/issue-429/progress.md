@@ -701,3 +701,11 @@ None open.
 The merge dialog for pull request 445 (part 1 of 2) showed what the change does, what is left for part 2, what only a real run can test, the review record and CI (all 8 checks pass). The owner first asked two things: "the goal is to make this work with project11, but we are implementing it so it works with other similar projects right? Nothing here is specific to project11? Also, I have been trying to ween off of depending on github, but I see a lot of github related parts here. Are we just solidifying our dependence on github?" The host answered from the diff: the scripts and skill text name no project, and one test fixture uses "p11" as its made-up project's name in two lines; the guard is plain git; the change adds one `gh repo view` check before work starts on a package issue, which stops when `gh` cannot answer, and identifies an issue as `owner/repo#N`; the loop as a whole is already bound to GitHub and no recorded goal says to depend on it less. Asked "Merge pull request 445 as it is, with the p11 fixture name renamed in part 2?", the owner answered: "Q1 yes". On recording "depend less on GitHub" as a goal: "Q2, we need to discuss this".
 
 Carried to part 2: rename the fixture's made-up project so no test names a project.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 14:46 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `156efb94`
+
+Revision for part 2 after part 1 merged (pull request 445). Part 2 is cut as 2a (base branch: a base given by hand until repo_pin from issue 436 exists, the base also decides the branch start point and is recorded in the manifest header, forwarded to publish) and 2b (the gate reads and records in the owning checkout with pull request identity as repository plus number, report-only kept, cleanup pinned by tests, the end-to-end test, texts, fixture rename). Eleven decisions listed for the owner's veto; issue 437 merges before 2b.
