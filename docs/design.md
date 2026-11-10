@@ -371,15 +371,16 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1028-1034 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 239-283, 390-429, 566, 681, 708 and 845, 942 and 955, 1638-1654 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all four modes (`where` too) | 167, 228-277, 452, 581, 669, 700 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
-the cwd's git top level, lines 120-121 and 308-318), `progress_append.sh` (lines 75 and 98),
+the cwd's git top level, through the records gate, lines 126-128 and 315-325), `progress_append.sh` (lines 75,
+86 and 99-100),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
 *Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
@@ -456,14 +457,14 @@ Status: `decided`
   does not cover a file an agent opens directly, `worktree_create.sh --workflow`'s scaffold (#393), or
   a write from outside any worktree, which commits on that checkout's own branch. Workspace worktrees
   and single-repository project worktrees write no manifest, so nothing changes for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
-  package pull request on the pull request (lines 810 and 853). `progress_append.sh` line 98 writes
+  package pull request on the pull request (lines 826 and 869). `progress_append.sh` lines 99-100 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 280: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 563 and
-  678), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 694 and 829). The gate is still report-only for project pull requests (lines 926 and
-  939).
+  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 283: the resolved project root, else the legacy
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 566 and
+  681), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 708 and 845). The gate is still report-only for project pull requests (lines 942 and
+  955).
 
 **Target**
 
@@ -504,9 +505,9 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   477, 511, 513, 575, 687: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge`
-   entry), `review_progress.sh` (121, 287, 318) and `progress_append.sh` (98). `_resolve_work_plans_dir.sh` is
+   489, 533, 535, 597, 718: the round count, the exit contract, `--check-exit` and `next`, which is
+   what a resumed session reads), `merge_pr.sh` (676-697, 809-879: the gate's lookup and its `Merge`
+   entry), `review_progress.sh` (128, 294, 325) and `progress_append.sh` (99). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
@@ -827,7 +828,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-09 | How it works, The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions | ADR-0016 is Accepted (owner, 2026-11-09): the `/run-issue` acceptance run from a project root passed the merge checkpoint. How it works says the user tier has passed its acceptance run, no longer that it is not yet proven; the Status key's `decided, not proven` row names no ADR and no longer says a Provisional ADR is untested; Sessions and roots is `decided`, its Now block says ADR-0016 is Accepted and ADR-0018 is still Provisional with its own promotion condition (the same run) met; the Registry inventory sentence names the run's date; register row 0016 is `in force` and notes ADR-0018's supersession of decision 3 for skills; the C1-c sentence keeping ADR-0016 Provisional is dropped; OQ-2 is answered in place (tracked in the roadmap's Direction section, run by the owner through `/orchestrator` and `/run-issue` from the project root). Sessions and roots grows by two lines and is a status edit, so no detail moves | #423 | 867 |
 | 2026-11-09 | Sessions and roots, Decision register | ADR-0018 is Accepted (owner, 2026-11-09): its promotion condition, ADR-0016's acceptance run, passed the same day. The Sessions and roots Now block says ADR-0018 is Accepted too, no longer that it is Provisional with promoting it the owner's call; register row 0018 is `in force`. Sessions and roots is 116 lines, past the 60-line prompt; its length is unchanged and this is a status edit, so no detail moves | #425 | 868 |
 | 2026-11-10 | Documentation layers | The roadmap's acceptance case is no longer ADR-0016's (met 2026-11-09): the sentence on what the Direction section says drops "(ADR-0016's)" and keeps "one acceptance case", now project11 on a second machine against ROS 2 Rolling | #432 | 869 |
-| 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that every records read and write passes one records gate (`records_path`), which refuses a sibling checkout and the worktree's top folder, and what the gate does not cover, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 884 |
+| 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that every records read and write passes one records gate (`records_path`), which refuses a sibling checkout and the worktree's top folder, and what the gate does not cover, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory table and sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 885 |
 
 ## Glossary
 
