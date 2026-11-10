@@ -430,3 +430,13 @@ No human review and no conversation comments. Copilot's only review on the head 
 - [x] (suggestion, Local Review (Pre-Push) @ `ab8b05c`, covers `e1da046` via bookkeeping) Path 2's origin, the owner's 2026-10-15 "two parallel paths" statement, is no longer quoted, so his "Path 2 mentioned earlier" has no dated antecedent — `docs/roadmap.md` — decided: carried to the pull request's Decision summary as the owner's to take or leave at the merge decision. Not a defect: the quote sits inside the paragraph headed "Path 2, the workspace reflects the goals", whose first sentence is main's prose for Path 2, so the referent is on the page; only the date of origin is lost. Round 2 had removed the added attribution because the 2026-10-15 words ("to making ... in the other") do not stand as a clean verbatim quote.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The dialog showed the acceptance case, the two paths, the four checked steps, the five follow-ups, the one suggestion not taken (the 2026-10-15 "two parallel paths" quote no longer appears), the review record (3 plan reviews, 3 code reviews, Gemini and Codex on rounds 1 and 2, Copilot out of quota) and CI (all 8 checks pass). Asked "Merge pull request 434?", the owner answered: "Merge (Recommended)".
