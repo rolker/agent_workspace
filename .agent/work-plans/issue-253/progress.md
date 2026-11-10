@@ -156,3 +156,11 @@ The shape (one record, three read-only passes, a merge, a count check, no issues
 **Decision**: revise
 
 Host read the Plan Review of 2026-11-10 (needs-work, 5 must-fix, suggestions) and directs that every must-fix and suggestion be taken as the review words them: every "host" step becomes the implementer's; the inventory gets a catch-all pass and a check that fails on any unassigned path, tracked or untracked, and also covers Makefile targets, CI jobs, hand steps in the instruction files and closed-since-fork issues; "already covered" needs a read-only diff for same-named scripts, with "partly covered" as a class, and a named test or "covered, no test"; the one-sentence day-to-day blocker test goes in the plan and every pass brief; the repository sync and validate scripts are classified adapter, not yet covered, day-to-day blocker; table rows are grouped by duty.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 12:11 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-253/plan.md` at `4d01e2cb`
+
+Revision after the needs-work plan review: all phase work is the implementer's (with its own sub-agents); inventory split fails on unassigned tracked or untracked paths and adds a catch-all, Makefile/CI/hand-step/closed-issue/open-PR rows; read-only diff and "partly covered" for same-name scripts; the day-to-day test in every brief; sync/validate classed adapter, not yet covered, blocker; rows grouped by duty; only row 4 Notes edited; proposed Decided Against lines.
