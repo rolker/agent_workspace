@@ -771,3 +771,31 @@ Cross-model:
 - [x] (suggestion) `check_existing_branch_parent` takes a stale `refs/remotes/origin/<parent>` as "on origin" without asking origin, so the draft PR can target a deleted parent. This predates the pull request, but it now also runs on the project path. Its comment says "found locally or on origin". Follow-up issue (Claude adversarial) — `.agent/scripts/worktree_create.sh:76-81` (deferred to a follow-up issue the host will propose to the owner: this predates the pull request; host direction 2026-11-10)
 - [x] (suggestion) WORKTREE_GUIDE says a branch in a `--single-branch`/`--depth` clone gets "its upstream set to it". Add the limit stated at `wt_set_upstream`: `@{u}` does not resolve there, so `git status` shows no ahead/behind count — `.agent/WORKTREE_GUIDE.md:162`
 - [x] (suggestion) The design.md inventory row for `worktree_create.sh` (`301-313, …, 1103-1109`) is off by about 23 lines. 301 is skill-ID generation; the `--type` derivation is at 324. main's values (248-260 against main's 271) were already off by the same amount, and each refresh kept the offset. Since the change-log rows say "refreshed", either correct the row or say it is a dated probe. Follow-up, since it predates the pull request — `docs/design.md:372` (deferred to a follow-up issue the host will propose to the owner: this predates the pull request; host direction 2026-11-10)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af921bff50d4db2fe, resume 3 of 3)
+
+**PR**: #417 at `8e085c49`
+**Addressed**: Local Review at `5e526275` (2026-11-10 12:26 -05:00)
+**Commits**: d09f44e8, 8a9d19ec, f78007f4, 8e085c49 (box ticks, by hand: the script does not select a PR-mode review)
+
+### Actions
+- [x] (must-fix) Project path, new sub-issue branch: once `_wt_add_repo` has asked origin about the parent, `PARENT_BRANCH_FOUND` is set only when `WT_FETCH_OUTCOME` is present, so a stale `origin/<parent>` no longer gives the draft PR `--base <parent>`. Test: on the legacy `project/` path the parent is deleted on origin and the stale ref kept; a gh stub logs `pr create`, which has no `--base feature/issue-9`. The test fails against the previous scripts (`--base feature/issue-9` is passed there) — `.agent/scripts/worktree_create.sh`, `.agent/scripts/tests/test_worktree_create.sh` (8a9d19ec)
+- [x] (must-fix) The "owning branch reported" check asserts `feature/issue-444` again. 5990ef1f's rename of the new tests' branch names had reached this unrelated check — `.agent/scripts/tests/test_ros2_colcon.sh:557` (d09f44e8)
+- [x] (suggestion) The concurrent-creation race in the failed-checkout cleanup — `.agent/scripts/_worktree_helpers.sh:790`, `.agent/scripts/worktree_create.sh:902` (deferred to a follow-up issue the host will propose to the owner: this predates the pull request; host direction 2026-11-10)
+- [x] (suggestion) Workspace-path cleanup at parity: every new-branch `git worktree add -b` on the workspace path (from origin, a local or origin parent, or the default branch) goes through `undo_new_branch_checkout`. It removes the branch made and a worktree on that branch, as `_wt_add_repo` does, and reports a branch it cannot delete with the command to remove it. Tests: a failed checkout from origin (now also checks "removed again") and from the default branch. The second fails against the previous scripts (the branch was left) — `.agent/scripts/worktree_create.sh`, `.agent/scripts/tests/test_worktree_create.sh` (8a9d19ec)
+- [x] (suggestion) `check_existing_branch_parent` trusting a stale local ref — `.agent/scripts/worktree_create.sh:76-81` (deferred to a follow-up issue the host will propose to the owner: this predates the pull request; host direction 2026-11-10)
+- [x] (suggestion) WORKTREE_GUIDE now says that in a narrowed clone `@{u}` does not resolve, so `git status` shows no ahead/behind count, while pull and push work — `.agent/WORKTREE_GUIDE.md` (f78007f4)
+- [x] (suggestion) The design.md inventory row's line numbers for `worktree_create.sh` — `docs/design.md:372` (deferred to a follow-up issue the host will propose to the owner: this predates the pull request; host direction 2026-11-10)
+
+### Checks
+- Intermediate commits used `SKIP=validate-script-tests`. Then `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on f78007f4's tree: exit 0, `validate-script-tests` Passed. The call outran the Bash tool's 600 s limit and was moved to the background; it was waited for to its exit.
+- Run by hand, 0 failures: test_worktree_create.sh 56, test_ros2_colcon.sh 218. Against HEAD's previous scripts (a `git archive` of 50e0b1d7), test_worktree_create.sh fails 3: the two workspace failed-checkout cases and the stale-parent draft PR case.
+- shellcheck --severity=warning clean on the changed scripts.
+
+### Not done
+- run_script_tests.sh's citation of `worktree_create.sh`'s `/tmp` mktemp sites moved with these lines and was refreshed to 1088,1129 in 8a9d19ec. It is a consequence of this change, not a new item. The design.md inventory row (deferred above) is now further off for the same reason.
+- A third scratch copy (`old3.*`) is in this session's scratchpad beside the earlier ones; `rm -rf` is denied.
