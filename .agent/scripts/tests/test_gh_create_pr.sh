@@ -523,6 +523,19 @@ assert_exit_code "--recover with a body → exit 2 (gh loads it over the body)" 
     --title "T" --recover r.json --body "B"
 # shellcheck disable=SC2016
 check "--recover with a body: gh not called" bash -c '[[ ! -f "$1" ]]' _ "$ARGV_LOG"
+RECOVER_BODY="$SANDBOX/recover-body.md"
+printf 'Recover body\n' > "$RECOVER_BODY"
+assert_exit_code "--recover with --body-file → exit 2" 2 \
+    --title "T" --recover r.json --body-file "$RECOVER_BODY"
+# shellcheck disable=SC2016
+check "--recover with --body-file: gh not called" bash -c '[[ ! -f "$1" ]]' _ "$ARGV_LOG"
+reset_capture
+out=$(printf 'Recover stdin body\n' | run_wrapper --title "T" --recover r.json --body-stdin 2>&1)
+rc=$?
+# shellcheck disable=SC2016
+check "--recover with --body-stdin → exit 2, gh not called, the reason named" \
+    bash -c '[[ "$1" -eq 2 && ! -f "$2" && "$3" == *"--recover makes gh load the recovered input over any --body / --body-file"* ]]' \
+    _ "$rc" "$ARGV_LOG" "$out"
 assert_calls_gh "--recover --no-signature: the explicit opt-out" --title "T" --recover r.json --no-signature
 unset AGENT_NAME AGENT_MODEL
 assert_exit_code "identity unset + --fill → exit 2" 2 --title "T" --fill
