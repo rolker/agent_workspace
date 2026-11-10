@@ -338,3 +338,23 @@ Checks on the final tree: `sitrep_checks.sh --root . --summary` prints `lines 0/
 - [x] Path 1 opens with the owner's goal in his words (2026-11-10), full quote after the classification rule; Path 2 opens with its pre-change first sentence cut to his 2026-10-15 goal, dated — `docs/roadmap.md:32-45`
 - [x] Acceptance case: first sentence and the 2026-09-21 ending kept; "It is the move he named" and the restating "The machine is assumed to have..." sentence removed; quotes introduced "In the owner's words (2026-11-10):" — `docs/roadmap.md:18-26`
 - [x] Path 2 list: home-directory permissions baseline removed (stays recorded on issue 432); his "overall work managers" named with their design waiting on the orchestrator design session deferral (#398) — `docs/roadmap.md:54-56`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 11:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6b92f9107365416d, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-432 at `b3bbdf95`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification per the fix-round rule, 583 changed lines mostly plan/progress records; round 2, so all specialists and cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Both round-1 must-fixes are resolved. The Cutover pointer states that Direction defers rows 5, 6 and 8, and row 7 now says rows 2–4. The deferral rows read "Follow-up:" with no status word. Round-1 suggestions 2 and 3 are resolved, and suggestion 1 is resolved in part (see below). Re-run: sitrep_checks.sh gives 4 lines false and 5 deferrals true, 3 false, with no unchecked or format row (summary lines 0/4 deferrals 5/8); sitrep_root.sh gives named yes only for issue 429. acceptance_first prints whole. Step 3 prints Path 1 as 'In the owner's words (2026-11-10): "I also want to move project11 to this workspace", to "develop project11 against ROS2 rolling".' and Path 2 as 'Implementing the missing pieces to make this workspace reflect the goals we set (the owner, 2026-10-15).' Both read as his goal. The 2026-10-15 date is right: main quotes him that day as "implementing the missing pieces to making this workspace reflect the goals we set in the other", so the new text corrects "making" to "make" and leaves it unquoted, the same form as main's old Path 2 first sentence. Claude adversarial raised that attribution as a must-fix; it is held as a suggestion because the date is right and the wording is his apart from that one grammar fix. Gemini: complete, no issues. Codex: complete, one suggestion (folded into the third below).
+
+### Findings
+- [ ] (suggestion) Path 1's first sentence joins two fragments with ", to", which reads awkwardly alone in the sit-rep, and the paragraph repeats the full quote ("His full words: ..."), which the acceptance case already carries; open with the full quote and drop the repeat — `docs/roadmap.md:33-39`
+- [ ] (suggestion) Path 2's first sentence is his 2026-10-15 words with "making" changed to "make", unquoted; quote it verbatim if he is to read it as his exact words — `docs/roadmap.md:41-43`
+- [ ] (suggestion) The Cutover ordering rule "each row starts when the rows above it are done" still reads against row 7 running before the deferred rows 5–6; add "row 7 does not wait for them" to the pointer (Codex, Claude adversarial) — `docs/roadmap.md:192-195,210`
