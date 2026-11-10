@@ -16,9 +16,11 @@ passes, one merge, no issues opened.
 
 **The fork checkout is another root: READ ONLY.** In every pass: no write, no
 commit, no fetch, no build, no script run inside `/home/roland/project11`.
-Allowed: `ls`, `find`, `cat`/Read, `grep`, `git --no-optional-locks ls-files`
-and `git log` (read-only; they do not touch the index). Anything that would
-run a fork script, a fork test or `make` is out.
+Allowed: `ls`, `find`, `cat`/Read, `grep`, `diff`/`cmp` against this tree,
+`git --no-optional-locks` `ls-files`, `log`, `branch`, `worktree list` and
+`show` (read-only; they do not touch the index), and `gh` on the fork's
+repository only to list or view. Anything that would run a fork script, a
+fork test or `make` is out.
 
 ## Approach
 
@@ -177,7 +179,7 @@ row only if step 8 finds a reason.
 | Principle | Consideration |
 |---|---|
 | Only what's needed | One table, two short lists, at most about ten proposed issues; no appended digest |
-| Verify before claiming | "Already covered" requires opening the file here; step 6 checks every path and issue number; counts must match |
+| Verify before claiming | "Already covered" requires opening the file here; step 7 checks every path and issue number; counts must match |
 | Put each thing at the level it applies to | Record may name the fork and project11; no mechanism file does; project layers classify as "belongs to a project repository" |
 | Ask about what matters | Owner sees the two lists and the issues-to-open section; classification is the agent's |
 | Leave a trail | Counts line per pass; progress.md entries |
