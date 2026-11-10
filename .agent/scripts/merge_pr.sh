@@ -76,6 +76,9 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_resolve_default_branch.sh"
 # shellcheck source=_bookkeeping.sh
 source "$SCRIPT_DIR/_bookkeeping.sh"
+# records_path: the records gate the gate's timeline lookup passes (issue 429)
+# shellcheck source=_resolve_work_plans_dir.sh
+source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
@@ -678,9 +681,20 @@ else
     [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_ROOT_EFFECTIVE"
     _gate_wt=$(find_worktree_for_branch "$_gate_wt_repo" "$PR_BRANCH" || true)
 fi
+# The path passes the records gate (records_path) like every other records
+# read: inside a package worktree only the issue's own checkout is read. A
+# refusal leaves no timeline and says why below.
 _gate_progress=""
-[[ -n "$_gate_wt" && -f "$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md" ]] \
-    && _gate_progress="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+_gate_refusal=""
+if [[ -n "$_gate_wt" ]]; then
+    _gate_cand="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+    if _gate_refusal=$(records_path "$_gate_cand" 2>&1 >/dev/null); then
+        _gate_refusal=""
+        [[ -f "$_gate_cand" ]] && _gate_progress="$_gate_cand"
+    else
+        _gate_refusal=$(head -n1 <<< "$_gate_refusal" | sed 's/^ERROR: //')
+    fi
+fi
 # The git repo the ancestry/paths checks run in (gate condition (a) and the
 # Step 2 CI target): the PR's own worktree, and never a main tree (the
 # workspace's or the project's checkout root) even if it happens to have the
@@ -714,6 +728,8 @@ if [[ -z "$_gate_head" ]]; then
 elif [[ -z "$_gate_progress" ]]; then
     if [[ -n "$PKG_WT_DIR" ]]; then
         _gate_reasons+=("package worktree $(_bk_display "$PKG_WT_DIR") carries no issue timeline (no progress.md for issue #$(_bk_display "$ISSUE_NUM"))")
+    elif [[ -n "$_gate_refusal" ]]; then
+        _gate_reasons+=("the records gate refused the timeline in $(_bk_display "$_gate_wt"): $(_bk_display "$_gate_refusal")")
     else
         _gate_reasons+=("no progress.md for issue #$(_bk_display "$ISSUE_NUM") in an open worktree (looked for $(_bk_display "${_gate_wt:-<no worktree found for $PR_BRANCH>}"))")
     fi

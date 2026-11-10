@@ -14,7 +14,8 @@
 #
 # Resolution rules (in order):
 #   1. If $WORK_PLANS_DIR_OVERRIDE is set (callers export this after parsing
-#      --work-plans-dir), return it verbatim (no normalization).
+#      --work-plans-dir), return it verbatim (no normalization), once
+#      records_path (below) has let it through.
 #   2. Else if $WORKTREE_ISSUE equals the requested issue number, return
 #      "$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>".
 #   2b. Else if $WORKTREE_ISSUE is UNSET (not merely different) and the
@@ -26,11 +27,36 @@
 #       A set-but-mismatched $WORKTREE_ISSUE never takes this fallback.
 #   3. Else abort with remediation guidance pointing at worktree_enter.sh.
 #
-# Rules 2 and 2b also run issue_checkout_guard (below) on the toplevel they
-# found, so neither returns a directory inside a package worktree that is
-# not the issue's own checkout (issue 429).
+# Every rule's answer passes records_path, so none returns a directory
+# inside a package worktree that is not the issue's own checkout (issue 429).
 #
-# Also exposes (issue 429, ADR-0012 package worktrees):
+# THE records gate (issue 429, ADR-0012 package worktrees). Every script
+# that reads or writes an issue's records reaches the path through one of
+# these two, and both end in the same check:
+#   records_path <path> [<from-dir>]
+#     <path> is a file or directory at or under
+#     <repo>/.agent/work-plans/issue-<N>/ (relative to $PWD; it need not
+#     exist yet); <N> is read from the path. Prints <path> unchanged when
+#     the repository holding it may hold issue <N>'s records, and refuses
+#     (stderr, naming the right checkout, return 1) when it may not:
+#     inside a package worktree (a .worktree-repos manifest encloses the
+#     path's repository, the path itself, or <from-dir>, default $PWD),
+#     only the manifest's issue checkout may (issue_checkout_of). A sibling
+#     checkout with the same issue number and the worktree's top folder
+#     (whose git toplevel is some other repository, the workspace's main
+#     checkout, say) are refused for reads and writes alike. No manifest
+#     anywhere: a no-op, so workspace issues and single-repo project
+#     worktrees are unchanged. A path not of that shape is no timeline and
+#     is printed unchanged (a --no-progress temp dir, a test fixture).
+#   records_dir <N> [<dir>]
+#     <dir>'s git toplevel (default .) + /.agent/work-plans/issue-<N>,
+#     through records_path with <dir> as <from-dir>.
+# Callers: resolve_work_plans_dir (every rule), progress_append.sh, every
+# review_progress.sh subcommand that takes or builds a records path (round,
+# persist, sources, findings, check, plan-sha), dispatch_phase.sh
+# (resolve_issue_dir and `next --progress`) and merge_pr.sh's gate lookup.
+#
+# Also exposes:
 #   issue_checkout_of <worktree-dir> <N>
 #     The directory issue <N>'s work and records happen in. A worktree with
 #     no .worktree-repos manifest is that directory itself (workspace and
@@ -41,15 +67,10 @@
 #     feature/<repo>-issue-<N>). Refuses (stderr, return 1) when the
 #     manifest's header names another issue number or no single entry is on
 #     that branch. dispatch_phase.sh decides the working directory with it.
-#   issue_checkout_guard <repo-dir> <N> [<dir>]
-#     The records writers' guard. When a .worktree-repos manifest encloses
-#     <repo-dir>'s toplevel (or, failing that, <dir>, default $PWD), the
-#     repository that would commit issue <N>'s records must be that
-#     manifest's issue checkout; otherwise it refuses on stderr naming the
-#     right directory and returns 1. No manifest encloses either: a no-op
-#     (return 0), so workspace issues and single-repo project worktrees are
-#     unchanged. Called by rules 2 and 2b here, by progress_append.sh and by
-#     review_progress.sh persist (before its compatibility-mode write).
+#   issue_checkout_guard <dir> <N> [<from-dir>]
+#     The check records_path runs; callers use records_path or records_dir,
+#     never this directly. Looks for the manifest enclosing <dir>'s
+#     toplevel, then <dir>, then <from-dir> (default $PWD).
 #
 # Caller-gotcha: prefer a bare assignment (`WORK_PLANS_DIR=$(resolve ... )
 # || exit 4`) over `local WORK_PLANS_DIR=$(resolve ... )`. The `local`
@@ -142,28 +163,65 @@ issue_checkout_guard() {
         wt=$(_wpd_enclosing_manifest "$top") || wt=""
     fi
     if [ -z "$wt" ]; then
+        wt=$(_wpd_enclosing_manifest "$dir") || wt=""
+    fi
+    if [ -z "$wt" ]; then
         wt=$(_wpd_enclosing_manifest "$other") || wt=""
     fi
     [ -z "$wt" ] && return 0
     ref=$(head -n1 "$wt/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')
     want=$(issue_checkout_of "$wt" "$issue") || {
-        echo "ERROR: refusing to commit issue #${issue}'s records inside $wt (see above)." >&2
+        echo "ERROR: refusing to read or write issue #${issue}'s records inside $wt (see above)." >&2
         return 1
     }
     want=$(cd "$want" 2>/dev/null && pwd -P) || {
-        echo "ERROR: refusing to commit issue #${issue}'s records: its checkout $want (from $wt/.worktree-repos) does not exist." >&2
+        echo "ERROR: refusing to read or write issue #${issue}'s records: its checkout $want (from $wt/.worktree-repos) does not exist." >&2
         return 1
     }
     if [ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$want" ]; then
         return 0
     fi
     {
-        echo "ERROR: refusing to commit issue #${issue}'s records in ${top:-$dir}."
+        echo "ERROR: refusing to read or write issue #${issue}'s records in ${top:-$dir}."
         echo "  That is not the issue's checkout in the package worktree for ${ref:-issue #$issue}"
         echo "  ($wt). Its records go in $want. Run from that checkout:"
         echo "    cd $want"
     } >&2
     return 1
+}
+
+records_path() {
+    local path="${1:-}" from="${2:-$PWD}" abs probe issue
+    if [ -z "$path" ]; then
+        echo "ERROR: records_path: a path is required" >&2
+        return 1
+    fi
+    abs=$(realpath -m -- "$path" 2>/dev/null) || abs="$path"
+    if [[ "$abs" =~ /\.agent/work-plans/issue-([0-9]+)(/|$) ]]; then
+        issue="${BASH_REMATCH[1]}"
+    else
+        printf '%s\n' "$path"
+        return 0
+    fi
+    probe="$abs"
+    while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do
+        probe=$(dirname "$probe")
+    done
+    issue_checkout_guard "$probe" "$issue" "$from" || return 1
+    printf '%s\n' "$path"
+}
+
+records_dir() {
+    local issue="${1:-}" dir="${2:-.}" top
+    if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: records_dir: a numeric issue number is required (got '${issue}')" >&2
+        return 1
+    fi
+    top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || {
+        echo "ERROR: records_dir: '$dir' is not inside a git repository" >&2
+        return 1
+    }
+    records_path "$top/.agent/work-plans/issue-$issue" "$dir"
 }
 
 resolve_work_plans_dir() {
@@ -179,6 +237,7 @@ resolve_work_plans_dir() {
 
     # Rule 1: explicit override wins.
     if [ -n "${WORK_PLANS_DIR_OVERRIDE:-}" ]; then
+        records_path "$WORK_PLANS_DIR_OVERRIDE" "$PWD" >/dev/null || return 1
         echo "$WORK_PLANS_DIR_OVERRIDE"
         return 0
     fi
@@ -190,9 +249,8 @@ resolve_work_plans_dir() {
             echo "ERROR: resolve_work_plans_dir: not inside a git repository" >&2
             return 1
         }
-        issue_checkout_guard "$toplevel" "$issue" "$PWD" || return 1
-        echo "${toplevel}/.agent/work-plans/issue-${issue}"
-        return 0
+        records_path "${toplevel}/.agent/work-plans/issue-${issue}" "$PWD"
+        return
     fi
 
     # Rule 2b: WORKTREE_ISSUE unset — derive the issue from the worktree
@@ -215,17 +273,15 @@ resolve_work_plans_dir() {
             # a request for 224.
             case "$base" in
                 issue-*-"$issue")
-                    issue_checkout_guard "$toplevel" "$issue" "$PWD" || return 1
-                    echo "${toplevel}/.agent/work-plans/issue-${issue}"
-                    return 0
+                    records_path "${toplevel}/.agent/work-plans/issue-${issue}" "$PWD"
+                    return
                     ;;
             esac
             # Branch naming: feature/issue-<N> or feature/ISSUE-<N>-<desc>.
             # (-|$) anchors the number so feature/issue-2244 can't satisfy 224.
             if [[ "${branch,,}" =~ ^feature/issue-${issue}(-|$) ]]; then
-                issue_checkout_guard "$toplevel" "$issue" "$PWD" || return 1
-                echo "${toplevel}/.agent/work-plans/issue-${issue}"
-                return 0
+                records_path "${toplevel}/.agent/work-plans/issue-${issue}" "$PWD"
+                return
             fi
         fi
     fi

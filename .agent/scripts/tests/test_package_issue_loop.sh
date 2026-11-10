@@ -370,6 +370,120 @@ check "a failing gh refuses with its message, not a silent pass" \
     "$([[ "$out" == *"could not ask gh"*"not logged in"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 mv "$STUB/gh.off" "$STUB/gh"
 
+# ------------------------------------------------------------------ case 8
+# The records gate, as a class (pre-push review round 1, must-fix 1): every
+# records entry point, reads and writes alike, run from the top folder C and
+# from the sibling B with the path the skills build
+# ("$(git rev-parse --show-toplevel)/.agent/work-plans/issue-7/..."), is
+# refused naming A and touches nothing. From C that path is the workspace
+# main checkout's own issue-7 timeline; from B it is pkg_b's own. Both hold
+# an open review finding, so a `check` that got through would tick it.
+echo "TEST: every records entry point refuses B and C, reads and writes alike"
+review_entry() {  # <branch>
+    entry 'Local Review (Pre-Push)' '**Verdict**: changes-requested' "**Branch**: $1 at \`1234567\`" '' '### Findings' \
+        '- [ ] (must-fix) open finding — `x.sh:1`'
+}
+mkdir -p "$WS/.agent/work-plans/issue-7"
+printf -- '---\nissue: 7\n---\n\n# Issue #7 — workspace issue 7\n\n' > "$WS/.agent/work-plans/issue-7/progress.md"
+review_entry feature/issue-7 >> "$WS/.agent/work-plans/issue-7/progress.md"
+printf '# plan\n' > "$WS/.agent/work-plans/issue-7/plan.md"
+git -C "$WS" add .agent/work-plans/issue-7 && git -C "$WS" commit -q -m "workspace issue 7 records"
+{ echo; review_entry feature/pkg_a-issue-7; } >> "$B/.agent/work-plans/issue-7/progress.md"
+printf '# pkg_b plan\n' > "$B/.agent/work-plans/issue-7/plan.md"
+git -C "$B" add .agent/work-plans/issue-7 && git -C "$B" commit -q -m "pkg_b issue 7 review"
+{ echo; review_entry feature/issue-7; } >> "$A/.agent/work-plans/issue-7/progress.md"
+printf '# pkg_a plan\n' > "$A/.agent/work-plans/issue-7/plan.md"
+git -C "$A" add .agent/work-plans/issue-7 && git -C "$A" commit -q -m "pkg_a issue 7 review"
+printf '{"reviews": [], "comments": []}\n' > "$SANDBOX/reviews.json"
+
+# One line per entry point: <name>%<command, run from the directory under
+# test>[%<refusal text, when not the gate's>]. P is the literal path the
+# skills build from that directory's toplevel. persist --strict with no
+# WORKTREE_ISSUE is refused one step earlier, by the issue #147 rule (B's
+# and C's toplevels encode no issue 7); the next row sets WORKTREE_ISSUE=7
+# so the gate is what refuses.
+# shellcheck disable=SC2016
+EP_TABLE='
+review_progress round%"$S/review_progress.sh" round --issue 7 --branch feature/issue-7
+review_progress round --progress%"$S/review_progress.sh" round --progress "$P/progress.md" --branch feature/issue-7
+review_progress persist%checkpoint_entry | "$S/review_progress.sh" persist --issue 7
+review_progress persist --strict%checkpoint_entry | "$S/review_progress.sh" persist --issue 7 --strict%outside its worktree
+review_progress persist (WORKTREE_ISSUE=7)%checkpoint_entry | WORKTREE_ISSUE=7 "$S/review_progress.sh" persist --issue 7 --strict
+review_progress sources%"$S/review_progress.sh" sources --progress "$P/progress.md" --head 1234567 --reviews "$SANDBOX/reviews.json"
+review_progress findings%"$S/review_progress.sh" findings --progress "$P/progress.md"
+review_progress check%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0
+review_progress check --deferred%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0 --deferred why
+review_progress plan-sha%"$S/review_progress.sh" plan-sha --plan "$P/plan.md"
+review_progress plan-sha --ref%"$S/review_progress.sh" plan-sha --plan ./.agent/work-plans/issue-7/plan.md --ref HEAD
+progress_append%checkpoint_entry | "$S/progress_append.sh" 7
+progress_append -C%checkpoint_entry | (cd "$H" && "$S/progress_append.sh" -C "$OLDPWD" 7)
+resolve_work_plans_dir (WORKTREE_ISSUE=7)%(export WORKTREE_ISSUE=7; source "$S/_resolve_work_plans_dir.sh"; resolve_work_plans_dir 7)
+resolve_work_plans_dir (override)%(export WORK_PLANS_DIR_OVERRIDE="$P"; source "$S/_resolve_work_plans_dir.sh"; resolve_work_plans_dir 7)
+dispatch_phase next --progress%"$S/dispatch_phase.sh" next --progress "$P/progress.md" --pr none
+'
+# Every review_progress.sh subcommand has a row above, or is named here as
+# taking no records path; a new subcommand fails this until it is placed.
+NO_RECORDS_SUBS="verdict"
+subs=$(sed -n 's/^    \([a-z-]*\)) *cmd_.*/\1/p' "$S/review_progress.sh")
+check "review_progress.sh's dispatch table lists the seven known subcommands" \
+    "$([[ "$(sort <<< "$subs" | tr '\n' ' ')" == "check findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
+for sub in $subs; do
+    if [[ " $NO_RECORDS_SUBS " == *" $sub "* ]]; then
+        out=$(cd "$B" && "$S/review_progress.sh" "$sub" --must-fix 0 --round 1 2>&1); rc=$?
+        check "review_progress $sub takes no records path (runs from B)" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
+        continue
+    fi
+    check "review_progress $sub has an entry-point row" \
+        "$(grep -q "^review_progress ${sub}[ %]" <<< "$EP_TABLE"; echo $?)"
+done
+
+before=$(heads)
+sums_before=$(md5sum "$WS/.agent/work-plans/issue-7/"* "$B/.agent/work-plans/issue-7/"* "$PKG_B_HOSTED/.agent/work-plans/issue-7/"*)
+n=0
+while IFS='%' read -r name cmd why; do
+    [[ -n "$name" ]] || continue
+    n=$((n + 1))
+    for where_ in B C; do
+        dir="${!where_}"
+        P="$(git -C "$dir" rev-parse --show-toplevel)/.agent/work-plans/issue-7"
+        errf="$SANDBOX/ep.err"
+        out=$(cd "$dir" && P="$P" eval "$cmd" 2>"$errf"); rc=$?
+        err=$(cat "$errf")
+        want_rc=4
+        [[ "$name" == resolve_work_plans_dir* ]] && want_rc=1
+        [[ "$name" == dispatch_phase* ]] && want_rc=2
+        check "$name from $where_: refused (exit $want_rc), ${why:+by the #147 rule}${why:-naming A}, nothing on stdout" \
+            "$([[ "$rc" -eq "$want_rc" && "$err" == *"${why:-records go in $A}"* && -z "$out" ]]; echo $?)" "rc=$rc out=$out err=$err"
+    done
+done <<< "$EP_TABLE"
+after=$(heads)
+sums_after=$(md5sum "$WS/.agent/work-plans/issue-7/"* "$B/.agent/work-plans/issue-7/"* "$PKG_B_HOSTED/.agent/work-plans/issue-7/"*)
+check "the $n entry points refused from B and C wrote and committed nothing anywhere" \
+    "$([[ "$before" == "$after" && "$sums_before" == "$sums_after" ]]; echo $?)" "$(diff <(echo "$before$sums_before") <(echo "$after$sums_after"))"
+check "the table covers at least 16 entry points" "$([[ "$n" -ge 16 ]]; echo $?)" "n=$n"
+
+out=$(cd "$B" && "$S/dispatch_phase.sh" where --issue 'owner/pkg_a#7' --type project 2>&1); rc=$?
+check "the dispatcher derives A from B too (it never resolves from the current directory)" \
+    "$([[ "$rc" -eq 0 && "$out" == "$A" ]]; echo $?)" "$out"
+
+# The same reads from A, and from the workspace main checkout for its own
+# issue-7 timeline (no manifest there), go through as before.
+for where_ in A WS; do
+    dir="${!where_}"
+    P="$(git -C "$dir" rev-parse --show-toplevel)/.agent/work-plans/issue-7"
+    out=$(cd "$dir" && "$S/review_progress.sh" round --issue 7 --branch feature/issue-7 2>&1); rc=$?
+    check "round from $where_ reads its own timeline" "$([[ "$rc" -eq 0 && "$out" == "round="[2-9]* ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" findings --progress "$P/progress.md" 2>&1); rc=$?
+    check "findings from $where_ lists the open finding" "$([[ "$rc" -eq 0 && "$out" == *'"index": 0'* ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" sources --progress "$P/progress.md" --head 1234567 --reviews "$SANDBOX/reviews.json" 2>&1); rc=$?
+    check "sources from $where_ runs" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" plan-sha --plan "$P/plan.md" 2>&1); rc=$?
+    check "plan-sha from $where_ prints the plan commit" "$([[ "$rc" -eq 0 && "$out" == "$(git -C "$dir" log -1 --format=%h -- .agent/work-plans/issue-7/plan.md)" ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" check --progress "$P/progress.md" --index 0 2>&1); rc=$?
+    check "check from $where_ ticks its own box" "$([[ "$rc" -eq 0 && "$out" == "- [x] (must-fix) open finding"* ]]; echo $?)" "$out"
+    git -C "$dir" checkout -q -- .agent/work-plans/issue-7/progress.md
+done
+
 echo
 echo "test_package_issue_loop: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

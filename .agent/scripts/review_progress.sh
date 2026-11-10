@@ -45,9 +45,6 @@
 #                                        proceeds with the pre-PR-B mechanism: the
 #                                        current worktree's progress.md, inline
 #                                        append + `git add` + `git commit`.
-#            both modes refuse (exit 4, nothing written) inside a package
-#            worktree from any checkout but the issue's own
-#            (issue_checkout_guard, _resolve_work_plans_dir.sh; issue 429).
 #
 # sources  Integrator input for triage-reviews: local review findings that
 #          cover the PR head (recorded at it, or at an ancestor with only
@@ -67,9 +64,17 @@
 # check    Flip one of that entry's checkboxes to [x], optionally with a
 #          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
 #
+# The records gate: every subcommand that takes or builds a records path
+# (round, persist in both modes, sources, findings, check, plan-sha) passes
+# it through records_path / records_dir (_resolve_work_plans_dir.sh) before
+# reading or writing anything, and exits 4 when it refuses: inside a
+# package worktree, a timeline that is not in the issue's own checkout (a
+# sibling with the same issue number, or the worktree's top folder, whose
+# toplevel is another repository), for reads as for writes (issue 429).
+# verdict takes no path. A no-op outside package worktrees.
+#
 # Exit codes: 0 ok; 2 usage; 3 append/commit failure; 4 strict-mode resolver
-# abort, or (persist, both modes) a package-worktree checkout that is not
-# the issue's own.
+# abort, or the records gate refused the path.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced." >&2
@@ -81,6 +86,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROGRESS_READ="$SCRIPT_DIR/progress_read.py"
 PROGRESS_APPEND="$SCRIPT_DIR/progress_append.sh"
 PYTHON="${PYTHON:-python3}"
+# shellcheck source=_resolve_work_plans_dir.sh
+source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 
 usage() {
     cat >&2 <<'EOF'
@@ -94,7 +101,7 @@ Usage:
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
 See the header comment of this script for what each subcommand prints.
-Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or a package-worktree checkout that is not the issue's own.
+Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or the records gate refused the path (a package-worktree checkout that is not the issue's own).
 EOF
     exit 2
 }
@@ -116,9 +123,12 @@ cmd_round() {
     [[ -n "$branch" ]] || { echo "error: round: --branch required" >&2; exit 2; }
     if [[ -z "$progress" ]]; then
         [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: round: --issue <N> or --progress <file> required" >&2; exit 2; }
-        local top
-        top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: round: not in a git repository" >&2; exit 2; }
-        progress="$top/.agent/work-plans/issue-$issue/progress.md"
+        git rev-parse --show-toplevel >/dev/null 2>&1 || { echo "error: round: not in a git repository" >&2; exit 2; }
+        local dir
+        dir=$(records_dir "$issue") || { echo "error: round: the records gate refused this checkout — see above" >&2; exit 4; }
+        progress="$dir/progress.md"
+    else
+        records_path "$progress" >/dev/null || { echo "error: round: the records gate refused $progress — see above" >&2; exit 4; }
     fi
     if [[ ! -f "$progress" ]]; then
         echo "round=1"; echo "prev_must_fix=-"; return 0
@@ -263,9 +273,6 @@ _persist_impl() {
     # paths leave the same commit subject (PR C: triage-reviews shares this).
     type_msg=$(printf '%s' "$entry_type" | tr '[:upper:]' '[:lower:]')
 
-    # shellcheck source=_resolve_work_plans_dir.sh
-    source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
-
     if [[ "$strict" == "1" ]]; then
         local dir root expected
         dir=$(resolve_work_plans_dir "$issue") || {
@@ -299,14 +306,14 @@ _persist_impl() {
     # Compatibility mode (PROGRESS_PERSISTENCE_STRICT=0, the PR B default):
     # evaluate the strict path's abort condition, report it, then do what
     # the skill did before PR B — current worktree, inline append + commit.
-    # One refusal stays a refusal here too (issue 429): inside a package
-    # worktree, a checkout that is not the issue's own (a sibling with the
-    # same issue number, or the worktree's top folder) never gets the write.
-    # The strict path above gets the same guard from resolve_work_plans_dir
-    # and progress_append.sh.
+    # One refusal stays a refusal here too (issue 429): the path goes
+    # through the records gate, so inside a package worktree a checkout that
+    # is not the issue's own (a sibling with the same issue number, or the
+    # worktree's top folder) never gets the write. The strict path above
+    # passes the same gate in resolve_work_plans_dir and progress_append.sh.
     local root file_rel file
     root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: persist: not in a git repository" >&2; exit 3; }
-    issue_checkout_guard "$root" "$issue" "$PWD" || {
+    records_dir "$issue" >/dev/null || {
         echo "error: progress persistence aborted: not the issue's own checkout — see the message above" >&2
         exit 4
     }
@@ -378,6 +385,9 @@ cmd_sources() {
     done
     [[ -n "$head" && -n "$reviews" ]] || { echo "error: sources: --head <sha> and --reviews <json> required" >&2; exit 2; }
     [[ -f "$reviews" ]] || { echo "error: sources: reviews file not found: $reviews" >&2; exit 2; }
+    if [[ -n "$progress" ]]; then
+        records_path "$progress" >/dev/null || { echo "error: sources: the records gate refused $progress — see above" >&2; exit 4; }
+    fi
     local json="{\"entries\": []}"
     if [[ -n "$progress" && -e "$progress" && ! -f "$progress" ]]; then
         echo "error: sources: --progress '$progress' exists but is not a regular file (pass the progress.md path, not its directory)" >&2; exit 2
@@ -552,6 +562,8 @@ cmd_findings() {
             *) usage ;;
         esac
     done
+    [[ -n "$progress" ]] || { echo "error: findings: --progress <file> required" >&2; exit 2; }
+    records_path "$progress" >/dev/null || { echo "error: findings: the records gate refused $progress — see above" >&2; exit 4; }
     [[ -f "$progress" ]] || { echo "error: findings: progress file not found: $progress" >&2; exit 2; }
     local json
     json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
@@ -587,6 +599,9 @@ cmd_check() {
             *) usage ;;
         esac
     done
+    if [[ -n "$progress" ]]; then
+        records_path "$progress" >/dev/null || { echo "error: check: the records gate refused $progress — see above" >&2; exit 4; }
+    fi
     [[ -f "$progress" && "$index" =~ ^[0-9]+$ ]] || { echo "error: check: --progress <file> and --index <i> required" >&2; exit 2; }
     [[ "$deferred" == *$'\n'* ]] && { echo "error: check: --deferred reason must be a single line" >&2; exit 2; }
     if [[ "$deferred_given" == 1 && -z "$deferred" ]]; then
@@ -649,6 +664,7 @@ cmd_plan_sha() {
         # head, a branch) — no local checkout of the file needed. <plan> is
         # repo-relative here; the ref must resolve and must contain the file.
         top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: plan-sha: not in a git repository" >&2; exit 2; }
+        records_path "$top/${plan#./}" >/dev/null || { echo "error: plan-sha: the records gate refused $plan in $top — see above" >&2; exit 4; }
         git -C "$top" rev-parse --verify -q "${ref}^{commit}" >/dev/null || { echo "error: plan-sha: ref '$ref' does not resolve (fetch it first?)" >&2; exit 2; }
         git -C "$top" cat-file -e "${ref}:${plan}" 2>/dev/null || { echo "error: plan-sha: '$plan' does not exist at ref '$ref'" >&2; exit 2; }
         sha=$(git -C "$top" log -1 --format=%h "$ref" -- "$plan") && [[ -n "$sha" ]] || {
@@ -656,6 +672,7 @@ cmd_plan_sha() {
         echo "$sha"
         return 0
     fi
+    records_path "$plan" >/dev/null || { echo "error: plan-sha: the records gate refused $plan — see above" >&2; exit 4; }
     [[ -f "$plan" ]] || { echo "error: plan-sha: plan file not found: $plan (reviewing a PR from another tree? pass --ref <head>)" >&2; exit 2; }
     dir=$(dirname "$plan"); base=$(basename "$plan")
     git -C "$dir" ls-files --error-unmatch -- "$base" >/dev/null 2>&1 || {

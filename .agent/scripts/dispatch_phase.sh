@@ -79,7 +79,8 @@
 #
 # Exit codes:
 #   next:        0 action decided; 2 usage (including no worktree for
-#                --issue, or a --progress path that does not exist); 3 the
+#                --issue, a --progress path that does not exist, or one the
+#                records gate refuses); 3 the
 #                timeline could not be parsed (progress_read.py's message
 #                stays on stderr).
 #   handoff /
@@ -114,8 +115,8 @@ fi
 
 # shellcheck source=_worktree_helpers.sh
 source "$SCRIPT_DIR/_worktree_helpers.sh"
-# issue_checkout_of: the owning-checkout rule this script and the records
-# writers' guard share (issue 429).
+# issue_checkout_of: the owning-checkout rule; records_path: the records
+# gate every records reader and writer passes (issue 429).
 # shellcheck source=_resolve_work_plans_dir.sh
 source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 
@@ -283,8 +284,10 @@ resolve_worktree() {
 # issue, issue_checkout_of's rule (_resolve_work_plans_dir.sh: the entry on
 # feature/issue-<N>). The worktree's top folder is no repository of its
 # own, and a sibling checkout carries the same issue number for its own
-# repository, so neither is ever handed out. The records writers' guard
-# (issue_checkout_guard) refuses both by the same rule.
+# repository, so neither is ever handed out. The directory's records path
+# passes the records gate (records_path) here too, so every mode below that
+# reads or names the timeline (the handoff, `where`, `next`, --check-exit)
+# has passed it.
 #
 # With <check_gh>=1 (handoff and `where`, the two that send someone to work
 # there), a package issue also requires that `gh`, run in that checkout,
@@ -302,6 +305,7 @@ resolve_issue_dir() {
     local wt rc=0 dir hdr want got
     wt=$(resolve_worktree "$ref" "$type" "$project") || { rc=$?; return "$rc"; }
     dir=$(issue_checkout_of "$wt" "$num") || return 2
+    records_path "$dir/.agent/work-plans/issue-$num" "$dir" >/dev/null || return 2
     if [[ "$dir" == "$wt" ]]; then
         echo "$dir"
         return 0
@@ -687,6 +691,7 @@ cmd_next() {
     fi
 
     if [[ -n "$progress" ]]; then
+        records_path "$progress" >/dev/null || { echo "error: next: the records gate refused $progress — see above" >&2; exit 2; }
         [[ -f "$progress" ]] || { echo "error: next: --progress file not found: $progress" >&2; exit 2; }
     else
         [[ -n "$issue" ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
