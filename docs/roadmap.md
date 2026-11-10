@@ -30,13 +30,10 @@ in Rolling: "a working simulator in Rolling" (2026-09-21).
 project11. When he asks for a sit-rep, he decides which to focus on.
 
 **Path 1, project11 on a second machine.** In the owner's words
-(2026-11-10): "I also want to move project11 to this workspace", to
-"develop project11 against ROS2 rolling". Path 1 work is an issue named
-in a Direction line below (in the line itself or its check). Work in a
-project11 package repository that no line names is not listed in this
-workspace's sit-rep. His full words: "I also want to move project11 to
-this workspace ... test on pickerel, the new desktop machine I have, and
-set it up to develop project11 against ROS2 rolling."
+(2026-11-10): "I also want to move project11 to this workspace". Path 1
+work is an issue named in a Direction line below (in the line itself or
+its check). Work in a project11 package repository that no line names is
+not listed in this workspace's sit-rep.
 
 **Path 2, the workspace reflects the goals.** Implementing the missing
 pieces to make this workspace reflect the goals we set (the owner,
