@@ -4,7 +4,25 @@
 # the fork's dispatch_subagent.sh minus every container clause (issue #276
 # decision, 2026-09-17: auto mode replaced containers; in-process only).
 #
+# Every mode takes --issue as a bare <N> or, for an issue of a package
+# repository in a multi-repository project (ADR-0012), as <owner/repo#N>.
+# The ref finds the worktree; the directory a phase and the host work in,
+# and every timeline path, is that worktree, except for a package worktree
+# (a .worktree-repos manifest), where it is the checkout of the repository
+# that owns the issue (its entry on feature/issue-<N>). resolve_issue_dir
+# below decides it in one place; the handoff names it as worktree= and
+# adds package_worktree=<top folder>. Two package worktrees for one bare
+# number are refused with their qualified refs listed (issue 429).
+#
 # Usage:
+#   dispatch_phase.sh where --issue <N|owner/repo#N> [--type workspace|project]
+#                      [--project <name>]
+#     Prints that directory, one line: run-issue step 1 `cd`s there and
+#     builds every progress path from it. For a package issue it, like the
+#     handoff, first checks that `gh` run there resolves the issue's own
+#     repository and refuses on a mismatch (a checkout with an `upstream`
+#     remote), naming both and `gh repo set-default <owner/repo>`.
+#
 #   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
 #                      [--project <name>]
 #                      [--pr <M>] [--prompt-file <f>] [--entry-type <T>]
@@ -14,9 +32,11 @@
 #     the plan's per-skill table), the commit identity, the model to stamp
 #     in **By**, the expected entry type, the exit contract, and the
 #     workspace conventions every dispatched phase must follow. Output is
-#     `key=value` lines, one per line, in this order: worktree, task,
-#     agent_name, agent_email, model, entry_type, exit_contract,
-#     conventions, and prompt_file (only when --prompt-file was given).
+#     `key=value` lines, one per line, in this order: worktree,
+#     package_worktree (only for a package issue), task, agent_name,
+#     agent_email, model, entry_type, exit_contract, conventions, and
+#     prompt_file (only when --prompt-file was given). conventions tells
+#     the phase to start every command chain with `cd <worktree> &&`.
 #     For `implement` and `address-findings` in a workspace handoff,
 #     conventions also carries the once-per-pass hook rule (owner-decided
 #     2026-10-20, issue #399): SKIP=validate-script-tests on intermediate
@@ -66,6 +86,9 @@
 #   --check-exit: 0 ok; 2 usage (including no worktree, unknown --skill,
 #                missing --pr for triage-reviews, or AGENT_NAME/AGENT_EMAIL
 #                unset); 3 the timeline could not be parsed.
+#   where /
+#   handoff:     2 also when the package worktree has no single entry on
+#                feature/issue-<N>, or gh resolves another repository there.
 #
 # See docs/decisions/0013-progress-md-entry-type-vocabulary.md for the
 # entry-type vocabulary and .agent/work-plans/issue-276/ for the plan.
@@ -91,13 +114,18 @@ fi
 
 # shellcheck source=_worktree_helpers.sh
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+# issue_checkout_of: the owning-checkout rule this script and the records
+# writers' guard share (issue 429).
+# shellcheck source=_resolve_work_plans_dir.sh
+source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 
 PROGRESS_READ="$SCRIPT_DIR/progress_read.py"
 PYTHON="${PYTHON:-python3}"
 
 usage() {
     cat >&2 <<'EOF'
-Usage:
+Usage (--issue takes <N> or <owner/repo#N> in every mode):
+  dispatch_phase.sh where --issue <N> [--type workspace|project] [--project <name>]
   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
                      [--project <name>] [--pr <M>] [--prompt-file <f>]
                      [--entry-type <T>] [--model <alias>]
@@ -228,17 +256,98 @@ resolve_worktree() {
         legacy_base=$(wt_legacy_project_base "$ROOT_DIR")
     fi
 
-    local path
-    if [[ -n "$new_base" ]] && path=$(find_worktree_by_issue "$new_base" "$issue" "" 2>/dev/null); then
-        echo "$path"; return 0
-    fi
-    if [[ -n "$transition_base" ]] && path=$(find_worktree_by_issue "$transition_base" "$issue" "" 2>/dev/null); then
-        echo "$path"; return 0
-    fi
-    if [[ -n "$legacy_base" ]] && path=$(find_worktree_by_issue "$legacy_base" "$issue" "" 2>/dev/null); then
-        echo "$path"; return 0
-    fi
+    # find_worktree_by_issue prints the path on success and nothing on
+    # stderr, or prints nothing on stdout and its guidance on stderr (two
+    # package worktrees for one bare number list their qualified refs), so
+    # one capture of both streams tells them apart. That guidance is passed
+    # through (return 2) rather than reported as "no worktree found".
+    local base out
+    for base in "$new_base" "$transition_base" "$legacy_base"; do
+        [[ -n "$base" ]] || continue
+        if out=$(find_worktree_by_issue "$base" "$issue" "" 2>&1); then
+            echo "$out"; return 0
+        fi
+        if [[ -n "$out" ]]; then
+            printf '%s\n' "$out" >&2
+            return 2
+        fi
+    done
     return 1
+}
+
+# ------------------------------------------------- the issue's directory ---
+# THE one place that decides the directory an issue's work and records
+# happen in (issue 429). The worktree resolve_worktree finds is that
+# directory, except for a package worktree (a .worktree-repos manifest,
+# ADR-0012): there it is the checkout of the repository that owns the
+# issue, issue_checkout_of's rule (_resolve_work_plans_dir.sh: the entry on
+# feature/issue-<N>). The worktree's top folder is no repository of its
+# own, and a sibling checkout carries the same issue number for its own
+# repository, so neither is ever handed out. The records writers' guard
+# (issue_checkout_guard) refuses both by the same rule.
+#
+# With <check_gh>=1 (handoff and `where`, the two that send someone to work
+# there), a package issue also requires that `gh`, run in that checkout,
+# resolves the issue's own repository: a checkout with an `upstream`
+# remote makes gh pick upstream over origin when no default is set, and
+# every bare `gh issue view/comment <N>` a phase runs would then reach the
+# upstream project's issue <N>. `next` and --check-exit pass 0: they only
+# read the timeline, and `next` never calls gh.
+#
+# Prints the directory on the first line and, for a package worktree, the
+# worktree's top folder on a second line. Returns 1 when no worktree was
+# found, 2 when a refusal was already printed on stderr.
+resolve_issue_dir() {
+    local ref="$1" num="$2" type="$3" project="$4" check_gh="$5"
+    local wt rc=0 dir hdr want got
+    wt=$(resolve_worktree "$ref" "$type" "$project") || { rc=$?; return "$rc"; }
+    dir=$(issue_checkout_of "$wt" "$num") || return 2
+    if [[ "$dir" == "$wt" ]]; then
+        echo "$dir"
+        return 0
+    fi
+    hdr=$(head -n1 "$wt/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')
+    if [[ "$check_gh" == 1 && "$hdr" == */*#* ]]; then
+        want="${hdr%#*}"
+        if ! got=$(cd "$dir" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>&1); then
+            echo "error: could not ask gh which repository it resolves from $dir (needed before work on $hdr starts there): $got" >&2
+            return 2
+        fi
+        if [[ "${got,,}" != "${want,,}" ]]; then
+            {
+                echo "error: in $dir, gh resolves $got, but the issue is $hdr (repository $want)."
+                echo "  A phase there would read and comment on $got's issue #$num instead. gh prefers a"
+                echo "  remote named upstream over origin when no default is set. Set the default:"
+                echo "    (cd $dir && gh repo set-default $want)"
+            } >&2
+            return 2
+        fi
+    fi
+    echo "$dir"
+    echo "$wt"
+}
+
+# parse_issue_ref <ref> <mode> -- a bare number, or owner/repo#N (a package
+# issue, ADR-0012). Prints the number; refuses anything else.
+parse_issue_ref() {
+    local ref="$1" mode="$2"
+    if [[ "$ref" =~ ^[0-9]+$ ]]; then
+        echo "$ref"; return 0
+    fi
+    if [[ "$ref" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#([0-9]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}"; return 0
+    fi
+    echo "error: $mode: --issue <N> or --issue <owner/repo#N> is required (got '$ref')" >&2
+    return 1
+}
+
+# report_resolve_failure <mode> <rc> <type> <ref> -- rc 1 is "none found";
+# rc 2 was already explained on stderr.
+report_resolve_failure() {
+    local shown="$4"
+    [[ "$shown" =~ ^[0-9]+$ ]] && shown="#$shown"
+    [[ "$2" -eq 1 ]] && echo "error: $1: no $3 worktree found for issue $shown" >&2
+    exit 2
 }
 
 # ------------------------------------------------ per-skill task/entry/model ---
@@ -322,7 +431,11 @@ cmd_handoff() {
             *) usage ;;
         esac
     done
-    [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: dispatch: --issue <N> is required" >&2; exit 2; }
+    # The qualified ref finds the worktree; the number goes into paths and
+    # the task line, because the phase runs in the owning checkout, where
+    # `gh issue view <N>` resolves that repository (checked below).
+    local ref="$issue"
+    issue=$(parse_issue_ref "$ref" dispatch) || exit 2
     [[ -n "$skill" ]] || { echo "error: dispatch: --skill <phase> is required" >&2; exit 2; }
     [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: dispatch: --type must be workspace or project" >&2; exit 2; }
 
@@ -348,11 +461,10 @@ cmd_handoff() {
     [[ -n "$entry_type_override" ]] && entry_type="$entry_type_override"
     [[ -n "$model_override" ]] && model="$model_override"
 
-    local wt
-    wt=$(resolve_worktree "$issue" "$type" "$project") || {
-        echo "error: dispatch: no $type worktree found for issue #$issue" >&2
-        exit 2
-    }
+    local wt resolved pkg_wt="" rc=0
+    resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 1) || { rc=$?; report_resolve_failure dispatch "$rc" "$type" "$ref"; }
+    wt=$(sed -n 1p <<< "$resolved")
+    pkg_wt=$(sed -n 2p <<< "$resolved")
 
     # A pre-push review at round 3 or later is a narrow convergence check
     # with no cross-model reviewers: the owner's standing exception to the
@@ -382,6 +494,9 @@ cmd_handoff() {
     fi
 
     echo "worktree=$wt"
+    # A package worktree's generated env.sh, build.sh and test.sh live in
+    # its top folder, not in the owning checkout the phase works in.
+    [[ -n "$pkg_wt" ]] && echo "package_worktree=$pkg_wt"
     echo "task=$task"
     echo "agent_name=$AGENT_NAME"
     echo "agent_email=$AGENT_EMAIL"
@@ -405,14 +520,19 @@ cmd_handoff() {
     # command as written: an ordinary path prints unchanged (so the
     # permission allowlist still matches it) and a path with a space or
     # other shell character comes out escaped.
-    local pass_rule="" root_q
+    local pass_rule="" root_q wt_q
     root_q=$(printf '%q' "$ROOT_DIR")
+    wt_q=$(printf '%q' "$wt")
     case "$skill" in
         implement|address-findings)
             [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$root_q/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; the file list is left unquoted because no repo path has a space; in a sub-issue worktree it also covers the parent's files). It runs the script test suites those files reach when a changed file that still exists matches that hook (every suite when the branch deletes an in-scope file or touches a shared helper; a branch whose only in-scope changes are deletions runs none, and CI's all-files run covers that), so run no separate suite; it takes about 2 minutes for a typical fix, about 7 when every suite runs: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
             ;;
     esac
-    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create.${pass_rule}"
+    # A dispatched sub-agent's shell returns to the session's start folder on
+    # every tool call, so a command chain without its own `cd` runs there,
+    # not in the worktree, and its commits land in whatever repository that
+    # folder is (issue 429 plan review, finding 3).
+    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create. Start every command chain with \`cd $wt_q &&\`: your shell returns to the session's start folder on each call, so a chain without it runs and commits there.${pass_rule}"
     if [[ -n "$prompt_file" ]]; then
         echo "prompt_file=$prompt_file"
     fi
@@ -432,7 +552,8 @@ cmd_check_exit() {
             *) usage ;;
         esac
     done
-    [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: check-exit: --issue <N> is required" >&2; exit 2; }
+    local ref="$issue"
+    issue=$(parse_issue_ref "$ref" check-exit) || exit 2
     [[ -n "$skill" ]] || { echo "error: check-exit: --skill <phase> is required" >&2; exit 2; }
     [[ "$before" =~ ^[0-9]+$ ]] || { echo "error: check-exit: --before <count> is required (integer)" >&2; exit 2; }
     [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: check-exit: --type must be workspace or project" >&2; exit 2; }
@@ -448,11 +569,9 @@ cmd_check_exit() {
         exit 2
     }
 
-    local wt
-    wt=$(resolve_worktree "$issue" "$type" "$project") || {
-        echo "error: check-exit: no $type worktree found for issue #$issue" >&2
-        exit 2
-    }
+    local wt resolved rc=0
+    resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || { rc=$?; report_resolve_failure check-exit "$rc" "$type" "$ref"; }
+    wt=$(sed -n 1p <<< "$resolved")
     local progress="$wt/.agent/work-plans/issue-$issue/progress.md"
 
     local json="" count=0
@@ -509,6 +628,27 @@ print(\"1\" if ((e.get(\"correlation\") or {}).get(\"sha\")) else \"0\")")
     esac
 }
 
+# ----------------------------------------------------------------- where ---
+# The directory the host works in for this issue (run-issue step 1 `cd`s
+# there), and the base of every progress path it builds: the same
+# resolve_issue_dir answer the handoff gives a phase as `worktree=`.
+cmd_where() {
+    local issue="" type="workspace" project=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --issue)   [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
+            --type)    [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
+            --project) [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    local ref="$issue" num resolved rc=0
+    num=$(parse_issue_ref "$ref" where) || exit 2
+    [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: where: --type must be workspace or project" >&2; exit 2; }
+    resolved=$(resolve_issue_dir "$ref" "$num" "$type" "$project" 1) || { rc=$?; report_resolve_failure where "$rc" "$type" "$ref"; }
+    sed -n 1p <<< "$resolved"
+}
+
 # ------------------------------------------------------------------ next ---
 cmd_next() {
     local issue="" pr="" type="workspace" project="" progress=""
@@ -539,12 +679,11 @@ cmd_next() {
     if [[ -n "$progress" ]]; then
         [[ -f "$progress" ]] || { echo "error: next: --progress file not found: $progress" >&2; exit 2; }
     else
-        [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
-        local wt
-        wt=$(resolve_worktree "$issue" "$type" "$project") || {
-            echo "error: next: no $type worktree found for issue #$issue" >&2
-            exit 2
-        }
+        [[ -n "$issue" ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
+        local ref="$issue" wt resolved rc=0
+        issue=$(parse_issue_ref "$ref" next) || exit 2
+        resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || { rc=$?; report_resolve_failure next "$rc" "$type" "$ref"; }
+        wt=$(sed -n 1p <<< "$resolved")
         progress="$wt/.agent/work-plans/issue-$issue/progress.md"
     fi
 
@@ -808,6 +947,7 @@ emit("checkpoint:unexpected", "no row matches this state (type=" + str(etype) + 
 
 case "${1:-}" in
     next)         shift; cmd_next "$@" ;;
+    where)        shift; cmd_where "$@" ;;
     --check-exit) shift; cmd_check_exit "$@" ;;
     -h|--help|help) usage ;;
     *)            cmd_handoff "$@" ;;
