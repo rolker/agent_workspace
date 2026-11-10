@@ -446,3 +446,33 @@ The coordinator asked for two things before the first review of pull request 1.
   - `test_package_issue_loop.sh` extracts the printed command from the contract. It runs it inside the owning package checkout, which has no `.agent/scripts`, and checks the entry is committed there. It also checks that the printed skill path exists. 58 passed, 0 failed.
   - `test_dispatch_phase.sh` checks both absolute paths for a workspace issue: 140 passed, 0 failed.
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed (rc 0), including the script-suite hook and shellcheck.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 12:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `6d35497a`
+**Base**: main
+**Depth**: Deep (reason: 14 files, +1647/-96; records writers' guard and three governance-touching skills plus docs/design.md)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Pull request 1 of 2 (the loop runs in the owning checkout). The guard holds for `progress_append.sh` and both `persist` modes against every path tried: a symlink into B or C, a subfolder of A (commits) and of B (refused), a non-repository subfolder of C, `-C` from A to B and from the session root to C, `WORKTREE_ISSUE=7` from B, a detached HEAD in A (commits in A; `where` still names A), and an issue number the manifest is not for. Reverting each piece in a scratch copy fails the new suite (the guard in `progress_append.sh` 8 checks, in `persist` 6, the owning-checkout mapping 15, the gh check 3). Existing suites pass: test_dispatch_phase 140, test_merge_pr_gate 106, test_package_issue_loop 58, test_resolve_work_plans_dir 21, test_progress_append 23, test_review_code_convergence 35, test_triage_reviews_integration 59, test_issue_review_entry 6, test_address_findings 15, test_checkpoint_269 43, test_skill_paths 136, all 0 failed; shellcheck clean. No workspace or single-repository path asks gh anything (the check runs only when the directory differs from the worktree). The gh check sits in `resolve_issue_dir`, fails closed when gh fails, and compares `gh repo view` with the manifest's ref without parsing a remote URL.
+
+Not closed, and not this pull request's: a write from outside any worktree. Reproduced: `progress_append.sh 7` from the session root committed on the workspace's `main`; `persist` with `WORKTREE_ISSUE=7` from the hosted pkg_b checkout committed on pkg_b's `main`. That is the follow-up issue the plan checkpoint left to the owner, and it should exist before the acceptance run.
+
+### Findings
+- [ ] (must-fix) `review_progress.sh check` (and the `findings` read that feeds it) has no guard, so address-findings' literal `--progress "$(git rev-parse --show-toplevel)/…"` from a sibling ticks pkg_b's own issue-7 review, and from the top folder ticks the workspace main's own issue-N review; the plain `git commit` then lands it there (both reproduced). The mechanism is right; the writer list missed the in-place editor: guard `check` and `findings` on the file's directory with N from its `issue-N` path, add the B and C cases, and make the design Records bullet and run-issue Scope name it — `.agent/scripts/review_progress.sh:580`
+- [ ] (must-fix) run-issue step 1 `cd "$(… where …)"` and the step 4 and step 6 `PF="$(… where …)/…"` fail open: a refused or failed `where` gives `cd ""`, a silent no-op (rc 0, reproduced), leaving the host in the top folder, and `PF=/.agent/…` gives `BEFORE=0`, so `--check-exit` (no gh) can report OK for a repeated entry type the phase never wrote. `where` now asks gh, so a transient gh failure is enough. Capture and stop: `d=$(…) || stop; cd "$d"` (cross-confirmed by codex) — `.claude/skills/run-issue/SKILL.md:217`
+- [ ] (must-fix) The design cites `dispatch_phase.sh` lines 511, 513, 575, 687; since `8ac2ca32` they are 521, 523, 585, 697 (477 is right), while the change-log row says they were refreshed (cross-confirmed by gemini) — `docs/design.md:502`
+- [ ] (suggestion) The host's own chains after step 1 (`git push`, `gh_create_pr.sh`, `check_branch_updates.sh`, checkpoint appends) carry no `cd <dir> &&`, though the skill says shell state does not persist; give them the rule `conventions=` gives phases — `.claude/skills/run-issue/SKILL.md:226`
+- [ ] (suggestion) The gh check captures `gh repo view` with `2>&1`, so a stderr notice on success is compared as the repository name; capture stdout alone and quote stderr only in the error — `.agent/scripts/dispatch_phase.sh:312`
+- [ ] (suggestion) `round` (no `--progress`) and `findings` read the current top folder's timeline unguarded: from B or C a lost `cd` gives `round=1` or another repository's findings instead of a refusal; guard the reads with the same call as must-fix 1 — `.agent/scripts/review_progress.sh:120`
+- [ ] (suggestion) Case 3's "asked gh nothing" counts only `repo view` lines; count every gh line around the dispatcher calls alone — `.agent/scripts/tests/test_package_issue_loop.sh:274`
+- [ ] (suggestion) The owning entry rests on the adapter's hand-written origin URL parser (`adapter_scope_for_pr`, pre-existing); the gh check backstops it for `where` and the handoff. Record it for issue 393 or its own issue, not here — `.agent/project_types/ros2_colcon/adapter.sh:868`
+
+Belongs elsewhere: the merge gate reading A's timeline is pull request 2; `worktree_create.sh --workflow` scaffolding a timeline in the top folder (pre-existing) is issue 393's, as the plan says; writes from outside any worktree are the follow-up issue. Dropped: gemini's branch-match finding (the manifest's branch is the adapter's exact `feature/issue-N`, never the live branch).
+
+Cross-model: gemini ran (complete, 2 findings: 1 kept as must-fix 3, 1 dropped); codex ran (complete, 1 finding, kept as must-fix 2). Claude adversarial ran (6 findings: 2 merged into must-fix 2 and 3, 3 suggestions, 1 to issue 393).
