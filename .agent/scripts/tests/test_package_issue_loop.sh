@@ -518,7 +518,9 @@ check "the dispatcher derives A from B too (it never resolves from the current d
     "$([[ "$rc" -eq 0 && "$out" == "$A" ]]; echo $?)" "$out"
 
 # The same reads from A, and from the workspace main checkout for its own
-# issue-7 timeline (no manifest there), go through as before.
+# issue-7 timeline (no manifest there), go through as before. `check` is a
+# write (issue 437): A, on feature/issue-7, ticks its box; the main checkout,
+# on its default branch, is refused and its timeline left unchanged.
 for where_ in A WS; do
     dir="${!where_}"
     P="$(git -C "$dir" rev-parse --show-toplevel)/.agent/work-plans/issue-7"
@@ -530,8 +532,14 @@ for where_ in A WS; do
     check "sources from $where_ runs" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
     out=$(cd "$dir" && "$S/review_progress.sh" plan-sha --plan "$P/plan.md" 2>&1); rc=$?
     check "plan-sha from $where_ prints the plan commit" "$([[ "$rc" -eq 0 && "$out" == "$(git -C "$dir" log -1 --format=%h -- .agent/work-plans/issue-7/plan.md)" ]]; echo $?)" "$out"
+    sum_before=$(md5sum < "$P/progress.md")
     out=$(cd "$dir" && "$S/review_progress.sh" check --progress "$P/progress.md" --index 0 2>&1); rc=$?
-    check "check from $where_ ticks its own box" "$([[ "$rc" -eq 0 && "$out" == "- [x] (must-fix) open finding"* ]]; echo $?)" "$out"
+    if [[ "$where_" == A ]]; then
+        check "check from A ticks its own box" "$([[ "$rc" -eq 0 && "$out" == "- [x] (must-fix) open finding"* ]]; echo $?)" "$out"
+    else
+        check "check from WS (main checkout, default branch) is refused and ticks nothing" \
+            "$([[ "$rc" -eq 4 && "$out" == *"refusing to write issue #7's records"* && "$(md5sum < "$P/progress.md")" == "$sum_before" ]]; echo $?)" "$out"
+    fi
     git -C "$dir" checkout -q -- .agent/work-plans/issue-7/progress.md
 done
 

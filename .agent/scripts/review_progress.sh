@@ -40,11 +40,17 @@
 #            strict (--strict, or PROGRESS_PERSISTENCE_STRICT=1)
 #                                     -> resolve_work_plans_dir() (fail-loud, exit 4
 #                                        with remediation) then progress_append.sh
-#            compatibility (default)  -> evaluates resolve_work_plans_dir(); if it
-#                                        WOULD abort, prints the one-line notice and
-#                                        proceeds with the pre-PR-B mechanism: the
-#                                        current worktree's progress.md, inline
-#                                        append + `git add` + `git commit`.
+#                                        (progress_append.sh's own refusal passes
+#                                        through as exit 4)
+#            compatibility (default)  -> the records gate with --write first (exit 4
+#                                        when the current checkout is not the issue's:
+#                                        a main checkout, another issue's worktree;
+#                                        issue 437); then evaluates
+#                                        resolve_work_plans_dir(); if it WOULD abort
+#                                        ($WORKTREE_ISSUE names another issue, or the
+#                                        override is set), prints the one-line notice;
+#                                        then the current worktree's progress.md,
+#                                        inline append + `git add` + `git commit`.
 #
 # sources  Integrator input for triage-reviews: local review findings that
 #          cover the PR head (recorded at it, or at an ancestor with only
@@ -71,10 +77,16 @@
 # package worktree, a timeline that is not in the issue's own checkout (a
 # sibling with the same issue number, or the worktree's top folder, whose
 # toplevel is another repository), for reads as for writes (issue 429).
-# verdict takes no path. A no-op outside package worktrees.
+# verdict takes no path. A no-op outside package worktrees for reads. The
+# two that change a timeline, persist (compatibility mode; strict writes
+# through progress_append.sh) and check, pass it with --write: the checkout
+# holding the timeline must be the issue's own (not its default branch;
+# feature/issue-<N>, or for a detached HEAD or another branch name a folder
+# issue-*-<N>), or they exit 4 (issue 437). Reads are never refused by that.
 #
 # Exit codes: 0 ok; 2 usage; 3 append/commit failure; 4 strict-mode resolver
-# abort, or the records gate refused the path.
+# abort, or the records gate refused the path (for persist and check also: the
+# checkout is not the issue's own).
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced." >&2
@@ -101,7 +113,7 @@ Usage:
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
 See the header comment of this script for what each subcommand prints.
-Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or the records gate refused the path (a package-worktree checkout that is not the issue's own).
+Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or the records gate refused the path (a package-worktree checkout that is not the issue's own; for persist and check also a main checkout or another issue's worktree).
 EOF
     exit 2
 }
@@ -298,22 +310,35 @@ _persist_impl() {
         fi
         local args=(-C "$root" "$issue")
         [[ -n "$title" ]] && args+=(--title "$title")
-        printf '%s\n' "$entry" | "$PROGRESS_APPEND" "${args[@]}" || exit 3
+        # progress_append.sh's own refusal (exit 4: the target checkout is
+        # not the issue's, issue 437) stays a refusal, not a git failure.
+        local rc=0
+        printf '%s\n' "$entry" | "$PROGRESS_APPEND" "${args[@]}" || rc=$?
+        if [[ "$rc" -eq 4 ]]; then
+            echo "error: progress persistence aborted (strict mode): progress_append.sh refused the target checkout — see above" >&2
+            exit 4
+        fi
+        [[ "$rc" -eq 0 ]] || exit 3
         echo "Progress persisted (strict: resolve_work_plans_dir + progress_append.sh) to $dir/progress.md"
         return 0
     fi
 
     # Compatibility mode (PROGRESS_PERSISTENCE_STRICT=0, the PR B default):
-    # evaluate the strict path's abort condition, report it, then do what
-    # the skill did before PR B — current worktree, inline append + commit.
-    # One refusal stays a refusal here too (issue 429): the path goes
-    # through the records gate, so inside a package worktree a checkout that
-    # is not the issue's own (a sibling with the same issue number, or the
-    # worktree's top folder) never gets the write. The strict path above
-    # passes the same gate in resolve_work_plans_dir and progress_append.sh.
+    # the current worktree, inline append + commit, as before PR B, but only
+    # after the records gate with --write (records_dir --write), the same
+    # gate the strict path passes in progress_append.sh. It refuses (exit 4)
+    # inside a package worktree a checkout that is not the issue's own (a
+    # sibling with the same issue number, or the worktree's top folder;
+    # issue 429), and everywhere a checkout that is not issue <N>'s: a main
+    # checkout or one on its default branch, another issue's worktree
+    # (issue 437). That refusal comes before the notice below, so the notice
+    # ("would have aborted", then the write goes ahead) is left for the two
+    # cases where the strict resolver refuses and the checkout is the
+    # issue's: $WORKTREE_ISSUE names another issue, or
+    # WORK_PLANS_DIR_OVERRIDE is set.
     local root file_rel file
     root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: persist: not in a git repository" >&2; exit 3; }
-    records_dir "$issue" >/dev/null || {
+    records_dir --write "$issue" >/dev/null || {
         echo "error: progress persistence aborted: not the issue's own checkout — see the message above" >&2
         exit 4
     }
@@ -600,7 +625,9 @@ cmd_check() {
         esac
     done
     if [[ -n "$progress" ]]; then
-        records_path "$progress" >/dev/null || { echo "error: check: the records gate refused $progress — see above" >&2; exit 4; }
+        # --write: check changes the timeline (it commits nothing, but a box
+        # ticked in a main checkout is a stranded edit; issue 437).
+        records_path --write "$progress" >/dev/null || { echo "error: check: the records gate refused $progress — see above" >&2; exit 4; }
     fi
     [[ -f "$progress" && "$index" =~ ^[0-9]+$ ]] || { echo "error: check: --progress <file> and --index <i> required" >&2; exit 2; }
     [[ "$deferred" == *$'\n'* ]] && { echo "error: check: --deferred reason must be a single line" >&2; exit 2; }
