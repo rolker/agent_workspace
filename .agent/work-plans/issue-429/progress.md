@@ -79,7 +79,8 @@ What the design already records (quoted, so the plan asks only what is open):
 
 ## Checkpoint
 **Status**: complete
-**When**: 2026-11-10 10:20 -05:00
+**When**: 2026-11-10 09:55 -05:00
+**When-corrected**: written as 10:20 by the host from an estimate; corrected on 2026-11-10 to the entry's commit time
 **By**: Claude Code Agent (claude-fable-5-2)
 **Decided-by**: owner
 **After**: issue-actions
@@ -148,7 +149,8 @@ The four-part split and the decision to honour the default combination are sound
 
 ## Checkpoint
 **Status**: complete
-**When**: 2026-11-10 10:55 -05:00
+**When**: 2026-11-10 10:02 -05:00
+**When-corrected**: written as 10:55 by the host from an estimate; corrected on 2026-11-10 to the entry's commit time
 **By**: Claude Code Agent (claude-fable-5-2)
 **Decided-by**: host (the plan review found three must-fixes, all mechanism and none a change of scope; first host revise on this plan)
 **After**: plan
@@ -221,7 +223,8 @@ The revision answers the three must-fixes with one mechanism, the right one, and
 
 ## Checkpoint
 **Status**: complete
-**When**: 2026-11-10 11:25 -05:00
+**When**: 2026-11-10 10:08 -05:00
+**When-corrected**: written as 11:25 by the host from an estimate; corrected on 2026-11-10 to the entry's commit time
 **By**: Claude Code Agent (claude-fable-5-2)
 **Decided-by**: host (second plan review: the identity mechanism is confirmed right; two must-fixes about its reach, both mechanism, no change of scope; second host revise in a row, so the next answer at this checkpoint is the owner's)
 **After**: plan
@@ -295,7 +298,8 @@ The second review's two must-fixes and suggestions are resolved in the plan, and
 
 ## Checkpoint
 **Status**: complete
-**When**: 2026-11-10 13:25 -05:00
+**When**: 2026-11-10 11:19 -05:00
+**When-corrected**: written as 13:25 by the host from an estimate; corrected on 2026-11-10 to the entry's commit time
 **By**: Claude Code Agent (claude-fable-5-2)
 **Decided-by**: owner
 **After**: plan
@@ -389,7 +393,8 @@ The evidence is real: seven rows re-run from a fresh sandbox, including both sil
 
 ## Checkpoint
 **Status**: complete
-**When**: 2026-11-10 14:20 -05:00
+**When**: 2026-11-10 11:44 -05:00
+**When-corrected**: written as 14:20 by the host from an estimate; corrected on 2026-11-10 to the entry's commit time
 **By**: Claude Code Agent (claude-fable-5-2)
 **Decided-by**: host (the review re-ran the plan's evidence and all 7 rows matched; its one must-fix and five suggestions are each a specific, bounded addition the implementer can apply, none changes the route the owner chose; the previous answer at this checkpoint was the owner's, so this is the host's first in the run)
 **After**: plan
