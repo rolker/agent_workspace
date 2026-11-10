@@ -237,10 +237,22 @@ check "a malformed ref is a usage error" "$([[ "$out" == *"--issue <owner/repo#N
 echo "TEST: workspace and single-repository project issues are unchanged"
 git -C "$WS" worktree add -q "$WS/worktrees/workspace/issue-workspace-7" -b feature/issue-7 >/dev/null 2>&1
 WW="$WS/worktrees/workspace/issue-workspace-7"
-gh_before=$(grep -c "^repo view" "$GH_LOG")
-out=$(dp "$WS" where --issue 7 --type workspace)
+# Every gh call (not only `repo view`) the dispatcher makes in this case,
+# counted around each dispatcher call alone, so a gh call by setup
+# (worktree_create.sh) is not mixed in.
+# dp3 runs in a command substitution, so it records each call's count in
+# a file rather than a variable.
+: > "$SANDBOX/gh_by_dp"
+dp3() {  # as dp, also appending the number of gh lines this call logged
+    local n0 res
+    n0=$(wc -l < "$GH_LOG")
+    res=$(dp "$@")
+    echo $(( $(wc -l < "$GH_LOG") - n0 )) >> "$SANDBOX/gh_by_dp"
+    printf '%s\n' "$res"
+}
+out=$(dp3 "$WS" where --issue 7 --type workspace)
 check "workspace issue: where prints its worktree" "$([[ "$out" == "$WW"$'\n'"rc=0" ]]; echo $?)" "$out"
-out=$(dp "$WS" --issue 7 --skill implement --type workspace)
+out=$(dp3 "$WS" --issue 7 --skill implement --type workspace)
 check "workspace issue: handoff worktree= its worktree, no package_worktree=" \
     "$([[ "$out" == *"worktree=$WW"$'\n'"task="* && "$out" != *"package_worktree="* ]]; echo $?)" "$out"
 out=$(cd "$WW" && checkpoint_entry | "$S/progress_append.sh" 7 2>&1); rc=$?
@@ -259,19 +271,22 @@ echo "solo single_project $SOLO" >> "$WS/.agent/projects.local"
     || { cat "$SANDBOX/create.log"; fail "setup: single-repository project worktree"; }
 SW="$SOLO/worktrees/issue-solo-7"
 check "single-repository project worktree: no .worktree-repos written" "$([[ -d "$SW" && ! -e "$SW/.worktree-repos" ]]; echo $?)"
-out=$(dp "$SOLO" where --issue 7 --type project --project solo)
+out=$(dp3 "$SOLO" where --issue 7 --type project --project solo)
 check "single-repository project issue: where prints its worktree" "$([[ "$out" == "$SW"$'\n'"rc=0" ]]; echo $?)" "$out"
 out=$(cd "$SW" && checkpoint_entry | "$S/progress_append.sh" 7 2>&1); rc=$?
 check "single-repository project issue: progress_append.sh commits in its worktree" \
     "$([[ "$rc" -eq 0 && "$(git -C "$SW" log -1 --format=%s)" == "progress: checkpoint for #7" ]]; echo $?)" "$out"
 # A legacy one-entry "." manifest still means the worktree itself.
 printf '# project=solo issue=7 layer=\n%s\t.\tfeature/issue-7\n' "$SOLO" > "$SW/.worktree-repos"
-out=$(dp "$SOLO" where --issue 7 --type project --project solo)
+out=$(dp3 "$SOLO" where --issue 7 --type project --project solo)
 check "a legacy one-entry '.' manifest maps to the worktree itself" "$([[ "$out" == "$SW"$'\n'"rc=0" ]]; echo $?)" "$out"
 out=$(cd "$SW" && entry Checkpoint '**Decided-by**: owner' '**After**: plan' '**Decision**: revise' | "$S/progress_append.sh" 7 2>&1); rc=$?
 check "... and the guard lets that worktree commit" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
 rm -f "$SW/.worktree-repos"
-check "workspace and single-repository issues: the dispatcher asked gh nothing" "$([[ "$(grep -c "^repo view" "$GH_LOG")" -eq "$gh_before" ]]; echo $?)"
+ndp=$(wc -l < "$SANDBOX/gh_by_dp")
+ngh=$(awk '{ n += $1 } END { print n + 0 }' "$SANDBOX/gh_by_dp")
+check "workspace and single-repository issues: the $ndp dispatcher calls asked gh nothing at all" \
+    "$([[ "$ndp" -eq 4 && "$ngh" -eq 0 ]]; echo $?)" "calls=$ndp gh_lines=$ngh"
 
 # ------------------------------------------------------------------ case 4
 echo "TEST: records writers commit in A and refuse B and C, writing nothing anywhere"
