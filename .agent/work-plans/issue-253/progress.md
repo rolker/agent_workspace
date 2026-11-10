@@ -215,3 +215,13 @@ All five must-fixes and the four suggestions are resolved as worded, and the rev
 - [ ] Carry into the implementer's brief: rows may cite a prefix or glob with a count, and the count check expands them (including `layers/` as one untracked entry).
 - [ ] Add `diff`/`cmp`, `git --no-optional-locks branch`/`worktree list` and list/view `gh` to the Context's allowed list.
 - [ ] Fix the stale "step 6" in the Principles Self-Check (now step 7).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 15:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: ready, no must-fix, three suggestions to pass to the implementer)
+**After**: plan
+**Decision**: proceed
+
+Host read the second Plan Review (ready). Carried to the implementer: a table row may cite a folder pattern with a count and the count check expands it; diff/cmp, `git --no-optional-locks branch` and `worktree list`, and list/view-only gh are allowed read-only commands; the self-check row's step number is corrected.
