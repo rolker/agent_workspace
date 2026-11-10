@@ -71,3 +71,11 @@ issue: 432
 **Decision**: proceed
 
 Host read the Issue Review of 2026-11-10 and its six actions. The one question it raised (is "home as a root" a third path) is covered by the owner's own words of 2026-11-10: "What about things like the orchestrator skill which we are trialing and the use of the workspace for the agents I run in ~ as my overall work managers?" The plan names that path from those words (recipe (c)), listed for his veto.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 09:51 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `6e47b4a8`
+
+One doc PR: rewrite the roadmap Direction section from the owner's quoted words of 2026-11-10 (project11 chain first, three parallel paths, grammar-valid checks, deferrals with revisit checks), point the Cutover sequence section at it, and search the repo for stale references.
