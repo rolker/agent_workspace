@@ -16,12 +16,46 @@
 # whole pre-commit hook goes red) rather than the glob silently running one
 # fewer suite.
 #
-# Fail-fast: the first suite to exit non-zero stops the run immediately —
-# remaining suites are not executed. This keeps a broken suite's failure
-# unambiguous (no unrelated failures interleaved in the same run) and keeps
-# runtime bounded by the first failure, not the whole suite list.
+# One job (the default): the suites run one after another in the
+# foreground, in list order, their output streamed live, and the first
+# suite to exit non-zero stops the run — remaining suites are not
+# executed. This keeps runtime bounded by the first failure. Ctrl-C at a
+# terminal reaches the running suite directly, as it is in the foreground;
+# a SIGTERM sent to the runner alone stops the runner, not the suite.
 #
-# Usage: run_script_tests.sh [tests-dir] [--files <file>...]
+# Parallel runs (issue #444), with -j N above 1: every selected suite runs,
+# at most N at a time, largest file first (a stand-in for slowest first).
+# Each suite's stdout and stderr go to one file of its own, printed whole
+# once every suite has finished: the failures first, in list order, each
+# under a "===== FAILED: <suite> =====" banner, then (only with
+# --show-passed) the passing suites' output, then every suite's time,
+# slowest first, then the closing line. Nothing is interleaved and no
+# failure hides another. The exit code is what a one-job run gives for the
+# first failing suite in list order, whatever order the suites started or
+# finished in. Each suite is started under `set -m`: in a process group of
+# its own, with SIGINT and SIGQUIT at their defaults as in the foreground
+# (a background job started without job control has both ignored, and
+# bash cannot trap a signal ignored on entry), stdin from /dev/null.
+# SIGINT (Ctrl-C), SIGTERM or SIGHUP to the runner sends the same signal to
+# every running suite's whole process group, KILL to whatever is left
+# 5 seconds later, and removes the run's directory. Needs bash 5.1
+# (`wait -n -p`); an older bash is refused with a message.
+#
+# Usage: run_script_tests.sh [options] [tests-dir] [--files <file>...]
+#   Options come first, then the tests directory, then --files, which
+#   takes every argument after it as a file:
+#   -j N, --jobs N   run N suites at a time. Without it RUN_SCRIPT_TESTS_JOBS
+#                    sets the count, else the default, 1. A count above 8
+#                    runs with 8 and says so; one that is not a whole number
+#                    of at least 1 is refused. Every run prints its count.
+#                    Suites do not inherit RUN_SCRIPT_TESTS_JOBS. The hook's
+#                    entry ends in --files, so the environment variable is
+#                    the hook's only way to set the count.
+#   --shuffle[=SEED] start the suites in an order drawn from SEED (a whole
+#                    number; drawn at random and printed when not given),
+#                    so a failing order can be repeated. At one job the run
+#                    still stops at its first failure in the shuffled order.
+#   --show-passed    in a parallel run, print the passing suites' output too.
 #   tests-dir defaults to this script's own directory. The parameter exists
 #   so test_run_script_tests.sh can point the runner at a scratch copy of the
 #   tests directory without touching the real one.
@@ -58,20 +92,26 @@
 # `main`), a branch run cannot list the branch's deletions, so it runs
 # every suite and says so in one plain line.
 #
-# Exit codes:
+# Exit codes (in a parallel run, those of the first failing suite in list
+# order):
 #   0  all suites passed
-#   1  a suite failed, or a preflight check failed — test_checkpoint_269.sh
-#      missing from the discovered set, a required tool missing, or the
-#      absolute-/tmp mktemp lint found a violation (the message says which)
-#   2  a suite left files behind in TMPDIR after it ran (leak detected; the
+#   1  a suite failed, or a preflight check failed — bad arguments,
+#      test_checkpoint_269.sh missing from the discovered set, a required
+#      tool missing, or the absolute-/tmp mktemp lint found a violation (the
+#      message says which)
+#   2  a suite left files behind in its TMPDIR after it ran, or a process it
+#      left running wrote there before the run ended (leak detected; the
 #      message names the suite that leaked and the leftover paths)
+#   130, 143, 129  the run was interrupted by SIGINT, SIGTERM or SIGHUP
 #
 # Wired into .pre-commit-config.yaml as the `validate-script-tests` local
 # hook inside the existing Lint (pre-commit) job — no .github/workflows/
 # validate.yml edit. CI's Lint (pre-commit) job runs `pre-commit run
 # --all-files`, which always runs this hook regardless of what changed, and
 # runs every suite: the file list it passes includes this runner, a
-# full-run trigger. Locally, since issue #354, the hook is scoped with
+# full-run trigger. The hook passes no job count, so it runs at the
+# default (or RUN_SCRIPT_TESTS_JOBS, where set); CI sets none, so CI's job
+# count is the default. Locally, since issue #354, the hook is scoped with
 # `files:`/`exclude:`
 # (see .pre-commit-config.yaml) so a `git commit` only pays this cost when
 # the commit touches .agent/, .claude/, AGENTS.md, Makefile,

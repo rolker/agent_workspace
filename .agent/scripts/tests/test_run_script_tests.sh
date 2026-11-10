@@ -17,6 +17,11 @@
 # deletion on the branch, (r) no default branch to diff against. (s1)–(s4)
 # pin what a one-job run keeps (issue #444): exit codes, header and running
 # lines, the stop at the first failure, leak attribution, live output.
+# (t1) and (u5) cover the late leak caught by the second sweep; (u1)–(u8)
+# and (v) the job pool: the job count and the argument order, hidden and
+# shown output, unmixed failure output, every suite run and the exit code
+# by list order, attribution while suites overlap, trappable SIGINT and
+# SIGQUIT, the interrupt, and --shuffle.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
