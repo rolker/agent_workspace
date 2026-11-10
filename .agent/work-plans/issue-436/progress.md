@@ -382,3 +382,51 @@ Also added (consequence of the rules): a README section "What a manifest may con
 - Package names get no name pattern (they do not become paths or lines of generated files; the control-character rule covers them); references inside lists (`groups.*.repos`, role `subtract`/`add`/`roots`, `packages.*.repo`) are not pattern-checked, only matched against defined names.
 - `--distro` on the command line is not checked against the distro name rule; it reaches only header lines, where the emitter refuses a control character.
 - `absent:` in a per-distro entry is not required to be a boolean (unchanged).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 14:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3e214baa00766c3e, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `e65bf030`
+**Base**: main
+**Depth**: Deep (reason: fix-round re-review classified on the whole branch diff, per the skill's fix-round rule: a CI workflow change and untrusted manifest content; round 2 is below the round-3 convergence exception, so cross-model ran as usual)
+**Must-fix**: 3 | **Suggestions**: 6
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted
+
+Scope: the round 1 findings (4 must-fix, 6 suggestions) against the fix diff `a2b10718..e65bf030`, and a second attack on the validation, which is now the one wall.
+
+Round 1, as checked: the four must-fixes are closed as worded (names pattern-checked; `../x`, absolute, `#`, newline names refused; control characters refused at parse and at emit; credentials refused for every `://` form tried; non-string scalars refused). The suggestions: the label is now `url#ref:path@commit`; the optional-layer rule is documented; the CI smoke call was added; the stale `--out`, the editable install and the cache were deferred to (b) and a follow-up, as recorded.
+
+Reproduced this round (scratch scripts in the session scratchpad):
+- **Command execution through a repository url.** A manifest `url: '--upload-pack=touch <dir>/PWNED;'` passes the parser and is written into `repos/core.repos`. The real `vcs import` on that file created `PWNED`: vcstool runs `git ls-remote <url>` and `git clone <url> .` with no `--`. Also accepted: a repository `ref` or per-distro ref of `--orphan=x` or `-b` (vcstool runs `git checkout <version> --`), and `ext::sh -c …`. `extends` url and ref are refused only later, at clone (`_reject_option_like`, and `git clone --branch <ref> --depth 1 -- <url> <dest>`).
+- **Credential check bypassed without `://`.** Accepted, for repository urls and `extends.url` alike: `https:/user:s3cr3t@example.com/a.git`, `//user:s3cr3t@example.com/a.git`, `s3cr3t@example.com/a.git` (Gemini), and `user:s3/cr3t@host:org/a.git` (the scp branch splits on `/` before looking for `@`). git does not use these as credentials (`https:/…` becomes ssh host `https`), but the secret is accepted and printed into the `.repos` url, the label, and git's clone error.
+- **YAML error text echoes document content.** `repos: !https://u:s3cr3t@host/a {}` gives a `ManifestError` holding the whole tag, secret included (Codex; reproduced). Anchor and escape errors echo one character only.
+- **Recursive alias and alias bomb.** `layers: &a [core, *a]` crashes the parser with an uncaught `RecursionError`. A 10^8 alias bomb under an unknown top-level key was still being walked when the 20-second alarm stopped it, because unknown keys are refused only after the walk.
+- **Names.** A 300-character layer name raises an uncaught `OSError` midway through writing, with `aa.repos` already written. `core`/`Core` layers and `a`/`A` repositories are accepted. A leading `-` layer is accepted, as the adapter's own rule also allows; `.`, `..` and a leading `.` are refused.
+- **Unicode.** U+2028 is refused. In a quoted scalar YAML folds U+0085 (NEL) to a space. PyYAML's reader refuses VT and FS. NBSP, ZWSP, U+202E (right-to-left override) and BOM are accepted in a url: none of them splits a line, but U+202E can make a header look different to a human reader.
+- **YAML loading.** `safe_load`: `!!python/object/apply` is refused. A merge key works. Duplicate keys are silently last-wins. `absent: 'no'` makes a repository absent.
+- **Credential forms refused:** percent-encoded userinfo, IPv6 literals with userinfo, backslash forms, uppercase scheme, leading space, double `@`, a `#` or `?` in the userinfo, `https:tok@host`, `file://tok@`. **Accepted:** `?private_token=` in the query; `ssh://<token-like-user>@host` (a user name, not a secret, to ssh).
+- **Unchanged:** the default flat layout is byte-identical to main's on the p11 fixture for jazzy, rolling and humble (7 files each; stderr identical). `tools/ros-manifest/src` imports only the standard library, PyYAML and its own modules. 150 tests pass. The CI diff against main is +9/−0, all in job `validate-adapter-contract`: `- name: Set up Python` / `uses: actions/setup-python@v5` / `with:` / `python-version: '3.10'` / (blank) / `- name: Install ros-manifest (the resolver the ros2_colcon adapter calls)` / `run: pip install -e tools/ros-manifest` / `- run: ros-manifest --help` / (blank).
+
+The fix agent's "Not done" list, judged:
+- Package names and reference lists get no pattern: acceptable. They do not become paths or lines, the control-character rule covers them, and a reference must match a pattern-checked defined name.
+- `--distro` is checked only at emit: acceptable. It is a trusted caller's argument and reaches only header lines, where the emitter refuses control characters.
+- `absent:` is not required to be a boolean: a small defect, listed below as a suggestion.
+
+Cross-model:
+- Gemini ran (complete): 2 must-fix. The no-`://` credential bypass is taken. The leading-`-` url and ref is taken and merged with this review's command-execution reproduction.
+- Codex ran (complete): 2 must-fix. The YAML message echo is taken. Alias recursion and the bomb are kept as a suggestion: a crash or hang is outside the brief's must-fix classes (no write outside `--out`, no change of meaning, no git command, no leak).
+
+### Findings
+- [ ] (must-fix) A repository `url`, `ref` or per-distro ref beginning with `-` reaches `vcs import`, which runs git without `--`. Reproduced: `--upload-pack=touch …` ran a command. Refuse a leading `-` on every url and ref (repository, per-distro, `extends`) at parse, in the untrusted-input section, and refuse git's `<transport>::` form (`ext::`, `fd::`) — `tools/ros-manifest/src/ros_manifest/schema.py:305-318`
+- [ ] (must-fix) The credential check is bypassed when a URL has no `://`: `https:/u:s@h/…`, `//u:s@h/…`, `s@host/path`, `u:s/x@host:org/…` are accepted. Fail closed: without `://`, allow `@` only as a leading `<plain-user>@<host>:<path>` (scp form) and refuse any other `@` — `schema.py:198-206`
+- [ ] (must-fix) The invalid-YAML message still echoes document content: `exc.problem` for an unknown tag carries the whole tag, so a secret written as a tag is printed. Use a fixed text (the exception class) plus line and column — `schema.py:232-236`
+- [ ] (suggestion) A recursive alias crashes with `RecursionError`, and an alias bomb hangs the walk. Track visited container ids in `_refuse_control_chars`, and check unknown top-level keys before walking — `schema.py:142`
+- [ ] (suggestion) A name too long for the filesystem raises an uncaught `OSError` after some files are written. Cap name length in `_NAME_RULES` (64 is plenty) — `schema.py:107`, `emit.py:139`
+- [ ] (suggestion) Names differing only in case (`core`/`Core`, `a`/`A`) are accepted. On a case-insensitive disk one `.repos` or checkout overwrites the other; refuse casefold duplicates, across the composed chain too — `schema.py:243`, `merge.py`
+- [ ] (suggestion) `absent: 'no'` makes a repository absent; require a boolean — `schema.py:319`
+- [ ] (suggestion) Duplicate YAML keys are silently last-wins: a reader sees the first entry, the resolver uses the second. Load with a loader that refuses duplicate keys — `schema.py:230`
+- [ ] (suggestion) Invisible and bidirectional characters (U+202E, ZWSP, NBSP, BOM) are accepted in urls and refs and can disguise a header for a human reader; refuse category Cf and non-ASCII spaces in values. A `?private_token=` query string is also accepted; refuse a query on a git URL — `schema.py:136`, `:198`
