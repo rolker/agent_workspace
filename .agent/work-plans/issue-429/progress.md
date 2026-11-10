@@ -884,3 +884,15 @@ The revision resolves both must-fixes, the Flexibility findings and the `--base`
 - [ ] (suggestion) `repo_pin` for a name pinned in two layers: take the layer or refuse naming both, with a test
 - [ ] (suggestion) Reword the owner/repo and base cross-check exits as in finding 5
 - [ ] (suggestion) Carry `_m_rel` in `_PKG_MATCHES` for `PKG_OWN_REL`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 15:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review of part 2: ready, no must-fix)
+**After**: plan
+**Decision**: proceed
+
+Host read the second Plan Review (ready). Carried to the implementer: `repo_pin` is recorded in a new short ADR, with only a one-line Status note on ADR-0011 (ADR-0008 forbids editing its verb table); the four "all 12 verbs implemented" assertions and the two "12-verb" texts become 13; `repo_pin` takes the layer, or refuses naming both, when a repository is pinned in two layers; two exits in the GitHub table are reworded as the review says; `_m_rel` is carried in `_PKG_MATCHES` for 2b. Order: the verb with its ADR is its own pull request first; the base mechanism follows it; 2b in parallel.
+
+NOT dispatched: the owner's stop time (15:00 on 2026-11-10) was reached, and no phase starts after it. The loop resumes here: the next step is the implement pass for the verb's pull request.
