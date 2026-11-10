@@ -292,3 +292,24 @@ Checked against both trees (fork read only: ls, find, cat, grep, `git --no-optio
 - [x] Row 8: no `colcon`, `make build`/`make test` or `adapter` command on the allowlist, so a background build may prompt — `docs/fork_parity.md:87`
 
 Verification re-run: 61 rows, IDs 1 to 61; 81 Covered-by paths exist; 19 workspace issue refs and 37 fork refs exist (gh); the 34 closed-since-fork issues equal gh's list; class and blocker counts match the Counts section. Pre-commit over the branch files, no SKIP: passed (script-test suite included).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 12:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad975645f7706440c, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-253 at `b3cd0e14`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff, 5 files and over 200 changed lines; fix round classified as a first review, round 2 so cross-model dispatched)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 6), not rising — fix and ship rather than another full round
+
+All six round-1 must-fixes and six suggestions are resolved as worded (re-read in the document). Checked the fix pass's own additions: proposed issue 1 split in two (adapter here, manifest in a project repository) is sound; fork #570 and #590 are the local-model reviewer issues (gh), so row 43 is right; #267 out of row 1's Covered by is right (closed). Row 51 "partly covered, not a blocker" holds: `site` is the only optional layer and its `.repos` is one repository (CCOMJHC/ccomjhc_project11, PRIVATE per gh); an empty `src` builds and tests with colcon, exit 0 (run here in the scratchpad). New facts: the fixture's header says it was authored from the p11-jazzy manifest (with a per-distro override reproducing rolling); unh_marine_autonomy is pinned `rolling` in the Rolling core.repos and its GitHub default branch is `jazzy` (gh); rqt_marine_radar pinned `jazzy`, default `noetic` (gh). Outside reviewers: codex and gemini ran (read-only sandbox / no tools); a fresh Claude sub-reviewer checked the four owner-read sections with the fork rule word for word.
+
+### Findings
+- [ ] (must-fix) The Watch line under the first list says "No issue yet" for the unh_marine_autonomy 397 pystac/snakemake dependency case, and proposed issue 6 folds those local rosdep keys in; open #310 (mixed-flavor projects, a dependency concern the adapter lacks) is exactly that case and may settle it differently (its boundary rule: contribute the rosdistro key or do not use it). Cite #310 on the Watch line, row 6 and issue 6 — `docs/fork_parity.md:41,168`
+- [ ] (suggestion) "Not determined" says no named test covers fork ADR-0016's build-pollution case; `test_build_layer_order_and_cascade` (`.agent/scripts/tests/test_ros2_colcon.sh:1050`) asserts each layer builds having sourced only the layers below it, which is that case's cause (stub colcon; real baked chains not tested). Cite it and narrow the line (codex) — `docs/fork_parity.md:63`
+- [ ] (suggestion) Fork #620 (Provisional ADR status, closed not planned) maps to row 50 "already covered"; here it is the roadmap Deferred line "ADR Provisional status" (`docs/roadmap.md:413`). Map it there or say so (codex) — `docs/fork_parity.md:156`
+- [ ] (suggestion) Roadmap Cutover row 3 still says #267 "planned" while the document says the adapter wiring has no issue; say the roadmap row is the only tracking entry until proposed issue 1 is opened (Claude sub-reviewer) — `docs/fork_parity.md:34`
