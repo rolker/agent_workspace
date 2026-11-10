@@ -11,7 +11,8 @@ tests, own README, no imports from anything outside `tools/ros-manifest/`) so it
 out into its own repository later with a history-preserving subtree split, without having to
 first untangle it from workspace code. Nothing in `.agent/` or the workspace `Makefile` imports
 Python from this package — integration is CLI-only (subprocess), per the design in
-`.agent/work-plans/issue-267/plan.md`.
+`.agent/work-plans/issue-267/plan.md`. The workspace `Makefile` only installs it (see
+[Installing](#installing)).
 
 ## What this is
 
@@ -21,7 +22,9 @@ A resolver for a manifest format that lets multiple ROS 2 repos compose into one
   Extensions may only *add* repos, groups, and roles — they can never remove or re-version a
   repo the base manifest already defines (that's a hard error).
 - **Layers**: a fixed, ordered list of colcon-overlay build units. Roles only ever *subtract*
-  from a layer's repo list.
+  from a layer's repo list. `optional_layers` (a list of names from the same manifest's own
+  `layers`) marks layers whose fetch or build a consumer may let fail without aborting; across
+  `extends` the optional layers are the union, in chain order.
 - **Per-distro refs**: each repo has a default `ref`, with optional per-distro overrides, and can
   be entirely absent for a given distro.
 - **Roles**: two selector models are implemented so they can be compared on real data (see
@@ -30,7 +33,9 @@ A resolver for a manifest format that lets multiple ROS 2 repos compose into one
   packages using `package.xml` `exec_depend`/`depend`.
 - **Output**: one vcstool/vcs2l-compatible `.repos` file per layer, for a given `(role, distro)`
   pair, with a provenance comment header naming which manifest in the extends chain contributed
-  each repo.
+  each repo. A manifest on the local filesystem is named by its file path; a manifest read from
+  a git-backed `extends` is named `url#ref/path@<commit>` (the commit that was resolved), never
+  by its cache path.
 
 See `.agent/work-plans/issue-267/plan.md` in the workspace repo for the full design and the
 west-based variant comparison plan (`docs/west-variant.md` in this directory).
@@ -42,9 +47,42 @@ ros-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy 
 ros-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
 ```
 
-`resolve` writes `<out>/<layer>.repos` for every layer in the composed manifest (skipping a
-layer with zero selected repos for that distro). `validate` prints the per-role inclusion table
-and runs the dependency check, exiting non-zero on a violation.
+`resolve` writes one `.repos` file for every layer in the composed manifest, skipping a layer
+with zero selected repos for that role and distro. If every layer is skipped it prints a
+warning and still exits 0. `--layout` picks the output shape:
+
+- `--layout flat` (the default): `<out>/<layer>.repos` and nothing else.
+- `--layout manifest-dir`: `<out>/repos/<layer>.repos`, `<out>/layers.txt` (the layers written,
+  in order, one per line) and `<out>/optional_layers.txt` (the written layers listed in
+  `optional_layers`; always written, possibly empty). Each text file starts with a `#` line
+  naming the role, the distro and the manifests (base first). A skipped layer is in neither
+  file. This is the manifest directory shape the workspace's `ros2_colcon` adapter reads.
+
+`validate` prints the per-role inclusion table and runs the dependency check, exiting non-zero
+on a violation.
+
+### The `extends` cache
+
+A git-backed `extends` is cloned with `git clone --branch <ref> --depth 1` into the cache
+directory (`--cache-dir`, default `.ros-manifest-cache` in the current directory) and reused on
+every later run with the same url and ref, so a branch that moved on the remote is **not**
+followed while that cache entry exists. To resolve what the remote holds now, delete the cache
+directory or pass a fresh `--cache-dir`. `extends.ref` must be a branch or a tag (`git clone
+--branch` cannot take a commit).
+
+## Installing
+
+From the workspace repo (main checkout or any worktree):
+
+```bash
+make install-ros-manifest   # also part of `make setup`
+```
+
+This installs the package editable into the workspace's shared `.venv` from the main checkout,
+so the command is `.venv/bin/ros-manifest` there. It is a make target and not a line in the
+workspace `requirements.txt` (ADR-0009): that file lists PyPI tools and is installed before
+the recipe changes to the main checkout, so a relative `-e tools/ros-manifest` in it would
+follow the caller's directory. Installing needs PyPI (PyYAML, and setuptools to build).
 
 ## Development
 
@@ -57,5 +95,5 @@ and runs the dependency check, exiting non-zero on a violation.
 ## Not built yet
 
 The west-based variant (see `docs/west-variant.md` for its planned shape and the conformance
-matrix it must pass) and the `ros2_colcon` adapter wiring are follow-up milestones, not this
-prototype.
+matrix it must pass) is not built. The `ros2_colcon` adapter calling this resolver (with
+`--layout manifest-dir`) is in progress in agent_workspace issue #436.
