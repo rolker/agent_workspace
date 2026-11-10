@@ -195,3 +195,11 @@ Host read the Plan Review (needs-work, 3 must-fix, 6 groups of suggestions) and 
 - Size: pull request 1 is split as the review proposes: (a) the resolver additions, the install target and CI; (b) the settings keys, the adapter route, tests and design; (c) `repo_pin`. The records pull request and the manifest-text pull request follow as planned.
 - Role and distro stay on the registry line: the review confirms the planner was right and the host's direction wrong (issue 267 records "registry/instance names a role and a distro"). The adapter's messages say how to change a role: edit the line, run `adapter sync`.
 - Take every suggestion as worded: check `vcs` first and name its install; state the network needs; refuse `manifest_ref` or `manifest_path` without `manifest`, and refuse or warn when `manifest` is set and another bootstrap source also resolves; swap a symlink for the generated directory; say what goes stale in an existing package worktree after `sync` and have `validate` warn about leftover checkouts after a role change; `repo_pin` confirms with `git ls-remote` when online and strips YAML quotes; the resolver writes `layers.txt` only under the new option; Serves names a README goal section; the drafted manifest in the last pull request is marked provisional on the role model, which is with the owner.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 13:31 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `deca7bd8`
+
+Revised after the plan review. Five pull requests: (a) resolver additions, install target, CI; (b) settings keys, adapter route, tests, design; (c) `repo_pin` as a required verb with ADR-0011 amended; (d) records; (e) manifest text and drafted issue, provisional on the role model. A stale manifest is one rule: after `sync` the leaf clone follows its remote per ref kind (never forcing a dirty clone) and every `extends` base is cloned afresh per resolve; each case is tested by pushing to a bare remote then syncing. All review suggestions taken.
