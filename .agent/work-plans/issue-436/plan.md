@@ -21,150 +21,196 @@ Issue 267's owner decisions this plan relies on (issue 267 body, "Design decisio
 
 ## Approach
 
-Three pull requests on this one issue. Pull request 1 is in implementable detail; 2 and 3 are in outline.
+Five pull requests on this issue, in order (a) to (e). (a) and (b) are in implementable detail; (c), (d) and (e) are outlines. The review of the first version (`needs-work`) and the host's checkpoint (Decision: revise) are taken as worded; the first version's pull request 1 is now (a), (b) and (c).
 
-### Pull request 1: the adapter route (workspace)
+| PR | What | Depends on | Parallel |
+|---|---|---|---|
+| (a) | Resolver additions, `install-ros-manifest`, CI | none | with (d) |
+| (b) | Settings keys, adapter manifest route, tests, design section | (a) merged (the adapter calls the installed resolver) | with (c) and (d) |
+| (c) | `repo_pin` as a required verb, ADR-0011 amended | none for the verb itself; its ros2_colcon answer reads the generated or hand-authored `.repos` and so is tested on both routes once (b) is merged | with (b), (d) |
+| (d) | Records: Direction line, step 4 row, Decided Against entries (west, six fork-audit lines), west design note | none (its Direction check names this issue) | with (a), (b), (c) |
+| (e) | Manifest text and drafted project issue, records only, provisional on the role model | (a) merged (the offline equivalence check runs the resolver with `optional_layers`) | after (a) |
 
 Vocabulary: **bootstrap route** = today's `bootstrap.yaml` flow, unchanged. **Manifest route** = the new one. The route is chosen by one fact: the project's settings file sets `manifest`. A project that sets none of the new keys runs the bootstrap route exactly as today.
 
-Settings (decision 1 below): three new keys in `.agent/projects.d/<name>`, role and distro stay on the registry line where they already are.
+### One concern: a stale manifest (applies to (a) and (b))
+
+Rule: after `adapter sync`, what is resolved is what the remotes hold now, for the leaf manifest and for every `extends` base, or the adapter says on stderr that it is not and why. Never silently stale.
+
+**Leaf manifest, git form** (`manifest` is a URL). The adapter owns the clone (`configs/manifest-src/`, a full clone, not shallow, so a commit is reachable; `git clone --no-checkout -- <url> <dir>` on first use; a clone whose `origin` differs from `manifest` is refused, as `_rc_bootstrap_manifest` refuses a mismatch). `setup` and `sync` then run `git fetch --tags --force origin` and decide the kind of `manifest_ref` locally: a branch if `refs/remotes/origin/<ref>` exists, else a tag if `refs/tags/<ref>` exists, else a commit if `git rev-parse --verify <ref>^{commit}` succeeds and `<ref>` is 7 to 64 hex characters, else an error naming the ref. Result per case:
+
+| Case | What is resolved | Message |
+|---|---|---|
+| Branch that moved, clone clean and on that branch | `git merge --ff-only origin/<ref>`; the new tip | `manifest: updated <ref> <old>..<new>` |
+| Branch, ff-only impossible (local commits) | the clone as it is | stderr warning: local commits not on `origin/<ref>`, resolved what is checked out |
+| Branch, clone dirty | the working tree as it is, no checkout | stderr warning: uncommitted changes in the manifest clone, resolved those, not what the remote holds |
+| Branch, clone on another branch (or detached) and clean | `git checkout <ref>` then ff-only as above | `manifest: switched to <ref>` |
+| Branch, clone on another branch and dirty | the working tree as it is | the dirty warning |
+| Tag | detached checkout of the tag as the fetch left it (a tag moved on the remote is followed, `--force`) | `manifest: <tag> -> <sha>` |
+| Commit | detached checkout of that commit; immutable, so a push to the remote changes nothing until `manifest_ref` is changed | `manifest: pinned <sha>` |
+| Tag or commit, clone dirty | working tree as it is | the dirty warning |
+
+A dirty clone is never forced. `.resolved-from` records `manifest-state=local` for every warning case, and `validate` prints it as a warning (the owner editing the manifest in the clone is a supported working style, not an error). A fetch failure (offline) leaves the clone and the previous generated directory as they are and exits 1 on `sync` (exit 1 on `setup` of a fresh dir).
+
+**Leaf manifest, path form**: used in place; nothing to refresh; `.resolved-from` records its modification time and size so `validate` can say `sync` is due when the file changed.
+
+**`extends` bases.** The resolver clones a base with `git clone --branch <ref> --depth 1` and reuses the cache entry forever (`extends.py`, `_clone_or_reuse`: `if dest.is_dir(): return dest`). The fix is in the adapter only and keeps `tools/ros-manifest/` untouched by it: `resolve` is run with `--cache-dir` inside the temporary sibling directory, which is new on every run and discarded after, so every `sync` clones every base afresh and a branch-pinned base follows its remote. The cost is one shallow clone per base per sync, accepted because sync already fetches. (The resolver's own default cache, `.ros-manifest-cache` in the cwd, still persists for people who run the CLI directly; (a) adds a README paragraph saying so and how to refresh: delete it or pass a fresh `--cache-dir`.) Difference stated: `extends` takes a branch or a tag (`git clone --branch` cannot take a commit), while the leaf can also be a commit; a commit in `extends.ref` is the resolver's clone error, which the adapter passes through, and a test asserts it. Aligning them is not done: not needed by the owner's manifests.
+
+Tests (b) for the whole concern, each pushes to the bare remote(s) and then runs `adapter sync`, never edits a clone: leaf branch moved (clean); leaf branch with a dirty clone (warning, local edit resolved); leaf clone on another branch (clean, switched; dirty, warning); leaf commit pin (push does not change the result; changing `manifest_ref` to the new commit does); leaf tag moved with a forced tag update; base branch moved with the leaf's `extends` pointing at a bare base remote; base given as a commit (clone error passed through); offline fetch (bare remote removed) leaves the previous generated directory.
+
+### Pull request (a): the resolver additions, the install target, CI
+
+Inside `tools/ros-manifest/` (self-contained, no workspace imports), plus `Makefile` and the workflow.
+
+1. `schema.py`: new top-level key `optional_layers` (list of strings, each must be in the same manifest's `layers`; add to `_TOP_LEVEL_KEYS`). `merge.py`: `MergedManifest` gets `optional_layers`, the union over the chain in chain order; a name not in the merged layers is a `ManifestError`.
+2. `emit.py` and `cli.py`: one new `resolve` option `--layout flat|manifest-dir`, default `flat` (today's output byte for byte, no new files, so the existing tests and the p11 acceptance test are unchanged). `manifest-dir` writes `<out>/repos/<layer>.repos`, `<out>/layers.txt` (the layers written, in order, one per line) and `<out>/optional_layers.txt` (the written layers that are optional; always written, possibly empty), each text file starting with a `#` provenance line. A layer with zero selected repos is in neither file. The zero-repos case is not tied to the option: `resolve` keeps today's warning and exit 0; the adapter rejects an empty `layers.txt` (pull request (b)).
+3. Tests (`tools/ros-manifest/tests`): `layers.txt` order and the omission of an empty layer; `optional_layers` parsing, union across `extends`, unknown layer error, optional layer empty for a distro; `--layout manifest-dir` file set; `--layout flat` writes none of the new files; quoted `version:` output for a numeric-looking ref (PyYAML writes `version: '2.0'`; assert what is written so (b)'s reader is tested against it).
+4. `Makefile`: target `install-ros-manifest` (in `.PHONY` and `help`), depending on `$(STAMP)/setup-dev.done`, running under `$(LOCKED)` `$(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/ros-manifest`, stamped on `tools/ros-manifest/pyproject.toml`; `make setup` includes it. Why a make target and not a line in `requirements.txt` (ADR-0009 tier 1 puts persistent workspace tools there): `Makefile` installs that file with `pip install -r` before it `cd`s to `WS_ROOT` (line 184), so a relative `-e tools/ros-manifest` would resolve against the caller's cwd, and `requirements.txt` is for PyPI tools wired into targets or imported by scripts; this one is a path inside the repository. Recorded in the target's comment and in the README.
+5. CI: the job that runs `bash .agent/scripts/tests/test_ros2_colcon.sh` installs the resolver first (`pip install -e tools/ros-manifest`), so (b)'s real-resolver tests run there; the existing `validate-ros-manifest` job is unchanged.
+6. `tools/ros-manifest/README.md`: replace the "Not built yet / adapter wiring is a follow-up" text, document `--layout`, `optional_layers`, the cache note, the install target.
+7. Repo-wide search for stale references to the old README text and the resolver output description (`rg -n -j 1`).
+
+### Pull request (b): settings keys, adapter route, tests, design
+
+Settings (decision 1 below): three new keys in `.agent/projects.d/<name>`; role and distro stay on the registry line, confirmed by the review (issue 267 records "registry/instance names a role and a distro"; `role=` and `distro=` are trailing fields, `_project_registry.sh` header, and the dispatcher reads them at `adapter:245-255`).
 
 | Where | Key | Meaning | Rule |
 |---|---|---|---|
 | settings file | `manifest` | Where the manifest lives | an absolute path to a manifest file, or an `http(s)://` / `file://` git URL of a repository that holds it |
-| settings file | `manifest_ref` | Branch, tag or commit of that repository | required with a URL, refused with a path |
-| settings file | `manifest_path` | Path of the manifest inside the repository | default `manifest.yaml`; refused with a path; relative, no `..`, no leading `/` |
-| registry line | `role=` | Passed to `ros-manifest resolve --role` | required on the manifest route |
-| registry line | `distro=` | Passed to `--distro` and used by `_rc_distro` | required on the manifest route (already `[a-z0-9_]+`) |
+| settings file | `manifest_ref` | Branch, tag or commit | required with a URL; refused with a path; refused when `manifest` is unset |
+| settings file | `manifest_path` | Path of the manifest inside the repository | default `manifest.yaml`; relative, no `..`, no leading `/`; refused with a path; refused when `manifest` is unset |
+| registry line | `role=` | `ros-manifest resolve --role` | required on the manifest route |
+| registry line | `distro=` | `--distro`, and `_rc_distro` | required on the manifest route; the legacy `ROS_DISTRO` fallback in `_rc_distro` is not accepted on this route (one source; resolve needs it before any other config) |
 
-The mirrored shape is `extends` in the schema (`path`, `url`, `ref`), so a manifest is located the same way inside and outside. `manifest` together with `bootstrap_url` is an error (one source of truth; checked in the adapter and in `project_setting.sh check`).
+Steps, each a commit:
 
-Steps, in order, each a commit:
+1. **Settings keys.** `_project_registry.sh`: `_PROJECT_FILE_KEYS` (:629), `_project_file_value_error` cases (shape of each value), and the cross-key rules in `project_file_entries` (:1007), the whole-file validator: `manifest_ref`/`manifest_path` need `manifest`, URL needs `manifest_ref`, path form refuses both, `manifest` with `bootstrap_url` refused; header grammar and key list; the "Today ros2_colcon lists build and test" sentence. Dispatcher `adapter`: export `ACTIVE_PROJECT_MANIFEST`, `_MANIFEST_REF`, `_MANIFEST_PATH` beside `ACTIVE_PROJECT_BOOTSTRAP_URL` (:277-298). `single_project/unused_settings` lists the three keys with the reason. `register_project.sh`: type detection (:625) treats `manifest` like `bootstrap_url`; `--set` picks the keys up from `_PROJECT_FILE_KEYS` (:602); `registration.conf` comment on `setup=when-missing`. Tests in `test_project_file.sh`, `test_project_registry.sh`, `test_register_project.sh`.
+2. **Route, directory, resolver call** in `.agent/project_types/ros2_colcon/adapter.sh`.
+   - `_rc_manifest_route` is `manifest` when `ACTIVE_PROJECT_MANIFEST` is set, else `bootstrap`. On `manifest`, any other bootstrap source that resolves is a hard error naming it: `BOOTSTRAP_URL` in the environment, `bootstrap_url` in the settings file (already refused by step 1), `MANIFEST_BOOTSTRAP_URL` in the legacy `projects.d/<name>.sh` (the existing instances on this machine have one), `configs/project_bootstrap.url` (the four sources of `_rc_bootstrap_url`, adapter.sh:260). The message says to remove it, or to unset `manifest`. The bootstrap route's "no bootstrap URL" error (adapter.sh `_rc_bootstrap_manifest`) gains a line naming `manifest=<url-or-path>`. A `configs/manifest` link left from an earlier bootstrap is ignored on the manifest route.
+   - `_rc_manifest_dir` returns `$(_rc_root)/configs/manifest-resolved` on the manifest route (a symlink to the current generated directory, see below), else `configs/manifest`. Every other verb keeps reading `layers.txt`, `optional_layers.txt`, `repos/<layer>.repos` from `_rc_manifest_dir`, so `env`, `build`, `test`, `repos`, `worktree_repos`, `worktree_env` are unchanged (ADR-0012's directory contract). `_rc_require_manifest`'s failure text on this route names `adapter --project <name> setup` instead of the ros2_agent_workspace shape.
+   - `_rc_resolver_bin`: `<main checkout>/.venv/bin/ros-manifest`, main checkout = `git rev-parse --path-format=absolute --git-common-dir` of `$WORKSPACE_ROOT` without `/.git`, falling back to `$WORKSPACE_ROOT` (same idea as the Makefile's `WS_ROOT`; a worktree has no venv). Absent: `ERROR: the manifest resolver is not installed at <path>; run: make install-ros-manifest (from the workspace main checkout)`. No `PATH` lookup, no pip. If the resolver exits 2 with `unrecognized arguments: --layout`, the message says the installed resolver predates this adapter and to rerun the make target from a main checkout that has pull request (a).
+   - `_rc_manifest_fetch`: the leaf table above. `_rc_manifest_resolve`: requires `ACTIVE_PROJECT_ROLE` and `ACTIVE_PROJECT_DISTRO`, each failure naming the registry line: `edit the line for '<name>' in .agent/projects.local to add role=<name> (register_project.sh does not change an existing line), then run: adapter --project <name> sync`; runs `"$bin" resolve --manifest <file> --role <role> --distro <distro> --out <tmp> --layout manifest-dir --cache-dir <tmp>.cache` into a new temporary directory under `configs/`; rejects an empty `layers.txt` (message: role/distro selected no repositories); writes `<tmp>/.resolved-from` (route, manifest location, source commit for a clone, `manifest-state`, role, distro, path-form mtime and size); swaps by symlink: the generated directory is `configs/manifest-resolved.<timestamp>/`, `ln -s` to a temporary link and `mv -T` over `configs/manifest-resolved` (`rename(2)` cannot replace a non-empty directory), then the previous directory is removed. A failed resolve leaves the previous directory and link. The resolver's stderr is passed through.
+   - The three directories (`manifest-resolved*`, `manifest-src`) sit in `<root>/configs/`. Here the hosting root is under the ignored `projects/`; a hosting root that is its own git checkout would show them untracked. The adapter does not edit the project's ignore files (light touch on projects); setup prints one line saying so, and `onboard-project` is the place to offer an ignore line. Listed for veto (decision 4).
+3. **Verbs.** `adapter_setup`: when the route is `manifest`, check `vcs` first, before any fetch or resolve (message: `'vcs' not found; install vcstool (Ubuntu: sudo apt install python3-vcstool; vcs2l is the maintained fork, choice pending in issue 267), then rerun setup`; the package name is to be verified by the implementer on a clean machine), then fetch, resolve, then the existing `_rc_require_manifest` and `vcs import --skip-existing` loop unchanged. The bootstrap route's body is untouched. `adapter_sync`: on the manifest route, fetch and resolve before the existing loop. `adapter_validate`: on the manifest route also fails when the link is missing (`run: adapter setup`) or `.resolved-from` disagrees with the current manifest, role or distro (`run: adapter sync`; for a role change: edit the registry line, then sync), warns for `manifest-state=local`, and warns for every checkout under `layers/main/*_ws/src/` that is not in the generated `.repos` (`vcs import --skip-existing` never removes checkouts and colcon still builds them after a role change; the warning names them, the adapter removes nothing). `_rc_repos_entries` (adapter.sh:215) strips surrounding single or double quotes from `version`, so a numeric-looking ref (`'2.0'`) compares correctly in `sync`'s branch comparison as well as in (c); tested.
+4. **Package worktrees.** A package worktree's `env.sh` is written once at create time (adapter.sh:826 comment; `worktree_create.sh:759`), so after a `sync` that changes the layers or the role it is stale. Not fixed here; `sync` prints, on the manifest route when `layers.txt` changed, `existing package worktrees keep their old env.sh; recreate them`. Stated in the design bullet.
+5. **Network needs, stated in the design bullet and the adapter header:** PyPI (PyYAML and setuptools, at `make install-ros-manifest`), the manifest host, every `extends` host, every package host. No network once everything is fetched, except `sync`.
+6. **Synthetic tests** (`test_ros2_colcon.sh`, section "manifest route"). Sandbox fixtures: three invented repositories in two layers as bare `file://` remotes (a branch, a tag, a commit), a manifest with `optional_layers`, one per-distro override, one repository absent for a distro, two roles, a base manifest in its own bare remote; the resolver is `<sandbox>/.venv/bin/ros-manifest`, a wrapper running the real `ros_manifest.cli` under the repository venv python when PyYAML imports (else those tests print `SKIPPED: PyYAML not importable` and are counted as skipped; CI installs the resolver so they run there), and a stub for failure cases. No network, no real project. Cases: the stale-manifest tests above; setup from a path manifest and from a URL manifest at branch, tag and commit; validate passes, fails with the link missing, fails after a role or distro change (message names the registry line); a role change removes a repo from the generated `.repos` and validate warns about its checkout; per-distro override and absent repository honoured; optional layer failure tolerated, required layer failure aborts; resolver failure keeps the previous directory; resolver absent gives the one message naming the make target; a stale resolver (stub exiting 2 on `--layout`) gives the reinstall message; missing `vcs` is reported before any fetch (the remote is never contacted); missing `role=`, missing `distro=` each name their field and the edit-and-sync instruction; `manifest` with each other bootstrap source refused; `env`, `build`, `test`, `repos`, `worktree_repos` on a manifest-route project read the generated directory; quoted numeric ref; the entire existing suite unchanged is the proof the bootstrap route is untouched. Add `tools/ros-manifest/` to the file-to-suite map in `suites_for_files.sh` if the adapter suite is not already reached from there.
+7. **Documents.** `docs/design.md` "Registry and adapters": settings-file bullet (keys), a manifest-route bullet in Now (route, generated directory, resolver by venv path, the stale-manifest rule, network needs, package-worktree `env.sh`), wording that says the adapter reads `configs/manifest` corrected, a change-log row with the section's new line count (the section is past the 60-line prompt: the new bullet is short and points at the adapter header). `.agent/knowledge/script_reference.md`: the `project_setting.sh` row (three keys), the Makefile target. `_project_registry.sh` header. Pull request (c) owns the verb text.
+8. **Final search for stale references, repo-wide** (`rg -n -j 1` over the whole repository): `bootstrap_url`, `bootstrap.yaml`, `Not built yet`, `adapter wiring`, `unused_settings`, `layers.txt`, `ros-manifest`, `manifest-resolved`.
 
-1. **Resolver emits the adapter's files** (inside `tools/ros-manifest/`, no workspace imports; its README and `pyproject.toml` stay self-contained).
-   - `schema.py`: new top-level key `optional_layers` (list of strings, each must be in the same manifest's `layers`; add to `_TOP_LEVEL_KEYS`). `merge.py`: the composed `MergedManifest` gets `optional_layers`, the union over the chain in chain order; a name not in the merged layers is a `ManifestError`.
-   - `emit.py`: `emit_manifest` also writes `layers.txt` (the layers that were written, in order, one per line) and `optional_layers.txt` (the written layers that are optional; the file is always written, possibly empty). A layer with zero selected repos for the pair is in neither (it is not a build unit for that role and distro; the adapter's "missing repos file" error therefore cannot fire on an empty layer). Both files start with a `#` provenance line. New option `--repos-subdir <name>` (default none, so existing flat output and tests are unchanged) places the `.repos` files in `<out>/<name>/`; the adapter passes `repos`.
-   - `cli.py`: `--repos-subdir` on `resolve`; `resolve` exits 1 with the existing message when the result has no layer at all (today it only warns on zero repos; the adapter must not get an empty `layers.txt` silently, so make it an error under the new option only: exit 1 `role/distro selected zero repos`).
-   - Tests (`tools/ros-manifest/tests`): `layers.txt` order and omission of an empty layer; `optional_layers` parsing, union across `extends`, unknown-layer error; `--repos-subdir`; flat output unchanged without it; the p11 acceptance test still byte-equal modulo header.
-2. **Install the resolver** (ADR-0009 tier 1). `Makefile`: target `install-ros-manifest`, depending on `$(STAMP)/setup-dev.done`, running under `$(LOCKED)` `$(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/ros-manifest`, with a stamp that depends on `tools/ros-manifest/pyproject.toml`; `make setup` includes it. Add the target to `.PHONY` and `help`. CI: the adapter-test job installs the resolver with `pip install -e tools/ros-manifest` before `bash .agent/scripts/tests/test_ros2_colcon.sh` (`.github/workflows`, job beside "Run ros2_colcon adapter tests"). `tools/ros-manifest/README.md`: replace "adapter wiring is a follow-up", state the make target.
-3. **Settings keys**: `_project_registry.sh` (`_PROJECT_FILE_KEYS`, `_project_file_value_error` cases for the three keys including the cross-field rules that can be seen from one file: ref with URL only, path with URL only, `manifest` with `bootstrap_url`; header grammar and the keys list; the "Today ros2_colcon lists build and test" sentence); dispatcher `adapter` exports `ACTIVE_PROJECT_MANIFEST`, `_MANIFEST_REF`, `_MANIFEST_PATH` beside `ACTIVE_PROJECT_BOOTSTRAP_URL` (:277-298); `single_project/unused_settings` lists the three keys with the reason (`validate_adapter.sh` checks the entries); `register_project.sh` type detection at :625 treats `manifest` like `bootstrap_url`, and its `--set` loop picks the keys up from `_PROJECT_FILE_KEYS` (:602); `registration.conf` comment on `setup=when-missing` names the manifest. A registry line `role=` or `distro=` missing on the manifest route is reported by the adapter (step 4), not by the registry, because the registry does not know the type's route.
-4. **Adapter manifest route** (`.agent/project_types/ros2_colcon/adapter.sh`).
-   - `_rc_manifest_route` returns `manifest` when `ACTIVE_PROJECT_MANIFEST` is non-empty, else `bootstrap`.
-   - `_rc_manifest_dir`: on the manifest route returns `$(_rc_root)/configs/manifest-resolved`, a generated directory (safe to delete; `sync` rebuilds it), else `configs/manifest` as today. Every other verb keeps reading `layers.txt`, `optional_layers.txt` and `repos/<layer>.repos` from `_rc_manifest_dir`, so `env`, `build`, `test`, `repos`, `worktree_repos`, `worktree_env` need no change (ADR-0012 stays an adapter concern with the same directory contract).
-   - `_rc_resolver_bin`: `<main checkout>/.venv/bin/ros-manifest`, where the main checkout is `git rev-parse --path-format=absolute --git-common-dir` of `$WORKSPACE_ROOT` with `/.git` removed, falling back to `$WORKSPACE_ROOT` (same idea as the Makefile's WS_ROOT; a worktree has no venv). Absent or not executable: one message, `ERROR: the manifest resolver is not installed at <path>; run: make install-ros-manifest (from the workspace main checkout)`, exit 1. Nothing else is tried (no `PATH` lookup, no `pip`).
-   - `_rc_manifest_fetch` (setup and sync only): a path is used in place; a URL is cloned into `configs/manifest-src/` at `manifest_ref` on first use and, when present, `git fetch` plus checkout of the ref on later runs (a clone whose `origin` differs from `manifest` is refused, as `_rc_bootstrap_manifest` refuses a mismatch). Ref can be a branch, tag or commit.
-   - `_rc_manifest_resolve`: requires `role` (`ACTIVE_PROJECT_ROLE`) and the distro (`_rc_distro`), each with an error naming the registry field; runs `"$bin" resolve --manifest <file> --role <role> --distro <distro> --out <tmp> --repos-subdir repos --cache-dir <root>/configs/manifest-cache`, into a temporary sibling directory, writes `<tmp>/.resolved-from` (route, manifest location, manifest source commit when it is a clone, role, distro), then replaces `configs/manifest-resolved` by rename. A failed resolve leaves the previous generated directory untouched. The resolver's own stderr is passed through.
-   - `adapter_setup`: when the route is `manifest`, call fetch, then resolve, in place of `_rc_bootstrap_manifest`; then the existing `_rc_require_manifest` and the existing `vcs import --skip-existing` loop run unchanged. The route is `bootstrap` otherwise and the function body is untouched.
-   - `adapter_sync`: on the manifest route, fetch and resolve before the existing loop, so a manifest change reaches the checkouts; the loop is unchanged.
-   - `adapter_validate`: on the manifest route, additionally fail when `configs/manifest-resolved` is missing (message names `adapter setup`) or when `.resolved-from` disagrees with the current `manifest`, role or distro settings (message names `adapter sync`); the rest is unchanged.
-   - `_rc_distro`: unchanged (registry distro first; no `bootstrap.yaml` exists in the generated directory). Header comment of the adapter gains a "Manifest route" paragraph.
-5. **`repo_pin` verb.** `adapter repo_pin <repo>` prints one line, `<ref><TAB><kind>`, for the repository named `<repo>` (its key under `repositories:` in the generated `.repos`, as `adapter repos` prints before the colon), read with the existing `_rc_repos_entries` (adapter.sh:215) from `_rc_manifest_dir`, so it works on both routes. `<ref>` is the `version:` value, whatever it is. `<kind>` says what the ref is, decided locally with no network: `commit` when `<ref>` is a 40 or 64 hex string; `branch` when the repository is checked out and `refs/remotes/origin/<ref>` exists; `tag` when `refs/tags/<ref>` exists; `unknown` when the repository is not checked out or neither ref exists. Issue 429's base-branch use is therefore: kind `branch` means use the ref; any other kind means the caller decides (it must not pass a tag or a commit as `--base`). Exit 1 with `ERROR: no repository '<repo>' in the manifest (known: ...)` when absent. Dispatcher: new `OPTIONAL_VERBS=(repo_pin)` beside `REQUIRED_VERBS`; the unknown-verb check accepts either; a type that does not implement an optional verb gets the existing "does not implement verb" error (:345); `validate_adapter.sh` checks that an optional verb, when defined, is a function and silent; ADR-0011 stays at 12 required verbs. `single_project` does not implement it.
-6. **Synthetic tests** (`test_ros2_colcon.sh`, a new section "manifest route"). Fixtures are built in the sandbox: three invented repositories in two layers made as bare `file://` remotes (`git init --bare`, one commit, a branch, a tag), a manifest with an `optional_layers` entry, one per-distro override, one repository absent for one distro, two roles; the resolver is `<sandbox>/.venv/bin/ros-manifest`, a wrapper that runs the real `ros_manifest.cli` under the repo's python when PyYAML imports (else the real-resolver tests print `SKIPPED` with the reason, and CI installs the resolver so they run there), and a stub for the failure cases. No network, no real project. Cases: setup from a local-path manifest imports each layer from the right `.repos`; setup from a git-URL manifest (bare remote) at a branch, a tag and a commit; sync after a manifest edit changes the generated `.repos` and the imports; validate passes, fails when the generated directory is missing, fails when role or distro changed; per-distro override and absent repository honoured; optional layer failure tolerated, required layer failure aborts; a resolver failure leaves the earlier generated directory; resolver absent gives the one message naming `make install-ros-manifest`; missing `role=` and missing `distro=` each name their field; `manifest` with `bootstrap_url` refused; a project that sets no new key runs all existing tests unchanged (the whole existing suite is the proof) and `adapter env/build/test/repos/worktree_repos` on a manifest-route project work from the generated directory; `repo_pin` prints branch, tag, commit and unknown cases, and the not-found error. Settings tests in `test_project_file.sh` / `test_project_registry.sh` (the three keys, the cross-field rules, `single_project` refusal) and `test_register_project.sh` (type detection). Add `ros-manifest` sources to the file-to-suite map in `suites_for_files.sh` if the adapter suite is not already reached from `tools/ros-manifest/` changes.
-7. **Documents.** `docs/design.md` "Registry and adapters": the settings-file bullet (keys), a manifest-route bullet in Now (what is built: route, generated directory, resolver by venv path, `repo_pin`), the Target/inventory wording that says "the adapter reads configs/manifest" corrected, and a change-log row with the section's new line count (the section is already past the 60-line prompt; the new bullet is short and points at the adapter header, which holds the detail). `.agent/knowledge/script_reference.md`: the `project_setting.sh` row (three keys), an `adapter` row for `repo_pin`, the Makefile target, the resolver row if one exists. `_project_registry.sh` header (the project settings documentation). `tools/ros-manifest/README.md`. ADR-0011 is not changed (12 required verbs); design.md's verb text gains one sentence on optional verbs.
-8. **Final search for stale references, repo-wide**: `rg -n -j 1` for `bootstrap_url`, `bootstrap.yaml`, `Not built yet`, `adapter wiring`, `follow-up milestones`, `REQUIRED_VERBS`, `unused_settings`, `layers.txt`, `ros-manifest` over the whole repository (not just the files above), and fix every statement the change made false.
+### Pull request (c): `repo_pin` (outline)
 
-### Pull request 2: the records (outline; can run alongside 1)
+A required verb, the 13th, in `REQUIRED_VERBS` (`adapter:68`), implemented by every type; `validate_adapter.sh` then asserts it for every type (ADR-0011 rule unchanged). ADR-0011 is amended in the same pull request as ADR-0012 amended it (its Status paragraph: 12 to 13 verbs; its verb table gains the row; ADR-0012 pattern checked at `docs/decisions/0011-...md` Status); `docs/design.md` verb text and change log, the `adapter` header verb list and usage, `script_reference.md`.
+- Contract: `adapter repo_pin <repo>` prints one line `<ref><TAB><kind>` and exits 0, or exits 1 with an error. `<repo>` is the repository's name as `adapter repos` prints it before the colon.
+- `ros2_colcon` (both routes): `<ref>` is the `version:` of that repository in the `.repos` files of `_rc_manifest_dir` (via `_rc_repos_entries`, quotes stripped). `<kind>`: when online, `git ls-remote --heads origin <ref>` decides `branch`, `--tags` decides `tag`, a 40 or 64 hex string is `commit`; git is the authority and nothing about the kind is added to the manifest (an extra field per repository would drift). Offline or not checked out: local fallback (`refs/remotes/origin/<ref>`, `refs/tags/<ref>`), and `unknown` when neither exists. Branch is tried before tag, since a same-named tag does not stop a `--base`. A repository not in the files: exit 1 `no repository '<repo>' in the manifest (known: ...)`.
+- `single_project`: one repository; `<repo>` must be the name `adapter_repos` prints (the root's basename); prints the repository's default branch from `git symbolic-ref --short refs/remotes/origin/HEAD` (prefix `origin/` removed; `git ls-remote --symref origin HEAD` when that ref is absent) with kind `branch`; exit 1 when undetermined or a different name.
+- Issue 429's use: kind `branch` is the base for a package pull request; any other kind is the caller's decision (never pass a tag or a commit as `--base`).
+- Tests: both types, all four kinds, offline fallback, a branch deleted upstream (local remote ref left behind: ls-remote says it is gone, so not `branch`), the quoted-ref case, the not-found error, `validate_adapter.sh` on a type missing the verb.
 
-- `docs/roadmap.md` Direction table: one Line in the owner's words, "I want the new manifest to be used for the pickerel test." (2026-11-10), as: `| The Rolling instance is registered and fetched from a manifest in the new format on the second machine, and `adapter validate` passes (#436) | `gh-issue 436 closed` |` (valid in `sitrep_checks.sh`: kind `gh-issue`, `<N> <open|closed>`, no bare number). Listed for the owner's veto with the quote.
-- "Manifest support (step 4)" row (roadmap.md:203) and step 4 row (:180): say what is done (resolver, p11 acceptance fixture, adapter route and `repo_pin` once pull request 1 merges) and what is left (the manifest in the project's own repository, the second-machine run, the tool's name and repository, vcs2l versus vcstool); drop "dual prototype ... decides the tool" and "west variant ... next milestone".
-- "Decided Against" row: west-based variant, 2026-11-10, the owner's words ("Q4, decide against"), reason from `west-variant.md` (no per-distro refs, no layers, does not write `.repos`, so this workspace's format, pre-processing and a converter are needed either way), revisit only if maintaining the resolver's composition code becomes a burden.
-- `tools/ros-manifest/docs/west-variant.md`: replace the "Status: specification only ... next milestone" paragraph with a decided-against status and date; keep the body as the record. Also the README's pointers to it.
-- Check: `check_design_anchors.sh`, `validate_workspace.py` Direction checks, `test_sitrep_checks.sh` against the new row.
+### Pull request (d): the records (outline)
 
-### Pull request 3: manifest text and drafted issue (outline; records only)
+- `docs/roadmap.md` Direction table: one Line in the owner's words, "I want the new manifest to be used for the pickerel test." (2026-11-10), as `| The Rolling instance is registered and fetched from a manifest in the new format on the second machine, and `adapter validate` passes (#436) | `gh-issue 436 closed` |` (valid in `sitrep_checks.sh`: kind `gh-issue`, `<N> <open|closed>`). Listed for the owner's veto with the quote.
+- "Manifest support (step 4)" row (roadmap.md:203) and step 4 row (:180): done (resolver, p11 acceptance fixture, adapter route and `repo_pin` once merged); left (the manifest in the project's own repository, the second-machine run, the tool's name and repository, vcs2l versus vcstool); drop "dual prototype ... decides the tool" and "west variant ... next milestone".
+- "Decided Against" rows: the west-based variant (2026-11-10, "Q4, decide against"; reason from `west-variant.md`: no per-distro refs, no layers, no `.repos` output, so this workspace's format, pre-processing and a converter are needed either way; revisit only if maintaining the resolver's composition code becomes a burden); and the six lines proposed in `docs/fork_parity.md` ("Proposed Decided Against lines", on main; the owner chose on 2026-11-10 to record them): container dispatch, agent image, `.devcontainer/` and the container `ci_local.sh` attestation (ADR-0014, ADR-0015; the CI part to be confirmed, as the file says); the fork's web dashboard; the local Ollama adversarial reviewer; the `agent launch` tmux launcher; the `post-checkout` layer symlink hook and the `scripts` symlink; the `.agent/.identity` file. Each row carries the reason text from the file. This worktree is behind main and lacks `docs/fork_parity.md`; (d) starts from an up-to-date branch.
+- `tools/ros-manifest/docs/west-variant.md`: the "Status: specification only ... next milestone" paragraph becomes a decided-against status and date, body kept as the record; README pointers.
+- Check: `check_design_anchors.sh`, `validate_workspace.py`, `test_sitrep_checks.sh` against the new row.
 
-- `.agent/work-plans/issue-436/records/` gets `manifest-rolling.yaml` (the manifest for the Rolling branch of the project's manifest repository: the fixture `tools/ros-manifest/tests/fixtures/p11/manifest.yaml` as base, `rolling` per-distro ref for the core repository, the optional `site` layer marked in `optional_layers`, one role) and `manifest-issue-draft.md` (the issue for that repository, written per the outward-writes rule: says what agent_workspace is, links it, says use is optional). Nothing is opened or written in any project repository.
-- Verified by a local, offline equivalence check recorded in the draft: resolve the manifest for the Rolling pair into a temporary directory and compare repository names and refs with the hosted Rolling instance's `.repos` files read in place (read-only); differences listed.
-- The second-machine run (register, setup, validate on a clean machine) is issue 433's.
+### Pull request (e): manifest text and drafted issue (outline; records only; provisional)
+
+- `.agent/work-plans/issue-436/records/manifest-rolling.yaml` (the fixture `tools/ros-manifest/tests/fixtures/p11/manifest.yaml` as base, `rolling` per-distro ref for the core repository, the `site` layer in `optional_layers`, one role `dev` with no `roots`, which is the groups model in effect) and `manifest-issue-draft.md` (written per the outward-writes rule: says what agent_workspace is, links it, says use is optional). Both are marked **provisional**: the role model (issue 267 decision 4, groups or dependency closure) is with the owner. Nothing is opened or written in any project repository.
+- An offline equivalence check recorded in the draft: resolve the manifest for the Rolling pair into a temporary directory and compare repository names and refs with the hosted Rolling instance's `.repos` files, read in place; differences listed.
+- The second-machine run is issue 433's.
 
 ## Files to Change
 
-| File | Change |
-|------|--------|
-| `tools/ros-manifest/src/ros_manifest/{schema,merge,emit,cli}.py` | `optional_layers`, `layers.txt`, `optional_layers.txt`, `--repos-subdir` |
-| `tools/ros-manifest/tests/*`, `tools/ros-manifest/README.md` | tests for the above; README states the install target |
-| `Makefile`, `.github/workflows/*` | `install-ros-manifest` target; CI installs the resolver before the adapter tests |
-| `.agent/scripts/_project_registry.sh` | keys `manifest`, `manifest_ref`, `manifest_path`: list, validation, header |
-| `.agent/scripts/adapter` | export the keys; `OPTIONAL_VERBS`; accept `repo_pin` |
-| `.agent/scripts/validate_adapter.sh` | optional verbs checked when defined |
-| `.agent/scripts/register_project.sh` | type detection and `setup` for a `manifest` project |
-| `.agent/project_types/single_project/unused_settings`, `ros2_colcon/registration.conf` | refuse the keys for `single_project`; comment |
-| `.agent/project_types/ros2_colcon/adapter.sh` | manifest route, `repo_pin`, header |
-| `.agent/scripts/tests/test_ros2_colcon.sh`, `test_project_file.sh`, `test_project_registry.sh`, `test_register_project.sh`, `suites_for_files.sh` | tests and suite mapping |
-| `docs/design.md`, `.agent/knowledge/script_reference.md` | design section, change log, script reference (pull request 1) |
-| `docs/roadmap.md`, `tools/ros-manifest/docs/west-variant.md` | records (pull request 2) |
-| `.agent/work-plans/issue-436/records/*` | manifest text and drafted issue (pull request 3) |
+| File | Change | PR |
+|------|--------|----|
+| `tools/ros-manifest/src/ros_manifest/{schema,merge,emit,cli}.py`, `tests/*`, `README.md` | `optional_layers`, `--layout`, tests, README | a |
+| `Makefile`, `.github/workflows/*` | `install-ros-manifest`; CI installs the resolver before the adapter tests | a |
+| `.agent/scripts/_project_registry.sh`, `adapter`, `register_project.sh` | keys `manifest`, `manifest_ref`, `manifest_path`; cross-key rules; exports; type detection | b |
+| `.agent/project_types/single_project/unused_settings`, `ros2_colcon/registration.conf` | refuse the keys for `single_project`; comment | b |
+| `.agent/project_types/ros2_colcon/adapter.sh` | manifest route, leaf refresh, resolve and swap, validate checks, quote stripping | b |
+| `.agent/scripts/tests/test_ros2_colcon.sh`, `test_project_file.sh`, `test_project_registry.sh`, `test_register_project.sh`, `suites_for_files.sh` | tests and suite mapping | b |
+| `docs/design.md`, `.agent/knowledge/script_reference.md` | design section, change log, script reference | b |
+| `.agent/scripts/adapter`, `validate_adapter.sh`, both adapters, `docs/decisions/0011-*.md`, `docs/design.md`, `script_reference.md`, tests | `repo_pin` required verb, ADR-0011 amended | c |
+| `docs/roadmap.md`, `tools/ros-manifest/docs/west-variant.md` | records | d |
+| `.agent/work-plans/issue-436/records/*` | manifest text and drafted issue, provisional | e |
 
 ## Prior Art
 
-- The bootstrap route (`_rc_bootstrap_manifest`, `_rc_bootstrap_url`) is the model for URL handling, the origin-mismatch refusal and the settings-then-legacy precedence; nothing in it changes.
+- The bootstrap route (`_rc_bootstrap_manifest`, `_rc_bootstrap_url`) is the model for URL handling, the origin-mismatch refusal and "report and reuse" for a clone with local work; nothing in it changes.
 - `extends` in `schema.py` (`path`, `url`, `ref`) is the model for how the adapter locates a manifest, so one vocabulary covers both.
-- The Makefile's `WS_ROOT` and `cross_model_review.sh` (`${…%/.git}/.venv/bin/python3`) are the prior art for finding the main checkout's venv from a worktree.
+- The Makefile's `WS_ROOT` and `cross_model_review.sh` (`${...%/.git}/.venv/bin/python3`) are the prior art for finding the main checkout's venv from a worktree.
+- ADR-0012's amendment of ADR-0011 (10 to 12 verbs) is the model for amending it again (c).
 - west and vcs2l were considered and set aside by the owner (west: decided against; vcs2l: independent, still pending, `vcs` stays the fetch command).
 - Nothing new is built beyond the small resolver additions and the adapter route.
 
 ## Serves
 
-Workspace goal "Multiple projects" (README, Workspace goals), under `docs/design.md#registry-and-adapters`; the roadmap Direction acceptance case (project11 on a second machine against ROS 2 Rolling).
+Workspace goal "Modular" (README, Workspace goals: knowledge about a kind of project, like ROS, added as modules without changing the rest), under `docs/design.md#registry-and-adapters`; the roadmap Direction acceptance case (project11 on a second machine against ROS 2 Rolling).
 
 ## Design Picture
 
-Alters `docs/design.md#registry-and-adapters`: the `ros2_colcon` adapter gains a second manifest route, the settings file gains three keys, the contract gains one optional verb, and the resolver becomes a workspace-installed tool called by CLI. Updated in pull request 1 (ADR-0017), with its change-log row. Pull request 2 changes `docs/roadmap.md` only.
+Alters `docs/design.md#registry-and-adapters`: the `ros2_colcon` adapter gains a second manifest route, the settings file gains three keys, and the resolver becomes a workspace-installed tool called by CLI (updated in (b), with its change-log row); the contract gains a 13th required verb (updated in (c), ADR-0011 amended). (d) changes `docs/roadmap.md` only.
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Keep one current design | The design section and its change log move with the code in pull request 1; decisions 3, 4 and 7 of issue 267 are quoted, not re-decided. |
+| Keep one current design | Design section and change log move with the code in (b) and (c); ADR-0011 is amended in (c), not left stating 12. Decisions 3, 4 and 7 of issue 267 are quoted, not re-decided. |
+| Test what breaks | Every staleness case is tested by pushing to a bare remote and syncing, not by editing the clone. |
 | Ask about what matters | Only the role model reaches the owner, and the plan does not depend on it. Mechanism choices are listed for veto below. |
-| Only what's needed | One new resolver feature pair (`optional_layers`, `layers.txt`) because `setup`/`validate` read them; no vcs2l, no rename, no role-model work, no closure walking. `repo_pin` is one verb. |
+| Only what's needed | `optional_layers` and the layout because `setup` and `validate` read them; no vcs2l, no rename, no role-model work. The resolver's extends cache is not changed. |
 | Put each thing at the level it applies to | The resolver stays self-contained and extractable (no workspace imports); the project's manifest and issue are drafted here and opened nowhere (ADR-0016). |
-| Workspace is project-agnostic | Adapter, resolver and tests name no project; the p11 fixture stays inside `tools/ros-manifest/tests`; names appear only in the records of pull requests 2 and 3. |
-| Verify before claiming | Every route is exercised by sandbox tests; the second-machine run stays the owner's (433). Claims in this plan cite file and function. |
-| Nothing required of a project | No key is required; a project with none behaves as today; the existing suite is the regression proof. |
+| Workspace is project-agnostic | Adapter, resolver and tests name no project; the p11 fixture stays inside `tools/ros-manifest/tests`; names appear only in the records of (d) and (e). |
+| Verify before claiming | Every route is exercised by sandbox tests; the second-machine run stays the owner's (433). Claims cite file and function. |
+| Light touch on projects / nothing required | No key is required; a project with none behaves as today; the adapter edits no project ignore file; a dirty manifest clone is never forced. |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
 | 0003 project-agnostic | Yes | Synthetic fixtures only. |
-| 0009 Python package management | Yes | Resolver in the workspace `.venv` from a make target, no bare pip. |
-| 0011 adapter contract | Yes | 12 required verbs unchanged; one optional verb added through a separate list. |
-| 0012 worktree composition | Yes | `worktree_repos` and `worktree_env` untouched; same directory contract. |
+| 0009 Python package management | Yes | Resolver in the workspace `.venv` from a make target, no bare pip; why not `requirements.txt` stated in (a). |
+| 0011 adapter contract | Yes | (c) amends it: 13 required verbs, every type implements every verb. |
+| 0012 worktree composition | Yes | `worktree_repos` and `worktree_env` untouched; same directory contract; stale `env.sh` after `sync` stated. |
 | 0013 progress timeline | Yes | This entry; later phases append. |
 | 0016 session roots | Yes | Project manifest and issue are records here only. |
-| 0017 design is current | Yes | `docs/design.md` updated in pull request 1. |
+| 0017 design is current | Yes | `docs/design.md` updated in (b) and (c). |
 
 ## Consequences
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| `_PROJECT_FILE_KEYS` | header, `_project_file_value_error`, dispatcher exports, `unused_settings`, `register_project.sh`, `project_setting.sh` tests, script reference | Yes (PR 1 step 3) |
-| Resolver output files | resolver tests, README, p11 acceptance test | Yes (step 1) |
-| Dispatcher verb list | `validate_adapter.sh`, ADR-0011 text unaffected, design verb sentence | Yes (step 5) |
-| Makefile | `.PHONY`, help, CI, README | Yes (step 2) |
-| Adapter header comment | consequences for `docs/design.md` | Yes (step 7) |
-| Roadmap rows | Direction check grammar, `check_design_anchors.sh` | Yes (PR 2) |
-| Issue 429's base-branch use | `repo_pin` output contract stated above | Out of scope; contract stated |
+| `_PROJECT_FILE_KEYS` | header, `_project_file_value_error`, `project_file_entries` cross-key rules, dispatcher exports, `unused_settings`, `register_project.sh`, tests, script reference | Yes (b step 1) |
+| Resolver output | tests, README, p11 acceptance test (flat default unchanged) | Yes (a) |
+| `REQUIRED_VERBS` | `validate_adapter.sh`, both adapters, ADR-0011 Status and table, design verb text, `adapter` header | Yes (c) |
+| Makefile | `.PHONY`, help, CI, README | Yes (a) |
+| `_rc_repos_entries` quote stripping | `sync`'s branch comparison, `validate`, `repo_pin` | Yes (b step 3), tested |
+| Layers change at `sync` | existing package worktrees' `env.sh` | Stated and printed, not fixed (b step 4) |
+| Roadmap rows | Direction check grammar, `check_design_anchors.sh` | Yes (d) |
+| Issue 429's base-branch use | `repo_pin` output contract | Out of scope; contract stated in (c) |
 
 ## Open Questions
 
-- For the owner (asked by the host, does not block this plan): the role model, groups or dependency closure. The plan passes a role name to `--role`.
+- For the owner (asked by the host, does not block this plan): the role model, groups or dependency closure. A role is a name passed to `--role`; an unknown name is the resolver's error. (e) is marked provisional on it.
 - Nothing else needs him; see Decisions for the owner's veto.
 
 ## Decisions for the owner's veto
 
-1. **Role and distro stay on the registry line; only the manifest location goes in the settings file.** The registry already has `role=` and `distro=` fields, the dispatcher already reads them, and issue 267 says "registry/instance names a role and a distro". Three new settings keys (`manifest`, `manifest_ref`, `manifest_path`) hold the location. Undo cost: small (add two keys to `_PROJECT_FILE_KEYS` and read them ahead of the registry fields; tests move with them).
-2. **The route is implied by `manifest` being set, with no separate route key; `manifest` plus `bootstrap_url` is an error.** Undo: small (add a key).
-3. **The adapter, not the resolver, clones a git-hosted manifest**, into `configs/manifest-src/`, because the resolver's leaf manifest is a local file (`cli.py`, `--manifest`). Undo: moderate (would be a resolver change plus a cache contract).
-4. **The generated directory is `configs/manifest-resolved/`, rebuilt by `setup` and `sync` only and replaced atomically; `validate` checks it against the current role, distro and manifest.** Undo: small.
-5. **A layer with no repository for the role and distro is left out of `layers.txt`**, so it cannot raise a missing-file error. Undo: small (resolver emit).
-6. **`optional_layers` is a top-level manifest key** (a list, union across `extends`), not a flag on the layer entry, because `layers` is a plain list of names in `schema.py`. Undo: moderate (schema change in the manifest format once a manifest uses it).
-7. **`repo_pin <repo>` takes the repository's name as in the `.repos` file and prints `<ref><TAB><kind>`** (`branch`, `tag`, `commit`, `unknown`); it does not take `owner/repo`, because the caller (issue 429) gets names from `adapter repos`. It is an optional verb so the contract stays at 12 required verbs. Undo: small.
-8. **`--repos-subdir` on the resolver rather than changing its default layout**, so the existing flat output and the p11 acceptance test stay. Undo: small.
-9. **Pull request 1 includes the resolver additions** (steps 1-2) rather than a separate pull request, because the adapter cannot be tested without them. Undo: none needed; it only changes review size.
-10. **The Direction line's check is `gh-issue 436 closed`**, because the real proof (a clean second-machine run) is issue 433's and cannot be checked from this repository. Undo: trivial.
+1. **Role and distro stay on the registry line; only the manifest location goes in the settings file.** (Confirmed by the plan review.) The adapter's messages say how to change a role: edit the line in `.agent/projects.local`, then `adapter sync`. Undo cost: small.
+2. **The route is implied by `manifest` being set; any other bootstrap source resolving alongside it is a hard error.** Undo: small.
+3. **The adapter, not the resolver, clones a git-hosted leaf manifest** (the resolver's leaf is a local file) and follows the table in "a stale manifest": fast-forward only when clean and on the branch, never forcing a dirty clone, with a warning. Undo: moderate.
+4. **The generated and cloned directories sit in `<root>/configs/` and the adapter does not edit the project's ignore files**; `setup` prints a one-line note. Undo: small.
+5. **Every `sync` clones every `extends` base afresh** (cache inside the temporary directory) instead of changing the resolver's cache; `extends` stays branch-or-tag only while the leaf may be a commit. Undo: small (a resolver refresh later).
+6. **A layer with no repository for the role and distro is left out of `layers.txt`**; an empty result is rejected by the adapter. Undo: small.
+7. **`optional_layers` is a top-level manifest key** (a list, union across `extends`). Undo: moderate once a manifest uses it.
+8. **The resolver output is a named layout, `--layout manifest-dir`**, default `flat` unchanged. Undo: small.
+9. **`repo_pin <repo>` is a required verb in its own pull request (c)**, printing `<ref><TAB><kind>`; `single_project` answers with the repository's default branch and kind `branch`; kind comes from git (`ls-remote` online, local refs offline), never from the manifest. ADR-0011 is amended to 13 verbs. Undo: moderate (verb removal needs another amendment).
+10. **Five pull requests**, (a) and (d) first and in parallel. Undo: none; it only changes review size.
+11. **The Direction line's check is `gh-issue 436 closed`**, because the real proof is issue 433's and cannot be checked from this repository. Undo: trivial.
+12. **`make` target rather than a `requirements.txt` line** for the resolver install (reason in (a) step 4). Undo: small.
 
 ## Estimated Scope
 
-Three pull requests. Pull request 1 is large (about 10 files plus tests and docs); pull requests 2 and 3 are documentation and records.
+Five pull requests: (a) small to medium, (b) large, (c) medium, (d) and (e) documentation and records.
