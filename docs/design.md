@@ -379,7 +379,7 @@ probe, not a description to keep current.
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
-the cwd's git top level, lines 110-112 and 288-291), `progress_append.sh` (line 85-88),
+the cwd's git top level, lines 120-121 and 308-318), `progress_append.sh` (lines 75 and 98),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
 *Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
@@ -440,9 +440,18 @@ Status: `decided`
 - **Records.** An issue's work plan and progress timeline are committed in the repository that owns the
   issue (the workspace repository for a workspace issue, the project's repository for a project issue),
   on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
-  An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree) has no
-  timeline: a package worktree is a folder of several repositories, not one repository, so `merge_pr.sh`
-  posts its gate record on the pull request (lines 810 and 853). `progress_append.sh` line 87 writes
+  An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree, a folder of
+  several repositories) has its timeline in the checkout of the repository that owns it inside that
+  worktree: the `.worktree-repos` entry on `feature/issue-N`, under the default records setting (issue
+  429). `dispatch_phase.sh` decides that directory in one place (`resolve_issue_dir`, with
+  `issue_checkout_of` from `_resolve_work_plans_dir.sh`): the handoff names it as `worktree=`, and
+  `run-issue` step 1 moves the host there with `dispatch_phase.sh where`, which with the handoff also
+  refuses when `gh` there resolves another repository. Inside a package worktree the records writers
+  refuse every other checkout, a sibling with the same issue number and the worktree's top folder alike
+  (`issue_checkout_guard`, run by `resolve_work_plans_dir`, `progress_append.sh` and `review_progress.sh
+  persist`). Workspace worktrees and single-repository project worktrees write no manifest, so nothing
+  changes for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
+  package pull request on the pull request (lines 810 and 853). `progress_append.sh` line 98 writes
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 280: the resolved project root, else the legacy
@@ -490,9 +499,9 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   368, 370, 428, 520: the exit contract, `--check-exit` and `next`, which is what a resumed session
-   reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
-   `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
+   477, 511, 513, 575, 687: the round count, the exit contract, `--check-exit` and `next`, which is
+   what a resumed session reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge`
+   entry), `review_progress.sh` (121, 287, 318) and `progress_append.sh` (98). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
@@ -812,6 +821,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-09 | Documentation layers | The sit-rep reads the session's own root (owner, 2026-11-09): a project session gets the project's Direction lines, worktrees, pull requests and the problems its own files allow, the workspace report lists project work only where a workspace Direction line names it, and a combined view is left to a later personal-root skill; the Measures row says the run record is per root; `sitrep_root.sh` named | #418 | 865 |
 | 2026-11-09 | How it works, The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions | ADR-0016 is Accepted (owner, 2026-11-09): the `/run-issue` acceptance run from a project root passed the merge checkpoint. How it works says the user tier has passed its acceptance run, no longer that it is not yet proven; the Status key's `decided, not proven` row names no ADR and no longer says a Provisional ADR is untested; Sessions and roots is `decided`, its Now block says ADR-0016 is Accepted and ADR-0018 is still Provisional with its own promotion condition (the same run) met; the Registry inventory sentence names the run's date; register row 0016 is `in force` and notes ADR-0018's supersession of decision 3 for skills; the C1-c sentence keeping ADR-0016 Provisional is dropped; OQ-2 is answered in place (tracked in the roadmap's Direction section, run by the owner through `/orchestrator` and `/run-issue` from the project root). Sessions and roots grows by two lines and is a status edit, so no detail moves | #423 | 867 |
 | 2026-11-09 | Sessions and roots, Decision register | ADR-0018 is Accepted (owner, 2026-11-09): its promotion condition, ADR-0016's acceptance run, passed the same day. The Sessions and roots Now block says ADR-0018 is Accepted too, no longer that it is Provisional with promoting it the owner's call; register row 0018 is `in force`. Sessions and roots is 116 lines, past the 60-line prompt; its length is unchanged and this is a status edit, so no detail moves | #425 | 868 |
+| 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that the records writers refuse a sibling checkout and the worktree's top folder, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 878 |
 
 ## Glossary
 
