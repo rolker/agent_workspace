@@ -39,6 +39,7 @@ class MergedManifest:
     groups: Dict[str, GroupEntry] = field(default_factory=dict)
     roles: Dict[str, RoleEntry] = field(default_factory=dict)
     packages: Dict[str, PackageEntry] = field(default_factory=dict)
+    sources: List[str] = field(default_factory=list)  # provenance labels, base first
 
 
 def merge_chain(chain: List[Manifest]) -> MergedManifest:
@@ -66,6 +67,7 @@ def merge_chain(chain: List[Manifest]) -> MergedManifest:
         layers=layers,
         optional_layers=optional_layers,
         layer_repos={layer: [] for layer in layers},
+        sources=[manifest.source for manifest in chain],
     )
 
     for manifest in chain:

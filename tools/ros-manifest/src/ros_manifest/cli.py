@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .emit import emit_manifest
+from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
 from .merge import merge_chain
 from .schema import ManifestError
@@ -25,7 +25,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         print(f"ERROR: unknown role '{args.role}' (known: {sorted(merged.roles)})", file=sys.stderr)
         return 1
     selected = select_repos(merged, args.role)
-    written = emit_manifest(merged, selected, args.role, args.distro, Path(args.out))
+    out = Path(args.out)
+    written = emit_manifest(merged, selected, args.role, args.distro, out, layout=args.layout)
     if not written:
         print(
             f"WARNING: role '{args.role}' distro '{args.distro}' selected zero repos",
@@ -33,6 +34,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         )
     for layer, path in written.items():
         print(f"wrote {path} ({layer})")
+    if args.layout == LAYOUT_MANIFEST_DIR:
+        print(f"wrote {out / 'layers.txt'}")
+        print(f"wrote {out / 'optional_layers.txt'}")
     return 0
 
 
@@ -66,7 +70,16 @@ def build_parser() -> argparse.ArgumentParser:
     resolve_p.add_argument("--manifest", required=True, help="Path to the leaf manifest YAML file")
     resolve_p.add_argument("--role", required=True)
     resolve_p.add_argument("--distro", required=True)
-    resolve_p.add_argument("--out", required=True, help="Output directory for <layer>.repos files")
+    resolve_p.add_argument("--out", required=True, help="Output directory")
+    resolve_p.add_argument(
+        "--layout",
+        choices=LAYOUTS,
+        default=LAYOUT_FLAT,
+        help=(
+            "flat (default): <out>/<layer>.repos only. manifest-dir: <out>/repos/<layer>.repos"
+            " plus <out>/layers.txt and <out>/optional_layers.txt"
+        ),
+    )
     resolve_p.add_argument("--cache-dir", default=None, help="Cache dir for git-backed extends")
     resolve_p.set_defaults(func=cmd_resolve)
 
