@@ -73,3 +73,13 @@ The audit is by reading, so the issue's own method (shuffled order and parallel 
 - Decide the fail-fast question in the plan: the issue says one failure must not hide another, so run all, report every failure, exit as serial would. Do not keep a parallel fail-fast.
 - Mark any suite that cannot be made independent with a `# serial:` header line the runner reads (recorded reason), per the issue; expect `test_cross_model_review.sh` to be the candidate if its host-wide `pgrep`/`pkill` cannot be scoped.
 - Do not time or run the full suite for acceptance while other agents are running it; the before/after run is taken on a quiet machine, serial and parallel back to back.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's scope and proposes how to build it; its one question, whether a parallel run stops at the first failure, is how a behaviour the owner asked for works, so the host decides it and lists it for his veto)
+**After**: issue-actions
+**Decision**: proceed
+
+Host read the Issue Review. Accepted as plan inputs: two pull requests (1: the runner made safe for parallel runs, each suite with its own temporary directory, per-suite output with failures first, a shuffle option and a timing table, default still one job; 2: parallel turned on by default, with before and after recorded), the slow-fixture work riding with the second or as a third; the default job count `clamp(nproc/4, 2, 6)`, a hard cap of 8, an option and an environment variable to set it, one job keeping today's behaviour; no CI workflow change. Host decision listed for the owner's veto: a run executes every selected suite, prints every failure, and exits with the code a serial run would give for the first failing suite; it does not stop at the first failure. Undoing it: an option to stop early.
