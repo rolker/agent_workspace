@@ -239,3 +239,111 @@ def test_invalid_yaml_message_does_not_quote_the_document():
     with pytest.raises(ManifestError, match=r"t: invalid YAML at line \d+, column \d+") as info:
         parse_manifest_text(text, source="t")
     assert SECRET not in str(info.value)
+
+
+# --- the emitter's second line -------------------------------------------------------------
+#
+# These build output from a merged manifest whose names or labels did not come through the
+# parser (or, for the symlink, came through it clean), to show the emitter refuses on its own.
+
+_VALID = _repo_manifest() + "roles:\n  dev: {}\n"
+
+
+def _merged(layer: str = "core", source: str = "t"):
+    from ros_manifest.merge import merge_chain
+
+    merged = merge_chain([parse_manifest_text(_VALID, source=source)])
+    merged.layers = [layer]
+    merged.layer_repos = {layer: merged.layer_repos["core"]}
+    return merged
+
+
+def _emit(merged, out, layout, distro="jazzy"):
+    from ros_manifest.emit import emit_manifest
+    from ros_manifest.selectors import select_repos
+
+    return emit_manifest(merged, select_repos(merged, "dev"), "dev", distro, out, layout=layout)
+
+
+def _all_files(root):
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+
+
+@pytest.mark.parametrize("layout", ["flat", "manifest-dir"])
+@pytest.mark.parametrize("layer", ["../../escaped", "ABSOLUTE"])
+def test_emitter_refuses_a_path_outside_out(tmp_path, layout, layer):
+    # Reproduced: `../../escaped` wrote two directories above --out in both layouts (the flat
+    # layout on main too); an absolute name wrote anywhere.
+    if layer == "ABSOLUTE":
+        layer = str(tmp_path / "pwned")
+    out = tmp_path / "a" / "b" / "out"
+    with pytest.raises(ManifestError, match="is outside the output directory"):
+        _emit(_merged(layer), out, layout)
+    assert _all_files(tmp_path) == []
+
+
+@pytest.mark.parametrize("layout", ["flat", "manifest-dir"])
+def test_emitter_refuses_a_symlink_that_leads_outside_out(tmp_path, layout):
+    out = tmp_path / "out"
+    repos_dir = out / "repos" if layout == "manifest-dir" else out
+    repos_dir.mkdir(parents=True)
+    (repos_dir / "core.repos").symlink_to(tmp_path / "victim")
+    with pytest.raises(ManifestError, match="is outside the output directory"):
+        _emit(_merged(), out, layout)
+    assert not (tmp_path / "victim").exists()
+
+
+@pytest.mark.parametrize("layout", ["flat", "manifest-dir"])
+def test_emitter_refuses_a_header_value_that_would_split_a_line(tmp_path, layout):
+    out = tmp_path / "out"
+    with pytest.raises(ManifestError, match="contains a control character"):
+        _emit(_merged(source="base\n- injected"), out, layout)
+    assert _all_files(tmp_path) == []
+    with pytest.raises(ManifestError, match="contains a control character"):
+        _emit(_merged(), out, layout, distro="jazzy\nevil")
+    assert _all_files(tmp_path) == []
+
+
+def test_emitter_refuses_a_layer_line_that_would_split(tmp_path):
+    # `core\nevil` would be two entries of layers.txt, each passing the adapter's line check.
+    with pytest.raises(ManifestError):
+        _emit(_merged("core\nevil"), tmp_path / "out", "manifest-dir")
+    assert _all_files(tmp_path) == []
+
+
+def _git(cwd, *args):
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def test_base_reached_through_a_symlink_with_a_newline_in_its_name(tmp_path, capsys):
+    # The parser sees `extends.path: manifest.yaml`, which is clean; in the base repository it
+    # is a symlink to a file named `evil\n- injected.yaml`, so the provenance label, built from
+    # the resolved path, holds a newline. The emitter refuses it; nothing is written.
+    import shutil
+
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    remote = tmp_path / "base_repo"
+    remote.mkdir()
+    _git(remote, "init", "-q", "-b", "main")
+    (remote / "evil\n- injected.yaml").write_text(_VALID.replace("core", "underlay"))
+    (remote / "manifest.yaml").symlink_to("evil\n- injected.yaml")
+    _git(remote, "add", "-A")
+    _git(remote, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "x")
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(
+        f"extends:\n  path: manifest.yaml\n  url: {remote.as_uri()}\n  ref: main\n"
+        "layers: [core]\noptional_layers: [core]\n"
+    )
+    out = tmp_path / "out"
+    argv = ["resolve", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"]
+    rc = main(
+        argv + ["--out", str(out), "--layout", "manifest-dir", "--cache-dir", str(tmp_path / "c")]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "refusing to write the header of the 'underlay' .repos file" in err
+    assert "contains a control character" in err
+    assert not out.exists() or _all_files(out) == []
