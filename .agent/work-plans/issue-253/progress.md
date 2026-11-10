@@ -349,3 +349,13 @@ Narrow check of the round 2 findings and the fix diff since `410358ec` (four com
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 12:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved, Ship recommended, nothing open)
+**After**: publish
+**Decision**: publish
+
+Host read the round-3 review (approved, 0 must-fix, 0 suggestions). The document proposes ten issues and opens none; which to open is put to the owner with the merge decision.
