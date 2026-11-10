@@ -709,3 +709,92 @@ Carried to part 2: rename the fixture's made-up project so no test names a proje
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `156efb94`
 
 Revision for part 2 after part 1 merged (pull request 445). Part 2 is cut as 2a (base branch: a base given by hand until repo_pin from issue 436 exists, the base also decides the branch start point and is recorded in the manifest header, forwarded to publish) and 2b (the gate reads and records in the owning checkout with pull request identity as repository plus number, report-only kept, cleanup pinned by tests, the end-to-end test, texts, fixture rename). Eleven decisions listed for the owner's veto; issue 437 merges before 2b.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 14:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `156efb94`
+**Branch**: `feature/issue-429`
+**Serves**: Workspace goal `README.md#easy-to-use`; touches `README.md#light-touch-on-projects`; design `docs/design.md#worktrees` (Records), `docs/design.md#review-loop-and-timeline`, `docs/design.md#merge-gate`. Checked: the sections exist. Part 2 also falls under `README.md#flexibility`, which the line does not cite (finding 3).
+
+Scope of this review: "Part 2 (detailed)" only; part 1's text is the record of merged work. Read against the merged code at `3486edba`: `worktree_create.sh`, `_worktree_helpers.sh` (`_wt_add_repo`, `wt_add_new_branch`, `wt_lookup_for_new_branch`, `wt_read_manifest`), `merge_pr.sh` (package scan, gate, `_gate_record`, `_gate_already_recorded`, Step 4), `progress_read.py`, `review_progress.sh`, `dispatch_phase.sh`, the `adapter` dispatcher, the `ros2_colcon` adapter; issue 436's plan (worktree `issue-workspace-436`) and issue 437's branch diff (worktree `issue-workspace-437`).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2a (about 8 files) and 2b (about 11 files) are each one reviewable change. 2b is lighter without step 7 (finding 2) |
+| Issue alignment | Good | Closes the rest of the issue: base, gate on the owning timeline, end-to-end test, texts. Serves line copied above |
+| File targeting | Needs work | 2a's texts are listed under 2b (finding 6); `wt_read_manifest`'s header parser needs a change the plan does not list (finding 5) |
+| Consequences | Needs work | Base text, script rows and ADR-0012 header text trail 2a into 2b; `script_reference.md` is also shared with issue 437 (textual) |
+| Principle alignment | Needs work | Table below. The plan's own self-check uses names that are not headings ("Enforcement over documentation", "Only what's needed / small steps") and lists five of sixteen |
+| Flexibility goal (`README.md#flexibility`) | Needs work | Row below |
+| ADR compliance | Good with one note | 0011: the pin read only through `adapter repo_pin`; 0012: header field additive once the layer parser is fixed; 0013: amendment is additive and every reader keeps working on bare `#M` (checked), but see finding 2; 0017: see finding 6 |
+| ROS conventions | N/A | Workspace scripts; no ROS interfaces |
+
+#### Principle alignment (every heading of `docs/principles.md`)
+
+| Principle | Applies? | Assessment |
+|---|---|---|
+| Leave a trail; start limits strict | Applies | Good: package gate records move onto the owning timeline; a run with no base refuses rather than guesses |
+| Enforce what matters, as simply as possible | Applies | Partly: the start point is the real enforcement and the merge cross-check reports a wrong target; but the stated mechanism does not enforce origin's base (finding 1), and step 7 guards a case no flow produces (finding 2) |
+| Keep one current design | Applies | Needs work: 2a changes the worktree picture (branch start, `base=` header) but its design and ADR-0012 text are in 2b (finding 6) |
+| A change includes its consequences | Applies | Needs work: same as above, plus `script_reference.md` rows for `base`, `_pr_base.sh`, `--base` |
+| Only what's needed | Applies | Needs work: step 7 and the verb-absent stopgap both build things no current flow needs (findings 2, 4) |
+| Small steps; step back when they stop converging | Applies | Good: two pull requests; can run in parallel with one move (finding 7) |
+| Test what breaks | Applies | Needs work: missing cases for a local `<base>` with an unpushed commit, `--allow-unverified-branch` with an unknown base, and the layer field after `base=` (findings 1, 5) |
+| Put each thing at the level it applies to | Applies | Good: `_pr_base.sh` names no type; the pin comes from the adapter. One gap: how the repository name is found before the worktree exists (finding 8) |
+| Use the main tool fully; keep the work tool-neutral | Applies | Needs work: its rule "for each part that depends on one tool, say how the work continues without it" is the one principle serving Flexibility; the GitHub-bound rows give no way to continue (finding 3) |
+| Ask about what matters, and show how much | Applies | Partly: the veto list says what each changes and its undo cost; veto 5 contradicts the table (finding 4); the GitHub question is left "for the owner's discussion" although the goal is recorded (finding 3) |
+| Verify before claiming | Applies | Needs work: "older readers ignore it" is false for `layer=` (finding 5); "the rule is not in the tree" is false (finding 9) |
+| Look for prior art before building | Applies | Partly: reusing the parent-branch path is right, but its semantics (local branch first, default fallback) were not carried over correctly (finding 1) |
+| Leave in a project only what it chose to carry | Applies | Good: gate records join the timeline in the package repository that decision 1 (part 1, owner's veto) already put there; `base=` lives in the workspace manifest |
+| Name the rule before bending it | Applies | Good: the tests-name-no-project rule is named and the partial rename is put to veto 8 |
+| Give the user what they need now | Applies | Good: decisions are in plain words with undo cost; the Flexibility table is a usable start for the owner's question |
+| Know whether it works | Applies | Good: step 8's base cross-check at merge is the check that the base mechanism worked |
+
+#### Flexibility goal row
+
+`README.md#flexibility`: "preference should go to open source and open standards to minimize vendor lock-in. Have an exit strategy for anything that depends on a vendor's closed product or infrastructure." The plan says "no goal is recorded"; this one is.
+
+- **No new `gh` call: verified.** Step 8 adds `baseRefName` to the existing `_head_json` `gh pr view` (merge_pr.sh:545); publish adds `--base` to the existing `gh pr create` through `gh_create_pr.sh` pass-through; `_pr_base.sh` and `dispatch_phase.sh base` use git and the adapter; cleanup's `gh pr list` is unchanged.
+- **Records move off the pull request: verified for the owning pull request only.** `_gate_record` (merge_pr.sh:848) skips the timeline whenever `PKG_WT_DIR` is set and falls back to `gh pr comment`; step 6 lifts that for the owning checkout. Sibling pull requests' records, and the push-refused and no-identity fallbacks, still go to `gh pr comment`, and `_gate_already_recorded` still reads the comment store for them. The table's "Gate record location" row should say so.
+- **Table incomplete:** missing rows: the sibling record path (`gh pr comment`, stays), the comment-store duplicate check (stays), and the owning-checkout match in step 6 (a new use of `extract_gh_slug`, which parses GitHub remotes only; the manifest scan at merge_pr.sh:488-499 already matched that entry by branch and slug, so reusing the match needs no second parse).
+- **Deepened:** step 7 writes the GitHub-derived `owner/repo` into ADR-0013's record vocabulary (finding 2).
+- **No exit stated** for any "No"/"Stays" row. After part 2 the gate's decision for a package pull request is already a git record; the exit can be one line per row (publish = push the branch; merge = `git merge` into the base and push, with the gate read from the timeline; reviews from local reviewers), or an issue that owns it.
+
+### Findings
+
+1. **[Approach — must-fix] The stated start-point mechanism does not give origin's base.** Step 3 passes the base as `_wt_add_repo`'s parent and promises "starts at `origin/<base>`; a missing or unreachable base is an error, never a silent fall back". The merged parent path (`_worktree_helpers.sh:787-806`) does three other things: (a) a local `refs/heads/<base>` is used as is, with no fetch, so in a vcs-imported checkout that sits on the pinned branch, any local or stale commits there go into the new branch and the pull request; (b) a base absent on origin prints a WARNING and starts from the default branch (`_wt_default_start_point`), the wrong branch; (c) with `--allow-unverified-branch`, an unknown base is treated as absent and also starts from the default. The parent add also omits `--no-track`, so the new branch tracks `origin/<base>`. Resolution: a separate base path, owning entry only: fetch `refs/heads/<base>` with `wt_fetch_named_branch`; present → `wt_add_new_branch ... origin/<base> --no-track`; absent or unknown → error, whatever `--allow-unverified-branch` says, with the rollback the manifest loop already does. Never the local `<base>`. Tests: a local `<base>` carrying an unpushed commit (the new branch must not contain it); `--allow-unverified-branch` with an unreachable origin (must refuse). `pr_base_for`'s offline "unverified" acceptance and the creation's "unknown → stop" then disagree: say which wins in the message.
+2. **[Flexibility / Only what's needed — must-fix] Step 7 adds a GitHub-derived identity to the record format for a case no flow produces, with no exit.** On today's flows (and after part 2) only the owning pull request's records land in A's timeline: siblings go to comments (step 6), sibling repositories are not committed to (part 1's Scope), and review entries in A are written bare `#M`. Step 7 says so itself ("only guards the case where two repositories' entries meet"). It still amends ADR-0013 and writes `owner/repo` from `extract_gh_slug`, a GitHub-only parser, into every package merge record. Resolution: drop step 7 (and the ADR-0013 amendment and its tests); bare `#M` already means "the timeline's own repository". If kept, key on a forge-neutral name (the manifest entry's directory name) and state the exit. For the record: adding `repo` is additive and every reader keeps working on bare `#M` (checked: `review_progress.sh` round/sources/findings use `kind`/`sha`/`branch`; `dispatch_phase.sh` check-exit and `next` use `sha`/`branch`; the gate uses `sha` and `.pr`; `sitrep` does not read correlations; `progress_read.py`'s `re.search` already matches `owner/repo#M at`).
+3. **[Flexibility] The goal is recorded, and the plan should be judged against it, not leave it to discussion.** Cite `README.md#flexibility` in Serves and in the self-check through "Use the main tool fully; keep the work tool-neutral"; complete the table (rows above) and give one exit line per GitHub-bound row.
+4. **[Approach] Drop the verb-absent stopgap; order issue 436's pull request (c) first.** Issue 436's plan lists (c), `repo_pin` as a required verb, as depending on nothing for the verb itself and runnable in parallel with (b). The acceptance case on a fresh machine needs 436's manifest route anyway, so (c) will be in by then; the stopgap serves only a window with no real package runs, and costs a verb-detection branch, a refusal message and stub-adapter tests that are deleted later. An "optional verb" would be a new concept in ADR-0011 (every type implements every verb), so not smaller. Make 2a's `base` call `adapter repo_pin` and merge after (c); keep `--base` as an override only. As written, the table refuses every package run without `--base`, while veto 5 says the owner types it only "for a project whose pin differs from the default": one of them is wrong.
+5. **[Verify before claiming] `base=` after `layer=` empties `WT_MANIFEST_LAYER`.** `wt_read_manifest` (`_worktree_helpers.sh:444`) reads `layer` with an end-anchored `sed 's/.* layer=\([^ ]*\)$/\1/p'`; on `# project=demo issue=owner/pkg_a#7 layer=l1 base=pinned` it prints nothing (run here). Nothing reads `WT_MANIFEST_LAYER` today, so it is latent, but the claim "readers use sed on named fields, so older readers ignore it" is false for this one. Remove the anchor in 2a and add the case to `test_worktree_create.sh`. The other header readers (`issue=`, `project=`) are not anchored.
+6. **[Keep one current design / Consequences] 2a's texts belong in 2a.** 2a introduces the base start point, the `base=` header, `dispatch_phase.sh base`, `_pr_base.sh` and `worktree_create.sh --base`, but the `docs/design.md#worktrees` sentence, ADR-0012's manifest paragraph and the three `script_reference.md` rows are in step 13 (2b). Since "each is merged on its own", main would carry 2a with a stale design. Move them into 2a.
+7. **[Small steps] 2a and 2b can be developed in parallel.** Only step 8 (base cross-check) and the end-to-end test's `--base` step need 2a. Move step 8 into 2a (it is about the base, and is silent without `base=`); then 2b needs nothing from 2a, and the end-to-end test's base step is added by whichever of the two merges second.
+8. **[Put each thing at the level it applies to] Say how `base` names the repository before the worktree exists.** `repo_pin <name>` takes the directory name, which can differ from the GitHub repository name in `owner/repo#N`. Take it from the owning entry of `adapter worktree_repos --issue <ref> --layer --package-repos` (the entry on `feature/issue-N`, basename of its path), not from the issue reference.
+9. **[Verify before claiming] "A run removes only what it made" is in the merged tree.** `worktree_create.sh:70-75` (`undo_new_branch_checkout`: "Only what this run made is undone") and `_worktree_helpers.sh` (`wt_add_new_branch`: "a failure undoes only what this run made"; `_wt_add_repo`'s `made_branch`). It concerns undoing a failed creation, not merge-time cleanup. Step 10 changes no code, so nothing rests on the misreading, but it should not cite that rule for cleanup. The cleanup sweep (merge_pr.sh:1664-1690) safe-deletes every manifest entry's local branch whose remote is gone, whichever run made it. Close the open question. Add one pinned case: the owning repository's own checkout on a branch other than the base, where `git branch -d` keeps the merged branch as "not fully merged".
+10. **[Consequences] Issue 437 overlap: claims verified, one file missing.** 437's branch does not touch `merge_pr.sh`; its `progress_append.sh` write rule (`records_dir --write`) accepts A on `feature/issue-N`, so `_gate_record`'s `-C A` passes; `test_package_issue_loop.sh` is shared (437 changes one assertion block). `.agent/knowledge/script_reference.md` is also shared (437 step 8 adds rows), and 2a edits `test_package_issue_loop.sh` too, so 2a is not free of 437 either: textual only.
+11. **[Name the rule] Fixture rename: leaving the six other suites to a follow-up is right**, since that rename is unrelated to part 2's behaviour (168 lines counted: `test_ros2_colcon.sh` 71, `test_project_registry.sh` 47, `test_merge_pr.sh` 40, `test_session_root.sh` 6, `test_skill_prefix.sh` 3, `test_session_start_layer.sh` 1; comments at `skill_prefix.sh:14`, `user_tier_install.sh:1208`). The follow-up is mechanical and depends on nothing: file it now so it can run beside 2a and 2b. `run-issue/SKILL.md:83` (`p11-jazzy`) is in the files part 2 touches and is covered by step 11.
+
+### Summary
+
+The two-pull-request cut and the gate-on-the-owning-timeline approach are sound, and the claim of no new `gh` call holds. Two things must change before implementation: the start point must come from origin's base by its own strict path (as written, the parent path can start a package branch from a stale local base or from the default branch), and step 7 should be dropped (it adds a GitHub-derived identity to the record format for a case no flow produces). Beyond those: the Flexibility table needs completing with exits, the stopgap can be replaced by ordering issue 436's (c) first, and 2a's texts move into 2a.
+
+### Recommended Actions
+
+- [ ] (must-fix) Step 3: a strict base path for the owning entry (fetch origin's base, `--no-track`, absent or unknown is an error even with `--allow-unverified-branch`, never the local `<base>`), with the two tests in finding 1
+- [ ] (must-fix) Drop step 7 and the ADR-0013 amendment, or key on a forge-neutral name and state the exit
+- [ ] (suggestion) Cite `README.md#flexibility`; complete the GitHub-bound table (sibling comment records, comment-store duplicate check, step 6's slug match) with one exit line per row
+- [ ] (suggestion) Replace the verb-absent stopgap by merging 2a after issue 436 (c); `--base` as override only; fix veto 5's contradiction
+- [ ] (suggestion) Un-anchor the `layer=` parser in `wt_read_manifest` and test it
+- [ ] (suggestion) Move the base texts (design, ADR-0012, script rows) and step 8 into 2a
+- [ ] (suggestion) Name the repository for `repo_pin` from `adapter worktree_repos`' owning entry
+- [ ] (suggestion) Step 6: reuse the manifest scan's matched entry instead of a second `extract_gh_slug` parse
+- [ ] (suggestion) Step 10: cite the creation rule correctly, close the open question, add the "own checkout not on the base" case
+- [ ] (suggestion) File the fixture-rename follow-up now
+- [ ] (suggestion) Rebuild the Principles Self-Check from the sixteen headings of `docs/principles.md`
