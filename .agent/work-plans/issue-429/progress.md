@@ -323,3 +323,66 @@ workspace main branch). Also in PR 1: `run-issue` text (step 1 `cd`, publish `-R
 qualified `--pr`, Scope), the literal records lines in review-plan and address-findings, a new test
 suite, and the design Records bullet. PR 2: the merge gate reads and records the owning checkout's
 timeline and stays report-only. The records lookup stays with issue 393.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 11:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6b328060`
+**Branch**: `feature/issue-429`
+
+Fresh review of the small-route replan (owner: "R1, try the small route first"). Earlier reviews of the larger approach are not carried over.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two pull requests, about 11 and 3 files; the records lookup stays with issue 393. Nothing in PR 1 is removable without breaking the route (see Least change). |
+| Issue alignment | Good | Serves, as checked: "Workspace goal 'A project can be worked from its own root'. Design: `docs/design.md#worktrees` (Records) and `docs/design.md#review-loop-and-timeline` (PR 2: `docs/design.md#merge-gate`)". The design anchors exist; the goal name does not appear under `README.md#workspace-goals` (finding 5). |
+| File targeting | Needs work | `run-issue` lines 244 and 497 (`PF="<worktree>/..."`) and the handoff's `conventions=` line are not in the change list (findings 2, 3). |
+| Consequences | Good | Design Records bullet, script reference, `run-issue` Scope; gate text in PR 2. |
+| Principle alignment | Needs work | Verify before claiming: "In A, identity comes from the repository itself (`gh` and git both resolve `owner/pkg_a`)" is false for a checkout with an `upstream` remote, checked with real `gh` (finding 1). |
+| ADR compliance | Good | ADR-0003 synthetic fixture; ADR-0012 manifest rule; ADR-0013 unchanged under the default setting; ADR-0017 design in the same pull request. |
+| ROS conventions | N/A | Workspace plan. |
+
+**Evidence re-run.** Fresh sandbox from the planner's `sb429_setup.sh` (this branch's HEAD, unmodified scripts), package worktree for `owner/pkg_a#7` created from H: `pkg_a` on `feature/issue-7`, `pkg_b` on `feature/pkg_a-issue-7`, C's toplevel the workspace main checkout. All matched the plan's table:
+- `dispatch_phase.sh --issue 7 --skill review-plan` from H prints `worktree=C` and an exit contract under C (breaks row).
+- `--issue owner/pkg_a#7` is refused ("--issue <N> is required"); `next --issue 7` says `action=review-issue` while A holds a Plan Authored entry; with `--progress <A>` it says `action=review-plan`.
+- `progress_append.sh 7` from C committed `progress: checkpoint for #7` on the workspace's `main`, rc 0 (silent write).
+- `review_progress.sh persist` (compatibility) from B printed "would have aborted", then committed into `pkg_b`'s own merged issue-7 timeline on `feature/pkg_a-issue-7`, rc 0 (silent write).
+- Resolver: A resolves with `WORKTREE_ISSUE` unset or 7; B, C, H refuse when unset; with `WORKTREE_ISSUE=7`, B gives B's own directory and C and H give the workspace main checkout's.
+- `persist --strict` from A commits in A.
+- `worktree_enter.sh --issue owner/pkg_a#7` exports `WORKTREE_ISSUE=7` and lands in C.
+
+**Guard placement.** The writers that commit records are `progress_append.sh` (also the strict path of `persist` and `merge_pr.sh`'s `_gate_record` at 837), `persist`'s compatibility write, and `plan-task`'s `git commit` of `plan.md`, whose directory comes from `resolve_work_plans_dir` (plan-task 147). The plan puts the guard in all three places, so it closes B and C for every writer, not only the dispatched paths. Rule 1 (`WORK_PLANS_DIR_OVERRIDE`) skips the resolver's guard, but strict `persist` still ends in `progress_append.sh`, so that case is covered too. `review_progress.sh check` writes no commit: it edits the `--progress` file in place, and the host then runs a plain `git commit`. That is safe only if the host's `PF` names A (finding 2). Single-repository issues are unchanged. Workspace worktrees have no manifest. `worktree_create.sh` 741-756 writes no manifest for a lone `.` entry, so single-repo project worktrees have none either, and the guard does nothing for both. The plan says single-repo project worktrees "write" a `.` entry. That is wrong, but harmless (finding 4).
+
+**Pull request dependency.** PR 1 does not depend on PR 2. With PR 1 alone, `next` reads A's timeline, so a package issue reaches the merge checkpoint. Step 11's `merge_pr.sh --pr owner/repo#M` exists today. The gate takes its existing "carries no issue timeline" branch (merge_pr.sh 673-716), which is report-only, and posts its record as a comment. PR 2 needs PR 1's guard to accept A, which is the right direction.
+
+**Least change.** Nothing in PR 1 can go without breaking the route. The ambiguity-message passthrough is the only polish, and it costs three lines. PR 2 could wait without breaking anything. Until it lands, each package merge posts a false "would have refused" comment on the package repository, and PR 1's description should say so.
+
+**Main-checkout gap (case H).** A separate issue is right for the guard: closing it changes compatibility mode for every issue, and existing tests assert that behaviour. But the gap is more likely than "a sub-agent that forgets to `cd`". Checked in this run: a dispatched sub-agent's shell returns to the session's start folder on every call. My calls after `cd <worktree> && ...` ran in `/home/roland/agent_workspace`, the main checkout on `main`. So every command chain without its own `cd` runs at H. Finding 3 covers what PR 1 should carry, and the follow-up should be filed before the acceptance run.
+
+### Findings
+
+1. **[Principle alignment / must-fix]** The route rests on "in A, `gh` resolves `owner/pkg_a`". Real `gh` 2.103.3, run non-interactively in a checkout whose origin is `rolker/agent_workspace` and whose `upstream` is `cli/cli`, chose `cli/cli` for both `gh repo view` and `gh issue view 1`. gh ranks `upstream` above `origin` when no default is set. A package checkout that is a fork with an `upstream` remote would therefore read the upstream project's issue N. `review-issue` would post its findings with `gh issue comment <N>` (SKILL 232, no `-R`) on the upstream project's issue: a silent wrong-repository write, outward. Today's registered package checkouts carry no `upstream` (0 of 88), so it is latent, but the workspace is project-agnostic. Resolution: `where` (or `run-issue` step 1) checks `gh repo view --json nameWithOwner` from the mapped checkout against the ref's `owner/repo`. On a mismatch it refuses and names `gh repo set-default <owner/repo>` as the remedy. Add a test case with an `upstream` remote and a stub that ranks `upstream` first. Replace the "not tested" line with this check.
+2. **[File targeting]** `run-issue` 244 and 497 build `PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"` for `$BEFORE` and for `findings` / `check`. For a package issue, "the worktree" is C, the path `start-task` prints. A `PF` under C gives `BEFORE=0`, while `--check-exit` reads A, so a repeated entry type (a second Plan Review) is reported OK when the phase wrote nothing. Say in the `run-issue` change that `<worktree>` is `where`'s output (or `$(git rev-parse --show-toplevel)` after step 1's `cd`), and list both lines.
+3. **[File targeting]** The plan lists "the Agent tool's sub-agent working directory" as not tested, with no action. It was checked here (see the gap section): the cwd resets per call, so a phase that obeys "cd into it first and stay there" (this very handoff's wording) runs most calls at H. Resolution: in PR 1, the handoff's `conventions=` line (dispatch_phase.sh 415) says "start every command chain with `cd <worktree> &&`". At the acceptance run, check that the workspace main checkout, the session root's repository (if any) and the sibling checkouts gained no commits.
+4. **[Consequences]** Correct the plan's text: single-repo project worktrees write no `.worktree-repos` (worktree_create.sh 741-756; `wt_read_manifest` makes up the `.` entry). Test case 3 should use that real shape (no manifest), and a legacy one-entry `.` manifest if it is kept.
+5. **[Issue alignment]** The Serves goal "A project can be worked from its own root" is not a goal under `README.md#workspace-goals`. The nearest is "Easy to use" ("start an agent in the project's own directory and the workspace is there"). Name the section. Decision 1 (records in the package repository) also touches "Light touch on projects", which the veto list already covers.
+6. **[Consequences]** Once the host `cd`s into A, the `$WS_ROOT` fallback `.` resolves to A, which has no `.agent/scripts`. Without the user tier, every later `$WS_ROOT/.agent/scripts/...` call fails, loudly. State that a package issue needs the user tier, or have step 1 capture an absolute `WS_ROOT` before the `cd`.
+
+### Summary
+
+The evidence is real: seven rows re-run from a fresh sandbox, including both silent writes, all matched. The guard is in the right places for B and C across every records writer, and it does nothing to single-repo issues. PR 1 stands alone and reaches the merge checkpoint. One must-fix: the claim that gh resolves the owning repository is false for a checkout with an `upstream` remote, and that leaves an outward wrong-repository write open. The remaining findings are small text and test changes.
+
+### Recommended Actions
+
+- [ ] `where` / step 1 checks gh's default repository against the ref and refuses on a mismatch; test with an `upstream` remote (finding 1)
+- [ ] `run-issue` 244 and 497: `PF` from `where`'s path (finding 2)
+- [ ] Handoff `conventions=`: `cd <worktree> &&` on every command chain; acceptance-run check for stray commits; file the case-H follow-up before that run (finding 3)
+- [ ] Fix the single-repo manifest wording and test case 3's fixture (finding 4)
+- [ ] Serves names the README goal section (finding 5)
+- [ ] State the user-tier requirement or capture `WS_ROOT` before the `cd` (finding 6)
