@@ -449,9 +449,31 @@ dispatch_phase next --progress%"$S/dispatch_phase.sh" next --progress "$P/progre
 # Every review_progress.sh subcommand has a row above, or is named here as
 # taking no records path; a new subcommand fails this until it is placed.
 NO_RECORDS_SUBS="verdict"
-subs=$(sed -n 's/^    \([a-z-]*\)) *cmd_.*/\1/p' "$S/review_progress.sh")
+# Every label between `case "$SUB" in` and its `esac` counts, however the
+# row is written; the help and catch-all rows are the only ones that are no
+# subcommand. The labels must also be exactly the subcommands the usage
+# text names, so a row this parse misreads fails one of the two.
+table=$(awk '/^case "\$SUB" in$/ { on = 1; next } on && /^esac$/ { exit } on' "$S/review_progress.sh")
+subs=""
+unparsed=""
+while IFS= read -r row; do
+    [[ -z "${row//[[:space:]]/}" ]] && continue
+    if [[ "$row" =~ ^[[:space:]]*([^\)[:space:]]+)\) ]]; then
+        label="${BASH_REMATCH[1]}"
+        case "$label" in
+            '-h|--help|help'|'*') ;;
+            *) subs+="$label"$'\n' ;;
+        esac
+    else
+        unparsed+="$row"$'\n'
+    fi
+done <<< "$table"
+usage_subs=$("$S/review_progress.sh" 2>&1 | sed -n 's/^  review_progress\.sh \([a-z-]*\) .*/\1/p' | sort -u)
+check "review_progress.sh's dispatch table: every row has a label" "$([[ -n "$table" && -z "$unparsed" ]]; echo $?)" "unparsed: $unparsed"
+check "the table's labels are exactly the subcommands its usage text names" \
+    "$([[ -n "$usage_subs" && "$(sort <<< "${subs%$'\n'}")" == "$usage_subs" ]]; echo $?)" "table: $subs usage: $usage_subs"
 check "review_progress.sh's dispatch table lists the seven known subcommands" \
-    "$([[ "$(sort <<< "$subs" | tr '\n' ' ')" == "check findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
+    "$([[ "$(sort <<< "${subs%$'\n'}" | tr '\n' ' ')" == "check findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
 for sub in $subs; do
     if [[ " $NO_RECORDS_SUBS " == *" $sub "* ]]; then
         out=$(cd "$B" && "$S/review_progress.sh" "$sub" --must-fix 0 --round 1 2>&1); rc=$?
