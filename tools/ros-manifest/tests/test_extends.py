@@ -363,3 +363,122 @@ layers: [core]
     cache_dir = tmp_path / "cache"
     with pytest.raises(ManifestError, match="escapes"):
         resolve_chain(leaf, cache_dir=cache_dir)
+
+
+def _manifest_repo(path: Path, files: dict) -> str:
+    """A local git repository holding `files` on branch main; returns its HEAD commit."""
+    path.mkdir()
+    _git(path, "init", "-q")
+    _git(path, "config", "user.email", "t@example.com")
+    _git(path, "config", "user.name", "t")
+    for rel, text in files.items():
+        _write(path / rel, text)
+    _git(path, "add", "-A")
+    _git(path, "commit", "-q", "-m", "init")
+    _git(path, "branch", "-m", "main")
+    return _head(path)
+
+
+def _head(path: Path) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+_BASE_TEXT = """
+layers: [underlay]
+repos:
+  underlay:
+    a:
+      url: https://example.com/a.git
+      ref: main
+"""
+
+
+@pytest.mark.skipif(
+    subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
+    reason="git not available",
+)
+def test_git_backed_extends_provenance_is_url_ref_path_commit(tmp_path):
+    # Issue 267 decision 5: generated files say which manifest contributed each repository.
+    # A base read from a clone is labelled by where it came from, never by the cache path,
+    # which may be a temporary directory that is gone after the resolve.
+    from ros_manifest.emit import emit_layer
+    from ros_manifest.selectors import select_repos
+
+    remote = tmp_path / "base_repo"
+    commit = _manifest_repo(remote, {"config/manifest.yaml": _BASE_TEXT})
+    url = remote.as_uri()  # file://...
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        f"""
+extends:
+  path: config/manifest.yaml
+  url: {url}
+  ref: main
+layers: [core]
+repos:
+  core:
+    b:
+      url: https://example.com/b.git
+      ref: main
+roles:
+  dev: {{}}
+""",
+    )
+    cache_one = tmp_path / "tmp-one.cache"
+    chain = resolve_chain(leaf, cache_dir=cache_one)
+    label = f"{url}#main/config/manifest.yaml@{commit}"
+    assert [m.source for m in chain] == [label, str(leaf)]
+
+    merged = merge_chain(chain)
+    assert merged.repos["a"].source == label
+    text = emit_layer(merged, "underlay", select_repos(merged, "dev"), role="dev", distro="jazzy")
+    assert f"#   a: {label}\n" in text
+    assert str(cache_one) not in text
+
+    # A second resolve through a different (fresh) cache writes the same header.
+    chain_two = resolve_chain(leaf, cache_dir=tmp_path / "tmp-two.cache")
+    assert [m.source for m in chain_two] == [label, str(leaf)]
+
+    # A new commit on the base, resolved through a fresh cache, is named in the label.
+    _write(remote / "config" / "manifest.yaml", _BASE_TEXT + "optional_layers: [underlay]\n")
+    _git(remote, "commit", "-q", "-am", "second")
+    new_commit = _head(remote)
+    assert new_commit != commit
+    chain_three = resolve_chain(leaf, cache_dir=tmp_path / "tmp-three.cache")
+    assert chain_three[0].source == f"{url}#main/config/manifest.yaml@{new_commit}"
+
+
+@pytest.mark.skipif(
+    subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
+    reason="git not available",
+)
+def test_local_extends_inside_a_clone_keeps_the_git_label(tmp_path):
+    # A base in the clone extends a sibling file by local path: that file is labelled from the
+    # same clone (url, ref, its own path, the same commit), not by the cache path.
+    remote = tmp_path / "base_repo"
+    commit = _manifest_repo(
+        remote,
+        {
+            "distro/common.yaml": _BASE_TEXT,
+            "distro/manifest.yaml": "extends:\n  path: common.yaml\nlayers: [mid]\n",
+        },
+    )
+    url = remote.as_uri()
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        f"""
+extends:
+  path: distro/manifest.yaml
+  url: {url}
+  ref: main
+layers: [core]
+""",
+    )
+    chain = resolve_chain(leaf, cache_dir=tmp_path / "cache")
+    assert [m.source for m in chain] == [
+        f"{url}#main/distro/common.yaml@{commit}",
+        f"{url}#main/distro/manifest.yaml@{commit}",
+        str(leaf),
+    ]

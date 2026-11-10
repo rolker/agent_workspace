@@ -3,16 +3,24 @@
 Local-path extends resolve relative to the declaring manifest's own directory. Git-backed
 extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --branch
 <ref> --depth 1 <url> <dest>` and re-used on a cache hit (same url+ref). This module only ever
-invokes `git clone` — it never fetches over the network in tests, which point `url` at a local
-git repository (a `file://` path or a plain local path both work with `git clone`).
+invokes `git clone` (and `git rev-parse` on the clone) — it never fetches over the network in
+tests, which point `url` at a local git repository (a `file://` path or a plain local path both
+work with `git clone`).
+
+Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
+manifest read from a git-backed `extends` clone is labelled `url#ref/path@<commit>` (the commit
+the clone holds), never with the cache path: a cache directory may be temporary, and the label
+ends up in every generated `.repos` header. A local-path `extends` declared inside such a clone
+stays inside it (the escape check below) and is labelled the same way with its own path.
 """
 
 from __future__ import annotations
 
 import hashlib
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .schema import ExtendsRef, Manifest, load_manifest_file, ManifestError
 
@@ -47,7 +55,38 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
     return dest
 
 
-def _resolve_one(ext: ExtendsRef, declaring_dir: Path, cache_dir: Path) -> Path:
+def _head_commit(clone_dir: Path, url: str, ref: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ManifestError(
+            f"cannot read the commit of extends source {url}@{ref} (clone: {clone_dir}):"
+            f" {result.stderr.strip()}"
+        )
+    return result.stdout.strip()
+
+
+@dataclass(frozen=True)
+class _GitOrigin:
+    """Where a manifest read from an `extends` clone came from."""
+
+    url: str
+    ref: str
+    commit: str
+    clone_dir: Path
+
+    def label(self, path: Path) -> str:
+        rel = path.relative_to(self.clone_dir).as_posix()
+        return f"{self.url}#{self.ref}/{rel}@{self.commit}"
+
+
+def _resolve_one(
+    ext: ExtendsRef, declaring_dir: Path, declaring_origin: Optional[_GitOrigin], cache_dir: Path
+) -> Tuple[Path, Optional[_GitOrigin]]:
+    """Return the base manifest's path and its git origin (None for the local filesystem)."""
     if ext.url is None:
         base = declaring_dir.resolve()
         candidate = (base / ext.path).resolve()
@@ -57,7 +96,8 @@ def _resolve_one(ext: ExtendsRef, declaring_dir: Path, cache_dir: Path) -> Path:
             )
         if not candidate.is_file():
             raise ManifestError(f"extends path not found: {candidate}")
-        return candidate
+        # Inside a clone, the escape check keeps it in the same clone: same origin.
+        return candidate, declaring_origin
     clone_dir = _clone_or_reuse(ext.url, ext.ref, cache_dir).resolve()
     candidate = (clone_dir / ext.path).resolve()
     if not candidate.is_relative_to(clone_dir):
@@ -68,7 +108,13 @@ def _resolve_one(ext: ExtendsRef, declaring_dir: Path, cache_dir: Path) -> Path:
         raise ManifestError(
             f"extends path '{ext.path}' not found in {ext.url}@{ext.ref} (clone: {clone_dir})"
         )
-    return candidate
+    origin = _GitOrigin(
+        url=ext.url,
+        ref=ext.ref,
+        commit=_head_commit(clone_dir, ext.url, ext.ref),
+        clone_dir=clone_dir,
+    )
+    return candidate, origin
 
 
 def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List[Manifest]:
@@ -81,16 +127,20 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
     chain: List[Manifest] = []
     seen: set = set()
     current_path = manifest_path
+    current_origin: Optional[_GitOrigin] = None  # the leaf is a local file
     while True:
         key = str(current_path)
         if key in seen:
             raise ManifestError(f"extends cycle detected: {' -> '.join(list(seen) + [key])}")
         seen.add(key)
-        manifest = load_manifest_file(current_path)
+        label = current_origin.label(current_path) if current_origin else None
+        manifest = load_manifest_file(current_path, source=label)
         chain.append(manifest)
         if manifest.extends is None:
             break
-        current_path = _resolve_one(manifest.extends, current_path.parent, cache_dir)
+        current_path, current_origin = _resolve_one(
+            manifest.extends, current_path.parent, current_origin, cache_dir
+        )
 
     chain.reverse()  # base first
     return chain

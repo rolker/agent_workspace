@@ -65,7 +65,7 @@ class PackageEntry:
 class Manifest:
     """One manifest file's own content (pre-merge)."""
 
-    source: str  # human-readable provenance label (file path or url#ref/path)
+    source: str  # human-readable provenance label (file path, or url#ref/path@<commit>)
     extends: Optional[ExtendsRef]
     layers: list
     optional_layers: list  # subset of `layers` whose fetch/build may fail without aborting
@@ -265,8 +265,10 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
     )
 
 
-def load_manifest_file(path: Path) -> Manifest:
+def load_manifest_file(path: Path, source: Optional[str] = None) -> Manifest:
+    """Load one manifest file. `source` is its provenance label; it defaults to the file path
+    (a git-backed `extends` base passes `url#ref/path@<commit>` instead, see ``extends.py``)."""
     path = Path(path)
     if not path.is_file():
         raise ManifestError(f"manifest not found: {path}")
-    return parse_manifest_text(path.read_text(), source=str(path))
+    return parse_manifest_text(path.read_text(), source=source if source else str(path))
