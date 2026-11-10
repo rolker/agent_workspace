@@ -159,6 +159,7 @@ make_merge_sandbox() {
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
     cp "$REAL_ROOT/.agent/scripts/merge_pr.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_bookkeeping.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_resolve_work_plans_dir.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"

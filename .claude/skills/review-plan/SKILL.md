@@ -85,7 +85,10 @@ Read the plan file directly. Extract the issue number from the path
 
 **Issue number** (e.g., `/review-plan --issue 45`):
 
-Resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`. If the file doesn't exist,
+Resolve to `$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>/plan.md`:
+the repository this phase runs in, which for a dispatched phase is the
+handoff's `worktree=` (for an issue of a package repository, the owning
+checkout inside the package worktree; issue 429). If the file doesn't exist,
 check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
 first, then every project worktree location — not just the legacy
 `worktrees/project/*/issue-*-<N>/` glob, since a registered project's
@@ -95,10 +98,13 @@ rather than re-deriving the glob:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+# The repository this phase runs in first …
+plan="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>/plan.md"
+if [ -f "$plan" ]; then echo "$plan"; else
 # shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
 source $WS_ROOT/.agent/scripts/_worktree_helpers.sh
 WS_ROOT="$(git rev-parse --show-toplevel)"
-# Workspace worktree first (a workspace-repo issue's plan lives here) …
+# … then the workspace worktree (a workspace-repo issue's plan lives here) …
 plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
 if [ -f "$plan" ]; then echo "$plan"; else
     # … then every project worktree location: registered roots and the
@@ -107,6 +113,7 @@ if [ -f "$plan" ]; then echo "$plan"; else
         plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
         [ -f $plan ] && { echo "$plan"; break; }
     done < <(wt_registry_worktree_dirs "$WS_ROOT"; wt_legacy_worktree_dirs "$WS_ROOT")
+fi
 fi
 ```
 
@@ -304,11 +311,13 @@ $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
 # PR-number form, reviewing from any tree: fetch the head, then ask by ref —
 # no local checkout of the file is needed.
 git fetch -q origin "<headRefName>"
-$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan $WS_ROOT/.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
+$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan ./.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 
-(In the PR-number form, read the plan text the same way: `git show
-<headRefOid>:$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md`.)
+(With `--ref`, `--plan` is relative to the current repository's top folder,
+so run it in the repository the PR belongs to. In the PR-number form, read
+the plan text the same way: `git show
+<headRefOid>:./.agent/work-plans/issue-<issue>/plan.md`, from that top folder.)
 
 **PR-less format** — when reviewing via `--issue` or file path (no PR exists),
 replace the PR line:

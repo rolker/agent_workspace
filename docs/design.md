@@ -171,7 +171,7 @@ only.
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
 | Ask first: instruction files, CI or branch protection, the project remote URL | Leave a trail; start limits strict | `review only` | Review guide row "Name the rule before bending it" (an Ask-First rule treated as bendable). No code-owner file or hook watches those paths |
-| A pull request carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` appends it and exits 2 when `AGENT_NAME` and `AGENT_MODEL` are unset. Issues and comments are signed by habit only: `gh_create_issue.sh` does not add one |
+| A pull request or an issue carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` and `gh_create_issue.sh` append it to a given body and exit 2 when `AGENT_NAME` and `AGENT_MODEL` are unset (`--no-signature` skips it); a body gh would write itself (`--fill` and its variants or `--template` with no body flag, `--recover` with or without one) also exits 2 without `--no-signature`. An issue made with `gh issue create` directly is not checked. Comments are signed by habit only: no wrapper signs them |
 | No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
 
 ## Sessions and roots
@@ -369,17 +369,18 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1028-1034 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 505-510, 594-607, 629-641, 1103-1109 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
-| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all four modes (`where` too) | 167, 228-277, 452, 581, 669, 700 |
+| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 125-152 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
-the cwd's git top level, lines 110-112 and 288-291), `progress_append.sh` (line 85-88),
+the cwd's git top level, through the records gate, lines 126-128 and 315-325), `progress_append.sh` (lines 75,
+86 and 99-100),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
 *Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
@@ -440,16 +441,31 @@ Status: `decided`
 - **Records.** An issue's work plan and progress timeline are committed in the repository that owns the
   issue (the workspace repository for a workspace issue, the project's repository for a project issue),
   on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
-  An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree) has no
-  timeline: a package worktree is a folder of several repositories, not one repository, so `merge_pr.sh`
-  posts its gate record on the pull request (lines 810 and 853). `progress_append.sh` line 87 writes
+  An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree, a folder of
+  several repositories) has its timeline in the checkout of the repository that owns it inside that
+  worktree: the `.worktree-repos` entry on `feature/issue-N`, under the default records setting (issue
+  429). `dispatch_phase.sh` decides that directory in one place (`resolve_issue_dir`, with
+  `issue_checkout_of` from `_resolve_work_plans_dir.sh`): the handoff names it as `worktree=`, and
+  `run-issue` step 1 moves the host there with `dispatch_phase.sh where`, which with the handoff also
+  refuses when `gh` there resolves another repository. Inside a package worktree every records read
+  and write refuses every other checkout, a sibling with the same issue number and the worktree's top
+  folder alike. The check sits in one place, the records gate (`records_path` and `records_dir` in
+  `_resolve_work_plans_dir.sh`), and every script path to a timeline goes through it:
+  `resolve_work_plans_dir`, `progress_append.sh`, each `review_progress.sh` subcommand that takes or
+  builds a records path (`round`, `persist`, `sources`, `findings`, `check`, `plan-sha`),
+  `dispatch_phase.sh` (`resolve_issue_dir` and `next --progress`) and `merge_pr.sh`'s gate lookup. It
+  does not cover a file an agent opens directly, the sit-rep's survey (it reads each listed checkout's
+  `progress.md` with `progress_read.py` directly), `worktree_create.sh --workflow`'s scaffold (#393),
+  or a write from outside any worktree, which commits on that checkout's own branch. Workspace worktrees
+  and single-repository project worktrees write no manifest, so nothing changes for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
+  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 99-100 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 280: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 563 and
-  678), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 694 and 829). The gate is still report-only for project pull requests (lines 926 and
-  939).
+  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 577 and
+  694), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 721 and 858). The gate is still report-only for project pull requests (lines 966 and
+  979).
 
 **Target**
 
@@ -490,9 +506,9 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   368, 370, 428, 520: the exit contract, `--check-exit` and `next`, which is what a resumed session
-   reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
-   `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
+   489, 533, 535, 597, 718: the round count, the exit contract, `--check-exit` and `next`, which is
+   what a resumed session reads), `merge_pr.sh` (689-710, 822-903: the gate's lookup and its `Merge`
+   entry), `review_progress.sh` (128, 294, 325) and `progress_append.sh` (99). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
@@ -615,7 +631,8 @@ Status: `decided`
   gate, the CI target and `review_progress.sh sources` all use it.
 - The script then waits for CI on the reviewed head, not on whatever the head has moved to. A review
   check-run that is still running (Copilot's) holds the merge unless `--allow-pending-review` is passed;
-  its conclusion is never read as CI.
+  its conclusion is never read as CI. A review state that could not be read holds it too: the script
+  refuses at the CI grace deadline rather than merge past a review it never saw.
 - The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
   Project and package pull requests are report-only: the gap is printed and recorded as a
   `## Merge (report-only)` entry and the merge goes ahead. `--force-unreviewed` bypasses both conditions
@@ -643,8 +660,8 @@ Status: `decided`
 - Three things refuse to run without an identity or with a wrong one: the `check-commit-identity` hook
   (accepted emails are the agent pattern and the owner's two addresses), `dispatch_phase.sh` (exit 2
   when `AGENT_NAME` or `AGENT_EMAIL` is unset, with no fallback to the owner's git config) and
-  `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` exits 2 for an unsigned body
-  ([Rules](#rules)).
+  `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` and `gh_create_issue.sh` exit 2
+  for an unsigned body ([Rules](#rules)).
 - The work is kept tool-neutral (principle "Use the main tool fully; keep the work tool-neutral"):
   plans, reviews and progress are plain files any tool reads. What needs Claude Code is the
   `/run-issue` and `/start-task` skills (their descriptions say so), the user tier in `~/.claude`
@@ -808,11 +825,21 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
 | 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 | 2026-10-30 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 854 |
+| 2026-11-02 | Rules, Identity | `gh_create_issue.sh` signs an issue body as `gh_create_pr.sh` signs a pull request (`--no-signature`, exit 2 without an identity): the Rules row is retitled to cover issues and still says comments are signed by habit only, and the Identity bullet names both wrappers | #323 | 855 |
+| 2026-11-02 | Registry and adapters, Worktrees | Line citations of `worktree_create.sh`, `merge_pr.sh` and `gh_create_pr.sh` refreshed after #323 moved them (a new branch's start point; the CI target's bookkeeping set and the review-hold SHA; the signing wrappers' shared argument parser, `_gh_create_args.sh`); no statement changes | #323 | 856 |
+| 2026-11-02 | Merge gate, Registry and adapters, Worktrees | Review fix: an unreadable review state holds the merge (refused at the CI grace deadline); `merge_pr.sh` line citations refreshed again | #323 | 858 |
+| 2026-11-02 | Registry and adapters | `worktree_create.sh` line citations refreshed after its branch fetch was bounded like the default-branch fetch; no statement changes | #323 | 859 |
+| 2026-11-02 | Rules | Review fix: the signing row says both wrappers refuse a body gh writes itself (`--fill`, `--template`, `--recover`) without `--no-signature` | #323 | 860 |
+| 2026-11-02 | Rules | Review fix: `--recover` is refused even with a body flag (gh loads the recovered input over it) | #323 | 861 |
 | 2026-11-02 | Instruction layers, Rules, Open questions, Worktrees | `AGENTS.md` trimmed from 448 lines (33,047 bytes) to 199 (10,513) by moving its reference material to `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`; the section's status goes from `proposed` to `decided` with the budget set at most 200 lines (host decision for the owner's confirmation, closing OQ-4) and held by the new `agents-md-line-budget` hook, which gets a Rules row; the Worktrees citation for entering with `cd` now names `WORKTREE_GUIDE.md` | #259 | 860 |
 | 2026-11-09 | Documentation layers | The sit-rep reads the session's own root (owner, 2026-11-09): a project session gets the project's Direction lines, worktrees, pull requests and the problems its own files allow, the workspace report lists project work only where a workspace Direction line names it, and a combined view is left to a later personal-root skill; the Measures row says the run record is per root; `sitrep_root.sh` named | #418 | 865 |
 | 2026-11-09 | How it works, The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions | ADR-0016 is Accepted (owner, 2026-11-09): the `/run-issue` acceptance run from a project root passed the merge checkpoint. How it works says the user tier has passed its acceptance run, no longer that it is not yet proven; the Status key's `decided, not proven` row names no ADR and no longer says a Provisional ADR is untested; Sessions and roots is `decided`, its Now block says ADR-0016 is Accepted and ADR-0018 is still Provisional with its own promotion condition (the same run) met; the Registry inventory sentence names the run's date; register row 0016 is `in force` and notes ADR-0018's supersession of decision 3 for skills; the C1-c sentence keeping ADR-0016 Provisional is dropped; OQ-2 is answered in place (tracked in the roadmap's Direction section, run by the owner through `/orchestrator` and `/run-issue` from the project root). Sessions and roots grows by two lines and is a status edit, so no detail moves | #423 | 867 |
 | 2026-11-09 | Sessions and roots, Decision register | ADR-0018 is Accepted (owner, 2026-11-09): its promotion condition, ADR-0016's acceptance run, passed the same day. The Sessions and roots Now block says ADR-0018 is Accepted too, no longer that it is Provisional with promoting it the owner's call; register row 0018 is `in force`. Sessions and roots is 116 lines, past the 60-line prompt; its length is unchanged and this is a status edit, so no detail moves | #425 | 868 |
+| 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after an existing branch's parent-branch fetch was made to warn when it times out; no statement changes | #323 | 876 |
+| 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after the named-branch lookup was redesigned (an explicit refspec, the outcome set present / absent / unknown, `--allow-unverified-branch`); no statement changes | #323 | 877 |
+| 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after review fixes to the named-branch lookup (a branch on origin gets its own upstream settings, not a fetch refspec; a skill branch is not looked up; the project path warns on an existing branch's parent); no statement changes | #323 | 878 |
 | 2026-11-10 | Documentation layers | The roadmap's acceptance case is no longer ADR-0016's (met 2026-11-09): the sentence on what the Direction section says drops "(ADR-0016's)" and keeps "one acceptance case", now project11 on a second machine against ROS 2 Rolling | #432 | 869 |
+| 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that every records read and write passes one records gate (`records_path`), which refuses a sibling checkout and the worktree's top folder, and what the gate does not cover, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory table and sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 896 |
 
 ## Glossary
 

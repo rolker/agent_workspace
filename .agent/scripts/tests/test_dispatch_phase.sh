@@ -37,7 +37,7 @@ mk_sandbox() {  # <issue-num>
     git -C "$sb" init -q -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace"
-    for f in dispatch_phase.sh progress_read.py review_progress.sh _worktree_helpers.sh _project_registry.sh; do
+    for f in dispatch_phase.sh progress_read.py review_progress.sh _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     git -C "$sb" worktree add -q "$sb/worktrees/workspace/issue-workspace-$n" -b "feature/issue-$n" >/dev/null 2>&1
@@ -473,8 +473,12 @@ out=$(run_handoff --issue 9 --skill implement)
 [[ "$out" == *"task=implement the plan at .agent/work-plans/issue-9/plan.md on this branch"* \
     && "$out" == *"model=opus"* && "$out" == *"entry_type=Implementation"* ]] \
     && pass "handoff: implement -- literal task line (no /implement slash command), opus, Implementation" || fail "handoff implement (out=$out)"
-[[ "$out" == *"progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
+[[ "$out" == *"\`$SB/.agent/scripts/progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
     && pass "handoff: implement's exit contract names progress_append.sh, the correlation line, and that the agent commits (plan review finding 1)" || fail "handoff implement exit contract (out=$out)"
+# By absolute path for every issue type, the run-issue skill too: a package
+# issue's phase runs in a checkout with no .agent/ of its own (issue 429).
+[[ "$out" == *"in the shape \`$SB/.claude/skills/run-issue/SKILL.md\` step 4"* ]] \
+    && pass "handoff: implement's exit contract names the writer and the run-issue skill by absolute path (issue 429)" || fail "handoff implement exit contract absolute paths (out=$out)"
 
 # The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
 # on conventions=, only for the committing passes of a workspace handoff: a
@@ -513,7 +517,7 @@ SBS="$SANDBOX/root with space"
 mkdir -p "$SBS/.agent/scripts" "$SBS/worktrees/workspace" "$SBS/.venv/bin"
 git -C "$SBS" init -q -b main
 git -C "$SBS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBS/.agent/scripts/"
 done
 git -C "$SBS" worktree add -q "$SBS/worktrees/workspace/issue-workspace-9" -b feature/issue-9 >/dev/null 2>&1
@@ -609,7 +613,7 @@ SBP1="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP1" init -q -b main
 git -C "$SBP1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP1/.agent/scripts"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBP1/.agent/scripts/"
 done
 mkdir -p "$SBP1/myproj/worktrees/issue-9"
@@ -633,7 +637,7 @@ SBP2="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP2" init -q -b main
 git -C "$SBP2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP2/.agent/scripts"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBP2/.agent/scripts/"
 done
 mkdir -p "$SBP2/project/worktrees/issue-9"
@@ -757,7 +761,7 @@ mk_project_sandbox() {  # <issue-num> <project-name>... -- first name owns the i
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace" "$sb/.agent/project_types"
     cp -r "$SCRIPT_DIR/../../project_types/single_project" "$sb/.agent/project_types/"
-    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     : > "$sb/.agent/projects.local"
@@ -872,7 +876,7 @@ git -C "$PSBW" init -q -b main
 git -C "$PSBW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$PSBW/.agent/scripts" "$PSBW/.agent/project_types" "$PSBW/home"
 cp -r "$SCRIPT_DIR/../../project_types/single_project" "$PSBW/.agent/project_types/"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$PSBW/.agent/scripts/"
 done
 : > "$PSBW/.agent/projects.local"

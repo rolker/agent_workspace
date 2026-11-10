@@ -1,5 +1,8 @@
 # Inspiration Digest: ros2_agent_workspace
 
+The current parity record (what still blocks moving off the fork) is
+[`docs/fork_parity.md`](../../docs/fork_parity.md) (2026-11-10, #253).
+
 Type: fork
 Last checked: 2026-09-29
 Repo: rolker/ros2_agent_workspace @ 323306a823ac6ae76bbd54a621612b8ed45e86f3 (origin/main)

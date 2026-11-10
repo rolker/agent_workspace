@@ -203,6 +203,9 @@ declare -A ROOT_READERS=(
     # files:/exclude: regex could cover.
     [test_cross_model_review.sh]=""
     [test_dispatch_phase.sh]=".agent/project_types .agent/scripts"
+    # Runs the real wrapper against the real worktree (its remote and repo
+    # root); copies the wrapper and the registry helper into a sandbox.
+    [test_gh_create_issue.sh]=".agent/scripts"
     [test_merge_pr_gate.sh]=".agent/scripts"
     [test_merge_pr_root_resolution.sh]=""
     [test_merge_pr.sh]=".agent/scripts"
@@ -210,6 +213,10 @@ declare -A ROOT_READERS=(
     # Reads the real plugin manifests and every skill's frontmatter
     # (`claude plugin validate` runs on the checkout root too).
     [test_plugin_manifest.sh]=".claude-plugin .claude/skills"
+    # Copies the real scripts, the ros2_colcon and single_project types and
+    # the run-issue SKILL.md (whose `where` blocks it runs) into its sandbox
+    # workspace; its rev-parse --show-toplevel calls are on sandbox checkouts.
+    [test_package_issue_loop.sh]=".agent/scripts .agent/project_types .claude/skills"
     [test_progress_read.py]=".agent/scripts"
     # Copies the real scripts, project types, user-tier list, .claude and
     # .claude-plugin into its sandbox workspace.
@@ -242,6 +249,9 @@ declare -A ROOT_READERS=(
     # test_user_tier_install.sh below).
     [test_user_tier_guard.sh]="manifest:.agent/user_tier_scripts.txt .agent/ .claude/"
     [test_user_tier_install.sh]=".agent/ .claude/"
+    # Copies the real worktree scripts and the single_project type into its
+    # sandbox workspace.
+    [test_worktree_create.sh]=".agent/scripts .agent/project_types"
 )
 
 for suite in "${ROOT_DERIVING[@]}"; do
