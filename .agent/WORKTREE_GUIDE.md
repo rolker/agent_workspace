@@ -161,7 +161,9 @@ fetch times out, the local default branch is used, with a warning that
 says why; when no default branch resolves, creation stops and suggests
 `git remote set-head origin -a`. Only `--parent-issue` (below) starts a
 branch elsewhere. An existing branch, local or on origin, is checked out as
-it is.
+it is; when its parent branch then cannot be fetched (timed out, or failed
+while origin has it), a warning says that a draft PR opened by
+`--plan-file` targets the default branch and how to retarget it.
 
 ## Naming Convention
 

@@ -867,9 +867,19 @@ else
         if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
            git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
             PARENT_BRANCH_FOUND=true
-        elif wt_fetch_named_branch "$ROOT_DIR" "$PARENT_BRANCH" 2>/dev/null && \
-             git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
-            PARENT_BRANCH_FOUND=true
+        else
+            # The branch already existed, so only the draft PR's base
+            # depends on this: a fetch that timed out or failed while
+            # origin has the parent (status 3) is said, not taken as "no
+            # parent" in silence (#323).
+            PARENT_FETCH_RC=0
+            wt_fetch_named_branch "$ROOT_DIR" "$PARENT_BRANCH" 2>/dev/null || PARENT_FETCH_RC=$?
+            if [ "$PARENT_FETCH_RC" -eq 0 ] && \
+               git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+                PARENT_BRANCH_FOUND=true
+            elif [ "$PARENT_FETCH_RC" -eq 3 ]; then
+                echo "WARNING: could not fetch parent branch '$PARENT_BRANCH' from origin (timed out, or failed while origin has it); a draft PR opened here targets the default branch. Retarget it with: gh pr edit --base $PARENT_BRANCH" >&2
+            fi
         fi
     fi
 fi

@@ -181,6 +181,31 @@ else
     fail "unreachable origin that had the branch: rc=$RC: ${OUT:0:400}"
 fi
 gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-15
+# The same for a parent branch: origin/feature/issue-405 from an earlier
+# fetch says origin has the parent, so neither worktree_create.sh nor
+# _wt_add_repo starts the sub-issue branch from the default instead.
+gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-405 "$LOCAL_MAIN"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 16 --type workspace --parent-issue 405
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not fetch 'feature/issue-405' from origin"*"as of the last fetch (origin/feature/issue-405)"* \
+      && "$OUT" != *"falling back to the default branch"* ]] \
+   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-16 >/dev/null; then
+    pass "unreachable origin that had the parent: worktree_create.sh stops, no branch started"
+else
+    fail "unreachable origin that had the parent: rc=$RC: ${OUT:0:400}"
+fi
+OUT="$(bash -c '
+    set -euo pipefail
+    source "$1/.agent/scripts/_worktree_helpers.sh"
+    if _wt_add_repo "$1" "$2" feature/issue-17 feature/issue-405; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$SANDBOX/pkg-wt-17" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"REFUSED"* && "$OUT" == *"ERROR: could not fetch 'feature/issue-405' from origin"* \
+      && "$OUT" != *"starting 'feature/issue-17' from the default branch"* ]] \
+   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-17 >/dev/null && [[ ! -e "$SANDBOX/pkg-wt-17" ]]; then
+    pass "unreachable origin that had the parent: _wt_add_repo refuses, no branch or worktree"
+else
+    fail "unreachable origin that had the parent, _wt_add_repo: rc=$RC: ${OUT:0:400}"
+fi
+gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-405
 
 echo
 echo "=== A fetch that would prompt or hang is bounded ==="
@@ -253,6 +278,21 @@ if command -v timeout >/dev/null 2>&1; then
         pass "hanging fetch: _wt_add_repo's target fetch is bounded (${elapsed}s) and refuses, no branch or worktree"
     else
         fail "hanging fetch, _wt_add_repo: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
+    fi
+    # The issue branch already exists, so the parent only sets the draft
+    # PR's base: a parent fetch that timed out is said, not taken in
+    # silence as "no parent".
+    gitq -C "$SB" branch feature/issue-18 "$LOCAL_MAIN"
+    started=$SECONDS
+    OUT="$(cd "$FEAT" && PATH="$SB/stubbin:$PATH" GIT_SSH_COMMAND="$SSH_SHIM" WT_FETCH_TIMEOUT=2 \
+        "$FEAT_SCRIPT" --issue 18 --type workspace --parent-issue 406 2>&1)"
+    RC=$?
+    elapsed=$((SECONDS - started))
+    if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: could not fetch parent branch 'feature/issue-406'"*"gh pr edit --base feature/issue-406"* \
+          && "$elapsed" -lt 20 ]]; then
+        pass "hanging fetch: an existing branch's parent fetch is bounded (${elapsed}s) and the draft PR base warned"
+    else
+        fail "hanging fetch, existing branch's parent: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
     fi
     gitq -C "$SB" remote set-url origin "file:///nonexistent/origin.git"
 else
