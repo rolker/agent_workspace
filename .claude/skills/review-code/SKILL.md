@@ -727,12 +727,16 @@ script decides which of these happens, in this order:
   or `0`) — what this step did before issue #269 PR B: the current
   worktree's `$WS_ROOT/.agent/work-plans/issue-<N>/progress.md` is created if
   absent, the entry is appended inline, and `git add` + `git commit` run
-  there. The strict path's refusal condition is still *evaluated*, and if
-  it would have refused, the script prints "Progress persistence notice:
-  would have aborted (resolve_work_plans_dir: <reason>) — running in
-  compatibility mode (PROGRESS_PERSISTENCE_STRICT=0)" before proceeding.
-  Copy that line into the Summary verbatim; it is the signal PR B2 uses to
-  decide when the default can flip.
+  there. It refuses first (exit 4, the same refusal as strict) when the
+  current checkout is not issue `<N>`'s: a main checkout on its default
+  branch, or another issue's worktree (issue 437). The strict path's
+  refusal condition is still *evaluated*, and if it would have refused
+  (left for two cases: `WORKTREE_ISSUE` names another issue, or
+  `WORK_PLANS_DIR_OVERRIDE` is set), the script prints "Progress
+  persistence notice: would have aborted (resolve_work_plans_dir: <reason>)
+  — running in compatibility mode (PROGRESS_PERSISTENCE_STRICT=0)" before
+  proceeding. Copy that line into the Summary verbatim; it is the signal
+  PR B2 uses to decide when the default can flip.
 
 Fetch the issue title for `--title` via
 `gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`.
