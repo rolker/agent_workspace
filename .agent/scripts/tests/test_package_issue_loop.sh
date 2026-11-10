@@ -266,6 +266,10 @@ SOLO="$SANDBOX/solo"
 git init -q "$SOLO"
 git -C "$SOLO" commit -q --allow-empty -m init
 git -C "$SOLO" remote add origin "git@github.com:owner/solo.git"
+# worktree_create.sh asks origin whether the branch exists before it starts
+# one (issue 323), so origin must answer: serve it like pkg_a and pkg_b.
+git init -q --bare "$REM/owner/solo.git"
+git -C "$SOLO" push -q origin main
 echo "solo single_project $SOLO" >> "$WS/.agent/projects.local"
 (cd "$SOLO" && "$S/worktree_create.sh" --issue 7 --type project --project solo) > "$SANDBOX/create.log" 2>&1 \
     || { cat "$SANDBOX/create.log"; fail "setup: single-repository project worktree"; }
