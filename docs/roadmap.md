@@ -16,11 +16,10 @@ section holds no status and no dates, and results stay on the machine that
 ran them.
 
 **Acceptance case.** Project11 is developed on a second machine against
-ROS 2 Rolling through this workspace. It is the move he named: "I also want
-to move project11 to this workspace ... test on pickerel, the new desktop
-machine I have, and set it up to develop project11 against ROS2 rolling."
-The machine is assumed to have a fresh Ubuntu 26.04, ROS and Claude Code,
-with agents running locally: "It got a fresh OS install with 26.04 and will
+ROS 2 Rolling through this workspace. In the owner's words (2026-11-10):
+"I also want to move project11 to this workspace ... test on pickerel, the
+new desktop machine I have, and set it up to develop project11 against
+ROS2 rolling." "It got a fresh OS install with 26.04 and will
 have ROS installed as well as Claude Code so agents can run locally on
 pickerel ... just assume that will be the state the workspace can expect
 when we are ready to clone it there." It is done when the simulator works
