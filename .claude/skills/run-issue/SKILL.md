@@ -1,7 +1,7 @@
 ---
 name: run-issue
 description: "Claude Code only — drives one GitHub issue through the full review loop (review-issue → plan-task → review-plan → implement → review-code → publish → triage-reviews → merge), dispatching each phase to a fresh sub-agent via the Agent tool and pausing at AskUserQuestion checkpoints. Depends on `.agent/scripts/dispatch_phase.sh` and the Agent tool, neither of which Codex/Gemini sessions can drive the same way."
-argument-hint: "<issue-number> [--type workspace|project] [--resume]"
+argument-hint: "<issue-number | owner/repo#N> [--type workspace|project] [--layer <l> --package-repos <a,b>] [--resume]"
 session_scope: both
 ---
 
@@ -64,9 +64,11 @@ own skill of the same name (ADR-0018). In a workspace session they are
 bare. Every dispatched task line must use the name *this* session has.
 `--type` does not say which; the location does: the directory this
 session was launched in, which is where it still is before step 1 (and the
-session never leaves its root, above). Read it then, once, and keep the
-value for the run; a worktree entered later (a package worktree of a root
-in no git repository, say) can give a different answer.
+session never leaves its root, above). Read it there, once, and keep the
+value for the run. Never re-read it after step 1: inside a package
+repository's checkout `skill_prefix.sh` and `session_root.sh` both refuse
+(a session there does not read that root's local settings), and nothing
+in the phase skills calls them.
 
 Find out **once, before step 1**, by running:
 
@@ -99,6 +101,16 @@ every command below into `/.agent/scripts/...`, which is worse than the
 relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
 workspace session behaves exactly as it did before this idiom existed.
 
+**An issue of a package repository requires the user tier.** Step 1 moves
+the host into the owning repository's checkout, where `.` has no
+`.agent/scripts`; and the session root of such an issue is a project root,
+where `.` never had them. Capturing an absolute `$WS_ROOT` once before the
+`cd` would not survive either, since shell state does not persist between
+tool calls. So step 1 stops before anything is created when
+`~/.claude/agent-workspace-root` is missing, which is the loudest failure:
+one message naming the installer, rather than a missing-file error at
+whichever call comes first.
+
 Host orchestrator for one issue's review loop. `run-issue` itself never
 implements, reviews, or writes code — it enters the worktree, asks
 `$WS_ROOT/.agent/scripts/dispatch_phase.sh next` what happens next, dispatches that
@@ -109,10 +121,19 @@ script, not here — see "Action tokens" below for where to read it.
 ## Usage
 
 ```
-/run-issue <issue-number> [--type workspace|project] [--resume]
+/run-issue <issue-number | owner/repo#N> [--type workspace|project]
+           [--layer <l> --package-repos <a,b>] [--resume]
 ```
 
-- `<issue-number>` — the GitHub issue driving the loop.
+- `<issue-number>` — the GitHub issue driving the loop. Below, `<ref>` is
+  the issue as given and `<N>` its number.
+- `owner/repo#N` — an issue of a package repository in a multi-repository
+  project (ADR-0012 package worktrees, `--type project`). One owning
+  repository per run; sibling repositories in the worktree are there to
+  build against, not to commit in.
+- `--layer`, `--package-repos` — passed through to `/start-task` for a
+  package issue whose worktree does not exist yet; without them creation
+  refuses with `worktree_create.sh`'s own message. Re-entry needs neither.
 - `--type` — `workspace` or `project`, exactly the value `/start-task` and
   `dispatch_phase.sh` take; default: the type of this session's root
   ("This session's root" above). It must name this session's root, or the
@@ -160,7 +181,7 @@ machine, so `/run-issue <N>` on a half-done issue resumes from the newest
 entry with no state anywhere else.
 
 **One dispatch path.** Every phase — dispatched or inline — is handed off
-the same way: `dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>]
+the same way: `dispatch_phase.sh --issue <ref> --skill <phase> [--pr <M>]
 [--type <type>]` prints the handoff block, and the host pastes it into a
 fresh-context sub-agent via the Agent tool, using the model the handoff
 names. No container mode, no `--context-file`, no auth preflight — phases
@@ -175,9 +196,36 @@ create issue `<N>`'s worktree with `/start-task` semantics: `cd` into it, not
 a framework-native worktree-entry tool (same reasoning as `/start-task`:
 `dispatch_phase.sh`'s own worktree lookup and every persistence step below
 resolve relative to the worktree, and `_resolve_work_plans_dir.sh` refuses
-outside it — issue #147). Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
-1–4 with `--issue <N> --type <type>`. If step 1 there refuses (already in a
-worktree), stop and tell the user to exit first.
+outside it — issue #147). For a package issue, check the user tier first
+("Workspace root" above), and stop if this prints anything:
+
+```bash
+test -s ~/.claude/agent-workspace-root || echo "stop: an issue of a package repository needs the user tier (the workspace's user_tier_install.sh)"
+```
+
+Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
+1–4 with `--issue <ref> --type <type>` (and `--layer`, `--package-repos` when
+given). If step 1 there refuses (already in a worktree), stop and tell the
+user to exit first.
+
+Then move to the directory the issue's work and records happen in, which
+`dispatch_phase.sh where` decides, the same answer every handoff gives a
+phase as `worktree=`:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+cd "$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])"
+```
+
+For a workspace or single-repository issue that is the worktree
+`/start-task` entered. For a package issue it is the checkout of the
+owning repository inside the package worktree, not the worktree's top
+folder, which is no repository of its own. `where` refuses when `gh` there
+resolves another repository (a checkout with an `upstream` remote) and
+names the `gh repo set-default` that fixes it: stop and report it. From
+here on the host's own commands run in that directory: the pull-request
+probe, `git push`, `check_branch_updates.sh`, `gh_create_pr.sh`,
+`fetch_pr_reviews.sh`, and `progress_append.sh` for checkpoints.
 
 **Identity, on every command chain.** `dispatch_phase.sh`'s handoff mode
 hard-fails with exit 2 when `AGENT_NAME`/`AGENT_EMAIL` are unset — there is
@@ -189,7 +237,7 @@ not once at the start of the run:
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source $WS_ROOT/.agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
-  && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [...]
+  && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [...]
 ```
 
 ### 2. Probe PR state
@@ -210,7 +258,7 @@ user. Keep the PR number `<M>` for every `--pr <M>` call below.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>]
+$WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <ref> --pr <none|draft|open|merged> [--type <type>]
 ```
 
 Prints `action=<token>`, `reason=<one line>`, and, depending on the row:
@@ -241,11 +289,16 @@ first run, so guard it rather than calling the script unconditionally):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
+PF="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])/.agent/work-plans/issue-<N>/progress.md"
 BEFORE=0
 [[ -f "$PF" ]] && BEFORE=$(python3 $WS_ROOT/.agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
     | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["entries"]))')
 ```
+
+`PF` comes from `where`, never from the worktree's top folder: for a
+package issue that folder holds no timeline, so a count there is always 0
+while `--check-exit` counts the owning checkout's, and a second entry of
+the same type would read as written when the phase wrote nothing.
 
 `<entry-type>` is the **exact** string the handoff block's `entry_type=`
 line printed for this dispatch — `Local Review (Pre-Push)`, not `Local
@@ -258,15 +311,18 @@ then:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>] [--skill-prefix agent-workspace:]
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [--pr <M>] [--type <type>] [--skill-prefix agent-workspace:]
 ```
 
 (`--skill-prefix` exactly as "Skill names in this session" decided.)
-It prints the handoff block: `worktree=`, `task=`, `agent_name=`,
-`agent_email=`, `model=`, `entry_type=`, `exit_contract=`, `conventions=`.
-Paste the task line, the worktree, the exit contract, and the
-`conventions=` line (the `**When**` format and scratch-file hygiene every
-dispatched phase must follow) into a fresh Agent tool call using the
+It prints the handoff block: `worktree=`, `package_worktree=` (a package
+issue only), `task=`, `agent_name=`, `agent_email=`, `model=`,
+`entry_type=`, `exit_contract=`, `conventions=`.
+Paste the task line, the worktree (and the package worktree, whose
+`env.sh`, `build.sh` and `test.sh` the phase builds and tests with), the
+exit contract, and the `conventions=` line (the `**When**` format,
+scratch-file hygiene, and `cd <worktree> &&` at the head of every command
+chain, which every dispatched phase must follow) into a fresh Agent tool call using the
 printed `model=` as the model override. The dispatched phase
 fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 
@@ -274,7 +330,7 @@ After the sub-agent returns, check the exit contract:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/dispatch_phase.sh --check-exit --issue <N> --skill <phase> [--pr <M>] [--type <type>] --before "$BEFORE"
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --check-exit --issue <ref> --skill <phase> [--pr <M>] [--type <type>] --before "$BEFORE"
 ```
 
 `status=OK` (with `sha=`) → continue to the next `next` call. `status=
@@ -494,7 +550,7 @@ instead. For each such box, run:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
+PF="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])/.agent/work-plans/issue-<N>/progress.md"
 $WS_ROOT/.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
 $WS_ROOT/.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
   --deferred "<the owner's reason, from the checkpoint entry's own text>"
@@ -594,12 +650,16 @@ the PR:
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 git push -u origin "$(git branch --show-current)"
-$WS_ROOT/.agent/scripts/gh_create_pr.sh --title "<title>" --body-stdin <<'EOF'
+$WS_ROOT/.agent/scripts/gh_create_pr.sh [-R <owner/repo>] --title "<title>" --body-stdin <<'EOF'
 ## Decision summary
 
 <the pinned Decision summary from the last review-code / implementation>
 EOF
 ```
+
+Pass `-R <owner/repo>` (the repository part of `<ref>`) for a package
+issue: `gh_create_pr.sh` otherwise refuses a repository that is neither the
+workspace's nor the project's.
 
 **The heading must be exactly `## Decision summary`** — level 2, at the
 top level of the PR body, never re-nested under a sub-agent's own heading
@@ -726,13 +786,21 @@ rule.
 ### 11. Leave the worktree before merging
 
 `merge_pr.sh` removes the worktree and deletes the branch. Before
-`action=merge` (row 21), `cd` to the main tree first:
+`action=merge` (row 21), `cd` to this session's root first: the `root=`
+that `session_root.sh` printed before step 1. Inside the worktree, `git
+rev-parse --show-toplevel` is the worktree itself (for a package issue, its
+owning checkout), which the merge removes.
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"
+cd "<root>"
 ```
 
-then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`. The gate
+then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`, or
+`--pr <owner/repo#M>` for a package issue, so the script targets the
+package repository and finds the package worktree. Until the merge gate
+reads a package issue's timeline (the second pull request of issue 429),
+its record for a package pull request says the worktree "carries no issue
+timeline" and is posted as a pull-request comment; it stays report-only. The gate
 enforces by default on workspace PRs (#300): a gap refuses with exit 1 and
 no entry. Only the owner says skip — `--report-only` (record and proceed),
 `--no-wait` (skip the CI wait) and `--allow-pending-review` (merge under a
@@ -813,17 +881,20 @@ unexpected type rather than guessing at what happened.
 
 ## Scope
 
-Three things this loop deliberately does not cover, per the owner's own
-notes on the plan for issue #276:
+What this loop deliberately does not cover, per the owner's own notes on
+the plan for issue #276 and the plan for issue 429:
 
 - **Field mode** (#208/#209) — the publish and merge steps here are
   GitHub-only; a non-GitHub publish path is a separate, later change to
   those two steps, not something this loop's design anticipates.
-- **`--type project` end to end** — threaded through `run-issue` and
-  `dispatch_phase.sh` today, but its path still inherits `merge_pr.sh`'s
-  legacy single-repo project handling; a full multi-project story follows
-  issue #265, not this loop.
-- **ADR-0012 package worktrees** (`--issue owner/repo#N --layer …`) — out
-  of scope here. Multi-repo worktree composition is an adapter concern
-  (ADR-0012), not orchestrator logic; `run-issue` stays repo-agnostic and
-  does not grow layer/package awareness.
+- **Where a project issue's records go under other records settings** —
+  `--type project` runs end to end with the records in the repository the
+  issue belongs to (the default setting). A records location outside the
+  repository, or untracked records, is the records lookup of issue 393.
+- **More than one owning repository per issue.** An ADR-0012 package
+  issue (`owner/repo#N`) is driven in the checkout of the one repository
+  that owns it; sibling repositories in the package worktree are for
+  building against, and the records writers refuse them. Composition stays
+  the adapter's (ADR-0012): `run-issue` passes `--layer` and
+  `--package-repos` through and reads only the worktree's
+  `.worktree-repos` manifest, through `dispatch_phase.sh`.
