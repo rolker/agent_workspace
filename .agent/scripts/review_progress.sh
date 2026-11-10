@@ -45,6 +45,9 @@
 #                                        proceeds with the pre-PR-B mechanism: the
 #                                        current worktree's progress.md, inline
 #                                        append + `git add` + `git commit`.
+#            both modes refuse (exit 4, nothing written) inside a package
+#            worktree from any checkout but the issue's own
+#            (issue_checkout_guard, _resolve_work_plans_dir.sh; issue 429).
 #
 # sources  Integrator input for triage-reviews: local review findings that
 #          cover the PR head (recorded at it, or at an ancestor with only
@@ -65,7 +68,8 @@
 #          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
 #
 # Exit codes: 0 ok; 2 usage; 3 append/commit failure; 4 strict-mode resolver
-# abort.
+# abort, or (persist, both modes) a package-worktree checkout that is not
+# the issue's own.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced." >&2
@@ -90,7 +94,7 @@ Usage:
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
 See the header comment of this script for what each subcommand prints.
-Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort.
+Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or a package-worktree checkout that is not the issue's own.
 EOF
     exit 2
 }
@@ -295,13 +299,22 @@ _persist_impl() {
     # Compatibility mode (PROGRESS_PERSISTENCE_STRICT=0, the PR B default):
     # evaluate the strict path's abort condition, report it, then do what
     # the skill did before PR B — current worktree, inline append + commit.
+    # One refusal stays a refusal here too (issue 429): inside a package
+    # worktree, a checkout that is not the issue's own (a sibling with the
+    # same issue number, or the worktree's top folder) never gets the write.
+    # The strict path above gets the same guard from resolve_work_plans_dir
+    # and progress_append.sh.
+    local root file_rel file
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: persist: not in a git repository" >&2; exit 3; }
+    issue_checkout_guard "$root" "$issue" "$PWD" || {
+        echo "error: progress persistence aborted: not the issue's own checkout — see the message above" >&2
+        exit 4
+    }
     local reason
     if ! reason=$(resolve_work_plans_dir "$issue" 2>&1 >/dev/null); then
         reason=$(printf '%s' "$reason" | head -1 | sed 's/^ERROR: //')
         echo "Progress persistence notice: would have aborted (resolve_work_plans_dir: $reason) — running in compatibility mode (PROGRESS_PERSISTENCE_STRICT=0)"
     fi
-    local root file_rel file
-    root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: persist: not in a git repository" >&2; exit 3; }
     file_rel=".agent/work-plans/issue-$issue/progress.md"
     file="$root/$file_rel"
     mkdir -p "$(dirname "$file")"

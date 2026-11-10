@@ -33,7 +33,9 @@
 # blast radius stays tiny because everything else is derived/fixed; keep it
 # that way when modifying this script.
 #
-# Exit codes: 0 ok, 2 usage/validation error, 3 git failure.
+# Exit codes: 0 ok, 2 usage/validation error, 3 git failure, 4 refused: the
+# target is inside a package worktree but is not the issue's own checkout
+# (issue_checkout_guard in _resolve_work_plans_dir.sh names the right one).
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -72,6 +74,15 @@ fi
 
 ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null) \
     || { echo "error: '$DIR' is not inside a git repository" >&2; exit 2; }
+
+# Inside a package worktree (a .worktree-repos manifest encloses the target
+# or <dir>), only the issue's own checkout commits its records: a sibling
+# checkout with the same issue number, or the worktree's top folder (whose
+# toplevel is some other repository), is refused before anything is
+# written (issue 429). A no-op everywhere else.
+# shellcheck source=_resolve_work_plans_dir.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve_work_plans_dir.sh"
+issue_checkout_guard "$ROOT" "$ISSUE" "$DIR" || exit 4
 
 ENTRY=$(cat)
 # All entry/title validation (heading, writable-type whitelist, one heading
