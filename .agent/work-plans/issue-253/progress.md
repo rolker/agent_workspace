@@ -377,3 +377,13 @@ None open.
 
 ### False positives
 - (Local Review (Pre-Push) R3) "No issues found. LGTM." placeholder bullet — the unticked placeholder of a clean review, not a finding (#362).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:17 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The dialog showed the three lines that block developing project11 here, the nine that block only retiring the fork, the review record (2 plan reviews, 3 document reviews, Codex and Gemini on rounds 1 and 2, Copilot out of quota) and CI (all 8 checks pass). Asked "Merge pull request 435?", the owner answered: "Merge (Recommended)". Asked in the same dialog which of the audit's proposed actions to do now, he chose all four groups: "Pickerel group (Recommended), Salvage group, Retire-the-fork group, Decided-against lines".
