@@ -86,3 +86,11 @@ issue: 253
 **Decision**: proceed
 
 Host read the Issue Review of 2026-11-10 and accepts its actions as plan inputs: one record, `docs/fork_parity.md`, with a classified table and two short lists on top (what blocks developing project11 here; what blocks only retiring the fork); three parallel read-only passes merged by one agent; the audit proposes issues and opens none; issues 260, 261, 262, 208, 209, 172 and 363 to 367 are folded in by reference. The review's two questions are answered by the host: the fork's remote `main` is checked with `git ls-remote` (read-only) against the checkout, never fetched into; the Direction section is not changed for this issue, since the sit-rep already lists its worktree as work in flight.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 12:06 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-253/plan.md` at `1b953c94`
+
+One record, docs/fork_parity.md, from three parallel read-only passes over the fork checkout (inventory fixed from git ls-files first, "already covered" verified by opening the file here), merged by one agent, checked by a path and issue-number script; the audit proposes issues and opens none.
