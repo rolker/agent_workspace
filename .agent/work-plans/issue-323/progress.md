@@ -954,3 +954,13 @@ This triage builds on the Integrated Review at `2ba95e6` (2026-11-10 12:47). It 
 
 ### False positives
 - (Local Review @ `40f5611`) "No issues found. LGTM." is round 5's placeholder line, not a finding (issue 362); it is already ruled in the 12:47 Integrated Review.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The dialog showed the original three fixes, what the review rounds added (the branch lookup answering present, absent or unknown; the `--allow-unverified-branch` flag; cleanup limited to what a run itself made; the signing refusals), the refusal kept for a self-contradicting flag pair, the review record (4 plan reviews, 2 pre-push and 6 post-push reviews, Codex on every full round, Gemini failed on two, Copilot out of quota today) and CI (all 8 checks pass). Asked "Merge pull request 417?", the owner answered: "Merge (Recommended)". Asked which of three older findings to open follow-up issues for (a per-issue lock for worktree creation; the stale parent check; stale line numbers in the design document), he chose only the stale line numbers. The other two stay recorded in the pull request's decision summary and on this timeline.
