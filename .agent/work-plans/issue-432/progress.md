@@ -286,3 +286,16 @@ The dialog showed the third review's one must-fix (the section's opening sentenc
 Asked in the same dialog whether to open a tracking issue in the workspace repository for the combined build-and-run line, he answered: "Yes, in the workspace (Recommended)". The host opened issue 433; that line's check cell is `gh-issue 433 closed`.
 
 Carried to the implementer: the must-fix above and the third review's two suggestions (unnamed project11 work is not listed at all in a workspace sit-rep; no "see ... below" references in the roadmap or the pull request text).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 10:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-432 at `847e9002`
+
+- `docs/roadmap.md` Direction: acceptance case and Paths from the plan's text (owner quotes in double quotes, first sentence ends before any quote); Path 1 project11 on a second machine, Path 2 keeps its name and takes the orchestrator trial, the work managers in `~` and the five follow-ups; Line table the four-line project11 chain, the combined build-and-run line checked `gh-issue 433 closed` and named (#433); Deferral table five "Follow-up still open" rows (`gh-issue <N> open`) and the three reworded rows.
+- Third review's must-fix: the opening sentence now reads "set aside on purpose or is kept in view until its issue closes"; the Format deferral bullet says the same. Suggestions: Path 1 says unnamed project11 package work "is not listed in this workspace's sit-rep"; no plan cross-references in the roadmap.
+- Old deferrals: #265 PR 4 is a follow-up row, #295 moved into the install-line deferral, the GeoZui4D Direction-section deferral removed (rolker/geozui4d#8 closed and its roadmap has `## Direction`, re-verified). The OQ-2 paragraph about the GeoZui4D run removed with that case.
+- Cutover sequence: one sentence pointing at Direction; row 7 "Acceptance case, see Direction"; Redesign step 5 drops "real `gz4d` issues +".
+- Stale-reference search: one now-false claim, `docs/design.md` Documentation layers "(ADR-0016's)", dropped with a change-log row (869 lines). Other hits are records or still true.
+- Verified: `sitrep_checks.sh --root .` gives the four lines `false` (first is the #429 line), five follow-ups `true`, three old rows `false`, no `unchecked` or `format`; summary `lines 0/4 deferrals 5/8`. `sitrep_root.sh --worktrees --rows`: named yes for #429, no for #323 and #432. acceptance_first prints "Project11 is developed on a second machine against ROS 2 Rolling through this workspace." `update_roadmap.sh --dry-run` finds no entries for any issue the section names. This machine's hostname is in no script, skill, test or doc; the second machine's name only in the roadmap's quoted text. pre-commit on the changed files passed (script-test hook reached no suite), so test_skill_paths.sh, test_sitrep_checks.sh and test_design_anchors.sh were run directly: all pass. The full `/sitrep` skill was not run; the rows above are its inputs.
