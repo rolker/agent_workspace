@@ -306,3 +306,20 @@ At the third plan review (needs-work, 3 must-fix, a size finding) the owner aske
 The host answered that something was missed, by its own decision: the design held in all three reviews, but the host had folded the whole records lookup (issue 393, a refactor of about 20 scripts and 9 skills that build the records path by hand) into the first step of this issue. For a project on the default records setting the records go in the package repository that owns the issue, and the existing scripts already find that place when a phase runs from inside that repository's checkout (`_resolve_work_plans_dir.sh` and `progress_append.sh` work from `git rev-parse --show-toplevel`; the first plan review noted the same). Not yet checked: the dispatcher, which takes a bare issue number, and the merge gate. The host offered R1 (one more plan round asking only for the least change that lets the loop run from the owning repository's checkout, and where that breaks; the full lookup stays as issue 393) and R2 (continue with the lookup in two pull requests).
 
 The owner's answer, verbatim: "R1, try the small route first"
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 11:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6b328060`
+
+Replan on the small route (owner: "R1, try the small route first"). It holds, with five changes in two
+pull requests. The evidence came from a synthetic sandbox that ran every loop script from the session
+root, the package worktree's top folder, the owning checkout and a sibling checkout with the same issue
+number. PR 1: `dispatch_phase.sh` accepts `owner/repo#N` and maps a manifest worktree to the issue's
+checkout (prototyped in the sandbox), and adds `where`. A manifest-scoped guard refuses records writes
+from a sibling or the top folder (today they commit silently into the sibling's own timeline or the
+workspace main branch). Also in PR 1: `run-issue` text (step 1 `cd`, publish `-R`, step 11 root and
+qualified `--pr`, Scope), the literal records lines in review-plan and address-findings, a new test
+suite, and the design Records bullet. PR 2: the merge gate reads and records the owning checkout's
+timeline and stays report-only. The records lookup stays with issue 393.
