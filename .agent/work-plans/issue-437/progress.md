@@ -160,3 +160,17 @@ The plan finds the right place, the right callers and every legitimate root writ
 - [ ] (suggestion) One helper for the branch and folder match, shared with resolver rule 2b
 - [ ] (suggestion) Serves: name the README goal section ("Trust, control and information"), not the principle
 - [ ] (suggestion) Refresh step 1's line ranges; drop the four unaffected suites from step 6; renumber the issue 42 and 55 cases in test_progress_append
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review ran both versions of the rule in a sandbox and found the plan's rule broader than the harm; two must-fixes, both mechanism; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+Host read the Plan Review (needs-work, 2 must-fix, 8 suggestions) and directs, taking every item as the review words it:
+- The smaller rule: a committing write is allowed when the target checkout's branch is `feature/issue-N` (never the default branch) or, for a detached HEAD or a custom branch name, its folder is `issue-*-N`; when the branch names an issue the branch decides. The linked-worktree condition is dropped: whether a main checkout on a feature branch should be refused is a separate convention question, not this issue's harm, and is listed for the owner as such. The issue 20 folder on an issue 21 branch case is refused and tested.
+- The caller's flag stays opt-in and is named `--write`; the check that no writer forgets it is a static test over every script under `.agent/scripts` that commits a work-plans path, not a list of subcommands.
+- The four skills that describe compatibility mode as "commit after the notice" are corrected. The plan says plainly, for the owner's veto, that compatibility mode becomes strict except when `WORKTREE_ISSUE` names another issue or the override is set, so the notices issue 269's parked strict-mode item waits for will stop because those cases now refuse; strict mode is not flipped here.
+- One shared helper for the branch-and-folder match, used by the resolver's existing rule too. Only `test_progress_append` needs a new fixture. Serves names the README goal. The line the plan meant to edit in docs/design.md does not exist; drop that edit.
