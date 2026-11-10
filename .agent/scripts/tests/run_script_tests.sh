@@ -111,22 +111,76 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # More changed files than this runs every suite without asking the mapper.
 FILES_MAX=200
 
-# --- Arguments: [tests-dir] [--files <file>...] ---
+# Job count (issue #444): the default, and the cap no request goes past.
+JOBS_DEFAULT=1
+JOBS_MAX=8
+
+# --- Arguments: [options] [tests-dir] [--files <file>...] ---
+USAGE="usage: run_script_tests.sh [-j N] [--show-passed] [tests-dir] [--files <file>...]"
 TESTS_DIR="$SCRIPT_DIR"
 files_mode=0
 changed_files=()
+jobs_opt=""
+show_passed=0
+while [[ $# -gt 0 && "$1" == -* && "$1" != "--files" ]]; do
+    case "$1" in
+        -j | --jobs)
+            if [[ $# -lt 2 ]]; then
+                echo "error: $1 needs a job count ($USAGE)" >&2
+                exit 1
+            fi
+            jobs_opt="$2"
+            shift 2
+            ;;
+        -j?*) jobs_opt="${1#-j}"; shift ;;
+        --jobs=*) jobs_opt="${1#--jobs=}"; shift ;;
+        --show-passed) show_passed=1; shift ;;
+        *)
+            echo "error: unknown option '$1' ($USAGE)" >&2
+            exit 1
+            ;;
+    esac
+done
 if [[ $# -gt 0 && "$1" != "--files" ]]; then
     TESTS_DIR="$1"
     shift
 fi
 if [[ $# -gt 0 ]]; then
     if [[ "$1" != "--files" ]]; then
-        echo "error: unexpected argument '$1' (usage: run_script_tests.sh [tests-dir] [--files <file>...])" >&2
+        echo "error: unexpected argument '$1': options go before the tests directory, --files last ($USAGE)" >&2
         exit 1
     fi
     files_mode=1
     shift
     changed_files=("$@")
+fi
+
+# --- Job count: -j, else RUN_SCRIPT_TESTS_JOBS, else the default ---
+if [[ -n "$jobs_opt" ]]; then
+    jobs_asked="$jobs_opt"
+    jobs_from="-j"
+elif [[ -n "${RUN_SCRIPT_TESTS_JOBS:-}" ]]; then
+    jobs_asked="$RUN_SCRIPT_TESTS_JOBS"
+    jobs_from="RUN_SCRIPT_TESTS_JOBS"
+else
+    jobs_asked="$JOBS_DEFAULT"
+    jobs_from="default"
+fi
+if [[ ! "$jobs_asked" =~ ^[0-9]+$ ]] || (( 10#$jobs_asked < 1 )); then
+    echo "error: the job count from $jobs_from must be a whole number of at least 1, not '$jobs_asked' ($USAGE)" >&2
+    exit 1
+fi
+jobs=$(( 10#$jobs_asked ))
+jobs_note="$jobs_from"
+if (( jobs > JOBS_MAX )); then
+    jobs_note="$jobs_from asked for $jobs; the cap is $JOBS_MAX"
+    jobs=$JOBS_MAX
+fi
+# The count is this run's; a runner a suite starts takes its own default.
+unset RUN_SCRIPT_TESTS_JOBS
+if (( jobs > 1 )) && (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+    echo "error: running suites in parallel needs bash 5.1 or newer (wait -n -p); this is bash $BASH_VERSION — run with -j 1" >&2
+    exit 1
 fi
 
 # --- Deleted and renamed-away paths (see "Deletions and renames" above) ---
@@ -305,6 +359,11 @@ else
     for s in "${run_suites[@]}"; do names+="${names:+ }$(basename "$s")"; done
     echo "run_script_tests: scoped run, ${#run_suites[@]} of ${#suites[@]} suites for ${#changed_files[@]} changed file(s): $names"
 fi
+if (( jobs == 1 )); then
+    echo "run_script_tests: running with 1 job ($jobs_note)"
+else
+    echo "run_script_tests: running with $jobs jobs ($jobs_note)"
+fi
 
 # --- Per-suite TMPDIR guard (issue #304, #297 PR 2; per suite since #444) ---
 #
@@ -426,6 +485,188 @@ leak_message() {
 }
 
 start_ts=$(date +%s)
+
+# --- More than one job (issue #444): see "Parallel runs" in the header ---
+if (( jobs > 1 )); then
+    n=${#run_suites[@]}
+    # Start order: largest file first, a free stand-in for the slowest
+    # first, so the longest suite does not start last; ties in list order.
+    order=()
+    mapfile -t order < <(
+        for i in "${!run_suites[@]}"; do
+            printf '%d %d\n' "$(( $(wc -c < "${run_suites[$i]}") ))" "$i"
+        done | sort -k1,1nr -k2,2n | cut -d' ' -f2
+    )
+    declare -A job_of=()   # pid of a running job (its process group) -> suite index
+    started=() secs=() rcs=() status=()   # by suite index; status: pass, fail, leak, late
+    running=0
+    next=0
+    finished=0
+
+    # A signal stops every running job's whole process group: the same
+    # signal first, so a suite's own trap can clean up, then, for whatever
+    # is still there 5 seconds later, KILL. The EXIT trap then removes
+    # $RUN_ROOT.
+    on_interrupt() {
+        local sig="$1" code="$2" pids=("${!job_of[@]}") p watchdog
+        trap - INT TERM HUP
+        echo "" >&2
+        echo "run_script_tests: interrupted (SIG$sig); stopping ${#pids[@]} running suite(s)" >&2
+        for p in "${pids[@]}"; do kill -s "$sig" -- "-$p" 2>/dev/null; done
+        set -m
+        (
+            sleep 5
+            for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
+        ) </dev/null >/dev/null 2>&1 &
+        watchdog=$!
+        set +m
+        [[ ${#pids[@]} -eq 0 ]] || wait "${pids[@]}" 2>/dev/null
+        kill -s KILL -- "-$watchdog" 2>/dev/null
+        # A process a suite started that outlived the suite is still in
+        # the suite's group; the group cannot be reused while it exists.
+        for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
+        exit "$code"
+    }
+    trap 'on_interrupt INT 130' INT
+    trap 'on_interrupt TERM 143' TERM
+    trap 'on_interrupt HUP 129' HUP
+
+    # start_job <index>: start a suite in the background, in a process
+    # group of its own. `set -m` is what gives it the group, and it also
+    # keeps SIGINT and SIGQUIT at their defaults: without job control bash
+    # starts a background job with both ignored, and a suite could then
+    # never trap them, as it can when it runs in the foreground at -j 1.
+    # stdin is /dev/null, so a suite cannot block on reading it.
+    start_job() {
+        local i="$1" name dir
+        name="$(basename "${run_suites[$i]}")"
+        dir="$(suite_tmp "$name")"
+        mkdir -p "$dir"
+        echo "=== run_script_tests: running $name ==="
+        started[i]=$EPOCHSECONDS
+        set -m
+        TMPDIR="$dir" TMP="$dir" TEMP="$dir" bash "${run_suites[$i]}" \
+            > "$RUN_ROOT/out/$i.log" 2>&1 < /dev/null &
+        set +m
+        job_of[$!]=$i
+        running=$((running + 1))
+    }
+
+    while (( next < n || running > 0 )); do
+        while (( running < jobs && next < n )); do
+            start_job "${order[$next]}"
+            next=$((next + 1))
+        done
+        done_pid=""
+        wait -n -p done_pid "${!job_of[@]}"
+        rc=$?
+        if [[ -z "$done_pid" || -z "${job_of[$done_pid]+set}" ]]; then
+            echo "error: lost track of the running suites (wait returned $rc)" >&2
+            exit 1
+        fi
+        i=${job_of[$done_pid]}
+        unset 'job_of[$done_pid]'
+        running=$((running - 1))
+        finished=$((finished + 1))
+        secs[i]=$(( EPOCHSECONDS - started[i] ))
+        name="$(basename "${run_suites[$i]}")"
+        if (( rc != 0 )); then
+            status[i]=fail
+            rcs[i]=$rc
+            verdict="FAILED, exit $rc,"
+        elif sweep "$(suite_tmp "$name")" "$RUN_ROOT/out/$i.leak"; then
+            status[i]=leak
+            verdict="FAILED, left files in its TMPDIR,"
+        else
+            status[i]=pass
+            verdict="passed"
+        fi
+        echo "--- run_script_tests: $name $verdict in ${secs[i]}s ($finished of $n done)"
+    done
+    trap - INT TERM HUP
+
+    # The second sweep, after every suite has finished.
+    for i in "${!run_suites[@]}"; do
+        if [[ "${status[i]}" == pass ]] \
+                && sweep "$(suite_tmp "$(basename "${run_suites[$i]}")")" "$RUN_ROOT/out/$i.late"; then
+            status[i]=late
+        fi
+    done
+
+    # print_log <index>: a suite's captured output, whole.
+    print_log() {
+        local log="$RUN_ROOT/out/$1.log"
+        cat "$log"
+        [[ ! -s "$log" || -z "$(tail -c 1 "$log")" ]] || echo
+    }
+
+    # Failures first, in list order, each suite's output whole; the exit
+    # code is the one a one-job run gives for the first of them.
+    exit_code=0
+    late_seen=0
+    failed_names=()
+    for i in "${!run_suites[@]}"; do
+        [[ "${status[i]}" == pass ]] && continue
+        k=$((i + 1))
+        name="$(basename "${run_suites[$i]}")"
+        dir="$(suite_tmp "$name")"
+        failed_names+=("$name")
+        echo ""
+        echo "===== FAILED: $name ====="
+        print_log "$i"
+        echo "===== end of $name ====="
+        case "${status[i]}" in
+            fail)
+                echo "run_script_tests: FAILED at $name (suite $k of $n) after ${secs[i]}s, exit ${rcs[i]}" >&2
+                (( exit_code != 0 )) || exit_code=1
+                ;;
+            leak)
+                leak_message "$name" "$k" "$n" "${secs[i]}" "$dir" "$RUN_ROOT/out/$i.leak"
+                (( exit_code != 0 )) || exit_code=2
+                ;;
+            late)
+                leak_message "$name" "$k" "$n" "" "$dir" "$RUN_ROOT/out/$i.late" late
+                late_seen=1
+                ;;
+        esac
+    done
+    (( exit_code != 0 || late_seen == 0 )) || exit_code=2
+
+    if (( show_passed )); then
+        for i in "${!run_suites[@]}"; do
+            [[ "${status[i]}" == pass ]] || continue
+            echo ""
+            echo "===== passed: $(basename "${run_suites[$i]}") ====="
+            print_log "$i"
+        done
+    fi
+
+    echo ""
+    echo "run_script_tests: suite times, slowest first:"
+    for i in "${!run_suites[@]}"; do
+        printf '%d %d\n' "${secs[i]}" "$i"
+    done | sort -k1,1nr -k2,2n | while read -r t i; do
+        printf '  %4ss  %-6s %s\n' "$t" "${status[i]}" "$(basename "${run_suites[$i]}")"
+    done
+
+    elapsed=$(( $(date +%s) - start_ts ))
+    echo ""
+    if (( exit_code != 0 )); then
+        list=""
+        for name in "${failed_names[@]}"; do list+="${list:+, }$name"; done
+        echo "run_script_tests: ${#failed_names[@]} of $n suites failed in ${elapsed}s: $list" >&2
+        exit "$exit_code"
+    fi
+    if [[ "$selection" == "scoped" ]]; then
+        echo "run_script_tests: all $n suites passed in ${elapsed}s (scoped run, $n of ${#suites[@]})"
+    else
+        echo "run_script_tests: all $n suites passed in ${elapsed}s"
+    fi
+    exit 0
+fi
+
+# --- One job: every suite in the foreground, in list order, its output
+#     live; the first failure or leak stops the run ---
 total=0
 for s in "${run_suites[@]}"; do
     name="$(basename "$s")"
