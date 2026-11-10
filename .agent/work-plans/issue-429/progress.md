@@ -665,3 +665,27 @@ Follow-up only, nothing new: issue 437 (writes from outside any worktree; the ga
 **Decision**: publish
 
 Host read the round-3 review (approved; both round-2 must-fixes hold against 8 further vectors; the merge from main lost nothing). This is pull request 1 of 2 for the issue, so the pull request says "Part of", not "Closes". Five of the host's earlier checkpoint times on this timeline were corrected to their commit times in a bookkeeping commit before publishing.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-10 14:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #445 at `2340e012`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `a6c2d2f2` (covers `2340e012` via bookkeeping), CI rollup); Copilot posted only its quota notice, no review
+**Cross-source confirmations**: 0
+**CI**: pending
+
+No human review and no conversation comments on the pull request; no inline comments. Copilot's one review at the head is the notice that it could not review for lack of quota, and its `copilot-pull-request-reviewer` check run "failure" is that notice, not a CI result. CI at the time of writing: Validate Adapter Contract, Validate Documentation and the ros-manifest tests pass on both runs; Lint (pre-commit) is still running on both.
+
+The local timeline: round 1 (3 must-fix, 5 suggestions) and round 2 (2 must-fix, 4 suggestions) are all ticked, each fixed or deferred with a named home in the following Implementation entries; `sources` lists no dropped or unverifiable entries. Round 3 at `a6c2d2f2` approved with no must-fix and no suggestions; its unticked "No issues found. LGTM." line is the clean-review placeholder (issue 362), not a finding. Spot check: `merge_pr.sh:704` passes `"$_gate_wt"` to `records_path`, as round 2 must-fix 2 required.
+
+Commits after the reviewed head (`e29142b1` review entry, `82164749` time correction, `2340e012` checkpoint) touch only `.agent/work-plans/issue-429/progress.md` (`git diff --stat a6c2d2f2 HEAD`). The correction changes only the `**When**` lines of five host checkpoints and adds a `**When-corrected**` line to each; the corrected times (09:55, 10:02, 10:08, 11:19, 11:44) match the commit times of the five checkpoint commits. The timeline still parses: `progress_read.py` rc 0, and `review_progress.sh sources` rc 0.
+
+Belongs elsewhere, not open here: writes from outside any worktree (issue 437, which needs a write mode in `records_path`); the non-default records settings, the `--workflow` scaffold and review-plan's fallback glob (issue 393); the adapter's hand-written origin URL parser (noted for issue 393); the merge gate reading the owning checkout's timeline and the base branch from the manifest pin (pull request 2 of issue 429).
+
+### Findings
+None open.
+
+### False positives
+- (Copilot) check run `copilot-pull-request-reviewer` reported failure — it is the quota notice ("insufficient remaining quota"), not a review or a CI job; nothing in the code was examined
