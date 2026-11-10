@@ -91,3 +91,62 @@ Host read the Issue Review. Accepted as plan inputs: two pull requests (1: the r
 **Plan**: `.agent/work-plans/issue-444/plan.md` at `0938e6d6`
 
 Two pull requests. PR 1 (11 steps, detailed): runner with per-suite temp directory and leak sweep, job pool with whole per-suite output (failures first), -j / RUN_SCRIPT_TESTS_JOBS (default stays 1, cap 8), shuffle with printed seed, timing table, run-all with the serial exit code, a "# serial:" marker, suspects made independent, new runner tests, independence verified by 2 serial vs 10 shuffled -j 4 + 3 at -j 2 + 1 at -j 8 + 2 loaded runs. PR 2 (outline): default clamp(nproc/4,2,6), measured before/after here and in CI (2 jobs on a 4-core runner), quoted run times updated, cheap fixture work. Ten decisions listed for the owner's veto.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 14:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #444 — Run the script test suites in parallel, and speed up the slowest
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `0938e6d6`
+**Branch**: `feature/issue-444`
+
+### What was run
+
+Two hand-run concurrency probes from this worktree (a scratchpad driver: each suite as `bash suite </dev/null &` from a non-interactive script, its own TMPDIR, whole output to a log; then rc, seconds, PASS counts, leftovers in each TMPDIR, `git status --porcelain`, worktree list, branch list, new files under `~/.claude` and `.agent/scratchpad`). Taken under load: other agents were running suites (one full `run_script_tests.sh` in another worktree), load average 2.6 to 3.4 on 16 cores.
+
+- Round 1, 9 at once: `test_cross_model_review.sh` 143 s (920 PASS), `test_register_project.sh` 74 s, `test_project_file.sh` 63 s, `test_merge_pr_gate.sh` 57 s, `test_user_tier_install.sh` 51 s, `test_session_root.sh` 21 s, `test_worktree_create.sh` 19 s, `test_capture.sh` 4 s, `test_plugin_manifest.sh` 1 s.
+- Round 2, 10 at once, with two copies each of `test_cross_model_review.sh` and `test_capture.sh` (the cross-worktree case the `sleep_arg` concern is about), plus `test_register_project.sh`, `test_project_file.sh`, `test_sitrep_checks.sh`, `test_run_script_tests.sh`, `test_dispatch_phase.sh`, `test_skill_prefix.sh`.
+- Result: every suite exit 0 in both rounds; both cross-model copies 920 PASS; no file left in any per-suite TMPDIR; `git status` unchanged; nothing new in `.agent/scratchpad`; the worktree-list and branch-list changes and the `~/.claude` writes were other sessions' (timestamps and a project11 session file), not the suites'. Nothing collided. The grep-based suspect list holds; the per-suite TMPDIR (step 2) is the one change concurrency needs.
+- A signal probe (below) found what the grep could not: how the runner starts a job changes the suite's signal environment.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | PR 1 is one coherent change, but carries parts the evidence does not need yet: the `# serial:` marker (step 6; no suite needed it in two probes), the `--timings` flag (the table already prints at `N > 1` and on failure), and the `sleep_arg` change (step 8; a cross-worktree issue that exists today, not one `-j` introduces; two concurrent copies passed). Build the marker only if step 10 finds a suite that needs it |
+| Issue alignment | Good | Parallel runner, independence check, per-suite output, exit-code rule, before/after measurement, P2 driven by the timing table. Serves: "Easy to use (`README.md#workspace-goals`: a full run costs over 10 minutes per fix pass and again in CI) under `docs/design.md#registry-and-adapters`" — checked: `README.md` "### Easy to use" and `docs/design.md` "## Registry and adapters" exist; `docs/design.md` says nothing about serial or fail-fast |
+| File targeting | Needs work | The run-time figures are not in `AGENTS.md` (grep: none there). They are in `dispatch_phase.sh:412` ("about 2 minutes for a typical fix, about 7 when every suite runs"), pinned by `test_dispatch_phase.sh:502` ("about 2 minutes"), and `.claude/skills/address-findings/SKILL.md:192-193`. The issue-419 `plan.md` is a closed record and should not be edited |
+| Consequences | Needs work | Missing: `test_dispatch_phase.sh:502` pin; the argument grammar (`[tests-dir] [--files <file>...]` — `--files` swallows the rest and a leading `-j` would today be taken as the tests dir; `test_script_tests_hook_scope.sh:519` requires the hook entry to end in `--files`) |
+| Principle alignment | Needs work | "Test what breaks": two must-fixes below are behaviours a parallel run changes that no planned test catches. "Only what's needed": see Scope |
+| ADR compliance | Good | ADR-0013 entries in order; no `.github/workflows` change; no instruction-file change is needed at all once the figures are edited where they live |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Principle alignment] Must-fix: background jobs start with SIGINT and SIGQUIT ignored, and bash cannot trap a signal ignored on entry.** Probe in this worktree: `bash -c 'trap "echo trapped" INT; kill -INT $$'` traps when run in the foreground, but run as `... &` or `setsid -w ... &` from a non-interactive script it does not (SigIgn 0x6), and the disposition passes to every child the suite starts. With `set -m` before starting jobs it traps again (SigIgn 0x4, as in the foreground). So `-j 1` (foreground) and `-j N` (step 3, `setsid` per job) give suites different signal environments; `cross_model_review.sh`, `_cli_review.sh`, `_agy_review.sh`, `register_project.sh`, `_project_registry.sh`, `sitrep_checks.sh` and `user_tier_install.sh` all install INT traps. No current suite sends INT (grep), so nothing fails today, but the first one that does passes serially and fails in parallel. Fix: start jobs under `set -m` (each job gets its own process group, which also serves the interrupt kill, so `setsid` is not needed) with explicit `</dev/null`, and add a step-9 case: a stub suite that traps INT and signals itself passes at `-j 2` as at `-j 1`.
+2. **[Principle alignment] Must-fix: removing a suite's TMPDIR right after its sweep (step 2) hides a late leak that today is caught.** A background process a passing suite leaves running that writes into TMPDIR afterwards is caught today by the next suite's sweep (wrongly charged, but caught). With the directory removed at once, the late write fails silently or lands nowhere. Keep every per-suite directory until the pool drains, then sweep all of them once more before the EXIT trap, charging any late entry to the suite that owns the directory (better attribution than today), exit 2. One extra loop and one step-9 case (a stub that backgrounds `sleep 1; touch "$TMPDIR/late"` and exits 0).
+3. **[File targeting] The figures PR 2 must update are in `dispatch_phase.sh:412` and `address-findings/SKILL.md:192-193`, with `test_dispatch_phase.sh:502` pinning "about 2 minutes"; `AGENTS.md` has none, so the Ask-First listing is unnecessary.** Both texts say "about 7" for a full run while the plan measures about 12, above the 600000 ms (10 minute) Bash cap they tell dispatched passes to use: today a failing or slow full run in a dispatched pass is cut off. PR 2 fixes the figure; worth saying so.
+4. **[Scope] Run-all at `-j 1` lands in PR 1 while the default is still serial**, so between the two merges a failing full run always takes the whole ~12 minutes instead of stopping early, past that 10 minute cap. Either keep fail-fast at `-j 1` until PR 2, or merge PR 2 straight after PR 1.
+5. **[Consequences] Argument grammar.** State it: options (`-j`, `--shuffle`, `--show-passed`) before the optional tests dir, `--files` last; the hook keeps `RUN_SCRIPT_TESTS_JOBS` as its only channel. Add a case that `-j 2 <dir> --files ...` parses.
+6. **[Principle alignment] Step 10's pass criteria need two corrections.** `FAIL:` count 0 is wrong for `test_worktree_create.sh`, which prints `  FAIL: 0` as its summary (seen in the probe); compare FAIL counts with the serial baseline as for PASS, and rely on the exit code. "No `run-script-tests.*` under `/tmp`" and "no stray `sleep`/`flock` processes" must be scoped to this run's own root and process groups, since other worktrees' runs create the same names. The same applies to the step-9 interrupt test, which will run inside every full run alongside other agents' runs: it must check the root it started, not a `/tmp` glob.
+7. **[Principle alignment] Load-sensitive list is incomplete.** `test_cross_model_review.sh` has wall-clock bounds ("waits at least 5s and at most 6s", line 5284; "returns well inside the escalation window") that load can break; add it to the timing-sensitive list for the loaded runs.
+8. **[Principle alignment] CI evidence for default-on is one run.** CI is the only place with a 4-vCPU host at `-j 2` and a shallow checkout, where `test_checkpoint_269.sh` fetches `origin/main` into the real repo while other suites read it (`git ls-files`, `git grep` in `test_script_tests_hook_scope.sh`). In PR 2, re-run the Lint job twice more (`gh run rerun`) and record all three.
+9. **[Scope] The shuffle check as a recipe is fine** for the one-time acceptance: once `--shuffle` exists, repeating it later is one command (`run_script_tests.sh -j 4 --shuffle`), and every parallel CI run checks a new suite against its neighbours. Put that one-liner in the `script_reference.md` row so it is findable when suites are added; no checked-in script.
+10. **[File targeting] Mechanism: stay in bash.** Bash 5.2 here and on `ubuntu-latest` (24.04); the runner already needs 4.4 (`mapfile -d ''`, `local -n`). Require 5.1 and use `wait -n -p pid` so the parent knows which job finished without scanning `.rc` files. A Python driver would split selection/preflight (bash) from scheduling and is not simpler.
+11. **[Issue alignment] Confirmed, no change needed:** pre-commit makes one runner call for the hook (211 in-scope files, 8 KB of names, below pre-commit's 128 KiB partition limit, `require_serial: true`), so there is no nested parallelism; pre-commit has no hook timeout and shows hook output only on failure, so a quiet run changes nothing for it. Nothing outside `test_run_script_tests.sh` parses the runner's output; callers read only the exit code.
+12. **[Issue alignment] Small facts:** the runner globs `test_*.sh` only (44 suites); `test_progress_read.py` runs through `test_progress_read.sh`, so "45 `test_*.sh` / `test_*.py`" is 44. Floor data for PR 2, under load: `test_cross_model_review.sh` 137-143 s against 68-74 s for the next slowest, so the plan's split-at-30% rule will very likely call for the third PR.
+
+### Summary
+
+The plan fits the runner as it is and the hand-run probes found no collision among the suspects, two copies of the same suite included. Two runner-mechanism points would make parallel runs differ from serial (signals ignored in background jobs) or hide a late leak (per-suite directory removed at once); both are small fixes with one test each. The run-time figures are in the dispatch rule and the address-findings skill, not `AGENTS.md`.
+
+### Recommended Actions
+
+- [ ] Start jobs under `set -m` with `</dev/null` instead of `setsid`; add the INT-trap stub case (finding 1)
+- [ ] Keep per-suite TMPDIRs until the pool drains and sweep them all once more; add the late-write stub case (finding 2)
+- [ ] Retarget PR 2's figure edits to `dispatch_phase.sh:412`, `address-findings/SKILL.md:192-193` and the `test_dispatch_phase.sh:502` pin; drop the `AGENTS.md` and issue-419 plan edits (finding 3)
+- [ ] Decide run-all at `-j 1` in PR 1 vs PR 2 (finding 4); state the argument grammar (finding 5)
+- [ ] Fix step 10's FAIL criterion and scope the `/tmp`/process checks to this run (finding 6)
+- [ ] Optional: drop `# serial:` and `--timings` from PR 1 unless step 10 needs them; leave the `sleep_arg` change out (Scope)
