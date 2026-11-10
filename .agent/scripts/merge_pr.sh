@@ -27,16 +27,20 @@
 #      for a package-repo PR; the roadmap lives in this repo, not the package repo
 #   1.5. Review-loop merge gate (records a Merge entry; see below)
 #   2. Decide the CI target SHA — the reviewed head (pre-Step-1) when the
-#      only diff since then is paths this run committed itself (the
-#      roadmap file, the gate's own progress.md record), else the actual
-#      current head (issue #284); this decision always runs. Then wait
+#      only diff since then is bookkeeping: paths this run committed itself
+#      (the roadmap file, the gate's own progress.md record) or merge-time
+#      document files whoever pushed them (any work-plan dir, the roadmap;
+#      #323), else the actual current head (issue #284); this decision
+#      always runs. Then wait
 #      for CI on that target SHA — --no-wait skips only this CI poll — and
 #      let mergeability settle, which always runs (#290): this script's own
 #      Step 1 / 1.5 pushes make GitHub recompute mergeability whether or
 #      not CI is waited on. Copilot's review check-run is never CI (#300):
 #      its conclusion is ignored, but while it is still running the wait
 #      holds the merge until it completes (or the CI timeout) unless
-#      --allow-pending-review (or --no-wait) opts in.
+#      --allow-pending-review (or --no-wait) opts in. Until the review
+#      commit's check-runs have been read once, the hold is unresolved:
+#      no merge, and a refusal at the CI grace deadline (#323).
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -545,6 +549,13 @@ HEAD_REVIEWED=""
 # actually lands (not merely staged).
 declare -a _STEP1_COMMITTED_PATHS=()
 _STEP15_COMMITTED_PATH=""
+# The SHA of every commit this run makes on the PR branch (Step 1's roadmap
+# commit, Step 1.5's record commit), so the CI wait can find the head
+# before this run's own pushes (the review-hold SHA, #323). Added when the
+# commit lands, not when its own push does: Step 1's push can fail and
+# Step 1.5's push then carries that commit to origin. Removed again only
+# when the commit itself is undone (Step 1.5's refused push).
+declare -a _RUN_COMMITTED_SHAS=()
 
 # --- Step 1: Roadmap update (pre-merge) ---
 if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
@@ -604,6 +615,8 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
                             if git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null; then
                                 echo "  ✅ Roadmap updated"
                                 [[ "${#_ROADMAP_STAGED_PATHS[@]}" -gt 0 ]] && _STEP1_COMMITTED_PATHS+=("${_ROADMAP_STAGED_PATHS[@]}")
+                                _step1_sha=$(git -C "$_WT_ROOT" rev-parse HEAD 2>/dev/null || echo "")
+                                [[ -n "$_step1_sha" ]] && _RUN_COMMITTED_SHAS+=("$_step1_sha")
                             else
                                 echo "  ⚠️  Roadmap commit failed — proceeding with merge"
                             fi
@@ -835,6 +848,9 @@ _gate_record() {  # <entry type> <one-line why>
         if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
         elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then
+            local rec_sha
+            rec_sha=$(git -C "$_gate_wt" rev-parse HEAD 2>/dev/null || echo "")
+            [[ -n "$rec_sha" ]] && _RUN_COMMITTED_SHAS+=("$rec_sha")
             if git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
                 _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
                 echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
@@ -845,6 +861,14 @@ _gate_record() {  # <entry type> <one-line why>
             # never a stranded commit plus a comment).
             git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
             git -C "$_gate_wt" restore --staged --worktree -- ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" 2>/dev/null || true
+            if [[ -n "$rec_sha" ]]; then
+                local -a kept=()
+                local k
+                for k in ${_RUN_COMMITTED_SHAS[@]+"${_RUN_COMMITTED_SHAS[@]}"}; do
+                    [[ "$k" == "$rec_sha" ]] || kept+=("$k")
+                done
+                _RUN_COMMITTED_SHAS=(${kept[@]+"${kept[@]}"})
+            fi
             why_comment="the timeline commit could not be pushed to origin (undone locally)"
         else
             why_comment="progress_append.sh refused the timeline entry"
@@ -942,14 +966,28 @@ else
     fi
 fi
 
+# --- Bookkeeping paths for the CI target (#300, owner rule; #323) ---
+# "The exception is for merging after adding an updated progress or related
+# doc": a progress.md / work-plan / roadmap commit pushed after a CI-verified
+# head needs no new CI round. Any issue's work-plan dir (a CI question, not
+# a review one: a document commit needs no new CI round whoever's timeline
+# it is), plus the roadmap set shared with the review policy
+# (_bookkeeping.sh). One definition, read by Step 2's allowed set and by the
+# walk-back below.
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}")
+
 # --- Step 2: Decide the CI target (issue #284) ---
 # The naive target is "whatever the head is right now", but Step 1.5's own
 # record push (and Step 1's roadmap push) may have moved the head past
-# HEAD_REVIEWED. When the ONLY diff between HEAD_REVIEWED and the current
-# head is paths this run committed itself, CI on HEAD_REVIEWED already
-# covers the change that matters and the new head is exempt from a second
-# CI round. Every other case — a concurrent push, a force-push, or a path
-# this script did not write — targets the actual current head, in full.
+# HEAD_REVIEWED, and so may a host's bookkeeping push that gh's
+# headRefOid has not caught up with (#323: HEAD_REVIEWED then lags behind
+# a commit this run did not make). When the ONLY diff between
+# HEAD_REVIEWED and the current head is bookkeeping — paths this run
+# committed itself, or merge-time document files (MERGE_PR_CI_BOOKKEEPING_PATTERNS)
+# whoever committed them — CI on HEAD_REVIEWED already covers the change
+# that matters and the new head is exempt from a second CI round. Every
+# other case — a concurrent push of anything else, a force-push, a code
+# path — targets the actual current head, in full.
 CI_TARGET_SHA=""
 # (_ci_wt — the PR's own worktree, never the main tree — was resolved
 # alongside the gate above, since both use it.)
@@ -975,19 +1013,22 @@ elif [[ -z "$_ci_wt" ]]; then
     CI_TARGET_SHA="$HEAD_NOW"
     echo "  CI target: new head \`${HEAD_NOW:0:7}\` (no local worktree to verify ancestry/paths for an exemption)"
 else
-    # Allowed set here is exactly what THIS run committed (Step 1 roadmap
-    # paths, Step 1.5 progress.md) — narrower than the gate's, because the
-    # question is "did anything but our own bookkeeping land since we
-    # captured HEAD_REVIEWED", not "is the review still current". A head
-    # whose tree equals HEAD_REVIEWED's (empty diff, e.g. an empty commit)
-    # is exempt too (#286 review): CI on the reviewed tree already covers it.
+    # Allowed set: what THIS run committed (Step 1 roadmap paths, Step 1.5
+    # progress.md) plus the CI bookkeeping patterns, the same set the
+    # walk-back below uses (#323) — the question is "did anything but
+    # bookkeeping land since we captured HEAD_REVIEWED", a CI question, not
+    # "is the review still current". A head whose tree equals
+    # HEAD_REVIEWED's (empty diff, e.g. an empty commit) is exempt too
+    # (#286 review): CI on the reviewed tree already covers it.
     declare -a _ci_committed_paths=()
     [[ "${#_STEP1_COMMITTED_PATHS[@]}" -gt 0 ]] && _ci_committed_paths+=("${_STEP1_COMMITTED_PATHS[@]}")
     [[ -n "$_STEP15_COMMITTED_PATH" ]] && _ci_committed_paths+=("$_STEP15_COMMITTED_PATH")
     _ci_why=""
-    if _ci_why=$(_only_bookkeeping_between "$_ci_wt" "$HEAD_REVIEWED" "$HEAD_NOW" ${_ci_committed_paths[@]+"${_ci_committed_paths[@]}"}); then
+    if _ci_why=$(_only_bookkeeping_between "$_ci_wt" "$HEAD_REVIEWED" "$HEAD_NOW" ${_ci_committed_paths[@]+"${_ci_committed_paths[@]}"} "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"); then
         CI_TARGET_SHA="$HEAD_REVIEWED"
-        echo "  CI target: reviewed head \`${HEAD_REVIEWED:0:7}\` — new head \`${HEAD_NOW:0:7}\` only touches paths this script committed itself ($(IFS=,; echo "${_ci_committed_paths[*]}"))"
+        _ci_own_paths="none"
+        [[ "${#_ci_committed_paths[@]}" -gt 0 ]] && _ci_own_paths="$(IFS=,; echo "${_ci_committed_paths[*]}")"
+        echo "  CI target: reviewed head \`${HEAD_REVIEWED:0:7}\` — new head \`${HEAD_NOW:0:7}\` only touches bookkeeping: merge-time document files (work plans, roadmap) and paths this script committed itself (${_ci_own_paths})"
     else
         CI_TARGET_SHA="$HEAD_NOW"
         echo "  CI target: new head \`${HEAD_NOW:0:7}\` — ${_ci_why}"
@@ -1085,16 +1126,13 @@ _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none
 }
 
 # --- Bookkeeping-only commits and the CI target (#300, owner rule) ---
-# "The exception is for merging after adding an updated progress or related
-# doc": a progress.md / work-plan / roadmap commit pushed after a CI-verified
-# head needs no new CI round. The Step 2 exemption above covers only paths
-# THIS run committed; this walk covers the same shape when the host pushed
-# them. A batch push runs CI only on its tip, so the walk takes the newest
-# bookkeeping-only ancestor whose checks actually reached a verdict.
-# Any issue's work-plan dir (a CI question, not a review one: a document
-# commit needs no new CI round whoever's timeline it is), plus the roadmap
-# set shared with the review policy (_bookkeeping.sh).
-MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}")
+# The Step 2 exemption above compares the current head with HEAD_REVIEWED,
+# the head gh reported: it covers bookkeeping pushed after that head,
+# by this run or by the host. This walk covers bookkeeping the host pushed
+# BEFORE gh's head (HEAD_REVIEWED itself is a bookkeeping commit with no
+# CI verdict). A batch push runs CI only on its tip, so the walk takes the
+# newest bookkeeping-only ancestor whose checks actually reached a verdict.
+# Its path set is MERGE_PR_CI_BOOKKEEPING_PATTERNS, defined above Step 2.
 _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
     local p="$1" pat
     for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do
@@ -1195,21 +1233,49 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
     _ci_walked=false
-    # Which SHA the pending-review hold is read from. This captures
-    # CI_TARGET_SHA as Step 2 decided it — i.e. the current PR head, EXCEPT
-    # where Step 2's own-paths exemption applied, in which case it is the
-    # reviewed head this script's own bookkeeping push moved past. That is
-    # the right SHA in both cases: reading the literal head there would wait
-    # on a review re-triggered by our own push, deadlocking every merge the
-    # script makes. What it must never follow is the bookkeeping WALK-BACK
-    # below, which moves CI_TARGET_SHA to an ancestor whose check-runs say
-    # nothing about this head's review (#300 rounds 4-5).
+    # Which SHA the pending-review hold is read from (#323): the head before
+    # this run's own pushes, i.e. the newest commit on the PR branch that
+    # this run did not make. Walk back from HEAD_NOW over exactly the SHAs
+    # this run committed (_RUN_COMMITTED_SHAS); the first other commit is
+    # the one a review runs on. Reading HEAD_NOW itself would wait on a
+    # review re-triggered by our own push, deadlocking every merge the
+    # script makes; reading the CI target would miss a review running on a
+    # host commit the Step 2 exemption covers (gh's headRefOid lagging
+    # behind a host push). A host push landing after ours is the head
+    # itself and is never walked over. What it must never follow is the
+    # bookkeeping WALK-BACK below, which moves CI_TARGET_SHA to an ancestor
+    # whose check-runs say nothing about this head's review (#300 rounds
+    # 4-5). With no HEAD_NOW, no local worktree to walk in, or a parent
+    # that cannot be read, it stays CI_TARGET_SHA as Step 2 decided it.
     _ci_review_sha="$CI_TARGET_SHA"
+    if [[ -n "$HEAD_NOW" && -n "$_ci_wt" ]]; then
+        _ci_hold="$HEAD_NOW"
+        _ci_hold_n=0
+        while [[ -n "$_ci_hold" && "$_ci_hold_n" -le "${#_RUN_COMMITTED_SHAS[@]}" ]]; do
+            _ci_own=false
+            for _ci_k in ${_RUN_COMMITTED_SHAS[@]+"${_RUN_COMMITTED_SHAS[@]}"}; do
+                [[ "$_ci_k" == "$_ci_hold" ]] && { _ci_own=true; break; }
+            done
+            [[ "$_ci_own" == false ]] && break
+            _ci_hold=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_ci_hold}^" 2>/dev/null || echo "")
+            _ci_hold_n=$((_ci_hold_n + 1))
+        done
+        [[ -n "$_ci_hold" ]] && _ci_review_sha="$_ci_hold"
+    fi
     _ci_head_excluded_last=""
+    # Whether the review SHA's check-runs have been read at least once
+    # (#323 review). Until they have, "no review running" is unknown, not
+    # true: an empty last-seen state must never release the hold. The hold
+    # stays unresolved, and at the grace deadline the wait refuses
+    # (review-unreadable) rather than merge past a review it never saw.
+    _ci_review_read=false
     while :; do
         _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
         _ci_state="${_ci_poll_out%%|*}"
         _ci_excluded="${_ci_poll_out#*|}"
+        if [[ "$_ci_review_sha" == "$CI_TARGET_SHA" && "$_ci_state" != error ]]; then
+            _ci_review_read=true
+        fi
         # Bookkeeping walk-back (#300, owner rule), once, on the first poll:
         # when the target has no verdict yet (nothing registered, or still
         # running), a bookkeeping-only ancestor that already reached success
@@ -1218,6 +1284,7 @@ if [[ "$NO_WAIT" == false ]]; then
             _ci_walked=true
             if [[ "$_ci_state" == none || "$_ci_state" == pending ]] && [[ -n "$_ci_wt" ]]; then
                 _ci_switched=false
+                _ci_pre_switch_sha="$CI_TARGET_SHA"
                 for _ci_cand in $(_ci_walk_bookkeeping "$_ci_wt" "$CI_TARGET_SHA"); do
                     _ci_probe=$(_ci_poll_state "$_ci_cand" 2>/dev/null); _ci_probe="${_ci_probe%%|*}"
                     if [[ "$_ci_probe" == success || "$_ci_probe" == failed ]]; then
@@ -1228,12 +1295,19 @@ if [[ "$NO_WAIT" == false ]]; then
                     fi
                 done
                 if [[ "$_ci_switched" == true ]]; then
-                    # This poll read the review SHA itself, so its excluded
+                    # When this poll read the review SHA itself (the
+                    # pre-switch target was the review SHA), its excluded
                     # state is the last one actually seen. Seed the carry-over
                     # before the `continue` drops it: otherwise a failed first
                     # head re-read after the switch falls back to "" and a
                     # green target merges past a running review (#300 round 5).
-                    _ci_head_excluded_last="$_ci_excluded"
+                    # When it read another commit (#323: the review SHA can
+                    # differ from the CI target), that commit's review state
+                    # says nothing about the review SHA's, so nothing is seeded
+                    # and the hold waits for a read of the review SHA itself.
+                    if [[ "$_ci_pre_switch_sha" == "$_ci_review_sha" ]]; then
+                        _ci_head_excluded_last="$_ci_excluded"
+                    fi
                     continue
                 fi
             fi
@@ -1254,6 +1328,7 @@ if [[ "$NO_WAIT" == false ]]; then
             else
                 _ci_excluded="${_ci_head_out#*|}"
                 _ci_head_excluded_last="$_ci_excluded"
+                _ci_review_read=true
             fi
         fi
         # A review check-run that has not finished (`status=...`, no
@@ -1265,6 +1340,11 @@ if [[ "$NO_WAIT" == false ]]; then
         _ci_review_pending=false
         if [[ "$_ci_excluded" == *status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
             _ci_review_pending=true
+        fi
+        # Never read yet: unresolved, so CI's green cannot merge (#323 review).
+        _ci_review_unknown=false
+        if [[ "$_ci_review_read" == false ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
+            _ci_review_unknown=true
         fi
         if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" != "$_ci_excluded" ]]; then
             # Once per distinct state (running -> completed), not once per
@@ -1285,6 +1365,10 @@ if [[ "$NO_WAIT" == false ]]; then
                     if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
                         _ci_result="review-pending"; break
                     fi
+                elif [[ "$_ci_review_unknown" == true ]]; then
+                    if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                        _ci_result="review-unreadable"; break
+                    fi
                 else
                     _ci_result="success"; break
                 fi
@@ -1301,6 +1385,10 @@ if [[ "$NO_WAIT" == false ]]; then
                     if [[ "$_ci_review_pending" == true ]]; then
                         if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
                             _ci_result="review-pending"; break
+                        fi
+                    elif [[ "$_ci_review_unknown" == true ]]; then
+                        if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                            _ci_result="review-unreadable"; break
                         fi
                     else
                         _ci_result="no-ci"; break
@@ -1347,6 +1435,12 @@ if [[ "$NO_WAIT" == false ]]; then
             {
                 echo "ERROR: CI checks did not complete on \`${CI_TARGET_SHA:0:7}\` within ${MERGE_PR_CI_TIMEOUT_SECONDS}s"
                 [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            } >&2
+            exit 1 ;;
+        review-unreadable)
+            {
+                echo "ERROR: could not read the check-runs of \`${_ci_review_sha:0:7}\`, the commit the review runs on, within ${MERGE_PR_CI_GRACE_SECONDS}s, so whether review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' is still in progress is unknown (CI itself is green or absent)"
+                echo "  No merge attempted — re-run once the API is reachable, or pass --allow-pending-review to merge without the review state."
             } >&2
             exit 1 ;;
         review-pending)

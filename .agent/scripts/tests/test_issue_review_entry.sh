@@ -32,7 +32,7 @@ export AGENT_EMAIL="test+agent@example.com"
 # resolver accepts the write (mirrors test_plan_correlation.sh).
 SB="$TMPD/ws"
 mkdir -p "$SB/.agent/scripts"
-for f in review_progress.sh progress_append.sh _progress_entry.sh _resolve_work_plans_dir.sh _worktree_helpers.sh progress_read.py; do
+for f in review_progress.sh progress_append.sh _progress_entry.sh _resolve_work_plans_dir.sh _worktree_helpers.sh _resolve_default_branch.sh progress_read.py; do
     cp "$SCRIPT_DIR/../$f" "$SB/.agent/scripts/"
 done
 git -C "$SB" init -q -b main

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Helper script for creating GitHub issues with label validation
-# Usage: gh_create_issue.sh [gh issue create options]
+# Helper script for creating GitHub issues with label validation and AI
+# signature injection. Mirrors gh_create_pr.sh's signature contract.
+# Usage: gh_create_issue.sh [gh issue create options] [--no-signature]
 #
 # This script wraps 'gh issue create' and validates labels against .agent/github_metadata.json
 # before calling the GitHub CLI. This prevents failures from invalid label names.
@@ -12,15 +13,48 @@
 #   # Create issue with body from file
 #   .agent/scripts/gh_create_issue.sh --title "My Issue" --body-file /tmp/body.md --label "documentation"
 #
+#   # Suppress signature (rare; human-authored issues)
+#   .agent/scripts/gh_create_issue.sh --title T --body B --no-signature
+#
 #   # Interactive mode (no validation since labels selected from GitHub)
 #   .agent/scripts/gh_create_issue.sh
 #
 # Note: Labels with spaces should be quoted: --label "good first issue"
 #
+# Behavior:
+#   - The command line is read the way gh reads it (_gh_create_args.sh):
+#     a value-taking flag consumes its value whatever it looks like, and
+#     every spelling of the body flags is recognised (--body X, --body=X,
+#     -b X, -bX, -b=X, a cluster such as -wb X; the same for
+#     --body-file / -F).
+#   - AI signature footer (Authored-By / Model) is appended to the body
+#     unless
+#     (a) --no-signature is passed as a flag (stripped before gh), or
+#     (b) the body already contains `**Authored-By**:` (case-sensitive)
+#   - AGENT_NAME and AGENT_MODEL env vars MUST be set when the signature is
+#     to be added; missing vars hard-fail (exit 2) before any gh call. Set via:
+#     source .agent/scripts/set_git_identity_env.sh "Name" "email" "<model>"
+#   - No body flag at all (interactive editor mode) means nothing is signed.
+#   - A --body-file is read once into a temporary copy (under TMPDIR,
+#     removed on exit), which is what gets signed and what gh reads: a
+#     pipe, FIFO or process substitution is signed like a regular file,
+#     and the caller's file is never modified. The footer comes after the
+#     auto-added parent reference, and the git-bug path is signed too.
+#
 # Exit codes:
 #   0 - Success
 #   1 - Invalid label detected
-#   2 - Invalid arguments (bad label, missing -R value, or repo mismatch)
+#   2 - Argument / usage errors:
+#         - a value-taking flag with no value (-R/--repo also refuses an
+#           empty one)
+#         - both a body and a body file provided
+#         - --template / -T with no body, or --recover with or without
+#           one, and no --no-signature (gh would write a body this wrapper
+#           cannot sign)
+#         - a --body-file that cannot be read
+#         - repo-safety mismatch (gh would target the wrong remote)
+#         - AGENT_NAME / AGENT_MODEL unset when a body is provided and
+#           --no-signature was not passed
 #   3 - Missing dependencies
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
@@ -62,52 +96,67 @@ if ! command -v jq &> /dev/null; then
     exit 3
 fi
 
-# Parse command line arguments to extract labels and -R flag
-LABELS=()
-EXPLICIT_REPO=""
+# Parse the command line the way gh does (_gh_create_args.sh): each
+# value-taking flag consumes its value, whatever it looks like, and every
+# spelling (--body X, --body=X, -b X, -bX, -b=X, a cluster like -wb X) is
+# rewritten to `--body X` so the injections below handle one shape. The
+# result is GH_ARGS plus the indexes of the values the wrapper reads.
+# shellcheck source=_gh_create_args.sh
+source "$_UT_SCRIPT_DIR/_gh_create_args.sh"
+gh_create_parse issue "$@" || exit 2
 
-# Preserve original arguments for passing to gh
-ORIGINAL_ARGS=("$@")
+# --- Mutually exclusive body sources -----------------------------------------
+# Both would mean the wrapper signs one source while gh may use the other
+# (or error), leaving the issue unsigned.
+if [ "$GH_BODY_INDEX" -ge 0 ] && [ "$GH_BODY_FILE_INDEX" -ge 0 ]; then
+    echo "❌ Error: --body and --body-file are mutually exclusive" >&2
+    exit 2
+fi
 
-# Single pass to extract labels and -R flag
-while [ $# -gt 0 ]; do
-    case "$1" in
-        -R|--repo)
-            if [ -n "${2:-}" ]; then
-                EXPLICIT_REPO="$2"
-                shift 2
-            else
-                echo "❌ Error: -R/--repo requires a value (owner/repo)" >&2
-                exit 2
-            fi
-            ;;
-        --repo=*)
-            EXPLICIT_REPO="${1#*=}"
-            shift
-            ;;
-        --label|-l)
-            if [ -n "${2:-}" ]; then
-                LABELS+=("$2")
-                shift 2
-            else
-                shift
-            fi
-            ;;
-        --label=*)
-            LABEL_VALUE="${1#*=}"
-            LABELS+=("$LABEL_VALUE")
-            shift
-            ;;
-        *)
-            shift
-            ;;
-    esac
-done
+# --template / -T with no body, and --recover with or without one, let gh
+# write the body itself, out of the wrapper's reach: refuse unless
+# --no-signature says an unsigned issue is meant.
+gh_refuse_unsigned_fill issue && exit 2
+
+# A --body-file is read once into a temp copy (under TMPDIR, removed on
+# exit) before anything looks at it: a pipe or process substitution can be
+# read only once, and the caller's file is never modified. Every check and
+# injection below reads and appends to the copy. gh runs as a child (never
+# `exec`) so the EXIT trap always fires.
+GH_BODY_COPY=""
+trap 'rm -f "${GH_BODY_COPY:-}"' EXIT
+gh_body_copy gh_issue_body.XXXXXX.md || exit 2
+
+# --- AI signature: decide, and hard-fail before any gh call -------------------
+# Sign unless --no-signature, no body flag at all (interactive editor mode),
+# or the body already contains the marker. The footer itself is appended
+# after the parent-ref injection below, so it stays last.
+SIG_MARKER='**Authored-By**:'
+needs_signature() {
+    [ "$GH_NO_SIGNATURE" = true ] && return 1
+    [ "$GH_BODY_INDEX" -lt 0 ] && [ "$GH_BODY_FILE_INDEX" -lt 0 ] && return 1
+    gh_body_is_signed "$SIG_MARKER" && return 1
+    return 0
+}
+
+SIGN_BODY=false
+if needs_signature; then
+    if [ -z "${AGENT_NAME:-}" ] || [ -z "${AGENT_MODEL:-}" ]; then
+        echo "❌ Error: AGENT_NAME and/or AGENT_MODEL are unset; cannot sign issue." >&2
+        echo "" >&2
+        echo "   Set them via:" >&2
+        echo "     source .agent/scripts/set_git_identity_env.sh \"Name\" \"email\" \"<model>\"" >&2
+        echo "" >&2
+        echo "   Or pass --no-signature to skip signing (rare; human-authored issues only)." >&2
+        exit 2
+    fi
+    SIGN_BODY=true
+fi
 
 # --- Repo-safety check ---
 # Prevent gh from targeting the wrong repo when running inside scratchpad
 # clones or other nested git repos (see issue #72).
-if [ -z "$EXPLICIT_REPO" ]; then
+if [ -z "$GH_REPO" ]; then
     # Extract slug from current repo's remote
     _CURRENT_REMOTE=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || echo "")
     _CURRENT_SLUG=$(echo "$_CURRENT_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
@@ -169,59 +218,45 @@ if [ -n "${WORKTREE_ISSUE:-}" ]; then
         PARENT_REF="${WORKSPACE_REPO_SLUG}#${WORKTREE_ISSUE}"
     fi
 
-    # Check if body already references the parent issue
-    BODY_TEXT=""
-    BODY_FILE_PATH=""
-    BODY_ARG_INDEX=-1
-    BODY_FILE_ARG_INDEX=-1
-    for (( i=0; i<${#ORIGINAL_ARGS[@]}; i++ )); do
-        case "${ORIGINAL_ARGS[$i]}" in
-            --body)
-                if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
-                    BODY_TEXT="${ORIGINAL_ARGS[$((i+1))]}"
-                    BODY_ARG_INDEX=$((i+1))
-                fi
-                ;;
-            --body-file)
-                if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
-                    BODY_FILE_PATH="${ORIGINAL_ARGS[$((i+1))]}"
-                    BODY_FILE_ARG_INDEX=$((i+1))
-                fi
-                ;;
-        esac
-    done
-
+    # Check if body already references the parent issue. Word-boundary
+    # regex avoids substring false positives (e.g., #12 matching #123); a
+    # bash match, not a pipe, so a long body cannot cut the check short.
     NEEDS_INJECTION=true
-    # Use word-boundary regex to avoid substring false positives (e.g., #12 matching #123)
     _PARENT_PATTERN="(^|[^0-9])#${WORKTREE_ISSUE}([^0-9]|$)"
-    if [ -n "$BODY_TEXT" ]; then
-        if printf '%s\n' "$BODY_TEXT" | grep -Eq "$_PARENT_PATTERN"; then
-            NEEDS_INJECTION=false
-        fi
-    elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
-        if grep -Eq "$_PARENT_PATTERN" "$BODY_FILE_PATH"; then
-            NEEDS_INJECTION=false
-        fi
+    if [ "$GH_BODY_INDEX" -ge 0 ]; then
+        [[ "${GH_ARGS[$GH_BODY_INDEX]}" =~ $_PARENT_PATTERN ]] && NEEDS_INJECTION=false
+    elif [ -n "$GH_BODY_COPY" ]; then
+        grep -Eq -- "$_PARENT_PATTERN" "$GH_BODY_COPY" && NEEDS_INJECTION=false
     fi
 
     if [ "$NEEDS_INJECTION" = true ]; then
-        if [ -n "$BODY_TEXT" ]; then
+        if [ "$GH_BODY_INDEX" -ge 0 ]; then
             # Append to --body value
-            ORIGINAL_ARGS[$BODY_ARG_INDEX]="${BODY_TEXT}
+            GH_ARGS[$GH_BODY_INDEX]="${GH_ARGS[$GH_BODY_INDEX]}
 
 Part of ${PARENT_REF}"
             echo "ℹ️  Auto-added parent reference: Part of ${PARENT_REF}"
-        elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
-            # Create temp copy with appended reference; trap ensures cleanup on exit
-            PARENT_BODY_FILE=$(mktemp /tmp/gh_body_parent.XXXXXX.md)
-            trap 'rm -f "$PARENT_BODY_FILE"' EXIT
-            cp "$BODY_FILE_PATH" "$PARENT_BODY_FILE"
-            printf '\n\nPart of %s\n' "$PARENT_REF" >> "$PARENT_BODY_FILE"
-            ORIGINAL_ARGS[$BODY_FILE_ARG_INDEX]="$PARENT_BODY_FILE"
+        elif [ -n "$GH_BODY_COPY" ]; then
+            # Append to the temp copy; the caller's file is never modified
+            printf '\n\nPart of %s\n' "$PARENT_REF" >> "$GH_BODY_COPY"
             echo "ℹ️  Auto-added parent reference: Part of ${PARENT_REF}"
         else
             echo "⚠️  No --body or --body-file provided; cannot auto-inject parent reference (Part of ${PARENT_REF})"
         fi
+    fi
+fi
+
+# --- AI signature injection --------------------------------------------------
+# After the parent reference (so the footer stays last) and before the
+# git-bug path (so git-bug issues are signed too). The wrapper-only
+# --no-signature never reached GH_ARGS.
+if [ "$SIGN_BODY" = true ]; then
+    SIG_BLOCK=$(printf '\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' \
+                       "$AGENT_NAME" "$AGENT_MODEL")
+    if [ "$GH_BODY_INDEX" -ge 0 ]; then
+        GH_ARGS[$GH_BODY_INDEX]="${GH_ARGS[$GH_BODY_INDEX]}${SIG_BLOCK}"
+    else
+        printf '%s' "$SIG_BLOCK" >> "$GH_BODY_COPY"
     fi
 fi
 
@@ -230,23 +265,18 @@ fi
 if [ "${GITBUG_CREATE:-}" = "1" ] && command -v git-bug &>/dev/null; then
     _TITLE=""
     _BODY=""
-    _BODY_FILE=""
-    for (( i=0; i<${#ORIGINAL_ARGS[@]}; i++ )); do
-        case "${ORIGINAL_ARGS[$i]}" in
-            --title) _TITLE="${ORIGINAL_ARGS[$((i+1))]:-}" ;;
-            --body) _BODY="${ORIGINAL_ARGS[$((i+1))]:-}" ;;
-            --body-file) _BODY_FILE="${ORIGINAL_ARGS[$((i+1))]:-}" ;;
-        esac
-    done
-    if [ ${#LABELS[@]} -gt 0 ]; then
+    [ "$GH_TITLE_INDEX" -ge 0 ] && _TITLE="${GH_ARGS[$GH_TITLE_INDEX]}"
+    if [ "$GH_BODY_INDEX" -ge 0 ]; then
+        _BODY="${GH_ARGS[$GH_BODY_INDEX]}"
+    elif [ -n "$GH_BODY_COPY" ]; then
+        _BODY=$(cat "$GH_BODY_COPY")
+    fi
+    if [ ${#GH_LABELS[@]} -gt 0 ]; then
         echo "⚠️  This script's git-bug path does not apply labels — labels will be skipped."
         echo "   Add labels manually after sync, or unset GITBUG_CREATE to use gh CLI."
     fi
     if [ -n "$_TITLE" ]; then
         _GB_ARGS=(--title "$_TITLE")
-        if [ -n "$_BODY_FILE" ] && [ -f "$_BODY_FILE" ]; then
-            _BODY=$(cat "$_BODY_FILE")
-        fi
         if [ -n "$_BODY" ]; then
             _GB_ARGS+=(--message "$_BODY")
         fi
@@ -265,30 +295,30 @@ if [ "${GITBUG_CREATE:-}" = "1" ] && command -v git-bug &>/dev/null; then
 fi
 
 # If no labels specified or metadata file doesn't exist, just pass through to gh
-if [ ${#LABELS[@]} -eq 0 ]; then
+if [ ${#GH_LABELS[@]} -eq 0 ]; then
     echo "ℹ️  No labels specified, passing through to 'gh issue create'"
-    gh issue create "${ORIGINAL_ARGS[@]}"; exit $?
+    gh issue create "${GH_ARGS[@]}"; exit $?
 fi
 
 if [ ! -f "$METADATA_FILE" ]; then
     echo "⚠️  Warning: $METADATA_FILE not found"
     echo "   Skipping label validation. Labels will be validated by GitHub."
     echo "   To enable validation, create the metadata file with valid labels."
-    gh issue create "${ORIGINAL_ARGS[@]}"; exit $?
+    gh issue create "${GH_ARGS[@]}"; exit $?
 fi
 
 # Load valid labels from metadata
 VALID_LABELS=$(jq -r '.labels[]' "$METADATA_FILE" 2>/dev/null) || {
     echo "⚠️  Warning: Failed to parse $METADATA_FILE"
     echo "   Skipping label validation."
-    gh issue create "${ORIGINAL_ARGS[@]}"; exit $?
+    gh issue create "${GH_ARGS[@]}"; exit $?
 }
 
 # Validate each label
 # `--` terminates grep option parsing so labels starting with `-` are not
 # misread as flags (matters under ugrep / stricter grep).
 INVALID_LABELS=()
-for label in "${LABELS[@]}"; do
+for label in "${GH_LABELS[@]}"; do
     if ! echo "$VALID_LABELS" | grep -Fxq -- "$label"; then
         INVALID_LABELS+=("$label")
     fi
@@ -309,6 +339,9 @@ if [ ${#INVALID_LABELS[@]} -gt 0 ]; then
     exit 1
 fi
 
-# All labels valid, proceed with gh issue create
+# All labels valid, proceed with gh issue create.
+# Not `exec`: exec replaces the shell and skips the EXIT trap, which would
+# leak the temp body copy.
 echo "✅ All labels valid, creating issue..."
-exec gh issue create "${ORIGINAL_ARGS[@]}"
+gh issue create "${GH_ARGS[@]}"
+exit $?
