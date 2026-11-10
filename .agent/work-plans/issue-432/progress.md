@@ -134,3 +134,11 @@ Host read the Plan Review of 2026-11-10 (needs-work, 2 must-fix, 5 suggestions) 
 - Two paths, not three. Path 1 is project11; Path 2 keeps its existing name and takes the orchestrator trial and the owner's work managers in his home directory, in his words. The sit-rep knows two paths and is not changed here. Listed for his veto.
 - The install line (issue 430) says only what issue 430's acceptance says. "The Rolling instance builds there" and "a /run-issue run reaches the merge checkpoint" become one line, checked by a tracking issue of its own, which only the owner may open; the host asks him. Until he answers, that cell is empty and the sit-rep reads it as not yet done with no automatic check, which is true.
 - All five suggestions are taken: no status words in the section, Serves names a README goals section, bare check cells, the simulator check's lag behind the milestone noted in Open Questions, the hostname search widened.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 10:00 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `bab6be65`
+
+Revision after plan review: two paths (Path 2 keeps its name and takes the orchestrator trial and the home-directory work managers, listed for veto), the install line limited to issue 430's acceptance, one combined build-and-run line with an empty check cell, and the five suggestions taken.
