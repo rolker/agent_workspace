@@ -41,8 +41,8 @@ work that serves a goal in the README. In the owner's words (2026-11-10):
 workspace for the agents I run in ~ as my overall work managers", and
 "follow up on the findings during the gz4d tests and Path 2 mentioned
 earlier to make sure the work we put it to design the workspace is fully
-implemented." The follow-ups he asked not to lose are the "Follow-up still
-open" rows of the deferral table: small tooling fixes (#323), the fixes
+implemented." The follow-ups he asked not to lose are the "Follow-up" rows
+of the deferral table: small tooling fixes (#323), the fixes
 from the first GeoZui4D onboarding run (#415), the loop defects seen on the
 GeoZui4D drives (#428), retiring `project/` and `projects/` (#265, part 4)
 and the orchestrator skill's first updates from the dogfooding log (#431).
@@ -79,11 +79,11 @@ and the home-directory permissions baseline for sessions started in `~`.
 
 | Deferral | Revisit check |
 |----------|---------------|
-| Follow-up still open: small tooling fixes (#323) | `gh-issue 323 open` |
-| Follow-up still open: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
-| Follow-up still open: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
-| Follow-up still open: retire `project/` and `projects/` and the worktree fallback, and register the project11 instances (#265, part 4) | `gh-issue 265 open` |
-| Follow-up still open: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
+| Follow-up: small tooling fixes (#323) | `gh-issue 323 open` |
+| Follow-up: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
+| Follow-up: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
+| Follow-up: retire `project/` and `projects/` and the worktree fallback, and register the project11 instances (#265, part 4) | `gh-issue 265 open` |
+| Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
 | Audit trials (escape-rate count, review-round rule) | `gh-issue 429 closed` |
 | Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
 | The orchestrator design session with the design for the home-directory work managers (#398); the fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
