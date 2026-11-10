@@ -104,3 +104,59 @@ Details for the owner's veto (undo cost):
 - Non-package targets must be a linked worktree (drop one condition; a main checkout on a feature branch then passes).
 - `check` follows the write rule (remove one flag).
 - About ten suites' plain-main fixtures move to linked worktrees (the largest cost; not undoable cheaply once written).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #437 — A records write from outside any issue worktree commits onto that checkout's main branch, silently
+**Plan**: `.agent/work-plans/issue-437/plan.md` at `4424c221`
+**Branch**: `feature/issue-437`
+
+### What was run
+
+A clone of issue 429's branch (`feature/issue-429` at e8205e67) in the session scratchpad, with the rule sketched in `_resolve_work_plans_dir.sh` (about 30 lines: `--commit` on `records_path`/`records_dir`, called from `progress_append.sh`, the compatibility `persist` branch and `check`; the strict branch propagates exit 4). Two variants: **plan** (the plan's rule 3b: linked worktree, not the default branch, branch `feature/issue-N` or folder `issue-*-N`) and **smaller** (the same without the linked-worktree condition). Baseline: the plan's ten suites pass on the 429 copy (548 assertions).
+
+- 26-case edge matrix, both variants: all reproduced cases refuse (main checkout on `main` via `progress_append`, compatibility `persist` and `--strict`; `-C <main>` from inside the issue's worktree; a package clone under a project root on `main`), and nothing is committed. Allowed in both: the issue's worktree, the merge script's `-C <worktree>` write from the root, a `--parent-issue` sub-issue worktree for its own number (its parent's number refused), a single-repository project worktree, a custom `--branch` in an `issue-*-N` folder, a detached HEAD in an `issue-*-N` folder, the owning checkout of a package worktree (full clone; sibling refused by 429's guard). Refused in both: issue 7 from the issue-17 worktree, 17 from issue-7's, 1 from issue-17's (no suffix match), a detached HEAD in a folder of another name, `check` on the main checkout's timeline. Reads from the root still pass.
+- They differ on one case only: a plain checkout on `feature/issue-7` that is not a linked worktree (a main checkout on a feature branch). The plan refuses it; the smaller rule allows it.
+- One hole in both: a folder `issue-workspace-20` on branch `feature/issue-21` lets issue 20's entry commit onto issue 21's branch (the folder alone passes).
+- Suites under the plan's rule: 6 of the 10 fail, 43 assertions (address_findings 7, plan_correlation 6, progress_append 20, review_code_convergence 6, triage_reviews_integration 3, package_issue_loop 1); dispatch_phase, merge_pr_gate, resolve_work_plans_dir and issue_review_entry pass unchanged. Under the smaller rule: test_progress_append (its `main` fixture; with `init -b feature/issue-7` 5 cases remain, all using another issue number: 8, 9, 42, 55) plus 4 deliberate flips: the "persist compat in a mismatched worktree commits with a notice" case in plan_correlation, review_code_convergence and triage_reviews_integration, and package_issue_loop's "check from WS ticks its own box".
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | One pull request is right. The fixture moves in step 6 come from the linked-worktree condition, not from the issue; without it the test churn is one suite plus four intended assertion flips |
+| Issue alignment | Good | Every case the issue lists is covered and refuses (run). Serves as checked: "Leave a trail that is where the loop reads it (README workspace goals); `docs/design.md#rules` (start limits strict) and the Records bullet of `docs/design.md#worktrees`". "Leave a trail" is a principle, not a README goal section; the goal is "Trust, control and information" |
+| File targeting | Needs work | Four skills describe compatibility mode as "inline commit in the current worktree after the notice", which stops being true: plan-task SKILL.md 284-292, review-code 725-736, triage-reviews 372-381, address-findings around 202 (line numbers on the 429 branch). Not in the plan |
+| Consequences | Needs work | The "B2 line in design.md" does not exist: `grep` finds neither "B2", "PERSISTENCE_STRICT" nor "compatibility" in `docs/design.md` on main or on the 429 branch. B2 is in issue 269's comment ("flip `PROGRESS_PERSISTENCE_STRICT` to 1 once the compatibility-mode 'would have aborted' notices stop showing up on real runs") |
+| Principle alignment | Needs work | Only what's needed: the linked-worktree condition goes past the issue's harm. Enforce what matters: the opt-in flag needs a check that fails when a committing writer is added without it; case 8's table enumerates only `review_progress.sh` subcommands |
+| ADR compliance | Good | 0013 (writers unchanged), 0012 (manifest case: the owning checkout is on `feature/issue-N`, so the smaller rule needs no package carve-out at all), 0016 (file stays inert) |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Principle alignment, must-fix]** Drop the linked-worktree condition from rule 3b. Allow when the target is not on its default branch and its branch is `feature/issue-N[-desc]`, or its folder is `issue-*-N` (detached HEAD or a custom branch). It closes every reproduced case (run) and removes the fixture moves (43 failing assertions in 6 suites become one fixture plus 4 intended flips). It also keeps the commit gate in agreement with the resolver: rule 2b accepts a main checkout on `feature/issue-N` today, so strict `persist` would pass the resolver and then be refused by `progress_append.sh`. Refusing a main checkout on a feature branch is a convention (AGENTS.md "never edit files in the main tree"), not this issue's harm (the commit lands on the issue's branch), and for projects it forces a workflow the owner wants only encouraged. If wanted, it is a separate question for the owner.
+2. **[Principle alignment, must-fix]** Make the flag's enforcement concrete. Keep the opt-in `--commit` and don't default to refusing. Only two places in `.agent/scripts` commit a timeline (`progress_append.sh`, and `review_progress.sh` line 355 in the compatibility branch; grep of every script that commits and names work-plans). ADR-0013 sends new writers through `progress_append.sh`, which carries the flag. Defaulting to refusal would need about a dozen read call sites flagged, and a missed one breaks the dispatcher and the sit-rep from the root. A writer that skips `records_*` is unguarded under either default. The plan's "add the `--commit` enumeration to case 8" does not catch a new script. Add a static test: every `git … commit` in `.agent/scripts/*.sh` whose pathspec is under `.agent/work-plans/` sits in a script that calls `records_dir --commit` or `records_path --commit`, and the set is exactly the known two. It fails when a third committing writer appears without the flag.
+3. **[Consequences]** Update the four skill texts named under File targeting. Replace the design.md B2 target with a comment on issue 269's parked item. After this change, compatibility mode differs from strict only when `$WORKTREE_ISSUE` names another issue while the cwd is right, and under `WORK_PLANS_DIR_OVERRIDE`. So the notices B2 waits for stop because those cases now refuse, not because runs got cleaner. Say that plainly for the owner's veto; do not flip here.
+4. **[Approach]** Folder and branch disagreeing: when the branch is `feature/issue-M`, the branch decides and the folder is not consulted. The folder decides only for a detached HEAD or a branch not of that shape. Run: `issue-workspace-20` on `feature/issue-21` currently lets issue 20 commit onto 21's branch.
+5. **[Approach]** `check` following the write rule is right: no caller ticks from the root (address-findings runs in the worktree; run-issue's host passes `dispatch_phase.sh where`'s worktree), and a tick left in a main checkout is a stranded, dirty edit. It flips 429's "check from WS ticks its own box". Call the flag `--write` (the call changes the timeline), not `--commit`, since `check` commits nothing.
+6. **[Approach]** Rule 2b's branch and folder match and the new rule are the same test, judged on cwd and on the target. Put it in one helper both call, so they cannot drift.
+7. **[File targeting]** Step 1's line ranges are already off at e8205e67 (`records_path` is 193-212, `records_dir` 214-225, `issue_checkout_guard` 159-191). Step 6's list names four suites that need nothing even under the plan's rule. The commit gate runs before entry validation, so test_progress_append's validation cases on issues 42 and 55 return 4, not 2; renumber them.
+
+### Summary
+
+The plan finds the right place, the right callers and every legitimate root writer, and the rule closes every reproduced case (run). Its linked-worktree condition is the one part that is too broad: it is the source of the large fixture move and it disagrees with the resolver's own rule. Drop it, make the flag's enforcement test concrete, and fix the consequence targets. Then it is one small pull request.
+
+### Recommended Actions
+
+- [ ] (must-fix) Drop the linked-worktree condition; allow on branch `feature/issue-N[-desc]` (never the default branch) or folder `issue-*-N`; shrink step 6 to test_progress_append plus the four intended flips
+- [ ] (must-fix) Replace "add `--commit` to case 8" with a static test over `.agent/scripts` that fails when a script commits a work-plans path without `records_* --commit`
+- [ ] (suggestion) Add the four skill texts on compatibility mode to the plan; move the B2 note from design.md (no such line) to issue 269's parked item, stating that compatibility now equals strict except for the `$WORKTREE_ISSUE` mismatch and the override
+- [ ] (suggestion) Branch decides when it is `feature/issue-M`; folder only for detached HEAD or a custom branch; test the 20/21 case
+- [ ] (suggestion) Name the flag `--write`; keep `check` under it
+- [ ] (suggestion) One helper for the branch and folder match, shared with resolver rule 2b
+- [ ] (suggestion) Serves: name the README goal section ("Trust, control and information"), not the principle
+- [ ] (suggestion) Refresh step 1's line ranges; drop the four unaffected suites from step 6; renumber the issue 42 and 55 cases in test_progress_append
