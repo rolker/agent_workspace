@@ -523,18 +523,24 @@ wt_fetch_why() {
 # What each caller does with it:
 #   - The issue branch, with no local branch of that name
 #     (worktree_create.sh fetch_remote_branch; _wt_add_repo's target),
-#     through wt_lookup_for_new_branch: present, track origin/<b>
-#     (wt_track_ready first, for a narrowed clone), and a failure there is
-#     an error, not a fresh branch; absent, start the branch afresh;
-#     unknown, stop before anything is made.
+#     through wt_lookup_for_new_branch: present, check out origin/<b> with
+#     its upstream set (wt_set_upstream), and a failure there is an error,
+#     not a fresh branch; absent, start the branch afresh; unknown, stop.
+#     A skill worktree's branch, minted this run with a timestamp
+#     (WT_MINTED_BRANCH), is not looked up: origin cannot have it.
 #   - A sub-issue's parent, when the sub-issue branch is new (the same two
 #     scripts, through wt_lookup_for_new_branch): present, start the
 #     sub-issue branch from origin/<parent>; absent, from the default
-#     branch, with a warning; unknown, stop before anything is made.
+#     branch, with a warning; unknown, stop.
+#   - A stop makes nothing in that repository. In a project worktree of
+#     several repositories, those already added this run are rolled back
+#     (their worktrees and the branches made for them) and the worktree
+#     directory is removed.
 #   - With --allow-unverified-branch (WT_ALLOW_UNVERIFIED_BRANCH=true),
 #     "unknown" is treated as absent by those two, with a warning that
 #     names the reason. Nothing else turns "unknown" into a fresh branch.
-#   - An existing branch's parent (worktree_create.sh, workspace type): only
+#   - An existing branch's parent (worktree_create.sh
+#     check_existing_branch_parent, workspace and project types): only
 #     the draft PR's base depends on it. present, the draft PR targets the
 #     parent; absent or unknown, a warning names the reason and
 #     `gh pr edit --base <parent>`, and the PR targets the default branch.
@@ -598,8 +604,9 @@ wt_fetch_named_branch() {
 #   1  absent (or unknown with WT_ALLOW_UNVERIFIED_BRANCH=true, warned):
 #      start without it;
 #   2  unknown: an error naming the reason is on stderr; the caller stops
-#      before anything is made, since a branch started now could diverge
-#      from one origin has.
+#      without making anything in <repo> (and worktree_create.sh rolls back
+#      the repositories it already added this run), since a branch started
+#      now could diverge from one origin has.
 # WT_FETCH_OUTCOME and WT_FETCH_REASON are left as the lookup set them.
 # Usage: wt_lookup_for_new_branch <repo> <want> <new>; rc=$?
 wt_lookup_for_new_branch() {
@@ -625,28 +632,19 @@ wt_lookup_for_new_branch() {
     return 2
 }
 
-# Ready <repo> to track origin/<branch> before `worktree add --track`. A
-# --single-branch or --depth clone fetches only its own branch, and git
-# will not set up tracking from a remote-tracking ref that no fetch
-# refspec of origin maps to ("starting point ... is not a branch"). When
-# none covers refs/heads/<branch>, this adds it, as a person would
-# (`git remote set-branches --add origin <branch>`), and says so on
-# stderr. Status 1 when that fails.
-# Usage: wt_track_ready <repo> <branch> || <stop>
-wt_track_ready() {
-    local repo="$1" branch="$2" spec="" src="" want="refs/heads/$2"
-    while IFS= read -r spec; do
-        spec="${spec#+}"
-        src="${spec%%:*}"
-        if [ "$src" = "$want" ]; then
-            return 0
-        fi
-        if [[ "$src" == *'*'* && "$want" == "${src%%\**}"*"${src#*\*}" ]]; then
-            return 0
-        fi
-    done < <(git -C "$repo" config --get-all remote.origin.fetch 2>/dev/null)
-    echo "Note: origin's fetch refspec in $repo does not cover '$branch' (a single-branch or shallow clone); adding it so the branch can track origin/$branch: git remote set-branches --add origin $branch" >&2
-    git -C "$repo" remote set-branches --add origin "$branch"
+# Set <branch>'s upstream to origin/<branch> by writing only that
+# branch's own settings (branch.<b>.remote, branch.<b>.merge), which is
+# what `--track` writes. `--track` itself is not used: in a --single-branch
+# or --depth clone no fetch refspec maps origin/<b>, and git refuses it;
+# and origin's fetch refspecs are left as they were found, since one added
+# for <b> would outlive the branch and fail every plain `git fetch` there
+# once origin deletes it. In such a clone `<b>@{upstream}` does not
+# resolve (no remote-tracking ref is mapped), but `git pull` and
+# `git push` read these settings.
+# Usage: wt_set_upstream <repo> <branch>
+wt_set_upstream() {
+    git -C "$1" config "branch.$2.remote" origin \
+        && git -C "$1" config "branch.$2.merge" "refs/heads/$2"
 }
 
 # The start point for a new branch in <repo> that has no parent branch
@@ -717,34 +715,47 @@ _wt_default_start_point() {
 # error, never a reason to start from the default instead. The failing
 # git command's output is printed — never swallowed with 2>/dev/null.
 # When origin cannot tell whether it has the target or the parent branch
-# (wt_fetch_named_branch's "unknown"), it returns 1 having made nothing,
-# unless WT_ALLOW_UNVERIFIED_BRANCH=true (worktree_create.sh's
-# --allow-unverified-branch).
+# (wt_fetch_named_branch's "unknown"), it returns 1 having made nothing in
+# <origin_repo>, unless WT_ALLOW_UNVERIFIED_BRANCH=true (worktree_create.sh's
+# --allow-unverified-branch). A branch it makes for a checkout that then
+# fails is removed again, with any worktree that checkout left. It sets
+# WT_ADD_PARENT_LOOKED_UP=true when it asked origin about <parent_branch>.
 # Never falls back to a symlink (ADR-0012's structural no-symlink rule).
 # Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>]
 _wt_add_repo() {
     local origin="$1" dest="$2" branch="$3" parent_branch="${4:-}"
-    local out="" rc=1
+    local out="" rc=1 made_branch=false
+    WT_ADD_PARENT_LOOKED_UP=false
 
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
     else
-        # wt_lookup_for_new_branch has printed the reason for a stop (2).
+        # Every add below makes '$branch' (-b): a failed one is undone at
+        # the end. wt_lookup_for_new_branch has printed the reason for a
+        # stop (2).
+        made_branch=true
         local frc=0 prc=0 base="" start=""
-        wt_lookup_for_new_branch "$origin" "$branch" "$branch" || frc=$?
+        if [ -n "${WT_MINTED_BRANCH:-}" ] && [ "$branch" = "$WT_MINTED_BRANCH" ]; then
+            frc=1   # minted this run: origin cannot have it, so it is not asked
+        else
+            wt_lookup_for_new_branch "$origin" "$branch" "$branch" || frc=$?
+        fi
         if [ "$frc" -eq 2 ]; then
             return 1
         elif [ "$frc" -eq 0 ]; then
-            # origin has the branch: track it, or fail; never start another
-            # '$branch' in its place.
-            if wt_track_ready "$origin" "$branch"; then
-                out="$(git -C "$origin" worktree add --track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
+            # origin has the branch: check it out with its upstream set, or
+            # fail; never start another '$branch' in its place.
+            out="$(git -C "$origin" worktree add --no-track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
+            if [ "$rc" -eq 0 ] && ! wt_set_upstream "$origin" "$branch"; then
+                out="could not set the upstream of '$branch' to origin/$branch"; rc=1
             fi
         else
             if [ -n "$parent_branch" ]; then
                 if git -C "$origin" show-ref --verify --quiet "refs/heads/$parent_branch"; then
                     base="$parent_branch"
                 else
+                    # shellcheck disable=SC2034  # read by worktree_create.sh
+                    WT_ADD_PARENT_LOOKED_UP=true
                     wt_lookup_for_new_branch "$origin" "$parent_branch" "$branch" || prc=$?
                     if [ "$prc" -eq 2 ]; then
                         return 1
@@ -772,6 +783,22 @@ _wt_add_repo() {
     fi
     echo "ERROR: could not create a worktree for $origin at $dest (branch '$branch')" >&2
     [ -n "$out" ] && echo "$out" >&2
+    # A failed `worktree add -b` can leave the branch it made (git makes it
+    # before the checkout) and, when the checkout itself failed, a
+    # registered worktree: remove both, so a retry asks origin again
+    # instead of taking the left-behind branch as the local one.
+    if [ "$made_branch" = true ] \
+       && git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
+        # Only a worktree on the branch just made is ours to remove.
+        if [ "$(git -C "$dest" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$branch" ]; then
+            git -C "$origin" worktree remove --force "$dest" >/dev/null 2>&1 || true
+        fi
+        if git -C "$origin" branch -D "$branch" >/dev/null 2>&1; then
+            echo "  The branch '$branch' made for it was removed again." >&2
+        else
+            echo "  WARNING: the branch '$branch' made for it is left in $origin; remove it with: git -C $origin branch -D $branch" >&2
+        fi
+    fi
     return 1
 }
 

@@ -155,16 +155,22 @@ worktree creation makes (that one, the branch itself, a parent branch)
 never asks for credentials (`GIT_TERMINAL_PROMPT=0`) and is ended after
 `WT_FETCH_TIMEOUT` seconds (default 60) where `timeout` is installed.
 
-Before a new branch is made, origin is asked whether it already has it (or,
-with `--parent-issue`, the parent branch), and the answer is one of three:
-it has it (fetched into `origin/<branch>`, also in a `--single-branch` or
-`--depth` clone, which gets the branch added to its fetched branches so it
-can track it), it does not, or there is no telling: a timeout, or any
-failure that leaves the question open, unreachable origin included. On
-"no telling" creation stops before anything is made, saying why, since a
-branch started then could diverge from one on origin. Retry when origin
+Before a new issue branch is made, origin is asked whether it already has
+it (or, with `--parent-issue`, the parent branch), and the answer is one of
+three: it has it, it does not, or there is no telling: a timeout, or any
+failure that leaves the question open, unreachable origin included. A
+branch origin has is checked out from `origin/<branch>` with its upstream
+set to it (also in a `--single-branch` or `--depth` clone, whose fetch
+settings are left as they were); if that checkout fails, creation stops
+and the branch it made is removed. On "no telling" creation stops, saying
+why, since a branch started then could diverge from one on origin: nothing
+is made in that repository, and in a project worktree of several
+repositories the ones already added are rolled back. Retry when origin
 answers, or pass `--allow-unverified-branch` to start the branch anyway
-(working offline): the warning then says what is at risk.
+(working offline): the warning then says what is at risk. A skill
+worktree's branch is named with a timestamp when it is made, so origin is
+not asked about it, and a skill worktree is created offline without the
+flag.
 
 When the default-branch fetch fails, the local default branch is used,
 with a warning that says why; when no default branch resolves, creation
@@ -172,7 +178,8 @@ stops and suggests `git remote set-head origin -a`. Only `--parent-issue`
 (below) starts a branch elsewhere. An existing branch, local or on origin,
 is checked out as it is; when its parent branch is then not on origin, or
 origin cannot say, a warning gives the reason, says that a draft PR opened
-by `--plan-file` targets the default branch, and how to retarget it.
+by `--plan-file` targets the default branch, and how to retarget it (the
+workspace and project types alike).
 
 ## Naming Convention
 

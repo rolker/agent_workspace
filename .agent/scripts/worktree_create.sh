@@ -67,6 +67,33 @@ fetch_remote_branch() {
     return "$rc"
 }
 
+# An existing branch's parent sets only the draft PR's base (#323): found
+# locally or on origin, the PR targets it (PARENT_BRANCH_FOUND=true); any
+# other lookup outcome is said with its reason, never taken as "no parent"
+# in silence. For the workspace and the project types alike.
+# Usage: check_existing_branch_parent <repo>
+check_existing_branch_parent() {
+    local repo="$1"
+    if git -C "$repo" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
+       git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+        PARENT_BRANCH_FOUND=true
+        return 0
+    fi
+    wt_fetch_named_branch "$repo" "$PARENT_BRANCH" || true
+    case "$WT_FETCH_OUTCOME" in
+        present)
+            PARENT_BRANCH_FOUND=true
+            ;;
+        absent)
+            echo "WARNING: parent branch '$PARENT_BRANCH' is neither local nor on origin ($WT_FETCH_REASON); a draft PR that --plan-file opens here targets the default branch. Once '$PARENT_BRANCH' is on origin, retarget it with: gh pr edit --base $PARENT_BRANCH" >&2
+            ;;
+        *)
+            echo "WARNING: cannot tell whether origin has parent branch '$PARENT_BRANCH': $WT_FETCH_REASON. A draft PR that --plan-file opens here targets the default branch; if origin has '$PARENT_BRANCH', retarget it with: gh pr edit --base $PARENT_BRANCH" >&2
+            ;;
+    esac
+    return 0
+}
+
 # extract_gh_slug is provided by _issue_helpers.sh (sourced above)
 
 # Defaults
@@ -86,6 +113,9 @@ PRINT_PATH_ONLY=false
 # _worktree_helpers.sh (wt_lookup_for_new_branch).
 # shellcheck disable=SC2034
 WT_ALLOW_UNVERIFIED_BRANCH=false
+# A skill branch name minted this run (timestamped): origin cannot have it,
+# so neither this script nor _wt_add_repo asks origin about it.
+WT_MINTED_BRANCH=""
 
 # Pre-scan for --print-path-only so quiet-mode redirection activates BEFORE
 # the main argument parser runs. Without this, parse-time errors (unknown
@@ -573,6 +603,7 @@ echo ""
 if [ -z "$BRANCH_NAME" ]; then
     if [ -n "$SKILL_NAME" ]; then
         BRANCH_NAME="skill/${SYNTHETIC_ID}"
+        WT_MINTED_BRANCH="$BRANCH_NAME"
     else
         BRANCH_NAME="feature/issue-${ISSUE_NUM}"
     fi
@@ -753,10 +784,14 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         fi
         if [ "$WR_BRANCH" = "$BRANCH_NAME" ] || [ "$WR_REL" = "." ]; then
             # Owning-repo entry: check parent-branch-found for PR targeting,
-            # matching the pre-#252 single-repo semantics.
+            # matching the pre-#252 single-repo semantics. When _wt_add_repo
+            # already asked origin about the parent (a new branch), it said
+            # what it found; otherwise ask as the workspace path does.
             if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
-                if git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
-                   git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+                if [ "$WT_ADD_PARENT_LOOKED_UP" = false ]; then
+                    check_existing_branch_parent "$WR_ORIGIN"
+                elif git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
+                     git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
                     PARENT_BRANCH_FOUND=true
                 fi
             fi
@@ -856,10 +891,20 @@ else
     if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
         echo "Using existing local branch '$BRANCH_NAME'..."
         git worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
-    elif fetch_remote_branch "$ROOT_DIR" "$BRANCH_NAME" "$BRANCH_NAME"; then
+    elif [ "$BRANCH_NAME" != "$WT_MINTED_BRANCH" ] && fetch_remote_branch "$ROOT_DIR" "$BRANCH_NAME" "$BRANCH_NAME"; then
+        # Checked out with its own upstream settings (wt_set_upstream), not
+        # --track, so a narrowed clone's fetch refspecs are left alone. A
+        # failed checkout does not leave the branch it made behind.
         echo "Tracking remote branch 'origin/$BRANCH_NAME'..."
-        wt_track_ready "$ROOT_DIR" "$BRANCH_NAME" || exit 1
-        git worktree add --track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME"
+        if ! git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME" \
+           || ! wt_set_upstream "$ROOT_DIR" "$BRANCH_NAME"; then
+            echo "ERROR: could not check out '$BRANCH_NAME' from origin/$BRANCH_NAME at $WORKTREE_DIR" >&2
+            if [ "$(git -C "$WORKTREE_DIR" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$BRANCH_NAME" ]; then
+                git worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 || true
+            fi
+            git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" && git branch -D "$BRANCH_NAME" >/dev/null 2>&1
+            exit 1
+        fi
     elif [ -n "$PARENT_BRANCH" ]; then
         if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch '$PARENT_BRANCH'..."
@@ -889,26 +934,7 @@ else
     fi
 
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ] && [ "$PARENT_LOOKED_UP" = false ]; then
-        if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
-           git show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
-            PARENT_BRANCH_FOUND=true
-        else
-            # The branch already existed, so only the draft PR's base
-            # depends on the parent: any outcome but present is said, with
-            # its reason, never taken as "no parent" in silence (#323).
-            wt_fetch_named_branch "$ROOT_DIR" "$PARENT_BRANCH" || true
-            case "$WT_FETCH_OUTCOME" in
-                present)
-                    PARENT_BRANCH_FOUND=true
-                    ;;
-                absent)
-                    echo "WARNING: parent branch '$PARENT_BRANCH' is neither local nor on origin ($WT_FETCH_REASON); a draft PR that --plan-file opens here targets the default branch. Once '$PARENT_BRANCH' is on origin, retarget it with: gh pr edit --base $PARENT_BRANCH" >&2
-                    ;;
-                *)
-                    echo "WARNING: cannot tell whether origin has parent branch '$PARENT_BRANCH': $WT_FETCH_REASON. A draft PR that --plan-file opens here targets the default branch; if origin has '$PARENT_BRANCH', retarget it with: gh pr edit --base $PARENT_BRANCH" >&2
-                    ;;
-            esac
-        fi
+        check_existing_branch_parent "$ROOT_DIR"
     fi
 fi
 

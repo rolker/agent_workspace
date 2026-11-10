@@ -157,15 +157,28 @@ check_stop() {  # <label> <want-rc: nonzero|0> <repo> <branch> <message> [<dest>
     fi
 }
 
-# A branch tracking origin/<branch> at <sha>.
-check_tracks() {  # <label> <repo> <branch> <sha>
-    local label="$1" repo="$2" br="$3" want="$4" up
-    up="$(git -C "$repo" rev-parse --abbrev-ref "$br@{upstream}" 2>/dev/null)"
-    if [[ "$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$br" 2>/dev/null)" = "$want" && "$up" = "origin/$br" ]]; then
+# A branch at <sha> whose upstream is origin/<branch> (its own
+# branch.<b>.remote and .merge, as `--track` writes them), made without
+# changing origin's fetch refspecs (<refspecs-before>).
+check_tracks() {  # <label> <repo> <branch> <sha> <refspecs-before>
+    local label="$1" repo="$2" br="$3" want="$4" before="$5" remote merge after
+    remote="$(git -C "$repo" config "branch.$br.remote" 2>/dev/null)"
+    merge="$(git -C "$repo" config "branch.$br.merge" 2>/dev/null)"
+    after="$(git -C "$repo" config --get-all remote.origin.fetch 2>/dev/null)"
+    if [[ "$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$br" 2>/dev/null)" = "$want" \
+          && "$remote" = origin && "$merge" = "refs/heads/$br" && "$after" = "$before" ]]; then
         pass "$label"
     else
-        fail "$label: rc=$RC $br at $(git -C "$repo" rev-parse --short --verify --quiet "refs/heads/$br" || echo none), upstream ${up:-none}, want origin's $want: ${OUT:0:600}"
+        fail "$label: rc=$RC $br at $(git -C "$repo" rev-parse --short --verify --quiet "refs/heads/$br" || echo none), upstream ${remote:-none} ${merge:-none}, refspecs [$before] -> [$after], want origin's $want: ${OUT:0:600}"
     fi
+}
+
+# Sets origin's fetch refspec in <repo> to exactly <spec>, and fails the
+# run if it did not take (a second value would make a plain set refuse).
+set_refspec() {  # <repo> <spec>
+    git -C "$1" config --replace-all remote.origin.fetch "$2" \
+        && [[ "$(git -C "$1" config --get-all remote.origin.fetch)" = "$2" ]] \
+        || { echo "FATAL: could not set remote.origin.fetch in $1 to $2"; exit 1; }
 }
 
 # --------------------------------------------------------------- sandbox ---
@@ -285,23 +298,67 @@ REMOTE_20="$(git -C "$SANDBOX/scratch" rev-parse feature/issue-20)"
 REMOTE_21="$(git -C "$SANDBOX/scratch" rev-parse feature/issue-21)"
 # The fetch refspec a --single-branch clone has: a plain `git fetch origin
 # <b>` would write FETCH_HEAD only.
-gitq -C "$SB" config remote.origin.fetch "+refs/heads/main:refs/remotes/origin/main"
+NARROW="+refs/heads/main:refs/remotes/origin/main"
+set_refspec "$SB" "$NARROW"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 20 --type workspace
-check_tracks "narrowed refspec, worktree_create.sh: feature/issue-20 tracks origin's" "$SB" feature/issue-20 "$REMOTE_20"
+check_tracks "narrowed refspec, worktree_create.sh: feature/issue-20 tracks origin's, refspec unchanged" \
+    "$SB" feature/issue-20 "$REMOTE_20" "$NARROW"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 22 --type workspace --parent-issue 21
 if [[ "$RC" -eq 0 && "$(git -C "$SB" rev-parse --verify --quiet feature/issue-22)" = "$REMOTE_21" ]]; then
     pass "narrowed refspec, worktree_create.sh: feature/issue-22 starts at origin's parent feature/issue-21"
 else
     fail "narrowed refspec, parent only on origin: rc=$RC: ${OUT:0:400}"
 fi
-gitq -C "$SB" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+set_refspec "$SB" "+refs/heads/*:refs/remotes/origin/*"
 # _wt_add_repo in a --single-branch clone and in a --depth clone.
 gitq clone -q --single-branch "file://$SANDBOX/origin.git" "$SANDBOX/clone-single"
 gitq clone -q --depth 1 "file://$SANDBOX/origin.git" "$SANDBOX/clone-depth"
 for kind in single depth; do
+    before="$(git -C "$SANDBOX/clone-$kind" config --get-all remote.origin.fetch)"
     add_repo "$SANDBOX/clone-$kind" "$SANDBOX/clone-$kind-wt" feature/issue-20
-    check_tracks "--$kind clone, _wt_add_repo: feature/issue-20 tracks origin's" "$SANDBOX/clone-$kind" feature/issue-20 "$REMOTE_20"
+    check_tracks "--$kind clone, _wt_add_repo: feature/issue-20 tracks origin's, refspec unchanged" \
+        "$SANDBOX/clone-$kind" feature/issue-20 "$REMOTE_20" "$before"
 done
+# Origin deletes the branch, as a merge does: a plain `git fetch` in each
+# clone still works (a refspec added for the branch would fail it).
+gitq -C "$SANDBOX/scratch" push -q origin --delete feature/issue-20
+for kind in single depth; do
+    if fout="$(git -C "$SANDBOX/clone-$kind" fetch 2>&1)"; then
+        pass "--$kind clone: a plain git fetch works after origin deletes feature/issue-20"
+    else
+        fail "--$kind clone: a plain git fetch fails after origin deletes feature/issue-20: $fout"
+    fi
+done
+
+echo
+echo "=== A checkout that fails leaves no branch behind ==="
+# A post-checkout hook that fails makes `git worktree add` fail after it
+# has made the branch and the worktree.
+gitq -C "$SANDBOX/scratch" checkout -q -b feature/issue-36 main
+gitq -C "$SANDBOX/scratch" commit -q --allow-empty -m "feature/issue-36 on origin"
+gitq -C "$SANDBOX/scratch" push -q origin feature/issue-36
+gitq -C "$SANDBOX/scratch" checkout -q main
+HOOK="$SB/.git/hooks/post-checkout"
+mkdir -p "$(dirname "$HOOK")"
+printf '#!/bin/sh\nexit 1\n' > "$HOOK"
+chmod +x "$HOOK"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 36 --type workspace
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not check out 'feature/issue-36' from origin/feature/issue-36 at "* ]] \
+   && ! has_branch "$SB" feature/issue-36 && ! compgen -G "$SB/worktrees/workspace/*-36" >/dev/null \
+   && ! git -C "$SB" worktree list --porcelain | grep -q -- '-36$'; then
+    pass "failed checkout, worktree_create.sh: stops, no branch or worktree left"
+else
+    fail "failed checkout, worktree_create.sh: rc=$RC branch=$(has_branch "$SB" feature/issue-36 && echo left || echo none): ${OUT:0:600}"
+fi
+add_repo "$SB" "$SANDBOX/pkg-wt-36" feature/issue-36
+if [[ "$OUT" == *"REFUSED"* && "$OUT" == *"ERROR: could not create a worktree for $SB at $SANDBOX/pkg-wt-36 (branch 'feature/issue-36')"* \
+      && "$OUT" == *"The branch 'feature/issue-36' made for it was removed again."* ]] \
+   && ! has_branch "$SB" feature/issue-36 && [[ ! -e "$SANDBOX/pkg-wt-36" ]]; then
+    pass "failed checkout, _wt_add_repo: refuses, the branch and worktree it made are removed"
+else
+    fail "failed checkout, _wt_add_repo: rc=$RC branch=$(has_branch "$SB" feature/issue-36 && echo left || echo none): ${OUT:0:600}"
+fi
+rm -f "$HOOK"
 
 echo
 echo "=== A fetch that fails fast: origin is asked, and any doubt stops ==="
@@ -374,6 +431,18 @@ if [[ "$OUT" == *"ADDED"* && "$OUT" == *"WARNING: cannot tell whether origin has
     pass "unreachable origin, opt-out, _wt_add_repo: created with the warning"
 else
     fail "unreachable origin, opt-out, _wt_add_repo: rc=$RC: ${OUT:0:600}"
+fi
+# A skill worktree's branch is minted this run, so origin is not asked:
+# offline, it is created from the local default without the flag.
+SKILLS_BEFORE="$(git -C "$SB" for-each-ref --format='%(refname:short)' 'refs/heads/skill/research-*')"
+run_create "$FEAT" "$FEAT_SCRIPT" --skill research --type workspace
+SKILL_NEW="$(comm -13 <(printf '%s\n' "$SKILLS_BEFORE" | sort) \
+    <(git -C "$SB" for-each-ref --format='%(refname:short)' 'refs/heads/skill/research-*' | sort))"
+if [[ "$RC" -eq 0 && "$OUT" != *"cannot tell whether origin has"* && -n "$SKILL_NEW" \
+      && "$(git -C "$SB" rev-parse --verify --quiet "$SKILL_NEW")" = "$LOCAL_MAIN" ]]; then
+    pass "unreachable origin, skill worktree: created from local main without the flag, origin not asked"
+else
+    fail "unreachable origin, skill worktree: rc=$RC new=${SKILL_NEW:-none}: ${OUT:0:600}"
 fi
 # origin is unreachable, but an earlier fetch left origin/feature/issue-15:
 # the branch exists there, so creation stops rather than start a new one.
@@ -529,6 +598,26 @@ if git -C "$P" rev-parse --abbrev-ref "feature/issue-8@{upstream}" >/dev/null 2>
     fail "project: feature/issue-8 has an upstream"
 else
     pass "project: feature/issue-8 has no upstream (--no-track)"
+fi
+# An existing branch's parent on the project path is warned as on the
+# workspace path: not on origin, then origin unreachable.
+gitq -C "$P" branch feature/issue-47 develop
+OUT="$(cd "$SB3" && PATH="$SB3/stubbin:$PATH" "$SB3/.agent/scripts/worktree_create.sh" --issue 47 --type project --parent-issue 9 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: parent branch 'feature/issue-9' is neither local nor on origin (origin has no branch 'feature/issue-9'); a draft PR that --plan-file opens here targets the default branch. Once 'feature/issue-9' is on origin, retarget it with: gh pr edit --base feature/issue-9"* ]]; then
+    pass "project, existing branch, parent not on origin: created, the draft PR base warned with the reason"
+else
+    fail "project, existing branch, parent not on origin: rc=$RC: ${OUT:0:600}"
+fi
+gitq -C "$P" remote set-url origin "file:///nonexistent/project-origin.git"
+P_LINE="$(git -C "$P" fetch --quiet origin 2>&1 | head -n1)"
+gitq -C "$P" branch feature/issue-48 develop
+OUT="$(cd "$SB3" && PATH="$SB3/stubbin:$PATH" "$SB3/.agent/scripts/worktree_create.sh" --issue 48 --type project --parent-issue 9 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"$(msg_existing_unknown feature/issue-9 "fetching 'feature/issue-9' failed ($P_LINE), and origin could not be asked whether it has 'feature/issue-9'")"* ]]; then
+    pass "project, existing branch, origin unreachable: created, the draft PR base warned with the reason"
+else
+    fail "project, existing branch, origin unreachable: rc=$RC: ${OUT:0:600}"
 fi
 
 echo

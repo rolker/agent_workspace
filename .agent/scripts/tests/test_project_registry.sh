@@ -643,8 +643,10 @@ test_single_project_legacy_validate() {
 # Worktree sandboxes get the worktree scripts, their helpers, and a failing
 # gh stub so issue lookups degrade gracefully offline. Their origins cannot
 # be reached, so origin cannot say whether it has a branch: every
-# worktree_create.sh call below passes --allow-unverified-branch (#323),
-# since these tests are about the registry wiring, not the branch lookup.
+# worktree_create.sh --issue call below passes --allow-unverified-branch
+# (#323), since these tests are about the registry wiring, not the branch
+# lookup. The --skill calls do not: a skill branch is minted with a
+# timestamp and never looked up on origin, so they work offline as they are.
 make_worktree_sandbox() {
     local sb
     sb="$(make_sandbox)"
@@ -689,7 +691,7 @@ test_worktree_create_skill_project() {
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0 ($(tail -n3 <<< "$out"))" "0" "$rc"
     wtp="$(find "$sb/projects/alpha/worktrees" -maxdepth 1 -name 'skill-alpha-onboard-project-*' -type d 2>/dev/null | head -n1)"
     assert_eq "worktree under the root's worktrees/" "yes" "$([ -n "$wtp" ] && echo yes || echo no)"
@@ -712,24 +714,24 @@ test_worktree_create_skill_project() {
     echo "TEST: worktree_create --skill: a skill not on the allowlist is refused; a root that is not the top of a repo is refused"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill plan-task --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill plan-task --type project --project alpha 2>&1)" || rc=$?
     assert_eq "plan-task: exit 1" "1" "$rc"
     assert_contains "says the allowlist" "is not in the allowlist" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill research --type project --project alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill research --type project --project alpha 2>&1)" || rc=$?
     assert_eq "research --type project: exit 1" "1" "$rc"
     assert_contains "says research is for workspace worktrees" "--skill research is for --type workspace worktrees, not --type project" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type workspace 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type workspace 2>&1)" || rc=$?
     assert_eq "onboard-project --type workspace: exit 1" "1" "$rc"
     assert_contains "says onboard-project is for project worktrees" "--skill onboard-project is for --type project worktrees, not --type workspace" "$out"
     mkdir -p "$sb/projects/alpha/sub"
     echo "sub single_project $sb/projects/alpha/sub" >> "$sb/.agent/projects.local"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project sub 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project sub 2>&1)" || rc=$?
     assert_eq "a root inside another repo: exit 1" "1" "$rc"
     assert_contains "says why" "is not the top of one" "$out"
 
@@ -740,7 +742,7 @@ test_worktree_create_skill_project() {
     seed_commit "$mp"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
     assert_eq "skill worktree of my-proj.x: exit 0 ($(tail -n2 <<< "$out"))" "0" "$rc"
     git -C "$mp" worktree add --quiet -b feature/issue-7 "$mp/worktrees/issue-my-proj.x-7" 2>/dev/null
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true

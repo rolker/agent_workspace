@@ -373,6 +373,120 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
     assert_contains "captured stderr surfaced" "not a git repository" "$out"
 }
 
+# ---- The named-branch lookup's stop on the package path (#323) ----
+# These run worktree_create.sh WITHOUT --allow-unverified-branch. Their
+# origin URLs no longer name owner/pkg_a, so worktree_repos treats no repo
+# as the issue's own and names every branch feature/pkg_a-issue-<N>.
+
+run_worktree_create_strict() {
+    local sb="$1"
+    shift
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
+}
+
+# Give a package repo a reachable bare origin holding its main.
+give_bare_origin() {  # <repo> <bare>
+    local repo="$1" bare="$2"
+    git init --quiet --bare -b main "$bare"
+    git -C "$repo" remote set-url origin "$bare"
+    git -C "$repo" push --quiet origin main
+    git -C "$repo" fetch --quiet origin
+    git -C "$repo" remote set-head origin main >/dev/null
+}
+
+# A package-worktree project with pkg_a and pkg_b, ready for a successful run.
+make_lookup_project() {  # <sb>; prints the project dir
+    local sb="$1" proj
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    echo "$proj"
+}
+
+lookup_stop_message() {  # <repo> <branch> <git's line>
+    printf "ERROR: cannot tell whether origin has '%s' (in %s): fetching '%s' failed (%s), and origin could not be asked whether it has '%s'; a new '%s' is not started, since it would diverge from one origin may have. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now 60s), or pass --allow-unverified-branch to start it anyway." \
+        "$2" "$1" "$2" "$3" "$2" "$2"
+}
+
+test_worktree_create_lookup_unknown_first_repo() {
+    echo "TEST: origin cannot tell on the first repo: stop, nothing made, the whole reason given"
+    local sb out rc=0 proj a wt line
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$a" remote set-url origin "file:///nonexistent/pkg_a.git"
+    line="$(git -C "$a" fetch --quiet origin 2>&1 | head -n1)" || true
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#444 --type project --project p11 \
+        --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "the stop names the branch, the repo and the whole reason" \
+        "$(lookup_stop_message "$a" feature/pkg_a-issue-444 "$line")" "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "no branch made in pkg_a" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-444 && echo true || echo false)"
+}
+
+test_worktree_create_lookup_unknown_second_repo() {
+    echo "TEST: origin cannot tell on the second repo: stop, the first repo's worktree and branch rolled back"
+    local sb out rc=0 proj a b wt line
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    b="$proj/layers/main/l1_ws/src/pkg_b"
+    give_bare_origin "$a" "$sb/pkg_a-origin.git"
+    git -C "$b" remote set-url origin "file:///nonexistent/pkg_b.git"
+    line="$(git -C "$b" fetch --quiet origin 2>&1 | head -n1)" || true
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#445 --type project --project p11 \
+        --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-445"
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "the stop names pkg_b's branch and the whole reason" \
+        "$(lookup_stop_message "$b" feature/pkg_a-issue-445 "$line")" "$out"
+    assert_contains "the rollback is reported" "rolling back 1 already-created worktree(s)" "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "pkg_a's worktree removed" "1" "$(git -C "$a" worktree list --porcelain | grep -c '^worktree ')"
+    assert_eq "pkg_a's new branch removed" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-445 && echo true || echo false)"
+    assert_eq "no branch made in pkg_b" "false" \
+        "$(git -C "$b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-445 && echo true || echo false)"
+}
+
+test_worktree_create_lookup_found_branch_fails_checkout() {
+    echo "TEST: a branch found on origin that fails to check out: stop, no branch or worktree left"
+    local sb out rc=0 proj a wt
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    give_bare_origin "$a" "$sb/pkg_a-origin.git"
+    # feature/pkg_a-issue-446 on origin only.
+    git -C "$a" checkout --quiet -b feature/pkg_a-issue-446
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "446 on origin"
+    git -C "$a" push --quiet origin feature/pkg_a-issue-446
+    git -C "$a" checkout --quiet main
+    git -C "$a" branch --quiet -D feature/pkg_a-issue-446
+    git -C "$a" update-ref -d refs/remotes/origin/feature/pkg_a-issue-446
+    printf '#!/bin/sh\nexit 1\n' > "$a/.git/hooks/post-checkout"
+    chmod +x "$a/.git/hooks/post-checkout"
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#446 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    rm -f "$a/.git/hooks/post-checkout"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-446"
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "the failure names the repo, the destination and the branch" \
+        "ERROR: could not create a worktree for $a at $wt/l1_ws/src/pkg_a (branch 'feature/pkg_a-issue-446')" "$out"
+    assert_contains "the branch it made is removed again" \
+        "The branch 'feature/pkg_a-issue-446' made for it was removed again." "$out"
+    assert_not_contains "never started from the default instead" "Creating new branch" "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "no local branch left" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-446 && echo true || echo false)"
+    assert_eq "no worktree left registered" "1" "$(git -C "$a" worktree list --porcelain | grep -c '^worktree ')"
+}
+
 test_worktree_create_rollback_on_worktree_env_failure() {
     echo "TEST: worktree_env failing after a successful add rolls back the add, dir, and branch"
     local sb out rc=0 proj wt
@@ -440,7 +554,7 @@ test_worktree_list_json_reports_package_worktree() {
     assert_eq "exit 0" "0" "$rc"
     assert_contains "issue 444 reported" '"issue":444' "$out"
     assert_contains "project p11 reported as repo" '"repo":"p11"' "$out"
-    assert_contains "owning branch reported" "feature/issue-444" "$out"
+    assert_contains "owning branch reported" "feature/pkg_a-issue-444" "$out"
     assert_contains "sibling branch reported" "feature/pkg_a-issue-444" "$out"
     assert_contains "dirty status reported" '"status":"dirty"' "$out"
 }
@@ -1437,6 +1551,9 @@ test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
 test_worktree_create_package_hook_preflight_checks_package_repos
 test_worktree_create_rolls_back_on_second_repo_failure
+test_worktree_create_lookup_unknown_first_repo
+test_worktree_create_lookup_unknown_second_repo
+test_worktree_create_lookup_found_branch_fails_checkout
 test_worktree_create_rollback_on_worktree_env_failure
 test_worktree_remove_multi_package_dirty_refuses_all
 test_worktree_list_json_reports_package_worktree
