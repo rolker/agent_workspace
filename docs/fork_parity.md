@@ -156,7 +156,8 @@ The 34 fork issues closed since 2026-07-01, each against its row:
 - Row 39: rolker/ros2_agent_workspace#573, rolker/ros2_agent_workspace#575, rolker/ros2_agent_workspace#577
 - Row 40: rolker/ros2_agent_workspace#566, rolker/ros2_agent_workspace#602, rolker/ros2_agent_workspace#604
 - Row 43: rolker/ros2_agent_workspace#570, rolker/ros2_agent_workspace#590, rolker/ros2_agent_workspace#605
-- Row 50: rolker/ros2_agent_workspace#481, rolker/ros2_agent_workspace#559, rolker/ros2_agent_workspace#607, rolker/ros2_agent_workspace#620
+- Row 50: rolker/ros2_agent_workspace#481, rolker/ros2_agent_workspace#559, rolker/ros2_agent_workspace#607
+- Roadmap, not a row: rolker/ros2_agent_workspace#620 (ADR "Provisional" status, closed not planned) is the roadmap's To Consider entry `ADR "Provisional" status` under "From ros2_agent_workspace"
 - No row: rolker/ros2_agent_workspace#493 (deleted the fork's push gateway), rolker/ros2_agent_workspace#579 (a field-import run, bookkeeping), rolker/ros2_agent_workspace#632 (closed not planned into the open rolker/ros2_agent_workspace#631, which is #260's)
 
 ## Issues to open (owner's call)
