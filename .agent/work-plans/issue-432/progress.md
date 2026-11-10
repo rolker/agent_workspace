@@ -368,3 +368,20 @@ Both round-1 must-fixes are resolved. The Cutover pointer states that Direction 
 **Decision**: address
 
 Host read the round-2 review of 2026-11-10 (approved, Ship recommended, 3 suggestions) and directs all three be taken before the pull request opens: Path 1's first sentence is one whole quote of the owner's that stands alone when the sit-rep prints it, with the repeat of the full quote dropped; Path 2's first sentence is his words exactly or plainly not presented as a quote; the Cutover rule says row 7 does not wait for the deferred rows.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 11:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ab41365b85fe97750, resume 1 of 3)
+
+**Branch**: feature/issue-432 at `b4b6acb6`
+**Addressed**: Local Review (Pre-Push) at `b3bbdf95` (2026-11-10 11:13 -05:00)
+**Commits**: cab6b989, c9756bc5, b4b6acb6
+
+Checks on the final tree: `sitrep_checks.sh --root . --summary` prints `lines 0/4 deferrals 5/8` (exit 0); step-5 rendering prints acceptance_first whole; step-3 rendering prints Path 1 as `In the owner's words (2026-11-10): "I also want to move project11 to this workspace".` and Path 2 as `Implementing the missing pieces to make this workspace reflect the goals we set.`, each whole; `check_design_anchors.sh .` exit 0; full pre-commit over `main...HEAD` with no SKIP exit 0. The Path 1 quote ends with the period outside the closing quote: the sit-rep cuts at a period followed by a space, so a period inside the quote would run the first sentence on into the classification rule.
+
+### Actions
+- [x] Path 1 opens with one unbroken quote of the owner's (2026-11-10), then the classification rule; the repeat of his long quote is dropped (the acceptance case carries it) — `docs/roadmap.md:32-36`
+- [x] Path 2's first sentence is main's unquoted prose up to "we set", without the added "(the owner, 2026-10-15)" attribution — `docs/roadmap.md:38-40`
+- [x] Cutover pointer adds that row 7 does not wait for the deferred rows 5 and 6 — `docs/roadmap.md:188-190`
