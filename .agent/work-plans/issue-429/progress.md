@@ -158,3 +158,11 @@ Host read the Plan Review of 2026-11-10 (needs-work, 3 must-fix, 8 suggestions) 
 - The three must-fixes are one mechanism: a bare issue number standing for an issue's identity. Do not add three point fixes. The lookup takes and returns the issue's full identity: the owning repository and the number, resolved once (from the `.worktree-repos` header inside a package worktree, from the repository itself elsewhere), and returns the records directory, the repository that commits it (or none), and the key. Every reader, writer and the merge gate go through it, so a bare number inside a package worktree, a pull request from another repository's `feature/<repo>-issue-N` branch, and an outside location shared by two repositories all resolve by identity, each with a test.
 - Part 1 still honours only the default combination, but the lookup's return shape is what the other combinations need, so the owner's "configurable" stays open. Decision 2 and the ADR-0013 note are limited to the default combination.
 - Take all eight suggestions. The dispatcher's package-path work and its test sit in the same part (move one so they agree). Drop the Open Question to the owner: his answer of 2026-11-10 covers it, and the default for his own project is listed for his veto instead.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 10:05 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `067cb744`
+
+Revision after the plan review: part 1's lookup now takes and returns the issue's full identity (directory, committing repository, key, identity), resolved from the .worktree-repos header inside a package worktree and from the repository elsewhere; every reader, writer and the merge gate consume it, with a test for each way a bare number failed. Part 1 still honours only the default records combination; the eight suggestions are taken and the owner question is replaced by veto item 1.
