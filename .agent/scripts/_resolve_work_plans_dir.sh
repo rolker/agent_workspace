@@ -36,18 +36,26 @@
 #   records_path <path> [<from-dir>]
 #     <path> is a file or directory at or under
 #     <repo>/.agent/work-plans/issue-<N>/ (relative to $PWD; it need not
-#     exist yet); <N> is read from the path. Prints <path> unchanged when
-#     the repository holding it may hold issue <N>'s records, and refuses
-#     (stderr, naming the right checkout, return 1) when it may not:
-#     inside a package worktree (a .worktree-repos manifest encloses the
-#     path's repository, the path itself, or <from-dir>, default $PWD),
-#     only the manifest's issue checkout may (issue_checkout_of). A sibling
+#     exist yet). Prints <path> unchanged when the repository holding it
+#     may hold issue <N>'s records, and refuses (stderr, naming the right
+#     checkout, return 1) when it may not: inside a package worktree (a
+#     .worktree-repos manifest encloses the path's repository, the path
+#     itself, or <from-dir> when that shares the path's git toplevel), only
+#     the manifest's issue checkout may (issue_checkout_of). A sibling
 #     checkout with the same issue number and the worktree's top folder
 #     (whose git toplevel is some other repository, the workspace's main
-#     checkout, say) are refused for reads and writes alike. No manifest
-#     anywhere: a no-op, so workspace issues and single-repo project
-#     worktrees are unchanged. A path not of that shape is no timeline and
-#     is printed unchanged (a --no-progress temp dir, a test fixture).
+#     checkout, say) are refused for reads and writes alike. No manifest:
+#     a no-op, so workspace issues and single-repo project worktrees are
+#     unchanged, from wherever the command runs.
+#     The shape `(^|/).agent/work-plans/issue-<N>(/|$)` is matched twice:
+#     on <path> as given, and on its physical location (every symlink
+#     resolved, by cd -P / pwd -P / readlink, no GNU-only option). Each
+#     match is judged where it lies: the given one at the directory that
+#     holds the named .agent (so a records folder that is a symlink is
+#     judged where the link sits, not only where it points), the physical
+#     one where it resolves. Two different issue numbers refuse, and so
+#     does a path that cannot be resolved. Neither matching: no timeline,
+#     printed unchanged (a --no-progress temp dir, a test fixture).
 #   records_dir <N> [<dir>]
 #     <dir>'s git toplevel (default .) + /.agent/work-plans/issue-<N>,
 #     through records_path with <dir> as <from-dir>.
@@ -70,7 +78,9 @@
 #   issue_checkout_guard <dir> <N> [<from-dir>]
 #     The check records_path runs; callers use records_path or records_dir,
 #     never this directly. Looks for the manifest enclosing <dir>'s
-#     toplevel, then <dir>, then <from-dir> (default $PWD).
+#     toplevel, then <dir>, then <from-dir> (default $PWD), the last only
+#     when <dir> is in no repository or <from-dir> has the same toplevel:
+#     an unrelated repository's checkout says nothing about <dir>.
 #
 # Caller-gotcha: prefer a bare assignment (`WORK_PLANS_DIR=$(resolve ... )
 # || exit 4`) over `local WORK_PLANS_DIR=$(resolve ... )`. The `local`
@@ -166,7 +176,12 @@ issue_checkout_guard() {
         wt=$(_wpd_enclosing_manifest "$dir") || wt=""
     fi
     if [ -z "$wt" ]; then
-        wt=$(_wpd_enclosing_manifest "$other") || wt=""
+        local otop=""
+        otop=$(git -C "$other" rev-parse --show-toplevel 2>/dev/null) || otop=""
+        if [ -z "$top" ] || { [ -n "$otop" ] \
+            && [ "$(cd "$otop" 2>/dev/null && pwd -P)" = "$(cd "$top" 2>/dev/null && pwd -P)" ]; }; then
+            wt=$(_wpd_enclosing_manifest "$other") || wt=""
+        fi
     fi
     [ -z "$wt" ] && return 0
     ref=$(head -n1 "$wt/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')
@@ -190,24 +205,89 @@ issue_checkout_guard() {
     return 1
 }
 
+# Physical absolute form of <path>: every existing component resolved,
+# symlinks included (a symlinked last component too), and a missing tail
+# appended as written. Fails on a "." or ".." in the missing tail, on a
+# symlink chain longer than 40, or when a directory cannot be entered.
+# POSIX tools only (cd -P, pwd -P, readlink with no option), so it behaves
+# the same where GNU realpath -m does not exist.
+_wpd_physical() {
+    local p="${1:-}" rest="" base d target hops=0
+    [ -n "$p" ] || return 1
+    case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
+    while :; do
+        while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+        if [ -L "$p" ]; then
+            hops=$((hops + 1))
+            [ "$hops" -le 40 ] || return 1
+            target=$(readlink "$p") || return 1
+            case "$target" in
+                /*) p="$target" ;;
+                *) p="$(dirname "$p")/$target" ;;
+            esac
+            continue
+        fi
+        if [ -d "$p" ]; then
+            d=$(cd -P "$p" 2>/dev/null && pwd -P) || return 1
+            break
+        fi
+        base=$(basename "$p")
+        case "$base" in .|..) return 1 ;; esac
+        rest="/$base$rest"
+        p=$(dirname "$p")
+    done
+    if [ "$d" = "/" ]; then
+        printf '%s\n' "${rest:-/}"
+    else
+        printf '%s%s\n' "$d" "$rest"
+    fi
+}
+
+# Nearest existing directory at or above <path> (an absolute path).
+_wpd_existing_dir() {
+    local p="$1"
+    while [ ! -d "$p" ] && [ "$p" != "/" ]; do
+        p=$(dirname "$p")
+    done
+    printf '%s\n' "$p"
+}
+
 records_path() {
-    local path="${1:-}" from="${2:-$PWD}" abs probe issue
+    local path="${1:-}" from="${2:-$PWD}" gn="" gprefix="" rn="" phys gloc
+    local re='^(.*/)?\.agent/work-plans/issue-([0-9]+)(/.*)?$'
     if [ -z "$path" ]; then
         echo "ERROR: records_path: a path is required" >&2
         return 1
     fi
-    abs=$(realpath -m -- "$path" 2>/dev/null) || abs="$path"
-    if [[ "$abs" =~ /\.agent/work-plans/issue-([0-9]+)(/|$) ]]; then
-        issue="${BASH_REMATCH[1]}"
-    else
+    if [[ "$path" =~ $re ]]; then
+        gn="${BASH_REMATCH[2]}"
+        gprefix="${BASH_REMATCH[1]:-./}"
+    fi
+    phys=$(_wpd_physical "$path") || {
+        echo "ERROR: refusing to use $path as an issue's records: it cannot be resolved to a physical location." >&2
+        return 1
+    }
+    if [[ "$phys" =~ $re ]]; then
+        rn="${BASH_REMATCH[2]}"
+    fi
+    if [ -z "$gn" ] && [ -z "$rn" ]; then
         printf '%s\n' "$path"
         return 0
     fi
-    probe="$abs"
-    while [ ! -d "$probe" ] && [ "$probe" != "/" ]; do
-        probe=$(dirname "$probe")
-    done
-    issue_checkout_guard "$probe" "$issue" "$from" || return 1
+    if [ -n "$gn" ] && [ -n "$rn" ] && [ "$gn" != "$rn" ]; then
+        echo "ERROR: refusing to use $path: it names issue #${gn}'s records but resolves to issue #${rn}'s ($phys)." >&2
+        return 1
+    fi
+    # Where the named records folder sits: the directory that holds its .agent.
+    if [ -n "$gn" ]; then
+        gloc=$(_wpd_physical "$gprefix") || {
+            echo "ERROR: refusing to use $path as issue #${gn}'s records: ${gprefix} cannot be resolved." >&2
+            return 1
+        }
+        issue_checkout_guard "$(_wpd_existing_dir "$gloc")" "$gn" "$from" || return 1
+    fi
+    # Where it resolves to.
+    issue_checkout_guard "$(_wpd_existing_dir "$phys")" "${gn:-$rn}" "$from" || return 1
     printf '%s\n' "$path"
 }
 

@@ -569,6 +569,80 @@ out=$(dp "$H" --check-exit --issue 'owner/pkg_a#8' --skill review-issue --type p
 check "check-exit on that missing timeline: MISSING, not OK" "$([[ "$out" == "status=MISSING"$'\n'"rc=0" ]]; echo $?)" "$out"
 check "... and A8 has no timeline (so nothing was counted elsewhere)" "$([[ ! -e "$A8/.agent/work-plans/issue-8/progress.md" ]]; echo $?)"
 
+# ----------------------------------------------------------------- case 10
+# Pre-push review round 2. (1) The gate matches the records shape on the
+# path as given as well as on where it resolves, so a sibling's records
+# folder that is a symlink out of the records shape, and a relative path,
+# are refused, with or without GNU `realpath -m`. (2) Only a current folder
+# that shares the path's repository speaks for it: from inside a package
+# checkout, a workspace issue's timeline reads and writes as before.
+echo "TEST: symlinked and relative records paths are refused; a workspace timeline works from inside a package checkout"
+OUT_DIR="$SANDBOX/outside_records"
+mkdir -p "$OUT_DIR"
+cp "$B/.agent/work-plans/issue-7/progress.md" "$OUT_DIR/progress.md"
+{ echo; review_entry feature/pkg_a-issue-7; } >> "$OUT_DIR/progress.md"
+b_before=$(git -C "$B" rev-parse HEAD)
+mv "$B/.agent/work-plans/issue-7" "$SANDBOX/b_issue7_real"
+ln -s "$OUT_DIR" "$B/.agent/work-plans/issue-7"
+out_sum=$(md5sum < "$OUT_DIR/progress.md")
+SL="$B/.agent/work-plans/issue-7/progress.md"
+for where_ in B A; do
+    dir="${!where_}"
+    out=$(cd "$dir" && "$S/review_progress.sh" findings --progress "$SL" 2>&1); rc=$?
+    check "symlinked records folder in B, findings from $where_: refused, naming A" "$([[ "$rc" -eq 4 && "$out" == *"records go in $A"* ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" check --progress "$SL" --index 0 2>&1); rc=$?
+    check "symlinked records folder in B, check from $where_: refused" "$([[ "$rc" -eq 4 && "$out" == *"records go in $A"* ]]; echo $?)" "$out"
+done
+out=$(cd "$B" && checkpoint_entry | "$S/progress_append.sh" 7 2>&1); rc=$?
+check "symlinked records folder in B, progress_append.sh from B: refused" "$([[ "$rc" -eq 4 ]]; echo $?)" "$out"
+check "the symlink's target and B are unchanged" \
+    "$([[ "$(md5sum < "$OUT_DIR/progress.md")" == "$out_sum" && "$(git -C "$B" rev-parse HEAD)" == "$b_before" ]]; echo $?)"
+rm "$B/.agent/work-plans/issue-7"
+mv "$SANDBOX/b_issue7_real" "$B/.agent/work-plans/issue-7"
+check "B restored (status clean)" "$([[ -z "$(git -C "$B" status --porcelain)" ]]; echo $?)" "$(git -C "$B" status --porcelain)"
+
+# A realpath that refuses -m (BSD, macOS) changes nothing: the gate uses none.
+mkdir -p "$SANDBOX/nogrealpath"
+printf '#!/usr/bin/env bash\necho "realpath: illegal option" >&2\nexit 1\n' > "$SANDBOX/nogrealpath/realpath"
+chmod +x "$SANDBOX/nogrealpath/realpath"
+for rp in gnu stub; do
+    pre=""
+    [[ "$rp" == stub ]] && pre="$SANDBOX/nogrealpath:"
+    out=$(cd "$B" && PATH="$pre$PATH" "$S/review_progress.sh" findings --progress .agent/work-plans/issue-7/progress.md 2>&1); rc=$?
+    check "relative path from B ($rp realpath): findings refused" "$([[ "$rc" -eq 4 && "$out" == *"records go in $A"* ]]; echo $?)" "$out"
+    out=$(cd "$B" && PATH="$pre$PATH" "$S/review_progress.sh" check --progress ./.agent/work-plans/issue-7/progress.md --index 0 2>&1); rc=$?
+    check "relative path from B ($rp realpath): check refused" "$([[ "$rc" -eq 4 ]]; echo $?)" "$out"
+    out=$(cd "$A" && PATH="$pre$PATH" "$S/review_progress.sh" findings --progress .agent/work-plans/issue-7/progress.md 2>&1); rc=$?
+    check "relative path from A ($rp realpath): findings reads A's timeline" "$([[ "$rc" -eq 0 && "$out" == *'"source"'* ]]; echo $?)" "$out"
+done
+check "B unchanged by the relative-path attempts" "$([[ -z "$(git -C "$B" status --porcelain)" && "$(git -C "$B" rev-parse HEAD)" == "$b_before" ]]; echo $?)"
+
+# A workspace issue's timeline, from inside the package checkout A, works
+# exactly as from its own worktree WW.
+{ echo; review_entry feature/issue-7; } >> "$WW/.agent/work-plans/issue-7/progress.md"
+git -C "$WW" add .agent/work-plans/issue-7 && git -C "$WW" commit -q -m "workspace issue 7 review"
+WP="$WW/.agent/work-plans/issue-7"
+for c in "findings --progress $WP/progress.md" "round --progress $WP/progress.md --branch feature/issue-7" \
+         "sources --progress $WP/progress.md --head 1234567 --reviews $SANDBOX/reviews.json"; do
+    # shellcheck disable=SC2086
+    own=$(cd "$WW" && "$S/review_progress.sh" $c 2>&1); rc_own=$?
+    # shellcheck disable=SC2086
+    out=$(cd "$A" && "$S/review_progress.sh" $c 2>&1); rc=$?
+    check "workspace timeline from A: ${c%% *} gives what it gives from WW (rc $rc_own)" \
+        "$([[ "$rc" -eq "$rc_own" && "$rc" -eq 0 && "$out" == "$own" ]]; echo $?)" "rc=$rc out=$out"
+done
+out=$(cd "$A" && "$S/review_progress.sh" check --progress "$WP/progress.md" --index 0 2>&1); rc=$?
+check "workspace timeline from A: check ticks WW's box" "$([[ "$rc" -eq 0 && "$out" == "- [x]"* ]]; echo $?)" "$out"
+git -C "$WW" checkout -q -- .agent/work-plans/issue-7/progress.md
+ww_before=$(git -C "$WW" rev-parse HEAD)
+out=$(cd "$A" && checkpoint_entry | "$S/progress_append.sh" -C "$WW" 7 2>&1); rc=$?
+check "workspace timeline from A: progress_append.sh -C WW commits in WW" \
+    "$([[ "$rc" -eq 0 && "$(git -C "$WW" rev-parse HEAD)" != "$ww_before" ]]; echo $?)" "$out"
+out=$(cd "$A" && export WORK_PLANS_DIR_OVERRIDE="$WP" && source "$S/_resolve_work_plans_dir.sh" && resolve_work_plans_dir 7 2>&1); rc=$?
+check "workspace timeline from A: the resolver's override passes" "$([[ "$rc" -eq 0 && "$out" == "$WP" ]]; echo $?)" "$out"
+out=$(cd "$A" && "$S/dispatch_phase.sh" next --progress "$WP/progress.md" --pr none 2>&1); rc=$?
+check "workspace timeline from A: next --progress reads it" "$([[ "$rc" -eq 0 && "$out" == "action="* ]]; echo $?)" "$out"
+
 echo
 echo "test_package_issue_loop: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

@@ -688,7 +688,7 @@ _gate_progress=""
 _gate_refusal=""
 if [[ -n "$_gate_wt" ]]; then
     _gate_cand="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-    if _gate_refusal=$(records_path "$_gate_cand" 2>&1 >/dev/null); then
+    if _gate_refusal=$(records_path "$_gate_cand" "$_gate_wt" 2>&1 >/dev/null); then
         _gate_refusal=""
         [[ -f "$_gate_cand" ]] && _gate_progress="$_gate_cand"
     else

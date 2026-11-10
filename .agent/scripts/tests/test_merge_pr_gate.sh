@@ -422,6 +422,23 @@ else
     fail "(def-3) (out=${out:0:300})"
 fi
 
+# A workspace merge started from inside a package checkout (another
+# repository, in a package worktree for an unrelated issue) gates exactly as
+# from anywhere else: the records gate judges the gate's timeline by its own
+# worktree, not by the directory the merge was started in (issue 429 round 2).
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+pkgwt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-901"
+mkdir -p "$pkgwt/l1_ws/src"
+git init --quiet -b feature/issue-901 "$pkgwt/l1_ws/src/pkg_a"
+git -C "$pkgwt/l1_ws/src/pkg_a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+printf '# project=p11 issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n' "$pkgwt" > "$pkgwt/.worktree-repos"
+rc=0; out="$(cd "$pkgwt/l1_ws/src/pkg_a" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
+    GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
+    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --no-wait --no-roadmap-update 2>&1)" || rc=$?
+[[ "$rc" -eq 0 ]] && merged_called "$sb" && [[ "$out" == *"Review gate: approved review at head"* && "$out" != *"records gate refused"* ]] \
+    && pass "(def-pkg) all-good workspace merge started inside a package checkout: the gate reads the timeline and merges" \
+    || fail "(def-pkg) (rc=$rc out=${out:0:400})"
+
 # ================================================= --enforce, workspace =====
 echo "TEST: --enforce on a workspace PR refuses every gap; passes the all-good fixture"
 enforce_refuses() {  # <label> <progress> <with_summary|""> <reason fragment>
