@@ -267,3 +267,28 @@ Checked against both trees (fork read only: ls, find, cat, grep, `git --no-optio
 - [x] (suggestion) rolker/ros2_agent_workspace#605 is the Ollama reviewer issue: map it to row 43, not row 27 (gemini, verified) — `docs/fork_parity.md:137`
 - [x] (suggestion) Ollama decline reason: give this workspace's own reason (the late-October local trial found no model that met the bar), not only the fork's hardware reason — `docs/fork_parity.md:108,163`
 - [x] (suggestion) Row 8: `.claude/settings.json` here allows no `colcon` or adapter commands, so a background package build may prompt; add that to the note (Claude adversarial) — `docs/fork_parity.md:73`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-253 at `32b8bcfa`
+**Addressed**: Local Review (Pre-Push) at `4a67c635` (2026-11-10 12:39 -05:00)
+**Commits**: 985ca97b 19e62987 c7ea622a db943402 0c8d52be e52b7bdb c0f36a44 8337d083 71655204 22d2644b 0a3e4bbf c9210344 32b8bcfa
+
+### Actions
+- [x] Manifest line: the adapter reads the `.repos` of the branch the bootstrap names (`p11-rolling` checks out from unh_marine_autonomy's rolling branch, `distro: rolling`); the new-format manifest is only the test fixture (written from the jazzy manifest; GitHub code search over rolker finds no other); proposed issue 1 now also places it in a project11 repository; #267 (closed) moved out of row 1's Covered by — `docs/fork_parity.md:34,80,163`
+- [x] Fresh machine: `ros-dev-tools` (colcon, vcstool, rosdep) added to top line, row 3 and proposed issue 3; fork bootstrap installs it, ours does not, `adapter setup` stops without `vcs` — `docs/fork_parity.md:36,82,165`
+- [x] Scratchpad real size (find, 12:41): about 67,900 files, 39 GB, 59 folders + 269 loose files; largest folders named with sizes; kinds listed; 57,400 files are Python venvs — `docs/fork_parity.md:46,112,166`
+- [x] Item 10 drops the closing-keyword set (#369) and strict mode (#356, #359); row 12 cites #356/#359, row 24 cites #369 with #363 (closed) moved to the note; item 10 gains row 24's two uncovered parts — `docs/fork_parity.md:91,103,172`
+- [x] Row 51 partly covered with the optional-layer gap; not a blocker: `site` is one private repo, so a failed import leaves an empty `src`, which colcon builds as 0 packages, exit 0 (run here); class counts 12/11; gap added to item 10 — `docs/fork_parity.md:130,188`
+- [x] New "Not determined" section: rows 18, 31, 48, 50; squash merges (no merged PR from the six real-work branches; the rest not checked); default branch vs pin (37 of 44 equal, 7 differ, named; 38 still at `jazzy`); what moved in the fork after the inventory — `docs/fork_parity.md:55`
+- [x] Worktrees named by kind (4 real work, 2 plans only, 8 progress records only); remote refs fetched 11:17 to 11:18 (FETCH_HEAD) — `docs/fork_parity.md:45,111`
+- [x] Fork movement after the inventory recorded (uma 304 merge at 12:36, now 11; scratchpad additions) — `docs/fork_parity.md:13,65`
+- [x] Seven package `.agents/README.md` name the fork (11 repos in all); top line, row 36 and item 5 — `docs/fork_parity.md:49,115,167`
+- [x] fork#605 and the other two local-model issues (#570, #590) mapped to row 43, out of row 27 — `docs/fork_parity.md:151,155`
+- [x] Ollama decline: this workspace's own reason (late-October trial, none of three models found the must-fix; #398 comment of 2026-10-30) in row 43 and the Decided Against line — `docs/fork_parity.md:122,182`
+- [x] Row 8: no `colcon`, `make build`/`make test` or `adapter` command on the allowlist, so a background build may prompt — `docs/fork_parity.md:87`
+
+Verification re-run: 61 rows, IDs 1 to 61; 81 Covered-by paths exist; 19 workspace issue refs and 37 fork refs exist (gh); the 34 closed-since-fork issues equal gh's list; class and blocker counts match the Counts section. Pre-commit over the branch files, no SKIP: passed (script-test suite included).
