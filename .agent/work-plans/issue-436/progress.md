@@ -263,3 +263,13 @@ The first review's three must-fixes and its suggestions are resolved as worded. 
 - [ ] (a): setup-python in the adapter-contract CI job before installing the resolver.
 - [ ] (b): stale rule is "clean and HEAD equals the remote object"; ahead-of-remote is `local`; tracked changes only; warning lists files.
 - [ ] (b): wrapper finds the CI python; CI fails on skipped real-resolver tests; offline base case; temp cleanup; the "previous directory kept" line.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review found every earlier finding resolved and one new must-fix that is a few lines inside pull request (a); the reviewer states (a) is ready to implement once that fix and one CI step are added to its steps, with no further plan review needed)
+**After**: plan
+**Decision**: proceed
+
+Host read the second Plan Review and carries to the implementer of pull request (a): a git-backed manifest is labelled `url#ref/path@<commit>` in the provenance of every generated `.repos` header, never by a temporary file path, with a test using a `file://` base (issue 267, decision 5); the CI job that installs the resolver sets up Python first. Carried to pull request (b) when its turn comes: a clean clone that is ahead of the remote is not "what the remote holds" (define it as clean and HEAD equal to the remote object; only tracked changes count as dirty); the dirty-clone warning lists the changed files; an offline test for a base; temporary directories cleaned up; a line saying the previous generated directory is kept; CI fails rather than skips when the real-resolver tests do not run. Pull request (a) is implemented now; (d), the records, can run alongside once (a)'s branch is published, since one branch carries this issue's pull requests in turn.
