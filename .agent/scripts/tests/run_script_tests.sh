@@ -343,10 +343,10 @@ fi
 #     TMPDIR and lands in the runner's cwd — the repo root under pre-commit —
 #     so it is invisible to both the lint and the sweep. No such site exists
 #     in this directory today.
-# Eight absolute-/tmp
+# Five absolute-/tmp
 # mktemp sites remain in production scripts that suites may invoke —
-# worktree_create.sh:933,974, pr_status.sh:321,336, gh_create_pr.sh:237,306,
-# fetch_pr_reviews.sh:148, gh_create_issue.sh:205 (cited as file:line only;
+# worktree_create.sh:1091,1132, pr_status.sh:321,336,
+# fetch_pr_reviews.sh:158 (cited as file:line only;
 # reproducing one of those templates here would trip the lint above).
 # Temp files those calls create bypass both TMPDIR and this sweep. Fixing
 # them is out of scope for #304.

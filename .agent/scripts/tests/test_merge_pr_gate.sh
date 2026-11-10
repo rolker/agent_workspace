@@ -800,7 +800,7 @@ out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH
     GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
     "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --report-only 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"Roadmap updated"* ]] && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
-    && [[ "$out" == *"docs/roadmap.md: #7"* ]] && [[ "$out" == *"only touches paths this script committed itself (docs/roadmap.md,"* ]] \
+    && [[ "$out" == *"docs/roadmap.md: #7"* ]] && [[ "$out" == *"only touches bookkeeping: merge-time document files (work plans, roadmap) and paths this script committed itself (docs/roadmap.md,"* ]] \
     && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
     pass "(ci-2b) lowercase docs/roadmap.md: updated, and its commit is exempt like the uppercase one"
 else
@@ -1249,6 +1249,280 @@ if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-reques
     pass "(ci-34) head re-read fails on the first post-switch poll: the seeded carry-over still holds the merge"
 else
     fail "(ci-34) (head_polls=${head_polls} green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
+# ============================== stale headRefOid: host bookkeeping after gh's head (#323) =====
+# The PR 322 shape: gh's headRefOid still names the green code head (it has
+# not caught up with the host's push), the host pushed a commit after it,
+# and this run's Step 1.5 record commit lands on top. Step 2 compares gh's
+# head with the real one, so the host's commit is in its diff although this
+# run did not make it.
+set_pr_head() {  # <sb> <sha> -- rewrite the PR fixture's headRefOid
+    local remote_key
+    remote_key="$(printf '%s' "${1}.remote.git" | tr '/' '_')"
+    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$2" \
+        > "$1/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+}
+# make_stale_sandbox <kind>: the host's commit after the green head is
+# roadmap (docs/roadmap.md), other-plan (another issue's work-plan dir),
+# progress (this issue's progress.md), code, rename (code moved into a
+# work-plan dir) or submodule (a submodule bump). gh's headRefOid stays
+# at the green head. Prints "<sb> <green> <host>".
+make_stale_sandbox() {
+    local kind="$1" sb wt green base_sha
+    sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+    wt="$(ci_wt "$sb")"
+    case "$kind" in
+        rename)
+            echo "real code" > "$wt/moved.sh"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "code" ;;
+        submodule)
+            base_sha=$(git -C "$wt" rev-parse HEAD)
+            git -C "$wt" update-index --add --cacheinfo "160000,${base_sha},vendor/sub"
+            git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "add submodule" ;;
+    esac
+    green=$(git -C "$wt" rev-parse HEAD)
+    case "$kind" in
+        roadmap)
+            mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/roadmap.md" ;;
+        other-plan)
+            mkdir -p "$wt/.agent/work-plans/issue-99"; printf 'other issue\n' > "$wt/.agent/work-plans/issue-99/progress.md" ;;
+        progress)
+            printf '\n## Checkpoint\n**Status**: complete\n**When**: 2026-09-22 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: merge\n**Decision**: merge\n\nok\n' >> "$wt/.agent/work-plans/issue-7/progress.md" ;;
+        code)
+            echo "real change" > "$wt/some_file.sh" ;;
+        rename)
+            mkdir -p "$wt/.agent/work-plans/issue-7"
+            git -C "$wt" mv moved.sh .agent/work-plans/issue-7/moved.sh ;;
+        submodule)
+            git -C "$wt" update-index --cacheinfo "160000,${green},vendor/sub" ;;
+    esac
+    git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "host: $kind"
+    git -C "$wt" push --quiet origin feature/issue-7
+    # Every later push's new tip, so a test can name this run's own record
+    # commit even after a merge deleted the branch on origin.
+    # (A branch deletion pushes the all-zero SHA, which is skipped.)
+    printf '#!/bin/bash\nwhile read -r _old new _ref; do case "$new" in *[1-9a-f]*) echo "$new" >> "%s/pushed_tips.log" ;; esac; done\n' "$sb" \
+        > "${sb}.remote.git/hooks/post-receive"
+    chmod +x "${sb}.remote.git/hooks/post-receive"
+    set_pr_head "$sb" "$green"
+    write_workflows "$sb" '{"total_count":1}'
+    write_mergeable_fixture "$sb" "MERGEABLE"
+    echo "$sb $green $(git -C "$wt" rev-parse HEAD)"
+}
+last_pushed_tip() { tail -n1 "$1/pushed_tips.log" 2>/dev/null; }  # <sb>
+first_waited_sha() {  # <output> -- the SHA of the first "Waiting for CI on" line
+    sed -n 's/^  Waiting for CI on `\([0-9a-f]*\)`.*/\1/p' <<<"$1" | head -n1
+}
+
+for kind in roadmap other-plan; do
+    echo "TEST: CI target — stale headRefOid, a host $kind commit after gh's head: Step 2 targets the reviewed head at once (#323)"
+    read -r sb green host <<<"$(make_stale_sandbox "$kind")"
+    write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+    out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+    waited="$(first_waited_sha "$out")"
+    if [[ "$out" == *"CI target: reviewed head \`${green:0:7}\` — new head"*"only touches bookkeeping: merge-time document files (work plans, roadmap)"* ]] \
+        && [[ "$out" != *"which is not a merge-time document file"* ]] \
+        && [[ "$waited" == "${green:0:7}" ]] && merged_called "$sb"; then
+        pass "(ci-35 $kind) stale headRefOid + host $kind commit: CI target is the reviewed head, first wait on it, merges"
+    else
+        fail "(ci-35 $kind) (green=${green:0:7} host=${host:0:7} waited=${waited} lines: $(grep -E 'CI target|Waiting for CI' <<<"$out" | tr '\n' '|'))"
+    fi
+done
+
+for kind in code rename submodule; do
+    echo "TEST: CI target — stale headRefOid, a host $kind commit after gh's head: still targets the new head (#323)"
+    read -r sb green host <<<"$(make_stale_sandbox "$kind")"
+    write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+    out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
+        MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+    head_now=$(last_pushed_tip "$sb")
+    if [[ -n "$head_now" && "$out" == *"CI target: new head \`${head_now:0:7}\` — touches"* ]] \
+        && [[ "$(first_waited_sha "$out")" == "${head_now:0:7}" ]] && ! merged_called "$sb"; then
+        pass "(ci-36 $kind) stale headRefOid + host $kind commit: not bookkeeping, waits on the new head, no merge"
+    else
+        fail "(ci-36 $kind) (green=${green:0:7} host=${host:0:7} head=${head_now:0:7} lines: $(grep -E 'CI target|Waiting for CI' <<<"$out" | tr '\n' '|'))"
+    fi
+done
+
+echo "TEST: CI target — stale headRefOid, review running on the host's commit: the hold reads the host's commit, not the CI target (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"                 # code head green, no review run
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY_RUNNING"      # review running on the host's commit
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+head_now=$(last_pushed_tip "$sb")
+if ! merged_called "$sb" && [[ -n "$head_now" && "$head_now" != "$host" ]] \
+    && [[ "$out" == *"CI target: reviewed head \`${green:0:7}\`"* ]] \
+    && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${host:0:7}"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]]; then
+    pass "(ci-37) stale headRefOid, review on the host's commit under this run's record commit: holds the merge"
+else
+    fail "(ci-37) (green=${green:0:7} host=${host:0:7} head=${head_now:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+# The review SHA differs from the CI target here (stale headRefOid: CI on
+# the green head, review on the host's commit under this run's record
+# commit), so its check-runs are a read of their own. Until that read has
+# succeeded once the hold is unresolved: a failed first read must never
+# count as "no review running" (#323 review).
+echo "TEST: review hold — the review SHA's first read fails once, its review finished: merges only after reading it (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY"
+write_checkruns_exit "$sb" "$host" 1 1                               # first read of the review SHA fails
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=10 MERGE_PR_CI_GRACE_SECONDS=10 run_merge_wait "$sb" 2>&1)" || true
+reads=$(grep -cF "api repos//commits/${host}/check-runs" "$sb/gh_calls.log" 2>/dev/null || echo 0)
+if merged_called "$sb" && [[ "$reads" -ge 2 ]] && [[ "$out" != *"still in progress"* ]]; then
+    pass "(ci-41) a one-time failed read of the review SHA: re-read ($reads reads), then merges on its finished review"
+else
+    fail "(ci-41) (green=${green:0:7} host=${host:0:7} reads=$reads merged=$(merged_called "$sb" && echo yes || echo no) lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the review SHA's first read fails once, its review still running: holds (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+write_checkruns_exit "$sb" "$host" 1 1
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=2 MERGE_PR_CI_GRACE_SECONDS=2 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${host:0:7}"* ]]; then
+    pass "(ci-42) a one-time failed read, then a running review: the green CI target does not merge past it"
+else
+    fail "(ci-42) (green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the review SHA's check-runs never read: refuses at the grace deadline (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns_exit "$sb" "$host" 1                                 # every read fails
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=30 MERGE_PR_CI_GRACE_SECONDS=1 run_merge_wait "$sb" 2>&1)"; rc=$?
+if ! merged_called "$sb" && [[ "$rc" -ne 0 ]] \
+    && [[ "$out" == *"could not read the check-runs of \`${host:0:7}\`, the commit the review runs on, within 1s"* ]]; then
+    pass "(ci-43) review SHA unreadable throughout: no merge, refusal at the grace deadline naming the review commit"
+else
+    fail "(ci-43) (rc=$rc green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+echo "TEST: review hold — review SHA unreadable but --allow-pending-review: merges (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns_exit "$sb" "$host" 1
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=30 MERGE_PR_CI_GRACE_SECONDS=1 run_merge_wait "$sb" --allow-pending-review 2>&1)" || true
+if merged_called "$sb" && [[ "$out" != *"could not read the check-runs"* ]]; then
+    pass "(ci-44) --allow-pending-review: an unreadable review state does not hold the merge"
+else
+    fail "(ci-44) (green=${green:0:7} host=${host:0:7} lines: $(grep -E 'CI target|in progress|passed|ERROR|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: CI target — a review re-triggered by this run's own record push does not hold the merge (#323)"
+read -r sb green host <<<"$(make_stale_sandbox progress)"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_checkruns "$sb" "$host" "$CHECKRUNS_COPILOT_ONLY"             # the host commit's review finished
+# This run's record commit (the new head) is never read for the hold: a
+# review its own push re-triggers would otherwise hold every merge.
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+head_now=$(last_pushed_tip "$sb")
+if merged_called "$sb" && [[ -n "$head_now" && "$head_now" != "$host" ]] && [[ "$out" != *"still in progress"* ]] \
+    && ! grep -qF "api repos//commits/${head_now}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-38) the hold never reads this run's own record commit: merges on the reviewed head"
+else
+    fail "(ci-38) (green=${green:0:7} host=${host:0:7} head=${head_now:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — Step 1's roadmap commit whose own push failed is still this run's commit (#323)"
+# Step 1's push is refused (once), so Step 1.5's push carries the roadmap
+# commit to origin. Both are this run's commits: the hold walks over both
+# and reads the reviewed head, where the review is still running.
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+mkdir -p "$wt/docs"
+printf -- '# Roadmap\n\n- [ ] Something (#7)\n' > "$wt/docs/roadmap.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "add roadmap"
+git -C "$wt" push --quiet origin feature/issue-7
+reviewed=$(git -C "$wt" rev-parse HEAD)
+set_pr_head "$sb" "$reviewed"
+printf '#!/bin/bash\n[ -f refused_once ] && exit 0\ntouch refused_once\necho "refusing the first push" >&2\nexit 1\n' > "${sb}.remote.git/hooks/pre-receive"
+chmod +x "${sb}.remote.git/hooks/pre-receive"
+write_workflows "$sb" '{"total_count":1}'
+write_mergeable_fixture "$sb" "MERGEABLE"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS"
+out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
+    MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 \
+    GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --report-only 2>&1)" || true
+head_now=$(git -C "${sb}.remote.git" rev-parse feature/issue-7)
+if ! merged_called "$sb" && [[ "$out" == *"Roadmap push failed"* ]] \
+    && [[ "$(git -C "${sb}.remote.git" rev-list --count "${reviewed}..${head_now}")" -eq 2 ]] \
+    && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${reviewed:0:7}"* ]]; then
+    pass "(ci-39) roadmap commit pushed by Step 1.5 after its own push failed: the hold still reads the reviewed head"
+else
+    fail "(ci-39) (reviewed=${reviewed:0:7} head=${head_now:0:7} lines: $(grep -E 'Roadmap|CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+# A host push that lands on top of this run's record commit before Step 2's
+# fetch: the remote's post-receive hook, on this run's push, adds a
+# bookkeeping commit (another work-plan file) on top of it, as a host
+# pushing at that moment would, and writes that commit's check-runs
+# fixture (its SHA is known only then). The hold walks back only over this
+# run's own commits, so it must stop at the host's commit, the head.
+add_late_host_push() {  # <sb> <check-runs json for the host commit>
+    local sb="$1" json="$2" hook="${1}.remote.git/hooks/post-receive"
+    printf '%s' "$json" > "$sb/late_host_checkruns.json"
+    cat > "$hook" <<EOF
+#!/bin/bash
+[ -f "$sb/late_host.sha" ] && exit 0
+while read -r _old new ref; do
+    [ "\$ref" = refs/heads/feature/issue-7 ] || continue
+    export GIT_INDEX_FILE="$sb/late_host.index"
+    git read-tree "\$new"
+    blob=\$(printf 'host notes\n' | git hash-object -w --stdin)
+    git update-index --add --cacheinfo "100644,\$blob,.agent/work-plans/issue-7/host-notes.md"
+    tree=\$(git write-tree)
+    rm -f "\$GIT_INDEX_FILE"
+    late=\$(GIT_AUTHOR_NAME=host GIT_AUTHOR_EMAIL=h@h GIT_COMMITTER_NAME=host GIT_COMMITTER_EMAIL=h@h \
+        git commit-tree "\$tree" -p "\$new" -m "host: notes after the record commit")
+    git update-ref refs/heads/feature/issue-7 "\$late" "\$new"
+    echo "\$new" > "$sb/late_record.sha"
+    echo "\$late" > "$sb/late_host.sha"
+    cp "$sb/late_host_checkruns.json" "$sb/gh_fixtures/api_repos__commits_\${late}_check-runs.json"
+done
+EOF
+    chmod +x "$hook"
+}
+
+echo "TEST: review hold — a host push lands on top of this run's record commit before Step 2: the hold reads the host's commit (#323)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_mergeable_fixture "$sb" "MERGEABLE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY_RUNNING"          # review running on the host's commit
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+late=$(cat "$sb/late_host.sha" 2>/dev/null); record=$(cat "$sb/late_record.sha" 2>/dev/null)
+if [[ -n "$late" && -n "$record" ]] && ! merged_called "$sb" \
+    && [[ "$(git -C "${sb}.remote.git" rev-parse "${late}^")" == "$record" ]] \
+    && [[ "$(git -C "${sb}.remote.git" rev-parse "${record}^")" == "$green" ]] \
+    && [[ "$out" == *"CI target: reviewed head \`${green:0:7}\` — new head \`${late:0:7}\` only touches bookkeeping"* ]] \
+    && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${late:0:7}"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]]; then
+    pass "(ci-40) host commit on top of this run's record commit: the hold reads the host's commit and holds the merge"
+else
+    fail "(ci-40) (green=${green:0:7} record=${record:0:7} late=${late:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
+fi
+
+echo "TEST: review hold — the same late host push with its review finished: merges, the hold read the host's commit (#323)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_mergeable_fixture "$sb" "MERGEABLE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY"                  # the host commit's review finished
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+late=$(cat "$sb/late_host.sha" 2>/dev/null); record=$(cat "$sb/late_record.sha" 2>/dev/null)
+if [[ -n "$late" ]] && merged_called "$sb" && [[ "$out" != *"still in progress"* ]] \
+    && grep -qF "api repos//commits/${late}/check-runs" "$sb/gh_calls.log" \
+    && ! grep -qF "api repos//commits/${record}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-40b) late host commit's review finished: merges; the hold read the host's commit, never this run's record commit"
+else
+    fail "(ci-40b) (green=${green:0:7} record=${record:0:7} late=${late:0:7} lines: $(grep -E 'CI target|Waiting for CI|in progress|passed|Merg' <<<"$out" | tr '\n' '|'))"
 fi
 
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
