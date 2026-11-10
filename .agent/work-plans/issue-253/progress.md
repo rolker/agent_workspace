@@ -225,3 +225,17 @@ All five must-fixes and the four suggestions are resolved as worded, and the rev
 **Decision**: proceed
 
 Host read the second Plan Review (ready). Carried to the implementer: a table row may cite a folder pattern with a count and the count check expands it; diff/cmp, `git --no-optional-locks branch` and `worktree list`, and list/view-only gh are allowed read-only commands; the self-check row's step number is corrected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-253 at `135e7063`
+
+- `docs/fork_parity.md` (new, 183 lines): two lists on top (3 lines block developing project11 here, 9 block only retiring the fork), a 61-row table grouped by duty, the 34 closed-since-fork issues mapped to rows, 10 proposed issues and 6 proposed Decided Against lines (none opened, nothing written to the roadmap's Decided Against).
+- Inventory from the fork checkout at `323306a8` (read only, not fetched; ls-remote unmoved): 454 tracked + 355 untracked entries (7 `__pycache__` left out), split into pass 1 (174), pass 2 (86), pass 3 (531) and catch-all (18) by a script that fails on any unassigned or doubly assigned path. Four read-only sub-agent passes ran in parallel (4 jobs); the merge re-applied the blocker test to every "yes" (make setup chain, layer checkouts and local rosdep keys downgraded, with reasons in their rows) and re-checked the layer worktrees itself against all remote refs (1793 repo checkouts read).
+- Verification (scratchpad script, not committed): inventory split exits 0; every one of 809 entries is in a row and every stated glob count matches; 79 "Covered by" paths exist in this tree; 52 issue and PR references exist on GitHub; the closed-since-fork list equals the fork's 34.
+- `docs/roadmap.md`: Cutover row 4 Notes link only (Status left to merge_pr.sh). Digest: one pointer line. `docs/design.md`: no change (the record changes no part of the design picture).
+- Plan: carried the second plan review's two suggestions (allowed read-only commands, self-check step number).
+- Found while auditing: the fork is in use today (an agent opened a cube_bathymetry issue-173 worktree there at 12:23 and committed a plan); #267 is closed while roadmap Cutover row 3 still says planned, so the adapter wiring for the new manifest has no open issue.
+- Pre-commit on all branch files, no SKIP: passed (script-test suite included).
