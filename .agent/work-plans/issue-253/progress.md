@@ -76,3 +76,13 @@ issue: 253
 - [ ] Split blockers from retire-only while classifying: probable day-to-day blockers to confirm in pass 1 and 2 are the ROS knowledge files (no home yet in this tree; agent sessions at the project root need them, via the adapter or the project's own `.agents`), the rosdep and layer-build scripts the `ros2_colcon` adapter lacks (R1/R2 in the digest), `sync_repos`/`validate_repos` equivalents (#267 resolver), `document-package` content, and anything #429 or #430 turns up on the second machine. Field mode (#208/#209), deployment skills and `janitor-sweep` are the probable retire-only items.
 - [ ] Fold in, do not redo: #260 (fork open issues; reuses the audit's table to bucket issues), #261 (fork memories), #262 (cutover checklist), #208/#209 (field mode rows point at them), #172 (parent), #429 (run-issue on package repositories, in implementation) and #430 (second machine install) as the evidence source for the blocker list, #363 to #367 (already filed from the 2026-09-29 round, rows say "filed").
 - [ ] Before the audit starts, ask the owner whether the fork checkout may be fetched read-only (`git fetch` writes into the checkout, so it was not done) or whether `git ls-remote` against origin is enough to learn whether it moved after 2026-09-25; the audit otherwise says "as of 2026-09-25".
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 15:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's aim and changes only how the audit is done and what it produces, which is mechanism; the owner asked for the audit on 2026-11-10 to answer "How ready is the workspace to take over the duties of ros_agent_workspace?")
+**After**: issue-actions
+**Decision**: proceed
+
+Host read the Issue Review of 2026-11-10 and accepts its actions as plan inputs: one record, `docs/fork_parity.md`, with a classified table and two short lists on top (what blocks developing project11 here; what blocks only retiring the fork); three parallel read-only passes merged by one agent; the audit proposes issues and opens none; issues 260, 261, 262, 208, 209, 172 and 363 to 367 are folded in by reference. The review's two questions are answered by the host: the fork's remote `main` is checked with `git ls-remote` (read-only) against the checkout, never fetched into; the Direction section is not changed for this issue, since the sit-rep already lists its worktree as work in flight.
