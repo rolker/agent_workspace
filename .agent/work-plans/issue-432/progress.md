@@ -121,3 +121,16 @@ The quotes are faithful, every check parses, and the Cutover reconciliation is s
 - [ ] Give the `/run-issue`-on-project11 line its own tracking issue before merge; make the install line's "builds" match issue 430 or move it.
 - [ ] Remove the status words ("not too far off", "the registration script exists"); keep Path 2's existing name.
 - [ ] Note the simulator check's lag; name a README goal in Serves; write bare check cells; widen the hostname grep.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 10:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review found two must-fixes, both in how the plan words and checks the lines, neither a change of scope; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+Host read the Plan Review of 2026-11-10 (needs-work, 2 must-fix, 5 suggestions) and directs:
+- Two paths, not three. Path 1 is project11; Path 2 keeps its existing name and takes the orchestrator trial and the owner's work managers in his home directory, in his words. The sit-rep knows two paths and is not changed here. Listed for his veto.
+- The install line (issue 430) says only what issue 430's acceptance says. "The Rolling instance builds there" and "a /run-issue run reaches the merge checkpoint" become one line, checked by a tracking issue of its own, which only the owner may open; the host asks him. Until he answers, that cell is empty and the sit-rep reads it as not yet done with no automatic check, which is true.
+- All five suggestions are taken: no status words in the section, Serves names a README goals section, bare check cells, the simulator check's lag behind the milestone noted in Open Questions, the hostname search widened.
