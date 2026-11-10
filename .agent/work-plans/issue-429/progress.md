@@ -655,3 +655,13 @@ Follow-up only, nothing new: issue 437 (writes from outside any worktree; the ga
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:06 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved, Ship recommended, no must-fix and no suggestions)
+**After**: publish
+**Decision**: publish
+
+Host read the round-3 review (approved; both round-2 must-fixes hold against 8 further vectors; the merge from main lost nothing). This is pull request 1 of 2 for the issue, so the pull request says "Part of", not "Closes". Five of the host's earlier checkpoint times on this timeline were corrected to their commit times in a bookkeeping commit before publishing.
