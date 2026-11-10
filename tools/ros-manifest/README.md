@@ -24,7 +24,11 @@ A resolver for a manifest format that lets multiple ROS 2 repos compose into one
 - **Layers**: a fixed, ordered list of colcon-overlay build units. Roles only ever *subtract*
   from a layer's repo list. `optional_layers` (a list of names from the same manifest's own
   `layers`) marks layers whose fetch or build a consumer may let fail without aborting; across
-  `extends` the optional layers are the union, in chain order.
+  `extends` the optional layers are the union, in chain order. So only a manifest that lists a
+  layer in its own `layers` can mark it optional, and no manifest can mark it required again:
+  a base you extend decides which of its layers are failure-tolerant, and a leaf that lists the
+  same layer and adds repositories to it gets them failure-tolerant too. To make a base's optional layer
+  required, change the base.
 - **Per-distro refs**: each repo has a default `ref`, with optional per-distro overrides, and can
   be entirely absent for a given distro.
 - **Roles**: two selector models are implemented so they can be compared on real data (see
