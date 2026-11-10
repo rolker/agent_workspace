@@ -248,3 +248,13 @@ Both must-fixes and all eight suggestions are resolved as worded. The revised ru
 - [ ] (suggestion) Re-anchor step 4's target on 429's final two-location `records_path`: judge the checkout where the commit runs, and the physical one if it differs
 - [ ] (suggestion) Pin down the static test's detection rule and prove it catches a planted writer
 - [ ] (suggestion) Keep the manifest shortcut out of the shared helper
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: ready, nothing open that needs another plan round)
+**After**: plan
+**Decision**: proceed
+
+Host read the second Plan Review (ready). Carried to the implementer: the comment on issue 269's parked strict-mode item is drafted as text for the host to put to the owner, not posted; the rule judges the checkout where the commit runs, plus the physical one when a symlink makes them differ; the static test says exactly how it finds a committing writer; the package-manifest shortcut stays out of the shared helper. Implementation is NOT dispatched yet: it starts only after issue 429's first pull request has merged and main is merged into this branch, as the plan's step 1 says.
