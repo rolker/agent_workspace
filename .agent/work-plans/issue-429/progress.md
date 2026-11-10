@@ -239,3 +239,56 @@ Host read the second Plan Review of 2026-11-10 (needs-work, 2 must-fix, 2 sugges
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `ec2594de`
 
 Second revision: one executable records entry point (review_progress.sh records) with a hand-built path audit across the repository; merge gate moved to part 3 with the pull request identity; owning repository chosen by feature/issue-N branch, slug as cross-check, no empty-slug key; two-package-worktree test added; tracking=repo claim softened; wording edits per the grep answer.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 10:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `ec2594de`
+**Branch**: `feature/issue-429`
+
+Third review, a narrow convergence check after the host's second revise (11:25). Scope: the second review's must-fixes and suggestions, and this revision's own changes (entry point and audit, gate cut to part 3, part 1 size). Nothing an earlier review accepted is reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | 26 files, one mechanism. Take the plan's own fallback from the start (answer below). |
+| Issue alignment | Good | Serves, as checked: workspace goal "A project can be worked from its own root", `docs/design.md#worktrees` (Records, Target), `docs/design.md#review-loop-and-timeline`. Unchanged since the second review. |
+| File targeting | Needs work | Audit grep re-run (`git grep -n work-plans` over the repository): two sites wrongly left or missing that part 1 breaks (findings 1, 2), four minor omissions (finding 4). |
+| Consequences | Needs work | `_bookkeeping.sh` is the merge gate's own rule, so routing it in part 1 changes the gate that decision 7 says stays as today (finding 1). |
+| Principle alignment | Needs work | The lookup's bare-number rule judges the caller's `$WORKTREE_ISSUE`, not the directory it is handed, so callers that are environment-independent today become environment-dependent (finding 2). |
+| ADR compliance | Good | ADR-0013 note scoped to the default combination; ADR-0003 synthetic fixture; gate and `**PR**:` identity in part 3. |
+| ROS conventions | N/A | Workspace plan. |
+
+Second review resolved, checked in the plan: must-fix 1 (one executable entry point `review_progress.sh records`, the library stays sourced; `dispatch_phase.sh` 367 and 502 from `commit_repo`; the skills at `sitrep` 341, `triage-reviews` 138, `address-findings` 91, `review-plan` 102-107 routed): yes, but see findings 1 and 2 for what the routing does. Must-fix 2 (gate to part 3, `merge_pr.sh` and `test_merge_pr_gate.sh:483-509` unchanged in part 1): yes for `merge_pr.sh`, not for its helper (finding 1). Owning repository by `feature/issue-N`, slug as cross-check, no empty-slug key: yes (steps 3 and 6, case 4). Two-worktree test: yes (case 4). `tracking=repo` claim softened: yes. Wording files per the grep answer: yes.
+
+Checked against the code: `_resolve_work_plans_dir.sh` rule 2 trusts `$WORKTREE_ISSUE` and rule 2b runs only when it is unset (58-99), rule 3 refuses; `dispatch_phase.sh` builds `$wt/...` from `resolve_worktree` with no environment check (352-368); `_bookkeeping.sh:189-190` pathspec is constant and repository-relative; its callers `merge_pr.sh:760` (`$_ci_wt`, the pull request's worktree toplevel, 689-700) and `review_progress.sh sources` at 405 (`os.getcwd()`; comment 388-391: "The timeline file may live outside that repository"); `sitrep_root.sh` `repository()` (470-480, `repository_dirs` from the header slug or the checkouts' agreement) and its tests at `test_sitrep_checks.sh:1040-1100`; `test_project_registry.sh:1477-1520` (`_review_plan_find_plan`, a copy of `review-plan` 102-107).
+
+### Findings
+
+1. **[Consequences / must-fix]** `_bookkeeping.sh:190` is the merge gate's coverage rule, so routing it through the entry point in part 1 changes the gate, against decision 7 ("part 1 leaves `merge_pr.sh` reading as today"). Today the pathspec `.agent/work-plans/issue-N/*` is a constant, independent of cwd, environment and settings. Through `records --issue N --from <wt>` it can be refused: by a mismatched `$WORKTREE_ISSUE` (finding 2), by `review_progress.sh sources` passing `os.getcwd()` from outside the issue's worktree (the case its comment at 388-391 allows), and by project settings rc 2 or 3. A refusal turns "only bookkeeping since the review" into "review coverage could not be confirmed", which blocks a workspace merge that passes today (every pull request gets `progress:` commits after its review). Resolution: leave `_bookkeeping.sh` unchanged in part 1 and move it to part 3 with the gate (in the default combination the repository-relative pathspec is already right for the owning package repository); list it under "Left" in the audit with that reason.
+2. **[Principle alignment / must-fix]** The bare-number rule with an explicit `--from` still trusts the caller's `$WORKTREE_ISSUE` (step 4: "rules 2 and 2b of the existing function, anchored on the toplevel of `<from-dir>`"; rule 2 matches the variable, rule 2b only runs when it is unset). `dispatch_phase.sh` and the sitrep listing already know the worktree and today read it with no environment check; after part 1 a shell where `worktree_enter.sh` exported another issue (script-flow agents, a terminal, an orchestrator that entered one worktree and drives another) is refused for an ordinary single-repository issue. Resolution: with `--from`, judge the directory by its own manifest, basename `issue-*-N` or branch `feature/issue-N`, never by `$WORKTREE_ISSUE` (the #147 guard stays for the cwd form); add a case: `WORKTREE_ISSUE=<other>` set, `dispatch_phase.sh dispatch --issue <N>` still names `<wt>/.agent/work-plans/issue-<N>/progress.md`. In the same vein, `sitrep` is a read-only report: a refusal of the entry point must become the row's "unknown (<reason>)" text, not an error.
+3. **[File targeting / must-fix]** `test_sitrep_checks.sh` is wrongly "left" as a fixture that "builds inputs": its step-3 tests (1009-1100) run the very `sitrep` block part 1 rewrites. Two of their fixtures stop passing through the lookup: `$SB/wt7` (basename not `issue-*-7`, one entry detached) fails rule 2b, and every package fixture puts all checkouts on `feature/issue-N`, which step 3 refuses as "several". Real worktrees name siblings `feature/<repo>-issue-N` (ros2_colcon adapter 772), so update the fixtures to that and keep the existing expectations (header repository's timeline, not another repository's issue N; bare header with no single owner gives no guess). Add the file to Files.
+4. **[File targeting]** Audit omissions (minor, wording or tests): `sitrep_root.sh` `repository()` is a second owning-repository rule (header slug or checkout agreement) with no `work-plans` literal, so the grep cannot find it; say which rule wins for sitrep rows or make it consume the lookup. `test_project_registry.sh:1477-1520` copies `review-plan` 102-107 and keeps testing the old glob after the skill changes; update it with the skill. `run-issue/SKILL.md:292` quotes the implement task text that `dispatch_phase.sh:271` changes. `address-findings` 45 and 77, `.agent/knowledge/review_loop_lifecycle.md:47` and `.agent/workflows/README.md:10,71` describe the path and belong on the reworded list. `cross_model_review.sh:1231` (diff filter) is a pattern and right as it is; list it as left.
+5. **[Consequences]** Step 5 makes every loop reader and writer refuse a project issue when the project's settings file is malformed (rc 2) or holds a hand-set non-default combination (rc 3), where today the loop runs on the default path (the 1449 warning says so). Accepted earlier as a decision; say it in the part 1 pull request and run `registration_verify.sh` over the registered projects before merging so no current project stops. Also state what the lookup does when the registry itself does not parse (`registry_resolve_session_dir` rc 2): a workspace issue's lookup reads no registry today and should not start failing on it; test the workspace case with a broken registry.
+
+### Size
+
+26 files is one mechanism but not one reviewable pull request: ten shell scripts with a new subcommand, four test files, and nine skills of which six change behaviour (they call the entry point and are driven by tests such as `test_sitrep_checks.sh`). Take the plan's fallback from the start: part 1a is the library, entry point, script consumers, messages, their tests and the design/script-reference/ADR-0013 text; part 1b is the nine skills with `test_sitrep_checks.sh` and the `test_project_registry.sh` copy. The window between them is safe: skills keep building `<worktree>/.agent/work-plans/issue-N`, which is the lookup's answer for every single-repository issue, and no package issue is driven until part 2.
+
+### Summary
+
+The second review's two must-fixes and suggestions are resolved in the plan, and the gate cut leaves `merge_pr.sh` itself as today. Part 1 still changes the gate through its helper `_bookkeeping.sh`, and the lookup's bare-number rule makes environment-independent callers depend on `$WORKTREE_ISSUE`; both can refuse an ordinary single-repository issue that works today. Fix those, move the sitrep test into scope, and split part 1 into scripts then skills.
+
+### Recommended Actions
+
+- [ ] Leave `_bookkeeping.sh` to part 3 with the gate; list it as left with the reason (finding 1)
+- [ ] With `--from`, judge the directory, not `$WORKTREE_ISSUE`; test dispatch with a mismatched variable; sitrep turns a refusal into row text (finding 2)
+- [ ] Add `test_sitrep_checks.sh` to Files; sibling fixtures on `feature/<repo>-issue-N`, existing expectations kept (finding 3)
+- [ ] Audit omissions: `sitrep_root.sh` rule, `test_project_registry.sh` copy, `run-issue` 292, the docs and `address-findings` lines (finding 4)
+- [ ] Pull request states the rc 2/3 stop and checks registered projects; broken-registry workspace case tested (finding 5)
+- [ ] Split part 1: scripts first, skills second (Size)
