@@ -340,3 +340,45 @@ Governance: ADR-0009 complies (venv; the reason for a make target rather than a 
 - [x] (suggestion) Only the declaring manifest can mark a layer optional, so a remote base can make a layer failure-tolerant and the leaf cannot override that. Decide this, and state it in the README — `schema.py:136`, `merge.py:55`
 - [x] (suggestion) Cache robustness (unchanged code): a directory left by an interrupted clone is reused as a hit, and the key `url@ref` can collide (`x@y`+`z` vs `x`+`y@z`). Clone into a temporary name and rename it; hash `json.dumps([url, ref])` — `extends.py:28`, `:44` (deferred: host direction: recorded for a follow-up; cache code unchanged from main, and (b) uses a fresh cache per run)
 - [x] (suggestion) The CI step only installs. Add a `ros-manifest --help` smoke call so the install is checked before (b)'s tests depend on it — `.github/workflows/validate.yml:40`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 14:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-436 at `110176de`
+**Addressed**: Local Review (Pre-Push) at `a456e8ff` (2026-11-10 14:11 -05:00)
+**Commits**: `f3b06312`, `34ad4b1a`, `00a6fbd5`, `75c7cdf8`, `1e3647a6`, `8598b198`, `110176de`
+
+Pull request (a), fix round 1. The four must-fixes are one class (manifest content is untrusted and becomes paths and lines), closed in one place: a section "Untrusted-input rules" in `tools/ros-manifest/src/ros_manifest/schema.py`, applied while parsing every manifest in the chain; the emitter refuses anything that got past.
+
+### Actions
+- [x] (must-fix) Names become paths and lines — `schema.py` `_NAME_RULES`/`_check_name`: layer `[A-Za-z0-9_-]+`, repository `[A-Za-z0-9_][A-Za-z0-9_.-]*`, group `[A-Za-z0-9_][A-Za-z0-9_:-]*` (`hw:deltat` from the tests), role `[A-Za-z0-9_][A-Za-z0-9_-]*`, distro `[a-z][a-z0-9_]*` (`fullmatch`); the error names the manifest, the key and the name (`repr`). Belt in `emit.py` `_inside`: every path written is refused unless it resolves inside `--out`, both layouts, including a pre-existing symlink that leads out. All files are built and checked before the first is written, so a refusal leaves nothing. Tests: `../../escaped`, an absolute layer, `#hidden`, `a/b`, `.hidden`, a float name, the symlink, both layouts (`f3b06312`, `34ad4b1a`)
+- [x] (must-fix) Header values unescaped — `schema.py` `_refuse_control_chars` walks the whole parsed document: any key or value holding a control character (Unicode Cc, which includes `\n`, `\r`, tab, NUL, DEL, NEL) or a line/paragraph separator (Zl, Zp) is a parse error naming where, never echoing the value. `emit.py` `_line` refuses any header or list line holding one (shared predicate `has_control_char`), so a value reaching it by another route cannot split a line; it does not replace characters, it refuses. Tests: `core\nevil`, a newline in `extends.path`, a newline in a repository-name key, seven control characters in a url, a label carrying a newline, `--distro "jazzy\nevil"`, and a base reached through a symlink (`manifest.yaml` → a file named `evil\n- injected.yaml`, clean to the parser, refused by the emitter with nothing written) (`f3b06312`, `34ad4b1a`)
+- [x] (must-fix) Credentials in an `extends` url — refused, not stripped (owner's rule: fail closed). `schema.py` `_refuse_credentials` on every repo `url` and `extends.url`, with `urllib.parse.urlsplit`: refused are a password or token after `:` in the userinfo in any form (https, ssh, scp-style), any userinfo on a non-ssh URL (`https://<token>@host/...` is the usual token form), an ssh user that is not a plain name (`%3A`), a `#` or `?` in the userinfo that hides the rest of the authority from `urlsplit`, and `://` with no valid scheme. Allowed: no userinfo (`https://`, `http://`, `git://`, `file://`, local paths, `host:path`) and a plain user on an ssh remote (`ssh://git@host/...`, `git+ssh://`, scp-style `git@host:path`, as in the p11 fixture). Message: "credentials do not belong in a manifest; use a credential helper or an ssh remote", without the URL. An invalid-YAML error now prints position and problem only (PyYAML's message quotes the line). The later messages in `extends.py` that print `{url}` (`_clone_or_reuse`, `_head_commit`) only ever see a URL that passed this check. Tests: 12 refused forms (message holds neither the URL nor the secret), 12 allowed forms, the CLI path (exit 1, nothing on stdout/stderr or in `--out` carries the secret) (`f3b06312`)
+- [x] (must-fix) Non-string scalars — `schema.py` `_require_str` on `url`, `ref`, `type`, each `distros.*.ref`, and `extends.path`/`url`/`ref`; the error gives the type and says to quote (`1.10` → 1.1, `yes` → true, `2024-01-01` → a date). Tests: float, bool and date refs, per-distro `3.10`, int url, list type, each extends field; a quoted `'1.10'` kept exactly (`f3b06312`)
+- [x] (suggestion) Label `url#ref:path@commit` — `extends.py` `_GitOrigin.label`; a git ref cannot contain `:`. Test with a `release/2` branch; README and docstrings updated (`00a6fbd5`)
+- [x] (suggestion) Only the declaring manifest marks a layer optional — decided to keep the union; README states it: only a manifest that lists a layer in its own `layers` can mark it optional, no manifest can make it required again, so a base decides which of its layers are failure-tolerant and a leaf's repositories in such a layer are too; to change that, change the base (`75c7cdf8`)
+- [x] (suggestion) CI smoke call — `.github/workflows/validate.yml`, job `validate-adapter-contract`, one line after the install step (`8598b198`). The complete diff of this pull request to that file, against main (+9/−0, nothing else touched): after `Checkout code`, `- name: Set up Python` / `uses: actions/setup-python@v5` / `with:` / `python-version: '3.10'` / (blank) / `- name: Install ros-manifest (the resolver the ros2_colcon adapter calls)` / `run: pip install -e tools/ros-manifest` / `- run: ros-manifest --help` / (blank). Checked locally: `python -m ros_manifest.cli --help` exits 0.
+- [x] (suggestion) Stale `.repos` in a reused `--out` — `emit.py` (deferred: recorded for pull request (b), which resolves into a fresh directory each run)
+- [x] (suggestion) Editable install points at one checkout — `Makefile` (deferred: recorded for pull request (b) step 2: the adapter runs the venv's python with `PYTHONPATH` set to its own checkout's `tools/ros-manifest/src` rather than `.venv/bin/ros-manifest`)
+- [x] (suggestion) Cache robustness — `extends.py` (deferred: recorded for a follow-up: an interrupted clone is reused as a hit, and the key `url@ref` can collide; code unchanged from main, and (b) uses a fresh cache per run)
+
+Also added (consequence of the rules): a README section "What a manifest may contain" (names, quoting, control characters, URL forms, the emitter's second line) (`1e3647a6`).
+
+### For pull request (b)
+- The adapter runs `<main venv>/bin/python -m ros_manifest.cli` with `PYTHONPATH=<adapter's own checkout>/tools/ros-manifest/src`, not the installed console script (the editable install points at one checkout; the stamp cannot notice a moved or deleted target).
+- A reused `--out` keeps `.repos` files an earlier run wrote that `layers.txt` no longer lists; (b) resolves into a fresh directory (or clears the files this tool owns).
+
+### For a follow-up
+- `extends` cache: a directory left by an interrupted clone is reused as a hit (clone into a temporary name and rename); the key `url@ref` can collide (hash `json.dumps([url, ref])`).
+
+### Checks
+- `PYTHONPATH=tools/ros-manifest/src /home/roland/agent_workspace/.venv/bin/pytest tools/ros-manifest/tests`: 150 passed (66 before; 83 in the new `tests/test_untrusted_input.py`, 1 new in `tests/test_extends.py`).
+- p11 fixture, default (flat) layout, main's resolver (`git archive main`) against the branch's: byte-identical for jazzy, rolling and humble (7 files each), stderr and stdout identical.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0; `validate-script-tests` passed, yamllint, black, flake8 passed.
+
+### Not done
+- Package names get no name pattern (they do not become paths or lines of generated files; the control-character rule covers them); references inside lists (`groups.*.repos`, role `subtract`/`add`/`roots`, `packages.*.repo`) are not pattern-checked, only matched against defined names.
+- `--distro` on the command line is not checked against the distro name rule; it reaches only header lines, where the emitter refuses a control character.
+- `absent:` in a per-distro entry is not required to be a boolean (unchanged).
