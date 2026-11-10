@@ -146,3 +146,13 @@ The shape (one record, three read-only passes, a merge, a count check, no issues
 - [ ] Require a read-only diff for same-name files before "already covered"; name a test here for the ROS build path or say "no test".
 - [ ] Add the one-sentence day-to-day blocker test to the plan and every pass brief.
 - [ ] Fix sync/validate (and related manifest scripts) as adapter, not yet covered, day-to-day blocker yes.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 15:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review found five must-fixes in the audit's method, none a change of what the audit is for; the plan is the brief three passes will work from, so it is corrected before they start; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+Host read the Plan Review of 2026-11-10 (needs-work, 5 must-fix, suggestions) and directs that every must-fix and suggestion be taken as the review words them: every "host" step becomes the implementer's; the inventory gets a catch-all pass and a check that fails on any unassigned path, tracked or untracked, and also covers Makefile targets, CI jobs, hand steps in the instruction files and closed-since-fork issues; "already covered" needs a read-only diff for same-named scripts, with "partly covered" as a class, and a named test or "covered, no test"; the one-sentence day-to-day blocker test goes in the plan and every pass brief; the repository sync and validate scripts are classified adapter, not yet covered, day-to-day blocker; table rows are grouped by duty.
