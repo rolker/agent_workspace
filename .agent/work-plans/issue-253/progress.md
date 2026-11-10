@@ -313,3 +313,21 @@ All six round-1 must-fixes and six suggestions are resolved as worded (re-read i
 - [x] (suggestion) "Not determined" says no named test covers fork ADR-0016's build-pollution case; `test_build_layer_order_and_cascade` (`.agent/scripts/tests/test_ros2_colcon.sh:1050`) asserts each layer builds having sourced only the layers below it, which is that case's cause (stub colcon; real baked chains not tested). Cite it and narrow the line (codex) — `docs/fork_parity.md:63`
 - [x] (suggestion) Fork #620 (Provisional ADR status, closed not planned) maps to row 50 "already covered"; here it is the roadmap Deferred line "ADR Provisional status" (`docs/roadmap.md:413`). Map it there or say so (codex) — `docs/fork_parity.md:156`
 - [x] (suggestion) Roadmap Cutover row 3 still says #267 "planned" while the document says the adapter wiring has no issue; say the roadmap row is the only tracking entry until proposed issue 1 is opened (Claude sub-reviewer) — `docs/fork_parity.md:34`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4011409abd505895, resume 1 of 3)
+
+**Branch**: feature/issue-253 at `387e7a7f`
+**Addressed**: Local Review (Pre-Push) at `b3cd0e14` (2026-11-10 12:51 -05:00)
+**Commits**: 5152dfa3 b5e77257 3e313402 387e7a7f
+
+### Actions
+- [x] Open #310 cited on the Watch line, row 6 (Covered by and note) and proposed issue 6; issue 6 now leaves the dependency mechanism for keys rosdep does not resolve to #310 instead of folding in local rosdep keys — `docs/fork_parity.md:38,85,168`
+- [x] Build-pollution case: "Not determined" line narrowed to real colcon builds, citing `test_build_layer_order_and_cascade` (stub colcon); row 50's note corrected to match — `docs/fork_parity.md:65,132`
+- [x] Fork #620 moved out of row 50 to its roadmap entry; the entry is under To Consider ("From ros2_agent_workspace"), not a Deferred section, and the document says so — `docs/fork_parity.md:157`
+- [x] Manifest line names roadmap Cutover row 3 (Manifest support, still planned against closed #267) as the only tracking entry until proposed issue 1 is opened — `docs/fork_parity.md:34`
+
+Verification re-run: 61 rows, IDs 1 to 61; 81 Covered-by paths exist; 20 workspace issue refs and 37 fork refs exist (gh); the 34 closed-since-fork issues equal gh's list; class and blocker counts match the Counts section. Pre-commit over main...HEAD, no SKIP: passed (script-test suite included).
