@@ -94,3 +94,55 @@ Host read the Issue Review of 2026-11-10 and accepts its actions as plan inputs:
 **Plan**: `.agent/work-plans/issue-253/plan.md` at `1b953c94`
 
 One record, docs/fork_parity.md, from three parallel read-only passes over the fork checkout (inventory fixed from git ls-files first, "already covered" verified by opening the file here), merged by one agent, checked by a path and issue-number script; the audit proposes issues and opens none.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 12:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #253 — ros2_agent_workspace parity audit: classify remaining ADRs, skills, scripts for port/adapter/decline
+**Plan**: `.agent/work-plans/issue-253/plan.md` at `1b953c94`
+**Branch**: `feature/issue-253`
+
+Fork checkout read for this review only with `ls`, `cat`, `git --no-optional-locks` (`ls-files`, `branch -vv`, `worktree list`, `stash list`) and read-only `gh` list calls against the fork's GitHub repository; nothing written, fetched or run there.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One record, three passes and a merge, no code; one PR. |
+| Issue alignment | Needs work | Serves line, as checked: "Flexibility and Trust, control and information (README `#workspace-goals`); `docs/design.md#registry-and-adapters`; roadmap Cutover sequence row 4." Follows the Issue Review and Checkpoint. Missing: the roadmap row 4 requirement "Closed-since-fork issues are accounted for here, as features" (finding 2); the issue body's "decline ... recorded in Decided Against" is not mentioned (finding 8). |
+| File targeting | Needs work | Output files right. The inventory (the audit's real "file targeting") leaves tracked and untracked fork paths in no pass and misses duties that are not files (finding 2). |
+| Consequences | Needs work | Step 7 relies on `update_roadmap.sh` to set an "in review" status; the script only sets `done`, and `merge_pr.sh` already runs it at merge (finding 7). |
+| Principle alignment | Needs work | "Verify before claiming": "already covered" from reading only this tree's file misses fork-only behaviour in same-name files (finding 3). "Ask about what matters": list A has no shared test, so passes will disagree (finding 4). |
+| ADR compliance | Good | ADR-0003, 0011/0012, 0013, 0014/0015, 0016, 0018 named with how each is met; read-only rule for the other root stated in every pass. |
+| ROS conventions | N/A | Workspace record; no ROS code. |
+
+### Findings
+
+1. **[Approach, must-fix]** Steps 1, 4 and 6 (and the overlap assignment in step 1) are given to "the host". In this loop no host does phase work: the one implementing agent builds the inventories, gathers the #429/#430 evidence, runs the three passes as its own sub-agents, merges, and runs the verification script. Reword every "host" to "the implementer" (passes may be sub-agents it starts; the merge and the verification are its own), or the implementer waits on a step nobody takes.
+2. **[Inventory, must-fix]** The prefix split and `find -maxdepth 3` do not account for everything the fork does. Checked in `/home/roland/project11`:
+   - Tracked paths in no pass: `.agent/AGENT_ONBOARDING.md`, `AI_IDENTITY_STRATEGY.md`, `AI_RULES.md`, `WORKFORCE_PROTOCOL.md`, `WORKTREE_GUIDE.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/.identity.template`, `.agent/github_metadata.json`, `.claude/settings.json` (a PreToolUse hook running `check_question_context.py` on AskUserQuestion, plus a permissions allowlist), `.editorconfig`, `.gitignore`. Add a catch-all ("anything unmatched goes to pass 2") and have the split script print unassigned paths and fail if any.
+   - Untracked/ignored, in no pass: `.workspace-worktrees/issue-workspace-610` (branch `feature/issue-610`, open fork PR 657 "[PARKED] merge_pr.sh: classify merge verification, read ci-local attestations" — a duty in flight that `main` does not show); 324 untracked files in `.agent/scratchpad/` (field-data analysis scripts and results, lost if the checkout is retired); `.agent/project_config.yaml` (`field_remote: gitcloud`); `.agent/.identity`; `.rosdep/` (local rosdep sources); `.make/` (bootstrap and layer stamps); `.claude/settings.local.json`; 17 generated `make_*` skills; `.claude/worktrees/`. Use `git --no-optional-locks -C /home/roland/project11 ls-files -o --directory` (read-only, 355 entries without `__pycache__`) as the untracked inventory instead of `find -maxdepth 3` (876 lines mixing tracked and untracked), and redefine the step-6 sum on it.
+   - Duties that are not files: about 25 `Makefile` targets (`setup-all` with git-bug, `sync`, `add-remote`/`push-remote`/`pull-remote`, `lock`/`unlock`, `pr-triage`, `agent-build`/`agent-run`/`agent-shell`, `test-scripts`, `validate`, layer stamps) — one row per target or target group, not one row "Makefile"; the CI jobs in `.github/workflows/validate.yml` (pre-commit lint, required-docs check, markdown link check, script tests); the things the fork's `AGENTS.md`/`CLAUDE.md`/`.github/instructions/*` tell agents to do by hand (pass 2 extracts these as duty rows, not one row per instruction file).
+   - Not in the plan at all: roadmap Cutover row 4 says "Closed-since-fork issues are accounted for here, as features". Add a read-only `gh issue list -R rolker/ros2_agent_workspace --state closed` step (34 closed since 2026-07-01, 16 since 2026-09-15) mapping each to a row or "no row: …", and list the fork's 2 open PRs (657 above; 663 dependabot) for list B.
+3. **[Verify before claiming, must-fix]** "Already covered" from opening this tree's file is not enough where the fork has a file of the same name: 37 script names exist in both `.agent/scripts/` trees and 31 of them differ. For each same-name or same-purpose pair, the pass reads a read-only `diff` of fork against here and either finds no fork-only behaviour (already covered) or names it (class port or adapter, note "partly covered: <what is missing>"). For the ROS build path (`setup_layers.sh`, `stage_rosdep_manifests.sh`, `rosdep_*` against `.agent/project_types/ros2_colcon/adapter.sh`), "already covered" also names the test here that exercises the behaviour, or the row says "covered, no test" and counts as a day-to-day risk; running anything in the fork stays forbidden.
+4. **[Classification, must-fix]** "Day-to-day blocker" is undefined, so three passes will classify it differently and list A will be inconsistent. Put one test in the plan and in each pass brief, for example: "Yes if, without it, a developer doing a normal project11 change on pickerel (fresh 26.04, Rolling, Claude Code, this workspace only) would have to fall back to the fork or redo by hand something the fork automates within the first week, or the Direction acceptance case (a working simulator in Rolling) cannot be reached; otherwise retire-only." The merge step re-applies the test to every "yes" before it goes into list A.
+5. **[Manifest duties, must-fix]** Step 3 asks pass 1 to describe the resolver but leaves the class open. Fix it in the plan: `sync_repos.py`, `validate_repos.py` (and `list_overlay_repos.py`, `manifest_fallback.sh`, `resolve_repo_checkout.sh` where they serve the same duty) are **not yet covered**: `tools/ros-manifest/` is a tested prototype, but nothing in `.agent/`, `.claude/` or the `Makefile` calls it (grep, 2026-11-10), and the `ros2_colcon` adapter still reads vcstool `.repos` files from `configs/manifest/`. Class adapter, day-to-day blocker yes (owner, 2026-11-10: "I want the new manifest to be used for the pickerel test"), "Covered by" naming the resolver as the starting point and #267, never "already covered".
+6. **[Readability, suggestion]** 120–180 per-file rows will not be read and will churn. Group rows by duty (for example "field mode: N scripts, 3 skills, fork ADR 0011 and 0014, 2 knowledge files, Makefile remote targets"), listing the fork paths in the row so the count check still maps every path; about 40–70 rows keeps the document inside 250–350 lines. Each list-A/B line reads as effect, need, issue ("On pickerel, X cannot be done until Y — #N / no issue yet") so the owner can act without the table.
+7. **[Consequences, suggestion]** `update_roadmap.sh --issue N` only sets Status to `done` and `merge_pr.sh` already runs it on merge. Step 7 should edit only row 4's Notes (the link) by hand and leave Status to the merge.
+8. **[Issue alignment, suggestion]** The issue body records declines in the roadmap's "Decided Against". Have the document list proposed Decided Against lines next to the proposed issues (owner's call), so the decline list has a home after the veto.
+9. **[Safety, suggestion]** In each pass brief, besides "no make, no script run": every `git` call in the fork and its worktrees carries `--no-optional-locks`; unpushed work in `layers/worktrees/*` and `.workspace-worktrees/*` is read with `git --no-optional-locks -C <wt> log --oneline @{u}..` (or "no upstream"); `gh` against the fork repository is list/view only.
+
+### Summary
+
+The shape (one record, three read-only passes, a merge, a count check, no issues opened) is right and the read-only rule is sound. It is not ready: the "host" steps need an owner in this loop, the inventory misses tracked and untracked paths and non-file duties (including an in-flight fork PR and 324 scratchpad files), "already covered" ignores fork-only behaviour in 31 differing same-name scripts, the blocker test is undefined, and the manifest duties need their honest class fixed in the plan.
+
+### Recommended Actions
+
+- [ ] Reword steps 1, 4, 6 so the implementer (with its own sub-agents for the passes) does them.
+- [ ] Extend the inventory: catch-all for unassigned tracked paths with a failing check; untracked list from `git --no-optional-locks ls-files -o --directory`; Makefile targets, CI jobs and instruction-file duties as rows; closed-since-fork issues and open fork PRs.
+- [ ] Require a read-only diff for same-name files before "already covered"; name a test here for the ROS build path or say "no test".
+- [ ] Add the one-sentence day-to-day blocker test to the plan and every pass brief.
+- [ ] Fix sync/validate (and related manifest scripts) as adapter, not yet covered, day-to-day blocker yes.
