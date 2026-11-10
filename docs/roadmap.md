@@ -186,7 +186,8 @@ this table tracks the seven migration steps.
 
 The current acceptance case, project11 on a second machine against ROS 2
 Rolling, and its lines are in [Direction](#direction). Direction defers
-rows 5, 6 and 8 (#260 to #262) until its simulator line is true.
+rows 5, 6 and 8 (#260 to #262) until its simulator line is true, so row
+7 does not wait for rows 5 and 6.
 
 Ordered by dependency, deliberately without dates: each row starts when the
 rows above it are done, and nothing here is time-boxed. Goal (owner,
