@@ -892,3 +892,39 @@ Host read the Integrated Review. One open finding, should-fix: both paths check 
 ### Not done
 - The project path's inherited `rm -rf "$WORKTREE_DIR"` after a failed first add (`worktree_create.sh` 788-799) still runs when `_wt_add_repo` refuses another run's branch; if that run's worktree is at the same `WORKTREE_DIR`, it is removed. Left to the per-issue lock follow-up, as directed; the `_wt_add_repo` test calls the helper directly and does not cover it.
 - docs/design.md line citations (deferred by direction).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-10 13:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a852b1bb7dae4e0f6, resume 2 of 3)
+
+**PR**: #417 at `6458bb93`
+**Depth**: Deep (reason: round 6 convergence check per handoff)
+**Round**: 6 in PR mode. The handoff says "no cross-model reviewers", so this is the round-3+ convergence check. It covers the Integrated Review's one open finding, the race in the failed-checkout cleanup, and the fix diff since `2ba95e67` (a6ead361).
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified:
+- The open finding is resolved for the window it named, the origin lookup of up to 60 s.
+  - `wt_add_new_branch` makes the branch with `git branch` after the lookup. `git branch` refuses an existing branch, so status 2 (made nothing) undoes nothing on either path:
+    - `undo_new_branch_checkout` exits before touching anything unless its status is 1;
+    - `_wt_add_repo` sets `made_branch` only when the status is not 2.
+  - `$?` on the right of `||` is the helper's status, and `set -e` does not cut it short.
+- Both new tests fail against the previous scripts. A `git archive` of 2ba95e67 with the new test file gives "branch=gone" on both paths, and they pass now.
+- An ordinary creation produces the same result as before. `git branch [--no-track] <b> <start>` followed by `git worktree add <dest> <b>` is equivalent to `git worktree add [--no-track] -b <b> <dest> <start>`:
+  - the origin, parent and default start points are unchanged;
+  - the parent paths still leave tracking to git's autoSetupMerge, as before;
+  - the origin path still writes only the branch's own upstream settings.
+  - The suite's narrowed-clone checks (refspec unchanged; `git fetch` works after origin deletes the branch) pass.
+- At 6458bb93, with 0 failures: test_worktree_create.sh 58, test_ros2_colcon.sh 218.
+- Shellcheck --severity=warning is clean on the 3 changed scripts.
+- run_script_tests.sh cites `worktree_create.sh:1091,1132`; both lines are correct.
+- The project path's `rm -rf "$WORKTREE_DIR"` after a refused first add is inherited. main does the same after any failed first add (main's worktree_create.sh 719-722), so it is not counted against this pull request. It belongs to the per-issue lock follow-up.
+
+Cross-model: skipped (round-6 convergence check, per handoff).
+
+Deferred by the host to follow-up issues, not counted against this pull request: the per-issue lock, which covers the inherited `rm -rf`; the stale ref in `check_existing_branch_parent`; the design.md inventory line numbers.
+
+### Findings
+- [ ] (suggestion) A small window remains between this run's `git branch` and its `git worktree add`, a few milliseconds. In it, a second run can see the new branch, take the existing-branch path and check it out at the same destination. This run's add then fails with status 1, and the cleanup removes that run's worktree and branch, because "a worktree on the branch this run made" does not prove the worktree is this run's. Reproduced with a git double on `_wt_add_repo`: the other run's worktree and branch were gone. This is the residual race the triage accepted ("confined to the add itself"), and the fix diff did not introduce it: the combined `add -b` had the same window. It is not a defect for this round; put it on the per-issue lock follow-up. If wanted, a cheaper tightening: in `wt_add_new_branch`, when `<dest>` already exists before `worktree add`, report "branch made, no worktree" so that the caller removes no worktree. `git branch -D` then refuses a branch that another worktree has checked out — `.agent/scripts/_worktree_helpers.sh:731-733`, `.agent/scripts/worktree_create.sh:80-82`
