@@ -12,8 +12,10 @@ out), taken at 12:13.
 
 The fork is still in daily use: between 12:23 and 12:29 that day an agent in
 the fork opened a worktree for cube_bathymetry issue 173 and committed a work
-plan there. Its scratchpad folder (`.agent/scratchpad/cube173/`) appeared
-after the inventory and is not counted.
+plan there; at 12:36 it committed a merge on the unh_marine_autonomy 304
+branch, and it added files to `appledore_backscatter/` and `uma304/` in the
+scratchpad. None of this is in the inventory counts; "Not determined" lists
+what moved.
 
 What this serves, from `docs/roadmap.md`:
 
