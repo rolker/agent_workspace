@@ -511,3 +511,53 @@ Cross-model: gemini ran (complete, 2 findings: 1 kept as must-fix 3, 1 dropped);
   - `progress_read.py`, the parser. It takes any path from its callers, and those callers pass the gate. The exceptions are sitrep's survey loop, which reads every listed worktree's timeline for display and already skips a package worktree's top folder, and run-issue step 4's count, whose `PF` now comes from a checked `where`.
 - A write from outside any worktree (from the session root, or from a package's hosted checkout) still commits on that checkout's own branch. The gate does not close it: no manifest encloses those directories, so it lets them through exactly as it does an ordinary workspace issue. Closing it would need a new rule for workspace issues, which is the separate issue the owner is being asked to allow. Not enabled.
 - The merge gate reading the owning checkout's timeline is still pull request 2. `merge_pr.sh` now passes its lookup through the gate: for a package worktree the lookup is refused, and the existing "carries no issue timeline" reason stands.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 13:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a4978891eeca7425a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `e8205e67`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification as in round 1, per the fix-round rule: records gate, merge_pr.sh, three skills, docs/design.md; cross-model dispatched as usual, since round 2 is no convergence check)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Round 1's three must-fixes are closed, and so are its four acted-on suggestions; the fifth was deferred to issue 393. Re-tried against the new gate (`records_path`), from B (the sibling checkout) and C (the package worktree's top folder):
+- refused: a `..` path from A into B's timeline (rc 4), and every round-1 vector;
+- a symlink in B into A's records directory reads A's own timeline, and writes through it fail loudly (rc 3, nothing committed in either repository);
+- `progress_append.sh` from the session root still commits on the workspace's `main`, as issue 437 expects.
+
+Mutation copies all fail the suite:
+- a new `review_progress.sh` subcommand with no table row fails 2 checks;
+- removing the `check` gate fails 7;
+- the old step-1 `cd "$(where)"` block fails 2.
+
+The `where` blocks stop when `where` prints a path and exits non-zero (the assignment carries the substitution's status). The run-issue citations and the design citations re-checked against the files. Suites, 0 failed each:
+- test_package_issue_loop 125, test_dispatch_phase 140, test_merge_pr_gate 106, test_merge_pr 91;
+- test_script_tests_hook_scope 275, test_resolve_work_plans_dir 21, test_progress_append 23;
+- test_review_code_convergence 35, test_triage_reviews_integration 59, test_issue_review_entry 6;
+- test_address_findings 15, test_checkpoint_269 43, test_skill_paths 136.
+
+The two changed suites only add a copied file and a declaration; nothing they assert was removed.
+
+Issue 437: `records_path` is the single place every writer passes, so 437's rule lands there. The gate serves reads and writes alike, though, and case 8 asserts that the workspace main checkout reads its own issue-7 timeline. So 437 needs a write mode in the gate, not just a new refusal.
+
+Outside reviewers:
+- codex ran, 1 finding: must-fix 1, which I had reproduced independently;
+- gemini ran, 1 suggestion: review-plan's fallback glob probes the top folder. It reads nothing wrong (it finds nothing there), and it is a hand-built path, so it goes to issue 393;
+- the Claude adversarial specialist ran: must-fix 2 (shared with my own reproduction) and two suggestions, kept below.
+
+### Findings
+- [ ] (must-fix) The gate reads the issue number only from the symlink-resolved path, and the regex needs a leading slash. Two ways through:
+  - a sibling's `.agent/work-plans/issue-7` that is a symlink to a directory outside the records shape passes unchecked, and `check` then edited that target (reproduced; codex found the same);
+  - where `realpath -m` is missing (BSD or macOS), a relative `.agent/work-plans/issue-7/...` path also skips the gate.
+
+  Fix: match `(^|/)\.agent/work-plans/issue-N(/|$)` on the path as given, check the resolved location separately, and add a symlink test — `.agent/scripts/_resolve_work_plans_dir.sh:199`
+- [ ] (must-fix) `issue_checkout_guard` falls back to the caller's directory (`$PWD` by default) even for a path in an unrelated repository. With the current directory inside a package worktree, a workspace worktree's timeline is refused. Reproduced: `findings --progress <workspace worktree>/…/issue-12/progress.md` from A gives rc 4, while from its own worktree it gives rc 0. `merge_pr.sh:691` calls `records_path` with no from-directory, so an ordinary workspace merge run from such a directory gets "the records gate refused the timeline" and the enforcing gate refuses the merge. That is not "exactly as before". Fix: consult the from-directory only when the path has no repository or shares the from-directory's toplevel (C still refuses: its toplevel is the path's), pass `"$_gate_wt"` at `merge_pr.sh:691`, and add a test — `.agent/scripts/_resolve_work_plans_dir.sh:169`
+- [ ] (suggestion) sitrep's survey reads `$d/.agent/work-plans/issue-N/progress.md` directly. It is limited to the issue's repository checkouts, so I found no wrong read, but "every records read passes one gate" is not literally true. Name it in the design's "does not cover" list — `docs/design.md:457`
+- [ ] (suggestion) Issue 437 will need a write mode in `records_path`, since one function serves reads and writes and case 8 keeps the main checkout's read of its own timeline. Record this on issue 437 — `.agent/scripts/_resolve_work_plans_dir.sh:193`
+- [ ] (suggestion) The enumeration parses only `    name)  cmd_x` rows of `review_progress.sh`'s case table. A row written another way (`name) shift; cmd_x`) would slip past both checks; parse every label between `case "$SUB" in` and `esac` instead — `.agent/scripts/tests/test_package_issue_loop.sh:452`
+- [ ] (suggestion) review-plan's `--issue` fallback overwrites `WS_ROOT` and globs the top folder (gemini). It is harmless here, and the hand-built path belongs to issue 393 — `.claude/skills/review-plan/SKILL.md:105`
