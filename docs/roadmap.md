@@ -18,12 +18,12 @@ ran them.
 **Acceptance case.** A bare project that was never onboarded is made ready
 and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
 through the loop with the workspace's goals and principles visibly driving
-the work. Until that run passes the merge checkpoint, ADR-0016 (Session roots
-and the user tier) stays Provisional
+the work. That run passed the merge checkpoint on 2026-11-09, and ADR-0016
+(Session roots and the user tier) is Accepted
 ([Sessions and roots](design.md#sessions-and-roots)).
 
 Design question OQ-2
-([Open questions](design.md#open-questions)) asks where that run is tracked:
+([Open questions](design.md#open-questions)) asked where that run was tracked:
 here. The run's target is the `gz4d` project, as step 5 of the Workspace
 Redesign table below says.
 
@@ -74,8 +74,8 @@ README.
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
 | The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
 | The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all suites | `gh-issue 410 closed` |
-| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | |
-| A `/run-issue` run started from the project root reaches the merge checkpoint | |
+| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | `gh-issue 332 closed ; gh-issue rolker/geozui4d#8 closed` |
+| A `/run-issue` run started from the project root reaches the merge checkpoint | `gh-issue rolker/geozui4d#9 closed` |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 
 | Deferral | Revisit check |
@@ -83,7 +83,6 @@ README.
 | The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 | The workspace as a registered project (#295): settled once ADR-0016 is | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 | A Direction section in the acceptance project's own repository: `onboard-project` offers one to a project whose settings say `instructions=tracked` (#332 D3), so it is decided at the acceptance project's onboarding run | `file-contains .claude/skills/onboard-project/SKILL.md Direction section` |
-| The sit-rep over every registered root with a Direction section (this first form reads the workspace root only; a project's roadmap may be `docs/roadmap.md` or `ROADMAP.md`, the two places `onboard-project` looks) | |
 
 Things set aside for good are under [Decided Against](#decided-against).
 
@@ -243,6 +242,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | #110 | done | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
 | Morning status / standup skill | #386 | done | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4). Covered by the sit-rep (next row); #389 made it answer "What's next?" |
+| Sit-rep for the session's own root | #418 | done | owner | `/sitrep` in a project session reports that project (its Direction section in `docs/roadmap.md` or `ROADMAP.md`, worktrees, pull requests, problems its files allow, run record under its name); the workspace report lists project work only where its Direction lines name it; `sitrep_root.sh` decides the root; design section: [Documentation layers](design.md#documentation-layers) |
 | Sit-rep, Direction section and one-line inbox | #386 | done | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals, and (#389) answers "What's next?" with one suggested next step, replacing the `what-next` skill; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
@@ -354,6 +354,7 @@ Items considered and rejected, with reasons. An item here can be reconsidered if
 | Coordinator-intermediated mode | 2026-04-19 session | Would require the coordinator to sit between Roland and sub-agents. Incompatible with direct terminal visibility that Roland uses for debugging (watch agents in action, scroll back to see process). Any coordinator must be additive-only |
 | Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. this workspace is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
 | Mandatory commit squashing before push | 2026-04-19 session | We merge with `--merge` (not `--squash`), so branch history = PR history. Squashing would hide useful intermediate state. Commits are cheap; keep them honest. `fixup!` autosquash remains optional per-developer |
+| One sit-rep over the workspace and every registered root | 2026-11-09, #418 | The owner, 2026-11-09: "a sit rep in gz4d is just for that project and one in the workspace is just for the workspace. The idea of having a personal assistant type skill or something for ~ is where a sitrep that combines workspace and all projects might belong." The sit-rep reads the session's own root (#418); the combined view goes to that later personal-root skill, which does not exist yet, so there is nothing to check until it does. Replaces the Direction deferral "The sit-rep over every registered root with a Direction section" |
 | Git refs for per-issue review state (`refs/agent-state/issue-N/reviews`) | 2026-03-22 brainstorm (Storage model) | Explored in depth: crash-safe, shared across worktrees, scoped per issue. Deferred as premature complexity; review state lives in `.agent/work-plans/issue-N/progress.md` (design section: [Review loop and timeline](design.md#review-loop-and-timeline)) |
 
 ## To Consider

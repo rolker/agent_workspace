@@ -2,14 +2,8 @@
 
 Shared rules for all AI agents working in this workspace. For framework-specific
 setup (environment, identity, features), see your framework's adapter file:
-
-| Framework | Adapter File |
-|-----------|-------------|
-| Claude Code | [`CLAUDE.md`](CLAUDE.md) |
-| Codex CLI | [`CODEX.md`](CODEX.md) |
-| GitHub Copilot | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) |
-| Gemini CLI | [`.agent/instructions/gemini-cli.instructions.md`](.agent/instructions/gemini-cli.instructions.md) |
-| Other | [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md) |
+- Claude Code: [`CLAUDE.md`](CLAUDE.md); Codex CLI: [`CODEX.md`](CODEX.md); GitHub Copilot: [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+- Gemini CLI: [`.agent/instructions/gemini-cli.instructions.md`](.agent/instructions/gemini-cli.instructions.md); other: [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md)
 
 ## Terminology
 
@@ -43,6 +37,7 @@ code being changed:
 - Reference issue numbers in branches and PRs (`Closes #<N>`)
 - Set `GIT_EDITOR=true` for rebase/amend/merge
 - Use `--body-file` for multiline `gh` CLI content (not `--body`)
+- Use `.agent/scripts/gh_create_pr.sh` for PRs (it adds the AI signature and checks the target repo)
 - Include clickable GitHub links in summaries (use `gh` to look up URLs — never guess)
 - Read `.agents/README.md` before modifying any project repo
 - Verify issue matches task before first commit
@@ -64,6 +59,7 @@ code being changed:
 - Commit secrets or credentials
 - Document from assumptions — verify against source code
 - Construct GitHub URLs from directory names — use `gh` CLI to look them up
+- Run `gh pr merge --delete-branch` from a worktree — use `.agent/scripts/merge_pr.sh --pr <N>` (`make merge-pr PR=<N>` in the workspace)
 - Run bare `pip install` or use `--break-system-packages` — use `.venv` for dev tools (see ADR-0009)
 
 ## Communication Standards
@@ -115,82 +111,11 @@ reviews apply it through
 ## Worktree Workflow
 
 Every task must use an isolated worktree. `--type` is **required** on all
-worktree scripts (create, enter, remove). Two types are available:
-
-**Workspace worktrees** — for changes to workspace infrastructure (`.agent/`, `docs/`, skills):
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
-# work here; this is a git worktree of the workspace repo
-
-# Codex / per-command shells:
-WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --print-path)
-# or:
-eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --shell-snippet)"
-```
-
-**Project worktrees** — for changes to the managed project repo:
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type project [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N> --type project
-# work here; this is a git worktree of project/
-# PRs target the project repo (created with -R <project-remote>)
-
-# Codex / per-command shells:
-WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
-# or:
-eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
-```
-
-**Sub-issue work** (branches from parent's feature branch):
-
-```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace --parent-issue <parent_N>
-.agent/scripts/worktree_create.sh --issue <N> --type project --parent-issue <parent_N>
-```
-
-**Skill worktrees** (no issue needed, allowlist-enforced):
-
-```bash
-.agent/scripts/worktree_create.sh --skill research --type workspace
-source .agent/scripts/worktree_enter.sh --skill research --type workspace
-.agent/scripts/worktree_remove.sh --skill research --type workspace
-```
-
-**List / remove**:
-
-```bash
-.agent/scripts/worktree_list.sh
-.agent/scripts/worktree_remove.sh --issue <N> --type workspace
-.agent/scripts/worktree_remove.sh --issue <N> --type project
-```
-
-**Multi-project** — use `--project` when multiple projects are registered:
-
-```bash
-.agent/scripts/worktree_enter.sh --issue <N> --type project --project <name>
-```
-
-See [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) for disambiguation and troubleshooting.
-
-### Worktree Entry
-
-Skills that auto-enter a worktree (currently `/start-task`; potentially others
-in the future) use `Bash cd <path>`, not framework-native worktree-entry tools.
-Native tools that key off `git worktree list` (e.g. Claude Code's
-`EnterWorktree`) only accept worktrees of the *current* repo, so they reject
-project worktrees from a workspace session — the workspace and project are
-separate git repos. Using `cd` uniformly avoids a mode-dependent branch in
-entry skills and keeps behaviour consistent regardless of which repo owns the
-worktree.
-
-- **Exit a worktree**: `cd -` returns the session to the previous directory.
-  Any `cd` works; the worktree stays on disk.
-- **Delete a worktree**: `.agent/scripts/worktree_remove.sh --issue <N> --type
-  <type>` (or `--skill <name> --type workspace`). `make merge-pr PR=<N>` also
-  removes the worktree as part of the merge flow.
+worktree scripts (create, enter, remove). Two types: **workspace** (`.agent/`, `docs/`,
+skills) and **project** (the managed project repo; its PRs use `-R <project-remote>`).
+Sub-issue work branches from the parent's feature branch (`--parent-issue`); skill
+worktrees need no issue (Skill Worktree Exception, below). Commands, entry and removal:
+[`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md).
 
 ## Issue-First Policy
 
@@ -227,134 +152,11 @@ All other rules (atomic commits, AI signature, pre-commit hooks) still apply.
 
 Use your actual runtime identity — never copy example model names from docs.
 
-## GitHub CLI Patterns
-
-### Creating pull requests
-
-Use `.agent/scripts/gh_create_pr.sh` for PRs — it injects the AI signature,
-validates labels, and prevents wrong-repo targeting. Heredoc body via stdin
-keeps the whole flow in one allowlisted call:
-
-```bash
-.agent/scripts/gh_create_pr.sh --title "Title" --body-stdin <<'EOF'
-Your markdown content here.
-EOF
-```
-
-For a body already in a file:
-
-```bash
-.agent/scripts/gh_create_pr.sh --title "Title" --body-file path/to/body.md
-```
-
-The signature footer is appended automatically when `AGENT_NAME` and
-`AGENT_MODEL` are set (via `set_git_identity_env.sh`). Pass
-`--no-signature` to suppress — rare; revert PRs or human-authored only.
-
-If a body is provided and identity env vars are unset, the wrapper hard-fails
-with exit code 2 and points to `set_git_identity_env.sh`. This is intentional
-workspace policy: PRs must be signed unless explicitly opted out.
-
-### Use `--body-file`, Not `--body` (for direct `gh` calls)
-
-When invoking `gh issue create` / `gh issue comment` directly (the wrapper
-above covers PRs), prefer `--body-file` so multiline content isn't mangled
-by shell quoting:
-
-```bash
-BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
-cat << 'EOF' > "$BODY_FILE"
-Your markdown content here.
-EOF
-gh issue create --title "Title" --body-file "$BODY_FILE"
-rm "$BODY_FILE"
-```
-
-### Never Guess GitHub URLs
-
-```bash
-gh issue view <N> --json url --jq '.url'
-gh pr view <N> --json url --jq '.url'
-gh repo view --json url --jq '.url'
-```
-
-### git-bug-first Pattern (ADR-0010)
-
-For issue reads, try git-bug first (offline-capable), then fall back to `gh`.
-PR operations (`gh pr view/merge/create/diff`) stay `gh`-only — git-bug
-doesn't track PRs.
-
-**Scripts**: source `.agent/scripts/_issue_helpers.sh` and use:
-- `issue_lookup <N> --repo <owner/repo> [--root <dir>]` — single issue
-- `issue_list_open --repo <owner/repo> [--root <dir>]` — list open issues
-- `issue_count_open --repo <owner/repo> [--root <dir>]` — count open issues
-
-**Sync behavior**:
-- **Reads**: local cache first; on miss, `git bug bridge pull github` + retry,
-  then fall back to `gh`
-- **Writes**: local git-bug op, then immediate `git bug bridge push github`
-- **Periodic**: `make sync` for full bidirectional reconciliation
-
-**git-bug CLI notes** (v0.10.1):
-- Use `git bug bug ...` (not `git bug ...`) for issue commands
-- Use `git bug bridge` (no subcommand) to list bridges — `bridge list` doesn't exist
-- Lookup by GitHub issue number uses metadata filter:
-  `git bug bug -m "github-url=https://github.com/OWNER/REPO/issues/N" --format json`
-- `--format json` works on both list (`bug bug`) and show (`bug bug show`)
-
-### Repo Targeting in Scratchpad Clones
-
-The `gh` CLI resolves the target repo from the current directory's git remote.
-Inside scratchpad clones (`.agent/scratchpad/inspiration/<name>/` etc.), this
-targets the cloned external repo — not the workspace or project repo.
-
-When running `gh` commands that target a repo (`issue create`, `pr create`,
-`issue comment`, etc.) from any non-worktree directory, always pass
-`-R <owner/repo>` explicitly. `gh_create_issue.sh` enforces this with a
-safeguard that aborts if the detected repo doesn't match workspace or project.
-
-### Merging PRs from Worktrees
-
-Never use `gh pr merge --delete-branch` from a worktree — `gh` tries to
-checkout `main` locally, which fails because the main tree already has it
-checked out. Use `--merge` without `--delete-branch` and let worktree
-cleanup handle branch deletion:
-
-```bash
-# Preferred: use the merge script (handles worktree removal + sync)
-make merge-pr PR=<N>
-
-# Manual alternative:
-gh pr merge <N> --merge          # no --delete-branch
-```
-
 ## Build & Test
 
-Build and test commands are project-specific. Configure them in `.agent/project_config.sh`
-(gitignored, per-developer):
-
-```bash
-# .agent/project_config.sh
-PROJECT_TYPE="single_project"  # project-type adapter (ADR-0011); defaults to single_project
-BUILD_CMD="make"       # or: cmake --build build, cargo build, npm run build, etc.
-TEST_CMD="make test"   # or: cargo test, pytest, npm test, etc.
-INSTALL_CMD=""         # optional deploy/install command; empty = make install no-ops
-```
-
-Then run:
-
-```bash
-make build    # runs BUILD_CMD in project/
-make test     # runs TEST_CMD in project/
-make install  # runs INSTALL_CMD (no-op when unset)
-make lint     # pre-commit on all files
-make validate # check workspace config
-make dashboard
-```
-
-These dispatch through the project-type adapter (`.agent/scripts/adapter`),
-which resolves `PROJECT_TYPE` and calls that type's implementation in
-`.agent/project_types/<type>/adapter.sh`. See ADR-0011.
+Configure the project's build and test commands in `.agent/project_config.sh` (gitignored);
+then `make build`, `make test`, `make lint` (pre-commit on all files) and `make validate`
+(workspace config). See [`.agent/knowledge/build_and_test.md`](.agent/knowledge/build_and_test.md).
 
 ## Verify Before Claiming
 
@@ -385,64 +187,13 @@ Before marking a task complete or opening a PR:
    change (ADR-0017)
 5. List any gaps; complete them or explain in PR description
 
-## Script Reference
-
-`scripts/` at the repo root is a symlink to `.agent/scripts/` for convenience.
-
-Scripts marked **(source)** must be sourced; all others should be executed.
-
-| Script | Purpose |
-|--------|---------|
-| `.agent/scripts/_issue_helpers.sh` | Shared git-bug-first issue lookup with sync-on-miss **(source)** |
-| `.agent/scripts/_resolve_work_plans_dir.sh` | Resolve per-issue work-plans dir; refuses outside matching worktree (issue #147) **(source)** |
-| `.agent/scripts/_real_case_path.sh` | `real_case_relpath <base> <rel>`: an existing path's stored on-disk spelling, so `discover_governance.sh` / `update_roadmap.sh` report and write a file under its own name on case-insensitive filesystems (issue #334) **(source)** |
-| `.agent/scripts/set_git_identity_env.sh` | Ephemeral git identity (session-only) **(source)** |
-| `.agent/scripts/worktree_create.sh` | Create isolated worktree |
-| `.agent/scripts/worktree_enter.sh` | Enter worktree **(source)** |
-| `.agent/scripts/worktree_remove.sh` | Remove worktree |
-| `.agent/scripts/worktree_list.sh` | List active worktrees (`--json` for structured output) |
-| `.agent/scripts/agent start-task <N>` | High-level wrapper: create worktree |
-| `.agent/scripts/dashboard.sh` | Unified workspace status (supports `--quick`) |
-| `.agent/scripts/adapter` | Project-type adapter dispatcher: `adapter [--from <dir>] <verb>` (ADR-0011) |
-| `.agent/scripts/validate_adapter.sh` | Verify every project type implements the full adapter contract, that its `unused_settings` list (the settings-file keys the type never reads, issue #332) is readable and names each known key once, with a reason, and that it has a valid `registration.conf` (what `register_project.sh` does for the type, issue #332) |
-| `.agent/scripts/project_setting.sh` | Read and write a registered project's settings file `.agent/projects.d/<name>` (issue #332): `get`, `set`, `unset`, `list`, `check <name>`; keys `build`, `test`, `install` (a command run without a shell, or `none`), `bootstrap_url`, `location`/`location_path`/`tracking` (records) and `instructions`, grammar in the `_project_registry.sh` header; `set` validates the whole resulting file and refuses any records combination but (project, project) until the records lookup lands (#393); `set` refuses, and `check` fails, a key the project's type never reads (each type lists them in `.agent/project_types/<type>/unused_settings`: `build` and `test` for `ros2_colcon`, `bootstrap_url` for `single_project`); `check` exits 0 valid, 2 invalid (malformed, a records repository that is a workspace, or a settings file under a parent root's name, which nothing reads; `get` and `list` exit 2 on all of those too), 3 valid but not yet honoured; from a linked worktree it reads the main checkout's files and refuses to write; promoted to the user tier, so a write first passes the `registry_require_root` guard and, from a project root, writes only that project's file (at a parent root, one of its instances') |
-| `.agent/scripts/register_project.sh` | Register a project from the workspace's main checkout (issue #332): `<path\|name> [<type>] [--name --parent --distro --role --worktrees --default-instance] [--set key=value]... [--no-setup] [--skip-run] [--install-user-tier] [--dry-run]` writes the registry line (absolute path) and the settings file (commands from `--set`, else the legacy `.sh`, else detection), runs `setup` when the type's `registration.conf` says so and the directory is missing, then `registration_verify.sh`, the type's build and test, and the user-tier installer; a failure removes the line and the file (a directory setup created is kept, `KEPT=`); a registered name or path is adopted (line kept, `NOT READY` instead of rollback); `--remove <name> [--keep-settings]` refuses live worktrees, disables the plugin, removes the line and the file; `--detect <path>` prints the single build/test command the files propose; last lines `STATUS=`, `NAME=`, `ROOT=`, `NEXT=`; refuses from a linked worktree; never promoted to the user tier |
-| `.agent/scripts/registration_verify.sh` | Read-only static gate for a registered project (issue #332): `<name> [--user-tier]` checks the entry, the type's `registration.conf`, the settings file, that each command the type requires is the project's own (settings file or legacy `.sh`; a shared-config fallback or a missing one fails), the scoped `adapter validate`, and with `--user-tier` the installer's `--check --require` and `session_root.sh`; prints `OK:`/`WARN:`/`FAIL:` lines and `VERIFY=pass\|fail`; exits 0 pass, 1 fail, 2 usage or unregistered |
-| `.agent/scripts/project_integration_audit.sh` | Read-only integration audit of a registered project (issue #332), run by `/onboard-project` and `/audit-project` at the project's root: `[--dir D \| --project N] [--instance I] [--facts] [--format tsv\|text]` prints one finding per line, `category<TAB>id<TAB>severity<TAB>subject<TAB>detail`, in six categories (configuration overriding the workspace's, instruction lines that may disagree on process, files the workspace writes into the project, ignore rules hiding agent files, conventions the review skills do not read, registration that does not work); a finding whose fix is a tracked file (the ids its header lists) is `info` when `instructions=none`; at a parent root it reads the settings and repository of `--instance I`, else of the default or only instance, checks that instance's registration as well as the parent's, and skips the parent's own files; `--facts` prints instead `fact<TAB>value<TAB>evidence` for `github`, `issues`, `prs`, `windows`, `multi_component` (yes, no or unknown; from the remote, read-only `gh repo view`/`issue list`/`pr list` and `uname`), which `/audit-project` reads to skip the hygiene items they make moot; exits 0 whatever it finds, 2 on usage or a directory under no registered root |
-| `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh (dispatches via adapter) |
-| `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh (dispatches via adapter) |
-| `.agent/scripts/setup_project.sh` | Configure project/ directory (dispatches via adapter) |
-| `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
-| `.agent/scripts/gh_create_issue.sh` | Create issue with AI signature injection + label validation, signing like `gh_create_pr.sh`: appends the footer to `--body` / `--body-file` (and `-b`, `-F`, the `=` forms), `--no-signature` to suppress, exit 2 when a body is given and `AGENT_NAME` / `AGENT_MODEL` are unset (`GITBUG_CREATE=1` for offline) |
-| `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
-| `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
-| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the reviewed head; bookkeeping-only commits after it — progress.md, work plans, roadmap — are exempt), remove worktree, delete branch, sync main; the gate enforces by default on workspace PRs (`--report-only` records and proceeds; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record); a review check-run still running holds the merge (`--allow-pending-review` opts in); `--no-wait` skips the CI wait entirely (the mergeability settle and one merge retry always run) |
-| `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
-| `.agent/scripts/sync_project.py` | Sync workspace + project repos (dispatches via adapter) |
-| `.agent/scripts/validate_workspace.py` | Validate workspace configuration — the whole-workspace check `make validate` runs (legacy `project/`, registry, venv, pre-commit hook); each registry entry's checkout shape is delegated to its type's `adapter --project <name> validate`, which checks only that project |
-| `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
-| `.agent/scripts/fetch_pr_reviews.sh` | Fetch all PR reviews and CI status |
-| `.agent/scripts/cross_model_review.sh` | Cross-model adversarial review for a PR (`--pr <N>`) or local branch (`--branch [<ref>]`); `--agents a,b,c` runs several reviewers in parallel with one `AGENT=`/`FINDINGS_FILE=`/`EXIT=` triplet each (`--agent <x>` keeps the single-agent output), every agent bounded by a timeout (`AGENT_TIMEOUT`; gemini by its helper's `AGY_PRINT_TIMEOUT` plus an outer backstop above it) (ADR-0015, no tmux mode); no CLI is invoked directly — every agent runs through a result-validating helper that owns its findings file (`_agy_review.sh` for gemini, `_cli_review.sh` for codex/claude), so a failed review is `EXIT=1` with the reason in the file; `--no-progress` for skill worktrees; `--repo`, `--work-dir` for cross-repo use; the embedded diff excludes `.agent/work-plans/**`, but the plan's `## Approach` section is separately admitted after the diff as a labelled `## Plan Context` block (capped at 200 lines with a truncation marker; omitted when absent, empty, or under `--no-progress`); one run per artifact dir — a second run exits 5 before writing anything (non-blocking `flock` on the directory itself; only util-linux's real error codes 65/71, or no `flock`, warn and run unserialized, any other failure exits 5; the agent jobs, their `timeout` and helpers hold the lock too, so a SIGKILLed run keeps the directory locked until its jobs end, at most their `timeout` bound (`AGENT_TIMEOUT`, or gemini's backstop) plus `AGENT_KILL_AFTER`, while the CLIs never hold it); an interrupted run SIGKILLs a job still running after `CLEANUP_REAP_TIMEOUT` with its process tree, its process groups (helper's, CLI's) and, on Linux, every process carrying the job's `CROSS_MODEL_REVIEW_JOB` environment marker, and waits for them (at most 6 s in all) before it exits and releases the lock; a job cut off by its `timeout` (124/137) kills whatever still carries its marker; `AGENT_KILL_AFTER` must be positive (`timeout -k 0` disables the SIGKILL); job lifecycle in the script header (ADR-0015 points there) |
-| `.agent/scripts/_agy_review.sh` | Gemini (`agy`) turn for `cross_model_review.sh`: prompt over stdin (stream-json), result-event and timeout validation, owns the findings file; a headless permission denial or empty response exits 1 with the reason in the file; agy runs as its own process group (`setsid`; PID only where it is missing): TERM goes to its PID and group, SIGKILL to both after `REVIEW_KILL_ESCALATION` (strictly less than the caller's `AGENT_KILL_AFTER`, compared unrounded), and the group is swept once agy exits |
-| `.agent/scripts/_cli_review.sh` | Codex / Claude turn for `cross_model_review.sh` (`<agent> <bin> <prompt> <findings> [<timeout-label>]`): prompt over stdin, per-CLI result extraction (codex's `-o` final message, claude's JSON `.result`) and validation; owns the findings file (truncated first), forwards INT/TERM/HUP to the CLI's PID and whole process group (`setsid`; PID only where it is missing) and waits for it (SIGKILL to both after `REVIEW_KILL_ESCALATION`, which must be strictly less than the caller's `AGENT_KILL_AFTER`, compared unrounded), and sweeps the group once the CLI exits. Only machine state fails a review — non-zero exit, empty/missing result, or claude's structured `.is_error`/`.error`; error text never fails a run, it only picks the reason line (codex replays the whole prompt on both its channels, so no text channel is trustworthy — #313) |
-| `.agent/scripts/_plan_approach.py` | Plan-context extractor for `cross_model_review.sh` (`<plan.md>`): prints the plan's `## Approach` section verbatim, located with markdown-it-py (CommonMark) so fenced examples, indented/setext headings and thematic breaks are classified as a renderer would; exit 0 found / 1 no section / 3 error / 4 markdown-it-py missing (4, not 2, because python itself exits 2 when it cannot open the script). The caller tries the workspace `.venv` python3, then python3 (on 4, the next one), and on any code but 0 or 1 warns and omits the Plan Context block |
-| `.agent/scripts/progress_append.sh` | Append one ADR-0013 `## <Entry Type>` entry to `.agent/work-plans/issue-<N>/progress.md` and commit only that file (entry on stdin; `-C <dir>` for another worktree) |
-| `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
-| `.agent/scripts/dispatch_phase.sh` | In-process phase handoff for `/run-issue`: prints a phase's handoff block (`--issue <N> --skill <phase>`; `--skill-prefix agent-workspace:` namespaces its slash commands for a host whose skills came from the plugin, ADR-0018), checks a dispatch's exit contract (`--check-exit ... --before <count>`), and returns the run-issue decision-table action (`next --issue <N> --pr <state>`) |
-| `.agent/scripts/skill_prefix.sh` | How workspace skills are named in a session started in a directory (`[--dir <d>]`, default cwd; ADR-0018 decision 6): prints `skill_prefix=` (bare) in the workspace checkout's git repository, `skill_prefix=agent-workspace:` where a session reads a registered root's local settings, and otherwise exits 1 with the reason (unregistered, or a repo nested in a root) rather than guess; used by `/run-issue` and the SessionStart hook |
-| `.agent/scripts/session_root.sh` | A session's root, the directory it was launched in (`[--dir <d>]`, default cwd; ADR-0018 decision 6): prints `root=`, `type=`, `project=` (the registered root containing it, else the workspace checkout); with `--type <t> [--project <p>]` exits 1 naming the directory to start in when the issue belongs to another root; used by `/run-issue` and `/start-task` |
-| `.agent/scripts/tests/run_script_tests.sh` | Run the `.agent/scripts/tests/test_*.sh` suites; the `validate-script-tests` pre-commit hook. `--files <f>...` (what the hook passes) runs only the suites those files reach, as `suites_for_files.sh` derives them, plus `test_checkpoint_269.sh`, and prints its choice; it runs every suite with no `--files`, under `--all-files` (CI), and whenever in doubt: a deleted in-scope path, a `.agent/scripts/_*.sh` helper, the runner, the hook config, an in-scope file no suite maps (issue #410). A dispatched workspace implement or address-findings pass sets `SKIP=validate-script-tests` on its intermediate commits only and runs the main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` once (by absolute path: a worktree has no `.venv`), with no SKIP, before its progress entry (owner-decided 2026-10-20, issue #399); CI (`make lint`, every hook on all files) is the backstop, and `--no-verify` is still never allowed. Runs each suite under a private per-run `TMPDIR` and fails with exit 2 naming any suite that leaves files behind; a preflight lint rejects absolute-`/tmp` `mktemp` destinations in the suites — a `/tmp` template, or a `-p /tmp` / `--tmpdir=/tmp` root (exit 1) |
-| `.agent/scripts/_progress_entry.sh` | Shared ADR-0013 entry validation + idempotency check for every `progress.md` writer **(source)** |
-| `.agent/scripts/review_progress.sh` | Review-loop helpers shared by review-code / triage-reviews / address-findings / plan-task / review-plan: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`; `--soft` = non-fatal), `sources` (local findings covering the head — recorded at it, or at an ancestor with only this issue's work-plan / roadmap changes since, via `_bookkeeping.sh` — plus GitHub comments at the head; a covering entry is listed as `superseded` only when a newer covering `complete` Integrated Review exists (only triage supersedes), and entries that do not cover it as `stale` or, when git cannot check or the entry has no parseable PR/Branch SHA, `unverifiable` with a stderr warning), `findings` / `check` (latest review entry's open boxes), `plan-sha` (plan-commit SHA for the `**Plan**` field) |
-| `.agent/scripts/_bookkeeping.sh` | The one "same reviewed state" rule shared by `merge_pr.sh` (review gate, CI target; the CI walk-back shares its roadmap path set) and `review_progress.sh sources`: an ancestor whose only changes since are merge-time document files (work-plan dir, roadmap), with a rename counted by its source path too; read-only git, exit 0 covered / 1 stale / 3 unverifiable; also runnable as a `--review` bridge for non-bash callers **(source)** |
-
 ## References (Read When Needed, Not Upfront)
 
-- [`README.md`](README.md) — Workspace purpose and goals
-- [`docs/design.md`](docs/design.md) — System design
-- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
-- [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns
-- [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity
-- [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
-- [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices
-- [`.agent/templates/`](.agent/templates/) — Issue and PR templates
+This file stays at most 200 lines (pre-commit hook `agents-md-line-budget`); reference material goes to `.agent/knowledge/`.
+
+- [`README.md`](README.md) — Workspace purpose and goals; [`docs/design.md`](docs/design.md) — System design; [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
+- [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns; [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity; [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
+- [`.agent/knowledge/`](.agent/knowledge/) — Development patterns and CLI best practices; [`.agent/templates/`](.agent/templates/) — Issue and PR templates
+- [`.agent/knowledge/script_reference.md`](.agent/knowledge/script_reference.md) — Script Reference (every script in `.agent/scripts/`)
+- [`.agent/knowledge/github_cli_patterns.md`](.agent/knowledge/github_cli_patterns.md) — GitHub CLI Patterns (PR wrapper, `--body-file`, URLs, `-R` in scratchpad clones, merging from worktrees)
+- [`.agent/knowledge/git_bug_usage.md`](.agent/knowledge/git_bug_usage.md) — git-bug-first Pattern for issue reads and writes (ADR-0010)

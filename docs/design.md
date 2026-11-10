@@ -29,8 +29,8 @@ is meant to choose how much footprint the workspace leaves in it: agent instruct
 project only if the user chose that, and a project can be developed without the agents. Today an issue's
 records are always committed in the repository that owns the issue; the choice is proposed under
 [Worktrees](#worktrees). A session starts in the workspace or in a project's own root,
-and a user tier gives a project session the workspace's skills and rules; that is built and not yet
-proven ([Sessions and roots](#sessions-and-roots)).
+and a user tier gives a project session the workspace's skills and rules; that is built and has passed
+its acceptance run ([Sessions and roots](#sessions-and-roots)).
 
 **Tools.** The work is tool-neutral. Plans, reviews and progress are plain files any tool can read, and a
 Codex or Gemini session walks the phases by hand ([Identity](#identity)). GitHub is not a project
@@ -67,7 +67,7 @@ builds it.
 |---|---|
 | `decided` | An owner decision is on record, cited (ADR number or issue and date), and the code does it |
 | `decided, not built` | Decided and cited; the code does not do it yet |
-| `decided, not proven` | Decided and built, but the acceptance test has not run (ADR-0016 is Provisional until the `/run-issue` run from a project root in #317) |
+| `decided, not proven` | Decided and built, but the acceptance test named in the deciding ADR's Status has not run; that ADR stays Provisional at least until it does |
 | `proposed` | Agent or owner suggestion, not decided |
 | `open` | A question, listed under Open questions. An `open` block holds only a pointer to where the question is tracked (an issue number or the Open questions row), no question text |
 
@@ -103,7 +103,7 @@ root and `.agent/knowledge/`).
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
 | Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored |
-| Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
+| Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run, per root, with the counts of lines true and deferrals due, so the next run says what moved for that root |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
 healthy and the right direction mean and that it is known whether a change helped). Both are narrower
@@ -130,8 +130,12 @@ Proposed: a project records its own mapping of the seven roles, seeded from the 
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
 unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
 section in the workspace's format, by its own choice: `onboard-project` offers one to a project whose
-settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads only the
-workspace root so far, and reading every registered root with such a section is a follow-up to #386.
+settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads the session's
+own root (#418): in a project session it checks that project's Direction section (`docs/roadmap.md`,
+else `ROADMAP.md`), lists its worktrees and pull requests and reports the problems its own files allow,
+and in the workspace it reports the workspace, with project work only where a workspace Direction line
+names it; `sitrep_root.sh` decides the root once. A view that combines the workspace and every project
+is not part of it (owner, 2026-11-09); it belongs with a later skill for the personal root.
 
 ## Rules
 
@@ -162,6 +166,7 @@ only.
 | The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
+| `AGENTS.md` stays at most 200 lines | Only what's needed | `hook` | `check_agents_md_budget.sh` (`agents-md-line-budget`), run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged; `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
@@ -173,15 +178,17 @@ only.
 
 **Now**
 
-Status: `decided, not proven`
+Status: `decided`
 
 A session runs in one of two places, the workspace checkout or a project's own root; the user tier in
 `~/.claude` is the layer injected into those sessions, not a place a session runs (ADR-0016 decisions 1
 and 3). The mechanisms below are built and tested
-hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Provisional until a
-`/run-issue` run started from a project root passes through the merge checkpoint (the acceptance test
-named in #317), so none of this is marked `decided` yet. [Open questions](#open-questions) OQ-2 asks
-where that run is tracked.
+hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Accepted (2026-11-09,
+#423): a `/run-issue` run started from a project root passed through the merge checkpoint, the
+acceptance test named in #317. [ADR-0018](decisions/0018-plugin-based-skill-delivery.md), which
+supersedes ADR-0016 decision 3 for skills, is Accepted too (2026-11-09, #425): its promotion condition
+was the same run.
+[Open questions](#open-questions) OQ-2 records where that run was tracked and who ran it.
 
 - The workspace and each project are separate session roots. A session is in exactly one, found from
   its cwd by the longest-prefix match against the registry; registered project roots are checked before
@@ -354,7 +361,7 @@ Status: `decided`
 **Inventory: where the workspace path differs from the registered-project path**
 
 Owner decision 2026-10-09 (C2). It is here so the open question of making the workspace a registered
-project (#295) is decided by reading these two tables after the ADR-0016 acceptance run, not by a hunch.
+project (#295) is decided by reading these two tables after the ADR-0016 acceptance run of 2026-11-09, not by a hunch.
 The tables are cut back once #295 is decided. Line numbers are as of this commit; they are a dated
 probe, not a description to keep current.
 
@@ -424,8 +431,8 @@ Status: `decided`
   Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
   marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
 - A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
-  worktrees of the current repository and a project is a separate repository (`AGENTS.md`, "Worktree
-  Entry").
+  worktrees of the current repository and a project is a separate repository (`.agent/WORKTREE_GUIDE.md`,
+  "Worktree Entry").
 - Agents work concurrently in separate worktrees. Work in progress is made visible by a draft pull
   request, which `worktree_create.sh --plan-file` opens, and an agent checks for one before starting
   (`WORKFORCE_PROTOCOL.md` sections 1 to 3). `make lock` is an advisory note shown by the dashboard and
@@ -651,16 +658,13 @@ Status: `decided`
 
 **Now**
 
-Status: `proposed`
+Status: `decided`
 
-Nothing here is built. This section is a proposal, so its one block is labelled `Now` and carries
-`proposed`.
-
-Proposed: this file describes the four layers an agent's instructions load in, and gives the first a
-budget.
+This file describes the four layers an agent's instructions load in, and gives the first a budget.
 
 1. Always loaded. For Claude Code that is `CLAUDE.md`, which imports `AGENTS.md` with `@AGENTS.md`;
-   `AGENTS.md` is 26,564 bytes and 442 lines, `CLAUDE.md` 42 lines (`wc`, 2026-10-09). A session under a
+   `AGENTS.md` is 10,513 bytes and 199 lines, `CLAUDE.md` 42 lines (`wc`, 2026-11-02; `AGENTS.md` was
+   33,047 bytes and 448 lines before #259 moved its reference material out). A session under a
    registered project root gets nine pinned `AGENTS.md` sections instead, rendered by the
    `SessionStart` hook ([Sessions and roots](#sessions-and-roots)).
 2. Path-scoped. Rules that load only when the agent works on matching files. The workspace has none
@@ -669,11 +673,18 @@ budget.
 4. On demand. Files an agent opens because a pointer sent it there: this file, the ADRs, the
    knowledge files. This file is not always loaded.
 
-Proposed: a budget for the always-loaded layer, so that every added rule has to displace or justify
-itself. No number is set here. The reference point is the vendor guidance for Claude Code, a target of
-under 200 lines per instruction file, as recorded in the prior-art notes
-(`prior-art-comparison-2026-10-08/summary.md` item 5; `prior-art-alignment-agent-frameworks.md`, Claude
-Code entry). Changing `AGENTS.md` is Ask First and is not part of this change.
+The always-loaded layer has a budget, so that every added rule has to displace or justify itself:
+`AGENTS.md` stays at most 200 lines, and says so in its References section. It holds rules and
+pointers; reference material lives behind the pointers, in `.agent/knowledge/` (the script reference,
+GitHub CLI patterns, the git-bug-first pattern, build and test configuration) and
+`.agent/WORKTREE_GUIDE.md` (the worktree commands and entry). The `agents-md-line-budget` pre-commit
+hook (`check_agents_md_budget.sh`) fails a commit that takes the file past 200 lines; it runs only
+when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged, and `make lint` runs it again in
+CI. The number follows the vendor guidance for Claude Code, a target of under 200 lines per instruction
+file, as recorded in the prior-art notes (`prior-art-comparison-2026-10-08/summary.md` item 5;
+`prior-art-alignment-agent-frameworks.md`, Claude Code entry). The host set it on 2026-11-02 (#259),
+closing OQ-4, for the owner's confirmation at the merge. `CLAUDE.md` and the other adapter files have
+no budget of their own.
 
 ## Decision register
 
@@ -712,17 +723,16 @@ no section of this file carries that ADR.
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
-| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
+| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
-| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-27 |
+| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-27 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
 
 **For the owner, one at a time (C1-c).** Four ADRs are `superseded in practice` (0002, 0011, 0013,
 0014). Each is a candidate for a superseding ADR, and each supersession is the owner's call, made one
-ADR at a time; none is made here. ADR-0016 stays `Provisional` until the acceptance run
-([Sessions and roots](#sessions-and-roots)).
+ADR at a time; none is made here.
 
 ## Open questions
 
@@ -737,11 +747,11 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 | ID | Question | Who decides | What it changes |
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
-| OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
+| OQ-2 | ADR-0016 stayed Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? Answered by #423: the run was tracked in the roadmap's Direction section, and the owner ran it, through `/orchestrator` and `/run-issue` in a session started at the registered project's root, answering the merge checkpoint himself; it passed on 2026-11-09 and ADR-0016 is Accepted | Owner | The [Sessions and roots](#sessions-and-roots) Now block is `decided`; the Registry inventory can now be read to settle #295 |
 | C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
-| OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
+| OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file)? Answered by #259, a host decision of 2026-11-02 for the owner's confirmation at the merge: `AGENTS.md` stays at most 200 lines, held by the `agents-md-line-budget` hook | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First (the owner's go-ahead for the #259 drive is approval in principle; the final approval is his at the merge) |
 | OQ-5 | Should the merge gate get a server-side complement, a required status check asserting the same two conditions? | Owner | [Merge gate](#merge-gate); it changes CI and branch protection, which is Ask First (`merge_pr.sh`, Step 1.5 comment) |
 
 ## Change log
@@ -805,6 +815,10 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-02 | Registry and adapters | `worktree_create.sh` line citations refreshed after its branch fetch was bounded like the default-branch fetch; no statement changes | #323 | 859 |
 | 2026-11-02 | Rules | Review fix: the signing row says both wrappers refuse a body gh writes itself (`--fill`, `--template`, `--recover`) without `--no-signature` | #323 | 860 |
 | 2026-11-02 | Rules | Review fix: `--recover` is refused even with a body flag (gh loads the recovered input over it) | #323 | 861 |
+| 2026-11-02 | Instruction layers, Rules, Open questions, Worktrees | `AGENTS.md` trimmed from 448 lines (33,047 bytes) to 199 (10,513) by moving its reference material to `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`; the section's status goes from `proposed` to `decided` with the budget set at most 200 lines (host decision for the owner's confirmation, closing OQ-4) and held by the new `agents-md-line-budget` hook, which gets a Rules row; the Worktrees citation for entering with `cd` now names `WORKTREE_GUIDE.md` | #259 | 860 |
+| 2026-11-09 | Documentation layers | The sit-rep reads the session's own root (owner, 2026-11-09): a project session gets the project's Direction lines, worktrees, pull requests and the problems its own files allow, the workspace report lists project work only where a workspace Direction line names it, and a combined view is left to a later personal-root skill; the Measures row says the run record is per root; `sitrep_root.sh` named | #418 | 865 |
+| 2026-11-09 | How it works, The design (Status key), Sessions and roots, Registry and adapters, Decision register, Open questions | ADR-0016 is Accepted (owner, 2026-11-09): the `/run-issue` acceptance run from a project root passed the merge checkpoint. How it works says the user tier has passed its acceptance run, no longer that it is not yet proven; the Status key's `decided, not proven` row names no ADR and no longer says a Provisional ADR is untested; Sessions and roots is `decided`, its Now block says ADR-0016 is Accepted and ADR-0018 is still Provisional with its own promotion condition (the same run) met; the Registry inventory sentence names the run's date; register row 0016 is `in force` and notes ADR-0018's supersession of decision 3 for skills; the C1-c sentence keeping ADR-0016 Provisional is dropped; OQ-2 is answered in place (tracked in the roadmap's Direction section, run by the owner through `/orchestrator` and `/run-issue` from the project root). Sessions and roots grows by two lines and is a status edit, so no detail moves | #423 | 867 |
+| 2026-11-09 | Sessions and roots, Decision register | ADR-0018 is Accepted (owner, 2026-11-09): its promotion condition, ADR-0016's acceptance run, passed the same day. The Sessions and roots Now block says ADR-0018 is Accepted too, no longer that it is Provisional with promoting it the owner's call; register row 0018 is `in force`. Sessions and roots is 116 lines, past the 60-line prompt; its length is unchanged and this is a status edit, so no detail moves | #425 | 868 |
 
 ## Glossary
 

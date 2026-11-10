@@ -66,7 +66,7 @@ so issues and comments are visible to collaborators and GitHub notifications
 without waiting for periodic sync.
 
 The shared helper `.agent/scripts/_issue_helpers.sh` implements the read
-pattern. See `AGENTS.md` "git-bug-first Pattern" for usage.
+pattern. See `.agent/knowledge/git_bug_usage.md` for usage.
 
 ## CLI Notes (v0.10.1)
 

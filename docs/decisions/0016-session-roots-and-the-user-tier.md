@@ -2,12 +2,14 @@
 
 ## Status
 
-**Provisional.** The promotion condition is the acceptance test named in
-issue #317 — the full `/run-issue` loop driven from `~/src/gz4d` through
-the merge checkpoint, on this machine. Until that run passes, the
-mechanisms here are built and hermetically tested but not proven against a
-live Claude Code session. Promote to Accepted when it does; revise here if
-it does not.
+**Accepted** (2026-11-09). Until then this ADR was Provisional. The
+promotion condition was the acceptance test named in issue #317 — the full
+`/run-issue` loop driven from `~/src/gz4d` through the merge checkpoint, on
+this machine; until that run passed, the mechanisms here were built and
+hermetically tested but not proven against a live Claude Code session. It
+passed on 2026-11-09: the loop ran from the GeoZui4D root through the merge
+checkpoint for rolker/geozui4d#9 (PR 14) and rolker/geozui4d#7 (PR 15), and
+the owner promoted this ADR the same day (#423).
 
 Flipping this line from Provisional to Accepted is a **status-line edit, not
 a substantive one**, and so is permitted by ADR-0008 without a superseding
