@@ -164,3 +164,54 @@ Host read the Plan Review of 2026-11-10 (needs-work, 5 must-fix, suggestions) an
 **Plan**: `.agent/work-plans/issue-253/plan.md` at `4d01e2cb`
 
 Revision after the needs-work plan review: all phase work is the implementer's (with its own sub-agents); inventory split fails on unassigned tracked or untracked paths and adds a catch-all, Makefile/CI/hand-step/closed-issue/open-PR rows; read-only diff and "partly covered" for same-name scripts; the day-to-day test in every brief; sync/validate classed adapter, not yet covered, blocker; rows grouped by duty; only row 4 Notes edited; proposed Decided Against lines.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 12:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent a0983777023b9b1c7, resume 1 of 3)
+
+**Issue**: #253 — ros2_agent_workspace parity audit: classify remaining ADRs, skills, scripts for port/adapter/decline
+**Plan**: `.agent/work-plans/issue-253/plan.md` at `4d01e2cb`
+**Branch**: `feature/issue-253`
+**Serves**: Flexibility and Trust, control and information (README `#workspace-goals`); `docs/design.md#registry-and-adapters`; roadmap Cutover sequence row 4.
+
+Narrow re-review: whether the five must-fixes and four suggestions of the previous Plan Review (at `1b953c94`) are resolved as worded, and whether the revision introduced anything wrong. Nothing accepted before is reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged; one PR, no code. |
+| Issue alignment | Good | Closed-since-fork issues now in pass 2 (roadmap row 4); proposed Decided Against lines in step 6. |
+| File targeting | Good | Inventory covers tracked, untracked, Makefile targets, CI jobs, hand steps, open fork PRs, with a catch-all. |
+| Consequences | Good | Row 4 Notes only; Status left to `merge_pr.sh`. |
+| Principle alignment | Good | Diff-based "already covered", "partly covered" class, named test or "covered, no test"; blocker test in every brief. Two stale step references (finding 3). |
+| ADR compliance | Good | Unchanged. |
+| ROS conventions | N/A | Workspace record. |
+
+### Previous findings, checked
+
+1. Host steps → implementer: **resolved** ("Who does what"; steps 1, 2, 3, 6, 7 name the implementer).
+2. Inventory: **resolved** (step 1: `ls-files` and `ls-files -o --directory`, split script failing on unassigned or doubly assigned paths, catch-all to pass 2 naming the paths found; Makefile targets and `validate.yml` jobs as pass 1 duty rows; instruction-file hand steps and closed-since-fork issues in pass 2; `.workspace-worktrees/`, `.agent/scratchpad/`, `.rosdep/`, `.make/`, open fork PRs 657 and 663 in pass 3).
+3. "Already covered": **resolved** (step 4: read-only diff for the 37 same-name scripts, "partly covered" class naming the gap, named test or "covered, no test" for the ROS build path).
+4. Blocker test: **resolved** (word for word in the brief text; merge re-applies it to every "yes").
+5. Manifest duties: **resolved** (step 5 fixes adapter, not yet covered, blocker yes; never "already covered").
+6–9. Suggestions (group by duty; Notes-only roadmap edit; Decided Against lines; fork-access rules in each brief): **all taken** (steps 3, 6, 8 and the brief text).
+
+### Findings (new, suggestions only)
+
+1. **[Verification, suggestion]** Step 7(d) asks the paths listed in rows to equal each pass's inventory, and step 3 says each row lists its fork paths. With 324 untracked scratchpad files, 190 tracked work-plan files and 39 layer worktrees, listing every path would bloat the document. Let a row cite a prefix or glob with its count (for example `.agent/scratchpad/** (324)`), and have the check expand those against the inventory lists rather than compare literal strings. Also note `ls-files -o --directory` reports `layers/` as one entry, so sub-paths under it (`layers/worktrees/*`) must count against that entry, not as unknown paths.
+2. **[Read-only rule, suggestion]** The Context's allowed list (`ls`, `find`, `cat`/Read, `grep`, `git --no-optional-locks ls-files` and `git log`) leaves out what the revision now uses: `diff`/`cmp` against fork files (step 4), `git --no-optional-locks branch`/`worktree list` and `gh issue list`/`gh pr list` (list/view only). Add them to the allowed list so a pass does not read the brief as contradicting itself.
+3. **[Consistency, suggestion]** Two stale step numbers: Principles Self-Check says "step 6 checks every path and issue number" (now step 7), and Design Picture says the change-log row is decided in "step 8" (correct now, but the self-check row is not).
+
+### Summary
+
+All five must-fixes and the four suggestions are resolved as worded, and the revision introduced nothing that would make the document wrong. Ready to implement with the three suggestions above carried into the implementer's brief.
+
+### Recommended Actions
+
+- [ ] Carry into the implementer's brief: rows may cite a prefix or glob with a count, and the count check expands them (including `layers/` as one untracked entry).
+- [ ] Add `diff`/`cmp`, `git --no-optional-locks branch`/`worktree list` and list/view `gh` to the Context's allowed list.
+- [ ] Fix the stale "step 6" in the Principles Self-Check (now step 7).
