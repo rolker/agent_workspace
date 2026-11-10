@@ -26,12 +26,21 @@
 #   .agent/scripts/gh_create_pr.sh --title T --body B --no-signature
 #
 # Behavior:
+#   - The command line is read the way gh reads it (_gh_create_args.sh,
+#     shared with gh_create_issue.sh): a value-taking flag consumes its
+#     value whatever it looks like, and every spelling of the body flags is
+#     recognised (--body X, --body=X, -b X, -bX, -b=X, a cluster such as
+#     -db X; the same for --body-file / -F).
 #   - AI signature footer (Authored-By / Model) is appended unless
-#     (a) --no-signature is passed, or
+#     (a) --no-signature is passed as a flag, or
 #     (b) body already contains `**Authored-By**:` (case-sensitive)
 #   - AGENT_NAME and AGENT_MODEL env vars MUST be set when signature is
 #     to be added; missing vars hard-fail with instructions. Set via:
 #     source .agent/scripts/set_git_identity_env.sh "Name" "email" "<model>"
+#   - A --body-file (or the --body-stdin drain) is read once into a
+#     temporary copy (under TMPDIR, removed on exit), which is what gets
+#     signed and what gh reads: a pipe, FIFO or process substitution is
+#     signed like a regular file, and the caller's file is never modified.
 #   - Labels are validated against .agent/github_metadata.json
 #   - Repo-safety: prevents gh from targeting the wrong repo when run
 #     from a scratchpad clone or other nested git repo (see issue #72)
@@ -42,8 +51,13 @@
 #   0 - Success
 #   1 - Invalid label value (label not in .agent/github_metadata.json)
 #   2 - Argument / usage errors:
-#         - missing value for -R/--repo, --label/-l, --body, or --body-file
+#         - a value-taking flag with no value (-R/--repo also refuses an
+#           empty one)
 #         - more than one of {--body, --body-file, --body-stdin} provided
+#         - --fill / -f, --fill-first, --fill-verbose or --template / -T
+#           with no body, or --recover with or without one, and no
+#           --no-signature (gh would write a body this wrapper cannot sign)
+#         - a --body-file that cannot be read
 #         - repo-safety mismatch (gh would target the wrong remote)
 #         - AGENT_NAME / AGENT_MODEL unset when a body is provided and
 #           --no-signature was not passed
@@ -86,123 +100,38 @@ if ! command -v jq &>/dev/null; then
     exit 3
 fi
 
-# Normalize joined-equals flag forms (--flag=VALUE → --flag VALUE) so the
-# downstream parse + rewrite logic only has to handle one shape per flag.
-# Without this, rewriting `ORIGINAL_ARGS[i]` for signature injection would
-# drop the `--body=` / `--body-file=` prefix.
-_RAW_ARGS=("$@")
-ORIGINAL_ARGS=()
-for arg in "${_RAW_ARGS[@]}"; do
-    case "$arg" in
-        --body=*)      ORIGINAL_ARGS+=(--body "${arg#*=}") ;;
-        --body-file=*) ORIGINAL_ARGS+=(--body-file "${arg#*=}") ;;
-        --repo=*)      ORIGINAL_ARGS+=(--repo "${arg#*=}") ;;
-        --label=*)     ORIGINAL_ARGS+=(--label "${arg#*=}") ;;
-        *)             ORIGINAL_ARGS+=("$arg") ;;
-    esac
-done
-
-# Parse command-line arguments. We need to know:
-#   - --label / -l values (for validation)
-#   - -R / --repo value (for repo-safety check)
-#   - --body / --body-file / --body-stdin (for signature injection)
-#   - --no-signature (skip footer)
-LABELS=()
-EXPLICIT_REPO=""
-NO_SIGNATURE=false
-BODY_TEXT=""
-BODY_FILE_PATH=""
-BODY_STDIN=false
-BODY_FLAG_PRESENT=false
-BODY_ARG_INDEX=-1
-BODY_FILE_ARG_INDEX=-1
-
-i=0
-while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
-    arg="${ORIGINAL_ARGS[$i]}"
-    case "$arg" in
-        -R|--repo)
-            if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
-                EXPLICIT_REPO="${ORIGINAL_ARGS[$((i+1))]}"
-                i=$((i + 2))
-            else
-                echo "❌ Error: -R/--repo requires a value (owner/repo)" >&2
-                exit 2
-            fi
-            ;;
-        --label|-l)
-            # Mirror the missing-value handling on --body / --body-file /
-            # --repo: a trailing --label with no value silently passes
-            # through to gh and produces a generic CLI error.
-            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
-                echo "❌ Error: --label requires a value" >&2
-                exit 2
-            fi
-            LABELS+=("${ORIGINAL_ARGS[$((i+1))]}")
-            i=$((i + 2))
-            ;;
-        --body)
-            # Track flag presence separately from content so `--body ""`
-            # is still recognized as non-interactive (would otherwise
-            # collapse into the "no body provided → editor mode" branch
-            # in needs_signature()).
-            #
-            # Reject missing value up-front (last-arg case) — otherwise the
-            # wrapper either hard-fails on missing identity (misleading) or
-            # silently drops signature injection and passes a value-less
-            # `--body` through to gh.
-            BODY_FLAG_PRESENT=true
-            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
-                echo "❌ Error: --body requires a value" >&2
-                exit 2
-            fi
-            BODY_TEXT="${ORIGINAL_ARGS[$((i+1))]}"
-            BODY_ARG_INDEX=$((i + 1))
-            i=$((i + 2))
-            ;;
-        --body-file)
-            # Same reasoning as --body: a trailing --body-file with no
-            # value silently became "no body file" before, which masks
-            # a clear CLI error from the caller.
-            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
-                echo "❌ Error: --body-file requires a value" >&2
-                exit 2
-            fi
-            BODY_FILE_PATH="${ORIGINAL_ARGS[$((i+1))]}"
-            BODY_FILE_ARG_INDEX=$((i + 1))
-            i=$((i + 2))
-            ;;
-        --body-stdin)
-            BODY_STDIN=true
-            i=$((i + 1))
-            ;;
-        --no-signature)
-            NO_SIGNATURE=true
-            i=$((i + 1))
-            ;;
-        *)
-            i=$((i + 1))
-            ;;
-    esac
-done
+# Parse the command line the way gh does (_gh_create_args.sh, shared with
+# gh_create_issue.sh): each value-taking flag consumes its value, whatever
+# it looks like, and every spelling (--body X, --body=X, -b X, -bX, -b=X,
+# a cluster like -db X) is rewritten to `--body X` so signature injection
+# handles one shape. --body-stdin becomes `--body-file -`.
+# shellcheck source=_gh_create_args.sh
+source "$_UT_SCRIPT_DIR/_gh_create_args.sh"
+gh_create_parse pr "$@" || exit 2
 
 # --- Mutually exclusive body sources -----------------------------------------
 # Multiple body sources would mean the wrapper signs one source while
 # `gh pr create` may use a different one (or error). Either outcome can
 # leave the PR unsigned, defeating the strict-policy stance.
 _BODY_SOURCE_COUNT=0
-[ "$BODY_FLAG_PRESENT" = true ]      && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
-[ -n "$BODY_FILE_PATH" ]             && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
-[ "$BODY_STDIN" = true ]             && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+[ "$GH_BODY_INDEX" -ge 0 ]           && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+[ "$GH_BODY_FILE_GIVEN" = true ]     && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+[ "$GH_BODY_STDIN" = true ]          && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
 if [ "$_BODY_SOURCE_COUNT" -gt 1 ]; then
     echo "❌ Error: --body, --body-file, and --body-stdin are mutually exclusive" >&2
     exit 2
 fi
 
+# --fill / -f, --fill-first, --fill-verbose and --template / -T with no
+# body, and --recover with or without one, let gh write the body itself,
+# out of the wrapper's reach: refuse unless --no-signature says an
+# unsigned PR is meant.
+gh_refuse_unsigned_fill PR && exit 2
+
 # --- Repo-safety check (issue #72) -------------------------------------------
 # Prevent gh from targeting the wrong repo when running inside scratchpad
 # clones or other nested git repos.
-if [ -z "$EXPLICIT_REPO" ]; then
+if [ -z "$GH_REPO" ]; then
     _CURRENT_REMOTE=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || echo "")
     _CURRENT_SLUG=$(echo "$_CURRENT_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
 
@@ -240,32 +169,15 @@ if [ -z "$EXPLICIT_REPO" ]; then
     fi
 fi
 
-# --- Drain --body-stdin (always; wrapper-only flag) --------------------------
-# `--body-stdin` is not understood by `gh pr create`. Always rewrite it to
-# `--body-file <tmp>` regardless of signature decision; otherwise the flag
-# leaks through to gh and fails as "unknown flag".
-if [ "$BODY_STDIN" = true ]; then
-    STDIN_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
-    trap 'rm -f "$STDIN_BODY_FILE"' EXIT
-    cat > "$STDIN_BODY_FILE"
-    NEW_ARGS=()
-    for arg in "${ORIGINAL_ARGS[@]}"; do
-        if [ "$arg" = "--body-stdin" ]; then
-            NEW_ARGS+=(--body-file "$STDIN_BODY_FILE")
-        else
-            NEW_ARGS+=("$arg")
-        fi
-    done
-    ORIGINAL_ARGS=("${NEW_ARGS[@]}")
-    BODY_FILE_PATH="$STDIN_BODY_FILE"
-    # Find the new --body-file value's index so signature injection can rewrite it.
-    for (( j=0; j<${#ORIGINAL_ARGS[@]}; j++ )); do
-        if [ "${ORIGINAL_ARGS[$j]}" = "--body-file" ]; then
-            BODY_FILE_ARG_INDEX=$((j + 1))
-            break
-        fi
-    done
-fi
+# --- Read the body file once -------------------------------------------------
+# A --body-file (or the --body-stdin drain, now `--body-file -`) is read
+# once into a temp copy under TMPDIR before anything looks at it: a pipe or
+# process substitution can be read only once, and the caller's file is
+# never modified. The signature check and the footer both use the copy.
+# gh runs as a child (never `exec`) so the EXIT trap always removes it.
+GH_BODY_COPY=""
+trap 'rm -f "${GH_BODY_COPY:-}"' EXIT
+gh_body_copy gh_pr_body.XXXXXX.md || exit 2
 
 # --- AI signature injection --------------------------------------------------
 # Append the canonical signature footer unless:
@@ -276,18 +188,12 @@ fi
 # hard-fail with instructions (workspace policy: PRs are signed).
 SIG_MARKER='**Authored-By**:'
 needs_signature() {
-    [ "$NO_SIGNATURE" = true ] && return 1
+    [ "$GH_NO_SIGNATURE" = true ] && return 1
     # No body input flag at all → interactive editor mode → no injection.
     # `--body ""` counts as flag-present (non-interactive) and will be signed,
     # so it does NOT take this branch.
-    [ "$BODY_FLAG_PRESENT" = false ] && [ -z "$BODY_FILE_PATH" ] && return 1
-    # Already signed (catches stdin-drained content too, since BODY_FILE_PATH
-    # now points at the temp file)
-    if [ "$BODY_FLAG_PRESENT" = true ] && [ -n "$BODY_TEXT" ]; then
-        printf '%s' "$BODY_TEXT" | grep -Fq "$SIG_MARKER" && return 1
-    elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
-        grep -Fq "$SIG_MARKER" "$BODY_FILE_PATH" && return 1
-    fi
+    [ "$GH_BODY_INDEX" -lt 0 ] && [ "$GH_BODY_FILE_INDEX" -lt 0 ] && return 1
+    gh_body_is_signed "$SIG_MARKER" && return 1
     return 0
 }
 
@@ -305,38 +211,22 @@ if needs_signature; then
     SIG_BLOCK=$(printf '\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' \
                        "$AGENT_NAME" "$AGENT_MODEL")
 
-    if [ "$BODY_FLAG_PRESENT" = true ] && [ "$BODY_ARG_INDEX" -ge 0 ]; then
-        ORIGINAL_ARGS[$BODY_ARG_INDEX]="${BODY_TEXT}${SIG_BLOCK}"
-    elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
-        # Append directly to the existing temp file (for stdin) or copy+append
-        # for a user-provided body file. Either way, the on-disk file gets the
-        # signature and gh sees the same --body-file path.
-        if [ "$BODY_STDIN" = true ]; then
-            printf '%s' "$SIG_BLOCK" >> "$BODY_FILE_PATH"
-        else
-            SIGNED_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
-            trap 'rm -f "$SIGNED_BODY_FILE" "${STDIN_BODY_FILE:-}"' EXIT
-            cp "$BODY_FILE_PATH" "$SIGNED_BODY_FILE"
-            printf '%s' "$SIG_BLOCK" >> "$SIGNED_BODY_FILE"
-            ORIGINAL_ARGS[$BODY_FILE_ARG_INDEX]="$SIGNED_BODY_FILE"
-        fi
+    if [ "$GH_BODY_INDEX" -ge 0 ]; then
+        GH_ARGS[$GH_BODY_INDEX]="${GH_ARGS[$GH_BODY_INDEX]}${SIG_BLOCK}"
+    else
+        printf '%s' "$SIG_BLOCK" >> "$GH_BODY_COPY"
     fi
 fi
 
-# Strip the wrapper-only flag before invoking gh
-FINAL_ARGS=()
-for arg in "${ORIGINAL_ARGS[@]}"; do
-    [ "$arg" = "--no-signature" ] && continue
-    FINAL_ARGS+=("$arg")
-done
+# The wrapper-only --no-signature and --body-stdin never reached GH_ARGS.
+FINAL_ARGS=("${GH_ARGS[@]}")
 
 # --- Label validation -------------------------------------------------------
 # Skip when no labels were passed or metadata file is absent.
 #
 # We invoke `gh pr create` without `exec` because `exec` replaces the shell
-# process and skips the EXIT trap, which would leak STDIN_BODY_FILE and
-# SIGNED_BODY_FILE in /tmp.
-if [ ${#LABELS[@]} -eq 0 ]; then
+# process and skips the EXIT trap, which would leak the body copy.
+if [ ${#GH_LABELS[@]} -eq 0 ]; then
     echo "ℹ️  No labels specified, passing through to 'gh pr create'"
     gh pr create "${FINAL_ARGS[@]}"
     exit $?
@@ -357,7 +247,7 @@ VALID_LABELS=$(jq -r '.labels[]' "$METADATA_FILE" 2>/dev/null) || {
 }
 
 INVALID_LABELS=()
-for label in "${LABELS[@]}"; do
+for label in "${GH_LABELS[@]}"; do
     # `--` terminates grep option parsing so labels starting with `-`
     # are not misread as flags (matters under ugrep / stricter grep).
     if ! echo "$VALID_LABELS" | grep -Fxq -- "$label"; then
