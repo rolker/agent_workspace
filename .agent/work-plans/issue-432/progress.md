@@ -413,3 +413,20 @@ Scope: the round-2 suggestions and the fix diff since 411ab2ca. Cross-model was 
 **Decision**: publish
 
 Host read the round-3 review of 2026-11-10 (approved, no must-fix, one suggestion: Path 2's origin, the owner's 2026-10-15 "two parallel paths" quote, no longer appears in the section). It is listed in the pull request's decision summary rather than given a fourth round.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-10 11:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #434 at `e1da046`
+**Sources**: 3 (Local Review (Pre-Push) round 3 @ `ab8b05c` (covers `e1da046` via bookkeeping), Copilot @ `e1da046` (quota notice, no review), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+No human review and no conversation comments. Copilot's only review on the head is the notice "unable to review this pull request because the user who requested the review has insufficient remaining quota", with no inline comments; it is a quota notice, not a review source, and its `copilot-pull-request-reviewer` check run shows failure for that reason only. Pre-push timeline: round 3 approved with no must-fix and one suggestion; no dropped or unverifiable entries; no GitHub inline comments, so no candidates. CI at this entry: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass on both runs; Lint (pre-commit) still pending on both runs.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `ab8b05c`, covers `e1da046` via bookkeeping) Path 2's origin, the owner's 2026-10-15 "two parallel paths" statement, is no longer quoted, so his "Path 2 mentioned earlier" has no dated antecedent — `docs/roadmap.md` — decided: carried to the pull request's Decision summary as the owner's to take or leave at the merge decision. Not a defect: the quote sits inside the paragraph headed "Path 2, the workspace reflects the goals", whose first sentence is main's prose for Path 2, so the referent is on the page; only the date of origin is lost. Round 2 had removed the added attribution because the 2026-10-15 words ("to making ... in the other") do not stand as a clean verbatim quote.
+
+### False positives
