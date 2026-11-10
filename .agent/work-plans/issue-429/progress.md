@@ -798,3 +798,20 @@ The two-pull-request cut and the gate-on-the-owning-timeline approach are sound,
 - [ ] (suggestion) Step 10: cite the creation rule correctly, close the open question, add the "own checkout not on the base" case
 - [ ] (suggestion) File the fixture-rename follow-up now
 - [ ] (suggestion) Rebuild the Principles Self-Check from the sixteen headings of `docs/principles.md`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review of part 2 found two must-fixes and a better order, all mechanism; first host revise on the part 2 plan)
+**After**: plan
+**Decision**: revise
+
+Correction to this timeline's merge checkpoint of 2026-11-10: the host wrote there that no recorded goal says to depend less on GitHub. That was wrong. The README's Workspace goals, Flexibility, say: "When practical, preference should go to open source and open standards to minimize vendor lock-in. Have an exit strategy for anything that depends on a vendor's closed product or infrastructure." The plan repeated the host's error and must be corrected too.
+
+Host read the Plan Review (needs-work, 2 must-fix, suggestions) and directs:
+- Must-fix 1: the branch's start point gets its own strict path: fetch origin's base, start the new branch from it with no tracking, refuse when the base is absent or unknown on origin, never use a local copy of the base branch; test both refusals and that unpushed local commits on the base do not enter.
+- Must-fix 2: drop the qualified pull-request identity in records (plan step 7). No flow writes two repositories' pull requests onto one timeline, and a bare `#M` keeps every reader working.
+- The base comes from the adapter now, not by hand: pull request 2a itself adds the `repo_pin` verb as a required verb every project type implements (the ROS type answers from the `.repos` file it already reads; a single-repository type answers with its default branch), with ADR-0011's verb list updated, and uses it. Issue 436's own pull request for that verb is then dropped there; the host records that on issue 436's timeline. `--base` stays only as an override, and a pinned tag, commit or unknown kind refuses and names it.
+- The Flexibility goal: complete the table of what stays GitHub-bound (the sibling-record comment, the push-failure fallback, the second slug parse, which reuses the manifest scan's match instead), and for every row state the exit: how the work would continue without GitHub. Where no exit exists today, say so plainly; those rows go to the owner's discussion.
+- Take every suggestion: un-anchor the manifest header's `layer=` parser before adding `base=`, with a test; move the base texts into 2a so 2a and 2b can be built in parallel; name the repository for `repo_pin` from the adapter's own entry; close the cleanup question (the rule the planner could not find covers undoing a failed creation, not merge cleanup) and add the test for a package checkout not on the base branch; list `script_reference.md` among the files shared with issue 437; rebuild the self-check from the sixteen headings of docs/principles.md. The rename of the made-up project name in the other six suites is drafted as a follow-up issue for the owner to allow.
