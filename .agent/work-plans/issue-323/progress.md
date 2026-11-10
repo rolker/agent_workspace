@@ -628,3 +628,48 @@ The named-branch lookup, redone as one change. `wt_fetch_named_branch` fetches `
 - A skill worktree's minted branch name is still looked up on origin, so offline it needs the flag. Skipping the lookup for a name minted in this run is a possible follow-up, left out to keep the pull request to this mechanism.
 - Pre-existing, outside the three callers: a project worktree whose issue branch already exists sets the draft PR base from local refs alone (`worktree_create.sh`, the manifest loop's parent check), with no lookup and no warning.
 - The old-scripts test copy in this session's scratchpad could not be removed (`rm -rf` was denied).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-10 11:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a106668e02ad85d54, resume 1 of 3)
+
+**PR**: #417 at `a378503a`
+**Depth**: Deep (reason: the whole-PR diff still holds merge_pr.sh; fix-round rule, classified on the whole diff)
+**Round**: 3 in PR mode (two earlier complete `## Local Review` entries, no restart checkpoint). The handoff does not say "no cross-model reviewers", so the round-3 convergence exception did not apply: the fix-round rule did, and cross-model ran.
+**Must-fix**: 2 | **Suggestions**: 6
+
+Scope: the fix diff since `54fd978d` (e0672051, af2c5d09, 39da2930 and the progress commits), checked against the 3 must-fixes and 5 suggestions of the 2026-11-10 11:00 review.
+
+Verified:
+- Every row of the outcome table in the `wt_fetch_named_branch` comment matches the code. I read both; the Claude adversarial reviewer did the same row by row. Any timeout or failure at any probe gives "unknown".
+- No caller reads `WT_FETCH_OUTCOME` left over from an earlier call.
+- `exit 1` inside the `elif` in `fetch_remote_branch` ends the script.
+- test_worktree_create.sh passed 47 of 47 (adversarial reviewer's run).
+- Shellcheck --severity=warning is clean on the 7 changed scripts.
+- The three earlier must-fixes are resolved: the explicit refspec and ref check, an ls-remote timeout counted as unknown, and the existing-branch parent warning on absent and on unknown.
+- Suggestions 1, 2, 3, 4 and 7 of that review are resolved. Number 8 (the `--fill --fill=false` refusal) is deferred, with its reason recorded in the Implementation entry.
+
+The contract is now right; the remaining gaps are at its edges, not in the mechanism.
+
+The three additions:
+- **wt_track_ready.** It is in scope, since `--track` from a ref no refspec maps fails, but the way it works is wrong (must-fix 1).
+- **_wt_add_repo errors on a failed checkout of a found branch.** This is right and in scope: it closes the same divergence. It leaves the local branch behind (suggestion 3).
+- **--allow-unverified-branch.** With "unknown" stopping by default, a flag is the right answer, and the one stop message for "unknown" names it. With the flag, the three suites take the same path they took before (a fresh branch, with a warning), so they still test what they tested. But no suite now reaches the stop in the package path (must-fix 2). Skill worktrees regress when offline (suggestion 2).
+
+Cross-model:
+- gemini failed: agy returned an empty response after a RunCommand tool was auto-denied in headless mode.
+- codex ran and gave one finding in merge_pr.sh, downgraded to suggestion 6.
+- Copilot did not review `a378503a` (out of quota).
+
+### Findings
+- [ ] (must-fix) `wt_track_ready` makes a lasting change to the clone's config. It adds a non-glob refspec with `git remote set-branches --add`, and nothing ever removes it. Once origin deletes the branch, which GitHub's auto-delete and `merge_pr.sh` both do after a merge, every plain `git fetch` and `git pull` in that clone fails with `fatal: couldn't find remote ref refs/heads/<b>` (exit 128). Reproduced in a single-branch clone through `_wt_add_repo`. Fix: leave origin's fetch config alone. Two ways: start from origin/<b> with `--no-track` and write `branch.<b>.remote` and `branch.<b>.merge` directly, or stop and print the command (the alternative already listed for veto). Add a test that a plain `git fetch` still works after origin deletes the branch — `.agent/scripts/_worktree_helpers.sh:649`
+- [ ] (must-fix) The new stop in the package (project) path is not tested through `worktree_create.sh`, and every project fixture now passes `--allow-unverified-branch`. Three cases are untested: an "unknown" on repo 1 (the worktree directory is removed), an "unknown" on repo 2 (repo 1's worktree and new branch are rolled back), and a found branch that fails to check out. Add them. Also correct "stops before anything is made", which is not true for repo 2 onward in `wt_lookup_for_new_branch` and the `_wt_add_repo` header (Claude adversarial) — `.agent/scripts/worktree_create.sh:744`, `.agent/scripts/tests/test_worktree_create.sh`
+- [ ] (suggestion) The restore `gitq -C "$SB" config remote.origin.fetch "+refs/heads/*:..."` fails without a word (git exits 5: "cannot overwrite multiple values", because `set-branches` added a second value), so every later case runs on the narrowed refspec. Use `--replace-all` and check the result — `.agent/scripts/tests/test_worktree_create.sh:297`
+- [ ] (suggestion) A skill worktree's branch name is minted this run with a timestamp, so origin cannot have it. Offline, it now stops unless given the flag; on main it was created. This is a regression from this pull request: skip the lookup (treat it as absent) for a name minted in this run — `.agent/scripts/worktree_create.sh:859`
+- [ ] (suggestion) When `worktree add --track -b` fails after "present" (for example, the destination is not empty), the local branch is left behind. The package rollback never records it, and the next run takes the existing-local path, which skips origin. Delete the branch made by the failed add (Claude adversarial) — `.agent/scripts/_worktree_helpers.sh:741`
+- [ ] (suggestion) An existing branch's parent never gets the absent or unknown warning in the package path, which checks local refs only. Either give it the workspace block's warning or say in WORKTREE_GUIDE that the warning is for the workspace type only. The Implementation entry lists this as pre-existing (Claude adversarial) — `.agent/scripts/worktree_create.sh:758`
+- [ ] (suggestion) The comment still cites `worktree_create.sh:1014,1055`; the two `/tmp` mktemp sites are now at 1042 and 1083 — `.agent/scripts/tests/run_script_tests.sh:348`
+- [ ] (suggestion) `_RUN_COMMITTED_SHAS` records HEAD even when `progress_append.sh` committed nothing (its no-op path for an entry that is already there). Downgraded from codex's must-fix: a no-op needs an identical entry (same minute, same PR head SHA), so HEAD is then the earlier `merge_pr.sh` record commit, which the hold's own rule skips. Recording the SHA only when HEAD changes is still the correct accounting, and costs two lines plus a test — `.agent/scripts/merge_pr.sh:853`
