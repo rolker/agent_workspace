@@ -359,3 +359,21 @@ Narrow check of the round 2 findings and the fix diff since `410358ec` (four com
 **Decision**: publish
 
 Host read the round-3 review (approved, 0 must-fix, 0 suggestions). The document proposes ten issues and opens none; which to open is put to the owner with the merge decision.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-10 12:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #435 at `1819bed`
+**Sources**: 2 (Local Review (Pre-Push) R3 @ `3c4113c` (covers `1819bed` via bookkeeping), CI rollup); Copilot posted only its quota notice ("insufficient remaining quota"), no review and no inline comments, so it is not a source; no human review, no conversation comments
+**Cross-source confirmations**: 0
+**CI**: pending (Validate Adapter Contract, Validate Documentation and ros-manifest tests passed on both runs; Lint (pre-commit) still pending on both runs at 12:56; the copilot-pull-request-reviewer check's failure is the quota notice, not a CI result)
+
+The timeline's earlier rounds are closed: round 1 (`4a67c635`, 6 must-fix, 6 suggestions) and round 2 (`b3cd0e14`, 1 must-fix, 3 suggestions) are all ticked and each has a matching Implementation entry; round 3 (`3c4113c7`) approved with nothing open, and the only change since is this issue's progress.md (bookkeeping, verified by the sources helper). Spot-checked at head: open #310 is cited in `docs/fork_parity.md` (3 places), `test_build_layer_order_and_cascade` is cited in "Not determined" and row 50, and the roadmap Cutover row 4 and the digest both link the document. Outside reviewers on the local rounds: codex and gemini ran on rounds 1 and 2; round 3 skipped cross-model (convergence check).
+
+### Findings
+None open.
+
+### False positives
+- (Local Review (Pre-Push) R3) "No issues found. LGTM." placeholder bullet — the unticked placeholder of a clean review, not a finding (#362).
