@@ -148,10 +148,11 @@ The 34 fork issues closed since 2026-07-01, each against its row:
 - Row 14: rolker/ros2_agent_workspace#586
 - Row 15: rolker/ros2_agent_workspace#596
 - Row 16: rolker/ros2_agent_workspace#563
-- Row 27: rolker/ros2_agent_workspace#470, rolker/ros2_agent_workspace#570, rolker/ros2_agent_workspace#590, rolker/ros2_agent_workspace#592, rolker/ros2_agent_workspace#594, rolker/ros2_agent_workspace#605, rolker/ros2_agent_workspace#660
+- Row 27: rolker/ros2_agent_workspace#470, rolker/ros2_agent_workspace#592, rolker/ros2_agent_workspace#594, rolker/ros2_agent_workspace#660
 - Row 29: rolker/ros2_agent_workspace#569, rolker/ros2_agent_workspace#628, rolker/ros2_agent_workspace#634, rolker/ros2_agent_workspace#635, rolker/ros2_agent_workspace#649, rolker/ros2_agent_workspace#651, rolker/ros2_agent_workspace#652
 - Row 39: rolker/ros2_agent_workspace#573, rolker/ros2_agent_workspace#575, rolker/ros2_agent_workspace#577
 - Row 40: rolker/ros2_agent_workspace#566, rolker/ros2_agent_workspace#602, rolker/ros2_agent_workspace#604
+- Row 43: rolker/ros2_agent_workspace#570, rolker/ros2_agent_workspace#590, rolker/ros2_agent_workspace#605
 - Row 50: rolker/ros2_agent_workspace#481, rolker/ros2_agent_workspace#559, rolker/ros2_agent_workspace#607, rolker/ros2_agent_workspace#620
 - No row: rolker/ros2_agent_workspace#493 (deleted the fork's push gateway), rolker/ros2_agent_workspace#579 (a field-import run, bookkeeping), rolker/ros2_agent_workspace#632 (closed not planned into the open rolker/ros2_agent_workspace#631, which is #260's)
 
