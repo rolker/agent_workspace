@@ -403,3 +403,29 @@ Host read the Plan Review of the small route (needs-work, 1 must-fix, 5 suggesti
 - Serves names a README workspace-goals heading.
 - `WS_ROOT` is captured before the host moves into the owning checkout, or the user tier is required and said so.
 Pull request 2 (the merge gate reads the owning checkout's timeline) follows pull request 1. The gap that exists for workspace issues too (records committed into a main checkout from outside any worktree) is a separate issue; opening it is the owner's, asked at the next hand-back.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `c225c951`
+
+Pull request 1 of the plan (the loop runs in the owning checkout), with the six directions from the plan checkpoint. Pull request 2 (the merge gate) is not started.
+
+- `1cd31fb5` Records guard: `issue_checkout_of` and `issue_checkout_guard` in `_resolve_work_plans_dir.sh`. Inside a package worktree only the checkout on `feature/issue-N` commits the issue's records; a sibling checkout and the top folder are refused, naming the right checkout. Run by resolver rules 2 and 2b, `progress_append.sh` (new exit 4) and `review_progress.sh persist` in both modes, before the compatibility-mode write (exit 4). A lone `.` entry is the worktree itself; any other single entry must still be on `feature/issue-N`, so a worktree holding only a sibling has no owning checkout and refuses. `test_merge_pr_gate.sh`'s fixture copies the resolver.
+- `06bb6047` `dispatch_phase.sh`: every mode takes `owner/repo#N`; `resolve_issue_dir` is the one place that decides the directory. The handoff gives `worktree=` (the owning checkout) and `package_worktree=`; the exit contract, `next`, `--check-exit`, `sha=` and the round branch follow it. New `where` subcommand. The ambiguity message for a bare number is passed through. `conventions=` says `cd <worktree> &&` on every command chain. Direction 1: the handoff and `where` run `gh repo view --json nameWithOwner` in the owning checkout and refuse a mismatch with the manifest's `owner/repo`, naming both and `gh repo set-default`. `next` and `--check-exit` stay gh-free. `test_dispatch_phase.sh` fixtures copy the resolver.
+- `268ba32d` New `test_package_issue_loop.sh`, 56 checks, synthetic: two package repositories, bare remotes over a `GIT_SSH_COMMAND` stub, the same issue number in both, and a stub `gh` that ranks set-default, then upstream, github, origin. Cases: H naming A for where, handoff, next, check-exit and the round branch; the second repository; bare 7 refused; a workspace issue and a single-repo project issue unchanged (no manifest written, no gh asked), plus a legacy `.` manifest; every writer commits in A and refuses B and C (also `-C`), with HEAD and status unchanged in the workspace main checkout, B, pkg_b's own checkout and the second worktree; the resolver with `WORKTREE_ISSUE=7`; no owning entry; an upstream remote, set-default, and a failing gh.
+- `ad74dfef` review-plan's issue-number lookup tries the current repository first. Its `--ref` plan-sha and `git show` lines take a top-folder-relative `./.agent/...` path; checked: `plan-sha --plan ./... --ref HEAD` works from the top folder and from a subfolder. address-findings reads progress.md from the current repository.
+- `eb9002cc` run-issue: usage `owner/repo#N`, `--layer` and `--package-repos`; step 1 `cd "$(dispatch_phase.sh where ...)"`; every call passes `<ref>`. Step 4 and step 6 `PF` come from `where` (direction 2). The `package_worktree=` and `cd` convention are pasted on; publish uses `-R`; step 11 `cd`s to the session root `root=` and passes `--pr owner/repo#M`. The skill-prefix paragraph says the prefix is read at the root only. Scope is rewritten.
+- `68f6d3b5` design Records bullet (and the line citations of the three changed scripts), a change-log row, and the script reference rows.
+- `c225c951` plan.md: Serves names `README.md#easy-to-use` (direction 5, plus `#light-touch-on-projects` for decision 1). The single-repo manifest wording is corrected (direction 4), and the gh "not tested" line is replaced.
+
+Direction 6, picked: a package issue requires the user tier, checked in step 1 before anything is created. A captured absolute `WS_ROOT` does not survive between tool calls. That makes the check the loudest failure: one message naming the installer, instead of a missing-file error at whichever call comes first.
+
+Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, rc 0. That includes the script-suite hook, which runs every suite because a shared helper changed, and shellcheck. Also run on their own: test_dispatch_phase 139/0, test_resolve_work_plans_dir 21/0, test_progress_append 23/0, test_skill_paths 136/0, test_checkpoint_269 43/0, test_address_findings 15/0, test_package_issue_loop 56/0.
+
+Not done:
+- The implement handoff's exit contract names `.agent/scripts/progress_append.sh` relative to the checkout, and the task line `.agent/work-plans/issue-N/plan.md` the same way. In a package repository's checkout the script path does not exist (the plan path does). A dispatched implement pass there would hit a missing file and have to find the workspace script. Neither the plan nor the directions name this; the fix is `$SCRIPT_DIR`, an absolute path, in the contract.
+- The case-H follow-up issue (writes from outside any worktree, compatibility mode) is the host's to file, as the checkpoint says.
+- The acceptance-run check for stray commits in the workspace main checkout, the session root and sibling checkouts (plan review finding 3) belongs to that run.
+- The prototype sandbox at `.../scratchpad/impl429` was not removed (rm denied).
