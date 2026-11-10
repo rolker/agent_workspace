@@ -216,3 +216,59 @@ Host read the second Plan Review of 2026-11-10 (needs-work) and directs:
 **Plan**: `.agent/work-plans/issue-432/plan.md` at `6219805f`
 
 Second revision: the Line table holds only the project11 chain; the five follow-ups (323, 415, 428, 265 part 4, 431) are Deferral rows with `gh-issue <N> open` (a deferral row does not make `named` yes, checked with sitrep_root.sh on a scratch roadmap). Project11 worktrees are not labelled through an adapter check, with reasons; the empty cell, the repository form and the acceptance-case sentence fixes are in. Left open: whether the tracking issue for the combined line exists before merge, and the owner's veto on five always-due deferrals.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 10:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #432 — Roadmap Direction: next acceptance case is project11 on a second machine against ROS 2 Rolling, with the workspace follow-ups alongside
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `6219805f`
+**Branch**: `feature/issue-432`
+
+Third review, a narrow convergence check after the host's second revise. Scope: the second review's open must-fix and its three suggestions, and this revision's own changes (the Line table holds only the project11 chain; the five follow-ups are Deferral rows checked `gh-issue <N> open`). Points earlier reviews accepted are not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one doc PR on `docs/roadmap.md`. |
+| Issue alignment | Good | Serves, as checked: "README workspace goal 'The long view'; `docs/design.md#documentation-layers`" (accepted in the second review). The five follow-ups the owner asked not to lose are kept, as Deferral rows. |
+| File targeting | Good | Sit-rep unchanged; no file it reads needs to change. |
+| Consequences | Needs work | The section's opening sentence, kept unchanged by step 1, calls the Deferral table "what was set aside on purpose"; five of its eight rows would not be (finding 1). |
+| Principle alignment | Good | The choice, why and the labels are stated, and listed for veto (Open Question 2) with its cost. |
+| ADR compliance | Good | Unchanged. |
+| ROS conventions | N/A | Workspace doc plan. |
+
+### Evidence checked this run (scratch copy of `docs/roadmap.md` with the planned acceptance case and tables)
+
+- `sitrep_checks.sh --root . --roadmap <copy>`, exit 0: the three filled lines `false`, the combined line `unchecked` with check `none`, the five `gh-issue <N> open` deferrals `true`, the three old deferrals `false`; `--summary-from` gives `lines 0/4 deferrals 5/8`, as step 6 expects.
+- `sitrep_root.sh --worktrees --rows <rows>`: `feature/issue-429` `named: yes`; `feature/issue-323`, `feature/issue-432` and `main` `named: no`. The script reads only `f[0] == "line"` rows, both for the (b) keep rule and for `named` (read in the source).
+- Issue 323's worktree has a complete Issue Review whose `**Serves**:` names "Quality of the work ... and Trust, control and information", so the sit-rep labels its work `Path 2` (SKILL.md step 3 code: `named` no, `serves` goal, workspace type).
+- The acceptance case's first sentence, split by step 5's block: "Project11 is developed on a second machine against ROS 2 Rolling through this workspace." No quote is cut.
+- `update_roadmap.sh --issue N` for 323, 265, 429 and 430 on the copy: "No roadmap entries found", file unchanged; merges will not alter the rows.
+- What the owner will see (SKILL.md step 8): under **Problems**, five lines "Deferral due: Follow-up still open: ..." on every run until each issue closes, and "**Deferrals**: 5 of 8 due (under Problems)". "Next:" is the first line that is not `true`, now the #429 line; a due deferral becomes "Next:" only when every line is `true`, which the empty cell prevents until a check is filled in and reads `true`.
+
+### Resolution of the second review
+
+- Must-fix 1 (five follow-ups labelled Path 1 while Path 2 claims them): resolved. They are no longer Line rows; a deferral row never makes `named` yes (verified above); their in-flight work is `Path 2` when its issue review names a goal. The `adapter --project` note is answered ("Project11 worktrees"; Open Question 5).
+- Suggestion 2 (step 6 and the empty cell): resolved. Step 6 allows the one `unchecked` row; step 2 says the cell is truly empty, no placeholder.
+- Suggestion 3 (repository form): resolved. Step 2 and Open Question 3 give `gh-issue <owner/repo>#<N> closed`.
+- Suggestion 4 (acceptance case's first sentence): resolved and verified above.
+
+### Findings
+
+1. **[Consequences]** (must-fix, one clause) The section's opening sentence, which step 1 keeps unchanged, says the section holds "what was set aside on purpose", and the Format bullet says a deferral's check "says when to look at it again". The five new rows are the reverse: work he asked to go on in parallel ("We can do stuff in parallel"), due from the first run. Merged as planned, the roadmap describes five of its eight deferrals wrongly, and he could read them as parked. The sit-rep output itself is acceptable: the "Follow-up still open:" prefix makes "Deferral due: Follow-up still open: small tooling fixes (#323)" read as open work, and Open Question 2 states the cost. Fix: in step 1, change the opening sentence to cover both kinds of row, e.g. "... and what was set aside on purpose or is kept in view until it closes". Optionally add the same to the Format deferral bullet. The implementer can apply this; it needs no further plan review.
+2. **[Consequences]** (suggestion) "Project11 worktrees" point (3) and Open Question 5 say unnamed project11 package work in a workspace session "reads path unknown/no path". In fact `sitrep_root.sh` keeps a workspace session's worktrees only by rule (a) (workspace or main) or rule (b) (named by a line), so such a worktree is not listed at all. Write "is not shown in the workspace's sit-rep until a line names it" so his veto rests on the right fact.
+3. **[Verification]** (suggestion) "Where the follow-ups go" says the deferrals cannot take over "Next" "before the simulator line is closed by an issue". It is the empty cell that blocks it, until a check is filled in and reads `true`. That text is plan-only; correct it if it goes into the PR description. Also, Path 1's "(see 'Project11 worktrees' below)" refers to the plan; leave it out of the roadmap.
+
+### Summary
+
+The second review's must-fix and its three suggestions are resolved, and the revision's evidence holds: deferral rows do not make `named` yes, the five `open` checks parse and read `true`, and the counts match step 6. One must-fix remains, a one-clause wording fix: the section's own opening sentence would call five active follow-ups "set aside on purpose". It can be fixed during implementation without another plan round.
+
+### Recommended Actions
+
+- [ ] Step 1: reword the section's opening sentence (and optionally the Format deferral bullet) so it covers follow-ups kept in view until they close.
+- [ ] Say in point (3) and Open Question 5 that unnamed project11 worktrees are not shown in the workspace's sit-rep.
+- [ ] Keep the plan's cross-references ("see ... below") and the "simulator line" wording out of the roadmap and the PR description.
