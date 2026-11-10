@@ -194,3 +194,17 @@ Must-fix 2 and all five suggestions are resolved, and every filled check parses.
 - [ ] Step 6: allow `unchecked` for the combined line while its cell is empty; leave the cell truly empty.
 - [ ] Step 2: fill the cell in the repository form if the tracking issue is not in this repository.
 - [ ] End the acceptance case's first sentence before the quote that contains "...", and check `acceptance_first` in verification.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 11:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: one must-fix half open and three new suggestions, all about how the section's tables map to the sit-rep's path labels; mechanism, no change of scope; second host revise in a row, so the next answer at this checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+Host read the second Plan Review of 2026-11-10 (needs-work) and directs:
+- This is the second finding about path labels, so the question is whether the mechanism is right, not another wording fix. The sit-rep labels every issue a Direction line names as Path 1. So the Line table holds only the project11 chain (issue 429, issue 430, the combined build-and-run line, the simulator line), which is Path 1 in fact. The loop-defects issue 428 goes with the Path 2 follow-ups unless the plan shows it must be Path 1.
+- The Path 2 follow-ups the owner asked not to lose (issues 323, 415, 428, 265 part 4, 431) leave the Line table. First choice: rows of the Deferral table with the revisit check `gh-issue <N> open`, so the sit-rep lists each as due on every run until it closes. Before choosing, read how `sitrep_root.sh --worktrees --rows` computes `named` and how the sit-rep skill words a due deferral; if a deferral row would also label the work Path 1, or the wording would mislead, name them in the Path 2 paragraph with `(#N)` instead and say what the sit-rep then shows for them. State the choice, why, and what each follow-up's in-flight work is labelled.
+- Say in the plan that project11 worktrees are not labelled through an `adapter --project` check, and why that is acceptable or what check would do it.
+- Take the three new suggestions: step 6 allows the one `unchecked` row and the cell is truly empty; the cell's form is `gh-issue <owner/repo>#<N> closed` when the tracking issue is in a project repository; the acceptance case's first sentence ends before any quote containing "...".
