@@ -239,3 +239,31 @@ Host read the second Plan Review (ready). Carried to the implementer: a table ro
 - Plan: carried the second plan review's two suggestions (allowed read-only commands, self-check step number).
 - Found while auditing: the fork is in use today (an agent opened a cube_bathymetry issue-173 worktree there at 12:23 and committed a plan); #267 is closed while roadmap Cutover row 3 still says planned, so the adapter wiring for the new manifest has no open issue.
 - Pre-commit on all branch files, no SKIP: passed (script-test suite included).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 12:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-253 at `4a67c635`
+**Base**: main
+**Depth**: Deep (reason: 645 changed lines across 5 files; same specialists as Standard)
+**Must-fix**: 6 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — six must-fix in round 1, two of them change top-list lines the owner acts on
+
+Checked against both trees (fork read only: ls, find, cat, grep, `git --no-optional-locks` log/branch/rev-list/status/ls-files only). Confirmed true: the adapter calls nothing in `tools/ros-manifest/` (grep); no package PR takes its base from the manifest pin, and #429's branch does not add it (its run-issue passes `-R` only, no `--base`); the fork's `bootstrap.sh` does `rosdep init` and `rosdep update` for Jazzy and no host `rosdep install` (that runs only in the declined container); 14 package worktrees with commits on no remote ref + 1 with 6 modified files + 3 with only untracked files, re-counted (remote refs were fetched by the fork itself at 11:17 today, so not stale); 10 of 45 package `AGENTS.md` name the fork; 34 closed-since-fork issues. Spot-checked rows 12, 20 (port), 23, 31 (partly covered), 41, 43 (decline), 52, 55 (already covered): class and Covered by hold. Outside reviewers: codex ran (`-s read-only` sandbox), gemini ran (told to call no tools); the fork read-only rule could not be added to their prompt, the sandbox and no-tools mode enforce it.
+
+### Findings
+- [ ] (must-fix) Top list A line 1 and row 1 say the adapter "reads the jazzy `.repos` files"; it reads whatever the bootstrap branch carries, and the p11-rolling instance here already checks out from the rolling branch (`projects/p11-rolling/configs/manifest` -> rolling `config/`, `distro: rolling`). Say so, and add the missing step: the new-format project11 manifest exists only as a test fixture (`tools/ros-manifest/tests/fixtures/p11/manifest.yaml`); no project11 repository carries it, so issue item 1 must also place it — `docs/fork_parity.md:32,66,148`
+- [ ] (must-fix) Top list A line 3, row 3 and issue item 3 omit installing `ros-dev-tools` (colcon, vcstool, rosdep): the fork's `bootstrap.sh` installs it, ours installs none, and `adapter setup` refuses without `vcs` (`adapter.sh:452`) — `docs/fork_parity.md:34,68,150`
+- [ ] (must-fix) Top list B line 2, row 33 and issue item 4: "324 untracked scratchpad files" is 324 entries with folders collapsed (`ls-files -o --directory`); the folder holds about 66,800 untracked files, 39 GB, in 58 folders plus 269 loose files (`sonardyne_talk/` alone 36 GB, 62,527 files; also `m365_search/`, `outreach_web_camp/`), not only field data — `docs/fork_parity.md:44,98,151`
+- [ ] (must-fix) Issue item 10 duplicates open issues: the full closing-keyword set is #369 (P1f), commit-identity strict mode overlaps #356 and #359; rows 24 and 12 should cite them (row 24 cites closed #363) — `docs/fork_parity.md:77,89,157`
+- [ ] (must-fix) Row 51 "already covered" is untrue (codex, verified): the fork's `setup_layers.sh:349-356` removes a failed optional layer's `src`; `adapter_setup` keeps the partial checkout (`adapter.sh:471-474`) and `adapter_build` then builds it and stops (`adapter.sh:493-505`); `site` is optional and 4th of 7 layers. Class partly covered, note the gap — `docs/fork_parity.md:116`
+- [ ] (must-fix) The document has no list of what it did not determine; the gaps sit only in table rows the owner will not read (row 18 consumer unknown, 31 read by head only, 48 work plans by structure only, 50 no named build-pollution test) and the package-worktree check did not look for squash-merged work. Gather them under the top lists — `docs/fork_parity.md:41`
+- [ ] (suggestion) List B line 1: 10 of the 14 hold only 1 to 3 `progress:` record commits; the real work is udp_bridge 75 and 64, unh_marine_autonomy 304, cube_bathymetry 44, marine_perception_tools 4. Say so, and that the remote refs were fresh (fetched 11:17) — `docs/fork_parity.md:43`
+- [ ] (suggestion) The fork also moved after the inventory: unh_marine_autonomy 304 got a commit at 12:36 (now 11, not 10) and `appledore_backscatter/` got new files — `docs/fork_parity.md:13,97`
+- [ ] (suggestion) Seven package `.agents/README.md` also name the fork (one in marine_perception_tools, which has no `AGENTS.md`); include them in the repoint — `docs/fork_parity.md:47,101`
+- [ ] (suggestion) rolker/ros2_agent_workspace#605 is the Ollama reviewer issue: map it to row 43, not row 27 (gemini, verified) — `docs/fork_parity.md:137`
+- [ ] (suggestion) Ollama decline reason: give this workspace's own reason (the late-October local trial found no model that met the bar), not only the fork's hardware reason — `docs/fork_parity.md:108,163`
+- [ ] (suggestion) Row 8: `.claude/settings.json` here allows no `colcon` or adapter commands, so a background package build may prompt; add that to the note (Claude adversarial) — `docs/fork_parity.md:73`
