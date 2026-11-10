@@ -150,3 +150,17 @@ The plan fits the runner as it is and the hand-run probes found no collision amo
 - [ ] Decide run-all at `-j 1` in PR 1 vs PR 2 (finding 4); state the argument grammar (finding 5)
 - [ ] Fix step 10's FAIL criterion and scope the `/tmp`/process checks to this run (finding 6)
 - [ ] Optional: drop `# serial:` and `--timings` from PR 1 unless step 10 needs them; leave the `sleep_arg` change out (Scope)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review ran 9 and then 10 suites at once by hand, twice, and nothing collided; its two must-fixes are specific instructions the implementer can follow, and this issue exists to save wall-clock time, so they are carried to implementation rather than given another plan round)
+**After**: plan
+**Decision**: proceed
+
+Host read the Plan Review (needs-work, 2 must-fix, suggestions) and carries all of it to the implementer of pull request 1:
+- Jobs started in the background begin with SIGINT and SIGQUIT ignored, which bash cannot trap: start jobs under `set -m` with stdin from /dev/null, and add a test in which a suite traps INT.
+- A suite's temporary directory is not deleted right after its own check: keep every directory until all suites have finished, then check them all once more, so a late write is still caught as it is today.
+- Stay with bash and `wait -n -p`. State and test the argument order (options, then the tests directory, with `--files` last). At one job, keep today's stop at the first failure until pull request 2 turns parallel on, so a failing full run does not get slower in between. The independence check does not require a FAIL count of 0 in a suite's own output (one suite prints "FAIL: 0" when it passes) and looks only at this run's own directory and processes. Left out of pull request 1, as the review suggests: the `# serial:` marker, the `--timings` flag and the `sleep_arg` change, since nothing collided in the reviewer's runs; they come back only if the 16-run check finds a collision.
+- For pull request 2: the run-time figures to update are in `dispatch_phase.sh` and the address-findings skill, checked by `test_dispatch_phase.sh`, not in AGENTS.md; add the reviewer's timing-limited cases in the cross-model suite to the load-sensitive list; re-run the CI job twice more.
