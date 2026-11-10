@@ -114,3 +114,69 @@ Host read the Issue Review. Accepted as plan inputs: three pull requests (1: the
 **Plan**: `.agent/work-plans/issue-436/plan.md` at `6206a900`
 
 Three pull requests. PR 1 (detailed): the resolver emits `layers.txt`, `optional_layers.txt` and `--repos-subdir`; `make install-ros-manifest`; keys `manifest`, `manifest_ref`, `manifest_path` (role and distro stay on the registry line, where the dispatcher already reads them); a manifest route in the `ros2_colcon` adapter reading one generated directory; optional verb `repo_pin`; synthetic tests; design section. PR 2: roadmap and west-variant records. PR 3: manifest text and drafted issue as records. Ten decisions listed for the owner's veto in the plan.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 13:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #436 — Use the new manifest format for the second-machine test: the ROS adapter calls the manifest resolver
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `6206a900`
+**Branch**: `feature/issue-436`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Pull request 1 touches the resolver (4 modules and tests), Makefile and CI, the settings keys in 5 scripts, the adapter route, a new optional-verb mechanism in the dispatcher and `validate_adapter.sh`, 4 test suites and 2 documents: well past one reviewable change. See finding 4. |
+| Issue alignment | Good | All five needs of the issue are covered, and the Issue Review's actions are taken (three pull requests, resolver writes `layers.txt`, venv install, keys named, bootstrap route untouched). Serves, as written: "Workspace goal "Multiple projects" (README, Workspace goals), under `docs/design.md#registry-and-adapters`". The anchor exists; "Multiple projects" is not a section of README "Workspace goals" (sections: Quality of the work, Trust..., Flexibility, Modular, Light touch on projects, Easy to use, The long view). See finding 10. |
+| File targeting | Good | Files match the code paths checked below. The `.gitignore` question for the generated directories is unanswered (finding 7). |
+| Consequences | Needs work | The ADR-0011 rule change is not in the table (finding 3); refresh of the manifest clone and of the extends cache is not covered (findings 1, 2). |
+| Principle alignment | Needs work | "Keep one current design": optional verbs change ADR-0011's rule while the plan says ADR-0011 is unchanged. "Test what breaks": the sync test as written (edit, then sync) would not catch findings 1 and 2. |
+| ADR compliance | Needs work | ADR-0011 (finding 3). ADR-0009 tier 1 says a persistent tool goes in `requirements.txt`; a make target is defensible but the plan should say why (finding 5). Others as the plan states. |
+| ROS conventions | N/A | Workspace plan; no ROS node or interface changes. |
+
+### Claims checked against the code
+
+- Adapter reads: `_rc_manifest_dir` (adapter.sh:65), `_rc_layers` (:101), `_rc_is_optional_layer` (:110), setup loop (:459), sync (:559), validate (:601); `_rc_bootstrap_manifest` at :288; `vcs import --skip-existing` at :471. Confirmed.
+- Role and distro: `role=`, `distro=` documented as registry trailing fields (`_project_registry.sh`:31-33); read into `ACTIVE_PROJECT_ROLE`/`ACTIVE_PROJECT_DISTRO` at `adapter`:245-255; `_rc_distro` uses the registry distro first (:136). `ACTIVE_PROJECT_ROLE` has no reader today. Confirmed.
+- Resolver: `resolve --manifest <file> --role --distro --out [--cache-dir]`; writes flat `<out>/<layer>.repos` only, skips a layer with no selected repo, warns and exits 0 on zero repos; `extends` with `url`+`ref` is cloned by `_clone_or_reuse` with `git clone --branch <ref> --depth 1` and a cache hit is reused forever (`extends.py`). Confirmed.
+- `REQUIRED_VERBS` at `adapter`:68, check at :164, "does not implement verb" at :345. Confirmed.
+- Downstream of `layers.txt`: only the `ros2_colcon` adapter reads it (`worktree_repos`, `worktree_env` and `--layer` validation go through `_rc_layers`); `register_project.sh`:625 tests `configs/manifest` for type detection. No script assumes the fixed seven-layer list; only `tools/ros-manifest/tests/test_acceptance_p11.py` has a `LAYERS` constant and it calls `emit_layer`, so it is unaffected. Leaving an empty layer out of the generated `layers.txt` is consistent with issue 267 decision 2 (the manifest's list stays fixed; the generated file is per role and distro).
+- `register_project.sh` on an existing line refuses a new or changed `role=`/`distro=` ("no silent rewrite; edit ... by hand", :682-685). The two Rolling/Jazzy instances on this machine have no `role=` or `distro=` on their lines.
+
+### Findings
+
+Must-fix:
+
+1. **[Approach: manifest clone refresh]** `_rc_manifest_fetch` says "`git fetch` plus checkout of the ref on later runs". For a branch ref, `git checkout <branch>` after a fetch does not move the local branch, so `sync` resolves the old manifest and the plan's goal "so a manifest change reaches the checkouts" fails silently. Nothing says what happens when the clone is dirty or on another branch (the owner editing the manifest there), where a forced checkout fails or moves him off his work; `_rc_bootstrap_manifest` reports and reuses in that case. Specify per kind: branch, fast-forward only when clean and on that branch, else report and resolve what is checked out; tag or commit, detached checkout. A commit needs clone then checkout (`git clone -b` takes no SHA). The sync test must push a manifest change to the bare remote and then sync, not edit the clone.
+2. **[Approach: extends cache]** The resolver reuses a cached `extends` clone forever (`extends.py` `_clone_or_reuse`, keyed on url and ref, no fetch), and the plan makes the cache persistent (`--cache-dir <root>/configs/manifest-cache`). A git-hosted base on a branch (the chain issue 267 decision 1 expects: generic base, then platform manifest) never refreshes on `sync`, with no message. Fix in one place and test it: resolve with a cache directory inside the temporary sibling directory (fresh every run, discarded), or have the resolver refresh a branch ref. Note also that `extends` cannot take a commit (`--branch`), while the plan's leaf can; state the difference or align them.
+3. **[ADR compliance: ADR-0011]** `OPTIONAL_VERBS` changes the contract rule "`validate_adapter.sh` asserts every type implements every verb" (ADR-0011, Rules) while the plan says ADR-0011 is unchanged, and callers must now handle "does not implement". Either amend ADR-0011 as ADR-0012 did (10 to 12 verbs), or make `repo_pin` a 13th required verb (`single_project` prints its checkout's branch), or move `repo_pin` to issue 429, its only consumer. Record the choice for the owner's veto.
+
+Suggestions:
+
+4. **[Scope]** Cut pull request 1 in three: (a) resolver additions, `install-ros-manifest` and CI (`tools/ros-manifest/`, `Makefile`, workflow), reviewable and testable alone; (b) settings keys, adapter route, tests, design section; (c) `repo_pin` with the ADR-0011 decision, or folded into issue 429. Decision 9's reason ("the adapter cannot be tested without them") is met by merging (a) first.
+5. **[Fresh machine]** Walked through: `make setup` (venv, then git-bug and the legacy `project.done` before the new target), `make install-ros-manifest` (PyPI for PyYAML and setuptools build isolation), `register_project.sh <dir> ros2_colcon --distro rolling --role <r> --set manifest=<url> --set manifest_ref=<ref>`, which writes the line and file, runs `adapter setup` (directory missing), then the static gate with `adapter validate`. It works if every tool is there. Gaps: the `vcs` check runs after fetch and resolve and names no install; check it first and name the install. State the network needs (PyPI, the manifest host, extends hosts, package hosts). On the manifest route, `_rc_require_manifest`'s message describes the `configs/manifest/` ros2_agent_workspace shape; it should name `adapter --project <name> setup`. Say why a make target rather than `requirements.txt` (ADR-0009 tier 1). An adapter run from a worktree calls the main checkout's editable resolver, which may lack `--repos-subdir` until merged; catch the usage error and name the reinstall.
+6. **[Route selection]** The implicit route is right (it is how `bootstrap_url` works today) and a misspelled key already stops every verb (unknown-key error). Add: refuse `manifest_ref`/`manifest_path` when `manifest` is unset; when `manifest` is set and any other bootstrap source resolves (`BOOTSTRAP_URL` env, legacy `MANIFEST_BOOTSTRAP_URL` in `projects.d/<name>.sh`, as the existing instances here have, `configs/project_bootstrap.url`), refuse or warn, not only for the `bootstrap_url` key; the bootstrap route's "no bootstrap URL" error should also name `manifest=`. Say whether the manifest route accepts the legacy `ROS_DISTRO` fallback that `_rc_distro` still has, since the plan says distro is required on the registry line.
+7. **[Generated directory]** `configs/manifest-resolved`, `-src` and `-cache` sit in the hosting root; here that is under the ignored `projects/`, but a hosting root that is its own git checkout would show them untracked: say so or add an ignore. `rename(2)` cannot replace a non-empty directory (ENOTEMPTY); use a symlink swap (`ln -s` + `mv -T`), as `configs/manifest` already is a link. A package worktree's `env.sh` is written at create time and goes stale when a `sync` changes the layers. After a role change, `vcs import --skip-existing` never removes checkouts and colcon still builds them; `validate` should at least warn about checkouts not in the generated `.repos`.
+8. **[repo_pin]** Branch first is right for a pull-request base (a same-named tag does not stop `--base`). Shallow or single-branch clones still have the pinned branch's remote ref. Local-only gives `unknown` for a pin not yet fetched and a false `branch` for a remote ref left after the branch was deleted upstream. Keep the kind out of the manifest (git is the authority, and an extra field per repo drifts); confirm with `git ls-remote --heads origin <ref>` when online, local fallback otherwise. `_rc_repos_entries` keeps YAML quotes, and PyYAML writes a numeric-looking tag as `version: '2.0'`; strip quotes and test it (sync's branch compare is affected too).
+9. **[Resolver CLI]** Tying the zero-repos error to `--repos-subdir` hides one behaviour behind an unrelated flag; use its own flag or rely on `_rc_require_manifest`'s empty-`layers.txt` check before the swap. Write `layers.txt`/`optional_layers.txt` only under the new option, or the "flat output unchanged" claim is false.
+10. **[Issue alignment: Serves]** Name a real README goal section; "Modular" (knowledge about a kind of project, such as ROS, added as modules) fits.
+11. **[Role model]** Pull request 1 does not depend on it: a role is a name passed to `--role` and an unknown name is the resolver's error. Pull request 3's draft with a role with no `roots` is the groups model in effect; say it is provisional pending issue 267 decision 4.
+
+### Role and distro: registry line or settings file
+
+The registry line is the right home. Issue 267 records "registry/instance names a role and a distro"; `docs/design.md#registry-and-adapters` describes the registry as the name, directory and type "plus optional `key=value` fields"; the fields, their validation and the dispatcher's reading already exist. A project changes its role without re-registering by editing its line in `.agent/projects.local` and running `adapter sync`; `register_project.sh` refuses to add or change a field on an existing line and itself says "edit by hand". The adapter's missing-role, missing-distro and stale-`.resolved-from` messages should say exactly that.
+
+### Summary
+
+The route is the least change on the adapter side (one generated directory with the existing contract, every other verb untouched) and the plan's code claims hold. Three gaps would make `sync` silently stale or contradict ADR-0011: the manifest clone's branch refresh, the extends cache that never refreshes, and optional verbs without an ADR change. Fix those, split pull request 1, and it is ready.
+
+### Recommended Actions
+
+- [ ] Specify the manifest clone's update per ref kind, and the dirty or other-branch case; test with a push to the bare remote.
+- [ ] Make extends refresh on `sync` (fresh cache per resolve, or resolver refresh) and test it with a branch-pinned base.
+- [ ] Decide `repo_pin`'s place (amend ADR-0011, required 13th verb, or issue 429) and record it for veto.
+- [ ] Split pull request 1 into resolver and install, adapter route, and `repo_pin`.
+- [ ] Take suggestions 5 to 11 as the implementer sees fit.
