@@ -292,3 +292,17 @@ The second review's two must-fixes and suggestions are resolved in the plan, and
 - [ ] Audit omissions: `sitrep_root.sh` rule, `test_project_registry.sh` copy, `run-issue` 292, the docs and `address-findings` lines (finding 4)
 - [ ] Pull request states the rc 2/3 stop and checks registered projects; broken-registry workspace case tested (finding 5)
 - [ ] Split part 1: scripts first, skills second (Size)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+At the third plan review (needs-work, 3 must-fix, a size finding) the owner asked: "Are we struggling with this because we missed something, or are we on the right path and just need to polish the plan a little?"
+
+The host answered that something was missed, by its own decision: the design held in all three reviews, but the host had folded the whole records lookup (issue 393, a refactor of about 20 scripts and 9 skills that build the records path by hand) into the first step of this issue. For a project on the default records setting the records go in the package repository that owns the issue, and the existing scripts already find that place when a phase runs from inside that repository's checkout (`_resolve_work_plans_dir.sh` and `progress_append.sh` work from `git rev-parse --show-toplevel`; the first plan review noted the same). Not yet checked: the dispatcher, which takes a bare issue number, and the merge gate. The host offered R1 (one more plan round asking only for the least change that lets the loop run from the owning repository's checkout, and where that breaks; the full lookup stays as issue 393) and R2 (continue with the lookup in two pull requests).
+
+The owner's answer, verbatim: "R1, try the small route first"
