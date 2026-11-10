@@ -554,7 +554,7 @@ test_worktree_list_json_reports_package_worktree() {
     assert_eq "exit 0" "0" "$rc"
     assert_contains "issue 444 reported" '"issue":444' "$out"
     assert_contains "project p11 reported as repo" '"repo":"p11"' "$out"
-    assert_contains "owning branch reported" "feature/pkg_a-issue-444" "$out"
+    assert_contains "owning branch reported" "feature/issue-444" "$out"
     assert_contains "sibling branch reported" "feature/pkg_a-issue-444" "$out"
     assert_contains "dirty status reported" '"status":"dirty"' "$out"
 }
