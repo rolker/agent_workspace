@@ -79,3 +79,45 @@ Host read the Issue Review of 2026-11-10 and its six actions. The one question i
 **Plan**: `.agent/work-plans/issue-432/plan.md` at `6e47b4a8`
 
 One doc PR: rewrite the roadmap Direction section from the owner's quoted words of 2026-11-10 (project11 chain first, three parallel paths, grammar-valid checks, deferrals with revisit checks), point the Cutover sequence section at it, and search the repo for stale references.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 09:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #432 — Roadmap Direction: next acceptance case is project11 on a second machine against ROS 2 Rolling, with the workspace follow-ups alongside
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `6e47b4a8`
+**Branch**: `feature/issue-432`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One doc PR (`docs/roadmap.md`), plus any now-false claim the stale-reference search finds. |
+| Issue alignment | Needs work | Covers all four acceptance bullets and every issue-review action. Serves, as checked: "Goal 'Keep one current design' / the acceptance-case goal in `README.md` workspace goals; `docs/design.md#documentation-layers`". "Keep one current design" is a principle (`docs/principles.md`), and README has no acceptance-case goal; the anchor exists. Finding 5. |
+| File targeting | Concern | `.claude/skills/sitrep/SKILL.md` is read only for false claims, but its path mechanism does not fit three paths (finding 1). |
+| Consequences | Concern | Missing consequence: the sit-rep's path labels and its closing question (finding 1). Shared check on two lines (finding 2). |
+| Principle alignment | Needs work | Owner's words: the 2026-11-10 quotes match his messages in the host transcript word for word, and the 2026-09-21 criterion matches the auto-memory record. "Three paths run in parallel" and Path 3 as its own path say more than his words, and the plan does not list them for veto (finding 1). Status words in a section that holds no status (finding 4). |
+| ADR compliance | Good | ADR-0003: the hostname appears only in quoted record text and `rolker/unh_marine_autonomy` is PUBLIC (checked). ADR-0016 and ADR-0017 apply as the plan says. |
+| ROS conventions | N/A | Workspace doc plan. |
+
+### Findings
+
+1. **[Consequences / Principle alignment]** (must-fix) Three paths do not fit the sit-rep's path mechanism. `.claude/skills/sitrep/SKILL.md` step 3 labels work `Path 1` when a Direction line names its issue and `Path 2` when the work otherwise serves a README goal; there is no Path 3. Its closing question offers "Path 1, Path 2 or both". Under the plan's table, the Path 2 and Path 3 lines (#323, #415, #428, #265, #431) would all be labelled Path 1, Path 3 would never be labelled or offered, and the sit-rep would contradict the Paths text. The plan also drops the old definition sentences ("Path 1 work is an issue named in a Direction line ...", "Path 2 work is any other work ..."), which describe how the sit-rep already works. "Three paths" is also not his wording ("We can do stuff in parallel"), and Open Questions lists only the numbering, not whether a third path exists at all. Resolve one of two ways. Either keep two paths, which is what the mechanism supports: the orchestrator and `~` work go under Path 2, from his "Path 2 ... make sure the work we put it to design the workspace is fully implemented", and the definition sentences are reworded to match the table. Or keep three, and bring the sit-rep change and its test into scope or a separate issue before merge. In both cases, list the choice for his veto with the quotes. (Related: no line has an `adapter --project` check for the Rolling instance, so project11 worktrees outside `unh_marine_autonomy` are not labelled Path 1.)
+2. **[Consequences]** (must-fix) The install line and the `/run-issue` line both check `gh-issue 430 closed`. Closing issue 430 makes both lines true on that one event. Issue 430's acceptance names neither a Rolling build nor a `/run-issue` run reaching the merge checkpoint, so the sit-rep would report both as done with no evidence that either happened. That is a false true; the simulator check (finding 3) only lags. The plan's fallback asks the owner whether to edit 430 at the merge hand-back, and it does not say what the cell becomes if he declines. Before merge: open a tracking issue for the run, on the `rolker/geozui4d#9` model. That is a mechanism step: list it for veto rather than ask. Also make the install line's "and builds there" match its check: either 430's acceptance says build (edited before merge), or the build moves to the tracking issue's line.
+3. **[Issue alignment]** (suggestion) Simulator line: `rolker/unh_marine_autonomy#396` closes only after milestone 4 (trunk switch and variant policy), not at milestone 3, where the simulator works. Its Acceptance was written by an agent; only its first sentence restates the owner's 2026-09-21 criterion. The check lags rather than misleads, so the host's answer is acceptable. Note the lag in Open Questions so a "not yet" after the simulator runs is expected.
+4. **[Principle alignment]** (suggestion) Drop the status words. "'I think project11 on pickerel is not too far off.'" as Path 1's text, and "the registration script exists" in the line for issue 265 (#265), will go stale, and the section says it holds no status. Smallest edit: keep Path 2's existing name ("the workspace reflects the goals"), which he referred to as "path 2", and add his 2026-11-10 quote to it. "The workspace is what we designed" renames it.
+5. **[Issue alignment]** (suggestion) In Serves, name a README workspace-goals section (for example "Trust, control and information" or "The long view") rather than a principle and a goal that does not exist.
+6. **[Verification]** (suggestion) Write the line-3 cell as the bare check. Run as planned, "`gh-issue 430 closed` until a tracking issue exists ..." reads `unchecked`; the bare check cells all parse (`sitrep_checks.sh` run on a scratch copy). Step 6's hostname grep names a `tests` directory that does not exist; widen it to `.agent` (work plans excluded), `.claude`, `tools` and `docs` other than the roadmap.
+
+### Summary
+
+The quotes are faithful, every check parses, and the Cutover reconciliation is sound. Two findings must be fixed before implementation. The third path has no place in the sit-rep's mechanism and has not gone to the owner for veto. One check would mark two lines done when issue 430 closes, though neither event happened.
+
+### Recommended Actions
+
+- [ ] Choose two paths (mechanism as is) or three (with a sit-rep change in scope); keep the path-definition sentences true to the sit-rep; list the choice for veto with his quotes.
+- [ ] Give the `/run-issue`-on-project11 line its own tracking issue before merge; make the install line's "builds" match issue 430 or move it.
+- [ ] Remove the status words ("not too far off", "the registration script exists"); keep Path 2's existing name.
+- [ ] Note the simulator check's lag; name a README goal in Serves; write bare check cells; widen the hostname grep.
