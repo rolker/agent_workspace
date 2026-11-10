@@ -10,42 +10,46 @@ and keep track of what's relevant while not needing to micromanage."
 
 What must be true for the workspace's current acceptance case, each line with
 the check that says whether it is true today, and what was set aside on
-purpose. The sit-rep (`/sitrep`) reads this section through
+purpose or is kept in view until its issue closes. The sit-rep (`/sitrep`) reads this section through
 `.agent/scripts/sitrep_checks.sh` and runs every check each time; this
 section holds no status and no dates, and results stay on the machine that
 ran them.
 
-**Acceptance case.** A bare project that was never onboarded is made ready
-and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
-through the loop with the workspace's goals and principles visibly driving
-the work. That run passed the merge checkpoint on 2026-11-09, and ADR-0016
-(Session roots and the user tier) is Accepted
-([Sessions and roots](design.md#sessions-and-roots)).
+**Acceptance case.** Project11 is developed on a second machine against
+ROS 2 Rolling through this workspace. In the owner's words (2026-11-10):
+"I also want to move project11 to this workspace ... test on pickerel, the
+new desktop machine I have, and set it up to develop project11 against
+ROS2 rolling." "It got a fresh OS install with 26.04 and will
+have ROS installed as well as Claude Code so agents can run locally on
+pickerel ... just assume that will be the state the workspace can expect
+when we are ready to clone it there." It is done when the simulator works
+in Rolling: "a working simulator in Rolling" (2026-09-21).
 
-Design question OQ-2
-([Open questions](design.md#open-questions)) asked where that run was tracked:
-here. The run's target is the `gz4d` project, as step 5 of the Workspace
-Redesign table below says.
+**Paths.** Two paths run in parallel. In the owner's words (2026-11-10):
+"We can do stuff in parallel", and "let's not wait on other stuff" for
+project11. When he asks for a sit-rep, he decides which to focus on.
 
-**Paths.** Two paths run in parallel. In the owner's words (2026-10-15):
-"I think I would like two parallel paths: focus on getting the workspace
-ready to support geozui (as well as monitor the testing and evaluation of
-it) in one, and implementing the missing pieces to making this workspace
-reflect the goals we set in the other." When he asks for a sit-rep, he
-decides whether to focus on one, the other, or both; that choice is not
-written here.
-
-**Path 1, GeoZui4D.** Getting the workspace ready to support GeoZui4D, as
-well as monitoring the testing and evaluation of it. Path 1 work is an
-issue named in a Direction line below (in the line itself or its check),
-or work in the project a line's check names.
+**Path 1, project11 on a second machine.** In the owner's words
+(2026-11-10): "I also want to move project11 to this workspace". Path 1
+work is an issue named in a Direction line below (in the line itself or
+its check). Work in a project11 package repository that no line names is
+not listed in this workspace's sit-rep.
 
 **Path 2, the workspace reflects the goals.** Implementing the missing
-pieces to make this workspace reflect the goals we set: the acceptance
-cases after GeoZui4D, audit trials (starting with the escape-rate count
-and the review-round rule), the instruction-file trim, and a backlog
-sweep. Path 2 work is any other work that serves a goal in the
-README.
+pieces to make this workspace reflect the goals we set. Path 2 work is
+any other work that serves a goal in the README. In the owner's words (2026-11-10):
+"the orchestrator skill which we are trialing and the use of the
+workspace for the agents I run in ~ as my overall work managers", and
+"follow up on the findings during the gz4d tests and Path 2 mentioned
+earlier to make sure the work we put it to design the workspace is fully
+implemented." The follow-ups he asked not to lose are the "Follow-up" rows
+of the deferral table: small tooling fixes (#323), the fixes
+from the first GeoZui4D onboarding run (#415), the loop defects seen on the
+GeoZui4D drives (#428), retiring `project/` and `projects/` (#265, part 4)
+and the orchestrator skill's first updates from the dogfooding log (#431).
+Also under this path: audit trials, the instruction-file trim, the backlog
+sweep, the orchestrator trial, and his "overall work managers", whose
+design waits on the orchestrator design session deferral (#398).
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
@@ -63,26 +67,27 @@ README.
 - A check cell is never just an issue number, and deferrals are never
   checklist items: `update_roadmap.sh` marks both done when that issue
   merges. Put issue numbers in the prose instead, written `(#N)`.
-- A deferral's check says when to look at it again; while the check is true
-  the sit-rep lists the deferral as due.
+- A deferral's check says when to look at it again, or, for one kept in
+  view, that its issue is still open; while the check is true the sit-rep
+  lists the deferral as due.
 
 | Line | Check |
 |------|-------|
-| The acceptance project is registered on this machine and its checkout validates | `script adapter --project gz4d validate` |
-| The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
-| `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
-| The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
-| The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
-| The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all suites | `gh-issue 410 closed` |
-| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | `gh-issue 332 closed ; gh-issue rolker/geozui4d#8 closed` |
-| A `/run-issue` run started from the project root reaches the merge checkpoint | `gh-issue rolker/geozui4d#9 closed` |
-| ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
+| `/run-issue` drives an issue in a package repository of a multi-repository project (#429) | `gh-issue 429 closed` |
+| The workspace installs on the second machine from a clean clone, user tier included (#430) | `gh-issue 430 closed` |
+| The Rolling instance builds on the second machine, and a `/run-issue` run on a project11 package issue, started at the project root there, reaches the merge checkpoint (#433) | `gh-issue 433 closed` |
+| The simulator comes up from the Rolling manifest and a basic mission runs (rolker/unh_marine_autonomy#396) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
 | Deferral | Revisit check |
 |----------|---------------|
-| The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
-| The workspace as a registered project (#295): settled once ADR-0016 is | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
-| A Direction section in the acceptance project's own repository: `onboard-project` offers one to a project whose settings say `instructions=tracked` (#332 D3), so it is decided at the acceptance project's onboarding run | `file-contains .claude/skills/onboard-project/SKILL.md Direction section` |
+| Follow-up: small tooling fixes (#323) | `gh-issue 323 open` |
+| Follow-up: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
+| Follow-up: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
+| Follow-up: retire `project/` and `projects/` and the worktree fallback, and register the project11 instances (#265, part 4) | `gh-issue 265 open` |
+| Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
+| Audit trials (escape-rate count, review-round rule) | `gh-issue 429 closed` |
+| Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
+| The orchestrator design session with the design for the home-directory work managers (#398); the fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
 Things set aside for good are under [Decided Against](#decided-against).
 
@@ -173,11 +178,16 @@ this table tracks the seven migration steps.
 | 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--project` wiring (was `--repo`, #255) (PR #232) |
 | 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 4 | Manifest support | #267 | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone; design section: [Registry and adapters](design.md#registry-and-adapters) |
-| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | in progress | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: real `gz4d` issues + project11 port-to-rolling under `~/project11-ng` before cutover; design section: [Sessions and roots](design.md#sessions-and-roots) |
+| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | in progress | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: project11 port-to-rolling under `~/project11-ng` before cutover; design section: [Sessions and roots](design.md#sessions-and-roots) |
 | 6 | Port `ros2_colcon` adapter | #235, #237, #248, #252 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 adapter core done (#235, PR #236). Phase 2 real-project smoke done (#237, PR #238): `setup` bootstraps a fresh hosting dir; `p11-jazzy` built end to end. Phase 4 isolation smoke done (#248): `p11-rolling` registered beside `p11-jazzy` from the project's `rolling` manifest branch (uma#384); setup/validate/env/discovery isolate per instance, no adapter changes needed; no Rolling build until the project is ported. Phase 3 (layer/package worktrees) complete as of PR 2 of #252: PR 1 landed the `worktree_repos`/`worktree_env` adapter verbs (ADR-0012), `.worktree-repos` manifest, manifest-driven `worktree_create`/`enter`/`remove`/`list`/`dashboard`, hermetic tests, no-symlink structural guarantee, and the real `p11-jazzy` smoke test; PR 2 adds `merge_pr.sh` repo-qualified PR resolution (`--repo`/qualified `owner/repo#N`), manifest-driven package-worktree lookup, and the sibling-PR cleanup rule. #252 closed; next up: steps 4 + 7 and retiring `ros2_agent_workspace`; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
 ### Cutover sequence: project11 moves to this workspace
+
+The current acceptance case, project11 on a second machine against ROS 2
+Rolling, and its lines are in [Direction](#direction). Direction defers
+rows 5, 6 and 8 (#260 to #262) until its simulator line is true, so row
+7 does not wait for rows 5 and 6.
 
 Ordered by dependency, deliberately without dates: each row starts when the
 rows above it are done, and nothing here is time-boxed. Goal (owner,
@@ -194,7 +204,7 @@ ROS-only fixes.
 | 4 | Parity audit of the fork | #253 | planned | Feature by feature against the fork's tree, including its `.agent/knowledge`, work plans and work artifacts, not just scripts. Closed-since-fork issues are accounted for here, as features |
 | 5 | Triage and transfer the fork's open issues | #260 | planned | Four buckets: transfer, close as covered, move to a project11 product repo, close as obsolete. Sonnet classifies, owner adjudicates proposals |
 | 6 | Migrate and triage fork memories | #261 | planned | Auto-memory is path-keyed; copy, then verify each memory against this tree |
-| 7 | Acceptance test: project11 simulator runs on ROS 2 Rolling from this workspace | rolker/unh_marine_autonomy#396 | in progress | Near-term goal (owner, 2026-09-21): port enough of project11 to Rolling that the simulation bring-up launches from the `rolling` manifest and a basic mission runs. The porting itself is project work tracked in that issue (milestones: size → builds → simulator → switch trunk); here it is the proof that the multi-project, multi-distro design holds. Runs alongside rows 2–3 on the `p11-rolling` instance (registered from uma#384; step 5 relocates it). It does not reorder or skip rows 2–6 — cleanup and retirement land as we go |
+| 7 | Acceptance case, see [Direction](#direction): project11 simulator runs on ROS 2 Rolling from this workspace | rolker/unh_marine_autonomy#396 | in progress | Near-term goal (owner, 2026-09-21): port enough of project11 to Rolling that the simulation bring-up launches from the `rolling` manifest and a basic mission runs. The porting itself is project work tracked in that issue (milestones: size → builds → simulator → switch trunk); here it is the proof that the multi-project, multi-distro design holds. Runs alongside rows 2–3 on the `p11-rolling` instance (registered from uma#384; step 5 relocates it). It does not reorder or skip rows 2–4 — cleanup and retirement land as we go |
 | 8 | Cutover | #262 | planned | ROS machine runs this workspace; fork archived read-only with a pointer here |
 | 9 | Variant-branch refinement (step 7) | — | planned | After cutover, on the live instance; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
