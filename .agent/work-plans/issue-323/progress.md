@@ -928,3 +928,29 @@ Deferred by the host to follow-up issues, not counted against this pull request:
 
 ### Findings
 - [ ] (suggestion) A small window remains between this run's `git branch` and its `git worktree add`, a few milliseconds. In it, a second run can see the new branch, take the existing-branch path and check it out at the same destination. This run's add then fails with status 1, and the cleanup removes that run's worktree and branch, because "a worktree on the branch this run made" does not prove the worktree is this run's. Reproduced with a git double on `_wt_add_repo`: the other run's worktree and branch were gone. This is the residual race the triage accepted ("confined to the add itself"), and the fix diff did not introduce it: the combined `add -b` had the same window. It is not a defect for this round; put it on the per-issue lock follow-up. If wanted, a cheaper tightening: in `wt_add_new_branch`, when `<dest>` already exists before `worktree add`, report "branch made, no worktree" so that the caller removes no worktree. `git branch -D` then refuses a branch that another worktree has checked out — `.agent/scripts/_worktree_helpers.sh:731-733`, `.agent/scripts/worktree_create.sh:80-82`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-10 13:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8a0228c7db7c496e, resume 1 of 3)
+
+**PR**: #417 at `c396b75`
+**Sources**: 3 (Local Review round 6 @ `6458bb9` (covers `c396b75` via bookkeeping); Copilot, whose only real reviews are the four of 2026-11-02 at older heads, ruled in the Integrated Review of 2026-11-10 12:47; CI rollup). Not sources: Copilot's posts on `2ba95e6` and `6458bb9`, like those on today's earlier heads, are each the notice "unable to review … insufficient remaining quota". No human review, no conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+This triage builds on the Integrated Review at `2ba95e6` (2026-11-10 12:47). It covers the entries since then: the Checkpoint (address), the Implementation (a6ead361) and the round-6 Local Review (approved, 0 must-fix).
+
+- **The previous triage's one open finding is resolved.** Another run's branch and worktree could be removed when that run created the branch during this run's origin lookup. Checked in the code at `c396b75`:
+  - `wt_add_new_branch` (`_worktree_helpers.sh` 723-734) makes the branch with `git branch` after the lookup. That refuses an existing branch, so success proves this run made it.
+  - Status 2 (made nothing) undoes nothing: `undo_new_branch_checkout` exits at `[ "$1" -eq 1 ] || exit 1` (`worktree_create.sh` 77-80), and `_wt_add_repo` sets `made_branch` only from the helper's status.
+  - Round 6 reports that both new tests fail against `2ba95e67` ("branch=gone") and pass now: test_worktree_create.sh 58 and test_ros2_colcon.sh 218, 0 failures.
+  - An ordinary creation is equivalent to the old `add -b`: same start points, same tracking.
+- **The project path's `rm -rf "$WORKTREE_DIR"` is inherited.** Round 6 confirms main does the same after any failed first add (main's `worktree_create.sh` 719-722).
+
+### Findings
+- [x] (suggestion, Local Review @ `6458bb9` round 6) A gap of a few milliseconds remains between this run's `git branch` and its `git worktree add`. A second run can see the branch, check it out at the same destination, and this run's failed add then removes that worktree. The old single `add -b` had the same window, so the fix diff did not introduce it. Deferred to the per-issue lock follow-up the host will propose to the owner (host direction 2026-11-10), together with the inherited project-path `rm -rf`. The reviewer's cheaper tightening goes with that issue: when `<dest>` already exists before `worktree add`, report "branch made, no worktree", so no worktree is removed — `.agent/scripts/_worktree_helpers.sh:731-733`, `.agent/scripts/worktree_create.sh:80-82`
+
+### False positives
+- (Local Review @ `40f5611`) "No issues found. LGTM." is round 5's placeholder line, not a finding (issue 362); it is already ruled in the 12:47 Integrated Review.
