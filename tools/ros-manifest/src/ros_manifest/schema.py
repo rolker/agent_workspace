@@ -68,13 +68,22 @@ class Manifest:
     source: str  # human-readable provenance label (file path or url#ref/path)
     extends: Optional[ExtendsRef]
     layers: list
+    optional_layers: list  # subset of `layers` whose fetch/build may fail without aborting
     repos: dict  # layer -> {repo_name: RepoEntry}
     groups: dict  # name -> GroupEntry
     roles: dict  # name -> RoleEntry
     packages: dict  # name -> PackageEntry
 
 
-_TOP_LEVEL_KEYS = {"extends", "layers", "repos", "groups", "roles", "packages"}
+_TOP_LEVEL_KEYS = {
+    "extends",
+    "layers",
+    "optional_layers",
+    "repos",
+    "groups",
+    "roles",
+    "packages",
+}
 _REPO_KEYS = {"url", "ref", "type", "distros"}
 _GROUP_KEYS = {"default", "repos"}
 _ROLE_KEYS = {"subtract", "add", "roots"}
@@ -121,6 +130,18 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         raise ManifestError(f"{source}: layers must be a non-empty list")
     if len(set(layers)) != len(layers):
         raise ManifestError(f"{source}: layers contains duplicates: {layers}")
+
+    optional_layers = _require_list_of_str(
+        raw.get("optional_layers", []), f"{source}: optional_layers"
+    )
+    if len(set(optional_layers)) != len(optional_layers):
+        raise ManifestError(f"{source}: optional_layers contains duplicates: {optional_layers}")
+    for layer in optional_layers:
+        if layer not in layers:
+            raise ManifestError(
+                f"{source}: optional_layers names '{layer}', which is not in this manifest's own"
+                f" 'layers' list {layers}"
+            )
 
     repos_raw = _require_dict(raw.get("repos", {}), f"{source}: repos")
     repos: dict = {layer: {} for layer in layers}
@@ -236,6 +257,7 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         source=source,
         extends=extends_ref,
         layers=layers,
+        optional_layers=optional_layers,
         repos=repos,
         groups=groups,
         roles=roles,

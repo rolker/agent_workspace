@@ -199,6 +199,48 @@ groups:
         merge_chain(resolve_chain(leaf))
 
 
+def test_optional_layers_union_across_extends_in_chain_order(tmp_path):
+    base = _write(
+        tmp_path / "base.yaml",
+        """
+layers: [underlay, sim, site]
+optional_layers: [site, sim]
+""",
+    )
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        f"""
+extends:
+  path: {base.name}
+layers: [site, extra]
+optional_layers: [extra, site]
+""",
+    )
+    merged = merge_chain(resolve_chain(leaf))
+    # The leaf may only mark layers in its own list; it re-lists the base's 'site'.
+    # Base first (its own order), then the leaf's new names; 'site' is not repeated.
+    assert merged.optional_layers == ["site", "sim", "extra"]
+
+
+def test_optional_layer_outside_composed_layers_is_error_at_merge():
+    # parse_manifest_text already refuses this per file; merge_chain re-checks against the
+    # composed list, so a Manifest built any other way cannot slip an unknown layer through.
+    from ros_manifest.schema import Manifest
+
+    bad = Manifest(
+        source="handmade",
+        extends=None,
+        layers=["core"],
+        optional_layers=["ghost"],
+        repos={"core": {}},
+        groups={},
+        roles={},
+        packages={},
+    )
+    with pytest.raises(ManifestError, match="optional layer 'ghost'"):
+        merge_chain([bad])
+
+
 def _git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 

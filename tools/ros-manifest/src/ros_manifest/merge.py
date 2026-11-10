@@ -6,6 +6,8 @@ Rules (issue #267 design decision 1):
   they never remove or re-version a base repo.
 - Layers are a fixed, ordered list per manifest; composing preserves the base's order and
   appends any new layer names an extension introduces, in that extension's own listed order.
+- Optional layers (`optional_layers`) are the union over the chain, in chain order; each name
+  must be one of the composed layers.
 - Groups and roles may be extended: a later manifest may add repos to a group's list (defaults
   must agree) and may add to a role's subtract/add lists. Redeclaring a role's closure `roots`
   is an error for the same reason repos are — no silent override.
@@ -29,6 +31,7 @@ class MergedRepo:
 @dataclass
 class MergedManifest:
     layers: List[str]
+    optional_layers: List[str] = field(default_factory=list)  # union over the chain
     repos: Dict[str, MergedRepo] = field(default_factory=dict)  # repo name -> MergedRepo
     layer_repos: Dict[str, List[str]] = field(
         default_factory=dict
@@ -48,7 +51,22 @@ def merge_chain(chain: List[Manifest]) -> MergedManifest:
             if layer not in layers:
                 layers.append(layer)
 
-    merged = MergedManifest(layers=layers, layer_repos={layer: [] for layer in layers})
+    optional_layers: List[str] = []
+    for manifest in chain:
+        for layer in manifest.optional_layers:
+            if layer not in layers:
+                raise ManifestError(
+                    f"{manifest.source}: optional layer '{layer}' is not one of the composed"
+                    f" layers {layers}"
+                )
+            if layer not in optional_layers:
+                optional_layers.append(layer)
+
+    merged = MergedManifest(
+        layers=layers,
+        optional_layers=optional_layers,
+        layer_repos={layer: [] for layer in layers},
+    )
 
     for manifest in chain:
         for layer, layer_repos in manifest.repos.items():
