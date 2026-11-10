@@ -339,4 +339,4 @@ Governance: ADR-0009 complies (venv; the reason for a make target rather than a 
 - [x] (suggestion) A ref containing `/` makes `url#ref/path@commit` ambiguous. Use a separator a git ref cannot contain, such as `url#ref:path@commit` — `extends.py:376`
 - [x] (suggestion) Only the declaring manifest can mark a layer optional, so a remote base can make a layer failure-tolerant and the leaf cannot override that. Decide this, and state it in the README — `schema.py:136`, `merge.py:55`
 - [ ] (suggestion) Cache robustness (unchanged code): a directory left by an interrupted clone is reused as a hit, and the key `url@ref` can collide (`x@y`+`z` vs `x`+`y@z`). Clone into a temporary name and rename it; hash `json.dumps([url, ref])` — `extends.py:28`, `:44`
-- [ ] (suggestion) The CI step only installs. Add a `ros-manifest --help` smoke call so the install is checked before (b)'s tests depend on it — `.github/workflows/validate.yml:40`
+- [x] (suggestion) The CI step only installs. Add a `ros-manifest --help` smoke call so the install is checked before (b)'s tests depend on it — `.github/workflows/validate.yml:40`
