@@ -47,14 +47,20 @@ def test_good_layer_name_is_accepted(layer):
 
 @pytest.mark.parametrize("name", ["'../x'", "a/b", ".hidden", "-opt", "'#c'", "'a b'", "1.10"])
 def test_bad_repository_name_is_refused(name):
-    text = f"layers: [core]\nrepos:\n  core:\n    {name}:\n      url: u\n      ref: main\n"
+    text = (
+        f"layers: [core]\nrepos:\n  core:\n    {name}:\n"
+        "      url: https://example.com/a.git\n      ref: main\n"
+    )
     with pytest.raises(ManifestError, match=r"t: repos\.core: repository name .* is not allowed"):
         parse_manifest_text(text, source="t")
 
 
 @pytest.mark.parametrize("name", ["ros2sonic", "geographic_info", "rviz.plugins", "a-b", "_x"])
 def test_good_repository_name_is_accepted(name):
-    text = f"layers: [core]\nrepos:\n  core:\n    {name}:\n      url: u\n      ref: main\n"
+    text = (
+        f"layers: [core]\nrepos:\n  core:\n    {name}:\n"
+        "      url: https://example.com/a.git\n      ref: main\n"
+    )
     assert name in parse_manifest_text(text, source="t").repos["core"]
 
 
@@ -126,27 +132,36 @@ def test_non_string_extends_field_is_refused(key, value):
 
 def test_newline_in_a_layer_name_is_refused():
     # Reproduced: `core\nevil` became two lines of layers.txt, each passing the adapter's check.
-    with pytest.raises(ManifestError, match="key|layers\\[0\\] contains a control character"):
+    with pytest.raises(
+        ManifestError, match="key|layers\\[0\\] contains a control or invisible character"
+    ):
         parse_manifest_text('layers: ["core\\nevil"]\n', source="t")
 
 
 def test_newline_in_extends_path_is_refused():
     # Reproduced: a base file named `evil\n- injected.yaml` put a line into layers.txt.
     text = 'extends:\n  path: "evil\\n- injected.yaml"\nlayers: [core]\n'
-    with pytest.raises(ManifestError, match=r"t: extends\.path contains a control character"):
+    with pytest.raises(
+        ManifestError, match=r"t: extends\.path contains a control or invisible character"
+    ):
         parse_manifest_text(text, source="t")
 
 
 @pytest.mark.parametrize("char", ["\\n", "\\r", "\\t", "\\0", "\\x7f", "\\u2028", "\\x85"])
 def test_control_character_in_any_value_is_refused(char):
     text = _repo_manifest(url=f'"https://example.com/a{char}.git"')
-    with pytest.raises(ManifestError, match=r"repos\.core\.a\.url contains a control character"):
+    with pytest.raises(
+        ManifestError, match=r"repos\.core\.a\.url contains a control or invisible character"
+    ):
         parse_manifest_text(text, source="t")
 
 
 def test_newline_in_a_repository_name_key_is_refused():
     # Reproduced: a newline in a repository name left the `.repos` header as a YAML key.
-    text = 'layers: [core]\nrepos:\n  core:\n    "a\\nz: 1":\n      url: u\n      ref: main\n'
+    text = (
+        'layers: [core]\nrepos:\n  core:\n    "a\\nz: 1":\n'
+        "      url: https://example.com/a.git\n      ref: main\n"
+    )
     with pytest.raises(ManifestError, match=r"a key under repos\.core contains a control"):
         parse_manifest_text(text, source="t")
 
@@ -158,67 +173,108 @@ def test_control_character_message_does_not_echo_the_value():
     assert SECRET not in str(info.value)
 
 
-# --- credentials in URLs -------------------------------------------------------------------
+# --- URLs: an allow-list -------------------------------------------------------------------
+
+ALLOWED_URLS = [
+    "https://github.com/rolker/camp.git",  # the p11 fixture's form
+    "https://github.com/ros-geographic-info/geographic_info.git",
+    "https://git.example.com:8443/group/sub/a.git",
+    "https://example.com/a",
+    "ssh://git@github.com/rolker/camp.git",
+    "ssh://git@example.com:2222/a.git",
+    "git@github.com:CCOMJHC/ccomjhc_project11.git",  # in the p11 fixture
+    "file:///srv/git/a.git",  # local and test use
+]
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        "https://github.com/rolker/camp.git",
-        "http://example.com/a.git",
-        "file:///srv/git/a.git",
-        "/srv/git/a.git",
-        "../a.git",
-        "git://example.com/a.git",
-        "ssh://git@github.com/rolker/camp.git",
-        "ssh://git@example.com:2222/a.git",
-        "ssh://example.com/a.git",
-        "git+ssh://git@example.com/a.git",
-        "git@github.com:CCOMJHC/ccomjhc_project11.git",  # in the p11 fixture
-        "example.com:a.git",
-    ],
-)
-def test_url_without_secret_is_accepted(url):
+@pytest.mark.parametrize("url", ALLOWED_URLS)
+def test_allowed_url_shape_is_accepted(url):
     assert parse_manifest_text(_repo_manifest(url=url), "t").repos["core"]["a"].url == url
 
 
-@pytest.mark.parametrize(
-    "url",
-    [
-        f"https://user:{SECRET}@github.com/rolker/camp.git",
-        f"https://{SECRET}@github.com/rolker/camp.git",  # a token as the user name
-        f"https://x-access-token:{SECRET}@github.com/rolker/camp.git",
-        f"http://user:{SECRET}@example.com/a.git",
-        "https://user:@example.com/a.git",
-        f"ssh://git:{SECRET}@example.com/a.git",
-        f"ssh://{SECRET}%3Ax@example.com/a.git",
-        f"user:{SECRET}@example.com:a.git",  # scp-style with a password
-        f"user:{SECRET}@example.com/a.git",
-        f"https://user:{SECRET}#x@example.com/a.git",  # `#` hides the rest from urlsplit
-        f"user#x:{SECRET}@example.com:a.git",
-        f"-https://user:{SECRET}@example.com/a.git",
-    ],
-)
-def test_url_with_credentials_is_refused_without_echoing_it(url):
+@pytest.mark.parametrize("url", ALLOWED_URLS)
+def test_allowed_url_shape_is_accepted_for_extends(url):
+    text = f"extends:\n  path: m.yaml\n  url: {url}\n  ref: main\nlayers: [core]\n"
+    assert parse_manifest_text(text, "t").extends.url == url
+
+
+# Credentials in every form either review tried. None fits a shape, so each is refused without
+# a credential-specific rule.
+CREDENTIAL_URLS = [
+    f"https://user:{SECRET}@github.com/rolker/camp.git",
+    f"https://{SECRET}@github.com/rolker/camp.git",  # a token as the user name
+    f"https://x-access-token:{SECRET}@github.com/rolker/camp.git",
+    f"http://user:{SECRET}@example.com/a.git",
+    "https://user:@example.com/a.git",
+    f"ssh://git:{SECRET}@example.com/a.git",
+    f"ssh://{SECRET}%3Ax@example.com/a.git",
+    f"user:{SECRET}@example.com:a.git",  # scp-style with a password
+    f"user:{SECRET}@example.com/a.git",
+    f"https://user:{SECRET}#x@example.com/a.git",
+    f"user#x:{SECRET}@example.com:a.git",
+    f"https:/user:{SECRET}@example.com/a.git",  # round 2: no `://`
+    f"//user:{SECRET}@example.com/a.git",
+    f"{SECRET}@example.com/a.git",
+    f"user:s3/{SECRET}@host:org/a.git",
+    f"https://user%3A{SECRET}@example.com/a.git",  # percent-encoded userinfo
+    f"https://user:{SECRET}@[::1]/a.git",  # IPv6 literal
+    f"https://user:{SECRET}@example.com\\a.git",  # backslash
+    f"HTTPS://user:{SECRET}@example.com/a.git",  # upper-case scheme
+    f" https://user:{SECRET}@example.com/a.git",  # leading space
+    f"https://user:{SECRET}@x@example.com/a.git",  # double @
+    f"https://user:{SECRET}?x@example.com/a.git",
+    f"https:{SECRET}@example.com/a.git",
+    f"file://{SECRET}@/srv/git/a.git",
+    f"https://example.com/a.git?private_token={SECRET}",  # a query
+]
+
+# Forms that run a command or are read as a git option, and shapes outside the list.
+OTHER_REFUSED_URLS = [
+    "--upload-pack=touch PWNED;",  # round 2: ran a command through `vcs import`
+    "-https://example.com/a.git",
+    "ext::sh -c touch% PWNED",  # git's `<transport>::` form
+    "fd::3",
+    "https://example.com/a::b",
+    "ssh://-oProxyCommand=touch@example.com/a.git",
+    "git@-oProxyCommand=touch:a.git",
+    "https://-example.com/a.git",
+    "https://example.com/-a.git",
+    "https://exa mple.com/a.git",
+    "https://example.com/a.git#frag",
+    "https://example.com",
+    "http://example.com/a.git",  # plain http: nothing needs it
+    "git://example.com/a.git",
+    "ssh://example.com/a.git",  # no user
+    "example.com:a.git",  # scp-style with no user
+    "/srv/git/a.git",  # a plain local path
+    "../a.git",
+    "file://relative/a.git",
+    "",
+]
+
+
+@pytest.mark.parametrize("url", CREDENTIAL_URLS + OTHER_REFUSED_URLS)
+def test_url_outside_the_allow_list_is_refused_without_echoing_it(url):
     with pytest.raises(ManifestError) as info:
         parse_manifest_text(_repo_manifest(url=f"'{url}'"), source="t")
     message = str(info.value)
-    assert message.startswith("t: repos.core.a.url")
+    assert message.startswith("t: repos.core.a.url is not one of the accepted URL shapes: ")
+    assert "https://<host>[:port]/<path>" in message
+    assert "credential helper or an ssh remote" in message
     assert SECRET not in message
-    assert url not in message
+    if url:
+        assert url not in message
 
 
-def test_extends_url_with_credentials_is_refused():
-    text = (
-        f"extends:\n  path: m.yaml\n  url: https://user:{SECRET}@example.com/b.git\n"
-        "  ref: main\nlayers: [core]\n"
-    )
-    with pytest.raises(ManifestError, match="t: extends.url: credentials do not belong") as info:
+@pytest.mark.parametrize("url", CREDENTIAL_URLS + OTHER_REFUSED_URLS)
+def test_extends_url_outside_the_allow_list_is_refused(url):
+    text = f"extends:\n  path: m.yaml\n  url: '{url}'\n  ref: main\nlayers: [core]\n"
+    with pytest.raises(ManifestError, match="t: extends.url is not one of the accepted") as info:
         parse_manifest_text(text, source="t")
     assert SECRET not in str(info.value)
 
 
-def test_credentialed_url_never_reaches_output_or_stderr(tmp_path, capsys):
+def test_refused_url_never_reaches_output_or_stderr(tmp_path, capsys):
     leaf = tmp_path / "leaf.yaml"
     leaf.write_text(
         f"extends:\n  path: m.yaml\n  url: https://user:{SECRET}@example.com/b.git\n"
@@ -229,16 +285,176 @@ def test_credentialed_url_never_reaches_output_or_stderr(tmp_path, capsys):
     rc = main(argv + ["--out", str(out), "--layout", "manifest-dir"])
     captured = capsys.readouterr()
     assert rc == 1
-    assert "credentials do not belong in a manifest" in captured.err
+    assert "is not one of the accepted URL shapes" in captured.err
     assert SECRET not in captured.err + captured.out
     assert not out.exists()
 
 
-def test_invalid_yaml_message_does_not_quote_the_document():
-    text = f"layers: [core]\nrepos:\n  core:\n    a: {{url: https://u:{SECRET}@h/a.git, ref: [}}\n"
-    with pytest.raises(ManifestError, match=r"t: invalid YAML at line \d+, column \d+") as info:
+def test_every_url_and_ref_in_the_p11_fixture_is_on_the_allow_list(fixtures_dir):
+    # The patterns were checked against the real manifest before they were fixed.
+    import yaml
+
+    from ros_manifest.schema import _REF, _URL_SHAPES
+
+    raw = yaml.safe_load((fixtures_dir / "p11" / "manifest.yaml").read_text())
+    entries = [entry for layer in raw["repos"].values() for entry in layer.values()]
+    refs = [e["ref"] for e in entries]
+    refs += [d["ref"] for e in entries for d in e.get("distros", {}).values() if "ref" in d]
+    for entry in entries:
+        assert any(p.fullmatch(entry["url"]) for _, p in _URL_SHAPES), entry["url"]
+    for ref in refs:
+        assert _REF.fullmatch(ref), ref
+    parse_manifest_text((fixtures_dir / "p11" / "manifest.yaml").read_text(), "p11")
+
+
+# --- refs ----------------------------------------------------------------------------------
+
+ALLOWED_REFS = ["main", "jazzy", "release/2", "v1.0", "'2.0'", "add-santorini-seafloor", "a1b2c3d"]
+REFUSED_REFS = [
+    "-b",  # round 2: read as an option by `git checkout <version> --`
+    "--orphan=x",
+    "a..b",
+    "main.lock",
+    "feature/",
+    ".hidden",
+    "/x",
+    "_x",
+    "ext::x",
+    "'a b'",
+    "'@{-1}'",
+    "main~1",
+    "'main^'",
+    "''",
+]
+
+
+@pytest.mark.parametrize("ref", ALLOWED_REFS)
+def test_allowed_ref_is_accepted_in_every_place(ref):
+    text = _repo_manifest(ref=ref) + f"      distros:\n        rolling:\n          ref: {ref}\n"
+    parse_manifest_text(text, source="t")
+    ext = f"extends:\n  path: m.yaml\n  url: https://example.com/b.git\n  ref: {ref}\n"
+    parse_manifest_text(ext + "layers: [core]\n", source="t")
+
+
+@pytest.mark.parametrize("ref", REFUSED_REFS)
+def test_refused_ref_in_every_place(ref):
+    with pytest.raises(ManifestError, match=r"t: repos\.core\.a\.ref is not an accepted ref"):
+        parse_manifest_text(_repo_manifest(ref=ref), source="t")
+    text = _repo_manifest() + f"      distros:\n        rolling:\n          ref: {ref}\n"
+    with pytest.raises(ManifestError, match=r"distros\.rolling\.ref is not an accepted ref"):
         parse_manifest_text(text, source="t")
-    assert SECRET not in str(info.value)
+    ext = f"extends:\n  path: m.yaml\n  url: https://example.com/b.git\n  ref: {ref}\n"
+    with pytest.raises(ManifestError, match=r"t: extends\.ref is not an accepted ref"):
+        parse_manifest_text(ext + "layers: [core]\n", source="t")
+
+
+def test_option_like_url_and_ref_never_reach_the_repos_file(tmp_path, capsys):
+    # Round 2's reproduction: the url was written into repos/core.repos and `vcs import` ran it.
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(
+        "layers: [core]\nrepos:\n  core:\n    a:\n"
+        f"      url: '--upload-pack=touch {tmp_path}/PWNED;'\n      ref: main\n"
+        "roles:\n  dev: {}\n"
+    )
+    out = tmp_path / "out"
+    argv = ["resolve", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"]
+    assert main(argv + ["--out", str(out), "--layout", "manifest-dir"]) == 1
+    assert not out.exists()
+
+
+# --- YAML loading --------------------------------------------------------------------------
+
+
+def test_invalid_yaml_is_a_fixed_message_with_position_only():
+    text = f"layers: [core]\nrepos: !https://u:{SECRET}@host/a {{}}\n"
+    with pytest.raises(ManifestError) as info:
+        parse_manifest_text(text, source="t")
+    assert str(info.value) == "t: invalid YAML at line 2, column 8"
+
+
+def test_aliases_are_refused():
+    with pytest.raises(ManifestError, match="line 1, column 19: aliases .* are not allowed"):
+        parse_manifest_text("layers: &a [core, *a]\n", source="t")  # was a RecursionError
+    bomb = "a: &a [x, x, x, x, x, x, x, x, x, x]\n" + "".join(
+        f"{chr(98 + i)}: &{chr(98 + i)} [{', '.join(['*' + chr(97 + i)] * 10)}]\n" for i in range(8)
+    )
+    with pytest.raises(ManifestError, match="aliases .* are not allowed"):
+        parse_manifest_text(bomb + "layers: [core]\n", source="t")  # was a hang
+    assert parse_manifest_text("layers: &a [core]\n", source="t").layers == ["core"]
+
+
+def test_deep_nesting_is_an_error_not_a_crash():
+    with pytest.raises(ManifestError, match="t: invalid YAML"):
+        parse_manifest_text("layers: " + "[" * 5000 + "]" * 5000 + "\n", source="t")
+
+
+def test_duplicate_keys_are_refused():
+    with pytest.raises(ManifestError, match="line 2, column 1: a mapping repeats a key"):
+        parse_manifest_text("layers: [core]\nlayers: [site]\n", source="t")
+    text = _repo_manifest() + "      ref: other\n"
+    with pytest.raises(ManifestError, match="a mapping repeats a key"):
+        parse_manifest_text(text, source="t")
+
+
+def test_absent_must_be_a_boolean():
+    for value in ["'no'", "'yes'", "1", "'true'"]:
+        text = _repo_manifest() + f"      distros:\n        rolling:\n          absent: {value}\n"
+        with pytest.raises(ManifestError, match=r"distros\.rolling\.absent must be true or false"):
+            parse_manifest_text(text, source="t")
+    text = _repo_manifest() + "      distros:\n        rolling:\n          absent: true\n"
+    assert parse_manifest_text(text, "t").repos["core"]["a"].distros == {
+        "rolling": {"absent": True}
+    }
+
+
+# --- names: length and case ----------------------------------------------------------------
+
+
+def test_name_length_is_capped():
+    assert parse_manifest_text(f"layers: [{'a' * 64}]\n", "t").layers == ["a" * 64]
+    with pytest.raises(ManifestError, match=r"layer name \(too long\) .* at most 64") as info:
+        parse_manifest_text(f"layers: [{'a' * 300}]\n", source="t")  # was an OSError mid-write
+    assert "a" * 65 not in str(info.value)
+
+
+def test_names_differing_only_in_case_are_refused():
+    with pytest.raises(ManifestError, match="layer names 'core' and 'Core' differ only in case"):
+        parse_manifest_text("layers: [core, Core]\n", source="t")
+    text = (
+        "layers: [core, site]\nrepos:\n  core:\n    a: {url: 'https://e.com/a', ref: main}\n"
+        "  site:\n    A: {url: 'https://e.com/b', ref: main}\n"
+    )
+    with pytest.raises(ManifestError, match="repository names 'a' and 'A' differ only in case"):
+        parse_manifest_text(text, source="t")
+    with pytest.raises(ManifestError, match="group names"):
+        parse_manifest_text(
+            "layers: [c]\ngroups:\n  g: {default: include}\n  G: {default: include}\n", "t"
+        )
+    with pytest.raises(ManifestError, match="role names"):
+        parse_manifest_text("layers: [c]\nroles:\n  dev: {}\n  Dev: {}\n", source="t")
+
+
+def test_names_differing_only_in_case_are_refused_across_the_chain(tmp_path):
+    from ros_manifest.extends import resolve_chain
+    from ros_manifest.merge import merge_chain
+
+    (tmp_path / "base.yaml").write_text("layers: [core]\n")
+    (tmp_path / "leaf.yaml").write_text("extends:\n  path: base.yaml\nlayers: [Core]\n")
+    chain = resolve_chain(tmp_path / "leaf.yaml")
+    with pytest.raises(ManifestError, match="composed extends chain: layer names 'core' and"):
+        merge_chain(chain)
+
+
+# --- invisible and bidirectional characters ------------------------------------------------
+
+
+@pytest.mark.parametrize("char", ["\\u202e", "\\u200b", "\\u00a0", "\\ufeff", "\\u2066"])
+def test_invisible_or_bidirectional_character_is_refused(char):
+    text = _repo_manifest() + f'      type: "git{char}"\n'
+    with pytest.raises(
+        ManifestError, match=r"repos\.core\.a\.type contains a control or invisible"
+    ):
+        parse_manifest_text(text, source="t")
 
 
 # --- the emitter's second line -------------------------------------------------------------
@@ -296,10 +512,10 @@ def test_emitter_refuses_a_symlink_that_leads_outside_out(tmp_path, layout):
 @pytest.mark.parametrize("layout", ["flat", "manifest-dir"])
 def test_emitter_refuses_a_header_value_that_would_split_a_line(tmp_path, layout):
     out = tmp_path / "out"
-    with pytest.raises(ManifestError, match="contains a control character"):
+    with pytest.raises(ManifestError, match="contains a control or invisible character"):
         _emit(_merged(source="base\n- injected"), out, layout)
     assert _all_files(tmp_path) == []
-    with pytest.raises(ManifestError, match="contains a control character"):
+    with pytest.raises(ManifestError, match="contains a control or invisible character"):
         _emit(_merged(), out, layout, distro="jazzy\nevil")
     assert _all_files(tmp_path) == []
 
@@ -345,5 +561,5 @@ def test_base_reached_through_a_symlink_with_a_newline_in_its_name(tmp_path, cap
     assert rc == 1
     err = capsys.readouterr().err
     assert "refusing to write the header of the 'underlay' .repos file" in err
-    assert "contains a control character" in err
+    assert "contains a control or invisible character" in err
     assert not out.exists() or _all_files(out) == []

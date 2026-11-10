@@ -18,7 +18,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-from .schema import GroupEntry, Manifest, ManifestError, PackageEntry, RepoEntry, RoleEntry
+from .schema import (
+    GroupEntry,
+    Manifest,
+    ManifestError,
+    PackageEntry,
+    RepoEntry,
+    RoleEntry,
+    refuse_case_twins,
+)
 
 
 @dataclass
@@ -143,6 +151,14 @@ def merge_chain(chain: List[Manifest]) -> MergedManifest:
                     f" '{prior.repo}') — first definition wins"
                 )
             merged.packages[name] = pkg
+
+    # Names of one kind that differ only in case, across the chain (``schema.py`` checks each
+    # manifest on its own).
+    chain_label = "the composed extends chain"
+    refuse_case_twins(merged.layers, "layer", chain_label)
+    refuse_case_twins(merged.repos, "repository", chain_label)
+    refuse_case_twins(merged.groups, "group", chain_label)
+    refuse_case_twins(merged.roles, "role", chain_label)
 
     # Cross-reference validation now that the whole chain is merged.
     for name, group in merged.groups.items():

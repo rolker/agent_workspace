@@ -18,7 +18,6 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlsplit
 
 import yaml
 
@@ -103,7 +102,10 @@ _PACKAGE_KEYS = {"repo", "depend", "exec_depend"}
 # Names become file paths (`<layer>.repos`, the checkout directory `vcs import` makes for a
 # repository) and lines of `layers.txt` / `optional_layers.txt` / `.repos` headers, so each
 # kind of name has a strict pattern: no `/`, no leading `.` or `#`, nothing that is not plain
-# text. Group names also allow `:` (`hw:deltat`); nothing else needs more.
+# text, at most _NAME_MAX characters. Group names also allow `:` (`hw:deltat`); nothing else
+# needs more. Two names of one kind that differ only in case are refused: on a case-insensitive
+# disk one file or checkout would overwrite the other.
+_NAME_MAX = 64
 _NAME_RULES = {
     # The ros2_colcon adapter's own rule for a layer name.
     "layer": (re.compile(r"[A-Za-z0-9_-]+"), "letters, digits, '_' and '-'"),
@@ -122,51 +124,154 @@ _NAME_RULES = {
     "distro": (re.compile(r"[a-z][a-z0-9_]*"), "lower-case letters, digits and '_'"),
 }
 
-# An ssh remote names a user (`ssh://git@host/...`, `git@host:path`); that is not a secret.
-_SSH_SCHEMES = {"ssh", "git+ssh", "ssh+git"}
-_SSH_USER = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")
-_CREDENTIALS_REFUSED = (
-    "credentials do not belong in a manifest; use a credential helper or an ssh remote"
+# URLs: an ALLOW-LIST. A `url` (a repository's, or `extends.url`) is accepted only if one of
+# these anchored patterns matches it whole; everything else is refused, and the message lists
+# these shapes without echoing the value. No shape has a place for a password, a token, a
+# query, a fragment, git's `<transport>::` form, whitespace, or a leading `-` anywhere.
+_HOST = r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?"
+_PORT = r"(?::[0-9]{1,5})?"
+_USER = r"[A-Za-z0-9_][A-Za-z0-9_.-]*"  # a plain ssh user name, such as `git`: not a secret
+_PATH = r"[A-Za-z0-9_][A-Za-z0-9_./-]*"
+_URL_SHAPES = (
+    ("https://<host>[:port]/<path>", re.compile(rf"https://{_HOST}{_PORT}/{_PATH}")),
+    ("ssh://<user>@<host>[:port]/<path>", re.compile(rf"ssh://{_USER}@{_HOST}{_PORT}/{_PATH}")),
+    ("<user>@<host>:<path>", re.compile(rf"{_USER}@{_HOST}:{_PATH}")),
+    # For local and test use: a bare clone on this machine.
+    ("file:///<absolute path>", re.compile(rf"file:///{_PATH}")),
+)
+_URL_REFUSED = (
+    "is not one of the accepted URL shapes: "
+    + ", ".join(shape for shape, _ in _URL_SHAPES)
+    + " (host, user and path are letters, digits, '.', '_' and '-', and '/' in a path; none"
+    " starts with '-'; no query or fragment). Credentials do not belong in a manifest; use a"
+    " credential helper or an ssh remote"
+)
+
+# A ref (a repository's `ref`, each per-distro `ref`, `extends.ref`): a branch, tag or commit
+# name. It cannot start with `-`, so it cannot be read as a git option.
+_REF = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+_REF_RULE = (
+    "a ref is letters, digits, '.', '_', '/' and '-', starting with a letter or digit, with no"
+    " '..' and not ending in '/' or '.lock'"
+)
+
+# Characters no key or value may hold: control characters (newline, carriage return, tab, NUL,
+# DEL, NEL, ...), line and paragraph separators, invisible format characters (zero-width
+# spaces, the byte-order mark, bidirectional overrides such as U+202E) and any space other than
+# the ASCII one (no-break space and friends).
+_UNSAFE_CATEGORIES = ("Cc", "Cf", "Zl", "Zp")
+
+
+def has_unsafe_char(text: str) -> bool:
+    """True if `text` holds a character that can split a line or hide what a line says."""
+    return any(
+        unicodedata.category(ch) in _UNSAFE_CATEGORIES
+        or (unicodedata.category(ch) == "Zs" and ch != " ")
+        for ch in text
+    )
+
+
+_UNSAFE_WHAT = (
+    "a control or invisible character (newline, carriage return, a zero-width or bidirectional"
+    " character, a non-ASCII space or similar)"
 )
 
 
-def has_control_char(text: str) -> bool:
-    """True if `text` holds a control character (newline, carriage return, tab, NUL, DEL, ...)
-    or a Unicode line or paragraph separator: anything that can end or split a line."""
-    return any(unicodedata.category(ch) in ("Cc", "Zl", "Zp") for ch in text)
+class _RefusedYAML(yaml.YAMLError):
+    """A YAML construct this loader refuses. `reason` is fixed text, never document content."""
+
+    def __init__(self, reason: str, mark):
+        super().__init__(reason)
+        self.reason = reason
+        self.problem_mark = mark
 
 
-def _refuse_control_chars(node, source: str, where: str) -> None:
-    """Every string in the document, key or value, must be single-line text. The message names
-    where the string is and never echoes it (it may be a URL that carries a secret)."""
+class _ManifestLoader(yaml.SafeLoader):
+    """`yaml.SafeLoader` that refuses aliases (no recursion, no alias bombs; manifests do not
+    need them) and duplicate mapping keys (a reader would see one entry, the resolver use the
+    other)."""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            raise _RefusedYAML("aliases (*name) are not allowed", self.peek_event().start_mark)
+        return super().compose_node(parent, index)
+
+    def construct_mapping(self, node, deep=False):
+        if isinstance(node, yaml.MappingNode):
+            seen = set()
+            for key_node, _ in node.value:
+                key = self.construct_object(key_node, deep=True)
+                try:
+                    if key in seen:
+                        raise _RefusedYAML("a mapping repeats a key", key_node.start_mark)
+                    seen.add(key)
+                except TypeError:
+                    continue  # an unhashable key: the base class refuses it
+        return super().construct_mapping(node, deep)
+
+
+def _load_yaml(text: str, source: str):
+    """Load one document. A failure is reported with fixed text and a position only: PyYAML's
+    own messages quote document content (a line, a tag), which may hold a secret."""
+    try:
+        return yaml.load(text, Loader=_ManifestLoader)  # noqa: S506 (a SafeLoader subclass)
+    except _RefusedYAML as exc:
+        mark = exc.problem_mark
+        raise ManifestError(
+            f"{source}: invalid YAML at line {mark.line + 1}, column {mark.column + 1}:"
+            f" {exc.reason}"
+        ) from None
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        raise ManifestError(f"{source}: invalid YAML{where}") from None
+    except RecursionError:
+        raise ManifestError(f"{source}: invalid YAML: nested too deeply") from None
+
+
+def _refuse_unsafe_chars(node, source: str, where: str) -> None:
+    """Every string in the document, key or value, must be one line of plain text. The message
+    names where the string is and never echoes it (it may be a URL that carries a secret)."""
     if isinstance(node, dict):
         for key, value in node.items():
-            if isinstance(key, str) and has_control_char(key):
+            if isinstance(key, str) and has_unsafe_char(key):
                 raise ManifestError(
-                    f"{source}: a key under {where or 'the top level'} contains a control"
-                    " character (newline, carriage return or similar); names must be one line"
-                    " of plain text"
+                    f"{source}: a key under {where or 'the top level'} contains {_UNSAFE_WHAT};"
+                    " names must be one line of plain text"
                 )
-            _refuse_control_chars(value, source, f"{where}.{key}" if where else str(key))
+            _refuse_unsafe_chars(value, source, f"{where}.{key}" if where else str(key))
     elif isinstance(node, list):
         for index, value in enumerate(node):
-            _refuse_control_chars(value, source, f"{where}[{index}]")
-    elif isinstance(node, str) and has_control_char(node):
+            _refuse_unsafe_chars(value, source, f"{where}[{index}]")
+    elif isinstance(node, str) and has_unsafe_char(node):
         raise ManifestError(
-            f"{source}: {where} contains a control character (newline, carriage return or"
-            " similar); values must be one line of plain text"
+            f"{source}: {where} contains {_UNSAFE_WHAT}; values must be one line of plain text"
         )
 
 
 def _check_name(kind: str, name, source: str, where: str) -> None:
     pattern, allowed = _NAME_RULES[kind]
-    if isinstance(name, str) and pattern.fullmatch(name):
+    if isinstance(name, str) and pattern.fullmatch(name) and len(name) <= _NAME_MAX:
         return
     quote_hint = "" if isinstance(name, str) else " (quote it in the YAML)"
+    shown = repr(name) if not isinstance(name, str) or len(name) <= _NAME_MAX else "(too long)"
     raise ManifestError(
-        f"{source}: {where}: {kind} name {name!r} is not allowed{quote_hint}; a {kind} name"
-        f" is {allowed}"
+        f"{source}: {where}: {kind} name {shown} is not allowed{quote_hint}; a {kind} name"
+        f" is {allowed}, at most {_NAME_MAX} characters"
     )
+
+
+def refuse_case_twins(names, kind: str, source: str) -> None:
+    """Refuse two names of one kind that differ only in case. Used per manifest here, and
+    across the composed chain in ``merge.py``."""
+    by_fold: dict = {}
+    for name in names:
+        other = by_fold.setdefault(name.casefold(), name)
+        if other != name:
+            raise ManifestError(
+                f"{source}: {kind} names {other!r} and {name!r} differ only in case; on a"
+                " case-insensitive disk one would overwrite the other"
+            )
 
 
 def _require_str(value, source: str, where: str) -> str:
@@ -178,38 +283,15 @@ def _require_str(value, source: str, where: str) -> str:
     return value
 
 
-def _refuse_credentials(url: str, source: str, where: str) -> None:
-    """Refuse a URL whose userinfo may carry a secret, without ever echoing the URL.
+def _check_url(url: str, source: str, where: str) -> None:
+    """Accept `url` only if one shape of the allow-list matches it whole. Never echoes it."""
+    if not any(pattern.fullmatch(url) for _, pattern in _URL_SHAPES):
+        raise ManifestError(f"{source}: {where} {_URL_REFUSED}")
 
-    Allowed: no userinfo at all (`https://host/path`, `file:///path`, a local path), and a
-    plain user name on an ssh remote (`ssh://git@host/path`, scp-style `git@host:path`).
-    Refused: a password or token after a colon in the userinfo, in any form; and any userinfo
-    on a non-ssh URL (`https://<token>@host/...` is how a token is usually written there)."""
-    try:
-        if "://" in url:
-            parts = urlsplit(url)
-            if not parts.scheme:
-                raise ManifestError(f"{source}: {where} has '://' but no valid scheme before it")
-            ssh = parts.scheme.lower() in _SSH_SCHEMES
-            # A `#` or `?` inside the userinfo ends the authority early, leaving the rest
-            # (password and `@host`) in the fragment or query: fail closed.
-            hidden = "@" in parts.query or "@" in parts.fragment
-        else:
-            head = url.split("/", 1)[0]
-            userinfo, at_sign, _ = head.rpartition("@")
-            if ":" not in head or not at_sign:
-                return  # a local path, or scp-style `host:path` with no user
-            # scp-style `[user@]host:path`: git's short form of ssh://[user@]host/path.
-            parts = urlsplit(f"ssh://{userinfo}@host")
-            ssh = True
-            hidden = parts.hostname != "host"  # same early end, as above
-        username, password = parts.username, parts.password
-    except ValueError:
-        raise ManifestError(f"{source}: {where} cannot be parsed as a URL") from None
-    if hidden or password is not None:
-        raise ManifestError(f"{source}: {where}: {_CREDENTIALS_REFUSED}")
-    if username is not None and not (ssh and _SSH_USER.fullmatch(username)):
-        raise ManifestError(f"{source}: {where}: {_CREDENTIALS_REFUSED}")
+
+def _check_ref(ref: str, source: str, where: str) -> None:
+    if not _REF.fullmatch(ref) or ".." in ref or ref.endswith(("/", ".lock")):
+        raise ManifestError(f"{source}: {where} is not an accepted ref; {_REF_RULE}")
 
 
 def _require_dict(value, what: str) -> dict:
@@ -226,23 +308,16 @@ def _require_list_of_str(value, what: str) -> list:
 
 def parse_manifest_text(text: str, source: str) -> Manifest:
     """Parse and structurally validate one manifest document. Does not resolve `extends`."""
-    try:
-        raw = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        # Position and problem only: PyYAML's own message quotes the offending line, which may
-        # hold a URL that carries a secret.
-        mark = getattr(exc, "problem_mark", None)
-        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
-        problem = getattr(exc, "problem", None) or type(exc).__name__
-        raise ManifestError(f"{source}: invalid YAML{where}: {problem}") from None
+    raw = _load_yaml(text, source)
     if raw is None:
         raw = {}
     raw = _require_dict(raw, source)
-    _refuse_control_chars(raw, source, "")
-
     unknown = set(raw) - _TOP_LEVEL_KEYS
     if unknown:
-        raise ManifestError(f"{source}: unknown top-level key(s): {sorted(unknown)}")
+        raise ManifestError(
+            f"{source}: unknown top-level key(s): {sorted(repr(k) for k in unknown)}"
+        )
+    _refuse_unsafe_chars(raw, source, "")
 
     extends_ref: Optional[ExtendsRef] = None
     if "extends" in raw:
@@ -255,7 +330,8 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
             if key in ext:
                 _require_str(ext[key], source, f"extends.{key}")
         if "url" in ext:
-            _refuse_credentials(ext["url"], source, "extends.url")
+            _check_url(ext["url"], source, "extends.url")
+            _check_ref(ext["ref"], source, "extends.ref")
         extends_ref = ExtendsRef(path=ext["path"], url=ext.get("url"), ref=ext.get("ref"))
 
     layers = _require_list_of_str(raw.get("layers", []), f"{source}: layers")
@@ -265,6 +341,7 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         _check_name("layer", layer, source, f"layers[{index}]")
     if len(set(layers)) != len(layers):
         raise ManifestError(f"{source}: layers contains duplicates: {layers}")
+    refuse_case_twins(layers, "layer", source)
 
     optional_layers = _require_list_of_str(
         raw.get("optional_layers", []), f"{source}: optional_layers"
@@ -306,7 +383,8 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
             for key in ("url", "ref", "type"):
                 if key in entry:
                     _require_str(entry[key], source, f"{where}.{key}")
-            _refuse_credentials(entry["url"], source, f"{where}.url")
+            _check_url(entry["url"], source, f"{where}.url")
+            _check_ref(entry["ref"], source, f"{where}.ref")
             distros_raw = _require_dict(
                 entry.get("distros", {}), f"{source}: repos.{layer}.{repo_name}.distros"
             )
@@ -316,6 +394,12 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
                 dval = _require_dict(dval, f"{source}: repos.{layer}.{repo_name}.distros.{distro}")
                 if "ref" in dval:
                     _require_str(dval["ref"], source, f"{where}.distros.{distro}.ref")
+                    _check_ref(dval["ref"], source, f"{where}.distros.{distro}.ref")
+                if "absent" in dval and not isinstance(dval["absent"], bool):
+                    raise ManifestError(
+                        f"{source}: {where}.distros.{distro}.absent must be true or false"
+                        f" (a YAML boolean), got {type(dval['absent']).__name__}"
+                    )
                 has_ref = "ref" in dval
                 has_absent = dval.get("absent", False)
                 if has_ref and has_absent:
@@ -337,6 +421,10 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
                 distros=distros,
             )
 
+    refuse_case_twins(
+        [name for layer_repos in repos.values() for name in layer_repos], "repository", source
+    )
+
     groups_raw = _require_dict(raw.get("groups", {}), f"{source}: groups")
     groups = {}
     for name, gval in groups_raw.items():
@@ -355,6 +443,8 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
             )
         group_repos = _require_list_of_str(gval.get("repos", []), f"{source}: groups.{name}.repos")
         groups[name] = GroupEntry(name=name, default=default, repos=group_repos)
+
+    refuse_case_twins(groups, "group", source)
 
     roles_raw = _require_dict(raw.get("roles", {}), f"{source}: roles")
     roles = {}
@@ -379,6 +469,8 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
                     " 'subtract'/'add' (groups model) on the same role"
                 )
         roles[name] = RoleEntry(name=name, subtract=subtract, add=add, roots=roots)
+
+    refuse_case_twins(roles, "role", source)
 
     packages_raw = _require_dict(raw.get("packages", {}), f"{source}: packages")
     packages = {}

@@ -2,10 +2,11 @@
 
 Local-path extends resolve relative to the declaring manifest's own directory. Git-backed
 extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --branch
-<ref> --depth 1 <url> <dest>` and re-used on a cache hit (same url+ref). This module only ever
-invokes `git clone` (and `git rev-parse` on the clone) — it never fetches over the network in
-tests, which point `url` at a local git repository (a `file://` path or a plain local path both
-work with `git clone`).
+<ref> --depth 1 -- <url> <dest>`, with the transports allowed stated on the command line, and
+re-used on a cache hit (same url+ref). The url and ref have already passed the allow-lists in
+``schema.py``. This module only ever invokes `git clone` (and `git rev-parse` on the clone) — it
+never fetches over the network in tests, which point `url` at a local git repository through a
+`file://` URL (a plain local path is not an accepted url).
 
 Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
 manifest read from a git-backed `extends` clone is labelled `url#ref:path@<commit>` (the commit
@@ -25,6 +26,20 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from .schema import ExtendsRef, Manifest, load_manifest_file, ManifestError
+
+
+# The transports a clone may use, stated here rather than left to git's defaults: the ones the
+# URL allow-list in ``schema.py`` admits, and nothing else (no `ext::`, which runs a command).
+_TRANSPORT_POLICY = (
+    "-c",
+    "protocol.allow=never",
+    "-c",
+    "protocol.https.allow=always",
+    "-c",
+    "protocol.ssh.allow=always",
+    "-c",
+    "protocol.file.allow=always",
+)
 
 
 def _cache_key(url: str, ref: str) -> str:
@@ -48,7 +63,7 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
     if dest.is_dir():
         return dest
     result = subprocess.run(
-        ["git", "clone", "--branch", ref, "--depth", "1", "--", url, str(dest)],
+        ["git", *_TRANSPORT_POLICY, "clone", "--branch", ref, "--depth", "1", "--", url, str(dest)],
         capture_output=True,
         text=True,
     )

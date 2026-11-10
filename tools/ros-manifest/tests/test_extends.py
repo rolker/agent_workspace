@@ -277,7 +277,7 @@ repos:
         f"""
 extends:
   path: manifest.yaml
-  url: {remote}
+  url: {remote.as_uri()}
   ref: main
 layers: [core]
 repos:
@@ -311,7 +311,7 @@ extends:
 layers: [core]
 """,
     )
-    with pytest.raises(ManifestError, match="looks like a command-line option"):
+    with pytest.raises(ManifestError, match="extends.url is not one of the accepted URL shapes"):
         resolve_chain(leaf, cache_dir=tmp_path / "cache")
     assert called == []
 
@@ -330,7 +330,7 @@ extends:
 layers: [core]
 """,
     )
-    with pytest.raises(ManifestError, match="looks like a command-line option"):
+    with pytest.raises(ManifestError, match="extends.ref is not an accepted ref"):
         resolve_chain(leaf, cache_dir=tmp_path / "cache")
     assert called == []
 
@@ -355,7 +355,7 @@ def test_git_backed_extends_path_escape_is_rejected(tmp_path):
         f"""
 extends:
   path: ../../outside.yaml
-  url: {remote}
+  url: {remote.as_uri()}
   ref: main
 layers: [core]
 """,
@@ -503,3 +503,29 @@ def test_label_with_a_slash_in_the_ref_is_unambiguous(tmp_path):
     assert label == f"{url}#release/2:config/manifest.yaml@{commit}"
     ref, _, rest = label.partition("#")[2].partition(":")
     assert (ref, rest.rpartition("@")[0]) == ("release/2", "config/manifest.yaml")
+
+
+def test_clone_states_the_transport_policy(tmp_path, monkeypatch):
+    # The transports the clone may use are on the command line, not left to git's defaults:
+    # everything refused, then https, ssh and file allowed; `--` before the url.
+    from ros_manifest import extends
+
+    calls = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 1, "", "stop here")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(ManifestError, match="failed to clone"):
+        extends._clone_or_reuse("https://example.com/a.git", "main", tmp_path / "cache")
+    argv = calls[0]
+    clone = argv.index("clone")
+    policy = argv[1:clone]
+    assert policy[:2] == ["-c", "protocol.allow=never"]
+    assert {policy[i] for i in range(3, len(policy), 2)} == {
+        "protocol.https.allow=always",
+        "protocol.ssh.allow=always",
+        "protocol.file.allow=always",
+    }
+    assert argv[-3:-1] == ["--", "https://example.com/a.git"]

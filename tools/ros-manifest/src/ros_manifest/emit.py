@@ -12,9 +12,9 @@ In both layouts a layer with zero selected repos for the role and distro is not 
 ``manifest-dir`` it is in neither text file.
 
 ``schema.py`` refuses unsafe names and values when a manifest is parsed. As a second line, this
-module refuses to write a header or list line that holds a control character, and refuses any
-path that does not resolve inside the output directory; every file's text is built and checked
-before the first one is written.
+module refuses to write a header or list line that holds a control or invisible character, and
+refuses any path that does not resolve inside the output directory; every file's text is built
+and checked before the first one is written.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Set
 import yaml
 
 from .merge import MergedManifest
-from .schema import ManifestError, has_control_char
+from .schema import ManifestError, has_unsafe_char
 from .selectors import resolve_distro_ref
 
 HEADER_PREFIX = "#"
@@ -36,10 +36,10 @@ LAYOUTS = (LAYOUT_FLAT, LAYOUT_MANIFEST_DIR)
 
 def _line(text: str, what: str) -> str:
     """One line of a generated file, refused if it could split into more than one."""
-    if has_control_char(text):
+    if has_unsafe_char(text):
         raise ManifestError(
-            f"refusing to write {what}: a value in it contains a control character (newline,"
-            " carriage return or similar)"
+            f"refusing to write {what}: a value in it contains a control or invisible character"
+            " (newline, carriage return, a zero-width or bidirectional character or similar)"
         )
     return text
 
