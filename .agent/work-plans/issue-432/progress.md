@@ -272,3 +272,17 @@ The second review's must-fix and its three suggestions are resolved, and the rev
 - [ ] Step 1: reword the section's opening sentence (and optionally the Format deferral bullet) so it covers follow-ups kept in view until they close.
 - [ ] Say in point (3) and Open Question 5 that unnamed project11 worktrees are not shown in the workspace's sit-rep.
 - [ ] Keep the plan's cross-references ("see ... below") and the "simulator line" wording out of the roadmap and the PR description.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 11:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The dialog showed the third review's one must-fix (the section's opening sentence calls the deferral table "what was set aside on purpose", which is wrong for the five follow-up rows; reword it to also cover rows kept in view until their issue closes), the acceptance case as it would read, the two paths, and what every sit-rep would show (Next is issue 429; five "Follow-up still open" lines). Asked "Go ahead and implement the roadmap rewrite with F1 fixed along the way?", the owner answered: "Proceed (Recommended)".
+
+Asked in the same dialog whether to open a tracking issue in the workspace repository for the combined build-and-run line, he answered: "Yes, in the workspace (Recommended)". The host opened issue 433; that line's check cell is `gh-issue 433 closed`.
+
+Carried to the implementer: the must-fix above and the third review's two suggestions (unnamed project11 work is not listed at all in a workspace sit-rep; no "see ... below" references in the roadmap or the pull request text).
