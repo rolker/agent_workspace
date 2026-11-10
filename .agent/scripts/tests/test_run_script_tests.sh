@@ -1230,6 +1230,49 @@ else
     fail "(u4) -j 4: a leak listed before a failure gives exit 2, though the failure finished first (rc=$rc, out=$out)"
 fi
 
+# --- Case (v): --shuffle[=SEED]. The seed is printed; the same seed gives
+#     the same start order, at one job and at two; another seed gives
+#     another order; the exit code of a parallel run stays the first
+#     failing suite's in list order whatever the shuffle. ---
+V="$TMPD/case_v"
+mkdir -p "$V"
+write_checkpoint_stub "$V"
+for n in a b c d e f g h; do make_stub "$V" "test_$n.sh" ':'; done
+v7a=$("$RUNNER" --shuffle=7 "$V" 2>&1); rc=$?
+v7b=$("$RUNNER" --shuffle=7 "$V" 2>&1)
+v7j=$("$RUNNER" -j 2 --shuffle=7 "$V" 2>&1)
+v8=$("$RUNNER" --shuffle=8 "$V" 2>&1)
+sorted_order="test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh test_f.sh test_g.sh test_h.sh"
+if [[ $rc -eq 0 ]] && printf '%s\n' "$v7a" | grep -qx 'run_script_tests: shuffle seed 7 (this order again: --shuffle=7)' \
+        && [[ "$(running_lines "$v7a")" == "$(running_lines "$v7b")" && "$(running_lines "$v7a")" == "$(running_lines "$v7j")" ]] \
+        && [[ "$(running_lines "$v7a")" != "$sorted_order" && "$(running_lines "$v7a")" != "$(running_lines "$v8")" ]] \
+        && [[ "$(running_lines "$v7a" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" == "$sorted_order" ]]; then
+    pass "(v) --shuffle=7 prints its seed and starts the same order twice and at -j 2; --shuffle=8 differs"
+else
+    fail "(v) --shuffle=7 prints its seed and starts the same order twice and at -j 2; --shuffle=8 differs (7: $(running_lines "$v7a") | 7 again: $(running_lines "$v7b") | 7 at -j 2: $(running_lines "$v7j") | 8: $(running_lines "$v8"))"
+fi
+out=$("$RUNNER" --shuffle "$V" 2>&1); rc=$?
+v_seed=$(printf '%s\n' "$out" | sed -n 's/^run_script_tests: shuffle seed \([0-9][0-9]*\) (this order again: --shuffle=[0-9]*)$/\1/p')
+if [[ $rc -eq 0 && -n "$v_seed" ]] \
+        && [[ "$(running_lines "$out")" == "$(running_lines "$("$RUNNER" --shuffle="$v_seed" "$V" 2>&1)")" ]]; then
+    pass "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order"
+else
+    fail "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order (seed=$v_seed, out=$out)"
+fi
+jobs_case "--shuffle=x is refused before any suite runs" 1 "" "" --shuffle=x "$V"
+# U4 now holds test_b_leak.sh (listed first, finishes last) and
+# test_c_fastfail.sh (fails at once).
+v_codes=""
+for seed in 1 2 3; do
+    "$RUNNER" -j 4 --shuffle=$seed "$U4" >/dev/null 2>&1
+    v_codes+="$? "
+done
+if [[ "$v_codes" == "2 2 2 " ]]; then
+    pass "(v) -j 4 under three shuffles: the exit code is the first failing suite's in list order (2, the leak)"
+else
+    fail "(v) -j 4 under three shuffles: the exit code is the first failing suite's in list order (2, the leak): got $v_codes"
+fi
+
 # --- Case (u5): the late leak of (t1), at two jobs. ---
 U5="$TMPD/case_u5"
 late_leak_dir "$U5"

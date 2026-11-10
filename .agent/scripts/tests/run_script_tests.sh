@@ -116,12 +116,14 @@ JOBS_DEFAULT=1
 JOBS_MAX=8
 
 # --- Arguments: [options] [tests-dir] [--files <file>...] ---
-USAGE="usage: run_script_tests.sh [-j N] [--show-passed] [tests-dir] [--files <file>...]"
+USAGE="usage: run_script_tests.sh [-j N] [--shuffle[=SEED]] [--show-passed] [tests-dir] [--files <file>...]"
 TESTS_DIR="$SCRIPT_DIR"
 files_mode=0
 changed_files=()
 jobs_opt=""
 show_passed=0
+shuffle=0
+shuffle_seed=""
 while [[ $# -gt 0 && "$1" == -* && "$1" != "--files" ]]; do
     case "$1" in
         -j | --jobs)
@@ -135,6 +137,8 @@ while [[ $# -gt 0 && "$1" == -* && "$1" != "--files" ]]; do
         -j?*) jobs_opt="${1#-j}"; shift ;;
         --jobs=*) jobs_opt="${1#--jobs=}"; shift ;;
         --show-passed) show_passed=1; shift ;;
+        --shuffle) shuffle=1; shift ;;
+        --shuffle=*) shuffle=1; shuffle_seed="${1#--shuffle=}"; shift ;;
         *)
             echo "error: unknown option '$1' ($USAGE)" >&2
             exit 1
@@ -181,6 +185,14 @@ unset RUN_SCRIPT_TESTS_JOBS
 if (( jobs > 1 )) && (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
     echo "error: running suites in parallel needs bash 5.1 or newer (wait -n -p); this is bash $BASH_VERSION — run with -j 1" >&2
     exit 1
+fi
+if (( shuffle )); then
+    if [[ -z "$shuffle_seed" ]]; then
+        shuffle_seed=$RANDOM
+    elif [[ ! "$shuffle_seed" =~ ^[0-9]+$ ]]; then
+        echo "error: the --shuffle seed must be a whole number, not '$shuffle_seed' ($USAGE)" >&2
+        exit 1
+    fi
 fi
 
 # --- Deleted and renamed-away paths (see "Deletions and renames" above) ---
@@ -484,19 +496,37 @@ leak_message() {
     echo "Every suite must clean up what it creates — one top-level sandbox plus an EXIT trap (see issue #297)." >&2
 }
 
-start_ts=$(date +%s)
-
-# --- More than one job (issue #444): see "Parallel runs" in the header ---
-if (( jobs > 1 )); then
-    n=${#run_suites[@]}
-    # Start order: largest file first, a free stand-in for the slowest
-    # first, so the longest suite does not start last; ties in list order.
-    order=()
+# --- Start order, as indices into run_suites ---
+# List order at one job. With more than one job, largest file first: a
+# free stand-in for slowest first, so the longest suite does not start
+# last; ties in list order. --shuffle replaces either with an order drawn
+# from the seed (the checksum of "<seed>:<suite name>"), the same for the
+# same seed and suites, and prints the seed so the order can be repeated.
+# The order a suite starts in never changes which suite's failure sets the
+# exit code of a parallel run: that is always by list order.
+order=()
+if (( shuffle )); then
+    echo "run_script_tests: shuffle seed $shuffle_seed (this order again: --shuffle=$shuffle_seed)"
+    mapfile -t order < <(
+        for i in "${!run_suites[@]}"; do
+            printf '%s %d\n' "$(printf '%s:%s' "$shuffle_seed" "$(basename "${run_suites[$i]}")" | cksum | cut -d' ' -f1)" "$i"
+        done | sort -k1,1n -k2,2n | cut -d' ' -f2
+    )
+elif (( jobs > 1 )); then
     mapfile -t order < <(
         for i in "${!run_suites[@]}"; do
             printf '%d %d\n' "$(( $(wc -c < "${run_suites[$i]}") ))" "$i"
         done | sort -k1,1nr -k2,2n | cut -d' ' -f2
     )
+else
+    order=("${!run_suites[@]}")
+fi
+
+start_ts=$(date +%s)
+
+# --- More than one job (issue #444): see "Parallel runs" in the header ---
+if (( jobs > 1 )); then
+    n=${#run_suites[@]}
     declare -A job_of=()   # pid of a running job (its process group) -> suite index
     started=() secs=() rcs=() status=()   # by suite index; status: pass, fail, leak, late
     running=0
@@ -665,10 +695,13 @@ if (( jobs > 1 )); then
     exit 0
 fi
 
-# --- One job: every suite in the foreground, in list order, its output
-#     live; the first failure or leak stops the run ---
+# --- One job: every suite in the foreground, in list order (or the
+#     shuffled order), its output live; the first failure or leak stops the
+#     run. "suite k of n" is the suite's place in list order. ---
 total=0
-for s in "${run_suites[@]}"; do
+for i in "${order[@]}"; do
+    s="${run_suites[$i]}"
+    k=$((i + 1))
     name="$(basename "$s")"
     total=$((total + 1))
     dir="$(suite_tmp "$name")"
@@ -678,16 +711,16 @@ for s in "${run_suites[@]}"; do
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
         echo "" >&2
-        echo "run_script_tests: FAILED at $name (suite $total of ${#run_suites[@]}) after ${elapsed}s — stopping, remaining suites not run" >&2
+        echo "run_script_tests: FAILED at $name (suite $k of ${#run_suites[@]}) after ${elapsed}s — stopping, remaining suites not run" >&2
         exit 1
     fi
 
     # Leak sweep — see "Per-suite TMPDIR guard" above. Runs only on the
     # path that would otherwise advance to the next suite.
-    if sweep "$dir" "$RUN_ROOT/out/$total.leak"; then
+    if sweep "$dir" "$RUN_ROOT/out/$i.leak"; then
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
-        leak_message "$name" "$total" "${#run_suites[@]}" "$elapsed" "$dir" "$RUN_ROOT/out/$total.leak"
+        leak_message "$name" "$k" "${#run_suites[@]}" "$elapsed" "$dir" "$RUN_ROOT/out/$i.leak"
         exit 2
     fi
 done
