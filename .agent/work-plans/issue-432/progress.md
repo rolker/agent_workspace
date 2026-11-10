@@ -61,3 +61,13 @@ issue: 432
 - [ ] Reconcile the Cutover-sequence section (rows 2, 7, 8 and step 5 notes, `~/project11-ng`) with the new case, or replace it with a pointer to Direction, in the same PR.
 - [ ] Record the permissions baseline for home sessions as unknown/not done under Path 3 and the orchestrator-update line, not as a prerequisite for Path 1.
 - [ ] Verify `/sitrep` reports the first unmet line (the #429 line) after the edit, and keep the hostname out of checks.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 10:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions are all plan inputs and none changes scope: draft from his quoted words, name a grammar-valid check per line, reword the issue 265 line to what remains, reconcile the Cutover sequence section, treat the home permissions baseline as not done)
+**After**: issue-actions
+**Decision**: proceed
+
+Host read the Issue Review of 2026-11-10 and its six actions. The one question it raised (is "home as a root" a third path) is covered by the owner's own words of 2026-11-10: "What about things like the orchestrator skill which we are trialing and the use of the workspace for the agents I run in ~ as my overall work managers?" The plan names that path from those words (recipe (c)), listed for his veto.
