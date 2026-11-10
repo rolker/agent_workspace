@@ -14,7 +14,9 @@
 # files, over 200 files), (o) deletions and renames through a real git
 # hook (`git commit -a`, a pathspec commit, a rename out of the hook's
 # scope, and an edit-only control), (p) the branch run, (q) a non-ASCII
-# deletion on the branch, (r) no default branch to diff against.
+# deletion on the branch, (r) no default branch to diff against. (s1)–(s4)
+# pin what a one-job run keeps (issue #444): exit codes, header and running
+# lines, the stop at the first failure, leak attribution, live output.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -938,6 +940,108 @@ if [[ $rc -eq 0 && "$r_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q 'full 
     pass "(r) no default branch: a branch run runs all $SYN_N suites, with a plain reason line"
 else
     fail "(r) no default branch: a branch run runs all $SYN_N suites, with a plain reason line (rc=$rc, ran=$r_ran, out=$out)"
+fi
+
+# ===================================================================
+# Issue #444: the contract a one-job run keeps. Written against the
+# serial runner before the job pool existed, so every later change is
+# checked against this fixed point: the exit codes, the header and
+# per-suite lines, the stop at the first failure, the leak charged to the
+# suite that left it, and output streamed live in list order.
+# ===================================================================
+
+# make_stub <dir> <name> <body>: a suite with <body> as its text.
+make_stub() {
+    printf '#!/usr/bin/env bash\n%s\n' "$3" > "$1/$2"
+    chmod +x "$1/$2"
+}
+# running_lines <output>: the "=== running X ===" names, one line.
+running_lines() {
+    printf '%s\n' "$1" | sed -n 's/^=== run_script_tests: running \(.*\) ===$/\1/p' | tr '\n' ' ' | sed 's/ $//'
+}
+
+# --- Case (s1): all pass: exit 0, the header line, one running line per
+#     suite in list order, each suite's output under its own running line,
+#     and the closing line. ---
+S1="$TMPD/case_s1"
+mkdir -p "$S1"
+write_checkpoint_stub "$S1"
+make_stub "$S1" test_a_pass.sh 'echo "a-says-hi"'
+make_stub "$S1" test_m_pass.sh 'echo "m-says-hi"'
+out=$("$RUNNER" "$S1" 2>&1); rc=$?
+s1_first=$(printf '%s\n' "$out" | head -n 1)
+s1_last=$(printf '%s\n' "$out" | tail -n 1)
+s1_a_block=$(printf '%s\n' "$out" | sed -n '/^=== run_script_tests: running test_a_pass.sh ===$/,/^=== run_script_tests: running /p')
+if [[ $rc -eq 0 && "$s1_first" == "run_script_tests: full run, all 3 suites: no --files given" \
+        && "$(running_lines "$out")" == "test_a_pass.sh test_checkpoint_269.sh test_m_pass.sh" \
+        && "$s1_a_block" == *"a-says-hi"* && "$s1_a_block" != *"m-says-hi"* ]] \
+        && [[ "$s1_last" =~ ^run_script_tests:\ all\ 3\ suites\ passed\ in\ [0-9]+s$ ]]; then
+    pass "(s1) one job, all pass: exit 0, header, running lines in list order, output in place, closing line"
+else
+    fail "(s1) one job, all pass: exit 0, header, running lines in list order, output in place, closing line (rc=$rc, out=$out)"
+fi
+
+# --- Case (s2): a failure stops the run with exit 1 and today's line. ---
+S2="$TMPD/case_s2"
+S2_LATER="$TMPD/case_s2_later"
+mkdir -p "$S2"
+write_checkpoint_stub "$S2"
+make_stub "$S2" test_a_pass.sh 'exit 0'
+make_stub "$S2" test_b_fail.sh 'echo "b-failing"; exit 3'
+make_stub "$S2" test_z_later.sh "touch '$S2_LATER'"
+out=$("$RUNNER" "$S2" 2>&1); rc=$?
+if [[ $rc -eq 1 && ! -e "$S2_LATER" && "$(running_lines "$out")" == "test_a_pass.sh test_b_fail.sh" ]] \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_fail\.sh \(suite 2 of 4\) after [0-9]+s — stopping, remaining suites not run$' \
+        && printf '%s\n' "$out" | grep -q '^b-failing$'; then
+    pass "(s2) one job: the first failure stops the run with exit 1 and names the suite and its position"
+else
+    fail "(s2) one job: the first failure stops the run with exit 1 (rc=$rc, later_ran=$([[ -e "$S2_LATER" ]] && echo yes || echo no), out=$out)"
+fi
+
+# --- Case (s3): a leak is charged to the suite that left it, not to the
+#     suite before or after it, and stops the run with exit 2. ---
+S3="$TMPD/case_s3"
+S3_LATER="$TMPD/case_s3_later"
+mkdir -p "$S3"
+write_checkpoint_stub "$S3"
+make_stub "$S3" test_a_clean.sh 'd=$(mktemp -d); rm -rf "$d"'
+make_stub "$S3" test_b_leaks.sh ': > "${TMPDIR:?}/left_by_b"'
+make_stub "$S3" test_z_later.sh "touch '$S3_LATER'"
+out=$("$RUNNER" "$S3" 2>&1); rc=$?
+if [[ $rc -eq 2 && ! -e "$S3_LATER" ]] \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_leaks\.sh \(suite 2 of 4\) after [0-9]+s — it left 1 entry behind in TMPDIR \(' \
+        && printf '%s\n' "$out" | grep -q '/left_by_b$' \
+        && printf '%s\n' "$out" | grep -q '^Every suite must clean up what it creates' \
+        && ! printf '%s\n' "$out" | grep -q 'FAILED at test_a_clean'; then
+    pass "(s3) one job: a leak is charged to the suite that left it and stops the run with exit 2"
+else
+    fail "(s3) one job: a leak is charged to the suite that left it and stops the run with exit 2 (rc=$rc, out=$out)"
+fi
+
+# --- Case (s4): output streams live. The suite prints a line, then waits
+#     for a go-file the test creates only once that line has reached the
+#     runner's output; a runner that held the output until the suite ended
+#     would never show it, and the suite would give up and fail. ---
+S4="$TMPD/case_s4"
+S4_GO="$TMPD/case_s4_go"
+S4_LOG="$TMPD/case_s4.log"
+mkdir -p "$S4"
+write_checkpoint_stub "$S4"
+make_stub "$S4" test_live.sh "echo 's4-live-line'
+for _ in \$(seq 1 100); do [ -e '$S4_GO' ] && exit 0; sleep 0.1; done
+echo 's4: never released'; exit 1"
+"$RUNNER" "$S4" > "$S4_LOG" 2>&1 &
+s4_pid=$!
+s4_seen=no
+for _ in $(seq 1 100); do
+    if grep -q '^s4-live-line$' "$S4_LOG" 2>/dev/null; then s4_seen=yes; touch "$S4_GO"; break; fi
+    sleep 0.1
+done
+wait "$s4_pid"; rc=$?
+if [[ $s4_seen == yes && $rc -eq 0 ]]; then
+    pass "(s4) one job: a suite's output reaches the runner's output while the suite still runs"
+else
+    fail "(s4) one job: a suite's output reaches the runner's output while the suite still runs (seen=$s4_seen, rc=$rc, out=$(cat "$S4_LOG"))"
 fi
 
 echo ""
