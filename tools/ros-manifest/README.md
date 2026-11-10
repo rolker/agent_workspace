@@ -66,6 +66,30 @@ warning and still exits 0. `--layout` picks the output shape:
 `validate` prints the per-role inclusion table and runs the dependency check, exiting non-zero
 on a violation.
 
+### What a manifest may contain
+
+A manifest, and every manifest it `extends`, is treated as untrusted: its names become file
+paths and its values become lines of the generated files. Anything outside these rules is an
+error that names the manifest and the key:
+
+- Names: a layer is letters, digits, `_` and `-` (the `ros2_colcon` adapter's rule); a
+  repository is letters, digits, `_`, `.` and `-`, not starting with `.` or `-`; a group is
+  letters, digits, `_`, `:` and `-` (`hw:deltat`), not starting with `:` or `-`; a role is
+  letters, digits, `_` and `-`, not starting with `-`; a distro is lower-case letters, digits
+  and `_`, starting with a letter.
+- `url`, `ref`, each per-distro `ref`, `type`, and every `extends` field must be strings. Quote
+  a ref that YAML would read as something else: `ref: '1.10'` (unquoted, it is the number 1.1),
+  `'yes'`, `'2024-01-01'`.
+- No key or value may contain a newline, carriage return or other control character.
+- A URL must not carry credentials; use a credential helper or an ssh remote. Allowed:
+  `https://host/path`, `file://` and local paths, and a user name on an ssh remote
+  (`ssh://git@host/path`, `git@host:path`). Refused, without the URL being printed: a password
+  or token after `:` in the user part, and any user part on a non-ssh URL
+  (`https://<token>@host/...`).
+
+As a second line, `resolve` refuses to write a line that holds a control character or a file
+that would land outside `--out`, and writes nothing in that case.
+
 ### The `extends` cache
 
 A git-backed `extends` is cloned with `git clone --branch <ref> --depth 1` into the cache
