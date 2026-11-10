@@ -299,3 +299,24 @@ Carried to the implementer: the must-fix above and the third review's two sugges
 - Cutover sequence: one sentence pointing at Direction; row 7 "Acceptance case, see Direction"; Redesign step 5 drops "real `gz4d` issues +".
 - Stale-reference search: one now-false claim, `docs/design.md` Documentation layers "(ADR-0016's)", dropped with a change-log row (869 lines). Other hits are records or still true.
 - Verified: `sitrep_checks.sh --root .` gives the four lines `false` (first is the #429 line), five follow-ups `true`, three old rows `false`, no `unchecked` or `format`; summary `lines 0/4 deferrals 5/8`. `sitrep_root.sh --worktrees --rows`: named yes for #429, no for #323 and #432. acceptance_first prints "Project11 is developed on a second machine against ROS 2 Rolling through this workspace." `update_roadmap.sh --dry-run` finds no entries for any issue the section names. This machine's hostname is in no script, skill, test or doc; the second machine's name only in the roadmap's quoted text. pre-commit on the changed files passed (script-test hook reached no suite), so test_skill_paths.sh, test_sitrep_checks.sh and test_design_anchors.sh were run directly: all pass. The full `/sitrep` skill was not run; the rows above are its inputs.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 11:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-432 at `85d199fc`
+**Base**: main
+**Depth**: Deep (reason: 542 changed lines, mostly plan/progress records; docs change 108 lines)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Verified: sitrep_checks.sh parses every cell, no unchecked/format, first false line is the issue 429 line, five follow-ups true, summary lines 0/4 deferrals 5/8; sitrep_root.sh named yes only for 429; acceptance_first and both Path paragraphs parse; check_design_anchors.sh exit 0; test_skill_paths 136/136, test_design_anchors 47/47; pre-commit passes; hostname only in quoted roadmap text. Gemini: complete, one plan-drift note (explained by the third plan review). Codex: complete, no issues.
+
+### Findings
+- [ ] (must-fix) Direction defers the fork cutover (#260 to #262) until unh_marine_autonomy#396 closes, but the Cutover sequence orders rows 5-6 (#260, #261) before row 7 and says they "land as we go"; reconcile (e.g. the Cutover pointer says Direction defers rows 5, 6 and 8 until the simulator line is true) — `docs/roadmap.md:89,186-204`
+- [ ] (must-fix) "Follow-up still open:" is a status word the section's no-status rule forbids and goes stale when the issue closes; write "Follow-up:" and update the Path 2 sentence quoting it — `docs/roadmap.md:44,82-86`
+- [ ] (suggestion) Both Path paragraphs' first sentences (printed in the sit-rep's closing question) are classification rules ("…a Direction line below…"), not his goal; lead with a clause in his words — `docs/roadmap.md:33,38`
+- [ ] (suggestion) Acceptance case: "the move he named" has no antecedent (acceptance_rest prints alone), the 2026-11-10 quotes are undated, and "The machine is assumed to have…" restates the quote that follows — `docs/roadmap.md:19-27`
+- [ ] (suggestion) "Also under this path" lists the home-directory permissions baseline (not his words) and the work managers, whose design a deferral sets aside until #396 closes; list for veto or reconcile — `docs/roadmap.md:49-51`
