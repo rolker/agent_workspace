@@ -917,7 +917,13 @@ the plan for issue #276 and the plan for issue 429:
 - **More than one owning repository per issue.** An ADR-0012 package
   issue (`owner/repo#N`) is driven in the checkout of the one repository
   that owns it; sibling repositories in the package worktree are for
-  building against, and the records writers refuse them. Composition stays
+  building against. The records gate (`records_path` in
+  `_resolve_work_plans_dir.sh`) refuses them, and the worktree's top
+  folder, for every records read and write a script makes:
+  `progress_append.sh`, every `review_progress.sh` subcommand that takes
+  a path (`findings` and `check` included), the resolver and
+  `dispatch_phase.sh`. It does not guard a write from outside any
+  worktree, which commits on that checkout's own branch. Composition stays
   the adapter's (ADR-0012): `run-issue` passes `--layer` and
   `--package-repos` through and reads only the worktree's
   `.worktree-repos` manifest, through `dispatch_phase.sh`.
