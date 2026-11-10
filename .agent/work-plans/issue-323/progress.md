@@ -584,3 +584,47 @@ The proposed fix is one change, not three point fixes:
 - [x] (suggestion) A fetch timeout stops creation even for a brand-new issue branch. Behind a black-holing network (captive proxy, dropped SSH), no new issue worktree can be made, and the only advice is to retry or raise WT_FETCH_TIMEOUT. Name an explicit opt-out, or say this in WORKTREE_GUIDE (Claude adversarial) — `.agent/scripts/_worktree_helpers.sh:519`
 - [x] (suggestion) Untested paths: fetch failed with ls-remote 0 (the "origin has it" wording without the "as of the last fetch" suffix); an unreachable origin with no evidence for an issue or parent branch (the "treated as not on origin" warning); and the PR wrapper's `--recover` with `--body-file` and with `--body-stdin` (only `--body` is tested) (Claude adversarial) — `.agent/scripts/tests/test_worktree_create.sh`, `.agent/scripts/tests/test_gh_create_pr.sh`
 - [x] (suggestion) A Copilot comment from 2026-11-02 is still open and untriaged: `--fill --fill=false` and `-f -f=false` are refused, although gh's final value turns fill off. The marker is never cleared. This fails closed, so it is an over-refusal, not an unsigned PR. Track each fill flag's last value — `.agent/scripts/_gh_create_args.sh:208` (deferred: fails closed, refusing a PR gh would not fill, never sending one unsigned; dropping the contradictory flag pair is the workaround, and tracking each fill flag's last value, including pflag's other false spellings such as `=0`, is more than a two-line change)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 11:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: fix pass (host direction: one change to the named-branch lookup's contract, not three point fixes)
+
+**PR**: #417 at `064cbd39`
+**Addressed**: Local Review at `4c54c306` (2026-11-10 11:00 -05:00)
+**Commits**: e0672051, af2c5d09, 39da2930, 064cbd39 (box ticks; `review_progress.sh findings` selected the older Integrated Review, issues 360 and 357, so the boxes were ticked by hand)
+
+The named-branch lookup, redone as one change. `wt_fetch_named_branch` fetches `+refs/heads/<b>:refs/remotes/origin/<b>` and decides by that ref, not the fetch's exit code. Every result is one of present, absent or unknown, and any timeout or failure at any probe (fetch, ls-remote, the tracking ref) is unknown. It prints nothing and hands back `WT_FETCH_OUTCOME` and `WT_FETCH_REASON`; the outcome table (nine probe rows, and what each caller does) is a comment at the helper. Callers:
+- New branch, and a new sub-issue branch's parent (`worktree_create.sh` workspace path and `_wt_add_repo`, both through `wt_lookup_for_new_branch`): present, track origin/<b>; absent, start afresh (from the default, with the reason, for a parent); unknown, stop before anything is made, naming the sub-issue branch when the parent is in doubt, unless `--allow-unverified-branch`.
+- A present branch is tracked or fails: `wt_track_ready` adds it to a `--single-branch` or `--depth` clone's fetched branches (`git remote set-branches --add`, said on stderr), since git refuses `--track` from an unmapped ref. In `_wt_add_repo` a branch or parent found but failing to check out is now an error, not a fallback to the default.
+- Existing branch's parent (`worktree_create.sh`): present, the draft PR targets it; absent or unknown, a warning with the reason and `gh pr edit --base`. No stderr is discarded.
+
+### Actions
+- [x] (must-fix) Status 0 did not guarantee origin/<branch>: explicit refspec plus a ref check, and `wt_track_ready` for narrowed clones. Tests: a branch only on origin, `worktree_create.sh` with a single-branch refspec (issue and parent), `_wt_add_repo` in a `--single-branch` and a `--depth` clone — `.agent/scripts/_worktree_helpers.sh` (`wt_fetch_named_branch`, `wt_track_ready`), `.agent/scripts/worktree_create.sh` (e0672051)
+- [x] (must-fix) An ls-remote timeout after a fast fetch failure gave "absent": every timeout or failure at any probe is unknown. Tests with a git double: fetch fails then ls-remote times out (`worktree_create.sh` issue and parent, `_wt_add_repo`), fetch fails then ls-remote says found (`worktree_create.sh`, `_wt_add_repo` parent), ls-remote fails with an earlier origin/<parent> (both), fetch exits 0 without the ref — `.agent/scripts/_worktree_helpers.sh` (e0672051)
+- [x] (must-fix) The existing-branch parent lookup was silent on status 1 with stderr discarded: it warns on absent and on unknown, each with its reason. Tests: parent missing from origin, unreachable origin with no tracking ref, timed-out fetch — `.agent/scripts/worktree_create.sh` (e0672051)
+- [x] (suggestion) The parent caller named the parent as the branch not started: each caller words its own message, and the parent stop names the sub-issue branch. Every stop and warning test matches the whole message, reason included — `.agent/scripts/_worktree_helpers.sh` (`wt_lookup_for_new_branch`) (e0672051)
+- [x] (suggestion) The parent was asked about twice after a fallback: `PARENT_LOOKED_UP` skips the second ask. Test: a git double's fetch log shows one parent fetch (two against the previous scripts) — `.agent/scripts/worktree_create.sh` (e0672051)
+- [x] (suggestion) A timeout stopped a brand-new branch with no way through: `--allow-unverified-branch` starts it anyway, with a warning naming the reason and the risk. WORKTREE_GUIDE and the usage text say so. Tests in both callers — `.agent/scripts/worktree_create.sh`, `.agent/WORKTREE_GUIDE.md` (e0672051)
+- [x] (suggestion) Untested paths: the worktree paths are covered above; the PR wrapper's `--recover` with `--body-file` and with `--body-stdin` now have tests (exit 2, gh not called, the reason named) — `.agent/scripts/tests/test_gh_create_pr.sh` (af2c5d09)
+- [x] (suggestion) Copilot's `--fill --fill=false` over-refusal — `.agent/scripts/_gh_create_args.sh:208` (deferred: fails closed, refusing a PR gh would not fill, never sending one unsigned; dropping the contradictory pair is the workaround, and tracking each fill flag's last value, with pflag's other false spellings such as `=0`, is more than two lines)
+
+### Consequences
+- Three suites create worktrees in repos whose origin cannot be reached (test_project_registry.sh, test_ros2_colcon.sh, test_precommit_hook_path.sh); those now stop, so their fixtures pass `--allow-unverified-branch`, with a comment saying why (39da2930).
+- docs/design.md: `worktree_create.sh` line citations refreshed, change-log row added (877 lines).
+
+### Checks
+- Intermediate commits used `SKIP=validate-script-tests`. Then `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on 39da2930's tree: exit 0, `validate-script-tests` Passed. A first run on e0672051 failed in test_precommit_hook_path.sh (the unreachable-origin fixture), fixed in 39da2930.
+- Run by hand, 0 failures: test_worktree_create.sh 47, test_gh_create_pr.sh 102, test_project_registry.sh 281, test_ros2_colcon.sh 200, test_precommit_hook_path.sh 19, test_merge_pr.sh 91, test_user_tier_install.sh 211. The new test_worktree_create.sh against the previous scripts (a `git archive` of 4c54c306): 26 of 47 fail, including every outcome case.
+- shellcheck --severity=warning clean on the four changed scripts.
+
+### Decisions (owner may veto)
+- An unreachable origin is "unknown" and stops a new branch (the host's contract), and `--allow-unverified-branch` is the explicit way through, not a stop message alone. From the principles: "Leave a trail; start limits strict" (stopping is the strict default, and the user relaxes it with a flag visible in the command), and "A change includes its consequences": this change stops every offline creation, including skill worktrees, whose branch name is minted per run and cannot be made beforehand, so a message alone leaves no way through. Undoing it: remove the flag (its parse, usage line, the opt-out branch in `wt_lookup_for_new_branch`, two tests) and the fixtures' flag; offline creation then has no way through.
+- A `--single-branch` or `--depth` clone gets the branch added to its fetched branches (`git remote set-branches --add origin <b>`, a config change said on stderr) so `--track` works. The alternative is to stop and print that command. Undoing it: replace `wt_track_ready`'s last two lines with a stop.
+- In `_wt_add_repo`, a branch or parent found on origin that fails to check out is an error rather than a fallback to the default branch. Undoing it: revert e0672051's `_wt_add_repo` hunk.
+
+### Not done
+- A skill worktree's minted branch name is still looked up on origin, so offline it needs the flag. Skipping the lookup for a name minted in this run is a possible follow-up, left out to keep the pull request to this mechanism.
+- Pre-existing, outside the three callers: a project worktree whose issue branch already exists sets the draft PR base from local refs alone (`worktree_create.sh`, the manifest loop's parent check), with no lookup and no warning.
+- The old-scripts test copy in this session's scratchpad could not be removed (`rm -rf` was denied).
