@@ -872,3 +872,23 @@ The four deferrals were checked against `origin/main`:
 **Decision**: address
 
 Host read the Integrated Review. One open finding, should-fix: both paths check that the branch is absent before the origin lookup, which can take up to 60 seconds; if a second run creates the branch in that window, this run's `worktree add -b` fails and the new cleanup then removes the other run's worktree and branch. Direction: check the branch is absent right before each `add -b`, and if it is present stop without undoing anything; test it with a git double that creates the branch during the lookup. The per-issue lock for the inherited `rm -rf` stays a follow-up issue for the owner to allow. Nothing else changes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 13:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #417 at `a6ead361`
+**Addressed**: Integrated Review at `2ba95e6` (2026-11-10 12:47 -05:00)
+**Commits**: a6ead361
+
+### Actions
+- [x] The failed-checkout cleanup could remove another run's branch and worktree when that run created the branch during this run's origin lookup. A new branch is now made by `wt_add_new_branch` (`_worktree_helpers.sh`): `git branch` right before the checkout, after the lookup, then `git worktree add <dest> <branch>`. `git branch` never takes over an existing branch, so its success is the proof the branch is this run's; status 1 (this run made it) is the only one the cleanup acts on, status 2 (made nothing) undoes nothing, and a branch present by then gets the message "another run created the branch ... this run made nothing and removes nothing". Both paths use it: the workspace path (`undo_new_branch_checkout <status> <start>`, `worktree_create.sh:70-92`, 920-956) and `_wt_add_repo` (`made_branch` set only from the helper's status). Tests: the git double's `STUB_RACE_BRANCH` creates the branch and a worktree at the same path during the lookup; one test per path asserts the run stops with the message and the other run's branch and worktree stay (`test_worktree_create.sh`, "A branch another run creates during the lookup is left alone"). Both tests fail on the previous scripts (branch gone) and pass now. Refreshed the `worktree_create.sh` mktemp citation in `run_script_tests.sh:348` (1088,1129 → 1091,1132) — `.agent/scripts/_worktree_helpers.sh`, `.agent/scripts/worktree_create.sh`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, the script suites hook passed.
+- `bash .agent/scripts/tests/test_worktree_create.sh`: 58 passed, 0 failed.
+
+### Not done
+- The project path's inherited `rm -rf "$WORKTREE_DIR"` after a failed first add (`worktree_create.sh` 788-799) still runs when `_wt_add_repo` refuses another run's branch; if that run's worktree is at the same `WORKTREE_DIR`, it is removed. Left to the per-issue lock follow-up, as directed; the `_wt_add_repo` test calls the helper directly and does not cover it.
+- docs/design.md line citations (deferred by direction).
