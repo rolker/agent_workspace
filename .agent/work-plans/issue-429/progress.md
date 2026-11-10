@@ -823,3 +823,64 @@ Host read the Plan Review (needs-work, 2 must-fix, suggestions) and directs:
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `5609626c`
 
 Revision of part 2 after the plan review and the host's revise checkpoint. The start point gets its own strict path (fetch origin's base, no tracking, refuse when absent or unknown even with the unverified-branch flag, never the local copy). Pull request 2a adds repo_pin as a required verb (ADR-0011 amended) and carries all base texts; 2b is the gate on the owning timeline, cleanup tests, end-to-end test and Scope text; the two are built in parallel. The qualified pull-request identity is dropped. The Flexibility goal is cited, and the GitHub-bound table is completed with an exit column. The self-check uses the sixteen principle headings; the fixture-rename follow-up issue is drafted, not opened.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 14:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent a3124c0f507720522, resume 1 of 3)
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `5609626c`
+**Branch**: `feature/issue-429`
+**Serves**: `README.md#easy-to-use`, `README.md#light-touch-on-projects`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline`, `docs/design.md#merge-gate`. Checked: Flexibility is now cited with the README's words, and the withdrawn "no goal recorded" statement is corrected on the timeline and in the plan.
+
+Second review, narrow: whether the first review's findings (entry of 2026-11-10 14:53, plan `156efb94`) are resolved as worded, and whether the revision introduced anything wrong. Checked against `3486edba` code: `adapter`, `validate_adapter.sh`, both adapters, `_worktree_helpers.sh`, `merge_pr.sh`, `.github/workflows/validate.yml`, `.pre-commit-config.yaml`, the adapter test suites, ADR-0008, ADR-0011, ADR-0012, `principles_review_guide.md`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | 2a at about 16 files carries a contract change (a 13th required verb) alongside the base mechanism; cut the verb out as its own pull request first (finding 1) |
+| Issue alignment | Good | Unchanged from the first review; all of part 2 is covered |
+| File targeting | Needs work | Verb-count text and assertions not listed (finding 3) |
+| Consequences | Needs work | Same as above, plus the ADR route (finding 2) |
+| Principle alignment | Good | Self-check now has all sixteen headings of `docs/principles.md`, each with a consideration; I agree with each, except that "Keep one current design" depends on finding 3 |
+| Flexibility goal (`README.md#flexibility`) | Good | Table complete; no new `gh` call; no exit claimed is false; two wordings to fix (finding 5) |
+| ADR compliance | Needs work | ADR-0011 edit route conflicts with ADR-0008 (finding 2); ADR-0013 now untouched (good) |
+| ROS conventions | N/A | Workspace scripts |
+
+### First review's findings, as resolved
+
+- Must-fix 1 (strict start path): **resolved as worded.** 2a step 4: fetch origin's base, `origin/<base> --no-track`, refuse on absent or unknown whatever `--allow-unverified-branch` says, never the local `<base>`, owning entry only, rollback by the manifest loop; a resumed branch is checked out as today; "creation wins" over an offline `pr_base_for`. Tests (i) to (vi) include both refusals, the unpushed local commit and "no upstream". The chain fits the merged code: the branch's own lookup in `_wt_add_repo` stops first on "unknown" without the flag, and with the flag the base lookup then refuses.
+- Must-fix 2 (qualified identity): **resolved**: step 7 dropped, ADR-0013 unchanged, decision 7 records it.
+- Flexibility: **resolved**: goal cited; rows added for the sibling comment, the push-refused and no-identity fallbacks, the comment-store duplicate check; the second slug parse is replaced by reusing the scan's `_m_rel` (2b step 1); every row has an exit or "none today" with what one would take.
+- `--base` by hand: **resolved**: `repo_pin` built in 2a, `--base` only an override; veto 5's contradiction is gone.
+- Suggestions: **all taken**: `layer=` un-anchored with a test (step 5); base texts and the cross-check moved into 2a, so 2b needs nothing from 2a; repository name from `adapter worktree_repos`' owning entry; cleanup rule found and cited correctly, case (d) added; `script_reference.md` listed as shared with 437; follow-up issue drafted, not opened.
+
+### Findings
+
+1. **[Scope] Cut the verb out of 2a as its own pull request first.** Steps 1-2 are a change to the adapter contract (ADR-0011, `REQUIRED_VERBS`, both adapters, `validate_adapter.sh`, the verb tests, the design's verb text, plus the new ADR of finding 2): reviewed by different criteria from the base mechanism, depending on nothing, and touching the files a CI job (`validate-adapter-contract`) guards. With it inside, 2a is about 16 files and two subjects. The rest of 2a (strict start, header, `_pr_base.sh`, dispatcher, cross-check, run-issue) can be built in parallel against the sandbox's stub adapter type and merge after the verb. So: **two pull requests, the verb first.**
+2. **[ADR compliance] Do not edit ADR-0011's verb table; record the verb in a new ADR.** The plan says "ADR-0011 amended in 2a (Status paragraph: now 13 verbs, as ADR-0012 amended it to 12; the verb table gains the row)". The precedent is the other way round: ADR-0012 is a new ADR that decided its two verbs; ADR-0011 got only a Status-line cross-reference ("Amended by ADR-0012: +2 verbs") and its verb table still has the original 10 rows (`docs/decisions/0011-*.md` 36-47). ADR-0008 permits only Status-line and References addendums; adding a verb row rewords the Decision section, which "still requires a new/superseding ADR". `principles_review_guide.md:64` says the same ("or a new ADR per ADR-0008 if the verb count changes"). So: a short new ADR for `repo_pin` (contract, the four kinds, who answers what) and a one-line Status addendum in ADR-0011. Issue 436's plan (c) repeated the same misreading; nothing there to fix now, since the verb moves here.
+3. **[Consequences] Verb-count text and assertions.** Four assertions check the literal "all 12 verbs implemented": `test_adapter.sh:204`, `:218`, `test_ros2_colcon.sh:671`, `:672`. Step 8 lists those suites under "unchanged ... (existing cases)". They must change to 13, and `test_adapter.sh` runs in the `validate-adapter-contract` CI job, so leaving them would fail CI. Text that says "12-verb": `docs/design.md:341` and `.agent/knowledge/principles_review_guide.md:46`; neither is in the files table. Stub types in `test_adapter.sh` (`fake_type`) and `test_project_registry.sh` (`other_type`, `probe`) are already incomplete and are only dispatched, never validated, so they are unaffected (the dispatcher checks the verb name, not that the type defines it).
+4. **[Approach] Name the answer when one repository appears in more than one layer's `.repos`.** `repo_pin <repo>` reads "the `.repos` files of its manifest directory", which are per layer (`adapter_sync` loops layer by layer). An overlay can pin the same name in two layers at different refs. Either take the layer (the caller has `--layer`) or exit 1 naming both; do not take the first match silently. One test.
+5. **[Flexibility] Two exits are worded wrongly; none is false in substance.** (a) Owner/repo row: "would take a forge-neutral repository key ... in the scan, `worktree_repos` ownership and `gh_create_pr.sh`'s safety check". `worktree_repos` ownership already goes through `adapter_scope_for_pr`, which parses any host's URL or scp form (`ros2_colcon/adapter.sh` 868-896). Only the scan (`extract_gh_slug`, GitHub-only, `_issue_helpers.sh:22`) and `gh_create_pr.sh` would change. (b) Base cross-check row: "the push names the base". A push of the feature branch names no base. Under the merge exit, the `git merge` target is read from the header's `base=`, so there is nothing to cross-check. The other exits hold: the `**Branch**` correlation is accepted by `progress_read.py`; `git merge` plus `git push` is a real path for the merge; the field-mode bullet exists at `run-issue/SKILL.md:910`; and the sibling, fallback, CI and decision-summary rows say "none today" with a plausible route.
+6. **[Small] 2b step 1, implementer note.** The scan `break`s with `_m_rel` set, but the matches are collected as `dir<TAB>project<TAB>issue` and `_m_rel` is `unset` afterwards; carry the relative path as a fourth field of `_PKG_MATCHES` so `PKG_OWN_REL` comes from the one chosen match.
+
+### Project types and CI (asked)
+
+Types in the tree: `ros2_colcon` and `single_project` (`.agent/project_types/`), the only ones `validate_adapter.sh` iterates. The plan names both answers: ROS from `_rc_repos_entries` with the kind from git; single-repository the default branch from `origin/HEAD` (`ls-remote --symref` fallback), kind `branch`, exit 1 for another name. `validate_adapter.sh` checks only `declare -F adapter_<verb>` for every `REQUIRED_VERBS` entry, so with both functions defined the pre-commit hook and the `validate-adapter-contract` job pass. That job also runs `test_adapter.sh` and the registry tests: they pass once finding 3's assertions move to 13.
+
+### Summary
+
+The revision resolves both must-fixes, the Flexibility findings and the `--base` question as worded, and takes every suggestion. Nothing introduced would start or target the wrong branch, break a type or a timeline, or claim a false exit. 2a is ready to implement as two pull requests: the verb first (with a new ADR rather than an edit to ADR-0011's table, and the 12-to-13 text and assertions), then the base mechanism, built in parallel and merged after it.
+
+### Recommended Actions
+
+- [ ] (suggestion) Split 2a: `repo_pin` verb pull request first, base mechanism second (built in parallel)
+- [ ] (suggestion) A new short ADR for `repo_pin`; ADR-0011 gets a Status-line addendum only
+- [ ] (suggestion) Update the four "all 12 verbs" assertions and the "12-verb" text in `docs/design.md:341` and `principles_review_guide.md:46`
+- [ ] (suggestion) `repo_pin` for a name pinned in two layers: take the layer or refuse naming both, with a test
+- [ ] (suggestion) Reword the owner/repo and base cross-check exits as in finding 5
+- [ ] (suggestion) Carry `_m_rel` in `_PKG_MATCHES` for `PKG_OWN_REL`
