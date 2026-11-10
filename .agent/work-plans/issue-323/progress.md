@@ -799,3 +799,38 @@ Cross-model:
 ### Not done
 - run_script_tests.sh's citation of `worktree_create.sh`'s `/tmp` mktemp sites moved with these lines and was refreshed to 1088,1129 in 8a9d19ec. It is a consequence of this change, not a new item. The design.md inventory row (deferred above) is now further off for the same reason.
 - A third scratch copy (`old3.*`) is in this session's scratchpad beside the earlier ones; `rm -rf` is denied.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-10 12:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a852b1bb7dae4e0f6, resume 1 of 3)
+
+**PR**: #417 at `40f56112`
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Round**: 5 in PR mode. The handoff says "no cross-model reviewers", so this is the round-3+ convergence check: it reviews only the round-4 findings in scope (must-fix 1 and 2, suggestions 2 and 4) and the fix diff since `5e526275` (d09f44e8, 8a9d19ec, f78007f4).
+**Must-fix**: 0 | **Suggestions**: 0
+
+Verified:
+- Must-fix 1 is resolved. Once `_wt_add_repo` has asked origin about the parent, the draft PR's base follows `WT_FETCH_OUTCOME = present`.
+  - That value is the parent lookup's. `_wt_default_start_point`, which may run after it, never sets it.
+  - "unknown" with `--allow-unverified-branch` therefore no longer targets the parent either, as on the workspace path.
+  - The new test (stale `origin/feature/issue-9`, parent deleted on origin) fails against the previous scripts: a `git archive` of 50e0b1d7 with the new test file gives `pr create … --base feature/issue-9`.
+- Must-fix 2 is resolved. The "owning branch reported" assertion is again `feature/issue-444`, the same string as on main (line 438) and at a378503a (line 443).
+- Suggestion 2 is resolved. Every new-branch `worktree add -b` on the workspace path goes through `undo_new_branch_checkout`, which does the same as `_wt_add_repo`. A branch it cannot delete is reported with the command to remove it. The script runs `set -e` with cwd `$ROOT_DIR` (worktree_create.sh:32, :710), so `add || undo` is sound. The new failed-checkout case from the default branch fails against the previous scripts (the branch is left).
+- Suggestion 4 is resolved. WORKTREE_GUIDE states the `@{u}` limit in a narrowed clone.
+- Against the previous scripts, test_worktree_create.sh fails 3 cases: the two workspace failed-checkout cases and the stale-parent case.
+- At 40f56112, 0 failures: test_worktree_create.sh 56, test_ros2_colcon.sh 218.
+- Shellcheck --severity=warning is clean on the 3 changed scripts.
+- run_script_tests.sh's citation `worktree_create.sh:1088,1129` matches the two `/tmp` mktemp lines.
+
+Cross-model: skipped (round-5 convergence check, per handoff).
+
+Deferred by the host to follow-up issues, not counted against this pull request:
+- the round-4 suggestion 1 (concurrent-creation race);
+- suggestion 3 (stale ref in `check_existing_branch_parent`);
+- suggestion 5 (design.md inventory line numbers, now further off after 8a9d19ec moved lines).
+
+### Findings
+- [ ] No issues found. LGTM.
