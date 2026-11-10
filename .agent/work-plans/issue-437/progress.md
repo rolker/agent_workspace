@@ -82,3 +82,25 @@ issue: 437
 **Decision**: proceed
 
 Host read the Issue Review. Accepted as plan inputs: the guard goes on committing writes only, never on reads (the sit-rep and the dispatcher read from the root on purpose); it judges the target checkout (the `-C` directory), not the current directory, so the merge script's gate record keeps working; it is a second rule in the one place issue 429's first pull request resolves records paths, not a second mechanism. The plan settles what a detached HEAD and a skill worktree do, and whether `review_progress.sh check` follows the write rule. Sequencing, a host decision listed for the owner's veto: this worktree stays on main; the plan and its review are done now against issue 429's branch as read, and implementation starts only after issue 429's first pull request merges and main is merged into this branch, so no branch is stacked on an unmerged one.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 13:20 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-437/plan.md` at `4424c221`
+
+Written against issue 429's branch, not this tree; implementation waits for its first pull request to merge. A second rule in `records_path`/`records_dir`, switched on by a caller-stated `--commit` option, refuses a committing write whose target checkout is not the issue's worktree (linked worktree on `feature/issue-N`, or the manifest's entry for package issues); reads never refused.
+
+Settled with evidence (read from the 429 branch, not run):
+- Detached HEAD: allowed only in a worktree whose folder is `issue-*-N`; refused elsewhere.
+- `skill/*` worktrees: refused when given an issue; none writes a timeline (`persist --issue ""` skips; research and inspiration-tracker call no progress script).
+- `review_progress.sh check`: edits without committing, but a tick left in a main checkout is stranded; it follows the write rule (`records_path --commit`).
+- Compatibility `persist`: the new refusal precedes the "would have aborted" notice; the notice survives only for a set `$WORKTREE_ISSUE` that differs while cwd is right. Issue 269's parked item (docs/design.md: "B2: flip `PROGRESS_PERSISTENCE_STRICT` to 1 once the compatibility-mode 'would have aborted' notices stop showing up on real runs") is not decided here; its signal narrows, noted in design.md.
+- `merge_pr.sh` gate record (`progress_append.sh -C <PR worktree>` from the root) judges the target and passes; tested.
+- `cross_model_review.sh --work-plans-dir`: no `--commit`, writes uncommitted artifacts, unchanged.
+
+Details for the owner's veto (undo cost):
+- Option `--commit` as the intent signal (swap for another signal: edit 4 call sites).
+- Non-package targets must be a linked worktree (drop one condition; a main checkout on a feature branch then passes).
+- `check` follows the write rule (remove one flag).
+- About ten suites' plain-main fixtures move to linked worktrees (the largest cost; not undoable cheaply once written).
