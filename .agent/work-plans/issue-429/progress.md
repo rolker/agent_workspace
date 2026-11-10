@@ -429,3 +429,20 @@ Not done:
 - The case-H follow-up issue (writes from outside any worktree, compatibility mode) is the host's to file, as the checkpoint says.
 - The acceptance-run check for stray commits in the workspace main checkout, the session root and sibling checkouts (plan review finding 3) belongs to that run.
 - The prototype sandbox at `.../scratchpad/impl429` was not removed (rm denied).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `8ac2ca32`
+
+The coordinator asked for two things before the first review of pull request 1.
+
+- Merge from main landed as `f3ab3f27` (`git merge main`, no rebase). The one conflict was `docs/design.md`, in the change log only: both sides added a 2026-11-10 row. I kept both, main's Documentation layers row first and then this branch's #429 row, and changed the #429 row's line count to the merged file's 879. Main's other changed files (`docs/roadmap.md`, issue 432's records) merged cleanly.
+- `8ac2ca32` (the exit-contract gap, item 2): the implement handoff's exit contract now prints `progress_append.sh` and the run-issue `SKILL.md` by absolute path into the workspace that `dispatch_phase.sh` runs from. That applies to every issue type, so workspace issues print the absolute path too: one code path. The other paths the handoff prints:
+  - `conventions=`: its only command, the workspace hook rule's pre-commit, was already absolute. The new `cd` line names the worktree, which is absolute.
+  - Task lines: these are slash commands, except implement's plan path. That path stays relative, because it names the records directory, which is in the phase's own checkout.
+- Tests:
+  - `test_package_issue_loop.sh` extracts the printed command from the contract. It runs it inside the owning package checkout, which has no `.agent/scripts`, and checks the entry is committed there. It also checks that the printed skill path exists. 58 passed, 0 failed.
+  - `test_dispatch_phase.sh` checks both absolute paths for a workspace issue: 140 passed, 0 failed.
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed (rc 0), including the script-suite hook and shellcheck.
