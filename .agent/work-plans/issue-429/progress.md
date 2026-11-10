@@ -561,3 +561,29 @@ Outside reviewers:
 - [x] (suggestion) Issue 437 will need a write mode in `records_path`, since one function serves reads and writes and case 8 keeps the main checkout's read of its own timeline. Record this on issue 437 — `.agent/scripts/_resolve_work_plans_dir.sh:193` (deferred: for issue 437, recorded in this round's Implementation entry; nothing changed here)
 - [x] (suggestion) The enumeration parses only `    name)  cmd_x` rows of `review_progress.sh`'s case table. A row written another way (`name) shift; cmd_x`) would slip past both checks; parse every label between `case "$SUB" in` and `esac` instead — `.agent/scripts/tests/test_package_issue_loop.sh:452`
 - [x] (suggestion) review-plan's `--issue` fallback overwrites `WS_ROOT` and globs the top folder (gemini). It is harmless here, and the hand-built path belongs to issue 393 — `.claude/skills/review-plan/SKILL.md:105` (deferred: for issue 393 (hand-built path), recorded in this round's Implementation entry; nothing changed here)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 13:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a95c639566387c1ba, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2ff275cd`
+**Addressed**: Local Review (Pre-Push) at `e8205e67` (2026-11-10 13:24 -05:00)
+**Commits**: 04d775bb, 79250930, 20d1b493, 2ff275cd
+
+### Actions
+- [x] (must-fix 1) `records_path` matches `(^|/)\.agent/work-plans/issue-N(/|$)` twice: on the path as given, and on its physical location. The given match is judged at the directory that holds the named `.agent`, so a symlinked records folder is judged where the link sits; the physical match is judged where it resolves. Two different numbers, or a path that cannot be resolved, refuse. Resolution is `_wpd_physical`, which uses only `cd -P`, `pwd -P` and plain `readlink` (no `realpath -m`). Tests, case 10 of `test_package_issue_loop.sh`: B's records folder as a symlink out of the records shape is refused for `findings`, `check` (from B and from A) and `progress_append.sh`, and the target and B are unchanged. Relative paths from B are refused with GNU realpath and with a stub `realpath` that rejects every call; the same relative read from A still works. 7 of these checks fail on the previous gate — `.agent/scripts/_resolve_work_plans_dir.sh:255`
+- [x] (must-fix 2) `issue_checkout_guard` now uses the from-folder's manifest only when the path is in no repository or the from-folder has the same git toplevel, so the top folder (toplevel = the workspace main checkout) still refuses. `merge_pr.sh` passes `"$_gate_wt"` to `records_path`. Tests: case 10 runs a workspace worktree's timeline from inside A. `findings`, `round` and `sources` give exactly what they give from that worktree, and `check`, `progress_append.sh -C`, the resolver override and `next --progress` all work. `test_merge_pr_gate.sh` (def-pkg): an all-good workspace merge started inside a package checkout merges. 6 checks in case 10 and def-pkg fail on the previous gate — `.agent/scripts/_resolve_work_plans_dir.sh:179`
+- [x] (suggestion a) The design's "does not cover" list names the sit-rep's survey, which reads each listed checkout's `progress.md` with `progress_read.py` directly. The change-log row's line count is now 886 — `docs/design.md:457`
+- [x] (suggestion b) Deferred, nothing changed. For issue 437: `records_path` serves reads and writes alike, and case 8 asserts that the workspace main checkout reads its own issue-7 timeline. So 437's "no records write outside a worktree" rule needs a write mode in the gate, not a refusal for every caller — `.agent/scripts/_resolve_work_plans_dir.sh:193` (deferred: for issue 437)
+- [x] (suggestion c) The enumeration now takes every label between `case "$SUB" in` and `esac`, fails on a line it cannot read, and requires the labels to equal the subcommands the usage text names. A `newsub) shift; cmd_findings` row fails 3 checks (the old parse missed it) — `.agent/scripts/tests/test_package_issue_loop.sh:452`
+- [x] (suggestion d) Deferred, nothing changed. For issue 393: review-plan's `--issue` fallback overwrites `WS_ROOT` and globs a package worktree's top folder, a hand-built records path that finds nothing there today — `.claude/skills/review-plan/SKILL.md:105` (deferred: for issue 393)
+
+### Checks
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0. That includes the script-suite hook (every suite, since a shared helper changed) and shellcheck.
+- Run on their own: test_package_issue_loop 148/0, test_merge_pr_gate 107/0, test_merge_pr 91/0, test_resolve_work_plans_dir 21/0, test_progress_append 23/0, test_address_findings 15/0, test_review_code_convergence 35/0, test_dispatch_phase 140/0, test_triage_reviews_integration 59/0, test_checkpoint_269 43/0, test_cross_model_review 920/0.
+- The design citations of `merge_pr.sh`, `dispatch_phase.sh`, `review_progress.sh` and `progress_append.sh` were re-checked against the files after the merge from main; all still hold.
+
+### Not done
+- `review_progress.sh persist --strict` still calls `realpath -m` to compare the resolved directory (there before this branch). Where it is missing, the comparison fails and persist refuses (exit 4), so it fails closed. Left as is.
