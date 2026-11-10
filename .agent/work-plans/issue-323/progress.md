@@ -533,3 +533,54 @@ Verified: the review hold no longer merges on an unread state. Traced by hand: `
 ### Decisions (owner may veto)
 - The signing refusal (corrected wording): `gh_create_pr.sh` and `gh_create_issue.sh` exit 2 on `--fill` and its variants or `--template` with no body, and on `--recover` with or without one, unless `--no-signature` is given, whether or not an identity is set — undoing it: revert d84c8e64 and 134003d4.
 - An existing branch whose parent cannot be fetched gets a warning about the draft PR base rather than a stop: the branch is already there, so only the PR base is at stake — undoing it: revert f1925181.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-10 11:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #417 at `4c54c306`
+**Depth**: Deep (reason: the whole-PR diff holds the enforcement script merge_pr.sh, 2810+/361- over 22 files; fix-round rule, classified on the whole diff, not lowered for the small fix diff)
+**Round**: 2 (PR mode: one earlier complete `## Local Review`, no restart checkpoint; the handoff has no "no cross-model reviewers", so the fix-round rule applied and cross-model ran)
+**Must-fix**: 3 | **Suggestions**: 5
+
+Scope: the fix diff since the last reviewed head `fbf94d1` (134003d4, 88cede95, f1925181, 8ed8f908, the progress commits) and the merge from main (8ad83cc0).
+
+Verified:
+- The merge loses nothing. `git show --remerge-diff 8ad83cc0`: AGENTS.md is main's, and the branch's only AGENTS.md change (the `gh_create_issue.sh` row) is in `.agent/knowledge/script_reference.md`; the design.md change log keeps both sides' rows. Of the branch's 22 files, every one main did not touch is byte-identical to 88cede95. For the three both sides touched (WORKTREE_GUIDE.md, run_script_tests.sh, test_script_tests_hook_scope.sh) the branch's added and removed lines match exactly before and after the merge. The branch's file set is the same apart from AGENTS.md → script_reference.md.
+- The new citations hold: `worktree_create.sh:1014,1055` (run_script_tests.sh) and design.md `1049-1055`.
+- `--recover` is refused with or without a body in both wrappers, including `--recover=x` (the parser normalises it).
+- Shellcheck --severity=warning: clean on the 9 changed scripts. The Claude adversarial reviewer ran test_worktree_create.sh (28 pass), test_gh_create_pr.sh (99 pass) and test_gh_create_issue.sh (65 pass).
+- Cross-model: gemini ran (no findings; a short reply). Codex ran (1 finding, kept as must-fix 2; reproduced with stubs). Copilot did not review this head (out of quota).
+
+The fetch helper `wt_fetch_named_branch`, reviewed as a whole. It has three callers: `fetch_remote_branch` (issue branch at worktree_create.sh:840; parent at :848), `_wt_add_repo` (target at :612; parent at :626), and the existing-branch parent lookup (worktree_create.sh:876).
+
+| Outcome | Caller behaviour | Right? | Tested? |
+|---|---|---|---|
+| Fetched | track origin/<b> | No, when the clone's refspec is narrowed (must-fix 1) | No test for a branch that exists only on origin |
+| Absent (ls-remote 2) | fresh branch, or default | Yes | Yes |
+| Fetch timed out | stop (for :876, warn) | Yes | Yes (13, 14, 18) |
+| Fetch failed, ls-remote 0 | stop | Yes | No |
+| Fetch failed, ls-remote timed out | as unreachable | No (must-fix 2) | No |
+| Unreachable, stale origin/<b> | stop | Yes | Yes (15, 16, 17) |
+| Unreachable, no evidence | warn, then fresh | Yes, except at :876, where it is silent (must-fix 3) | No |
+
+The mechanism is right in shape: one helper classifies, and each caller acts on the status. The gaps come from two places:
+- **Evidence.** Status 0 is decided by git's exit code, not by the ref the callers use. Only the first probe's timeout counts as a timeout.
+- **Wording.** The helper writes its messages for the issue-branch caller. The parent callers therefore print a wrong message, and :876 has to discard stderr.
+
+The proposed fix is one change, not three point fixes:
+- Fetch with the explicit refspec `+refs/heads/<b>:refs/remotes/origin/<b>` and verify the ref, as `_wt_default_start_point` already does.
+- Classify all three probes (fetch, ls-remote, tracking ref) through one table in which any timeout is status 3.
+- Return the reason in a variable instead of printing it, so each caller words its own message.
+
+### Findings
+- [ ] (must-fix) Status 0 does not guarantee origin/<branch>. In a clone with a narrowed fetch refspec (`--single-branch`, or any `--depth` clone), `git fetch origin -- <b>` exits 0 but writes only FETCH_HEAD. Reproduced: `wt_fetch_named_branch` returned 0 with origin/feature/issue-9 missing. `_wt_add_repo` then silently started feature/issue-9 from main (0cf75f5) while origin's branch was 8388b85: no upstream and no warning, which is the divergence the helper exists to stop. worktree_create.sh's workspace path dies at `git worktree add`. Fix: fetch with an explicit refspec and verify the ref. Add tests for a single-branch clone and for a branch that exists only on origin (both callers; neither has a test) — `.agent/scripts/_worktree_helpers.sh:516`
+- [ ] (must-fix) After a fetch that fails without a timeout (for example, connection refused), an `ls-remote` that times out (124/137) falls through to the stale-ref check. With no ref, the helper returns 1, so callers start a fresh branch although origin may have it. This contradicts the helper's own rule that a timeout stops. Treat an ls-remote timeout as status 3 and add a test (codex; reproduced with stubs, fetch=128 and ls-remote=124 gave 1) — `.agent/scripts/_worktree_helpers.sh:523`
+- [ ] (must-fix) Existing-branch parent lookup: only status 3 warns. With stderr sent to /dev/null, status 1 from an unreachable origin with no evidence (the helper's own WARNING is discarded), or from a parent that is not on origin, leaves the draft PR targeting the default branch with no word. The case is real when SSH to origin is blocked but the GitHub API works. Warn on every status other than found, and add a test (Claude adversarial) — `.agent/scripts/worktree_create.sh:876`
+- [ ] (suggestion) The helper's ERROR text ends "a new '<branch>' is not started in its place". For a parent branch this names the parent, but the branch that is refused is the sub-issue branch. The tests for issues 16 and 17 match only the prefix, so they pass with the wrong wording. Let each caller word its message (see the mechanism note above) (Claude adversarial) — `.agent/scripts/_worktree_helpers.sh:529`
+- [ ] (suggestion) A new branch whose parent fetch returned 1 falls back to the default branch. The block at :866 then fetches the same parent a second time: one more silent network round. Skip that block when the first attempt already ran (Claude adversarial) — `.agent/scripts/worktree_create.sh:866`
+- [ ] (suggestion) A fetch timeout stops creation even for a brand-new issue branch. Behind a black-holing network (captive proxy, dropped SSH), no new issue worktree can be made, and the only advice is to retry or raise WT_FETCH_TIMEOUT. Name an explicit opt-out, or say this in WORKTREE_GUIDE (Claude adversarial) — `.agent/scripts/_worktree_helpers.sh:519`
+- [ ] (suggestion) Untested paths: fetch failed with ls-remote 0 (the "origin has it" wording without the "as of the last fetch" suffix); an unreachable origin with no evidence for an issue or parent branch (the "treated as not on origin" warning); and the PR wrapper's `--recover` with `--body-file` and with `--body-stdin` (only `--body` is tested) (Claude adversarial) — `.agent/scripts/tests/test_worktree_create.sh`, `.agent/scripts/tests/test_gh_create_pr.sh`
+- [ ] (suggestion) A Copilot comment from 2026-11-02 is still open and untriaged: `--fill --fill=false` and `-f -f=false` are refused, although gh's final value turns fill off. The marker is never cleared. This fails closed, so it is an over-refusal, not an unsigned PR. Track each fill flag's last value — `.agent/scripts/_gh_create_args.sh:208`
