@@ -52,8 +52,8 @@ from the first GeoZui4D onboarding run (#415), the loop defects seen on the
 GeoZui4D drives (#428), retiring `project/` and `projects/` (#265, part 4)
 and the orchestrator skill's first updates from the dogfooding log (#431).
 Also under this path: audit trials, the instruction-file trim, the backlog
-sweep, the orchestrator trial, the work managers in his home directory,
-and the home-directory permissions baseline for sessions started in `~`.
+sweep, the orchestrator trial, and his "overall work managers", whose
+design waits on the orchestrator design session deferral (#398).
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
