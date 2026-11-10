@@ -386,3 +386,20 @@ The evidence is real: seven rows re-run from a fresh sandbox, including both sil
 - [ ] Fix the single-repo manifest wording and test case 3's fixture (finding 4)
 - [ ] Serves names the README goal section (finding 5)
 - [ ] State the user-tier requirement or capture `WS_ROOT` before the `cd` (finding 6)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review re-ran the plan's evidence and all 7 rows matched; its one must-fix and five suggestions are each a specific, bounded addition the implementer can apply, none changes the route the owner chose; the previous answer at this checkpoint was the owner's, so this is the host's first in the run)
+**After**: plan
+**Decision**: proceed
+
+Host read the Plan Review of the small route (needs-work, 1 must-fix, 5 suggestions) and carries all six to the implementer of pull request 1 as directions:
+- Must-fix: the one place that decides the directory also checks that `gh` resolves to the issue's own repository from that checkout (`gh repo view` against the ref), refuses on a mismatch, and has a test with an `upstream` remote. Real gh prefers `upstream` over `origin`, so a forked checkout would otherwise send issue comments to the upstream project.
+- The run-issue text takes the progress path from `where`, never from the worktree's top folder.
+- The handoff's `conventions=` line tells a dispatched phase to `cd <worktree> &&` on every command chain, since a sub-agent's shell returns to the session's start folder on each call; the acceptance run checks for stray commits.
+- Single-repository project worktrees write no `.worktree-repos`: fix the plan's wording and the test fixture.
+- Serves names a README workspace-goals heading.
+- `WS_ROOT` is captured before the host moves into the owning checkout, or the user tier is required and said so.
+Pull request 2 (the merge gate reads the owning checkout's timeline) follows pull request 1. The gap that exists for workspace issues too (records committed into a main checkout from outside any worktree) is a separate issue; opening it is the owner's, asked at the next hand-back.
