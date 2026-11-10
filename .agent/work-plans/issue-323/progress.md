@@ -862,3 +862,13 @@ The four deferrals were checked against `origin/main`:
 
 ### False positives
 - (Local Review @ `40f5611`) "No issues found. LGTM." is the clean review's placeholder line, not a finding (issue 362).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 12:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the triage left one finding open and judged it partly this pull request's own doing: the new cleanup after a failed checkout can remove another run's worktree and branch; a destructive behaviour the pull request adds is fixed before the owner is asked to merge, not deferred)
+**After**: findings
+**Decision**: address
+
+Host read the Integrated Review. One open finding, should-fix: both paths check that the branch is absent before the origin lookup, which can take up to 60 seconds; if a second run creates the branch in that window, this run's `worktree add -b` fails and the new cleanup then removes the other run's worktree and branch. Direction: check the branch is absent right before each `add -b`, and if it is present stop without undoing anything; test it with a git double that creates the branch during the lookup. The per-issue lock for the inherited `rm -rf` stays a follow-up issue for the owner to allow. Nothing else changes.
