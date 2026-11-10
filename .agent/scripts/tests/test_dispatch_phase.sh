@@ -473,8 +473,12 @@ out=$(run_handoff --issue 9 --skill implement)
 [[ "$out" == *"task=implement the plan at .agent/work-plans/issue-9/plan.md on this branch"* \
     && "$out" == *"model=opus"* && "$out" == *"entry_type=Implementation"* ]] \
     && pass "handoff: implement -- literal task line (no /implement slash command), opus, Implementation" || fail "handoff implement (out=$out)"
-[[ "$out" == *"progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
+[[ "$out" == *"\`$SB/.agent/scripts/progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
     && pass "handoff: implement's exit contract names progress_append.sh, the correlation line, and that the agent commits (plan review finding 1)" || fail "handoff implement exit contract (out=$out)"
+# By absolute path for every issue type, the run-issue skill too: a package
+# issue's phase runs in a checkout with no .agent/ of its own (issue 429).
+[[ "$out" == *"in the shape \`$SB/.claude/skills/run-issue/SKILL.md\` step 4"* ]] \
+    && pass "handoff: implement's exit contract names the writer and the run-issue skill by absolute path (issue 429)" || fail "handoff implement exit contract absolute paths (out=$out)"
 
 # The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
 # on conventions=, only for the committing passes of a workspace handoff: a

@@ -84,6 +84,8 @@ export PATH="$STUB:$PATH" GH_LOG="$SANDBOX/gh.log"
 cp -r "$REAL_AGENT/scripts" "$S"
 rm -rf "$S/tests"
 cp -r "$REAL_AGENT/project_types/ros2_colcon" "$REAL_AGENT/project_types/single_project" "$WS/.agent/project_types/"
+mkdir -p "$WS/.claude/skills/run-issue"
+cp "$REAL_AGENT/../.claude/skills/run-issue/SKILL.md" "$WS/.claude/skills/run-issue/"
 git -C "$WS" init -q
 git -C "$WS" add -A
 git -C "$WS" commit -q -m init
@@ -177,7 +179,21 @@ check "handoff: the exit contract is A's timeline" \
 check "handoff: conventions= says to cd into A at the head of every command chain" \
     "$([[ "$out" == *"conventions="*"Start every command chain with \`cd $A &&\`"* ]]; echo $?)" "$out"
 
-(cd "$A" && entry 'Issue Review' '**Issue**: #7' | "$S/progress_append.sh" 7 --title "Fix the thing" >/dev/null 2>&1)
+# The implement handoff's exit contract names the writer and the run-issue
+# skill by absolute path, so the printed command runs from inside A, which
+# has no .agent/scripts of its own.
+out=$(dp "$H" --issue 'owner/pkg_a#7' --skill implement --type project)
+contract=$(sed -n 's/^exit_contract=//p' <<< "$out")
+cmd=$(sed -n 's/.* via `\([^`]*\)` (entry on stdin).*/\1/p' <<< "$contract")
+skill_doc=$(sed -n 's/.* in the shape `\([^`]*\)` step 4.*/\1/p' <<< "$contract")
+check "implement handoff: the exit contract's command and skill are absolute paths that exist" \
+    "$([[ "$cmd" == "$S/progress_append.sh 7 --title \"<issue title>\"" && -f "$skill_doc" && "$skill_doc" == /* ]]; echo $?)" "$contract"
+cmd="${cmd//<issue title>/Fix the thing}"
+a_before=$(git -C "$A" rev-parse HEAD)
+out=$(cd "$A" && [[ ! -e .agent/scripts ]] && entry 'Issue Review' '**Issue**: #7' | eval "$cmd" 2>&1); rc=$?
+check "the printed exit-contract command, run inside A (no .agent/scripts there), commits the entry in A" \
+    "$([[ "$rc" -eq 0 && "$(git -C "$A" rev-parse HEAD)" != "$a_before" \
+          && "$(git -C "$A" log -1 --format=%s)" == "progress: issue review for #7" ]]; echo $?)" "$out"
 out=$(dp "$H" next --issue 'owner/pkg_a#7' --type project --pr none)
 check "next reads A's timeline: an Issue Review there routes to plan-task" "$([[ "$out" == "action=plan-task"* ]]; echo $?)" "$out"
 out=$(dp "$H" --check-exit --issue 'owner/pkg_a#7' --skill review-issue --type project --before 0)

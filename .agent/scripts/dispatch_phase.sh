@@ -507,8 +507,18 @@ cmd_handoff() {
     # otherwise nothing tells the dispatched agent to write the **PR** /
     # **Branch** correlation line ADR-0013 requires of `## Implementation`
     # (issue #314 plan review, finding 1).
+    #
+    # The script and the skill it names are printed by absolute path, for
+    # every issue type: a package issue's phase runs in a package
+    # repository's checkout, which has no .agent/scripts or .claude/skills,
+    # and a relative path would name a missing file there (issue 429). The
+    # workspace is the one this script runs from; %q as for ROOT_DIR below.
     if [[ "$skill" == "implement" ]]; then
-        echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via \`.agent/scripts/progress_append.sh $issue --title \"<issue title>\"\` (entry on stdin), in the shape \`.claude/skills/run-issue/SKILL.md\` step 4 documents for the dispatched implement pass — the \`**PR**: #<M> at <sha>\` / \`**Branch**: <name> at <sha>\` correlation line included. Commit your work. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
+        local ws_dir append_q skill_q
+        ws_dir="$(cd "$SCRIPT_DIR/../.." && pwd)"
+        append_q=$(printf '%q' "$SCRIPT_DIR/progress_append.sh")
+        skill_q=$(printf '%q' "$ws_dir/.claude/skills/run-issue/SKILL.md")
+        echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via \`$append_q $issue --title \"<issue title>\"\` (entry on stdin), in the shape \`$skill_q\` step 4 documents for the dispatched implement pass — the \`**PR**: #<M> at <sha>\` / \`**Branch**: <name> at <sha>\` correlation line included. Commit your work. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
     else
         echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
     fi
