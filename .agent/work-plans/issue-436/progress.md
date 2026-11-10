@@ -180,3 +180,18 @@ The route is the least change on the adapter side (one generated directory with 
 - [ ] Decide `repo_pin`'s place (amend ADR-0011, required 13th verb, or issue 429) and record it for veto.
 - [ ] Split pull request 1 into resolver and install, adapter route, and `repo_pin`.
 - [ ] Take suggestions 5 to 11 as the implementer sees fit.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:28 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review confirmed the plan's reading of the code and found three must-fixes in how it is built, none a change of what the owner asked for; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+Host read the Plan Review (needs-work, 3 must-fix, 6 groups of suggestions) and directs:
+- Must-fix 1 and 2 are one concern, a stale manifest: `sync` must resolve what the remote holds now, for the leaf manifest and for every `extends` base. The leaf clone is refreshed so a moved branch is followed (and a commit pin, a dirty clone and a clone on another branch each have a defined result); the resolver's extends cache is fresh per resolve or refreshed. Tests push a change to the bare remote and then sync, for the leaf and for a base.
+- Must-fix 3: `repo_pin` leaves pull request 1. It becomes its own small pull request on this issue, as a required verb every type implements (a single-repository type answers with its default branch), with ADR-0011's verb list updated in that pull request, so "every type implements every verb" stays true.
+- Size: pull request 1 is split as the review proposes: (a) the resolver additions, the install target and CI; (b) the settings keys, the adapter route, tests and design; (c) `repo_pin`. The records pull request and the manifest-text pull request follow as planned.
+- Role and distro stay on the registry line: the review confirms the planner was right and the host's direction wrong (issue 267 records "registry/instance names a role and a distro"). The adapter's messages say how to change a role: edit the line, run `adapter sync`.
+- Take every suggestion as worded: check `vcs` first and name its install; state the network needs; refuse `manifest_ref` or `manifest_path` without `manifest`, and refuse or warn when `manifest` is set and another bootstrap source also resolves; swap a symlink for the generated directory; say what goes stale in an existing package worktree after `sync` and have `validate` warn about leftover checkouts after a role change; `repo_pin` confirms with `git ls-remote` when online and strips YAML quotes; the resolver writes `layers.txt` only under the new option; Serves names a README goal section; the drafted manifest in the last pull request is marked provisional on the role model, which is with the owner.
