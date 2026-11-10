@@ -30,7 +30,7 @@ the fork, or redoing by hand something the fork automates, within the first
 week, or the Rolling simulator acceptance case can't be reached."
 
 - On pickerel, the project11 repositories can be checked out, synced and validated today only from the old `.repos` files, not from the new manifest the owner wants there. What works: the registered Rolling instance (`p11-rolling`) checks out from the `.repos` files on unh_marine_autonomy's rolling branch (`distro: rolling`). What is missing: the project's manifest in the new format exists only as a test fixture in this repository (`tools/ros-manifest/tests/fixtures/p11/manifest.yaml`, written from the jazzy manifest) and in no project11 repository, and the ros2_colcon adapter calls nothing in `tools/ros-manifest/`. Needs the manifest placed in a project11 repository and the adapter wired to the resolver. No issue yet: #267 closed with the adapter wiring left for a later milestone; proposed issue 1 (row 1).
-- On pickerel, `/run-issue` cannot take a project11 package issue to a merged pull request until it finds the package repository and its worktree, opens the pull request there, and takes the base branch from the package's manifest pin (`rolling`, not GitHub's default branch). #429, which does not name the base branch yet (row 2).
+- On pickerel, `/run-issue` cannot take a project11 package issue to a merged pull request until it finds the package repository and its worktree, opens the pull request there, and takes the base branch from the package's manifest pin (unh_marine_autonomy, the core repository, is pinned at `rolling` while its GitHub default branch is `jazzy`). #429, which does not name the base branch yet (row 2).
 - On pickerel, installing the ROS development tools (`ros-dev-tools`: colcon, vcstool, rosdep), `sudo rosdep init`, `rosdep update` and installing the packages' system dependencies are hand steps until the setup guide or the adapter covers them; `adapter setup` stops without `vcs`. The fork's `bootstrap.sh` installed `ros-dev-tools` and did init and update, for Jazzy only; ours installs none of them; `rosdep install` was a hand step in the fork too. #430 (row 3).
 
 Watch: if the unh_marine_autonomy change for its issue 397 (repo-local rosdep
@@ -49,6 +49,18 @@ generates. No issue yet (row 6).
 - ROS 2 knowledge (conventions, CLI, launch and Gazebo, the ament lint profile, test recipes, package documentation, troubleshooting) has no home here until it moves into the ros2_colcon type. No issue yet (row 4).
 - Cross-repository status (`pr_status.sh --all-repos`, the dashboard, governance discovery) does not see package repositories here. No issue yet (row 5).
 - Build and test reports (JSON and CSV, `colcon test-result` summary) and a make chain for a registered ROS project (stamp re-run when a `.repos` changes, clean of build, install and log) exist only in the fork. No issue yet (rows 21, 22).
+
+## Not determined
+
+What this audit did not establish:
+
+- Who uses the fork's Feature Track status reader; the fork's only references to it are READMEs (row 18).
+- What the fork's planning-document vocabulary draft says past its opening; it was read by its head only (row 31).
+- Whether the fork's 190 work-plan files hold decisions not carried anywhere else; they were scanned by structure only (row 48).
+- Whether this adapter keeps a later layer's build out of an earlier layer's install (the build-pollution case of fork ADR-0016); no named test was found (row 50).
+- Whether work in the package worktrees already landed by a squash merge. For the six with more than progress records, no pull request from their branch was merged (udp_bridge 75: PR 76 open; cube_bathymetry 44: PR 45 open; marine_perception_tools 4: PR 6 closed unmerged; udp_bridge 64, unh_marine_autonomy 185 and 304: none); whether the same changes reached a default branch some other way, and anything for the eight with progress records only, was not checked (row 32).
+- Which base branch package pull requests should take where the pin is not a release branch. In the Rolling manifest 37 of 44 repositories are pinned at their GitHub default branch; 7 differ: unh_marine_autonomy (`rolling`, default `jazzy`), rqt_marine_radar (`jazzy`, default `noetic`) and five underlay forks pinned at feature branches (geographic_info, audio_common, detection_visualizer, nmea_navsat_driver, vrx). Also open: 38 repositories are still pinned at `jazzy` in the Rolling manifest, so whether the Rolling port moves them to `rolling` branches is not known (row 2).
+- The fork moved during the audit. After the 12:13 inventory an agent in the fork opened the cube_bathymetry 173 worktree (12:23; three commits by 12:41), committed a merge of `origin/jazzy` to the unh_marine_autonomy 304 branch (12:36; 11 commits on no remote ref, not 10), and added scratchpad files (`appledore_backscatter/` 15, `cube173/` 3, `uma304/` 1). The fork's `main` stayed at `323306a8`. Table counts are as of the inventory, except the scratchpad sizes (12:41, row 33).
 
 ## Table
 
