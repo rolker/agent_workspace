@@ -7,146 +7,157 @@ Issue 437 in rolker/agent_workspace (workspace repo, `.agent/scripts/`).
 ## Context
 
 `progress_append.sh` commits a timeline entry in whatever checkout `-C`/cwd names, and
-`review_progress.sh persist` in compatibility mode (the default) prints "would have aborted" and
-commits anyway. Run from a main checkout, both put a `progress:` commit on `main`, silently. Issue 429's
-first pull request (branch `feature/issue-429`, not merged) already routes every records read and write
-through one gate, `records_path` / `records_dir` in `.agent/scripts/_resolve_work_plans_dir.sh`, but the
-gate is a no-op when no `.worktree-repos` manifest encloses the path, so it does not cover this.
+`review_progress.sh persist` in compatibility mode (the default) prints "would have aborted" and commits
+anyway. Run from a main checkout, both put a `progress:` commit on `main`, silently. Issue 429's first
+pull request (branch `feature/issue-429`, not merged) routes every records read and write through one
+gate, `records_path` / `records_dir` in `.agent/scripts/_resolve_work_plans_dir.sh`; it is a no-op when
+no `.worktree-repos` manifest encloses the path, so it does not cover this.
 
-This plan is written against that branch, NOT against this worktree's tree. Line ranges below are as
-read on `feature/issue-429` at merge commit e8205e67 and are to be re-checked at implementation.
+Written against that branch, not this worktree's tree. Line ranges are as read at `4fcb3fe2` and are to
+be re-checked at implementation. Revision 2 follows the plan review (needs-work) and the host checkpoint.
 
 ## Approach
 
-1. **Wait for issue 429's first pull request to merge, then merge main into this branch.** Implementation
-   does not start before. Re-read the functions and line ranges named below (all in
-   `_resolve_work_plans_dir.sh`: `issue_checkout_guard` 134-165, `records_path` 167-185,
-   `records_dir` 187-199, `resolve_work_plans_dir` 201-end; `progress_append.sh` 75-86;
-   `review_progress.sh` `_persist_impl` 233-375 with the compatibility branch 306-330 and `cmd_check`
-   592-650; `merge_pr.sh` 837-870; `tests/test_package_issue_loop.sh` case 8, 398-511) and adjust.
+1. **Wait for issue 429's first pull request to merge, then merge main into this branch.**
+   Implementation does not start before. Re-check, in `_resolve_work_plans_dir.sh`:
+   `issue_checkout_guard` 169-, `records_path` 255-293, `records_dir` 294-306, `resolve_work_plans_dir`
+   307-, rule 2b inside it; `progress_append.sh` 78-86; `review_progress.sh` `_persist_impl` 235-,
+   compatibility branch 316-, commit at ~355, `cmd_check` 592-; `merge_pr.sh` ~837-870 (gate record,
+   `progress_append.sh -C "$_gate_wt"`); the four skill passages in step 8.
 2. **The signal: the caller states its intent.** `records_path` and `records_dir` take an optional first
-   option `--commit` ("this write will be committed in the target checkout"). Without it nothing
-   changes: reads and the resolver's own callers (`dispatch_phase.sh`, `merge_pr.sh` lookup,
-   `round`/`sources`/`findings`/`plan-sha`, `cross_model_review.sh`) behave as on the 429 branch. No
-   inference from the caller's name, the command or the file. An option, not an environment variable,
-   so a call site shows its intent and nothing leaks into child scripts.
-3. **The second rule, inside `records_path`, after the existing manifest guard.** With `--commit`, judge
-   the TARGET checkout `T` (the toplevel of the nearest existing ancestor of the path, which is the `-C`
-   directory for `progress_append.sh`; never `$PWD`). Allow only when `T` is the issue's checkout:
-   a. a manifest encloses `T`: the existing guard already decides (the entry on `feature/issue-N`;
-      package checkouts are full clones, not linked worktrees, so no linked-worktree test applies there);
-   b. otherwise `T` is a linked worktree (`git rev-parse --git-dir` differs from `--git-common-dir`),
-      its branch is not the default branch (`origin/HEAD`, else `main`/`master`), and either the
-      branch matches `feature/issue-N` (case-insensitive, optional `-description`) or the toplevel's
-      basename is `issue-*-N`.
-   Otherwise refuse (return 1, callers exit 4): a main checkout, a checkout on its default branch, a
-   package checkout cloned under a project root outside any worktree, another issue's worktree, a
-   `skill/*` worktree. The message names the issue's worktree when `git worktree list --porcelain` in
-   `T`'s repository shows a worktree on `feature/issue-N`, else the command that creates it
-   (`worktree_create.sh --issue N --type workspace|project`, or `--issue owner/repo#N` for a package
-   issue) and states that reads are not refused.
-4. **Call sites that state `--commit`:** `progress_append.sh` (`records_dir --commit`, replacing the
-   plain call; exit 4 kept); `_persist_impl` compatibility branch (`records_dir --commit`, already
-   exit 4); `_persist_impl` strict branch needs nothing new (it ends in `progress_append.sh`), but its
-   `|| exit 3` on the append becomes "propagate exit 4" so the refusal keeps its code; `cmd_check`
-   (`records_path --commit`, see settle point 3). `merge_pr.sh` keeps calling
-   `progress_append.sh -C "$_gate_wt"`: the target is the PR worktree, which passes.
-5. **Compatibility mode notice.** After the new refusal, the "would have aborted" notice can fire only
-   when `resolve_work_plans_dir` refuses and the new rule does not, i.e. a set `$WORKTREE_ISSUE` that
-   differs from the issue while cwd is the right worktree. Keep the notice for that one case; reword
-   nothing else. Update the comment block above it.
-6. **Fixtures.** Roughly ten suites use plain `git init` repos on `main`
-   (`test_address_findings`, `test_issue_review_entry`, `test_plan_correlation`, `test_progress_append`,
-   `test_review_code_convergence`, `test_triage_reviews_integration`, `test_dispatch_phase`,
-   `test_merge_pr_gate`, `test_resolve_work_plans_dir`, `test_package_issue_loop`). Each that commits a
-   timeline needs its fixture moved to a linked worktree on `feature/issue-N` (one shared helper in
-   a tests include, not ten copies). Done as the first commit of the implementation, shown red against
-   the rule, so a test that was passing only because it wrote on `main` is visible.
-7. **New tests** (a new `tests/test_records_commit_gate.sh` in the style of case 8's enumeration, each
-   asserting exit 4, the message naming the worktree or creating command, `git log` of every checkout
-   unchanged and `git status` clean): (a) `progress_append.sh <N>` and `persist` (compatibility and
-   `--strict`) from the workspace main checkout; (b) `-C <main checkout>` from inside the issue's
-   worktree (cwd is right, target is wrong); (c) from a package checkout cloned under a project root
-   outside any worktree; (d) from another issue's worktree; (e) a detached HEAD in a worktree named
-   `issue-*-N` (allowed) and in a differently named one (refused); (f) a `skill/*` worktree with an
-   issue number (refused) and `persist --issue ""` there (still a skip); (g) `review_progress.sh check`
-   from main (refused, file unchanged); (h) must succeed: `progress_append.sh -C <the issue's
-   worktree> N` run from the main checkout, as `merge_pr.sh` does, and `merge_pr.sh`'s gate record end to
-   end through `test_merge_pr_gate.sh`; (i) reads from the root still succeed (`round`, `sources`,
-   `plan-sha`, `dispatch_phase.sh next`); (j) a workspace issue and a project issue (single-repo project
-   worktree), both directions. Add the `--commit` enumeration to case 8's class test so a new entry
-   point cannot skip it.
-8. **Loop still works end to end on a workspace issue:** `test_dispatch_phase.sh`,
-   `test_review_code_convergence.sh`, `test_triage_reviews_integration.sh`, `test_address_findings.sh`,
-   `test_plan_correlation.sh`, `test_issue_review_entry.sh`, `test_merge_pr_gate.sh`,
-   `test_progress_append.sh` and `test_package_issue_loop.sh` all pass after step 6; run
-   `make lint` and `make test`.
-9. **Docs in the same pull request:** `docs/design.md` Records bullet (the records-gate sentence 429
-   adds gets one more: a committing write is refused when its target is not the issue's worktree; reads
-   are not), its change log row; `.agent/knowledge/script_reference.md` rows for
-   `_resolve_work_plans_dir.sh`, `progress_append.sh`, `review_progress.sh` (exit 4); header exit-code
-   comments in `progress_append.sh`, `review_progress.sh`, `_resolve_work_plans_dir.sh`; the
-   `docs/design.md` B2 line (settle point 4); `run-issue` wording that persistence "refuses outside the
-   worktree" needs no change, it becomes true for every mode.
+   option `--write` ("this call changes the timeline; the target must be the issue's checkout").
+   Without it nothing changes: reads and every other caller (`dispatch_phase.sh`, `merge_pr.sh`
+   lookup, `round`/`sources`/`findings`/`plan-sha`, `cross_model_review.sh`, the resolver's own rules)
+   behave as on the 429 branch. Opt-in, not default-refuse: defaulting would need about a dozen read
+   call sites flagged and a missed one breaks the dispatcher and the sit-rep from the root.
+3. **One helper, `_wpd_checkout_is_issue <dir> <N>`, in the same file.** It judges the checkout whose
+   toplevel is `<dir>`: refuse when its branch is the default branch (`origin/HEAD`, else `main` or
+   `master`); when its branch matches `feature/issue-M` (case-insensitive, optional `-description`) the
+   BRANCH decides (`M` equals `N`; the folder is not consulted); only for a detached HEAD or a branch
+   not of that shape does the folder decide (`issue-*-N`, exact trailing number). No linked-worktree
+   condition. `resolve_work_plans_dir` rule 2b is rewritten to call the same helper (cwd as the
+   directory), so the commit gate and the resolver cannot drift. Manifest case: the existing 429 guard
+   still decides first; the owning checkout is on `feature/issue-N`, so no package carve-out is needed.
+4. **The second rule, in `records_path`, after the manifest guard:** with `--write`, the target `T` is the
+   git toplevel of the nearest existing ancestor of the path (the `-C` directory for
+   `progress_append.sh`; never `$PWD`); refuse unless `_wpd_checkout_is_issue T N`. Refusal returns 1
+   (callers exit 4) and names the issue's worktree (from `git worktree list --porcelain` in `T`'s
+   repository, the entry on `feature/issue-N`) or the creating command
+   (`worktree_create.sh --issue N --type workspace|project`; `--issue owner/repo#N` for a package issue),
+   and says reads are not refused.
+5. **Call sites that state `--write`:** `progress_append.sh` (`records_dir --write`); `_persist_impl`
+   compatibility branch (`records_dir --write`, already exit 4); `cmd_check` (`records_path --write`: it
+   changes the timeline without committing, no caller ticks from the root, and a tick left in a main
+   checkout is a stranded dirty edit). Strict persist needs nothing new but propagates
+   `progress_append.sh`'s exit 4 instead of turning it into 3. `merge_pr.sh` is unchanged: the target of
+   its `-C` write is the PR worktree.
+6. **Compatibility mode notice.** The new refusal precedes the "would have aborted" notice. The notice
+   fires only when `resolve_work_plans_dir` refuses and the helper passes: `$WORKTREE_ISSUE` names
+   another issue while the cwd is right, or `WORK_PLANS_DIR_OVERRIDE` is set. Keep it for those; update
+   the comment block.
+7. **Tests.** (a) New `tests/test_records_write_gate.sh`, in the style of case 8, each refusal asserting
+   exit 4, the message, `git log` of every checkout unchanged and the files untouched: `progress_append.sh`
+   and `persist` (compatibility and `--strict`) from the workspace main checkout; `-C <main>` from inside
+   the issue's worktree; from a package checkout cloned under a project root outside any worktree; from
+   another issue's worktree (7 from 17, 17 from 7, 1 from 17); a folder `issue-workspace-20` on branch
+   `feature/issue-21` writing issue 20 (refused, branch decides); a detached HEAD in `issue-*-N`
+   (allowed) and in another folder (refused); a custom branch in `issue-*-N` (allowed); a `skill/*`
+   worktree with an issue number (refused); `check` from main (refused); a workspace issue and a
+   single-repo project issue. Must succeed: `progress_append.sh -C <the issue's worktree> N` from the
+   main checkout (the merge script's write), a sub-issue worktree for its own number, and reads from the
+   root (`round`, `sources`, `plan-sha`, `dispatch_phase.sh next`). (b) A **static test** in the same file:
+   every `git ... commit` in `.agent/scripts/*.sh` whose pathspec is under `.agent/work-plans/`
+   (including through a variable such as `$file_rel`) must be in a script that calls `records_dir --write`
+   or `records_path --write`; the set of such scripts must be exactly `progress_append.sh` and
+   `review_progress.sh`, so a third committing writer without the flag fails the suite. (c) Existing
+   suites: `test_progress_append.sh` gets a feature-branch fixture (`init -b feature/issue-7`) and its
+   validation cases on issues 42 and 55 renumbered to the fixture's issue (the gate runs before entry
+   validation); four assertions flip on purpose: the "persist compat in a mismatched worktree commits with
+   a notice" case in `test_plan_correlation.sh`, `test_review_code_convergence.sh` and
+   `test_triage_reviews_integration.sh` (now a refusal), and `test_package_issue_loop.sh`'s "check from
+   WS ticks its own box" (now a refusal).
+   Loop still works end to end on a workspace issue: `test_dispatch_phase.sh`, `test_merge_pr_gate.sh`,
+   `test_resolve_work_plans_dir.sh`, `test_issue_review_entry.sh` pass unchanged; the suites in (c) pass
+   after their edits; then `make lint` and `make test`.
+8. **Docs and skill texts, same pull request.** `docs/design.md`: the records-gate sentence in the Records
+   bullet gets one more sentence (a write that changes a timeline is refused unless its target is the
+   issue's checkout; reads are not) and a change-log row. `.agent/knowledge/script_reference.md` rows
+   for the resolver, `progress_append.sh`, `review_progress.sh`; exit-code header comments. The four
+   skill passages that say compatibility mode commits after the notice: `plan-task` SKILL.md ~284-292,
+   `review-code` ~725-736, `triage-reviews` ~372-381, `address-findings` ~202. Each now says: the same
+   refusal as strict, except when `WORKTREE_ISSUE` names another issue or the override is set. A comment
+   on issue 269's parked strict-mode item (not a design.md edit; no such line exists there).
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_resolve_work_plans_dir.sh` | `--commit` option and the second rule in `records_path` / `records_dir`; header comment |
-| `.agent/scripts/progress_append.sh` | `records_dir --commit`; header |
-| `.agent/scripts/review_progress.sh` | `--commit` in persist compatibility and `check`; strict path keeps exit 4; notice narrowed |
-| `.agent/scripts/tests/` | new `test_records_commit_gate.sh`; shared worktree fixture helper; fixture moves in the suites listed in step 6 |
-| `docs/design.md`, `.agent/knowledge/script_reference.md` | Records bullet, change log, B2 line, script rows |
+| `.agent/scripts/_resolve_work_plans_dir.sh` | `--write` option, `_wpd_checkout_is_issue`, rule 2b uses it; header |
+| `.agent/scripts/progress_append.sh` | `records_dir --write`; header |
+| `.agent/scripts/review_progress.sh` | `--write` in persist compatibility and `check`; strict keeps exit 4; notice narrowed |
+| `.agent/scripts/tests/test_records_write_gate.sh` | new: refusal cases, allowed cases, static test |
+| `.agent/scripts/tests/test_progress_append.sh` + 4 flipped assertions | fixture and renumbering; flips named in step 7(c) |
+| `.claude/skills/{plan-task,review-code,triage-reviews,address-findings}/SKILL.md` | compatibility-mode text |
+| `docs/design.md`, `.agent/knowledge/script_reference.md` | Records sentence, change log, script rows |
 
 ## Prior Art
 
-Issue 429's gate (the one function, the manifest guard) is extended, not paralleled. `merge_pr.sh`
-already skips a main tree for the gate record by comparing toplevels; the new rule is the same idea
-moved into the gate so every writer gets it. Rejected: a git `pre-commit`/`reference-transaction` hook
-(not present in every clone, and the scripts run `git commit` themselves); inferring intent from the
-caller; refusing reads (the sit-rep and dispatcher read from the root on purpose).
+Issue 429's gate is extended, not paralleled. `merge_pr.sh` already skips a main tree for its gate record
+by comparing toplevels; this moves the idea into the gate. Resolver rule 2b already matches branch and
+folder; the helper unifies it. Rejected: a git hook (not in every clone; the scripts run `git commit`
+themselves); inferring intent from the caller; refusing reads; the linked-worktree condition (review
+ran both variants: it adds 43 failing assertions in six suites and disagrees with rule 2b).
 
 ## Serves
 
-Leave a trail that is where the loop reads it (README workspace goals); `docs/design.md#rules` (start
-limits strict) and the Records bullet of `docs/design.md#worktrees`.
+Goal: "Trust, control and information" (README, workspace goals); design: `docs/design.md#worktrees`
+(the Records bullet) and `docs/design.md#rules`.
 
 ## Design Picture
 
-Extends the records-gate paragraph issue 429 adds to the Records bullet of `docs/design.md` by one
-sentence; no new design question. No other section changes.
+Extends the Records bullet's records-gate paragraph (added by issue 429) by one sentence. No other
+section changes.
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Leave a trail | A commit lands only on the issue's own branch; the refusal names the worktree |
-| Only what is needed | One option and one rule in the existing function; no new script or mechanism |
-| Test what you ship | Refusals assert nothing was committed anywhere; the legitimate `-C` writer is a test |
-| Keep one current design | design.md, script reference and headers in the same pull request |
-| Quality standard | Compatibility mode no longer commits after a notice; no half-fix left |
+| Leave a trail | A timeline commit lands only in the issue's own checkout; refusal names the worktree |
+| Only what is needed | One option, one helper, one rule in the existing function; no linked-worktree condition |
+| Test what you ship | Refusals assert nothing was committed; the legitimate `-C` writer is a test |
+| Enforce what matters | The static test fails when a committing writer omits `--write` |
+| Keep one current design | design.md, script reference, headers and four skills in the same pull request |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| 0013 progress.md entry types | Yes | Writers remain the only appenders; message and validation unchanged |
-| 0012 package worktrees | Yes | Manifest case left to 429's guard; package clones are not required to be linked worktrees |
-| 0016 user tier | Yes | `_resolve_work_plans_dir.sh` stays inert (functions only) |
+| 0013 progress.md entry types | Yes | Writers unchanged; new writers go through `progress_append.sh`, which carries the flag |
+| 0012 package worktrees | Yes | Manifest case left to 429's guard |
+| 0016 user tier | Yes | `_resolve_work_plans_dir.sh` stays inert |
 
 ## Consequences
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| `records_path` signature (optional leading option) | every caller of `records_path`/`records_dir`; none breaks without the option | Yes (steps 3-4) |
-| Compatibility mode refuses | Test fixtures on plain `main` repos | Yes (step 6) |
-| Notice semantics | B2 line in design.md | Yes (step 9) |
-| `merge_pr.sh` gate record | Nothing; target is the PR worktree | Yes, tested (7h) |
+| Compatibility mode refuses | Four skill texts; issue 269 parked item; tests with a mismatched worktree | Yes (steps 7, 8) |
+| Rule 2b uses the helper | `test_resolve_work_plans_dir.sh` must stay green | Yes (7c) |
+| `check` follows the write rule | `test_package_issue_loop.sh` assertion | Yes (7c) |
 
 ## Open Questions
 
-None for the owner on meaning. Mechanism details listed in progress.md for veto.
+None on meaning. For the owner's veto (what undoing costs):
+- Compatibility mode becomes strict except when `WORKTREE_ISSUE` names another issue or the override is
+  set. The "would have aborted" notices issue 269's parked B2 item waits for will therefore stop because
+  those cases now refuse, not because runs got cleaner. Strict mode is NOT flipped here; B2 stays the
+  owner's call. Undo: drop `--write` from the compat branch (one line).
+- `--write` as an opt-in flag, enforced by the static test. Undo: rename, or flip the default (about a
+  dozen call sites).
+- `check` follows the write rule. Undo: one flag.
+- Branch decides over folder when the branch names an issue. Undo: one condition in the helper.
+- Separate convention question, not decided here: should a main checkout on a feature branch be refused?
+  Today it passes (rule 2b already accepts it). Refusing needs a linked-worktree condition and would
+  force the fixture moves the review measured.
 
 ## Estimated Scope
 
