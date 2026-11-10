@@ -72,3 +72,13 @@ issue: 437
 - Leave reads unguarded; decide in the plan whether `review_progress.sh check` (writes, no commit) follows the write rule.
 - Tests: main checkout, package checkout under a project root, another issue's worktree, a workspace and a project issue, and compatibility mode (not just `--strict`).
 - Decide in the plan what a detached HEAD or a skill worktree (`skill/*`, no issue) does; persist already skips an empty issue.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 13:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's scope: one small pull request that guards committing writes; its two open details are mechanism for the plan)
+**After**: issue-actions
+**Decision**: proceed
+
+Host read the Issue Review. Accepted as plan inputs: the guard goes on committing writes only, never on reads (the sit-rep and the dispatcher read from the root on purpose); it judges the target checkout (the `-C` directory), not the current directory, so the merge script's gate record keeps working; it is a second rule in the one place issue 429's first pull request resolves records paths, not a second mechanism. The plan settles what a detached HEAD and a skill worktree do, and whether `review_progress.sh check` follows the write rule. Sequencing, a host decision listed for the owner's veto: this worktree stays on main; the plan and its review are done now against issue 429's branch as read, and implementation starts only after issue 429's first pull request merges and main is merged into this branch, so no branch is stacked on an unmerged one.
