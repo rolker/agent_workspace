@@ -162,7 +162,9 @@ failure that leaves the question open, unreachable origin included. A
 branch origin has is checked out from `origin/<branch>` with its upstream
 set to it (also in a `--single-branch` or `--depth` clone, whose fetch
 settings are left as they were); if that checkout fails, creation stops
-and the branch it made is removed. On "no telling" creation stops, saying
+and the branch it made is removed. In such a narrowed clone `@{u}` does
+not resolve, since no fetch setting maps `origin/<branch>`, so `git status`
+shows no ahead/behind count there; `git pull` and `git push` still work. On "no telling" creation stops, saying
 why, since a branch started then could diverge from one on origin: nothing
 is made in that repository, and in a project worktree of several
 repositories the ones already added are rolled back. Retry when origin
