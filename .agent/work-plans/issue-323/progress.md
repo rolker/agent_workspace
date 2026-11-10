@@ -704,3 +704,20 @@ Cross-model:
 - In a `--single-branch` or `--depth` clone, `<b>@{upstream}` does not resolve, because no fetch refspec maps origin/<b>. So `git status` shows no ahead/behind count there, and a script that reads `@{u}` would fail in that clone. `git pull` and `git push` work from the two settings.
 - A sub-issue branch started from `origin/<parent>` still relies on git's `autoSetupMerge`, so in a narrowed clone it gets no upstream (unchanged, outside the findings).
 - Scratch copies in this session's scratchpad (two `git archive` copies and a probe directory) could not be removed: `rm -rf` was denied.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 12:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af921bff50d4db2fe, resume 2 of 3)
+
+**PR**: #417 at `ae50156c`
+**Addressed**: Local Review at `a378503a` (2026-11-10 11:41 -05:00)
+**Commits**: ae50156c (merge)
+
+### Merge from main
+- A merge from main landed at ae50156c (`GIT_EDITOR=true git merge origin/main`, no rebase), bringing in pull request 434 (the roadmap rewrite): docs/roadmap.md and `.agent/work-plans/issue-432/` merged cleanly.
+- One file conflicted: docs/design.md, in the change log. The resolution keeps both sides' rows in date order: this branch's three 2026-11-10 `worktree_create.sh` citation rows, then main's 2026-11-10 Documentation layers row (the roadmap's acceptance case). Each row's Lines value is left as recorded. Nothing else changed.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)` with no SKIP on ae50156c's tree: exit 0, `validate-script-tests` Passed.
