@@ -210,6 +210,10 @@ declare -A ROOT_READERS=(
     # Reads the real plugin manifests and every skill's frontmatter
     # (`claude plugin validate` runs on the checkout root too).
     [test_plugin_manifest.sh]=".claude-plugin .claude/skills"
+    # Copies the real scripts, the ros2_colcon and single_project types and
+    # the run-issue SKILL.md (whose `where` blocks it runs) into its sandbox
+    # workspace; its rev-parse --show-toplevel calls are on sandbox checkouts.
+    [test_package_issue_loop.sh]=".agent/scripts .agent/project_types .claude/skills"
     [test_progress_read.py]=".agent/scripts"
     # Copies the real scripts, project types, user-tier list, .claude and
     # .claude-plugin into its sandbox workspace.
