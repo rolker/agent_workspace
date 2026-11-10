@@ -430,3 +430,43 @@ Cross-model:
 - [x] (suggestion) `absent: 'no'` makes a repository absent; require a boolean — `schema.py:319`
 - [x] (suggestion) Duplicate YAML keys are silently last-wins: a reader sees the first entry, the resolver uses the second. Load with a loader that refuses duplicate keys — `schema.py:230`
 - [x] (suggestion) Invisible and bidirectional characters (U+202E, ZWSP, NBSP, BOM) are accepted in urls and refs and can disguise a header for a human reader; refuse category Cf and non-ASCII spaces in values. A `?private_token=` query string is also accepted; refuse a query on a git URL — `schema.py:136`, `:198`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 14:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480a157b2ea3677c, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `50f51b23`
+**Addressed**: Local Review (Pre-Push) at `e65bf030` (2026-11-10 14:37 -05:00)
+**Commits**: `ce586b5b`, `50f51b23`
+
+Pull request (a), fix round 2. Host direction: a second finding in the URL/ref mechanism means the mechanism was wrong, so the refuse-list is replaced by an allow-list in `tools/ros-manifest/src/ros_manifest/schema.py` (`_URL_SHAPES`, `_REF`). All code changes are in one commit (`ce586b5b`): every rule lives in `schema.py` and its one test file, so a split per finding would need interactive staging. The README is a separate commit (`50f51b23`).
+
+### Actions
+- [x] (must-fix) Leading `-` on a url or ref reaches `vcs import` — `schema.py` `_check_url`/`_check_ref`. A `url` (a repository's, and `extends.url`) is accepted only if one anchored pattern matches it whole (`fullmatch`): `https://<host>[:port]/<path>`, `ssh://<user>@<host>[:port]/<path>`, `<user>@<host>:<path>`, `file:///<absolute path>` (local and test use). In these, `<host>` = `[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?`, port `[0-9]{1,5}`, `<user>` = `[A-Za-z0-9_][A-Za-z0-9_.-]*`, `<path>` = `[A-Za-z0-9_][A-Za-z0-9_./-]*`. So no `-` first anywhere, no `::`, no whitespace, no query or fragment. A refused url gets a message that lists the shapes and the credential-helper advice, and never contains the value. A `ref` (repository, per-distro, `extends.ref`) must match `[A-Za-z0-9][A-Za-z0-9._/-]*`, contain no `..`, and not end in `/` or `.lock`. A refused ref is not echoed either. The `extends` clone now runs `git -c protocol.allow=never -c protocol.https.allow=always -c protocol.ssh.allow=always -c protocol.file.allow=always clone --branch <ref> --depth 1 -- <url> <dest>`, so the transport policy no longer rests on git's default. `_reject_option_like` is kept as a belt. Tests: `--upload-pack=…` through the CLI writes nothing; `-https://…`, `ext::sh …`, `fd::3`, `a::b`, an ssh user or host starting with `-`, `-` at the start of a host or path; refs `-b`, `--orphan=x`, `a..b`, `main.lock`, `feature/`, `.hidden`, `/x`, `ext::x`, `@{-1}`, `main~1`, `main^`, an empty string, each in all three ref places; the clone's argv
+- [x] (must-fix) Credential check bypassed without `://` — closed by the same allow-list: none of the shapes has room for a password or token. Tested: all 25 credential forms from both reviews (round 1's 11, the four no-`://` forms, percent-encoded userinfo, an IPv6 literal, backslash, an upper-case scheme, a leading space, a double `@`, `?` in the userinfo, `https:tok@`, `file://tok@`, a `?private_token=` query), for repository urls and for `extends.url`. Each message is checked to hold neither the URL nor the secret.
+- [x] (must-fix) The YAML message echoed document content — `schema.py` `_load_yaml`: the message is now the fixed `invalid YAML at line L, column C` and nothing else. Exact-text test with the reviewer's `!https://u:…@host/a` tag.
+- [x] (suggestion) Recursive alias and alias bomb — aliases are refused outright: `_ManifestLoader.compose_node` refuses any `AliasEvent` with a fixed message and position. The p11 fixture and the tests use none. An anchor with no alias still loads. Unknown top-level keys are now checked before the character walk. Too-deep nesting (5000 levels) is an error, not a crash. Tests: `layers: &a [core, *a]`, an 8-level bomb, deep nesting.
+- [x] (suggestion) Name length — `_NAME_MAX = 64` in `_check_name`. A name that is too long is shown as "(too long)", not echoed. Test: 64 is accepted, 300 is refused.
+- [x] (suggestion) Names differing only in case — `refuse_case_twins`, applied per manifest in `schema.py` (layers, repositories across all layers, groups, roles) and across the composed chain in `merge.py`. Distro names are lower-case only. Tests: each kind, plus a base `core` with a leaf `Core`.
+- [x] (suggestion) `absent: 'no'` — a per-distro `absent` must be a YAML boolean. Tests: `'no'`, `'yes'`, `1`, `'true'`.
+- [x] (suggestion) Duplicate YAML keys — `_ManifestLoader.construct_mapping` refuses a repeated key, with a fixed message and position. Tests: at the top level and inside a repository.
+- [x] (suggestion) Invisible, bidirectional and non-ASCII-space characters; query strings — `has_unsafe_char` (renamed from `has_control_char`) refuses categories Cc, Cf, Zl and Zp, and any Zs other than U+0020. It is applied at parse and at emit. Tests: U+202E, U+200B, U+00A0, U+FEFF, U+2066. Query strings are refused by the allow-list (tested).
+
+### Fixture against the allow-list
+Every url and ref in `tests/fixtures/p11/manifest.yaml` was checked against the patterns before they were fixed, and a test keeps it so (`test_every_url_and_ref_in_the_p11_fixture_is_on_the_allow_list`). The fixture uses only `https://github.com/...` and one scp-style url, `git@github.com:CCOMJHC/ccomjhc_project11.git`, so no fixture url needed the list widened. Plain `http://` is not allowed because nothing needs it. Two existing tests used a plain local path as `extends.url`; they now use `file://`. A local base is still named with `extends: {path: ...}` and no url, under the existing escape rule. `ssh://host/...` without a user and scp-style without a user are refused, because the listed shapes name a user.
+
+### For pull request (b)
+- `vcs import` runs git without `--` (`git ls-remote <url>`, `git clone <url> .`, `git checkout <version> --`). The adapter must never hand it a `.repos` file the resolver did not write and validate in the same run. Nothing in the adapter is changed here.
+- Carried from round 1: the adapter runs the venv's python with `PYTHONPATH` set to its own checkout's `tools/ros-manifest/src`; a reused `--out` keeps stale `.repos` files.
+
+### Checks
+- `PYTHONPATH=tools/ros-manifest/src /home/roland/agent_workspace/.venv/bin/pytest tools/ros-manifest/tests`: 267 passed (150 before; `test_untrusted_input.py` 199, `test_extends.py` gained one test).
+- p11 fixture, default layout, main's resolver against the branch's: byte-identical for jazzy, rolling and humble (7 files each), stdout and stderr identical.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0. `validate-script-tests` passed.
+
+### Not done
+- `type` has no allow-list (only string type and the character rule). `vcs` uses it to pick a client, and it does not reach a command line.
+- Ref names git itself refuses but the pattern allows are not refused, for example a component ending in `.` (`a./b`) or `//`. They fail at clone or checkout and cannot be read as options.
+- From round 1, still deferred: the `extends` cache's interrupted-clone hit and its `url@ref` key collision.
