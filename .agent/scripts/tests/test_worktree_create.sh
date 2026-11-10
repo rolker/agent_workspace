@@ -80,7 +80,10 @@ newest_branch() {  # <repo> <ref pattern>
 # fetch's last argument (its refspec); STUB_FETCH=fail fails every fetch
 # fast, STUB_FETCH=noop exits 0 having fetched nothing; STUB_LS_HANG,
 # STUB_LS_OK and STUB_LS_FAIL make `ls-remote` for that ref hang, say
-# found, or fail fast.
+# found, or fail fast. STUB_RACE_BRANCH plays a second run for the same
+# issue: at the first fetch or ls-remote (the origin lookup) it creates
+# that branch in STUB_RACE_REPO from main, with a worktree on it at
+# STUB_RACE_DEST.
 REAL_GIT="$(command -v git)"
 GITSTUB="$SANDBOX/gitstub"
 mkdir -p "$GITSTUB"
@@ -91,6 +94,10 @@ while [ "\$i" -lt "\${#args[@]}" ]; do
     case "\${args[\$i]}" in -C|-c) i=\$((i + 2)) ;; *) break ;; esac
 done
 sub="\${args[\$i]:-}"; last="\${args[\${#args[@]}-1]}"
+if [ -n "\${STUB_RACE_BRANCH:-}" ] && { [ "\$sub" = fetch ] || [ "\$sub" = ls-remote ]; } \
+   && ! "$REAL_GIT" -C "\$STUB_RACE_REPO" show-ref --verify --quiet "refs/heads/\$STUB_RACE_BRANCH"; then
+    "$REAL_GIT" -C "\$STUB_RACE_REPO" worktree add -q -b "\$STUB_RACE_BRANCH" "\$STUB_RACE_DEST" main >/dev/null 2>&1
+fi
 if [ "\$sub" = fetch ]; then
     [ -n "\${STUB_LOG:-}" ] && echo "fetch \$last" >> "\$STUB_LOG"
     case "\${STUB_FETCH:-}" in
@@ -370,6 +377,37 @@ else
     fail "failed checkout from the default, worktree_create.sh: rc=$RC branch=$(has_branch "$SB" feature/issue-37 && echo left || echo none): ${OUT:0:600}"
 fi
 rm -f "$HOOK"
+
+echo
+echo "=== A branch another run creates during the lookup is left alone ==="
+# The git double plays a second run for the same issue: during this run's
+# origin lookup it creates the branch and its worktree at the same path.
+# This run stops and says so; the other run's branch and worktree stay.
+# Run from $FEAT, the script's root is that worktree (refs shared with $SB).
+RACE_MSG="ERROR: another run created the branch 'feature/issue-38' in $FEAT while this run was asking origin about it; this run made nothing and removes nothing."
+RACE_DEST="$FEAT/worktrees/workspace/issue-origin-38"
+run_stubbed STUB_RACE_BRANCH=feature/issue-38 STUB_RACE_REPO="$SB" STUB_RACE_DEST="$RACE_DEST" \
+    --issue 38 --type workspace
+if [[ "$RC" -ne 0 && "$OUT" == *"$RACE_MSG"* && "$OUT" != *"removed again"* ]] \
+   && has_branch "$SB" feature/issue-38 \
+   && [ "$(git -C "$RACE_DEST" symbolic-ref -q HEAD 2>/dev/null)" = refs/heads/feature/issue-38 ] \
+   && git -C "$SB" worktree list --porcelain | grep -qx "worktree $RACE_DEST"; then
+    pass "branch created during the lookup, worktree_create.sh: stops, the other run's branch and worktree intact"
+else
+    fail "branch created during the lookup, worktree_create.sh: rc=$RC branch=$(has_branch "$SB" feature/issue-38 && echo kept || echo gone): ${OUT:0:600}"
+fi
+RACE_MSG="ERROR: another run created the branch 'feature/issue-39' in $SB while this run was asking origin about it; this run made nothing and removes nothing."
+RACE_DEST="$SANDBOX/pkg-wt-39"
+add_repo STUB_RACE_BRANCH=feature/issue-39 STUB_RACE_REPO="$SB" STUB_RACE_DEST="$RACE_DEST" \
+    "$SB" "$RACE_DEST" feature/issue-39
+if [[ "$OUT" == *"REFUSED"* && "$OUT" == *"$RACE_MSG"* && "$OUT" != *"removed again"* ]] \
+   && has_branch "$SB" feature/issue-39 \
+   && [ "$(git -C "$RACE_DEST" symbolic-ref -q HEAD 2>/dev/null)" = refs/heads/feature/issue-39 ] \
+   && git -C "$SB" worktree list --porcelain | grep -qx "worktree $RACE_DEST"; then
+    pass "branch created during the lookup, _wt_add_repo: refuses, the other run's branch and worktree intact"
+else
+    fail "branch created during the lookup, _wt_add_repo: rc=$RC branch=$(has_branch "$SB" feature/issue-39 && echo kept || echo gone): ${OUT:0:600}"
+fi
 
 echo
 echo "=== A fetch that fails fast: origin is asked, and any doubt stops ==="

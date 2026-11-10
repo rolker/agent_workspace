@@ -707,6 +707,32 @@ _wt_default_start_point() {
     return 1
 }
 
+# Make the new branch <branch> at <start> in <repo> and check it out at
+# <dest> (#323), in two steps so that a failure undoes only what this run
+# made. `git branch` either makes <branch> or refuses, never taking over
+# one that exists, so its success is the proof that the branch is this
+# run's; only then does `git worktree add` check it out. It runs right
+# before the checkout, after the origin lookup (which can take
+# WT_FETCH_TIMEOUT): a '<branch>' that another run created in the meantime
+# is refused here, with nothing made and nothing to undo. <option>s go to
+# `git branch` (e.g. --no-track). git's output is printed, never swallowed.
+# Status: 0 checked out; 1 failed after this run made <branch> (the caller
+# undoes it, with any worktree the checkout left on it); 2 failed having
+# made nothing (the caller undoes nothing).
+# Usage: wt_add_new_branch <repo> <dest> <branch> <start> [<option>...]
+wt_add_new_branch() {
+    local repo="$1" dest="$2" branch="$3" start="$4"
+    shift 4
+    if ! git -C "$repo" branch "$@" "$branch" "$start"; then
+        if git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"; then
+            echo "ERROR: another run created the branch '$branch' in $repo while this run was asking origin about it; this run made nothing and removes nothing." >&2
+        fi
+        return 2
+    fi
+    git -C "$repo" worktree add "$dest" "$branch" || return 1
+    return 0
+}
+
 # Create one repo's git worktree from the first of: the target branch
 # locally, the target branch on origin (tracked), the parent branch
 # (locally then on origin) as the base for a new target branch, or a brand
@@ -718,8 +744,9 @@ _wt_default_start_point() {
 # (wt_fetch_named_branch's "unknown"), it returns 1 having made nothing in
 # <origin_repo>, unless WT_ALLOW_UNVERIFIED_BRANCH=true (worktree_create.sh's
 # --allow-unverified-branch). A branch it makes for a checkout that then
-# fails is removed again, with any worktree that checkout left. It sets
-# WT_ADD_PARENT_LOOKED_UP=true when it asked origin about <parent_branch>.
+# fails is removed again, with any worktree that checkout left; a branch
+# another run created during the origin lookup is refused, never removed.
+# It sets WT_ADD_PARENT_LOOKED_UP=true when it asked origin about <parent_branch>.
 # Never falls back to a symlink (ADR-0012's structural no-symlink rule).
 # Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>]
 _wt_add_repo() {
@@ -730,11 +757,11 @@ _wt_add_repo() {
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
     else
-        # Every add below makes '$branch' (-b): a failed one is undone at
-        # the end. wt_lookup_for_new_branch has printed the reason for a
-        # stop (2).
-        made_branch=true
-        local frc=0 prc=0 base="" start=""
+        # Every add below makes '$branch' (wt_add_new_branch): made_branch
+        # is true only once this run has made it, and only then is a
+        # failure undone at the end. wt_lookup_for_new_branch has printed
+        # the reason for a stop (2).
+        local frc=0 prc=0 arc=0 base="" start=""
         if [ -n "${WT_MINTED_BRANCH:-}" ] && [ "$branch" = "$WT_MINTED_BRANCH" ]; then
             frc=1   # minted this run: origin cannot have it, so it is not asked
         else
@@ -745,7 +772,8 @@ _wt_add_repo() {
         elif [ "$frc" -eq 0 ]; then
             # origin has the branch: check it out with its upstream set, or
             # fail; never start another '$branch' in its place.
-            out="$(git -C "$origin" worktree add --no-track -b "$branch" "$dest" "origin/$branch" 2>&1)"; rc=$?
+            out="$(wt_add_new_branch "$origin" "$dest" "$branch" "origin/$branch" --no-track 2>&1)" || arc=$?
+            rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
             if [ "$rc" -eq 0 ] && ! wt_set_upstream "$origin" "$branch"; then
                 out="could not set the upstream of '$branch' to origin/$branch"; rc=1
             fi
@@ -769,9 +797,11 @@ _wt_add_repo() {
             # A parent that was found is the base or the error; the default
             # branch is the start only when there is no parent to use.
             if [ -n "$base" ]; then
-                out="$(git -C "$origin" worktree add -b "$branch" "$dest" "$base" 2>&1)"; rc=$?
+                out="$(wt_add_new_branch "$origin" "$dest" "$branch" "$base" 2>&1)" || arc=$?
+                rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
             elif start="$(_wt_default_start_point "$origin")"; then
-                out="$(git -C "$origin" worktree add --no-track -b "$branch" "$dest" "$start" 2>&1)"; rc=$?
+                out="$(wt_add_new_branch "$origin" "$dest" "$branch" "$start" --no-track 2>&1)" || arc=$?
+                rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
             else
                 out=""; rc=1
             fi
@@ -783,13 +813,14 @@ _wt_add_repo() {
     fi
     echo "ERROR: could not create a worktree for $origin at $dest (branch '$branch')" >&2
     [ -n "$out" ] && echo "$out" >&2
-    # A failed `worktree add -b` can leave the branch it made (git makes it
-    # before the checkout) and, when the checkout itself failed, a
-    # registered worktree: remove both, so a retry asks origin again
-    # instead of taking the left-behind branch as the local one.
+    # A failed checkout leaves the branch this run made and, when the
+    # checkout itself failed, a registered worktree: remove both, so a
+    # retry asks origin again instead of taking the left-behind branch as
+    # the local one. A branch this run did not make (made_branch=false:
+    # it existed, or another run created it) is never touched.
     if [ "$made_branch" = true ] \
        && git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
-        # Only a worktree on the branch just made is ours to remove.
+        # Only a worktree on the branch this run made is ours to remove.
         if [ "$(git -C "$dest" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$branch" ]; then
             git -C "$origin" worktree remove --force "$dest" >/dev/null 2>&1 || true
         fi

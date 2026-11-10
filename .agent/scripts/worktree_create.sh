@@ -67,13 +67,16 @@ fetch_remote_branch() {
     return "$rc"
 }
 
-# After a failed `git worktree add -b` of the workspace path (#323), as
-# _wt_add_repo does: git makes the branch before the checkout, so remove
-# it, with a worktree left on it (only one on that branch is ours), and
-# report a branch that cannot be deleted. Then exit 1.
-# Usage: git worktree add -b ... || undo_new_branch_checkout <start point>
+# After a failed wt_add_new_branch of the workspace path (#323), as
+# _wt_add_repo does. Only what this run made is undone: status 1 says this
+# run made the branch, so remove it, with a worktree left on it (only one
+# on that branch is ours), and report a branch that cannot be deleted;
+# status 2 says it made nothing (another run may have created the branch
+# meanwhile), so nothing is touched. Then exit 1.
+# Usage: wt_add_new_branch ... || undo_new_branch_checkout $? <start point>
 undo_new_branch_checkout() {
-    echo "ERROR: could not check out a new '$BRANCH_NAME' from $1 at $WORKTREE_DIR" >&2
+    echo "ERROR: could not check out a new '$BRANCH_NAME' from $2 at $WORKTREE_DIR" >&2
+    [ "$1" -eq 1 ] || exit 1
     if [ "$(git -C "$WORKTREE_DIR" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$BRANCH_NAME" ]; then
         git -C "$ROOT_DIR" worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 || true
     fi
@@ -917,20 +920,20 @@ else
         # --track, so a narrowed clone's fetch refspecs are left alone. A
         # failed checkout does not leave the branch it made behind.
         echo "Tracking remote branch 'origin/$BRANCH_NAME'..."
-        if ! git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME" \
-           || ! wt_set_upstream "$ROOT_DIR" "$BRANCH_NAME"; then
-            undo_new_branch_checkout "origin/$BRANCH_NAME"
-        fi
+        wt_add_new_branch "$ROOT_DIR" "$WORKTREE_DIR" "$BRANCH_NAME" "origin/$BRANCH_NAME" --no-track \
+            || undo_new_branch_checkout $? "origin/$BRANCH_NAME"
+        wt_set_upstream "$ROOT_DIR" "$BRANCH_NAME" \
+            || undo_new_branch_checkout 1 "origin/$BRANCH_NAME"
     elif [ -n "$PARENT_BRANCH" ]; then
         if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch '$PARENT_BRANCH'..."
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH" \
-                || undo_new_branch_checkout "$PARENT_BRANCH"
+            wt_add_new_branch "$ROOT_DIR" "$WORKTREE_DIR" "$BRANCH_NAME" "$PARENT_BRANCH" \
+                || undo_new_branch_checkout $? "$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         elif fetch_remote_branch "$ROOT_DIR" "$PARENT_BRANCH" "$BRANCH_NAME"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch 'origin/$PARENT_BRANCH'..."
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH" \
-                || undo_new_branch_checkout "origin/$PARENT_BRANCH"
+            wt_add_new_branch "$ROOT_DIR" "$WORKTREE_DIR" "$BRANCH_NAME" "origin/$PARENT_BRANCH" \
+                || undo_new_branch_checkout $? "origin/$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         else
             # The parent was looked up just now: the existing-branch block
@@ -941,16 +944,16 @@ else
             fi
             START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
             echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
-            git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT" \
-                || undo_new_branch_checkout "$START_POINT"
+            wt_add_new_branch "$ROOT_DIR" "$WORKTREE_DIR" "$BRANCH_NAME" "$START_POINT" --no-track \
+                || undo_new_branch_checkout $? "$START_POINT"
         fi
     else
         # The default branch, never the invoking checkout's HEAD (#323):
         # run from inside a feature worktree, HEAD is that feature.
         START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
         echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
-        git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT" \
-            || undo_new_branch_checkout "$START_POINT"
+        wt_add_new_branch "$ROOT_DIR" "$WORKTREE_DIR" "$BRANCH_NAME" "$START_POINT" --no-track \
+            || undo_new_branch_checkout $? "$START_POINT"
     fi
 
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ] && [ "$PARENT_LOOKED_UP" = false ]; then
