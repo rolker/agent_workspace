@@ -218,3 +218,16 @@ The revision answers the three must-fixes with one mechanism, the right one, and
 - [ ] Select the owning repository by branch, slug as cross-check; no empty-slug key in `records_layout` (finding 3)
 - [ ] Add the two-package-worktrees same-number test (finding 4); soften the return-shape claim (finding 5)
 - [ ] Edit `register_project.sh:798` with its test and the two comments; leave `registration_verify.sh` and `dashboard.sh`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 11:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: the identity mechanism is confirmed right; two must-fixes about its reach, both mechanism, no change of scope; second host revise in a row, so the next answer at this checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+Host read the second Plan Review of 2026-11-10 (needs-work, 2 must-fix, 2 suggestions) and directs:
+- Must-fix 1: one executable entry point for the lookup (the sourced resolver stays as its library), and every site the review lists goes through it: `dispatch_phase.sh` (the branch and `sha=` reads), `_bookkeeping.sh`, and the skills that build the path themselves. Nothing builds the path by hand after part 1 except the lookup.
+- Must-fix 2: take the review's recommendation. The merge gate (`merge_pr.sh` gate conditions, the duplicate check, `_gate_record`) moves to part 3, where the pull request's own identity (repository and number) is handled once together with the publish target. Part 1 leaves `merge_pr.sh` reading as today and says so; the existing merge-gate test's expectation does not flip in part 1.
+- Take both suggestions: the owning repository is picked by its `feature/issue-N` branch with the slug as a cross-check, an empty slug never enters a key; add the two-worktree test (the same number in two package repositories, qualified ref finds each, a bare number is refused); soften the `tracking=repo` claim. Use the review's grep answer for the wording files: edit `register_project.sh` and its two test assertions and the two comments; leave `registration_verify.sh` and `dashboard.sh`.
