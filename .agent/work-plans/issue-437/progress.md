@@ -182,3 +182,69 @@ Host read the Plan Review (needs-work, 2 must-fix, 8 suggestions) and directs, t
 **Plan**: `.agent/work-plans/issue-437/plan.md` at `e1ce8571`
 
 Revision 2 after the needs-work plan review and the host checkpoint. The rule is smaller: a write that changes a timeline (`--write`) is allowed when the target's branch is `feature/issue-N` (never the default branch), or, for a detached HEAD or a custom branch, its folder is `issue-*-N`; the branch decides when it names an issue. No linked-worktree condition. One shared helper, also used by resolver rule 2b. A static test fails when a script commits a work-plans path without the flag. Four skill texts and issue 269's parked item are corrected; strict mode is not flipped. The main-checkout-on-a-feature-branch question is listed for the owner as separate.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 13:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent abff219562205b052, resume 1 of 3)
+
+**Issue**: #437 — A records write from outside any issue worktree commits onto that checkout's main branch, silently
+**Plan**: `.agent/work-plans/issue-437/plan.md` at `e1ce8571`
+**Branch**: `feature/issue-437`
+**Serves**: Goal "Trust, control and information" (README, workspace goals); design `docs/design.md#worktrees` (the Records bullet) and `docs/design.md#rules`
+
+Second review of the plan (revision 2), narrow: whether the first review's items are resolved as worded, and whether the revision introduced anything wrong.
+
+### What was run
+
+I re-ran the sandbox from the first review (a clone of issue 429's branch at e8205e67 in the session scratchpad) with the revised rule sketched as the plan words it. A write is refused on the default branch. When the branch is `feature/issue-M`, the branch decides (M must equal N). Otherwise the folder decides (`issue-*-N`). The helper has no linked-worktree condition and no manifest shortcut. Resolver rule 2b goes through the same helper, and `check` takes the flag.
+
+- **Edge cases:** 25 of the 26 come out as wanted. The case the first review found open, folder 20 on branch `feature/issue-21` writing issue 20, is now refused. The 26th case is the main checkout on a feature branch, which is allowed. That matches the plan, which lists it for the owner as a separate convention question.
+- **The plan's ten suites:** the only failures are the ones step 7(c) names: `test_progress_append`'s fixture (20 assertions, from one fixture on `main`), and four flips (the compatibility mismatch case in plan_correlation, review_code_convergence and triage_reviews_integration, and package_issue_loop's "check from WS ticks its own box"). `test_resolve_work_plans_dir` stays at 21 of 21 with rule 2b through the helper. dispatch_phase, merge_pr_gate and issue_review_entry are unchanged.
+- **The manifest shortcut:** an earlier sketch put a manifest pass-through inside the helper. Rule 2b then accepted a package sibling, and the refusal came from the 429 guard with a different message. The plan's helper as worded (no shortcut) does not do that.
+
+### Items from the first review
+
+| Item | Resolved as worded? |
+|---|---|
+| Must-fix 1: drop the linked-worktree condition | Yes (steps 3, Prior Art) |
+| Must-fix 2: static test for a committing writer without the flag | Yes (step 7b) |
+| Four skill texts on compatibility mode | Yes (step 8) |
+| B2 note to issue 269, not design.md; compatibility now equals strict except two cases | Yes in substance; see finding 1 on who posts it |
+| Branch decides over folder; 20/21 case tested | Yes (steps 3, 7a) |
+| Flag named `--write`; `check` under it | Yes (steps 2, 5) |
+| One helper shared with rule 2b | Yes (step 3) |
+| Serves names the README goal | Yes |
+| Line ranges, unaffected suites, renumbering 42 and 55 | Yes (steps 1, 7c) |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request: three scripts, one new suite, one fixture, four flips, four skill passages, docs |
+| Issue alignment | Good | Every listed case is tested; the legitimate root writer is a must-succeed case |
+| File targeting | Good | Skill passages added |
+| Consequences | Good | Issue 269 item, skills, flipped tests all listed |
+| Principle alignment | Good | Smaller rule; static enforcement for the opt-in flag |
+| ADR compliance | Good | 0013, 0012, 0016 as before |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Consequences]** Step 8's "a comment on issue 269's parked strict-mode item" reads as the implementer posting it. A comment on another issue is the owner's to allow. Say that the implementer drafts the comment's text (in the PR description or the Implementation entry) for the host to put to the owner, and does not post it.
+2. **[Approach]** Dependency on issue 429's fix pass, now uncommitted in that worktree. It changes `records_path` to judge two locations: the path as named and its physical resolution, each through `_wpd_existing_dir`, with the issue number taken from both. The plan's step 4 ("the toplevel of the nearest existing ancestor of the path") depends on that path-matching part, not on the fallback to the current folder; the plan never uses `$PWD`. At implementation, the write rule judges the checkout where the commit runs (the named location's toplevel, which is where `progress_append.sh` runs `git commit`), and the physical one too if it differs. Step 1 already says to re-check.
+3. **[Approach]** Step 7(b) asks for a pathspec "through a variable such as `$file_rel`". Grep cannot follow that in general, and several read-only scripts contain both "commit" and "work-plans" (`merge_pr.sh`, `dispatch_phase.sh`). The implementer pins the detection rule down: a `git … commit … -- "$VAR"` whose variable is assigned a string containing `.agent/work-plans`. A test-fixture case proves that the detector catches a planted writer.
+4. **[Approach]** The helper carries no manifest shortcut: the manifest guard runs before it in `records_path`, and rule 2b calls it bare (sandbox above).
+
+### Summary
+
+Both must-fixes and all eight suggestions are resolved as worded. The revised rule, run in the sandbox, closes every reproduced case and the folder/branch hole, with only the planned test edits. The plan is ready to implement once issue 429's first pull request has merged. The four findings are notes the implementer can simply be told.
+
+### Recommended Actions
+
+- [ ] (suggestion) Draft the issue 269 comment for the host to put to the owner; do not post it
+- [ ] (suggestion) Re-anchor step 4's target on 429's final two-location `records_path`: judge the checkout where the commit runs, and the physical one if it differs
+- [ ] (suggestion) Pin down the static test's detection rule and prove it catches a planted writer
+- [ ] (suggestion) Keep the manifest shortcut out of the shared helper
