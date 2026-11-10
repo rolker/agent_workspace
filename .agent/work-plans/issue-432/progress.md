@@ -358,3 +358,13 @@ Both round-1 must-fixes are resolved. The Cutover pointer states that Direction 
 - [ ] (suggestion) Path 1's first sentence joins two fragments with ", to", which reads awkwardly alone in the sit-rep, and the paragraph repeats the full quote ("His full words: ..."), which the acceptance case already carries; open with the full quote and drop the repeat — `docs/roadmap.md:33-39`
 - [ ] (suggestion) Path 2's first sentence is his 2026-10-15 words with "making" changed to "make", unquoted; quote it verbatim if he is to read it as his exact words — `docs/roadmap.md:41-43`
 - [ ] (suggestion) The Cutover ordering rule "each row starts when the rows above it are done" still reads against row 7 running before the deferred rows 5–6; add "row 7 does not wait for them" to the pointer (Codex, Claude adversarial) — `docs/roadmap.md:192-195,210`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 12:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 approved with three wording suggestions; two of them are things the owner would meet: a sentence the sit-rep prints to him on every run, and a rule in the Cutover section that still reads against the new order; small, docs only)
+**After**: publish
+**Decision**: address
+
+Host read the round-2 review of 2026-11-10 (approved, Ship recommended, 3 suggestions) and directs all three be taken before the pull request opens: Path 1's first sentence is one whole quote of the owner's that stands alone when the sit-rep prints it, with the repeat of the full quote dropped; Path 2's first sentence is his words exactly or plainly not presented as a quote; the Cutover rule says row 7 does not wait for the deferred rows.
