@@ -174,3 +174,11 @@ Host read the Plan Review (needs-work, 2 must-fix, 8 suggestions) and directs, t
 - The caller's flag stays opt-in and is named `--write`; the check that no writer forgets it is a static test over every script under `.agent/scripts` that commits a work-plans path, not a list of subcommands.
 - The four skills that describe compatibility mode as "commit after the notice" are corrected. The plan says plainly, for the owner's veto, that compatibility mode becomes strict except when `WORKTREE_ISSUE` names another issue or the override is set, so the notices issue 269's parked strict-mode item waits for will stop because those cases now refuse; strict mode is not flipped here.
 - One shared helper for the branch-and-folder match, used by the resolver's existing rule too. Only `test_progress_append` needs a new fixture. Serves names the README goal. The line the plan meant to edit in docs/design.md does not exist; drop that edit.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 13:31 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-437/plan.md` at `e1ce8571`
+
+Revision 2 after the needs-work plan review and the host checkpoint. The rule is smaller: a write that changes a timeline (`--write`) is allowed when the target's branch is `feature/issue-N` (never the default branch), or, for a detached HEAD or a custom branch, its folder is `issue-*-N`; the branch decides when it names an issue. No linked-worktree condition. One shared helper, also used by resolver rule 2b. A static test fails when a script commits a work-plans path without the flag. Four skill texts and issue 269's parked item are corrected; strict mode is not flipped. The main-checkout-on-a-feature-branch question is listed for the owner as separate.
