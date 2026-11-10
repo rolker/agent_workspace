@@ -1318,8 +1318,11 @@ kill -INT $$
 kill -QUIT $$
 echo "traps-got=$got"
 [[ "$got" == IQ ]]'
+# with_default_signals <cmd>...: run <cmd> with SIGINT and SIGQUIT at their
+# defaults. exec keeps one pid from the caller's `$!` to <cmd>, so a signal
+# sent to that pid reaches <cmd> itself.
 with_default_signals() {
-    python3 -c 'import os, signal, sys
+    exec python3 -c 'import os, signal, sys
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 signal.signal(signal.SIGQUIT, signal.SIG_DFL)
 os.execvp(sys.argv[1], sys.argv[1:])' "$@"
@@ -1348,10 +1351,11 @@ wait"
 done
 for sig in INT TERM; do
     rm -f "$TMPD"/u8_info_*
-    # Job control gives the runner a process group of its own and keeps
-    # SIGINT at its default, as at a terminal.
+    # The runner gets a process group of its own (job control) and SIGINT
+    # at its default, as at a terminal, also when this suite was started
+    # with SIGINT ignored (python3 resets it; bash could not).
     set -m
-    "$RUNNER" -j 2 "$U8" > "$TMPD/u8.log" 2>&1 &
+    with_default_signals "$RUNNER" -j 2 "$U8" > "$TMPD/u8.log" 2>&1 &
     u8_runner=$!
     set +m
     for _ in $(seq 1 100); do
