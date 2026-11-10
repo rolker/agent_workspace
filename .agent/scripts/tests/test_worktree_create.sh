@@ -343,7 +343,8 @@ mkdir -p "$(dirname "$HOOK")"
 printf '#!/bin/sh\nexit 1\n' > "$HOOK"
 chmod +x "$HOOK"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 36 --type workspace
-if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not check out 'feature/issue-36' from origin/feature/issue-36 at "* ]] \
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not check out a new 'feature/issue-36' from origin/feature/issue-36 at "* \
+      && "$OUT" == *"The branch 'feature/issue-36' made for it was removed again."* ]] \
    && ! has_branch "$SB" feature/issue-36 && ! compgen -G "$SB/worktrees/workspace/*-36" >/dev/null \
    && ! git -C "$SB" worktree list --porcelain | grep -q -- '-36$'; then
     pass "failed checkout, worktree_create.sh: stops, no branch or worktree left"
@@ -357,6 +358,16 @@ if [[ "$OUT" == *"REFUSED"* && "$OUT" == *"ERROR: could not create a worktree fo
     pass "failed checkout, _wt_add_repo: refuses, the branch and worktree it made are removed"
 else
     fail "failed checkout, _wt_add_repo: rc=$RC branch=$(has_branch "$SB" feature/issue-36 && echo left || echo none): ${OUT:0:600}"
+fi
+# The workspace path cleans up the same way when the branch starts from
+# the default branch (feature/issue-37 is not on origin).
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 37 --type workspace
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not check out a new 'feature/issue-37' from origin/main at "* \
+      && "$OUT" == *"The branch 'feature/issue-37' made for it was removed again."* ]] \
+   && ! has_branch "$SB" feature/issue-37 && ! git -C "$SB" worktree list --porcelain | grep -q -- '-37$'; then
+    pass "failed checkout from the default, worktree_create.sh: stops, no branch or worktree left"
+else
+    fail "failed checkout from the default, worktree_create.sh: rc=$RC branch=$(has_branch "$SB" feature/issue-37 && echo left || echo none): ${OUT:0:600}"
 fi
 rm -f "$HOOK"
 
@@ -599,6 +610,32 @@ if git -C "$P" rev-parse --abbrev-ref "feature/issue-8@{upstream}" >/dev/null 2>
 else
     pass "project: feature/issue-8 has no upstream (--no-track)"
 fi
+# A new sub-issue branch on the project path whose parent origin has
+# deleted, with origin/<parent> still here from an earlier fetch: the
+# lookup says absent, so the draft PR does not target the parent.
+gitq clone -q "$SANDBOX/project-origin.git" "$SANDBOX/project-scratch-9"
+gitq -C "$SANDBOX/project-scratch-9" push -q origin develop:refs/heads/feature/issue-9
+gitq -C "$P" fetch -q origin
+gitq -C "$SANDBOX/project-scratch-9" push -q origin --delete feature/issue-9
+GH_LOG="$SANDBOX/gh-args-49"
+cp "$SB3/stubbin/gh" "$SANDBOX/gh-failing"
+# shellcheck disable=SC2016  # the stub expands its own variables
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nif [ "$1 $2" = "pr create" ]; then echo https://example.invalid/pull/1; exit 0; fi\nif [ "$1 $2" = "pr list" ]; then exit 0; fi\nexit 1\n' \
+    "$GH_LOG" > "$SB3/stubbin/gh"
+printf '# plan\n' > "$SANDBOX/plan-49.md"
+OUT="$(cd "$SB3" && PATH="$SB3/stubbin:$PATH" "$SB3/.agent/scripts/worktree_create.sh" --issue 49 --type project \
+    --parent-issue 9 --plan-file "$SANDBOX/plan-49.md" 2>&1)"
+RC=$?
+cp "$SANDBOX/gh-failing" "$SB3/stubbin/gh"
+PR_CREATE="$(grep '^pr create' "$GH_LOG" 2>/dev/null)"
+if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: parent branch 'feature/issue-9' is not in $P (origin has no branch 'feature/issue-9'); starting 'feature/issue-49' from the default branch"* \
+      && -n "$PR_CREATE" && "$PR_CREATE" != *"--base feature/issue-9"* ]] \
+   && git -C "$P" rev-parse --verify --quiet refs/remotes/origin/feature/issue-9 >/dev/null; then
+    pass "project, parent deleted on origin, stale origin/<parent>: the draft PR does not target the parent"
+else
+    fail "project, parent deleted on origin: rc=$RC pr create: [${PR_CREATE:-none}]: ${OUT:0:600}"
+fi
+gitq -C "$P" update-ref -d refs/remotes/origin/feature/issue-9
 # An existing branch's parent on the project path is warned as on the
 # workspace path: not on origin, then origin unreachable.
 gitq -C "$P" branch feature/issue-47 develop

@@ -67,6 +67,26 @@ fetch_remote_branch() {
     return "$rc"
 }
 
+# After a failed `git worktree add -b` of the workspace path (#323), as
+# _wt_add_repo does: git makes the branch before the checkout, so remove
+# it, with a worktree left on it (only one on that branch is ours), and
+# report a branch that cannot be deleted. Then exit 1.
+# Usage: git worktree add -b ... || undo_new_branch_checkout <start point>
+undo_new_branch_checkout() {
+    echo "ERROR: could not check out a new '$BRANCH_NAME' from $1 at $WORKTREE_DIR" >&2
+    if [ "$(git -C "$WORKTREE_DIR" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$BRANCH_NAME" ]; then
+        git -C "$ROOT_DIR" worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 || true
+    fi
+    if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+        if git -C "$ROOT_DIR" branch -D "$BRANCH_NAME" >/dev/null 2>&1; then
+            echo "  The branch '$BRANCH_NAME' made for it was removed again." >&2
+        else
+            echo "  WARNING: the branch '$BRANCH_NAME' made for it is left in $ROOT_DIR; remove it with: git -C $ROOT_DIR branch -D $BRANCH_NAME" >&2
+        fi
+    fi
+    exit 1
+}
+
 # An existing branch's parent sets only the draft PR's base (#323): found
 # locally or on origin, the PR targets it (PARENT_BRANCH_FOUND=true); any
 # other lookup outcome is said with its reason, never taken as "no parent"
@@ -785,13 +805,14 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         if [ "$WR_BRANCH" = "$BRANCH_NAME" ] || [ "$WR_REL" = "." ]; then
             # Owning-repo entry: check parent-branch-found for PR targeting,
             # matching the pre-#252 single-repo semantics. When _wt_add_repo
-            # already asked origin about the parent (a new branch), it said
-            # what it found; otherwise ask as the workspace path does.
+            # already asked origin about the parent (a new branch), its
+            # answer decides: the draft PR targets the parent only when
+            # origin has it, never on a stale origin/<parent> left by an
+            # earlier fetch. Otherwise ask as the workspace path does.
             if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
                 if [ "$WT_ADD_PARENT_LOOKED_UP" = false ]; then
                     check_existing_branch_parent "$WR_ORIGIN"
-                elif git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
-                     git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+                elif [ "$WT_FETCH_OUTCOME" = present ]; then
                     PARENT_BRANCH_FOUND=true
                 fi
             fi
@@ -898,21 +919,18 @@ else
         echo "Tracking remote branch 'origin/$BRANCH_NAME'..."
         if ! git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME" \
            || ! wt_set_upstream "$ROOT_DIR" "$BRANCH_NAME"; then
-            echo "ERROR: could not check out '$BRANCH_NAME' from origin/$BRANCH_NAME at $WORKTREE_DIR" >&2
-            if [ "$(git -C "$WORKTREE_DIR" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$BRANCH_NAME" ]; then
-                git worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 || true
-            fi
-            git show-ref --verify --quiet "refs/heads/$BRANCH_NAME" && git branch -D "$BRANCH_NAME" >/dev/null 2>&1
-            exit 1
+            undo_new_branch_checkout "origin/$BRANCH_NAME"
         fi
     elif [ -n "$PARENT_BRANCH" ]; then
         if git show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch '$PARENT_BRANCH'..."
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH"
+            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH" \
+                || undo_new_branch_checkout "$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         elif fetch_remote_branch "$ROOT_DIR" "$PARENT_BRANCH" "$BRANCH_NAME"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch 'origin/$PARENT_BRANCH'..."
-            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
+            git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH" \
+                || undo_new_branch_checkout "origin/$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         else
             # The parent was looked up just now: the existing-branch block
@@ -923,14 +941,16 @@ else
             fi
             START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
             echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
-            git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
+            git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT" \
+                || undo_new_branch_checkout "$START_POINT"
         fi
     else
         # The default branch, never the invoking checkout's HEAD (#323):
         # run from inside a feature worktree, HEAD is that feature.
         START_POINT="$(_wt_default_start_point "$ROOT_DIR")" || exit 1
         echo "Creating new branch '$BRANCH_NAME' from '$START_POINT'..."
-        git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT"
+        git worktree add --no-track -b "$BRANCH_NAME" "$WORKTREE_DIR" "$START_POINT" \
+            || undo_new_branch_checkout "$START_POINT"
     fi
 
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ] && [ "$PARENT_LOOKED_UP" = false ]; then
