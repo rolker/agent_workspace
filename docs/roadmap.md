@@ -184,7 +184,8 @@ this table tracks the seven migration steps.
 ### Cutover sequence: project11 moves to this workspace
 
 The current acceptance case, project11 on a second machine against ROS 2
-Rolling, and its lines are in [Direction](#direction).
+Rolling, and its lines are in [Direction](#direction). Direction defers
+rows 5, 6 and 8 (#260 to #262) until its simulator line is true.
 
 Ordered by dependency, deliberately without dates: each row starts when the
 rows above it are done, and nothing here is time-boxed. Goal (owner,
@@ -201,7 +202,7 @@ ROS-only fixes.
 | 4 | Parity audit of the fork | #253 | planned | Feature by feature against the fork's tree, including its `.agent/knowledge`, work plans and work artifacts, not just scripts. Closed-since-fork issues are accounted for here, as features |
 | 5 | Triage and transfer the fork's open issues | #260 | planned | Four buckets: transfer, close as covered, move to a project11 product repo, close as obsolete. Sonnet classifies, owner adjudicates proposals |
 | 6 | Migrate and triage fork memories | #261 | planned | Auto-memory is path-keyed; copy, then verify each memory against this tree |
-| 7 | Acceptance case, see [Direction](#direction): project11 simulator runs on ROS 2 Rolling from this workspace | rolker/unh_marine_autonomy#396 | in progress | Near-term goal (owner, 2026-09-21): port enough of project11 to Rolling that the simulation bring-up launches from the `rolling` manifest and a basic mission runs. The porting itself is project work tracked in that issue (milestones: size → builds → simulator → switch trunk); here it is the proof that the multi-project, multi-distro design holds. Runs alongside rows 2–3 on the `p11-rolling` instance (registered from uma#384; step 5 relocates it). It does not reorder or skip rows 2–6 — cleanup and retirement land as we go |
+| 7 | Acceptance case, see [Direction](#direction): project11 simulator runs on ROS 2 Rolling from this workspace | rolker/unh_marine_autonomy#396 | in progress | Near-term goal (owner, 2026-09-21): port enough of project11 to Rolling that the simulation bring-up launches from the `rolling` manifest and a basic mission runs. The porting itself is project work tracked in that issue (milestones: size → builds → simulator → switch trunk); here it is the proof that the multi-project, multi-distro design holds. Runs alongside rows 2–3 on the `p11-rolling` instance (registered from uma#384; step 5 relocates it). It does not reorder or skip rows 2–4 — cleanup and retirement land as we go |
 | 8 | Cutover | #262 | planned | ROS machine runs this workspace; fork archived read-only with a pointer here |
 | 9 | Variant-branch refinement (step 7) | — | planned | After cutover, on the live instance; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
