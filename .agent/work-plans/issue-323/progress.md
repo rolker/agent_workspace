@@ -506,3 +506,30 @@ Verified: the review hold no longer merges on an unread state. Traced by hand: `
 - [x] (must-fix) `--recover` with a body passes the new guard, but gh loads the recovered JSON over the body after reading `--body`/`--body-file`, so the signed body and the parent reference are replaced and the issue or PR goes out unsigned (interactive sessions only: gh refuses `--recover` without a prompt). Refuse `--recover` without `--no-signature` whether or not a body is given; add a regression in both suites (codex) — `.agent/scripts/_gh_create_args.sh:286`
 - [x] (suggestion) A fetch the limit ends (124/137) for a branch that exists on origin is treated as "not on origin": `worktree_create.sh` and `_wt_add_repo` then create a new branch from the default with only a warning, so the existing remote work is not checked out and the first push is non-fast-forward. A timeout is unambiguous; stop with the error instead of falling back (Claude adversarial) — `.agent/scripts/worktree_create.sh:62`, `.agent/scripts/_worktree_helpers.sh:572`
 - [x] (suggestion) The address checkpoint's owner-veto list says the wrappers refuse `--fill`/`--template`/`--recover` "when identity is set"; the code (d84c8e64) and its tests refuse them with or without identity. Correct the decision as listed for veto (the PR's Decision summary) so the owner judges the behaviour that shipped — `.agent/work-plans/issue-323/progress.md` (Checkpoint 73080c9f)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 10:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed fix pass after a cut-off one
+
+**PR**: #417 at `32776119`
+**Addressed**: Local Review at `fbf94d1` (2026-11-02 14:48 -05:00)
+**Commits**: 134003d4, 88cede95 (an earlier pass, cut off before its entry), 8ad83cc0 (merge from main), f1925181, 8ed8f908, 32776119
+
+### Actions
+- [x] (must-fix) `--recover` with a body went out unsigned: `gh_refuse_unsigned_fill` refuses `--recover` without `--no-signature` with or without a body, in both wrappers; regressions in both suites (`--body`, and `--body-file` in the issue suite), `--recover --no-signature` still runs — `.agent/scripts/_gh_create_args.sh` (134003d4, from the cut-off pass; read and checked here)
+- [x] (suggestion) A timed-out fetch of an existing remote branch fell back to a new branch: `wt_fetch_named_branch` stops (status 3) on a timeout, or a failure while origin has the branch, in `worktree_create.sh` and `_wt_add_repo`, for the target and the parent branch — `.agent/scripts/_worktree_helpers.sh`, `.agent/scripts/worktree_create.sh` (88cede95, from the cut-off pass). Closed the rest of the class here (f1925181): an existing branch's parent lookup still swallowed status 3 and silently made a draft PR target the default; it now warns and names `gh pr edit --base`. Added the tests 88cede95 lacked for the parent-branch stop (worktree_create.sh and `_wt_add_repo`, origin unreachable with origin/<parent> known) and one for the warning
+- [x] (suggestion) The address checkpoint's veto list said the refusal applies "when identity is set": the bullet carries a dated correction (refused with or without identity, both wrappers, `--recover` even with a body) — `.agent/work-plans/issue-323/progress.md` (32776119)
+
+### Merge from main
+- `main` (6f90ffa5, 197 commits) merged at 8ad83cc0. Conflicts: AGENTS.md (main moved the Script Reference to `.agent/knowledge/script_reference.md`; AGENTS.md taken from main, the branch's `gh_create_issue.sh` row carried into script_reference.md) and docs/design.md's change log (both sides' rows kept). main changed none of the branch's scripts (worktree scripts, merge_pr.sh, gh wrappers); its edits to run_script_tests.sh, test_script_tests_hook_scope.sh and WORKTREE_GUIDE.md merged cleanly beside the branch's.
+- With the rows out of AGENTS.md, the previous round's "Not done" item is done (8ed8f908): the script_reference.md rows for both wrappers and merge_pr.sh name the new refusals.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on 32776119's tree: exit 0, every hook passed or had no files, `validate-script-tests` included. The f1925181 commit also ran the script suites in its hook (SKIP was not set on it by mistake; it passed).
+- test_worktree_create.sh by hand: 28 passed, 0 failed.
+
+### Decisions (owner may veto)
+- The signing refusal (corrected wording): `gh_create_pr.sh` and `gh_create_issue.sh` exit 2 on `--fill` and its variants or `--template` with no body, and on `--recover` with or without one, unless `--no-signature` is given, whether or not an identity is set — undoing it: revert d84c8e64 and 134003d4.
+- An existing branch whose parent cannot be fetched gets a warning about the draft PR base rather than a stop: the branch is already there, so only the PR base is at stake — undoing it: revert f1925181.
