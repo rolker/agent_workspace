@@ -83,3 +83,11 @@ The audit is by reading, so the issue's own method (shuffled order and parallel 
 **Decision**: proceed
 
 Host read the Issue Review. Accepted as plan inputs: two pull requests (1: the runner made safe for parallel runs, each suite with its own temporary directory, per-suite output with failures first, a shuffle option and a timing table, default still one job; 2: parallel turned on by default, with before and after recorded), the slow-fixture work riding with the second or as a third; the default job count `clamp(nproc/4, 2, 6)`, a hard cap of 8, an option and an environment variable to set it, one job keeping today's behaviour; no CI workflow change. Host decision listed for the owner's veto: a run executes every selected suite, prints every failure, and exits with the code a serial run would give for the first failing suite; it does not stop at the first failure. Undoing it: an option to stop early.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 14:02 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `0938e6d6`
+
+Two pull requests. PR 1 (11 steps, detailed): runner with per-suite temp directory and leak sweep, job pool with whole per-suite output (failures first), -j / RUN_SCRIPT_TESTS_JOBS (default stays 1, cap 8), shuffle with printed seed, timing table, run-all with the serial exit code, a "# serial:" marker, suspects made independent, new runner tests, independence verified by 2 serial vs 10 shuffled -j 4 + 3 at -j 2 + 1 at -j 8 + 2 loaded runs. PR 2 (outline): default clamp(nproc/4,2,6), measured before/after here and in CI (2 jobs on a 4-core runner), quoted run times updated, cheap fixture work. Ten decisions listed for the owner's veto.
