@@ -203,3 +203,63 @@ Host read the Plan Review (needs-work, 3 must-fix, 6 groups of suggestions) and 
 **Plan**: `.agent/work-plans/issue-436/plan.md` at `deca7bd8`
 
 Revised after the plan review. Five pull requests: (a) resolver additions, install target, CI; (b) settings keys, adapter route, tests, design; (c) `repo_pin` as a required verb with ADR-0011 amended; (d) records; (e) manifest text and drafted issue, provisional on the role model. A stale manifest is one rule: after `sync` the leaf clone follows its remote per ref kind (never forcing a dirty clone) and every `extends` base is cloned afresh per resolve; each case is tested by pushing to a bare remote then syncing. All review suggestions taken.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 13:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent acaa509cb79937290, resume 1 of 3)
+**Verdict**: needs-work
+
+**Issue**: #436 — Use the new manifest format for the second-machine test: the ROS adapter calls the manifest resolver
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `deca7bd8`
+**Branch**: `feature/issue-436`
+
+Second review, narrow: are the first review's findings resolved as worded, and did the revision introduce anything wrong? Serves, as checked: "Workspace goal "Modular" (README, Workspace goals ...), under `docs/design.md#registry-and-adapters`" (the section and the anchor both exist).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five pull requests; (a) is self-contained (resolver, make target, CI) and reviewable alone. |
+| Issue alignment | Good | Serves now names a real README goal section (finding 10 resolved). |
+| File targeting | Good | (a) is `tools/ros-manifest/`, `Makefile`, the workflow. |
+| Consequences | Needs work | The temporary `extends` cache changes the resolver's provenance output (finding 1). |
+| Principle alignment | Good | Stale-manifest rule stated once and tested by push-then-sync; ADR-0011 amended instead of bent. One gap in the rule (finding 2). |
+| ADR compliance | Good | ADR-0011 amended in (c) as ADR-0012 did; ADR-0009 departure explained in (a) step 4. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Earlier findings, checked
+
+- Must-fix 1 (leaf refresh): resolved. Per-kind table, never forcing a dirty clone, full clone so a commit is reachable, push-then-sync tests. One hole, finding 2.
+- Must-fix 2 (extends cache): resolved for staleness (fresh `--cache-dir` per resolve, test with a bare base remote, commit-in-extends error tested). It introduces finding 1.
+- Must-fix 3 (ADR-0011): resolved. `repo_pin` is a 13th required verb in (c), `single_project` implements it, ADR-0011 amended.
+- Suggestions 4 to 11: all taken as worded (split; `vcs` first with its install; network needs; `--layout` with flat unchanged and no zero-repos coupling; route refusals for all four bootstrap sources and for `manifest_ref`/`manifest_path` without `manifest`; legacy `ROS_DISTRO` refused on the route; symlink swap; the `env.sh` staleness printed; leftover-checkout warning; quote stripping; `ls-remote` for the kind; Serves; (e) provisional).
+
+### Findings
+
+Must-fix:
+
+1. **[Consequences: provenance, issue 267 decision 5]** The resolver labels each manifest with its file path (`schema.py` `load_manifest_file`: `source=str(path)`), and that label is the provenance written into every generated `.repos` header (`emit.py` `_header`). With the cache inside a temporary directory, a base's provenance becomes a deleted path like `configs/<tmp>.cache/<hash>/manifest.yaml`, different on every `sync`. So decision 5's "with provenance (which manifest contributed each repo)" no longer says which manifest, and every sync rewrites every header. The fix is small and self-contained, so it belongs in (a): label a git-backed manifest `url#ref/path` (the label `schema.py`'s `Manifest.source` comment already promises), plus the clone's commit, so the header also records which base commit was resolved. Test it in (a) with a `file://` base.
+
+Suggestions:
+
+2. **[Stale rule, (b)]** A clean clone that is *ahead* of `origin/<ref>` (local commits, remote unmoved) passes `git merge --ff-only` as "Already up to date". It falls in no warning row, so it resolves local commits silently. State the rule as "clean and HEAD equals `origin/<ref>` (or the tag's or commit's object), otherwise `manifest-state=local` with the warning", and test the ahead case. Count only tracked changes as dirty (`--untracked-files=no`), so editor files do not raise the warning.
+3. **[CI, (a) step 5]** The "Validate Adapter Contract" job (`runs-on: ubuntu-latest`) has no `actions/setup-python`. A plain `pip install -e` there hits PEP 668 on Ubuntu 24.04 runners. Add setup-python as the `validate-ros-manifest` job does. In (b), make the wrapper find that python (not only `<repo>/.venv`), and make CI fail rather than print `SKIPPED` when the real-resolver tests do not run (an env flag), or CI can go green with the route untested.
+4. **[Offline, (b)]** Add an offline case for a base (path-form leaf with a git `extends`, base remote removed): the resolve fails, the previous link stays, exit 1. The adapter should add one line after the resolver's clone error: "previous generated directory kept; env/build still use it". Clean up `<tmp>` and `<tmp>.cache` on every exit path. Note that `setup` on an already-set-up hosting directory now needs the network on this route, where the bootstrap route did not.
+
+### The two choices asked about
+
+- **Dirty leaf clone resolved as it is, with a warning.** Enough, provided finding 2 is fixed. It is not silent: stderr on every `setup` and `sync`, `manifest-state=local` in `.resolved-from`, and a `validate` warning each run. Refusing would block a working style the owner uses (edit the manifest, resolve, test before pushing). A fresh machine never has a dirty clone, so the acceptance run is not affected. Make the warning list the changed files.
+- **A fresh shallow clone of every `extends` base on every `sync`.** Cost is small: a shallow clone of a small manifest repository per base, next to `sync`'s fetch of every package repository. Offline, `sync` fails clearly: a leaf URL fails at the fetch first; a path leaf fails at the resolver's clone error, passed through. The previous generated directory and link stay, so `env`, `build` and `test` keep working. The real cost is finding 1, not time.
+
+### Summary
+
+The first review's three must-fixes and its suggestions are resolved as worded. The revision introduced one regression, finding 1: base provenance becomes a temporary path that is deleted after each resolve. That is a few lines in the resolver and belongs in (a). Pull request (a) is ready to implement with finding 1 and suggestion 3 added to its steps; (b) carries suggestions 2 and 4. No further plan review is needed for that.
+
+### Recommended Actions
+
+- [ ] (a): label git-backed manifests `url#ref/path@<commit>` in the provenance; test with a `file://` base.
+- [ ] (a): setup-python in the adapter-contract CI job before installing the resolver.
+- [ ] (b): stale rule is "clean and HEAD equals the remote object"; ahead-of-remote is `local`; tracked changes only; warning lists files.
+- [ ] (b): wrapper finds the CI python; CI fails on skipped real-resolver tests; offline base case; temp cleanup; the "previous directory kept" line.
