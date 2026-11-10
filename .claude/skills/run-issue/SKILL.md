@@ -210,11 +210,15 @@ user to exit first.
 
 Then move to the directory the issue's work and records happen in, which
 `dispatch_phase.sh where` decides, the same answer every handoff gives a
-phase as `worktree=`:
+phase as `worktree=`. The block stops when `where` refuses or prints
+nothing, because `cd ""` succeeds silently and would leave the host where
+it was:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-cd "$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])"
+D="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])" \
+  && [[ -n "$D" && -d "$D" ]] && cd "$D" && pwd \
+  || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); do not continue"; exit 1; }
 ```
 
 For a workspace or single-repository issue that is the worktree
@@ -222,10 +226,20 @@ For a workspace or single-repository issue that is the worktree
 owning repository inside the package worktree, not the worktree's top
 folder, which is no repository of its own. `where` refuses when `gh` there
 resolves another repository (a checkout with an `upstream` remote) and
-names the `gh repo set-default` that fixes it: stop and report it. From
-here on the host's own commands run in that directory: the pull-request
-probe, `git push`, `check_branch_updates.sh`, `gh_create_pr.sh`,
-`fetch_pr_reviews.sh`, and `progress_append.sh` for checkpoints.
+names the `gh repo set-default` that fixes it; `where` also refuses when
+`gh` fails or gives no answer. On `STOP`, stop and report it. From here on
+the host's own commands run in that directory, `<dir>` below (the line the
+block printed): the pull-request probe, `git push`,
+`check_branch_updates.sh`, `gh_create_pr.sh`, `fetch_pr_reviews.sh`, and
+`progress_append.sh` for checkpoints.
+
+**`cd <dir> &&` at the head of every host command chain after step 1**,
+the same rule `conventions=` gives every dispatched phase: the shell can
+return to the session's start folder between tool calls, and a chain that
+lost the `cd` runs `git push` or `gh_create_pr.sh` against whatever
+repository it starts in. The blocks below leave it out for brevity; the
+host adds it. The one exception is step 11, whose chain starts with `cd
+<root> &&` instead.
 
 **Identity, on every command chain.** `dispatch_phase.sh`'s handoff mode
 hard-fails with exit 2 when `AGENT_NAME`/`AGENT_EMAIL` are unset — there is
@@ -289,16 +303,22 @@ first run, so guard it rather than calling the script unconditionally):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-PF="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])/.agent/work-plans/issue-<N>/progress.md"
+D="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])" \
+  && [[ -n "$D" && -d "$D" ]] \
+  || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); do not dispatch"; exit 1; }
+PF="$D/.agent/work-plans/issue-<N>/progress.md"
 BEFORE=0
 [[ -f "$PF" ]] && BEFORE=$(python3 $WS_ROOT/.agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
     | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["entries"]))')
+echo "BEFORE=$BEFORE"
 ```
 
 `PF` comes from `where`, never from the worktree's top folder: for a
 package issue that folder holds no timeline, so a count there is always 0
 while `--check-exit` counts the owning checkout's, and a second entry of
-the same type would read as written when the phase wrote nothing.
+the same type would read as written when the phase wrote nothing. For
+the same reason the block stops on `STOP` rather than going on with an
+empty `D`: a path of `/.agent/...` would count 0 too.
 
 `<entry-type>` is the **exact** string the handoff block's `entry_type=`
 line printed for this dispatch — `Local Review (Pre-Push)`, not `Local
@@ -550,7 +570,10 @@ instead. For each such box, run:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-PF="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])/.agent/work-plans/issue-<N>/progress.md"
+D="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])" \
+  && [[ -n "$D" && -d "$D" ]] \
+  || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); check no box"; exit 1; }
+PF="$D/.agent/work-plans/issue-<N>/progress.md"
 $WS_ROOT/.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
 $WS_ROOT/.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
   --deferred "<the owner's reason, from the checkpoint entry's own text>"

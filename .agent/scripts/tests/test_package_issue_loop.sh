@@ -494,6 +494,66 @@ for where_ in A WS; do
     git -C "$dir" checkout -q -- .agent/work-plans/issue-7/progress.md
 done
 
+# ------------------------------------------------------------------ case 9
+# run-issue's own blocks that use `where` fail closed (pre-push review round
+# 1, must-fix 2): each block is taken from the SKILL.md copied into the
+# sandbox, its placeholders filled, and run from the session root H. When
+# `where` refuses (a bare number that two repositories share) or gh fails,
+# every block prints STOP, exits non-zero, and neither moves nor counts nor
+# touches anything. A package issue with no timeline yet counts 0 and
+# --check-exit reports MISSING, never OK.
+echo "TEST: run-issue's where blocks stop when where refuses or gh fails; check-exit never OKs a missing timeline"
+mkdir -p "$HOME/.claude"
+printf '%s\n' "$WS" > "$HOME/.claude/agent-workspace-root"
+create --issue owner/pkg_a#8 --type project --project demo --layer l1 --package-repos pkg_a \
+    || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#8"; }
+A8="$H/worktrees/issue-demo-owner-pkg_a-8/l1_ws/src/pkg_a"
+BLOCKS="$SANDBOX/where_blocks"
+mkdir -p "$BLOCKS"
+python3 - "$WS/.claude/skills/run-issue/SKILL.md" "$BLOCKS" >/dev/null <<'PY'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = [b for b in re.findall(r"```bash\n(.*?)```", text, re.S) if "dispatch_phase.sh where" in b]
+for i, b in enumerate(blocks, 1):
+    open("%s/%d.sh" % (sys.argv[2], i), "w", encoding="utf-8").write(b)
+print(len(blocks))
+PY
+nblocks=$(find "$BLOCKS" -name '*.sh' | wc -l)
+check "SKILL.md has three blocks that use where (step 1, step 4, step 6)" "$([[ "$nblocks" -eq 3 ]]; echo $?)" "n=$nblocks"
+run_block() {  # <block-file> <ref> -- prints the block's output, then rc= and cwd=
+    local body
+    body=$(sed -e "s|<ref>|$2|g" -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|7|g' \
+        -e 's|<entry-type>|Issue Review|g' -e 's|<i>|0|g' -e "s|<the owner's reason, from the checkpoint entry's own text>|why|g" "$1")
+    (cd "$H" && bash -c "$body"$'\n''echo "cwd=$PWD"' 2>&1; echo "rc=$?")
+}
+before=$(heads)
+for b in "$BLOCKS"/*.sh; do
+    out=$(run_block "$b" 7)
+    check "block $(basename "$b" .sh) with a refused where (bare 7): STOP, non-zero, nothing run after" \
+        "$([[ "$out" == *"STOP: dispatch_phase.sh where refused"* && "$out" != *"rc=0" && "$out" != *"cwd="* \
+              && "$out" != *"BEFORE="* && "$out" != *'"source"'* ]]; echo $?)" "$out"
+done
+mv "$STUB/gh" "$STUB/gh.off"
+printf '#!/usr/bin/env bash\necho "gh: not logged in" >&2\nexit 4\n' > "$STUB/gh"; chmod +x "$STUB/gh"
+for b in "$BLOCKS"/*.sh; do
+    out=$(run_block "$b" 'owner/pkg_a#7')
+    check "block $(basename "$b" .sh) with a failing gh: STOP, non-zero, nothing run after" \
+        "$([[ "$out" == *"not logged in"* && "$out" == *"STOP: dispatch_phase.sh where refused"* && "$out" != *"rc=0" \
+              && "$out" != *"cwd="* && "$out" != *"BEFORE="* && "$out" != *'"source"'* ]]; echo $?)" "$out"
+done
+mv "$STUB/gh.off" "$STUB/gh"
+after=$(heads)
+check "the stopped blocks changed nothing" "$([[ "$before" == "$after" ]]; echo $?)" "$(diff <(echo "$before") <(echo "$after"))"
+
+out=$(run_block "$BLOCKS/1.sh" 'owner/pkg_a#7')
+check "step 1's block with where answering: moves into A" "$([[ "$out" == *"cwd=$A"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(sed -e 's|<ref>|owner/pkg_a#8|g' -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|8|g' \
+    -e 's|<entry-type>|Issue Review|g' "$BLOCKS/2.sh" | (cd "$H" && bash 2>&1); echo "rc=$?")
+check "step 4's block for a package issue with no timeline yet: BEFORE=0" "$([[ "$out" == *"BEFORE=0"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" --check-exit --issue 'owner/pkg_a#8' --skill review-issue --type project --before 0)
+check "check-exit on that missing timeline: MISSING, not OK" "$([[ "$out" == "status=MISSING"$'\n'"rc=0" ]]; echo $?)" "$out"
+check "... and A8 has no timeline (so nothing was counted elsewhere)" "$([[ ! -e "$A8/.agent/work-plans/issue-8/progress.md" ]]; echo $?)"
+
 echo
 echo "test_package_issue_loop: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

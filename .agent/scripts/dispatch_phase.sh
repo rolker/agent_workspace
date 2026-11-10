@@ -668,7 +668,15 @@ cmd_where() {
     num=$(parse_issue_ref "$ref" where) || exit 2
     [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: where: --type must be workspace or project" >&2; exit 2; }
     resolved=$(resolve_issue_dir "$ref" "$num" "$type" "$project" 1) || { rc=$?; report_resolve_failure where "$rc" "$type" "$ref"; }
-    sed -n 1p <<< "$resolved"
+    # Never print an empty or missing directory with exit 0: run-issue
+    # `cd`s into this line and builds every progress path on it.
+    local dir
+    dir=$(sed -n 1p <<< "$resolved")
+    if [[ -z "$dir" || ! -d "$dir" ]]; then
+        echo "error: where: no directory for issue $ref (resolved '${dir}')" >&2
+        exit 2
+    fi
+    printf '%s\n' "$dir"
 }
 
 # ------------------------------------------------------------------ next ---
