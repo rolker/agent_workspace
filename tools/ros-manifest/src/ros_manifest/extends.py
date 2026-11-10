@@ -8,10 +8,12 @@ tests, which point `url` at a local git repository (a `file://` path or a plain 
 work with `git clone`).
 
 Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
-manifest read from a git-backed `extends` clone is labelled `url#ref/path@<commit>` (the commit
+manifest read from a git-backed `extends` clone is labelled `url#ref:path@<commit>` (the commit
 the clone holds), never with the cache path: a cache directory may be temporary, and the label
-ends up in every generated `.repos` header. A local-path `extends` declared inside such a clone
-stays inside it (the escape check below) and is labelled the same way with its own path.
+ends up in every generated `.repos` header. The `:` after the ref cannot be part of a git ref,
+so a ref holding `/` (`release/2`) still reads unambiguously. A local-path `extends` declared
+inside such a clone stays inside it (the escape check below) and is labelled the same way with
+its own path.
 """
 
 from __future__ import annotations
@@ -80,7 +82,7 @@ class _GitOrigin:
 
     def label(self, path: Path) -> str:
         rel = path.relative_to(self.clone_dir).as_posix()
-        return f"{self.url}#{self.ref}/{rel}@{self.commit}"
+        return f"{self.url}#{self.ref}:{rel}@{self.commit}"
 
 
 def _resolve_one(

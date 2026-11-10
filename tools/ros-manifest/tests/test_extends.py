@@ -428,7 +428,7 @@ roles:
     )
     cache_one = tmp_path / "tmp-one.cache"
     chain = resolve_chain(leaf, cache_dir=cache_one)
-    label = f"{url}#main/config/manifest.yaml@{commit}"
+    label = f"{url}#main:config/manifest.yaml@{commit}"
     assert [m.source for m in chain] == [label, str(leaf)]
 
     merged = merge_chain(chain)
@@ -447,7 +447,7 @@ roles:
     new_commit = _head(remote)
     assert new_commit != commit
     chain_three = resolve_chain(leaf, cache_dir=tmp_path / "tmp-three.cache")
-    assert chain_three[0].source == f"{url}#main/config/manifest.yaml@{new_commit}"
+    assert chain_three[0].source == f"{url}#main:config/manifest.yaml@{new_commit}"
 
 
 @pytest.mark.skipif(
@@ -478,7 +478,28 @@ layers: [core]
     )
     chain = resolve_chain(leaf, cache_dir=tmp_path / "cache")
     assert [m.source for m in chain] == [
-        f"{url}#main/distro/common.yaml@{commit}",
-        f"{url}#main/distro/manifest.yaml@{commit}",
+        f"{url}#main:distro/common.yaml@{commit}",
+        f"{url}#main:distro/manifest.yaml@{commit}",
         str(leaf),
     ]
+
+
+@pytest.mark.skipif(
+    subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
+    reason="git not available",
+)
+def test_label_with_a_slash_in_the_ref_is_unambiguous(tmp_path):
+    # `url#ref:path@commit`: a git ref cannot hold `:`, so `release/2` and the path stay apart.
+    remote = tmp_path / "base_repo"
+    commit = _manifest_repo(remote, {"config/manifest.yaml": _BASE_TEXT})
+    _git(remote, "branch", "release/2")
+    url = remote.as_uri()
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        f"extends:\n  path: config/manifest.yaml\n  url: {url}\n  ref: release/2\nlayers: [core]\n",
+    )
+    chain = resolve_chain(leaf, cache_dir=tmp_path / "cache")
+    label = chain[0].source
+    assert label == f"{url}#release/2:config/manifest.yaml@{commit}"
+    ref, _, rest = label.partition("#")[2].partition(":")
+    assert (ref, rest.rpartition("@")[0]) == ("release/2", "config/manifest.yaml")

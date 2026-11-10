@@ -34,8 +34,9 @@ A resolver for a manifest format that lets multiple ROS 2 repos compose into one
 - **Output**: one vcstool/vcs2l-compatible `.repos` file per layer, for a given `(role, distro)`
   pair, with a provenance comment header naming which manifest in the extends chain contributed
   each repo. A manifest on the local filesystem is named by its file path; a manifest read from
-  a git-backed `extends` is named `url#ref/path@<commit>` (the commit that was resolved), never
-  by its cache path.
+  a git-backed `extends` is named `url#ref:path@<commit>` (the commit that was resolved), never
+  by its cache path. A git ref cannot contain `:`, so a ref such as `release/2` reads
+  unambiguously.
 
 See `.agent/work-plans/issue-267/plan.md` in the workspace repo for the full design and the
 west-based variant comparison plan (`docs/west-variant.md` in this directory).
