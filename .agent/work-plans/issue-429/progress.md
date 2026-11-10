@@ -613,3 +613,40 @@ The merge broke one fixture, fixed in `ff82c5a1`. Main's `worktree_create.sh` no
 Checks:
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0, including the script-suite hook (every suite) and shellcheck.
 - Run on their own after the merge: test_dispatch_phase 140/0, test_package_issue_loop 148/0, test_merge_pr 91/0, test_merge_pr_gate 121/0.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 14:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-429 at `a6c2d2f2`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole-diff tier as rounds 1 and 2)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Narrow check of round 2's two must-fixes, the fix diff since `e8205e67`, and the merge from main (`1aa504f7`). Cross-model: skipped (round-3 convergence check, per handoff). Static analysis: shellcheck --severity=warning clean on `_resolve_work_plans_dir.sh`, `merge_pr.sh` and the three changed suites.
+
+Round 2 must-fix 1 (path as given and as resolved, no `realpath -m`) holds. Probes in a sandbox built from the suite's own setup, beyond case 10:
+- A's records folder as a symlink to B's: `findings`, `check` and `progress_append.sh` from A are refused (rc 4).
+- B's `.agent` as a symlink to A's `.agent`: the relative read from B, the absolute read from A and `progress_append.sh` from B are all refused.
+- `..` paths into B are refused: from C, from A via `../pkg_b`, and from A via `.agent/work-plans/issue-7/../../../../pkg_b/...`.
+- A symlink outside the records shape that points to B's timeline is refused from the session root. One that points to A's timeline reads A from B, which is A's own timeline.
+- A's own relative read, `check` and append work from A.
+
+Round 2 must-fix 2 (the current folder counts only for its own repository) holds. A workspace issue-7 timeline gives identical `findings` and `round` output from A and from its own worktree. `progress_append.sh -C <ws worktree>` from B commits there, and `where` works from A. A path into the workspace main checkout is read from A but refused from C, because C shares that checkout's toplevel, as intended. `merge_pr.sh` passes `"$_gate_wt"`. Its def-pkg case merges from inside a package checkout.
+
+The enumeration test fails in three scratch mutations:
+- a new gated-nowhere subcommand in the table and usage fails 2 checks;
+- an odd-form row (`peek) shift; ...`) left out of usage fails 3;
+- a new ungated subcommand given an entry-point row fails 3 (refusal from B and C).
+
+Merge from main: `git diff main HEAD` touches only this branch's 17 files. The remerge diff keeps both helper lists in all six `test_dispatch_phase.sh` copy loops. `docs/design.md` keeps main's `gh_create_pr.sh` and `worktree_create.sh` rows. The `merge_pr.sh` citations (287, 577, 694, 721, 839, 858, 893, 966, 979) match the file. `merge_pr.sh` differs from main only by the gate lookup and its refusal reason, so the review hold is intact. `_wt_add_repo` and the manifest format (`feature/issue-N` on the owning entry) still give what `issue_checkout_of` and the suite assume.
+
+Suites, 0 failed each: test_package_issue_loop 148, test_dispatch_phase 140, test_merge_pr_gate 121, test_merge_pr 91, test_worktree_create 58, test_ros2_colcon 218.
+
+Follow-up only, nothing new: issue 437 (writes from outside any worktree; the gate needs a write mode), issue 393 (non-default records settings, `--workflow` scaffold, review-plan fallback). The `realpath -m` left in `persist --strict` is not part of this pull request and fails closed.
+
+### Findings
+- [ ] No issues found. LGTM.
