@@ -142,3 +142,55 @@ Host read the Plan Review of 2026-11-10 (needs-work, 2 must-fix, 5 suggestions) 
 **Plan**: `.agent/work-plans/issue-432/plan.md` at `bab6be65`
 
 Revision after plan review: two paths (Path 2 keeps its name and takes the orchestrator trial and the home-directory work managers, listed for veto), the install line limited to issue 430's acceptance, one combined build-and-run line with an empty check cell, and the five suggestions taken.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 10:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #432 — Roadmap Direction: next acceptance case is project11 on a second machine against ROS 2 Rolling, with the workspace follow-ups alongside
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `bab6be65`
+**Branch**: `feature/issue-432`
+
+Second review, after the host's revise checkpoint. Scope: the first review's two must-fixes and five suggestions, and anything the revision broke. Points the first review accepted are not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one doc PR on `docs/roadmap.md`. |
+| Issue alignment | Good | Serves, as checked: "README workspace goal 'The long view'; `docs/design.md#documentation-layers`". The README section exists (`### The long view`) and the anchor exists. Suggestion 5 resolved. |
+| File targeting | Good | Sit-rep not changed, as the host directed; two paths fit its mechanism. |
+| Consequences | Needs work | Five follow-up lines still labelled Path 1 by the sit-rep while the Path 2 text claims them (finding 1). Step 6 contradicts the deliberately empty cell (finding 2). |
+| Principle alignment | Needs work | Status words gone ("not too far off", "the registration script exists"); Path 2 keeps its name. Two paths listed for veto with his quote (Open Question 1). Finding 1 remains. |
+| ADR compliance | Good | Unchanged from the first review. |
+| ROS conventions | N/A | Workspace doc plan. |
+
+### Resolution of the first review
+
+- Must-fix 1 (three paths vs the sit-rep): partly resolved. Two paths, sit-rep unchanged, listed for veto with his words. Not resolved: which path the five follow-up lines sit in (finding 1 below).
+- Must-fix 2 (shared `gh-issue 430 closed` check): resolved. The install line now says only what issue 430's acceptance says (clean-clone install, `user_tier_install.sh --check --require`; checked against the issue body today). Build and the `/run-issue` run are one line with its own tracking issue; Approach step 2 and Open Question 2 say clearly that the cell stays empty unless the host supplies the number, that the sit-rep reads it as "not yet done (no automatic check)" (confirmed in the sit-rep's result-words table), and that the implementer must not open an issue.
+- Suggestion 3 (simulator check lags): resolved, Open Question 3.
+- Suggestion 4 (status words, Path 2 name): resolved.
+- Suggestion 5 (Serves): resolved.
+- Suggestion 6a (bare check cells): resolved. All eight filled line cells and three deferral cells parse and return `false` today; the empty cell returns `unchecked` / `none` (`sitrep_checks.sh --root . --roadmap <scratch copy>`, exit 0).
+- Suggestion 6b (hostname grep): resolved. `grep -rnIl <hostname> .agent .claude tools docs scripts --exclude-dir=work-plans` finds nothing today, so step 6's "absent outside `docs/roadmap.md`" is a working check.
+
+### Findings
+
+1. **[Consequences / Principle alignment]** (must-fix, the unresolved half of the first review's must-fix 1) The sit-rep labels a worktree `Path 1` when any Direction line names its issue (`.claude/skills/sitrep/SKILL.md`, step 3 rules). The plan's Path 1 is "(the lines below whose check names an issue)", which is all eight filled lines, so the work on #323, #415, #428, #265 and #431 is labelled Path 1, project11. But the Path 2 paragraph quotes "follow up on the findings during the gz4d tests" (the #415 and #428 lines) and lists "the orchestrator trial" (the #431 line), and the issue itself calls these five "the Path 2 lines". When the owner answers the closing question with "Path 2", the sit-rep will show that work under Path 1. The first review named exactly these five lines; the revision does not say where they belong. Resolve one way and list it for veto in Open Question 1: either the five stay as Direction lines and the Paths text says every Direction line is Path 1 work (the acceptance case needs them), with the gz4d-findings quote and "the orchestrator trial" narrowed in Path 2 to what no line names; or they leave the Line table and become Path 2 prose, which the sit-rep then labels Path 2 through their issue reviews' Serves lines. The plan's "keep the existing definition sentences, reworded only to match the table" must say which. (The first review's related note, that no `adapter --project` check names the Rolling instance so project11 package worktrees other than #396 are not labelled Path 1, is also unanswered; one sentence saying whether that is intended is enough.)
+2. **[Verification]** (suggestion, new in this revision) Approach step 6 still says the checks show "every row with a result (none `unchecked`/`format`)". With the deliberately empty cell, that row is `unchecked` (confirmed on the scratch copy), so step 6 fails as written unless the host supplies a number. Say "none `unchecked` except the combined line while its cell is empty". Also make sure the implementer leaves the cell truly empty, not the plan's placeholder "(empty cell; see below)".
+3. **[Consequences]** (suggestion, new in this revision) Approach step 2 fills the cell with `gh-issue <N> closed`, which checks the workspace repository only. The model it names, `rolker/geozui4d#9`, is a project-repository issue; if the owner opens the tracking issue in `rolker/unh_marine_autonomy` or a package repository, the cell must be `gh-issue <owner/repo>#<N> closed`. Say "in the form for the repository the issue is in".
+4. **[Consequences]** (suggestion; text unchanged since the first plan, faithfulness of the quotes not in question) The sit-rep prints the acceptance case's first sentence as its second line, split at the first period followed by a space (`.claude/skills/sitrep/SKILL.md` step 5). The ellipsis in the first quote ends that sentence early: run on the proposed text, `acceptance_first` is "Project11 is developed on a second machine against ROS 2 Rolling through this workspace, which is the move he named: 'I also want to move project11 to this workspace ...", cut mid-quote. Smallest fix: end the first sentence before the quote (for example a period after "through this workspace", then "It is the move he named: '...'"), and re-run step 5's block in verification.
+
+### Summary
+
+Must-fix 2 and all five suggestions are resolved, and every filled check parses. Must-fix 1 is half resolved: two paths now fit the sit-rep, but the five follow-up lines would be labelled Path 1 while the Path 2 text claims them. The revision also left step 6 contradicting the empty cell, and the fill form only fits a workspace-repository issue.
+
+### Recommended Actions
+
+- [ ] Say which path the five follow-up lines (#323, #415, #428, #265, #431) belong to, make the Path 1 and Path 2 text agree with how the sit-rep labels them, and list the choice for veto; answer the `adapter --project` note in one sentence.
+- [ ] Step 6: allow `unchecked` for the combined line while its cell is empty; leave the cell truly empty.
+- [ ] Step 2: fill the cell in the repository form if the tracking issue is not in this repository.
+- [ ] End the acceptance case's first sentence before the quote that contains "...", and check `acceptance_first` in verification.
