@@ -107,8 +107,8 @@ root and `.agent/knowledge/`).
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
 healthy and the right direction mean and that it is known whether a change helped). Both are narrower
-now (#386), neither is closed. The Direction section says what must be true for one acceptance case
-(ADR-0016's), not what healthy means for the workspace in general; the sit-rep's Problems section (dates and
+now (#386), neither is closed. The Direction section says what must be true for one acceptance case,
+not what healthy means for the workspace in general; the sit-rep's Problems section (dates and
 work since for the audit, research and the design document, judged each run with no stored threshold)
 is a first form of health signals. The run record counts lines true from
 run to run, which shows net change only (one line going true while another goes false reads as no
@@ -822,6 +822,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after an existing branch's parent-branch fetch was made to warn when it times out; no statement changes | #323 | 876 |
 | 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after the named-branch lookup was redesigned (an explicit refspec, the outcome set present / absent / unknown, `--allow-unverified-branch`); no statement changes | #323 | 877 |
 | 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after review fixes to the named-branch lookup (a branch on origin gets its own upstream settings, not a fetch refspec; a skill branch is not looked up; the project path warns on an existing branch's parent); no statement changes | #323 | 878 |
+| 2026-11-10 | Documentation layers | The roadmap's acceptance case is no longer ADR-0016's (met 2026-11-09): the sentence on what the Direction section says drops "(ADR-0016's)" and keeps "one acceptance case", now project11 on a second machine against ROS 2 Rolling | #432 | 869 |
 
 ## Glossary
 
