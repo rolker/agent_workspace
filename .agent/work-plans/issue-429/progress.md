@@ -587,3 +587,29 @@ Outside reviewers:
 
 ### Not done
 - `review_progress.sh persist --strict` still calls `realpath -m` to compare the resolved directory (there before this branch). Where it is missing, the comparison fails and persist refuses (exit 4), so it fails closed. Left as is.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 14:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a95c639566387c1ba, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `ff82c5a1`
+**Addressed**: Local Review (Pre-Push) at `e8205e67` (2026-11-10 13:24 -05:00)
+**Commits**: 1aa504f7, ff82c5a1
+
+Merge from main landed as `1aa504f7` (`git merge main`, no rebase). It brings in pull request 417 at `93c5e99c`. Two files conflicted:
+- `.agent/scripts/tests/test_dispatch_phase.sh`: six sandbox copy lists conflicted. Each one keeps both sides' helpers: main's `_resolve_default_branch.sh` and this branch's `_resolve_work_plans_dir.sh`. No cases or helper names collided.
+- `docs/design.md`: the conflicts were three hunks, and this branch's text wins in all three: the inventory rows for `merge_pr.sh` and `dispatch_phase.sh`, the Records bullet, and mechanism 1. Main's `worktree_create.sh` row and main's `gh_create_pr.sh` citation (125-152) are kept; this branch does not change either script. The `merge_pr.sh` citations are re-derived from the merged file, since both sides moved its lines:
+  - the inventory row is now 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748;
+  - the Records bullet cites 839, 893, 287, 577, 694, 721, 858, 966 and 979;
+  - mechanism 1 cites 689-710 and 822-903.
+  The `dispatch_phase.sh`, `review_progress.sh` and `progress_append.sh` citations were re-checked and are unchanged. Main's three #323 change-log rows auto-merged, so all rows are dated 2026-11-10. This branch's row now gives 896 lines.
+
+Auto-merged files checked together. `merge_pr.sh` carries main's review hold and this branch's records-gate lookup (`records_path "$_gate_cand" "$_gate_wt"`, lines 701-708). `test_merge_pr.sh` still copies the resolver.
+
+The merge broke one fixture, fixed in `ff82c5a1`. Main's `worktree_create.sh` now asks origin whether `feature/issue-N` exists before starting the branch, and refuses when origin cannot answer (issue 323). In `test_package_issue_loop.sh`, the single-repository project fixture had an origin URL with nothing behind it. So its worktree was not created, and 6 checks failed. The fixture now gets a bare remote served like pkg_a and pkg_b. After the fix the suite is 148 passed, 0 failed. No script was changed.
+
+Checks:
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0, including the script-suite hook (every suite) and shellcheck.
+- Run on their own after the merge: test_dispatch_phase 140/0, test_package_issue_loop 148/0, test_merge_pr 91/0, test_merge_pr_gate 121/0.
