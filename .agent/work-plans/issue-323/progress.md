@@ -721,3 +721,53 @@ Cross-model:
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)` with no SKIP on ae50156c's tree: exit 0, `validate-script-tests` Passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-10 12:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #417 at `5e526275`
+**Depth**: Deep (reason: the whole-PR diff still holds the enforcement script merge_pr.sh, 3673+/409- over 22 files; fix-round rule, classified on the whole diff)
+**Round**: 4 in PR mode (three earlier complete `## Local Review` entries, no restart checkpoint). The round-3 convergence exception applies only when the handoff says "no cross-model reviewers"; this handoff does not, so the fix-round rule applied and cross-model ran. Advisory ship check (`review_progress.sh verdict --must-fix 2 --round 4 --prev-must-fix 2 --mechanical`): recommended — 2 mechanical must-fix, not rising; fix and ship rather than another full round.
+**Must-fix**: 2 | **Suggestions**: 5
+
+Scope: the fix diff since `a378503a` (5990ef1f, 065d6639, the progress commits) and the merge from main (ae50156c).
+
+Verified:
+- Must-fix 1 of the 11:41 review is resolved. Origin's fetch refspecs are left unchanged. I reproduced this myself through `_wt_add_repo` in a `--single-branch` clone and in a `--depth 1` clone:
+  - The refspec is unchanged.
+  - `git pull --ff-only` in the worktree reaches origin's head, and `git push` works.
+  - Once origin deletes the branch, a plain `git fetch` exits 0 both in the clone and in the worktree that is on the branch.
+  - The suite's `check_tracks` also asserts that the refspec is unchanged.
+- Must-fix 2 of the 11:41 review is resolved. The three new test_ros2_colcon.sh cases call `run_worktree_create_strict`, which passes no `--allow-unverified-branch`. Each asserts exit 1, the whole stop message built by `lookup_stop_message`, and no aggregate directory or branch left. The second-repo case asserts the rollback line and that pkg_a's worktree and branch are removed.
+- Suites, run by me at 5e526275, all with 0 failures: test_worktree_create.sh 54, test_ros2_colcon.sh 218, test_project_registry.sh 281. Shellcheck --severity=warning (the .venv binary) is clean on the 6 changed scripts.
+- The merge resolution is right. `git show --remerge-diff ae50156c` touches only the design.md change log, and both sides' rows are kept. origin/main is an ancestor of HEAD.
+- run_script_tests.sh cites `worktree_create.sh:1068,1109`, and both lines are correct. No workspace script reads `@{u}`.
+
+The fix agent's two "not done" items:
+- **`@{upstream}` does not resolve in a narrowed clone.** This is an acceptable limit, not a defect:
+  - pull, push and fetch all work, so the only loss is the ahead/behind count.
+  - The only alternative is the refspec change this round removed.
+  - It is documented at `wt_set_upstream`, but WORKTREE_GUIDE does not mention it (suggestion 4).
+- **A sub-issue branch started from origin/<parent> gets no upstream in a narrowed clone.** Not a defect:
+  - In a full clone, autoSetupMerge makes the sub-issue branch track origin/<parent>. That upstream is the wrong one: pull would bring in the parent, and the default `simple` push refuses it.
+  - `worktree_create.sh:1046` sets the right upstream with `push -u`.
+  - This behaviour predates this pull request (main:844).
+
+Both must-fixes are mechanical edges of a right contract. Neither is a sign the mechanism is wrong. Both sit in lines this round rewrote, so fixing them here is cheaper than opening an issue.
+
+Cross-model:
+- codex ran and reported 1 finding, the concurrency race below. It is downgraded to suggestion 1 because main's project rollback already has the same race.
+- gemini failed: agy returned an empty response after a RunCommand tool was auto-denied in headless mode.
+- Copilot did not review 5e526275 (out of quota).
+
+### Findings
+- [ ] (must-fix) Project path, new branch with `--parent-issue`: after `_wt_add_repo` has asked origin about the parent (`WT_ADD_PARENT_LOOKED_UP=true`), the loop decides again from a possibly stale `refs/remotes/origin/<parent>`. When origin has deleted the parent, `_wt_add_repo` warns "origin has no branch 'feature/issue-9'; starting … from the default branch", and then `--plan-file` runs `gh pr create … --base feature/issue-9`. The same happens with `--allow-unverified-branch` when the outcome is "unknown". The workspace path is right: no `--base`. Reproduced with gh stubs, both paths. This predates the pull request, but it is in lines this diff rewrote, and the new comment says the lookup's answer is used. Fix: when looked up, `PARENT_BRANCH_FOUND` is true only if `[ "$WT_FETCH_OUTCOME" = present ]`. Add a test, since the looked-up branch has none (Claude adversarial) — `.agent/scripts/worktree_create.sh:793`
+- [ ] (must-fix) 5990ef1f weakened a test without cause. "owning branch reported" now asserts `feature/pkg_a-issue-444`, the same string as the sibling assertion on the next line, so the owning repo's branch is no longer checked. pkg_a's origin still names owner/pkg_a, and the JSON reports `feature/issue-444,feature/pkg_a-issue-444`. The original assertion passes against the current scripts. Restore it (Claude adversarial; confirmed by probe) — `.agent/scripts/tests/test_ros2_colcon.sh:557`
+- [ ] (suggestion) The failed-checkout cleanup removes a worktree and branch without proving this run made them. If two runs create the same issue's worktree at once, the loser's failed `worktree add -b` can `worktree remove --force` the winner's worktree and delete its branch. main's project rollback (`rm -rf "$WORKTREE_DIR"`, the same `worktree remove --force`) already has this race. The right fix is a per-issue lock across worktree_create.sh: open a follow-up issue, not another round here (codex) — `.agent/scripts/_worktree_helpers.sh:790`, `.agent/scripts/worktree_create.sh:902`
+- [ ] (suggestion) Workspace-path cleanup is not at parity with `_wt_add_repo`. Its `git branch -D` fails silently: `_wt_add_repo` warns and prints the command. Only the origin checkout cleans up: the parent and default `worktree add -b` calls do not (accurate as WORKTREE_GUIDE words it) (Claude adversarial) — `.agent/scripts/worktree_create.sh:905,911-933`
+- [ ] (suggestion) `check_existing_branch_parent` takes a stale `refs/remotes/origin/<parent>` as "on origin" without asking origin, so the draft PR can target a deleted parent. This predates the pull request, but it now also runs on the project path. Its comment says "found locally or on origin". Follow-up issue (Claude adversarial) — `.agent/scripts/worktree_create.sh:76-81`
+- [ ] (suggestion) WORKTREE_GUIDE says a branch in a `--single-branch`/`--depth` clone gets "its upstream set to it". Add the limit stated at `wt_set_upstream`: `@{u}` does not resolve there, so `git status` shows no ahead/behind count — `.agent/WORKTREE_GUIDE.md:162`
+- [ ] (suggestion) The design.md inventory row for `worktree_create.sh` (`301-313, …, 1103-1109`) is off by about 23 lines. 301 is skill-ID generation; the `--type` derivation is at 324. main's values (248-260 against main's 271) were already off by the same amount, and each refresh kept the offset. Since the change-log rows say "refreshed", either correct the row or say it is a dated probe. Follow-up, since it predates the pull request — `docs/design.md:372`
