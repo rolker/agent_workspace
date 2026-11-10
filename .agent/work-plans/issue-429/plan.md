@@ -72,8 +72,9 @@ rests on two things: always work in A, and refuse B and C.
 In one place: **`dispatch_phase.sh`'s `resolve_worktree`**. It maps a worktree that has a `.worktree-repos`
 manifest to the checkout of the repository that owns the issue. The manifest's entry recorded on
 `feature/issue-N` is that checkout: the adapter's owning rule, ros2_colcon `adapter.sh` 769-773. A
-single-entry manifest gives its one entry, and `.` means the worktree itself, which is what single-repo
-project worktrees write. Any other case refuses, naming the entries. Everything downstream follows from
+lone `.` entry (a legacy one-entry manifest) means the worktree itself. Single-repo project worktrees
+write no manifest at all (`worktree_create.sh` skips a lone `.` entry), and neither do workspace
+worktrees, so the rule leaves both as they are. Any other case refuses, naming the entries. Everything downstream follows from
 `wt` without further change: `worktree=`, the exit contract, the implement task line, `next`'s and
 `check-exit`'s timeline, the round branch and `sha=`.
 
@@ -249,8 +250,11 @@ is the workspace main checkout).
 
 ## Serves
 
-Workspace goal "A project can be worked from its own root". Design: `docs/design.md#worktrees`
-(Records) and `docs/design.md#review-loop-and-timeline` (pull request 2: `docs/design.md#merge-gate`).
+Workspace goal `README.md#easy-to-use` ("start an agent in the project's own directory and the
+workspace is there": an issue of a package repository is driven from the project's root like any
+other). Decision 1 (records in the package repository) also touches `README.md#light-touch-on-projects`,
+which the veto list covers. Design: `docs/design.md#worktrees` (Records) and
+`docs/design.md#review-loop-and-timeline` (pull request 2: `docs/design.md#merge-gate`).
 
 ## Design Picture
 
@@ -316,8 +320,10 @@ Not tested, and why:
 - The Agent tool's sub-agent working directory, and how phases follow the handoff: no Agent tool in a
   sandbox.
 - How phases read skill prose: model behaviour, not script behaviour.
-- Real `gh` choosing a default repository when a checkout has an `upstream` remote: the `gh` stub
-  modelled only the single-origin rule.
+- Real `gh` choosing a default repository when a checkout has an `upstream` remote. Real `gh`
+  prefers `upstream` over `origin` (plan review, 2026-11-10), so `where` and the handoff check `gh repo
+  view` against the issue's repository in the owning checkout and refuse a mismatch; the suite's stub
+  ranks remotes the same way.
 - `cross_model_review.sh` end to end: it needs external reviewer tools; only its resolver call was
   covered.
 - `start-task` as a slash command: Claude Code only. Its scripts, `worktree_create.sh` and
