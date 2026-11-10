@@ -75,6 +75,99 @@ newest_branch() {  # <repo> <ref pattern>
     git -C "$1" for-each-ref --sort=-creatordate --format='%(refname:short)' "$2" | head -n1
 }
 
+# A git test double first on PATH: it passes everything through to the
+# real git except what the STUB_* variables ask for. STUB_LOG records each
+# fetch's last argument (its refspec); STUB_FETCH=fail fails every fetch
+# fast, STUB_FETCH=noop exits 0 having fetched nothing; STUB_LS_HANG,
+# STUB_LS_OK and STUB_LS_FAIL make `ls-remote` for that ref hang, say
+# found, or fail fast.
+REAL_GIT="$(command -v git)"
+GITSTUB="$SANDBOX/gitstub"
+mkdir -p "$GITSTUB"
+cat > "$GITSTUB/git" <<STUB_EOF
+#!/usr/bin/env bash
+args=("\$@"); i=0
+while [ "\$i" -lt "\${#args[@]}" ]; do
+    case "\${args[\$i]}" in -C|-c) i=\$((i + 2)) ;; *) break ;; esac
+done
+sub="\${args[\$i]:-}"; last="\${args[\${#args[@]}-1]}"
+if [ "\$sub" = fetch ]; then
+    [ -n "\${STUB_LOG:-}" ] && echo "fetch \$last" >> "\$STUB_LOG"
+    case "\${STUB_FETCH:-}" in
+        fail) echo "fatal: stub fetch failed" >&2; exit 128 ;;
+        noop) exit 0 ;;
+    esac
+elif [ "\$sub" = ls-remote ]; then
+    [ "\$last" = "\${STUB_LS_HANG:-}" ] && exec sleep 30
+    [ "\$last" = "\${STUB_LS_OK:-}" ] && exit 0
+    if [ "\$last" = "\${STUB_LS_FAIL:-}" ]; then echo "fatal: stub ls-remote failed" >&2; exit 128; fi
+fi
+exec "$REAL_GIT" "\$@"
+STUB_EOF
+chmod +x "$GITSTUB/git"
+
+run_stubbed() {  # [VAR=value...] <worktree_create.sh args...>; from $FEAT, git stubbed; sets OUT, RC
+    local envs=()
+    while [[ "${1:-}" == [A-Z]*=* ]]; do envs+=("$1"); shift; done
+    OUT="$(cd "$FEAT" && env PATH="$GITSTUB:$SB/stubbin:$PATH" ${envs[@]+"${envs[@]}"} "$FEAT_SCRIPT" "$@" 2>&1)"
+    RC=$?
+}
+
+add_repo() {  # [VAR=value...] <repo> <dest> <branch> [<parent>]; sets OUT (ADDED or REFUSED), RC
+    local envs=()
+    while [[ "${1:-}" == [A-Z]*=* ]]; do envs+=("$1"); shift; done
+    OUT="$(env PATH="$GITSTUB:$PATH" ${envs[@]+"${envs[@]}"} bash -c '
+        set -euo pipefail
+        source "$1/.agent/scripts/_worktree_helpers.sh"
+        # As worktree_create.sh calls it: inside an `if`, so set -e is off.
+        if _wt_add_repo "$2" "$3" "$4" "${5:-}"; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$@" 2>&1)"
+    RC=$?
+}
+
+has_branch() {  # <repo> <branch>
+    git -C "$1" rev-parse --verify --quiet "refs/heads/$2" >/dev/null
+}
+
+# The whole stop message each new-branch caller prints when origin cannot
+# tell (wt_lookup_for_new_branch): for the branch itself, and for a
+# sub-issue branch whose parent it cannot tell about.
+msg_target() {  # <repo> <branch> <reason> [<limit>]
+    printf "ERROR: cannot tell whether origin has '%s' (in %s): %s; a new '%s' is not started, since it would diverge from one origin may have. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now %ss), or pass --allow-unverified-branch to start it anyway." \
+        "$2" "$1" "$3" "$2" "${4:-60}"
+}
+msg_parent() {  # <repo> <parent> <new> <reason> [<limit>]
+    printf "ERROR: cannot tell whether origin has the parent branch '%s' of '%s' (in %s): %s; '%s' is not started from the default branch in its place, since origin may have the parent. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now %ss), or pass --allow-unverified-branch to start it anyway." \
+        "$2" "$3" "$1" "$4" "$3" "${5:-60}"
+}
+# The existing-branch caller's warning for a parent origin cannot tell about.
+msg_existing_unknown() {  # <parent> <reason>
+    printf "WARNING: cannot tell whether origin has parent branch '%s': %s. A draft PR that --plan-file opens here targets the default branch; if origin has '%s', retarget it with: gh pr edit --base %s" \
+        "$1" "$2" "$1" "$1"
+}
+
+# A stop: the exit status, the whole message, and no branch made.
+check_stop() {  # <label> <want-rc: nonzero|0> <repo> <branch> <message> [<dest>]
+    local label="$1" want="$2" repo="$3" br="$4" msg="$5" dest="${6:-}"
+    if [[ "$OUT" == *"$msg"* ]] \
+       && { [[ "$want" = nonzero && "$RC" -ne 0 ]] || [[ "$want" = refused && "$RC" -eq 0 && "$OUT" == *"REFUSED"* ]]; } \
+       && ! has_branch "$repo" "$br" && { [[ -z "$dest" ]] || [[ ! -e "$dest" ]]; }; then
+        pass "$label"
+    else
+        fail "$label: rc=$RC branch=$(has_branch "$repo" "$br" && echo made || echo none): want [$msg] in: ${OUT:0:800}"
+    fi
+}
+
+# A branch tracking origin/<branch> at <sha>.
+check_tracks() {  # <label> <repo> <branch> <sha>
+    local label="$1" repo="$2" br="$3" want="$4" up
+    up="$(git -C "$repo" rev-parse --abbrev-ref "$br@{upstream}" 2>/dev/null)"
+    if [[ "$(git -C "$repo" rev-parse --verify --quiet "refs/heads/$br" 2>/dev/null)" = "$want" && "$up" = "origin/$br" ]]; then
+        pass "$label"
+    else
+        fail "$label: rc=$RC $br at $(git -C "$repo" rev-parse --short --verify --quiet "refs/heads/$br" || echo none), upstream ${up:-none}, want origin's $want: ${OUT:0:600}"
+    fi
+}
+
 # --------------------------------------------------------------- sandbox ---
 SB="$SANDBOX/ws"
 make_ws_repo "$SB"
@@ -144,24 +237,129 @@ fi
 
 echo
 echo "=== A missing parent branch falls back to the default branch, not HEAD ==="
-run_create "$FEAT" "$FEAT_SCRIPT" --issue 10 --type workspace --parent-issue 404
-if [[ "$OUT" == *"Parent branch 'feature/issue-404' not found"* ]]; then
-    pass "missing parent: warned"
+# Through the git double with a fetch log: the parent is asked about once,
+# not a second time by the existing-branch block.
+FETCH_LOG="$SANDBOX/fetch-log-10"
+run_stubbed STUB_LOG="$FETCH_LOG" --issue 10 --type workspace --parent-issue 404
+if [[ "$OUT" == *"⚠️  Parent branch 'feature/issue-404' not found (origin has no branch 'feature/issue-404'); falling back to the default branch"* ]]; then
+    pass "missing parent: warned with the reason"
 else
-    fail "missing parent: no warning: ${OUT:0:300}"
+    fail "missing parent: no warning: ${OUT:0:400}"
 fi
 check_base "--parent-issue 404" "$(git -C "$SB" rev-parse --verify --quiet feature/issue-10 >/dev/null && echo feature/issue-10)" \
     "$ORIGIN_MAIN" "origin/main"
+PARENT_FETCHES="$(grep -cE '^fetch (\+refs/heads/)?feature/issue-404(:|$)' "$FETCH_LOG" 2>/dev/null)"
+if [[ "$PARENT_FETCHES" = 1 ]]; then
+    pass "missing parent: origin asked about the parent once"
+else
+    fail "missing parent: origin asked about the parent ${PARENT_FETCHES:-0} times: $(cat "$FETCH_LOG" 2>/dev/null)"
+fi
+# _wt_add_repo, the package-worktree path, does the same.
+add_repo "$SB" "$SANDBOX/pkg-wt-25" feature/issue-25 feature/issue-404
+if [[ "$OUT" == *"ADDED"* && "$OUT" == *"WARNING: parent branch 'feature/issue-404' is not in $SB (origin has no branch 'feature/issue-404'); starting 'feature/issue-25' from the default branch"* \
+      && "$(git -C "$SB" rev-parse --verify --quiet feature/issue-25)" = "$ORIGIN_MAIN" ]]; then
+    pass "missing parent, _wt_add_repo: warned with the reason, started from origin/main"
+else
+    fail "missing parent, _wt_add_repo: rc=$RC: ${OUT:0:400}"
+fi
+# An existing branch whose parent is not on origin: only the draft PR's
+# base depends on it, so creation goes on, with a warning.
+gitq -C "$SB" branch feature/issue-33 "$LOCAL_MAIN"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 33 --type workspace --parent-issue 408
+if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: parent branch 'feature/issue-408' is neither local nor on origin (origin has no branch 'feature/issue-408'); a draft PR that --plan-file opens here targets the default branch. Once 'feature/issue-408' is on origin, retarget it with: gh pr edit --base feature/issue-408"* ]]; then
+    pass "existing branch, parent not on origin: created, the draft PR base warned with the reason"
+else
+    fail "existing branch, parent not on origin: rc=$RC: ${OUT:0:600}"
+fi
 
 echo
-echo "=== Origin unreachable: the local default, with a warning ==="
+echo "=== A branch only on origin is checked out, also in a narrowed clone ==="
+# Branches pushed to origin from the scratch clone, never fetched here.
+for b in feature/issue-20 feature/issue-21; do
+    gitq -C "$SANDBOX/scratch" checkout -q -b "$b" main
+    gitq -C "$SANDBOX/scratch" commit -q --allow-empty -m "$b on origin"
+    gitq -C "$SANDBOX/scratch" push -q origin "$b"
+done
+gitq -C "$SANDBOX/scratch" checkout -q main
+REMOTE_20="$(git -C "$SANDBOX/scratch" rev-parse feature/issue-20)"
+REMOTE_21="$(git -C "$SANDBOX/scratch" rev-parse feature/issue-21)"
+# The fetch refspec a --single-branch clone has: a plain `git fetch origin
+# <b>` would write FETCH_HEAD only.
+gitq -C "$SB" config remote.origin.fetch "+refs/heads/main:refs/remotes/origin/main"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 20 --type workspace
+check_tracks "narrowed refspec, worktree_create.sh: feature/issue-20 tracks origin's" "$SB" feature/issue-20 "$REMOTE_20"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 22 --type workspace --parent-issue 21
+if [[ "$RC" -eq 0 && "$(git -C "$SB" rev-parse --verify --quiet feature/issue-22)" = "$REMOTE_21" ]]; then
+    pass "narrowed refspec, worktree_create.sh: feature/issue-22 starts at origin's parent feature/issue-21"
+else
+    fail "narrowed refspec, parent only on origin: rc=$RC: ${OUT:0:400}"
+fi
+gitq -C "$SB" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+# _wt_add_repo in a --single-branch clone and in a --depth clone.
+gitq clone -q --single-branch "file://$SANDBOX/origin.git" "$SANDBOX/clone-single"
+gitq clone -q --depth 1 "file://$SANDBOX/origin.git" "$SANDBOX/clone-depth"
+for kind in single depth; do
+    add_repo "$SANDBOX/clone-$kind" "$SANDBOX/clone-$kind-wt" feature/issue-20
+    check_tracks "--$kind clone, _wt_add_repo: feature/issue-20 tracks origin's" "$SANDBOX/clone-$kind" feature/issue-20 "$REMOTE_20"
+done
+
+echo
+echo "=== A fetch that fails fast: origin is asked, and any doubt stops ==="
+# The git double fails every fetch; ls-remote answers as the case needs.
+run_stubbed STUB_FETCH=fail STUB_LS_OK=refs/heads/feature/issue-28 --issue 28 --type workspace
+check_stop "fetch failed, origin has the branch: worktree_create.sh stops" nonzero "$SB" feature/issue-28 \
+    "$(msg_target "$FEAT" feature/issue-28 "origin has 'feature/issue-28', but fetching it failed (fatal: stub fetch failed)")"
+add_repo STUB_FETCH=fail STUB_LS_OK=refs/heads/feature/issue-410 "$SB" "$SANDBOX/pkg-wt-29" feature/issue-29 feature/issue-410
+check_stop "fetch failed, origin has the parent: _wt_add_repo refuses, naming the sub-issue branch" refused "$SB" feature/issue-29 \
+    "$(msg_parent "$SB" feature/issue-410 feature/issue-29 "origin has 'feature/issue-410', but fetching it failed (fatal: stub fetch failed)")" \
+    "$SANDBOX/pkg-wt-29"
+run_stubbed STUB_FETCH=noop --issue 34 --type workspace
+check_stop "fetch exited 0 without the ref: worktree_create.sh stops" nonzero "$SB" feature/issue-34 \
+    "$(msg_target "$FEAT" feature/issue-34 "the fetch exited 0 but wrote no origin/feature/issue-34")"
+# ls-remote fails too, and an earlier fetch left origin/<parent>.
+gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-405 "$LOCAL_MAIN"
+run_stubbed STUB_FETCH=fail STUB_LS_FAIL=refs/heads/feature/issue-405 --issue 16 --type workspace --parent-issue 405
+check_stop "origin unasked, it had the parent: worktree_create.sh stops, naming the sub-issue branch" nonzero "$SB" feature/issue-16 \
+    "$(msg_parent "$FEAT" feature/issue-405 feature/issue-16 "fetching 'feature/issue-405' failed (fatal: stub fetch failed), and origin could not be asked; it had 'feature/issue-405' at the last fetch (origin/feature/issue-405)")"
+add_repo STUB_FETCH=fail STUB_LS_FAIL=refs/heads/feature/issue-405 "$SB" "$SANDBOX/pkg-wt-17" feature/issue-17 feature/issue-405
+check_stop "origin unasked, it had the parent: _wt_add_repo refuses, naming the sub-issue branch" refused "$SB" feature/issue-17 \
+    "$(msg_parent "$SB" feature/issue-405 feature/issue-17 "fetching 'feature/issue-405' failed (fatal: stub fetch failed), and origin could not be asked; it had 'feature/issue-405' at the last fetch (origin/feature/issue-405)")" \
+    "$SANDBOX/pkg-wt-17"
+gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-405
+if command -v timeout >/dev/null 2>&1; then
+    run_stubbed STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-24 WT_FETCH_TIMEOUT=2 --issue 24 --type workspace
+    check_stop "fetch failed, then ls-remote timed out: worktree_create.sh stops" nonzero "$SB" feature/issue-24 \
+        "$(msg_target "$FEAT" feature/issue-24 "fetching 'feature/issue-24' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
+    add_repo STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-26 WT_FETCH_TIMEOUT=2 "$SB" "$SANDBOX/pkg-wt-26" feature/issue-26
+    check_stop "fetch failed, then ls-remote timed out: _wt_add_repo refuses" refused "$SB" feature/issue-26 \
+        "$(msg_target "$SB" feature/issue-26 "fetching 'feature/issue-26' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)" \
+        "$SANDBOX/pkg-wt-26"
+    run_stubbed STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-409 WT_FETCH_TIMEOUT=2 --issue 27 --type workspace --parent-issue 409
+    check_stop "parent fetch failed, then ls-remote timed out: worktree_create.sh stops" nonzero "$SB" feature/issue-27 \
+        "$(msg_parent "$FEAT" feature/issue-409 feature/issue-27 "fetching 'feature/issue-409' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
+else
+    echo "  SKIP: ls-remote timeouts (no timeout command on this machine)"
+fi
+
+echo
+echo "=== Origin unreachable: stop, unless --allow-unverified-branch ==="
 gitq -C "$SB" remote set-url origin "file:///nonexistent/origin.git"
 gitq -C "$SB" update-ref refs/remotes/origin/main "$LOCAL_MAIN"
+GIT_LINE="$(git -C "$SB" fetch --quiet origin 2>&1 | head -n1)"
+UNREACH_7="fetching 'feature/issue-7' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-7'"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 7 --type workspace
-if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: could not fetch 'main' from origin"*"local 'main'"* ]]; then
-    pass "unreachable origin: created, warning names the local fallback"
+check_stop "unreachable origin, no tracking ref: worktree_create.sh stops" nonzero "$SB" feature/issue-7 \
+    "$(msg_target "$FEAT" feature/issue-7 "$UNREACH_7")"
+add_repo "$SB" "$SANDBOX/pkg-wt-31" feature/issue-31
+check_stop "unreachable origin, no tracking ref: _wt_add_repo refuses" refused "$SB" feature/issue-31 \
+    "$(msg_target "$SB" feature/issue-31 "fetching 'feature/issue-31' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-31'")" \
+    "$SANDBOX/pkg-wt-31"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 7 --type workspace --allow-unverified-branch
+if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: cannot tell whether origin has 'feature/issue-7' (in $FEAT): $UNREACH_7. --allow-unverified-branch was given, so 'feature/issue-7' is started afresh; if origin has it, its first push is rejected."* \
+      && "$OUT" == *"WARNING: could not fetch 'main' from origin"*"local 'main'"* ]]; then
+    pass "unreachable origin, --allow-unverified-branch: created, both warnings name their reason"
 else
-    fail "unreachable origin: rc=$RC: ${OUT:0:400}"
+    fail "unreachable origin, --allow-unverified-branch: rc=$RC: ${OUT:0:600}"
 fi
 check_base "unreachable origin" "$(git -C "$SB" rev-parse --verify --quiet feature/issue-7 >/dev/null && echo feature/issue-7)" \
     "$LOCAL_MAIN" "local main"
@@ -170,42 +368,28 @@ if [[ "$OUT" == *"WARNING: could not fetch 'main' from origin in "*"(fatal: "*"d
 else
     fail "unreachable origin: the warning does not name git's error: ${OUT:0:400}"
 fi
+add_repo WT_ALLOW_UNVERIFIED_BRANCH=true "$SB" "$SANDBOX/pkg-wt-35" feature/issue-35
+if [[ "$OUT" == *"ADDED"* && "$OUT" == *"WARNING: cannot tell whether origin has 'feature/issue-35' (in $SB): fetching 'feature/issue-35' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-35'. --allow-unverified-branch was given, so 'feature/issue-35' is started afresh; if origin has it, its first push is rejected."* ]] \
+   && has_branch "$SB" feature/issue-35; then
+    pass "unreachable origin, opt-out, _wt_add_repo: created with the warning"
+else
+    fail "unreachable origin, opt-out, _wt_add_repo: rc=$RC: ${OUT:0:600}"
+fi
 # origin is unreachable, but an earlier fetch left origin/feature/issue-15:
 # the branch exists there, so creation stops rather than start a new one.
 gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-15 "$LOCAL_MAIN"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 15 --type workspace
-if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not fetch 'feature/issue-15' from origin"*"as of the last fetch (origin/feature/issue-15)"* ]] \
-   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-15 >/dev/null; then
-    pass "unreachable origin that had the branch: stops, no new branch started"
-else
-    fail "unreachable origin that had the branch: rc=$RC: ${OUT:0:400}"
-fi
+check_stop "unreachable origin that had the branch: stops, no new branch started" nonzero "$SB" feature/issue-15 \
+    "$(msg_target "$FEAT" feature/issue-15 "fetching 'feature/issue-15' failed ($GIT_LINE), and origin could not be asked; it had 'feature/issue-15' at the last fetch (origin/feature/issue-15)")"
 gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-15
-# The same for a parent branch: origin/feature/issue-405 from an earlier
-# fetch says origin has the parent, so neither worktree_create.sh nor
-# _wt_add_repo starts the sub-issue branch from the default instead.
-gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-405 "$LOCAL_MAIN"
-run_create "$FEAT" "$FEAT_SCRIPT" --issue 16 --type workspace --parent-issue 405
-if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: could not fetch 'feature/issue-405' from origin"*"as of the last fetch (origin/feature/issue-405)"* \
-      && "$OUT" != *"falling back to the default branch"* ]] \
-   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-16 >/dev/null; then
-    pass "unreachable origin that had the parent: worktree_create.sh stops, no branch started"
+# An existing branch whose parent origin cannot be asked about: warned.
+gitq -C "$SB" branch feature/issue-32 "$LOCAL_MAIN"
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 32 --type workspace --parent-issue 407
+if [[ "$RC" -eq 0 && "$OUT" == *"$(msg_existing_unknown feature/issue-407 "fetching 'feature/issue-407' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-407'")"* ]]; then
+    pass "existing branch, unreachable origin: created, the draft PR base warned with the reason"
 else
-    fail "unreachable origin that had the parent: rc=$RC: ${OUT:0:400}"
+    fail "existing branch, unreachable origin: rc=$RC: ${OUT:0:600}"
 fi
-OUT="$(bash -c '
-    set -euo pipefail
-    source "$1/.agent/scripts/_worktree_helpers.sh"
-    if _wt_add_repo "$1" "$2" feature/issue-17 feature/issue-405; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$SANDBOX/pkg-wt-17" 2>&1)"
-RC=$?
-if [[ "$RC" -eq 0 && "$OUT" == *"REFUSED"* && "$OUT" == *"ERROR: could not fetch 'feature/issue-405' from origin"* \
-      && "$OUT" != *"starting 'feature/issue-17' from the default branch"* ]] \
-   && ! git -C "$SB" rev-parse --verify --quiet refs/heads/feature/issue-17 >/dev/null && [[ ! -e "$SANDBOX/pkg-wt-17" ]]; then
-    pass "unreachable origin that had the parent: _wt_add_repo refuses, no branch or worktree"
-else
-    fail "unreachable origin that had the parent, _wt_add_repo: rc=$RC: ${OUT:0:400}"
-fi
-gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-405
 
 echo
 echo "=== A fetch that would prompt or hang is bounded ==="
@@ -253,11 +437,12 @@ if command -v timeout >/dev/null 2>&1; then
         "$FEAT_SCRIPT" --issue 13 --type workspace 2>&1)"
     RC=$?
     elapsed=$((SECONDS - started))
-    if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: fetching 'feature/issue-13' from origin in "*"timed out after 2s"*"not started in its place"* \
-          && "$elapsed" -lt 20 ]] && ! git -C "$SB" rev-parse --verify --quiet feature/issue-13 >/dev/null; then
-        pass "hanging fetch: worktree_create.sh's branch fetch is bounded (${elapsed}s) and stops, no branch started"
+    check_stop "hanging fetch: worktree_create.sh stops, no branch started" nonzero "$SB" feature/issue-13 \
+        "$(msg_target "$FEAT" feature/issue-13 "fetching 'feature/issue-13' timed out after 2s" 2)"
+    if [[ "$elapsed" -lt 20 ]]; then
+        pass "hanging fetch: worktree_create.sh's branch fetch is bounded (${elapsed}s)"
     else
-        fail "hanging fetch, worktree_create.sh end to end: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
+        fail "hanging fetch: worktree_create.sh took ${elapsed}s"
     fi
     if [[ "$(cat "$PROMPT_SEEN" 2>/dev/null)" = "0" ]]; then
         pass "hanging fetch: worktree_create.sh's fetch ran with GIT_TERMINAL_PROMPT=0"
@@ -265,19 +450,14 @@ if command -v timeout >/dev/null 2>&1; then
         fail "hanging fetch: worktree_create.sh's fetch GIT_TERMINAL_PROMPT was '$(cat "$PROMPT_SEEN" 2>/dev/null)'"
     fi
     started=$SECONDS
-    OUT="$(GIT_SSH_COMMAND="$SSH_SHIM" WT_FETCH_TIMEOUT=2 bash -c '
-        set -euo pipefail
-        source "$1/.agent/scripts/_worktree_helpers.sh"
-        # As worktree_create.sh calls it: inside an `if`, so set -e is off.
-        if _wt_add_repo "$1" "$2" feature/issue-14 feature/issue-404; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$SANDBOX/pkg-wt-14" 2>&1)"
-    RC=$?
+    add_repo GIT_SSH_COMMAND="$SSH_SHIM" WT_FETCH_TIMEOUT=2 "$SB" "$SANDBOX/pkg-wt-14" feature/issue-14 feature/issue-404
     elapsed=$((SECONDS - started))
-    if [[ "$RC" -eq 0 && "$OUT" == *"REFUSED"* && "$elapsed" -lt 20 ]] \
-       && [[ "$OUT" == *"ERROR: fetching 'feature/issue-14' from origin in "*"timed out after 2s"* ]] \
-       && ! git -C "$SB" rev-parse --verify --quiet feature/issue-14 >/dev/null && [[ ! -e "$SANDBOX/pkg-wt-14" ]]; then
-        pass "hanging fetch: _wt_add_repo's target fetch is bounded (${elapsed}s) and refuses, no branch or worktree"
+    check_stop "hanging fetch: _wt_add_repo refuses, no branch or worktree" refused "$SB" feature/issue-14 \
+        "$(msg_target "$SB" feature/issue-14 "fetching 'feature/issue-14' timed out after 2s" 2)" "$SANDBOX/pkg-wt-14"
+    if [[ "$elapsed" -lt 20 ]]; then
+        pass "hanging fetch: _wt_add_repo's target fetch is bounded (${elapsed}s)"
     else
-        fail "hanging fetch, _wt_add_repo: rc=$RC elapsed=${elapsed}s: ${OUT:0:600}"
+        fail "hanging fetch: _wt_add_repo took ${elapsed}s"
     fi
     # The issue branch already exists, so the parent only sets the draft
     # PR's base: a parent fetch that timed out is said, not taken in
@@ -288,7 +468,7 @@ if command -v timeout >/dev/null 2>&1; then
         "$FEAT_SCRIPT" --issue 18 --type workspace --parent-issue 406 2>&1)"
     RC=$?
     elapsed=$((SECONDS - started))
-    if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: could not fetch parent branch 'feature/issue-406'"*"gh pr edit --base feature/issue-406"* \
+    if [[ "$RC" -eq 0 && "$OUT" == *"$(msg_existing_unknown feature/issue-406 "fetching 'feature/issue-406' timed out after 2s")"* \
           && "$elapsed" -lt 20 ]]; then
         pass "hanging fetch: an existing branch's parent fetch is bounded (${elapsed}s) and the draft PR base warned"
     else
@@ -298,7 +478,6 @@ if command -v timeout >/dev/null 2>&1; then
 else
     echo "  SKIP: hanging fetch (no timeout command on this machine)"
 fi
-
 echo
 echo "=== No resolvable default: refuse with the set-head hint, never HEAD ==="
 SB2="$SANDBOX/ws2"
