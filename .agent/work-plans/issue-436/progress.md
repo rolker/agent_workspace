@@ -299,3 +299,44 @@ Not done (outside this pull request's scope as written):
 - A ref containing `/` makes `url#ref/path` ambiguous to read (`#feature/x/manifest.yaml`); the commit still names the content.
 - `script_reference.md` row for the new make target: plan puts it in (b).
 - `make generate-skills` not run (its output is gitignored); run it in the main checkout after merge for `/make_install-ros-manifest`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-10 14:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `a456e8ff`
+**Base**: main
+**Depth**: Deep (reason: a CI workflow change, which is Ask-First, and manifest content from untrusted git remotes becoming file paths and generated text)
+**Must-fix**: 4 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix; first round always re-reviews after fixes
+
+Scope: pull request (a) of five (resolver additions in `tools/ros-manifest`, the `install-ros-manifest` make target, one CI job).
+
+Reproduced (scratch scripts in the session scratchpad, worktree code via `PYTHONPATH`):
+- A layer named `../../escaped` writes `escaped.repos` two directories above `--out`, in both layouts. The flat layout on main does the same, so this is not new, but (a) adds the files the adapter will trust. An absolute layer name `<dir>/pwned` writes `<dir>/pwned.repos` anywhere the user can write.
+- A layer named `core\nevil` becomes two lines, `core` and `evil`, in `layers.txt` and `optional_layers.txt`. This passes the adapter's later per-line name check (adapter.sh:91), so a base can mark a leaf's required `core` optional. A layer named `#hidden` is listed but then dropped by any reader that skips `#` lines. With a newline in its name, a repository name leaves the `#` header of the `.repos` file and becomes a YAML key `z`; a layer name with a newline in the `.repos` header makes the file unparseable YAML.
+- The same injection reaches the files through the provenance label. Found by Codex and by the Claude adversarial reviewer, which reproduced it: a file in the base repository named `evil\n- injected.yaml`, reached through `extends.path`, puts an uncommented line into `layers.txt`.
+- Credentials: an `extends` url `https://user:s3cr3t@…`, cloned offline through `insteadOf`, is printed verbatim in `repos/underlay.repos`, `layers.txt` and `optional_layers.txt`. Main printed the cache path there, so this leak is new in this pull request. Codex found it too.
+- Unquoted refs: `ref: 1.10` is written `version: 1.1` (the wrong checkout); a per-distro `3.10` becomes `3.1`; `yes` becomes `true`; `2024-01-01` becomes a YAML date; `2.0` becomes `version: 2.0`, which is right only by luck. Also accepted today: an integer `url` and repository name, and a multi-line `type`.
+- Flat layout unchanged: main's resolver (`git archive main`) and the branch's give identical output on the p11 fixture for jazzy, rolling and humble (7 files each, stderr identical). Explicit `--layout flat` gives the same output too.
+- Provenance: the label is correct for a git base, a local `extends` inside a clone, and a local leaf (path); it is stable across fresh caches and names a new base commit (the branch's tests, run here: 66 passed).
+- Make: from this worktree, `make -n install-ros-manifest` says "Nothing to be done" and `WS_ROOT` resolves to the main checkout's venv. The shared venv's editable install points at `/home/roland/agent_workspace/tools/ros-manifest`.
+- CI: the diff to `.github/workflows/validate.yml` is +8/−0, all in job `validate-adapter-contract`, right after `Checkout code`: `- name: Set up Python` / `uses: actions/setup-python@v5` / `with:` / `python-version: '3.10'` / (blank) / `- name: Install ros-manifest (the resolver the ros2_colcon adapter calls)` / `run: pip install -e tools/ros-manifest` / (blank).
+
+Cross-model: Gemini ran (complete, 1 suggestion: stale files in a reused `--out`). Codex ran (complete, 2 must-fix: credentials in the label, newlines in header values). Claude adversarial ran (fresh subagent, 12 items; its must-fixes on stale files, the cache and the cache key are taken as suggestions below, because plan (b) resolves into a fresh directory and a fresh cache each time and the cache code is unchanged from main).
+
+Governance: ADR-0009 complies (venv; the reason for a make target rather than a `requirements.txt` line is recorded). The CI change is Ask-First: the owner sees the eight lines above at the merge decision. The `script_reference.md` row and the design text move to (b), as the plan says. The `make_*` skills are gitignored (`.gitignore:32`). Plan drift: none material.
+
+### Findings
+- [ ] (must-fix) Names from manifest content are not validated before they become paths and lines. One rule, in `schema.py`, at parse time: layer names `^[A-Za-z0-9_-]+$` (the adapter's rule, adapter.sh:91), repository names `^[A-Za-z0-9_][A-Za-z0-9_.-]*$` (what `_rc_repos_entries` reads, and the checkout path for `vcs import`; no `/`, no leading `.`). Add an emit-side check that every written path resolves inside `--out`, and tests for `../x`, an absolute name, `\n` and `#` — `tools/ros-manifest/src/ros_manifest/schema.py:128`, `:154`, `emit.py:302`
+- [ ] (must-fix) Header values are written into `#` lines unescaped. The provenance label (from the untrusted `extends.path` and `url`), the repository and layer names, the role and the distro can each break out of the comment into `layers.txt`, `optional_layers.txt` or `.repos`. Refuse control characters in `url`, `ref`, `path` and names at parse time, and replace them in every header value at emit; add a test with a base file named with a newline — `emit.py:70-74`, `emit.py` `_header`, `extends.py:376`
+- [ ] (must-fix) The credentials in an `extends` url are printed into every generated header (new in this pull request; the owner's rule: never print remote URLs that may carry secrets). Strip userinfo in one helper used for the label and for every error message (`_head_commit` and `_clone_or_reuse` also print `{url}`), and add a test — `extends.py:376`, `:60`, `:44`
+- [ ] (must-fix) Non-string scalars are accepted: an unquoted `ref: 1.10` is written `version: 1.1`, the wrong checkout. Require `str` for `url`, `ref`, `distros.*.ref`, `type` and the `extends` fields; the error says to quote the value — `schema.py:165-200`
+- [ ] (suggestion) A reused `--out` keeps `.repos` files from an earlier run that `layers.txt` no longer lists. Clear the files this tool owns, or refuse a non-empty `--out` for `manifest-dir`; plan (b) uses a fresh directory, so it is not hit there — `emit.py:295`
+- [ ] (suggestion) The editable install points at the main checkout, so in a worktree that changes the resolver, the adapter would silently run main's code. The stamp also cannot notice a moved or deleted editable target (the venv pointed at a removed worktree before this change). In (b), run `<main venv>/bin/python -m ros_manifest.cli` with `PYTHONPATH=<adapter's own checkout>/tools/ros-manifest/src` instead of `.venv/bin/ros-manifest` (plan (b) step 2 `_rc_resolver_bin`) — `Makefile:199`
+- [ ] (suggestion) A ref containing `/` makes `url#ref/path@commit` ambiguous. Use a separator a git ref cannot contain, such as `url#ref:path@commit` — `extends.py:376`
+- [ ] (suggestion) Only the declaring manifest can mark a layer optional, so a remote base can make a layer failure-tolerant and the leaf cannot override that. Decide this, and state it in the README — `schema.py:136`, `merge.py:55`
+- [ ] (suggestion) Cache robustness (unchanged code): a directory left by an interrupted clone is reused as a hit, and the key `url@ref` can collide (`x@y`+`z` vs `x`+`y@z`). Clone into a temporary name and rename it; hash `json.dumps([url, ref])` — `extends.py:28`, `:44`
+- [ ] (suggestion) The CI step only installs. Add a `ros-manifest --help` smoke call so the install is checked before (b)'s tests depend on it — `.github/workflows/validate.yml:40`
