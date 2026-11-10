@@ -265,5 +265,5 @@ Checked against both trees (fork read only: ls, find, cat, grep, `git --no-optio
 - [x] (suggestion) The fork also moved after the inventory: unh_marine_autonomy 304 got a commit at 12:36 (now 11, not 10) and `appledore_backscatter/` got new files — `docs/fork_parity.md:13,97`
 - [x] (suggestion) Seven package `.agents/README.md` also name the fork (one in marine_perception_tools, which has no `AGENTS.md`); include them in the repoint — `docs/fork_parity.md:47,101`
 - [x] (suggestion) rolker/ros2_agent_workspace#605 is the Ollama reviewer issue: map it to row 43, not row 27 (gemini, verified) — `docs/fork_parity.md:137`
-- [ ] (suggestion) Ollama decline reason: give this workspace's own reason (the late-October local trial found no model that met the bar), not only the fork's hardware reason — `docs/fork_parity.md:108,163`
+- [x] (suggestion) Ollama decline reason: give this workspace's own reason (the late-October local trial found no model that met the bar), not only the fork's hardware reason — `docs/fork_parity.md:108,163`
 - [ ] (suggestion) Row 8: `.claude/settings.json` here allows no `colcon` or adapter commands, so a background package build may prompt; add that to the note (Claude adversarial) — `docs/fork_parity.md:73`

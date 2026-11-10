@@ -119,7 +119,7 @@ every inventory entry under `x/`, and `layers/` is one untracked entry.
 | 40 | Container dispatch, agent image, devcontainer (fork ADR-0019) | `.agent/scripts/dispatch_subagent.sh`; `.agent/scripts/test_dispatch_subagent.sh`; `.agent/scripts/tests/test_dispatch_model.sh`; `.agent/scripts/tests/test_dispatch_worktree_resolution.sh`; `.agent/scripts/docker_run_agent.sh`; `.agent/scripts/tests/test_docker_run_mount_args.sh`; `.agent/scripts/tests/test_entrypoint_chown_coverage.sh`; `.agent/scripts/tests/test_agent_image_build_paths.sh`; `.agent/scripts/stage_rosdep_manifests.sh`; `.devcontainer/** (7)`; `docs/decisions/0019-*.md (1)` | decline | no | `docs/decisions/0014-in-process-phase-handoff.md`; `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md` | In-process dispatch here; Makefile `agent-*` targets go with it |
 | 41 | tmux agent launcher | `.agent/scripts/agent`; `.agent/scripts/tmux_app.sh` | decline | no | `.agent/scripts/agent` | Diff read: fork adds `launch`; worktree entry here is `/start-task`; the tmux ATC protocol is already in Decided Against |
 | 42 | Web dashboard | `.agent/tools/dashboard/** (20)` | decline | no | `.agent/scripts/dashboard.sh` | CLI first; the digest records not porting it |
-| 43 | Local Ollama adversarial reviewer | `.agent/scripts/local_review.sh` | decline | no | none | Did not fit the hardware (fork issue 605) |
+| 43 | Local Ollama adversarial reviewer | `.agent/scripts/local_review.sh` | decline | no | none | In the fork it did not fit the hardware (fork issue 605). Here the late-October trial on pickerel replayed three local models on a past pull request's known findings and none found the must-fix, so the owner parked it (#398, comment of 2026-10-30) |
 | 44 | Layer symlink and source-artifact hooks, `scripts` symlink | `.agent/hooks/check-source-artifacts.py`; `.agent/hooks/post-checkout`; `scripts` | decline | no | `docs/decisions/0012-worktree-composition-is-an-adapter-concern.md` | Worktrees are composed by the adapter, no `layers/` symlinks; package repos carry their own hooks |
 | 45 | Identity files | `.agent/.identity.template`; `.agent/.identity` | decline | no | `.agent/scripts/set_git_identity_env.sh` | Identity is set from arguments each session |
 | 46 | Fork's digest of this repository | `.agent/knowledge/inspiration_agent_workspace_digest.md` | decline | no | none | A record about this tree; nothing to carry |
@@ -175,7 +175,7 @@ Proposed Decided Against lines (owner's call; not written to the roadmap):
 
 - Container dispatch, the agent image, `.devcontainer/` and the container `ci_local.sh` attestation (fork ADR-0018, ADR-0019): dispatch is in-process here (ADR-0014, ADR-0015); hosted CI stays the merge gate for project repositories. Owner to confirm the CI part.
 - The fork's web dashboard: CLI first.
-- The local Ollama adversarial reviewer: did not fit the hardware.
+- The local Ollama adversarial reviewer: in this workspace's late-October trial no local model met the review bar (none of three found the must-fix); in the fork it did not fit the hardware.
 - The `agent launch` tmux launcher: worktree entry is `/start-task`.
 - The `post-checkout` layer symlink hook and the `scripts` symlink: the adapter composes worktrees (ADR-0012).
 - The `.agent/.identity` file: identity is set from arguments each session.
