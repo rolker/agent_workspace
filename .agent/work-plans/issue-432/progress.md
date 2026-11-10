@@ -320,3 +320,21 @@ Verified: sitrep_checks.sh parses every cell, no unchecked/format, first false l
 - [x] (suggestion) Both Path paragraphs' first sentences (printed in the sit-rep's closing question) are classification rules ("…a Direction line below…"), not his goal; lead with a clause in his words — `docs/roadmap.md:33,38`
 - [x] (suggestion) Acceptance case: "the move he named" has no antecedent (acceptance_rest prints alone), the 2026-11-10 quotes are undated, and "The machine is assumed to have…" restates the quote that follows — `docs/roadmap.md:19-27`
 - [x] (suggestion) "Also under this path" lists the home-directory permissions baseline (not his words) and the work managers, whose design a deferral sets aside until #396 closes; list for veto or reconcile — `docs/roadmap.md:49-51`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-10 11:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-432 at `4f995757`
+**Addressed**: Local Review (Pre-Push) at `85d199fc` (2026-11-10 11:08 -05:00)
+**Commits**: 3bedeb58, c64b2abd, 68dab9ce, 95e84ceb, 4f995757
+
+Checks on the final tree: `sitrep_checks.sh --root . --summary` prints `lines 0/4 deferrals 5/8` (exit 0); step-5 rendering prints acceptance_first whole ("Project11 is developed on a second machine against ROS 2 Rolling through this workspace."); step-3 rendering prints each Path's first sentence whole, neither containing "..."; `check_design_anchors.sh .` exit 0; full pre-commit over `main...HEAD` with no SKIP exit 0 (validate-script-tests had no in-scope files: the branch changes only docs and work plans).
+
+### Actions
+- [x] Cutover pointer says Direction defers rows 5, 6 and 8 (#260 to #262) until its simulator line is true; row 7 now says it does not reorder or skip rows 2–4 — `docs/roadmap.md:192-193,210`
+- [x] Five follow-up deferral rows open "Follow-up:"; the Path 2 sentence quoting the prefix matches — `docs/roadmap.md:49,87-91`
+- [x] Path 1 opens with the owner's goal in his words (2026-11-10), full quote after the classification rule; Path 2 opens with its pre-change first sentence cut to his 2026-10-15 goal, dated — `docs/roadmap.md:32-45`
+- [x] Acceptance case: first sentence and the 2026-09-21 ending kept; "It is the move he named" and the restating "The machine is assumed to have..." sentence removed; quotes introduced "In the owner's words (2026-11-10):" — `docs/roadmap.md:18-26`
+- [x] Path 2 list: home-directory permissions baseline removed (stays recorded on issue 432); his "overall work managers" named with their design waiting on the orchestrator design session deferral (#398) — `docs/roadmap.md:54-56`
