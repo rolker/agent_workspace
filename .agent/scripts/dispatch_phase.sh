@@ -313,10 +313,18 @@ resolve_issue_dir() {
     hdr=$(head -n1 "$wt/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')
     if [[ "$check_gh" == 1 && "$hdr" == */*#* ]]; then
         want="${hdr%#*}"
-        if ! got=$(cd "$dir" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>&1); then
-            echo "error: could not ask gh which repository it resolves from $dir (needed before work on $hdr starts there): $got" >&2
+        # stdout alone is the answer (a notice gh prints on stderr is not a
+        # repository name); any failure, or no answer, is a refusal, quoting
+        # what gh said on stderr.
+        local errf gherr
+        errf=$(mktemp) || { echo "error: could not create a temporary file for gh's stderr" >&2; return 2; }
+        if ! got=$(cd "$dir" && gh repo view --json nameWithOwner --jq .nameWithOwner 2>"$errf") || [[ -z "$got" ]]; then
+            gherr=$(head -c 600 "$errf" | tr '\n' ' ')
+            rm -f "$errf"
+            echo "error: could not ask gh which repository it resolves from $dir (needed before work on $hdr starts there): ${gherr:-gh gave no answer}" >&2
             return 2
         fi
+        rm -f "$errf"
         if [[ "${got,,}" != "${want,,}" ]]; then
             {
                 echo "error: in $dir, gh resolves $got, but the issue is $hdr (repository $want)."

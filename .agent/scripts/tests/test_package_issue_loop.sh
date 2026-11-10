@@ -368,7 +368,17 @@ printf '#!/usr/bin/env bash\necho "gh: not logged in" >&2\nexit 4\n' > "$STUB/gh
 out=$(dp "$H" where --issue 'owner/pkg_a#7' --type project)
 check "a failing gh refuses with its message, not a silent pass" \
     "$([[ "$out" == *"could not ask gh"*"not logged in"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/gh"
+out=$(dp "$H" where --issue 'owner/pkg_a#7' --type project)
+check "a gh that succeeds with no answer refuses too" \
+    "$([[ "$out" == *"could not ask gh"*"gh gave no answer"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 mv "$STUB/gh.off" "$STUB/gh"
+# A notice on stderr from a gh that answers is not part of the answer.
+mv "$STUB/gh" "$STUB/gh.real"
+printf '#!/usr/bin/env bash\necho "A new release of gh is available" >&2\nexec "%s" "$@"\n' "$STUB/gh.real" > "$STUB/gh"; chmod +x "$STUB/gh"
+out=$(dp "$H" where --issue 'owner/pkg_a#7' --type project)
+check "a stderr notice from a gh that answers: where still prints A" "$([[ "$out" == "$A"$'\n'"rc=0" ]]; echo $?)" "$out"
+mv "$STUB/gh.real" "$STUB/gh"
 
 # ------------------------------------------------------------------ case 8
 # The records gate, as a class (pre-push review round 1, must-fix 1): every
