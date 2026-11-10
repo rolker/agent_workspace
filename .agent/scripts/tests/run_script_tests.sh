@@ -306,14 +306,21 @@ else
     echo "run_script_tests: scoped run, ${#run_suites[@]} of ${#suites[@]} suites for ${#changed_files[@]} changed file(s): $names"
 fi
 
-# --- Per-run TMPDIR guard (issue #304, #297 PR 2) ---
+# --- Per-suite TMPDIR guard (issue #304, #297 PR 2; per suite since #444) ---
 #
-# Give the whole run one private temp root and point every suite at it via
-# TMPDIR/TMP/TEMP. After each suite returns successfully the loop below
-# sweeps this directory: anything still in it means that suite leaked, and
-# the run fails with exit 2 naming that suite. Attribution is why the sweep
-# sits inside the loop rather than at the end — a leak is charged to the
-# suite that caused it, not to whichever suite happened to run last.
+# Give the whole run one private root, $RUN_ROOT, and every suite its own
+# directory in it, $RUN_ROOT/tmp/<suite>, pointed at by the suite's
+# TMPDIR/TMP/TEMP. After a suite returns successfully its own directory is
+# swept: anything still in it means that suite leaked, and the run fails
+# with exit 2 naming that suite. One directory per suite is what keeps the
+# charge on the suite that caused it, also when suites run at the same time.
+#
+# No directory is removed when its suite ends. After every suite has
+# finished, every passing suite's directory is swept once more: a process a
+# suite left running that wrote into its TMPDIR after the suite exited is
+# caught there and charged to the suite whose directory it is in (exit 2).
+# The runner's own temporary files go to $RUN_ROOT/runner, and the captured
+# output of a run with more than one job to $RUN_ROOT/out; neither is swept.
 #
 # The sweep sees *everything* left in TMPDIR, not just a suite's own
 # sandbox — including residue from tools a suite shells out to (git, gh,
@@ -368,22 +375,65 @@ fi
 # trusting a number frozen into this comment. For the rest, an age-based
 # sweep a human eyeballs first:
 #   find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +7
-RUN_TMPDIR=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
+RUN_ROOT=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
     echo "error: could not create the per-run TMPDIR guard directory under /tmp" >&2
     exit 1
 }
 # Unconditional cleanup on every exit path after this point — all suites
 # passed, a suite failed, a leak was detected, or an interrupt.
-trap 'rm -rf "$RUN_TMPDIR"' EXIT
-export TMPDIR="$RUN_TMPDIR" TMP="$RUN_TMPDIR" TEMP="$RUN_TMPDIR"
+trap 'rm -rf "$RUN_ROOT"' EXIT
+mkdir -p "$RUN_ROOT/tmp" "$RUN_ROOT/out" "$RUN_ROOT/runner" || {
+    echo "error: could not create the guard's directories under $RUN_ROOT" >&2
+    exit 1
+}
+export TMPDIR="$RUN_ROOT/runner" TMP="$RUN_ROOT/runner" TEMP="$RUN_ROOT/runner"
+
+# suite_tmp <name>: the suite's own TMPDIR.
+suite_tmp() { printf '%s/tmp/%s' "$RUN_ROOT" "$1"; }
+
+# sweep <dir> <list-file>: list what is left in <dir> into <list-file>;
+# true when something is. The listing is recursive, not -maxdepth 1: the
+# EXIT trap deletes $RUN_ROOT on the way out, so the leak message is the
+# only chance anyone gets to see what was left behind. A top-level name
+# alone ("tmp.AbC123") says nothing about which suite or which tool created
+# it; the contents usually do.
+sweep() {
+    find "$1" -mindepth 1 > "$2" 2>/dev/null
+    [[ -s "$2" ]]
+}
+
+# leak_message <name> <k> <n> <seconds> <dir> <list-file> [late]: the
+# exit-2 message, on stderr. Capped at $LEAK_LIST_MAX lines so a suite that
+# leaks a whole source tree does not bury its own failure message — the
+# tail is summarised as a count. With "late", the entries were found by the
+# sweep after every suite had finished.
+leak_message() {
+    local name="$1" k="$2" n="$3" secs="$4" dir="$5" list="$6" late="${7:-}"
+    local leaked=() word
+    mapfile -t leaked < "$list"
+    if [[ ${#leaked[@]} -eq 1 ]]; then word=entry; else word=entries; fi
+    echo "" >&2
+    if [[ -z "$late" ]]; then
+        echo "run_script_tests: FAILED at $name (suite $k of $n) after ${secs}s — it left ${#leaked[@]} $word behind in TMPDIR ($dir):" >&2
+    else
+        echo "run_script_tests: FAILED at $name (suite $k of $n) — after every suite had finished, its TMPDIR ($dir) held ${#leaked[@]} $word, written after it exited by a process it left running:" >&2
+    fi
+    printf '%s\n' "${leaked[@]:0:$LEAK_LIST_MAX}" >&2
+    if [[ ${#leaked[@]} -gt $LEAK_LIST_MAX ]]; then
+        echo "... and $(( ${#leaked[@]} - LEAK_LIST_MAX )) more entries (listing truncated)" >&2
+    fi
+    echo "Every suite must clean up what it creates — one top-level sandbox plus an EXIT trap (see issue #297)." >&2
+}
 
 start_ts=$(date +%s)
 total=0
 for s in "${run_suites[@]}"; do
     name="$(basename "$s")"
     total=$((total + 1))
+    dir="$(suite_tmp "$name")"
+    mkdir -p "$dir"
     echo "=== run_script_tests: running $name ==="
-    if ! bash "$s"; then
+    if ! TMPDIR="$dir" TMP="$dir" TEMP="$dir" bash "$s"; then
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
         echo "" >&2
@@ -391,31 +441,29 @@ for s in "${run_suites[@]}"; do
         exit 1
     fi
 
-    # Leak sweep — see "Per-run TMPDIR guard" above. Runs only on the path
-    # that would otherwise advance to the next suite, so the leak is
-    # attributed to the suite that just finished.
-    #
-    # The listing is recursive, not -maxdepth 1: the EXIT trap deletes
-    # $RUN_TMPDIR on the way out, so this message is the only chance anyone
-    # gets to see what was left behind. A top-level name alone ("tmp.AbC123")
-    # says nothing about which suite or which tool created it; the contents
-    # usually do. Capped at $LEAK_LIST_MAX lines so a suite that leaks a
-    # whole source tree does not bury its own failure message — the tail is
-    # summarised as a count.
-    mapfile -t leaked < <(find "$RUN_TMPDIR" -mindepth 1 2>/dev/null)
-    if [[ ${#leaked[@]} -gt 0 ]]; then
+    # Leak sweep — see "Per-suite TMPDIR guard" above. Runs only on the
+    # path that would otherwise advance to the next suite.
+    if sweep "$dir" "$RUN_ROOT/out/$total.leak"; then
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
-        echo "" >&2
-        echo "run_script_tests: FAILED at $name (suite $total of ${#run_suites[@]}) after ${elapsed}s — it left ${#leaked[@]} entr$([[ ${#leaked[@]} -eq 1 ]] && echo y || echo ies) behind in TMPDIR ($RUN_TMPDIR):" >&2
-        printf '%s\n' "${leaked[@]:0:$LEAK_LIST_MAX}" >&2
-        if [[ ${#leaked[@]} -gt $LEAK_LIST_MAX ]]; then
-            echo "... and $(( ${#leaked[@]} - LEAK_LIST_MAX )) more entries (listing truncated)" >&2
-        fi
-        echo "Every suite must clean up what it creates — one top-level sandbox plus an EXIT trap (see issue #297)." >&2
+        leak_message "$name" "$total" "${#run_suites[@]}" "$elapsed" "$dir" "$RUN_ROOT/out/$total.leak"
         exit 2
     fi
 done
+
+# The second sweep, after every suite has finished (see the guard above).
+late=0
+k=0
+for s in "${run_suites[@]}"; do
+    name="$(basename "$s")"
+    k=$((k + 1))
+    dir="$(suite_tmp "$name")"
+    if sweep "$dir" "$RUN_ROOT/out/$k.late"; then
+        leak_message "$name" "$k" "${#run_suites[@]}" "" "$dir" "$RUN_ROOT/out/$k.late" late
+        late=1
+    fi
+done
+[[ $late -eq 0 ]] || exit 2
 
 end_ts=$(date +%s)
 elapsed=$((end_ts - start_ts))

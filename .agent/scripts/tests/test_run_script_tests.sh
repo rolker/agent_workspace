@@ -1044,6 +1044,34 @@ else
     fail "(s4) one job: a suite's output reaches the runner's output while the suite still runs (seen=$s4_seen, rc=$rc, out=$(cat "$S4_LOG"))"
 fi
 
+# --- Case (t1): a late leak. Each suite has its own TMPDIR, kept until
+#     every suite has finished and then swept again: a process a passing
+#     suite left running that writes into its TMPDIR after the suite exited
+#     is caught by that second sweep and charged to that suite, not to the
+#     suite running when the write happened. ---
+# late_leak_dir <dir>: the fixture, shared with the parallel case (u5).
+late_leak_dir() {
+    mkdir -p "$1"
+    write_checkpoint_stub "$1"
+    make_stub "$1" test_a_late.sh '( sleep 1; : > "${TMPDIR:?}/late_by_a" ) </dev/null >/dev/null 2>&1 &'
+    make_stub "$1" test_b_slow.sh 'sleep 2'
+}
+# check_late_leak <label> <output> <rc>
+check_late_leak() {
+    if [[ $3 -eq 2 ]] \
+            && printf '%s\n' "$2" | grep -Eq '^run_script_tests: FAILED at test_a_late\.sh \(suite 1 of 3\) — after every suite had finished, its TMPDIR \(.*/test_a_late\.sh\) held 1 entry' \
+            && printf '%s\n' "$2" | grep -q '/late_by_a$' \
+            && ! printf '%s\n' "$2" | grep -q 'FAILED at test_b_slow'; then
+        pass "$1"
+    else
+        fail "$1 (rc=$3, out=$2)"
+    fi
+}
+T1="$TMPD/case_t1"
+late_leak_dir "$T1"
+out=$("$RUNNER" "$T1" 2>&1); rc=$?
+check_late_leak "(t1) one job: a write after its suite exited is caught at the end, charged to that suite, exit 2" "$out" "$rc"
+
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
