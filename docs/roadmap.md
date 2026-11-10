@@ -10,42 +10,45 @@ and keep track of what's relevant while not needing to micromanage."
 
 What must be true for the workspace's current acceptance case, each line with
 the check that says whether it is true today, and what was set aside on
-purpose. The sit-rep (`/sitrep`) reads this section through
+purpose or is kept in view until its issue closes. The sit-rep (`/sitrep`) reads this section through
 `.agent/scripts/sitrep_checks.sh` and runs every check each time; this
 section holds no status and no dates, and results stay on the machine that
 ran them.
 
-**Acceptance case.** A bare project that was never onboarded is made ready
-and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
-through the loop with the workspace's goals and principles visibly driving
-the work. That run passed the merge checkpoint on 2026-11-09, and ADR-0016
-(Session roots and the user tier) is Accepted
-([Sessions and roots](design.md#sessions-and-roots)).
+**Acceptance case.** Project11 is developed on a second machine against
+ROS 2 Rolling through this workspace. It is the move he named: "I also want
+to move project11 to this workspace ... test on pickerel, the new desktop
+machine I have, and set it up to develop project11 against ROS2 rolling."
+The machine is assumed to have a fresh Ubuntu 26.04, ROS and Claude Code,
+with agents running locally: "It got a fresh OS install with 26.04 and will
+have ROS installed as well as Claude Code so agents can run locally on
+pickerel ... just assume that will be the state the workspace can expect
+when we are ready to clone it there." It is done when the simulator works
+in Rolling: "a working simulator in Rolling" (2026-09-21).
 
-Design question OQ-2
-([Open questions](design.md#open-questions)) asked where that run was tracked:
-here. The run's target is the `gz4d` project, as step 5 of the Workspace
-Redesign table below says.
+**Paths.** Two paths run in parallel. In the owner's words (2026-11-10):
+"We can do stuff in parallel", and "let's not wait on other stuff" for
+project11. When he asks for a sit-rep, he decides which to focus on.
 
-**Paths.** Two paths run in parallel. In the owner's words (2026-10-15):
-"I think I would like two parallel paths: focus on getting the workspace
-ready to support geozui (as well as monitor the testing and evaluation of
-it) in one, and implementing the missing pieces to making this workspace
-reflect the goals we set in the other." When he asks for a sit-rep, he
-decides whether to focus on one, the other, or both; that choice is not
-written here.
+**Path 1, project11 on a second machine.** Path 1 work is an issue named
+in a Direction line below (in the line itself or its check). Work in a
+project11 package repository that no line names is not listed in this
+workspace's sit-rep.
 
-**Path 1, GeoZui4D.** Getting the workspace ready to support GeoZui4D, as
-well as monitoring the testing and evaluation of it. Path 1 work is an
-issue named in a Direction line below (in the line itself or its check),
-or work in the project a line's check names.
-
-**Path 2, the workspace reflects the goals.** Implementing the missing
-pieces to make this workspace reflect the goals we set: the acceptance
-cases after GeoZui4D, audit trials (starting with the escape-rate count
-and the review-round rule), the instruction-file trim, and a backlog
-sweep. Path 2 work is any other work that serves a goal in the
-README.
+**Path 2, the workspace reflects the goals.** Path 2 work is any other
+work that serves a goal in the README. In the owner's words (2026-11-10):
+"the orchestrator skill which we are trialing and the use of the
+workspace for the agents I run in ~ as my overall work managers", and
+"follow up on the findings during the gz4d tests and Path 2 mentioned
+earlier to make sure the work we put it to design the workspace is fully
+implemented." The follow-ups he asked not to lose are the "Follow-up still
+open" rows of the deferral table: small tooling fixes (#323), the fixes
+from the first GeoZui4D onboarding run (#415), the loop defects seen on the
+GeoZui4D drives (#428), retiring `project/` and `projects/` (#265, part 4)
+and the orchestrator skill's first updates from the dogfooding log (#431).
+Also under this path: audit trials, the instruction-file trim, the backlog
+sweep, the orchestrator trial, the work managers in his home directory,
+and the home-directory permissions baseline for sessions started in `~`.
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
@@ -63,26 +66,27 @@ README.
 - A check cell is never just an issue number, and deferrals are never
   checklist items: `update_roadmap.sh` marks both done when that issue
   merges. Put issue numbers in the prose instead, written `(#N)`.
-- A deferral's check says when to look at it again; while the check is true
-  the sit-rep lists the deferral as due.
+- A deferral's check says when to look at it again, or, for one kept in
+  view, that its issue is still open; while the check is true the sit-rep
+  lists the deferral as due.
 
 | Line | Check |
 |------|-------|
-| The acceptance project is registered on this machine and its checkout validates | `script adapter --project gz4d validate` |
-| The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
-| `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
-| The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
-| The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
-| The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all suites | `gh-issue 410 closed` |
-| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | `gh-issue 332 closed ; gh-issue rolker/geozui4d#8 closed` |
-| A `/run-issue` run started from the project root reaches the merge checkpoint | `gh-issue rolker/geozui4d#9 closed` |
-| ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
+| `/run-issue` drives an issue in a package repository of a multi-repository project (#429) | `gh-issue 429 closed` |
+| The workspace installs on the second machine from a clean clone, user tier included (#430) | `gh-issue 430 closed` |
+| The Rolling instance builds on the second machine, and a `/run-issue` run on a project11 package issue, started at the project root there, reaches the merge checkpoint (#433) | `gh-issue 433 closed` |
+| The simulator comes up from the Rolling manifest and a basic mission runs (rolker/unh_marine_autonomy#396) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
 | Deferral | Revisit check |
 |----------|---------------|
-| The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
-| The workspace as a registered project (#295): settled once ADR-0016 is | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
-| A Direction section in the acceptance project's own repository: `onboard-project` offers one to a project whose settings say `instructions=tracked` (#332 D3), so it is decided at the acceptance project's onboarding run | `file-contains .claude/skills/onboard-project/SKILL.md Direction section` |
+| Follow-up still open: small tooling fixes (#323) | `gh-issue 323 open` |
+| Follow-up still open: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
+| Follow-up still open: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
+| Follow-up still open: retire `project/` and `projects/` and the worktree fallback, and register the project11 instances (#265, part 4) | `gh-issue 265 open` |
+| Follow-up still open: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
+| Audit trials (escape-rate count, review-round rule) | `gh-issue 429 closed` |
+| Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
+| The orchestrator design session with the design for the home-directory work managers (#398); the fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
 Things set aside for good are under [Decided Against](#decided-against).
 
