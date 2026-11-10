@@ -208,3 +208,11 @@ Host read the second Plan Review of 2026-11-10 (needs-work) and directs:
 - The Path 2 follow-ups the owner asked not to lose (issues 323, 415, 428, 265 part 4, 431) leave the Line table. First choice: rows of the Deferral table with the revisit check `gh-issue <N> open`, so the sit-rep lists each as due on every run until it closes. Before choosing, read how `sitrep_root.sh --worktrees --rows` computes `named` and how the sit-rep skill words a due deferral; if a deferral row would also label the work Path 1, or the wording would mislead, name them in the Path 2 paragraph with `(#N)` instead and say what the sit-rep then shows for them. State the choice, why, and what each follow-up's in-flight work is labelled.
 - Say in the plan that project11 worktrees are not labelled through an `adapter --project` check, and why that is acceptable or what check would do it.
 - Take the three new suggestions: step 6 allows the one `unchecked` row and the cell is truly empty; the cell's form is `gh-issue <owner/repo>#<N> closed` when the tracking issue is in a project repository; the acceptance case's first sentence ends before any quote containing "...".
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 10:06 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-432/plan.md` at `6219805f`
+
+Second revision: the Line table holds only the project11 chain; the five follow-ups (323, 415, 428, 265 part 4, 431) are Deferral rows with `gh-issue <N> open` (a deferral row does not make `named` yes, checked with sitrep_root.sh on a scratch roadmap). Project11 worktrees are not labelled through an adapter check, with reasons; the empty cell, the repository form and the acceptance-case sentence fixes are in. Left open: whether the tracking issue for the combined line exists before merge, and the owner's veto on five always-due deferrals.
