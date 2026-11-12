@@ -34,6 +34,9 @@ worktrees/
 # Claude Code harness runtime state (per-session lock files; ephemeral, never committed)
 .claude/*.lock
 
+# Per-machine Claude Code settings: `claude plugin ... --scope local` writes it (ADR-0018)
+.claude/settings.local.json
+
 # Agent Scratchpad (Temporary files and artifacts)
 .agent/scratchpad/*
 !.agent/scratchpad/README.md

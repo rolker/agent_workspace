@@ -3762,10 +3762,13 @@ test_claude_unavailable_without_jq() {
     # shadows jq with a non-executable stub so `command -v` misses it.
     local nojq="${TMPDIR_BASE}/nojq"; mkdir -p "$nojq"
     local realbin; realbin=$(mktemp -d -p "$TMPDIR_BASE")
-    local tool
+    # Each tool is linked from wherever this host's PATH has it, under its
+    # own name (a multi-call binary dispatches on that name). `type -P`,
+    # not `command -v`: kill and printf are builtins, for which
+    # `command -v` prints the bare name instead of the file.
+    local tool path
     for tool in bash env timeout mktemp cat tail head grep sed awk tr wc date sleep kill git dirname basename cut rm mkdir ls cp printf; do
-        [[ -x "/usr/bin/${tool}" ]] && ln -sf "/usr/bin/${tool}" "${realbin}/${tool}"
-        [[ -x "/bin/${tool}" && ! -e "${realbin}/${tool}" ]] && ln -sf "/bin/${tool}" "${realbin}/${tool}"
+        if path=$(type -P "$tool"); then ln -sf "$path" "${realbin}/${tool}"; fi
     done
     cd "${MOCK_REPO}"
     local out="${TMPDIR_BASE}/out.txt" ec=0
@@ -3952,9 +3955,15 @@ test_job_finished_proc_comm_with_space() {
     # spaces, so the state must be read after the last `)` — a fixed
     # field misreads both processes below: "a Z b" (running) would read
     # as Z, and "x y" (a zombie) would read as "y)".
-    local bindir="${TMPDIR_BASE}/comm-bin"; mkdir -p "$bindir"
-    cp "$(command -v sleep)" "${bindir}/a Z b"
-    cp "$(command -v sleep)" "${bindir}/x y"
+    # The names are not got by copying a host binary under them: a
+    # multi-call binary (uutils coreutils' `sleep`) dispatches on its file
+    # name and exits at once, and a script given the name shows its
+    # interpreter as comm. Each fixture is a bash that writes its own
+    # comm through /proc/self/comm (printf: no newline into the name; a
+    # builtin, so no exec resets it) and is held on a FIFO opened
+    # read-write, so it blocks without a timed sleep.
+    local run_fifo="${TMPDIR_BASE}/run.fifo" zombie_fifo="${TMPDIR_BASE}/zombie.fifo"
+    mkfifo "$run_fifo" "$zombie_fifo"
     local probe="${TMPDIR_BASE}/probe-proc.sh"
     {
         echo '#!/usr/bin/env bash'
@@ -3962,21 +3971,61 @@ test_job_finished_proc_comm_with_space() {
         echo 'jobs() { :; }'
         sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
         sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
-        echo "bindir='${bindir}'"
+        echo "run_fifo='${run_fifo}'; zombie_fifo='${zombie_fifo}'"
+        echo "run_mark='${TMPDIR_BASE}/run.mark'; ran_mark='${TMPDIR_BASE}/ran.mark'"
         echo "pidfile='${TMPDIR_BASE}/zombie.pid'"
         cat << 'PROBE_EOF'
-"${bindir}/a Z b" 30 &
+# The test's own reading of a fixture, independent of the proc_state
+# under test: "<state letter>|<comm>" from /proc/<pid>/status and
+# /proc/<pid>/comm, neither of which needs the stat line parsed.
+fixture() {
+    local line st='?' comm='?'
+    while IFS= read -r line; do
+        if [[ "$line" == State:* ]]; then st=${line#State:}; st=${st//[[:space:]]/}; st=${st:0:1}; break; fi
+    done < "/proc/$1/status" 2>/dev/null
+    IFS= read -r comm < "/proc/$1/comm" 2>/dev/null
+    printf '%s|%s' "$st" "$comm"
+}
+# Bounded wait for a condition (a command); no verdict rests on its timing.
+await() { local i; for ((i = 0; i < 200; i++)); do "$@" && return 0; sleep 0.05; done; return 1; }
+marked() { [[ -s "$1" ]]; }
+is_fixture() { [[ "$(fixture "$1")" == $2 ]]; }
+not_bash() { [[ "$(fixture "$1")" != *"|bash" ]]; }
+
+bash -c 'printf "a Z b" > /proc/self/comm; echo up > "$1"; read -r _ <&3' _ "$run_mark" 3<> "$run_fifo" &
 live=$!
 # The zombie must belong to a parent that never reaps it. A child of
-# this bash would be reaped by bash's SIGCHLD handler during the sleep
-# below, and job_finished would then return through `kill -0` without
-# ever reading /proc. `exec sleep` replaces the sh, and sleep does not
-# wait, so "x y" stays a zombie until its parent is killed.
-sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10' _ "${bindir}/x y" "$pidfile" &
+# this bash would be reaped by bash's SIGCHLD handler, and job_finished
+# would then return through `kill -0` without ever reading /proc. Its
+# parent execs `sleep`, which does not wait, so "x y" stays a zombie
+# until that parent is killed. "x y" is held on its FIFO until the exec
+# has happened (its parent's comm is no longer bash), then released: it
+# writes its marker, so it really ran, and exits.
+zombie_body='printf "x y" > /proc/self/comm; read -r _ <&3; echo ran > "$1"'
+bash -c 'bash -c "$1" _ "$2" & echo $! > "$3"; exec sleep 30' \
+    _ "$zombie_body" "$ran_mark" "$pidfile" 3<> "$zombie_fifo" &
 reaper=$!
-for _ in $(seq 50); do [[ -s "$pidfile" ]] && break; sleep 0.1; done
+await marked "$pidfile" || echo "FIXTURE-BAD: the 'x y' pid was never recorded"
 dead=$(< "$pidfile")
-sleep 1   # "x y" has exited; its non-reaping parent keeps it a zombie
+await not_bash "$reaper" || echo "FIXTURE-BAD: the zombie's parent never exec'd sleep"
+echo go > "$zombie_fifo"
+await is_fixture "$dead" 'Z|x y' || true
+
+# Each fixture must be in the state its assertion assumes; a fixture
+# that is not fails here, by name, before job_finished is asked.
+await marked "$run_mark" || true
+f=$(fixture "$live")
+if kill -0 "$live" 2>/dev/null && [[ "$f" == [SR]"|a Z b" ]]; then
+    echo "fixture: 'a Z b' running"
+else
+    echo "FIXTURE-BAD: 'a Z b' is not a running process with that comm ($f)"
+fi
+f=$(fixture "$dead")
+if [[ "$(cat "$ran_mark" 2>/dev/null)" == ran && "$f" == "Z|x y" ]]; then
+    echo "fixture: 'x y' ran and is a zombie"
+else
+    echo "FIXTURE-BAD: 'x y' is not a zombie that ran, with that comm ($f)"
+fi
 # Precondition: the zombie still answers kill -0, so the verdict below
 # can only come from the /proc state read.
 kill -0 "$dead" 2>/dev/null && echo "zombie: present" || echo "ZOMBIE-ALREADY-REAPED"
@@ -3987,6 +4036,9 @@ kill "$live" "$reaper" 2>/dev/null; wait 2>/dev/null
 PROBE_EOF
     } > "$probe"
     local output; output=$(bash "$probe" 2>&1)
+    assert_contains "fixture: 'a Z b' is a running process with that comm" "fixture: 'a Z b' running" "$output"
+    assert_contains "fixture: 'x y' ran, exited and is a zombie with that comm" "fixture: 'x y' ran and is a zombie" "$output"
+    assert_not_contains "no fixture is in a state its assertion does not assume" "FIXTURE-BAD" "$output"
     assert_contains "the 'x y' zombie is still unreaped when probed" "zombie: present" "$output"
     assert_contains "a running job named 'a Z b' is reported as running" "running: alive" "$output"
     assert_contains "a zombie named 'x y' is reported as finished" "dead: finished" "$output"
@@ -5367,34 +5419,62 @@ running_state() {
 # watchdog fired, found no group and did nothing, and the group appeared
 # just after. The handler now signals the PID as well as the group, and
 # the watchdog SIGKILLs both at the deadline without checking first.
-# Each case runs the real handler (extracted) on a child that reaches
-# setsid after <delay>; the handler must return inside <limit> with the
-# child dead.
+#
+# Each case runs the real handler (extracted) on a child that is held
+# before its setsid step by ordering, not by delay: the child writes a
+# marker, then blocks reading a FIFO (opened read-write, also held open
+# by the probe so a write never blocks), and only `exec setsid sleep 30`
+# once something writes it. The probe waits for the marker, so every
+# position below is reached on purpose on any machine:
+#   A — TERM before the group exists: nothing releases the child, and
+#       the probe checks it has no group before the handler runs;
+#   B — group appears just after the deadline (deaf only): a `kill`
+#       wrapper in the probe runs the real kill and then, if the signal
+#       is KILL aimed at the CLI's PID or group (keyed on that argument,
+#       since the watchdog is a subshell and the handler's own
+#       `kill -KILL "$watchdog"` must not match), releases the child.
+#       With the fix the PID KILL has already killed it; without it the
+#       group KILL finds no group, the release lets setsid make one, and
+#       the handler hangs in `wait`. Under every revert tried, B gives
+#       the same verdict as deaf A, but B is the only case that reaches
+#       this boundary as #363 met it; it is not a duplicate of A.
+#       The wrapper returns the real kill's status: the handler's group
+#       poll reads it (`signal_<fn> 0`), and a wrapper that returned 0
+#       would keep the poll spinning on a fixed handler;
+#   C — group exists: the probe releases the child and waits for its
+#       group before the handler runs;
+#   dead — the child exited and the probe reaped it with `wait` before
+#       the handler runs.
 #   kind — coop: the pre-setsid stage dies on TERM (the real setsid does);
-#          deaf: it and the CLI ignore TERM, so only the deadline SIGKILL
-#          ends them, and delays around the 0.4 s window probe the
-#          boundary; dead: the child exited before setsid ran.
+#          deaf: it and the CLI ignore TERM and HUP from birth (an
+#          ignored disposition survives exec), so only the deadline
+#          SIGKILL ends them.
+# Escalation: deaf cases need a deadline and use 0.4 s, which is not a
+# boundary probed. coop and dead use 30 s, beyond the 10 s hang ceiling,
+# so returning at all proves the handler did not wait for the deadline
+# KILL: coop A that the TERM reached the pre-setsid PID, dead that the
+# handler does not wait on an empty group. coop A at 0 has the watchdog
+# fire at once, racing the TERM. The only wall-clock limit is that
+# ceiling (`timeout -k 1 10`), against a hang, not a verdict: a hung
+# probe ends as 124, or as 137 when timeout's TERM does not end the hang
+# (a deaf child), and either fails "handler exits 143".
 test_helper_terminate_reaches_a_cli_before_setsid() {
-    echo "TEST: terminate_child kills a CLI signalled before setsid has made its group, at any delay (#363)"
+    echo "TEST: terminate_child kills a CLI signalled before setsid has made its group, at each position (#363)"
     if ! command -v setsid >/dev/null 2>&1; then
         echo "  SKIP: no setsid on this host"; return
     fi
     setup
-    local spec file P fn probe ec t0 t1 c kind delay esc limit label launch
+    local spec file P fn probe ec c kind pos esc label fifo pre
+    fifo="${TMPDIR_BASE}/presetsid.fifo"; pre="${TMPDIR_BASE}/presetsid.mark"
     for spec in _cli_review.sh:CLI:cli _agy_review.sh:AGY:agy; do
         file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
-        for c in coop:0.3:5:2 coop:1.5:0.4:1 coop:0.5:0:1 \
-                 deaf:0.3:0.4:1.5 deaf:0.38:0.4:1.5 deaf:0.41:0.4:1.5 deaf:0.42:0.4:1.5 \
-                 deaf:0.43:0.4:1.5 deaf:0.45:0.4:1.5 deaf:0.6:0.4:1.5 dead:0:5:1; do
-            IFS=: read -r kind delay esc limit <<< "$c"
-            label="${file} ${kind}, setsid after ${delay}s, escalation ${esc}s"
-            case "$kind" in
-                coop) launch="bash -c 'sleep ${delay}; exec setsid sleep 30'" ;;
-                # Ignored from birth (an ignored disposition survives exec),
-                # so even the earliest TERM is lost on it.
-                deaf) launch="( trap '' TERM HUP; exec bash -c 'sleep ${delay}; exec setsid sleep 30' )" ;;
-                dead) launch="bash -c 'exit 0'" ;;
-            esac
+        for c in coop:A:30 coop:A:0 coop:C:30 deaf:A:0.4 deaf:B:0.4 deaf:C:0.4 dead:-:30; do
+            IFS=: read -r kind pos esc <<< "$c"
+            label="${file} ${kind}"
+            [[ "$kind" != dead ]] && label="${label} position ${pos}"
+            label="${label}, escalation ${esc}s"
+            rm -f "$fifo" "$pre" "${TMPDIR_BASE}/target.pid"
+            mkfifo "$fifo"
             probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
             {
                 echo 'set -u'
@@ -5403,25 +5483,54 @@ test_helper_terminate_reaches_a_cli_before_setsid() {
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
                 echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=${esc}"
                 echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''; ${P}_GROUP=''"
-                echo "${launch} </dev/null >/dev/null 2>&1 &"
-                echo "${P}_PID=\$!; echo \$! > target.pid"
-                # dead: let it exit (bash reaps it; the PID stays recorded).
-                [[ "$kind" == dead ]] && echo 'sleep 0.3'
+                echo "fifo='${fifo}'; pre='${pre}'"
+                cat << 'PROBE_EOF'
+await() { local i; for ((i = 0; i < 200; i++)); do "$@" && return 0; sleep 0.05; done; return 1; }
+marked() { [[ -s "$1" ]]; }
+has_group() { builtin kill -0 -- "-$1" 2>/dev/null; }
+exec 4<> "$fifo"
+held='echo up > "$1"; read -r _ <&4; exec setsid sleep 30'
+PROBE_EOF
+                case "$kind" in
+                    coop) echo "bash -c \"\$held\" _ \"\$pre\" </dev/null >/dev/null 2>&1 &" ;;
+                    deaf) echo "( trap '' TERM HUP; exec bash -c \"\$held\" _ \"\$pre\" ) </dev/null >/dev/null 2>&1 &" ;;
+                    dead) echo "bash -c 'exit 0' </dev/null >/dev/null 2>&1 &" ;;
+                esac
+                echo "${P}_PID=\$!; target=\$!; echo \$! > target.pid"
+                case "$pos" in
+                    A|B) cat << 'PROBE_EOF'
+await marked "$pre" || echo "FIXTURE-BAD: the child never reached its pre-setsid hold"
+has_group "$target" && echo "FIXTURE-BAD: the child has a group before the handler runs"
+PROBE_EOF
+                        ;;&
+                    B) cat << 'PROBE_EOF'
+kill() {
+    local rc=0
+    builtin kill "$@" || rc=$?
+    if [[ "$1" == -KILL && ( "${!#}" == "$target" || "${!#}" == "-$target" ) ]]; then
+        echo go >&4
+    fi
+    return "$rc"
+}
+PROBE_EOF
+                        ;;
+                    C) cat << 'PROBE_EOF'
+await marked "$pre" || echo "FIXTURE-BAD: the child never reached its pre-setsid hold"
+echo go >&4
+await has_group "$target" || echo "FIXTURE-BAD: the child's group never appeared"
+PROBE_EOF
+                        ;;
+                    -) echo "wait \"\$target\"" ;;
+                esac
                 echo 'terminate_child 143'
             } > "$probe"
-            ec=0; t0=$(date +%s.%N)
-            (cd "$TMPDIR_BASE" && timeout -k 1 8 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
-            t1=$(date +%s.%N)
-            [[ "$kind" == dead ]] && t0=$(awk -v a="$t0" 'BEGIN { printf "%.3f", a + 0.3 }')
+            ec=0
+            (cd "$TMPDIR_BASE" && timeout -k 1 10 bash "$probe" >"${TMPDIR_BASE}/probe.out" 2>"${TMPDIR_BASE}/probe.err") || ec=$?
             assert_exit_code "${label}: handler exits 143" "143" "$ec"
+            assert_not_contains "${label}: the child was at its position when the handler ran" \
+                "FIXTURE-BAD" "$(cat "${TMPDIR_BASE}/probe.out")"
             assert_not_contains "${label}: probe ran without shell errors" \
                 "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
-            if awk -v a="$t0" -v b="$t1" -v l="$limit" 'BEGIN { exit !((b - a) < l) }'; then
-                echo "  PASS: ${label}: handler returned inside ${limit}s"; PASS=$((PASS + 1))
-            else
-                echo "  FAIL: ${label}: handler took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s, over ${limit}s"; FAIL=$((FAIL + 1))
-            fi
-            sleep 0.2
             assert_eq "${label}: the CLI is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
             kill_recorded "${TMPDIR_BASE}/target.pid"
         done

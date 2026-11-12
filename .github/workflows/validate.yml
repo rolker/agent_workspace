@@ -31,6 +31,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install ros-manifest (the resolver the ros2_colcon adapter calls)
+        run: pip install -e tools/ros-manifest
+      - run: ros-manifest --help
+
       - name: Validate project-type adapters (ADR-0011)
         run: bash .agent/scripts/validate_adapter.sh
 

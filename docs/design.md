@@ -215,9 +215,10 @@ was the same run.
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
 - The user tier is installed from a workspace checkout by `.agent/scripts/user_tier_install.sh`: a
-  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. Everything it
-  writes is tagged with the checkout, so install is repeatable and `--uninstall` removes only its own
-  entries (`user_tier_install.sh` header).
+  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. It recognises
+  its own hook commands by their path (the `claude plugin` commands drop any marker in the file), so
+  install is repeatable, `--check` tells another checkout's hooks from the user's own, and
+  `--uninstall` removes only its own commands (`user_tier_install.sh` header).
 - Registration is a workspace operation, not something a project session does to itself (ADR-0016
   decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
   when the user tier is installed from that checkout, re-runs its installer so the new root gets the
@@ -269,6 +270,11 @@ was the same run.
   shell. Workspace scripts do not read the file; they resolve their own root from their location and the
   project from their `$PWD` (ADR-0016 decision 7; `run-issue/SKILL.md` reads it at the head of a command
   chain).
+- A workspace with no registered project and no `project/` is a complete workspace (#295): `make
+  validate`, `make setup` (no prompt), `make dashboard` and `make sync` succeed and point at
+  `register_project.sh`, and the repo-safety check of `gh_create_pr.sh` and `gh_create_issue.sh`
+  accepts every registered root's repository (`registry_repo_slugs` in `_project_registry.sh`), so a
+  project session needs no `project/` symlink (`test_fresh_clone_no_project.sh`).
 
 **Target (decided, not built)**
 
@@ -369,18 +375,18 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 505-510, 594-607, 629-641, 1103-1109 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all four modes (`where` too) | 167, 228-277, 452, 581, 669, 700 |
-| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 125-152 |
+| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
-the cwd's git top level, through the records gate, lines 126-128 and 315-325), `progress_append.sh` (lines 75,
-86 and 99-100),
+the cwd's git top level, through the records gate, lines 138-140 and 340-350), `progress_append.sh` (lines 78,
+93-94 and 107-108),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
 *Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
@@ -389,12 +395,12 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 
 | Verb | For the workspace | Based on |
 |---|---|---|
-| `setup` | thin wrapper | The `project` and `git-bug` stamps (`Makefile` line 98; the header lists `setup-dev`, `git-bug` and `project`); `single_project/setup.sh` clones a project, which the workspace does not need |
+| `setup` | thin wrapper | The `git-bug` and `ros-manifest` stamps (`Makefile` line 100; the header lists `setup-dev`, `ros-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` clones a project, which the workspace does not need |
 | `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo with the project |
 | `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
 | `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
 | `test` | thin wrapper | `.agent/scripts/tests/run_script_tests.sh`, the `validate-script-tests` hook's entry (`.pre-commit-config.yaml`) |
-| `install` | thin wrapper | `user_tier_install.sh` (`make user-tier-install`, `Makefile` line 164) |
+| `install` | thin wrapper | `user_tier_install.sh` (`make user-tier-install`, `Makefile` line 173) |
 | `env` | no-op | The `adapter` header: a type with no environment to expose emits nothing |
 | `project_root` | real, trivial | Prints the workspace root |
 | `repos` | real, trivial | One `name:path` line |
@@ -455,10 +461,15 @@ Status: `decided`
   builds a records path (`round`, `persist`, `sources`, `findings`, `check`, `plan-sha`),
   `dispatch_phase.sh` (`resolve_issue_dir` and `next --progress`) and `merge_pr.sh`'s gate lookup. It
   does not cover a file an agent opens directly, the sit-rep's survey (it reads each listed checkout's
-  `progress.md` with `progress_read.py` directly), `worktree_create.sh --workflow`'s scaffold (#393),
-  or a write from outside any worktree, which commits on that checkout's own branch. Workspace worktrees
-  and single-repository project worktrees write no manifest, so nothing changes for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
-  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 99-100 write
+  `progress.md` with `progress_read.py` directly), or `worktree_create.sh --workflow`'s scaffold (#393).
+  A write that changes a timeline (an entry, its commit, a ticked box) is refused unless the file it
+  writes, every symlink resolved, sits at the place its path names in the issue's own checkout,
+  wherever the command runs; reads are not (issue 437): the gate's `--write`
+  rule, which `progress_append.sh`, `review_progress.sh persist` and `check` state, refuses a main
+  checkout on its default branch and another issue's worktree (header of `_resolve_work_plans_dir.sh`).
+  Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
+  changes nothing for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
+  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
@@ -508,7 +519,7 @@ Three mechanisms would do it, each built by #393:
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    489, 533, 535, 597, 718: the round count, the exit contract, `--check-exit` and `next`, which is
    what a resumed session reads), `merge_pr.sh` (689-710, 822-903: the gate's lookup and its `Merge`
-   entry), `review_progress.sh` (128, 294, 325) and `progress_append.sh` (99). `_resolve_work_plans_dir.sh` is
+   entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
@@ -730,7 +741,7 @@ no section of this file carries that ADR.
 | [0004](decisions/0004-enforcement-hierarchy-for-agent-compliance.md) | A rule that matters is enforced at more than one layer; instruction files alone are not enough | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0005](decisions/0005-layered-enforcement-strategy.md) | CI is the enforcement layer, pre-commit hooks the local mirror, framework hooks the early feedback; new rules go CI-first | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0006](decisions/0006-adopt-agents-md-as-shared-instruction-file.md) | `AGENTS.md` holds the shared rules and each framework gets a thin adapter file | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then project and git-bug, and make test does not depend on build) | [Decision register](#decision-register) | yes 2026-10-27 |
+| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then git-bug and ros-manifest (no project stamp since #295), and make test does not depend on build) | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
@@ -840,6 +851,9 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after review fixes to the named-branch lookup (a branch on origin gets its own upstream settings, not a fetch refspec; a skill branch is not looked up; the project path warns on an existing branch's parent); no statement changes | #323 | 878 |
 | 2026-11-10 | Documentation layers | The roadmap's acceptance case is no longer ADR-0016's (met 2026-11-09): the sentence on what the Direction section says drops "(ADR-0016's)" and keeps "one acceptance case", now project11 on a second machine against ROS 2 Rolling | #432 | 869 |
 | 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that every records read and write passes one records gate (`records_path`), which refuses a sibling checkout and the worktree's top folder, and what the gate does not cover, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory table and sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 896 |
+| 2026-11-10 | Registry and adapters, Worktrees | A timeline write from outside the issue's checkout is refused (issue 437): the Records bullet no longer lists "a write from outside any worktree, which commits on that checkout's own branch" among what the records gate does not cover, and says that a write that changes a timeline is refused unless its target is the issue's own checkout, wherever the command runs, and that reads are not; the cited line numbers of `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees grows by four lines and stays past the 60-line prompt: the bullet names the gate whose header holds the rule, and the mechanics stay there, so no detail moves | #437 | 901 |
+| 2026-11-12 | Registry and adapters, Worktrees | Review fix (issue 437): the Records bullet states the write rule as one statement, the file a write changes, every symlink resolved, sits at the place its path names in the issue's own checkout, after a file symlink and a records folder linked to a main-checkout folder got past the checkout test; the cited `progress_append.sh` gate lines are refreshed. Worktrees grows by one line and stays past the 60-line prompt: the mechanics stay in the gate's header | #437 | 903 |
+| 2026-11-12 | Sessions and roots, Registry and adapters | A fresh clone works with no project (#295, first pull request; part of #265): a Sessions and roots Now bullet says a workspace with no registered project and no `project/` validates, sets up without a prompt, shows its dashboard and syncs, and that the `gh_create_*` repo-safety check accepts every registered root's repository; Table 1's `gh_create_pr.sh` row says registered roots are consulted (lines refreshed); Table 2's `setup` row names the stamps `make setup` depends on now (`git-bug` and `ros-manifest`, no `project`) and the Makefile lines of `setup` and `user-tier-install` are refreshed; Table 1's `worktree_create.sh` line citations are refreshed after this change moved them; the ADR-0007 register row names the setup stamps as they are now. Sessions and roots is 121 lines and Registry and adapters 125, past the 60-line prompt: the bullet names the test and the helper that hold the detail, so no detail moves | #295 | 910 |
 
 ## Glossary
 

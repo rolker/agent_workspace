@@ -126,15 +126,15 @@ fi
 # same via env var instead of the flag
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY" | WORKTREE_ISSUE=99 PROGRESS_PERSISTENCE_STRICT=1 "$RP" persist --issue 7 2>&1); rc=$?
 [[ "$rc" -eq 4 ]] && pass "persist strict via PROGRESS_PERSISTENCE_STRICT=1: same abort" || fail "persist strict via env (rc=$rc)"
-# compatibility (default) -> completes, notice line, committed via inline mechanism in the CURRENT worktree
+# compatibility (default) -> the same refusal (issue 437): the checkout is
+# issue 99's (branch feature/issue-99), so the records gate's --write rule
+# refuses before the notice; nothing written, nothing committed
 head_before=$(git -C "$MIS" rev-parse HEAD)
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --title "Seven" 2>&1); rc=$?
-if [[ "$rc" -eq 0 ]] && [[ "$out" == *"Progress persistence notice: would have aborted (resolve_work_plans_dir:"*"compatibility mode (PROGRESS_PERSISTENCE_STRICT=0)"* ]] \
-    && grep -q '^## Local Review (Pre-Push)$' "$MIS/.agent/work-plans/issue-7/progress.md" \
-    && grep -q '^# Issue #7 — Seven$' "$MIS/.agent/work-plans/issue-7/progress.md" \
-    && [[ "$(git -C "$MIS" rev-parse HEAD)" != "$head_before" ]] \
-    && [[ "$(git -C "$MIS" log -1 --format=%s)" == "progress: local review (pre-push) for #7" ]]; then
-    pass "persist compat: mismatched worktree completes with the 'would have aborted' notice; entry committed inline"
+if [[ "$rc" -eq 4 ]] && [[ "$out" == *"refusing to write issue #7's records"* ]] && [[ "$out" != *"would have aborted"* ]] \
+    && [[ ! -e "$MIS/.agent/work-plans/issue-7/progress.md" ]] \
+    && [[ "$(git -C "$MIS" rev-parse HEAD)" == "$head_before" ]]; then
+    pass "persist compat: mismatched worktree is refused (rc 4) like strict; nothing written or committed"
 else
     fail "persist compat: mismatched worktree (rc=$rc out=$out)"
 fi

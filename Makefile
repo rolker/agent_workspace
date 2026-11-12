@@ -5,8 +5,8 @@
 #
 # Stamp chain:
 #   setup-dev.done  — venv + pre-commit installed
+#   ros-manifest.done — the ros-manifest resolver installed in the venv
 #   git-bug.done    — git-bug identity + GitHub bridge configured
-#   project.done    — project/ configured (cloned or symlinked)
 #
 # Target tiers:
 #   Tier 1 — Setup chain (stamp-based, mostly invisible)
@@ -54,7 +54,7 @@ FLOCK := $(shell command -v flock 2>/dev/null)
 LOCKED = $(if $(FLOCK),$(FLOCK) $(STAMP)/.lock sh -c,sh -c)
 
 # --- Phony targets ---
-.PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills generate-user-tier-skills user-tier-install skip-git-bug repair merge-pr
+.PHONY: help setup install-ros-manifest build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills generate-user-tier-skills user-tier-install skip-git-bug repair merge-pr
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -64,20 +64,22 @@ help:
 	@echo "Agent Workspace - Makefile"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make setup            Full setup (venv + pre-commit + project clone)"
+	@echo "  make setup            Full setup (venv + pre-commit + ros-manifest resolver + git-bug)"
 	@echo "  make lint             Install and run pre-commit on all files"
 	@echo "  make validate         Check workspace configuration is valid"
 	@echo "  make repair           Fix stale venv/hooks after workspace rename"
+	@echo "  make install-ros-manifest  Install the ros-manifest resolver into the venv (part of setup)"
 	@echo ""
 	@echo "Development:"
-	@echo "  make build            Run BUILD_CMD from .agent/project_config.sh"
-	@echo "  make test             Run TEST_CMD from .agent/project_config.sh"
-	@echo "  make install          Run INSTALL_CMD (no-op when unset)"
-	@echo "  make dashboard        Show workspace + project status"
-	@echo "  make sync             Fetch/pull workspace + project repos"
+	@echo "  make build            Run the build command from the project's settings file (PROJECT=<name>)"
+	@echo "  make test             Run the test command from the project's settings file (PROJECT=<name>)"
+	@echo "  make install          Run the install command from the project's settings file (PROJECT=<name>)"
+	@echo "  make dashboard        Show workspace + registered projects status"
+	@echo "  make sync             Fetch/pull workspace + the selected project (PROJECT=<name>)"
 	@echo ""
-	@echo "  PROJECT=<name> targets a registered project from .agent/projects.local"
-	@echo "  (e.g. make build PROJECT=boat_sim); default is the legacy project/ symlink."
+	@echo "  PROJECT=<name> selects a registered project from .agent/projects.local"
+	@echo "  (e.g. make build PROJECT=demo); needed when more than one is registered"
+	@echo "  or the current directory is inside none."
 	@echo ""
 	@echo "Worktrees:"
 	@echo "  .agent/scripts/worktree_create.sh --issue <N> --type workspace"
@@ -95,8 +97,11 @@ help:
 	@echo "  make clean            Remove stamp files (forces re-setup)"
 	@echo ""
 
-setup: $(STAMP)/project.done $(STAMP)/git-bug.done
+setup: $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
 	@echo "✅ Setup complete."
+	@grep -Eqs '^[[:space:]]*[^#[:space:]]' $(WS_ROOT)/.agent/projects.local || \
+	    echo "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
+	@echo "Optional, enable the workspace in project sessions: .agent/scripts/user_tier_install.sh"
 
 # Multi-tenant hosting (issue #227): PROJECT=<name> selects a project from
 # .agent/projects.local; unset means legacy project/ (or cwd discovery in
@@ -111,6 +116,8 @@ test: $(STAMP)/setup-dev.done
 
 install: $(STAMP)/setup-dev.done
 	@$(MAIN_ROOT)/.agent/scripts/adapter $(PROJECT_FLAG) install
+
+install-ros-manifest: $(STAMP)/ros-manifest.done
 
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files
@@ -183,18 +190,21 @@ $(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
 	@$(LOCKED) 'python3 -m venv $(VENV_DIR) && $(VENV_BIN)/python3 -m pip install --quiet --upgrade pip && $(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && touch $@'
 
+# ros-manifest: the manifest resolver (tools/ros-manifest), installed
+# editable into the shared venv from the main checkout, so the ros2_colcon
+# adapter finds it at .venv/bin/ros-manifest from any worktree. Editable
+# means code changes on main need no reinstall; the stamp is re-made only
+# when pyproject.toml (dependencies, entry point) changes. A make target and
+# not a requirements.txt line (ADR-0009 tier 1): requirements.txt is
+# installed with `pip install -r` before the recipe cds to WS_ROOT, so a
+# relative `-e tools/ros-manifest` there would resolve against the caller's
+# cwd, and that file lists PyPI tools; this is a path in this repository.
+$(STAMP)/ros-manifest.done: $(WS_ROOT)/tools/ros-manifest/pyproject.toml $(STAMP)/setup-dev.done
+	@echo "--- Installing the ros-manifest resolver ---"
+	@$(LOCKED) '$(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/ros-manifest && touch $@'
+
 # git-bug: configure identity + GitHub bridge
 $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
 	@mkdir -p $(STAMP)
 	@$(MAIN_ROOT)/.agent/scripts/git_bug_setup.sh
 	@touch $@
-
-# project: configure project/ directory
-$(STAMP)/project.done: $(STAMP)/setup-dev.done
-	@echo "--- Configuring project ---"
-	@if [ -d "$(MAIN_ROOT)/project" ] && git -C "$(MAIN_ROOT)/project" rev-parse --git-dir &>/dev/null; then \
-	    echo "project/ already configured."; \
-	else \
-	    $(MAIN_ROOT)/.agent/scripts/setup_project.sh; \
-	fi
-	touch $@
