@@ -121,3 +121,16 @@ Part 1 is sound and verified on this machine. Part 2's structure (FIFO hold, mar
 - [ ] Dead case: reap the child with `wait` in the probe instead of a marker.
 - [ ] Fix the step 4 grep's expected output (line 3767 will match) and widen or qualify the pattern.
 - [ ] Ask the owner whether CI's `ubuntu-latest` Lint job satisfies the "first machine with GNU coreutils" acceptance line.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work with two high findings on part 2)
+**After**: plan
+**Decision**: revise
+
+Host answer under /orchestrator's checkpoint table (first `revise` at this checkpoint). Read: the Plan Review entry (3fe6e428), verdict needs-work. Two high findings: position B as planned tests position C and would still pass with the #363 fix reverted; and removing every time assertion drops what `coop:0.3:5:2` and `dead:0:5:1` checked (TERM reaches the child before setsid; the old group-wait loop), with the escalation-0 case dropped unexplained. Two low findings: the dead case should reap its child; the step 4 grep's expected output is wrong and misses fixed-path copies. The plan goes back to plan-task with these.
+
+### Decisions made (owner may veto)
+- The acceptance line "passes on the first machine with GNU coreutils" is met by a green Lint job on GitHub's `ubuntu-latest` runner (GNU coreutils), confirmed in that job's log, since no GNU host is reachable from this session; the issue's intent is a pass on both coreutils. Undoing it: run the suite once on the first machine before merge.
