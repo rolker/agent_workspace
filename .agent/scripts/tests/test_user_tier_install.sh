@@ -3,7 +3,9 @@
 # Tests for .agent/scripts/user_tier_install.sh (#317, #265 PR 3; #345):
 # idempotent install, the not-installed / --require split, drift detection
 # (foreign entry, missing entry, stale symlink, retired hook entry, legacy
-# skill symlink), skill selection from session_scope frontmatter, the
+# skill symlink, a hook left by a deleted checkout), hook commands
+# recognised by path after the claude CLI rewrites settings.json (#394),
+# mixed entries, skill selection from session_scope frontmatter, the
 # plugin manifest generator, per-registered-root plugin enable / --check /
 # --uninstall (ADR-0018), --disable-root <name> (#332), and uninstall.
 #
@@ -193,15 +195,17 @@ fi
 
 # Exactly that one: a hook retired from the user tier (the tool-mapping
 # hook, #328) must not be written by a fresh install.
-jq -e --arg t "$WSC" --arg c "$WSC/.claude/hooks/log-tool-use.sh" '
-    [.hooks.PreToolUse[] | select((._agent_workspace // "") == $t) | .hooks[]?.command] == [$c]
+jq -e --arg p "$WSC/.claude/hooks/" --arg c "$WSC/.claude/hooks/log-tool-use.sh" '
+    [.hooks.PreToolUse[].hooks[]?.command | select(startswith($p))] == [$c]
 ' "$SETTINGS" >/dev/null \
-    && pass "the tagged PreToolUse entry carries log-tool-use.sh and nothing else" \
-    || fail "the tagged PreToolUse entry carries more than log-tool-use.sh ($(jq -c '[.hooks.PreToolUse[].hooks[]?.command]' "$SETTINGS"))"
+    && pass "PreToolUse carries log-tool-use.sh and no other hook of this checkout" \
+    || fail "PreToolUse carries more than log-tool-use.sh ($(jq -c '[.hooks.PreToolUse[].hooks[]?.command]' "$SETTINGS"))"
 
-jq -e --arg t "$WSC" '[.hooks | to_entries[] | .value[] | ._agent_workspace] | all(. == $t)' \
+# The marker is no longer written: the claude CLI drops it (#394), so
+# entries are recognised by command path instead.
+jq -e '[.hooks | to_entries[] | .value[] | has("_agent_workspace")] | any | not' \
     "$SETTINGS" >/dev/null \
-    && pass "every hook entry is tagged with this checkout" || fail "hook entries are not all tagged"
+    && pass "no hook entry carries the _agent_workspace marker" || fail "install wrote the _agent_workspace marker"
 
 jq -e --arg c "$WSC/.agent/scripts/worktree_create.sh" \
     '[.permissions.allow[]] | index("Bash(" + $c + ":*)") != null' "$SETTINGS" >/dev/null \
@@ -249,8 +253,9 @@ else
 fi
 
 # --------------------------------------------------------------- drift ---
-# (a) a missing hook entry
-jq '.hooks.PreToolUse |= map(select((._agent_workspace // "") == ""))' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+# (a) a missing hook entry: ours removed by command path
+jq --arg p "$WSC/" '.hooks.PreToolUse |= map(select(any(.hooks[]?; .command | startswith($p)) | not))' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"missing hook entry"* ]] \
     && pass "--check detects a missing hook entry" || fail "missing-entry drift not detected (rc=$rc out=$out)"
@@ -301,18 +306,18 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "--check is clean once the legacy symlinks are gone" \
     || fail "--check after legacy removal (rc=$rc out=$out)"
 
-# (f) a tagged, in-checkout hook entry the current generation no longer
-# produces -- a hook retired from the user tier (#328). Tagged with this
-# checkout and pointing inside it, so (a)-(c) do not fire for it.
+# (f) a hook entry marked with this checkout (an earlier generation wrote
+# the marker), in-checkout, that the current generation no longer produces
+# -- a hook retired from the user tier (#328). Marked with this checkout and
+# pointing inside it, so (a)-(c) do not fire for it. The marker is still
+# read where present.
 RETIRED_HOOK="$WSC/.claude/hooks/zz-retired-hook.sh"
 jq --arg t "$WSC" --arg c "$RETIRED_HOOK" '
-    .hooks.PreToolUse |= map(if (._agent_workspace // "") == $t
-                             then .hooks += [{type: "command", command: $c, timeout: 5}]
-                             else . end)' \
+    .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c, timeout: 5}]}]' \
     "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"no longer generated: $RETIRED_HOOK"* ]] \
-    && pass "--check detects a tagged hook entry the current generation no longer produces" \
+    && pass "--check detects a marked hook entry the current generation no longer produces" \
     || fail "retired-hook drift not detected (rc=$rc out=$out)"
 run >/dev/null
 jq -e --arg c "$RETIRED_HOOK" '[.hooks.PreToolUse[].hooks[]?.command] | index($c) == null' \
@@ -323,6 +328,196 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
     && pass "--check is clean after the re-install clears the retired entry" \
     || fail "--check after clearing the retired entry (rc=$rc out=$out)"
+
+# ------------------------------- the claude CLI rewrites settings.json ---
+# #394: every `claude plugin` command rewrites ~/.claude/settings.json,
+# dropping keys it does not know (the _agent_workspace marker earlier
+# generations wrote) and emitting the keys in its own order. This stub does
+# both on every call -- deletes every marker and reverses the key order of
+# every object -- and the cases below call it between installer runs.
+CLI_REWRITE="$STUB_BIN/claude-rewrite"
+cat > "$CLI_REWRITE" <<'REWRITEEOF'
+#!/usr/bin/env bash
+f="$HOME/.claude/settings.json"
+[[ -f "$f" ]] || exit 0
+jq 'def rev: if type == "object" then to_entries | reverse | map(.value |= rev) | from_entries
+             elif type == "array" then map(rev) else . end;
+    walk(if type == "object" then del(._agent_workspace) else . end) | rev' "$f" > "$f.tmp" \
+    && cat "$f.tmp" > "$f" && rm -f "$f.tmp"
+REWRITEEOF
+chmod +x "$CLI_REWRITE"
+cli_rewrite() { HOME="$HOMEDIR" "$CLI_REWRITE"; }
+n_backups() { ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/dev/null | wc -l; }
+# How many entries of <event> hold <command>.
+n_holding() {  # <event> <command>
+    jq --arg e "$1" --arg c "$2" '[.hooks[$e][]? | select(any(.hooks[]?; .command == $c))] | length' "$SETTINGS"
+}
+LOG_HOOK="$WSC/.claude/hooks/log-tool-use.sh"
+
+# (g) as an earlier generation left it (marked), then rewritten by the CLI:
+# --check is clean, and a re-install neither duplicates the hooks nor
+# rewrites the file (byte-identical, no new backup).
+jq --arg t "$WSC" --arg l "$LOG_HOOK" --arg s "$HOOK_LINK" '
+    .hooks |= with_entries(.value |= map(
+        if any(.hooks[]?; .command == $l or .command == $s) then ._agent_workspace = $t else . end))' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+cli_rewrite
+jq -e '[.. | objects | has("_agent_workspace")] | any | not' "$SETTINGS" >/dev/null \
+    && pass "the rewriting stub strips every marker (fixture check)" \
+    || fail "fixture: the rewriting stub left a marker"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean after the claude CLI strips the markers and reorders the keys" \
+    || fail "--check after a CLI rewrite (rc=$rc out=$out)"
+cp "$SETTINGS" "$SANDBOX/settings-before.json"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+out="$(run)"; rc=$?
+cmp -s "$SETTINGS" "$SANDBOX/settings-before.json" \
+    && pass "a re-install after a CLI rewrite leaves settings.json byte-identical" \
+    || fail "a re-install after a CLI rewrite changed settings.json (rc=$rc out=${out:0:300})"
+[[ "$(n_backups)" -eq 0 ]] \
+    && pass "...and writes no backup" || fail "a no-op re-install wrote $(n_backups) backup(s)"
+[[ "$(n_holding PreToolUse "$LOG_HOOK")" -eq 1 && "$(n_holding SessionStart "$HOOK_LINK")" -eq 1 ]] \
+    && pass "after a CLI rewrite and a re-install, PreToolUse and SessionStart each hold our hook once" \
+    || fail "hooks duplicated: PreToolUse $(n_holding PreToolUse "$LOG_HOOK"), SessionStart $(n_holding SessionStart "$HOOK_LINK")"
+rm -f "$SANDBOX/settings-before.json"
+
+# (h) the unmarked variant of (f): a retired hook's command under this
+# checkout's .claude/hooks/, with no marker at all.
+jq --arg c "$RETIRED_HOOK" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c, timeout: 5}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"no longer generated: $RETIRED_HOOK"* ]] \
+    && pass "--check detects an unmarked retired hook command of this checkout" \
+    || fail "unmarked retired hook not detected (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$RETIRED_HOOK")" -eq 0 ]] \
+    && pass "install drops the unmarked retired hook command" \
+    || fail "install left the unmarked retired hook command"
+
+# Two of the user's own hooks that the rules below must never touch: a dead
+# one with a name this installer never wrote, and one named like ours under
+# a directory that is not a workspace checkout (no .agent/user_tier_scripts.txt).
+USER_DEAD_HOOK="$SANDBOX/gone-dir/.claude/hooks/my-own-hook.sh"
+NOT_WS="$SANDBOX/not-a-workspace"
+mkdir -p "$NOT_WS/.claude/hooks"
+printf '#!/bin/sh\n' > "$NOT_WS/.claude/hooks/log-tool-use.sh"
+USER_SAME_NAME="$NOT_WS/.claude/hooks/log-tool-use.sh"
+jq --arg a "$USER_DEAD_HOOK" --arg b "$USER_SAME_NAME" '
+    .hooks.PreToolUse += [{hooks: [{type: "command", command: $a}]},
+                          {hooks: [{type: "command", command: $b}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"$USER_DEAD_HOOK"* && "$out" != *"$NOT_WS"* ]] \
+    && pass "--check reports neither a user's own dead hook nor a same-named hook outside any checkout" \
+    || fail "--check reported a user's own hook (rc=$rc out=$out)"
+
+# (i) a checkout moved or deleted after the install, the CLI having
+# stripped the marker: its PreToolUse command names a path no longer on disk.
+DEAD_WS="$SANDBOX/deleted-ws"
+mkdir -p "$DEAD_WS/.agent" "$DEAD_WS/.claude/hooks"
+: > "$DEAD_WS/.agent/user_tier_scripts.txt"
+DEAD_HOOK="$DEAD_WS/.claude/hooks/log-tool-use.sh"
+jq --arg c "$DEAD_HOOK" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c, timeout: 5}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+rm -rf "$DEAD_WS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not on disk"*"$DEAD_HOOK"* ]] \
+    && pass "--check reports an unmarked hook command left by a deleted checkout" \
+    || fail "dead-checkout hook not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$DEAD_HOOK")" -eq 0 ]] \
+    && pass "install removes the unmarked hook command left by a deleted checkout" \
+    || fail "install left the dead-checkout hook command"
+
+# (j) the marked variant: an entry an earlier generation marked with a
+# checkout since moved, the CLI not run since. The marker attributes it
+# whatever the hook's name (x.sh is no name the dead-path rule knows).
+MOVED_WS="$SANDBOX/moved-ws"
+jq --arg t "$MOVED_WS" --arg c "$MOVED_WS/.claude/hooks/x.sh" '
+    .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"another workspace checkout: $MOVED_WS"* ]] \
+    && pass "--check reports a marked entry of a moved checkout" \
+    || fail "marked moved-checkout entry not reported (rc=$rc out=$out)"
+run --force >/dev/null
+[[ "$(n_holding PreToolUse "$MOVED_WS/.claude/hooks/x.sh")" -eq 0 ]] \
+    && pass "--force removes the marked entry of a moved checkout" \
+    || fail "--force left the marked moved-checkout entry"
+
+# (k) another checkout's hook, unmarked: recognised by the
+# .agent/user_tier_scripts.txt beside it. --check reports it, a plain
+# install leaves it (it is that checkout's), --force removes it.
+OTHER_WS="$SANDBOX/other-ws"
+mkdir -p "$OTHER_WS/.agent" "$OTHER_WS/.claude/hooks"
+: > "$OTHER_WS/.agent/user_tier_scripts.txt"
+printf '#!/bin/sh\n' > "$OTHER_WS/.claude/hooks/log-tool-use.sh"
+OTHER_HOOK="$OTHER_WS/.claude/hooks/log-tool-use.sh"
+jq --arg c "$OTHER_HOOK" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c, timeout: 5}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"another workspace checkout: $OTHER_WS"* ]] \
+    && pass "--check reports an unmarked hook entry of another checkout" \
+    || fail "unmarked foreign entry not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$OTHER_HOOK")" -eq 1 ]] \
+    && pass "a plain install leaves another checkout's unmarked hook entry alone" \
+    || fail "a plain install removed another checkout's hook entry"
+
+# (l) mixed entries: the user's own command in the same entry as one of
+# ours, or of another checkout's (marked or not). Only the installer's
+# command goes; the user's stays, in the same entry, with its other keys.
+jq --arg l "$LOG_HOOK" --arg o "$OTHER_HOOK" --arg t "$MOVED_WS" --arg m "$MOVED_WS/.claude/hooks/x.sh" '
+    .hooks.PreToolUse += [
+        {matcher: "Bash", hooks: [{type: "command", command: $l}, {type: "command", command: "/opt/mine-a.sh"}]},
+        {matcher: "Edit", hooks: [{type: "command", command: $o}, {type: "command", command: "/opt/mine-b.sh"}]},
+        {_agent_workspace: $t, matcher: "Read",
+         hooks: [{type: "command", command: $m}, {type: "command", command: "/opt/mine-c.sh"}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+# The entry holding <command>, as compact JSON with sorted keys.
+entry_of() { jq -cS --arg c "$1" '[.hooks.PreToolUse[] | select(any(.hooks[]?; .command == $c))]' "$SETTINGS"; }
+run >/dev/null
+[[ "$(entry_of /opt/mine-a.sh)" == '[{"hooks":[{"command":"/opt/mine-a.sh","type":"command"}],"matcher":"Bash"}]' \
+   && "$(n_holding PreToolUse "$LOG_HOOK")" -eq 1 ]] \
+    && pass "re-install removes only our command from a mixed entry; the user's command and matcher stay" \
+    || fail "re-install over a mixed entry (entry: $(entry_of /opt/mine-a.sh); ours held $(n_holding PreToolUse "$LOG_HOOK")x)"
+[[ "$(n_holding PreToolUse "$OTHER_HOOK")" -eq 2 && "$(n_holding PreToolUse /opt/mine-b.sh)" -eq 1 ]] \
+    && pass "a plain install leaves another checkout's command in a mixed entry" \
+    || fail "a plain install touched another checkout's mixed entry ($(entry_of /opt/mine-b.sh))"
+run --force >/dev/null
+[[ "$(n_holding PreToolUse "$OTHER_HOOK")" -eq 0 ]] \
+    && pass "--force removes another checkout's unmarked hook command" \
+    || fail "--force left another checkout's hook command"
+[[ "$(entry_of /opt/mine-b.sh)" == '[{"hooks":[{"command":"/opt/mine-b.sh","type":"command"}],"matcher":"Edit"}]' ]] \
+    && pass "--force removes only another checkout's command from a mixed entry" \
+    || fail "--force over a mixed entry (entry: $(entry_of /opt/mine-b.sh))"
+[[ "$(entry_of /opt/mine-c.sh)" == '[{"hooks":[{"command":"/opt/mine-c.sh","type":"command"}],"matcher":"Read"}]' ]] \
+    && pass "--force removes only the marked checkout's command from a marked mixed entry, and drops the marker" \
+    || fail "--force over a marked mixed entry (entry: $(entry_of /opt/mine-c.sh))"
+[[ "$(n_holding PreToolUse "$USER_DEAD_HOOK")" -eq 1 && "$(n_holding PreToolUse "$USER_SAME_NAME")" -eq 1 ]] \
+    && pass "install and --force leave the user's dead hook and the same-named hook outside any checkout" \
+    || fail "a user's own hook was removed (dead: $(n_holding PreToolUse "$USER_DEAD_HOOK"), same name: $(n_holding PreToolUse "$USER_SAME_NAME"))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean after --force with the user's commands kept" \
+    || fail "--check after --force over mixed entries (rc=$rc out=$out)"
+
+# (m) a hook command written through a symlinked alias of this checkout is
+# this checkout's (compared by physical path), not another checkout's.
+ln -s "$WSC" "$SANDBOX/ws-alias"
+ALIAS_HOOK="$SANDBOX/ws-alias/.claude/hooks/log-tool-use.sh"
+jq --arg c "$ALIAS_HOOK" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c, timeout: 5}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$out" != *"another workspace checkout"* && "$out" == *"no longer generated: $ALIAS_HOOK"* ]] \
+    && pass "--check treats a symlinked alias of this checkout as this checkout, not another" \
+    || fail "alias reported wrongly (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$ALIAS_HOOK")" -eq 0 && "$(n_holding PreToolUse "$LOG_HOOK")" -eq 1 ]] \
+    && pass "install replaces the alias-path hook command with ours (no second copy)" \
+    || fail "install over an alias-path command (alias: $(n_holding PreToolUse "$ALIAS_HOOK"), ours: $(n_holding PreToolUse "$LOG_HOOK"))"
+rm -f "$SANDBOX/ws-alias"
 
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
@@ -335,15 +530,26 @@ out="$(run)"; rc=$?
 rm -rf "$SKILLS_DIR/zz-fixture-both-real"
 
 # ----------------------------------------------------------- uninstall ---
+# As the CLI leaves it (no markers), with our PreToolUse command sharing an
+# entry with the user's own: uninstall removes ours and keeps theirs.
+jq --arg l "$LOG_HOOK" '.hooks.PreToolUse |= map(
+        if any(.hooks[]?; .command == $l)
+        then .matcher = "Bash" | .hooks += [{type: "command", command: "/opt/mine-u.sh"}] else . end)' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+cli_rewrite
 out="$(run --uninstall)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "uninstall exits 0" || fail "uninstall failed (rc=$rc out=$out)"
 [[ ! -e "$ROOT_FILE" ]] && pass "uninstall removes agent-workspace-root" || fail "root file survived uninstall"
 [[ ! -e "$HOOK_LINK" ]] && pass "uninstall removes the SessionStart symlink" || fail "hook symlink survived uninstall"
-[[ -z "$(jq -r --arg t "$WSC" '[.hooks // {} | to_entries[] | .value[] | select((._agent_workspace // "") == $t)] | .[]' "$SETTINGS")" ]] \
-    && pass "uninstall removes our tagged hook entries" || fail "tagged hook entries survived uninstall"
+[[ -z "$(jq -r --arg p "$WSC/" --arg l "$HOOK_LINK" '[.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
+         | select(startswith($p) or . == $l)] | .[]' "$SETTINGS")" ]] \
+    && pass "uninstall removes our hook commands" || fail "our hook commands survived uninstall"
 jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | index("/opt/mine.sh") != null' "$SETTINGS" >/dev/null \
     && pass "uninstall leaves the user's own hook entry alone" \
     || fail "uninstall removed the user's own hook entry"
+[[ "$(entry_of /opt/mine-u.sh)" == '[{"hooks":[{"command":"/opt/mine-u.sh","type":"command"}],"matcher":"Bash"}]' ]] \
+    && pass "uninstall removes only our command from a mixed entry; the user's command and matcher stay" \
+    || fail "uninstall over a mixed entry (entry: $(entry_of /opt/mine-u.sh))"
 jq -e '[.permissions.allow[]] | index("Bash(mine *)") != null' "$SETTINGS" >/dev/null \
     && pass "uninstall leaves the user's own permission rule alone" \
     || fail "uninstall removed the user's own permission rule"
@@ -387,7 +593,21 @@ rm -f "$SETTINGS"
 run >/dev/null
 
 # ------------------------------------------------- backup before rewrite ---
+# A run that changes settings.json backs it up first; one with nothing to
+# change neither rewrites it nor backs it up (#394).
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+out="$(run)"
+ls "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* >/dev/null 2>&1 \
+    && fail "a run with nothing to change wrote a backup (out=${out:0:160})" \
+    || pass "a run with nothing to change writes no backup"
+[[ "$out" == *"not rewritten"* ]] \
+    && pass "a run with nothing to change says settings.json was not rewritten" \
+    || fail "no-op run did not say so (out=${out:0:300})"
+drop_a_rule() {  # make the next install a real change
+    jq '.permissions.allow |= map(select(contains("worktree_create.sh") | not))' "$SETTINGS" > "$tmp" \
+        && cat "$tmp" > "$SETTINGS" && rm -f "$tmp"
+}
+drop_a_rule
 out="$(run)"
 ls "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* >/dev/null 2>&1 \
     && pass "a timestamped backup is written before the rewrite" \
@@ -449,12 +669,12 @@ n_session=$(jq '.hooks.SessionStart | length' "$SETTINGS")
     && pass "--force leaves exactly one SessionStart entry" \
     || fail "--force left $n_session SessionStart entries (both layers would inject)"
 
-leftover=$(jq -r --arg old "$WSC" '
-    [.hooks // {} | to_entries[] | .value[]
-     | select((._agent_workspace // "") == $old)] | length' "$SETTINGS")
+leftover=$(jq -r --arg old "$WSC/.claude/hooks/" '
+    [.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
+     | select(startswith($old))] | length' "$SETTINGS")
 [[ "$leftover" -eq 0 ]] \
-    && pass "--force removes every hook entry tagged with the old checkout" \
-    || fail "--force left $leftover entry/entries tagged $WSC"
+    && pass "--force removes every hook command of the old checkout" \
+    || fail "--force left $leftover hook command(s) under $WSC/.claude/hooks/"
 
 stale_cmds=$(jq -r --arg oldp "$WSC/" '
     [.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
@@ -520,11 +740,14 @@ out="$(run --require)"; rc=$?
 real="$SANDBOX/dotfiles-settings.json"
 mv "$SETTINGS" "$real"
 ln -s "$real" "$SETTINGS"
+# A real change, so the install writes (a no-op run writes nothing).
+drop_a_rule
 run >/dev/null
 [[ -L "$SETTINGS" ]] \
     && pass "a symlinked settings.json is still a symlink after install" \
     || fail "install replaced the symlinked settings.json with a regular file"
-jq -e '.hooks.SessionStart | length > 0' "$real" >/dev/null \
+jq -e --arg c "$WSC/.agent/scripts/worktree_create.sh" \
+    '[.permissions.allow[]] | index("Bash(" + $c + ":*)") != null' "$real" >/dev/null \
     && pass "the install was written through the symlink into the real file" \
     || fail "the symlink target did not receive the install"
 rm -f "$SETTINGS"; mv "$real" "$SETTINGS"
@@ -570,7 +793,8 @@ jq -e '[.permissions.allow[]] | index("Bash(mine *)") != null' "$SETTINGS" >/dev
 # Round 2 suggestion: backups accumulated unbounded, and two runs in the same
 # second collided on the same filename.
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
-for _ in 1 2 3 4 5 6 7; do run >/dev/null; done
+# Each run must write, so each must have something to change.
+for _ in 1 2 3 4 5 6 7; do drop_a_rule; run >/dev/null; done
 n_backups=$(ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/dev/null | wc -l)
 [[ "$n_backups" -eq 5 ]] \
     && pass "seven back-to-back installs leave exactly 5 backups (rotation, no same-second collision)" \
@@ -627,6 +851,8 @@ link_target_before="$(readlink "$SETTINGS")"
 # it. This is the assertion that actually distinguishes the two, and the
 # reason the write path was changed: truncate-in-place leaves a half-written
 # settings.json if the write is interrupted.
+# A real change, so the install writes (a no-op run writes nothing).
+drop_a_rule
 inode_before="$(stat -c %i "$DOTFILES/claude-settings.json")"
 
 out="$(run)"; rc=$?
@@ -639,10 +865,11 @@ out="$(run)"; rc=$?
     && pass "the symlink still points at the same dotfiles path" \
     || fail "the symlink was repointed ($(readlink "$SETTINGS") != $link_target_before)"
 
-jq -e --arg t "$WSC" '
-    [.hooks // {} | to_entries[] | .value[] | select((._agent_workspace // "") == $t)] | length > 0
+jq -e --arg c "$WSC/.agent/scripts/worktree_create.sh" --arg h "$WSC/.claude/hooks/log-tool-use.sh" '
+    ([.permissions.allow[]] | index("Bash(" + $c + ":*)") != null)
+    and ([.hooks.PreToolUse[].hooks[]?.command] | index($h) != null)
 ' "$DOTFILES/claude-settings.json" >/dev/null \
-    && pass "the dotfiles file itself received the marker entries" \
+    && pass "the dotfiles file itself received the install" \
     || fail "the install did not reach the symlink's target file"
 
 inode_after="$(stat -c %i "$DOTFILES/claude-settings.json")"
