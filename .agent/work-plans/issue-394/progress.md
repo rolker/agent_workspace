@@ -238,3 +238,28 @@ Fix-pass choice, judged: a command exactly equal to one the installer writes cou
 `--uninstall` ordering (reported by the fix pass, not fixed): belongs in this pull request, as must-fix 1. Same file, same class as round 1's suggestion 5 that this branch fixed for install, the block was already rewritten here (and gained a new late failure point, `classify_hooks`), and the silent exit 0 is a failure the Quality Standard does not leave for later.
 
 Dismissed: Gemini and Codex "ADR-0016 lines 207-210 not updated" (deliberate, ADR-0017; Plan Review finding 3, as in round 1); Gemini "the SessionStart link is always classified ours, even in an entry marked with another checkout" (the link is one per machine and the installer's own, and `--uninstall` already removes the link file itself, unchanged from main); Gemini "a marked entry with an empty hooks array passes --check" (harmless; install drops the marker); adversarial "a non-object entry in a hooks array fails install" (fails safe, predates the branch, dismissed in round 1; its uninstall consequence is must-fix 1).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-394 at `86614aa2`
+**Addressed**: Local Review (Pre-Push) at `086d86ff` (2026-11-12 13:08 -05:00)
+**Commits**: 33261037, 9613a9fa, 0a53c3c6, 4c5d851b, 86614aa2
+
+### Actions
+- [x] (must-fix) `--uninstall` now follows install's order: parse check, classify, read the recorded rules, build the rewrite, back up, write settings.json, and only then remove the root file, the link, legacy skill links, the plugin and the rules record. Every failure up to and including the write exits 1 with "nothing changed". `write_settings` now returns 1 on a failed rename (both branches; the symlink branch returned 0 before) and removes its temporary file. Tested: a boolean event value, a non-array `permissions.allow`, a non-object entry in a hooks array, a failed classification (jq shim), a failed backup (cp shim), a refused write (mv shim); each leaves the root file, rules record, link, plugin (no stub CLI call) and settings.json as they were, with no temporary file — `user_tier_install.sh` uninstall section (33261037)
+- [x] (suggestion) The exact match now covers `$WS_ROOT`/`$WS_PHYS` + `/.claude/hooks/<name>` for every written or retired name, and a new class `marked`: exactly `<marker>/.claude/hooks/<known name>`, attributed only inside an entry carrying that marker (the user's anywhere else). `dir_class` is the one place that decides self/foreign/dead/named. Tested with a checkout path holding a space (its retired hook reported and removed, our hook held once) and another checkout's marked entry under a spaced path (plain install keeps it, `--force` removes it, the same string in an unmarked entry stays) — `classify_hooks`, `dir_class`, `owner` (9613a9fa)
+- [x] (suggestion) `--check` counts each of our commands under its own event: none is "missing ... (under <event>)", more than one is "registered N times", and a copy under another event is drift. Tested with duplicates in both events and the hook moved to PostToolUse; install fixes each and `--check` is clean after — `check_event_count` (0a53c3c6)
+- [x] (suggestion) Host direction applied: a plain install removes only what it can attribute (ours by exact match or path rule, or a dead command in an entry carrying the marker). An unmarked dead command is reported by `--check` and named by a plain install, both with the remedy `<checkout>/.agent/scripts/user_tier_install.sh --force`, and left in place; `--force` removes it. Every command a run removes and does not write back is printed with the backup path (`BACKUP_PATH`). Tests (i) and (o) changed from "plain install removes" to "plain install names and keeps, `--force` removes"; new (i2): a marked dead command, removed by a plain install. Header reworded; `docs/design.md`'s sentence does not state the dead rule, so it is unchanged — `remove`, install report (4c5d851b)
+- [x] (suggestion) Install refuses a `hooks` that is not an object, or a `PreToolUse`/`SessionStart` that is neither null nor an array, with "nothing changed", before classify, backup or any write; `--check` reports it as drift. Tested with an object, a string and an array `hooks`: exit 1, settings.json byte-identical, no backup — `hook_shape_errors` (86614aa2)
+
+### Notes
+- Verification: `bash .agent/scripts/tests/test_user_tier_install.sh` gives 302 passed, 0 failed (255 before this pass); each intermediate commit's state passed too (279, 286, 291, 296). `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, exit 0, script-tests hook included. Scratch HOME and the stub CLI only; the real `~/.claude` was not touched.
+- Denied: a mutation check (the new test file run against the round-2 script in a scratchpad copy) was refused by the permission system and not run another way.
+- Choice listed for veto: the printed removals include this checkout's retired or alias-path commands as well as dead and foreign ones ("every command a run removes and does not write back"), since `--force` was to print each command it removes.
+- Choice listed for veto: `write_settings` failure handling (a failed rename now returns 1) is outside the five findings' lines but is what makes the must-fix's "on a failed rewrite exit 1" true for a symlinked settings.json.
+
+### Next step
+`/review-code --branch`
