@@ -55,7 +55,8 @@ checkout's configured git email:
   GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`), so `-c` values,
   `author.email` / `committer.email` and `GIT_*_EMAIL` all count there.
 - **A failed re-source** of `set_git_identity_env.sh` unsets the `GIT_*` and
-  `AGENT_*` variables it owns, so no stale identity is left behind.
+  `AGENT_*` variables it owns, so no stale identity is left behind; a failed
+  sourced `detect_agent_identity.sh` unsets its `AGENT_*` variables the same way.
 
 Different machines may use different addresses; each derives its own.
 

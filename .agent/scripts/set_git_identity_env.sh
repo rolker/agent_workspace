@@ -25,6 +25,7 @@
 # AGENT_EMAIL, AGENT_MODEL, AGENT_FRAMEWORK -- and returns 1, so a failed
 # re-source never leaves the previous session's identity (or a mix of old
 # and new values) in the shell. Re-source successfully before committing.
+# detect_agent_identity.sh behaves the same way for the AGENT_* variables.
 #
 # Source it in the checkout you commit in: the email derives from the git
 # user.email resolved in the current directory, not in the repository a
@@ -109,6 +110,10 @@ show_usage() {
     echo "This sets git identity ONLY for the current shell session using environment variables."
     echo "It does NOT modify .git/config, so the user's identity remains unchanged."
     echo "Also exports AGENT_NAME, AGENT_EMAIL, AGENT_MODEL, and AGENT_FRAMEWORK for use in signatures."
+    echo ""
+    echo "On any failure it unsets GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME,"
+    echo "GIT_COMMITTER_EMAIL, AGENT_NAME, AGENT_EMAIL, AGENT_MODEL and AGENT_FRAMEWORK, so"
+    echo "no previous identity is left behind (detect_agent_identity.sh unsets its AGENT_* the same way)."
 }
 
 # Auto-detect framework

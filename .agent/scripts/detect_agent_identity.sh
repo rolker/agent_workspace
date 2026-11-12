@@ -15,11 +15,16 @@
 #   AGENT_NAME - Full agent name (e.g., "Copilot CLI Agent")
 #   AGENT_EMAIL - Agent email address, derived from the checkout's git
 #                 user.email as <local>+<framework-suffix>@<domain>
-#                 (framework_config.sh); an unset or malformed git email
-#                 fails with a message and nothing is assigned, written or
-#                 exported (a sourced caller's AGENT_* values stay as they were)
+#                 (framework_config.sh)
 #   AGENT_MODEL - Detected or default model name
 #   AGENT_FRAMEWORK - Framework identifier (copilot, gemini, etc.)
+#
+# On failure (unset or malformed git email, missing framework_config.sh)
+# nothing is written and the script unsets what it owns -- AGENT_NAME,
+# AGENT_EMAIL, AGENT_MODEL, AGENT_FRAMEWORK -- before returning 1 (exit 1
+# when run), so a sourced caller is left with no stale or mixed identity.
+# set_git_identity_env.sh does the same for its variables (it also owns the
+# GIT_AUTHOR_* / GIT_COMMITTER_* ones).
 #
 # Note: The .agent/.identity file is runtime-generated and git-ignored.
 #       The template is at .agent/.identity.template
@@ -37,13 +42,13 @@ if [ -f "$SCRIPT_DIR/framework_config.sh" ]; then
     source "$SCRIPT_DIR/framework_config.sh"
 else
     echo "❌ ERROR: Framework configuration not found at $SCRIPT_DIR/framework_config.sh"
-    exit 1
+    unset AGENT_NAME AGENT_EMAIL AGENT_MODEL AGENT_FRAMEWORK
+    return 1 2>/dev/null || exit 1
 fi
 
 # Detect the framework in a subshell: detect_cli_env.sh exports
-# AGENT_FRAMEWORK, and nothing identity-related may change in the caller's
-# shell before the email is derived (a sourced failure keeps the previous
-# identity intact).
+# AGENT_FRAMEWORK, and nothing identity-related is assigned in the caller's
+# shell before the email is derived.
 if [ -f "$SCRIPT_DIR/detect_cli_env.sh" ]; then
     _DAI_FRAMEWORK="$(source "$SCRIPT_DIR/detect_cli_env.sh" >/dev/null 2>&1; echo "${AGENT_FRAMEWORK:-unknown}")"
 else
@@ -158,6 +163,10 @@ for arg in "$@"; do
             echo "  --write    Write detected identity to .agent/.identity"
             echo "  --export   Export identity as environment variables"
             echo "  (no args)  Display detected identity only"
+            echo ""
+            echo "On failure (e.g. git user.email unset) nothing is written and"
+            echo "AGENT_NAME, AGENT_EMAIL, AGENT_MODEL and AGENT_FRAMEWORK are unset"
+            echo "(set_git_identity_env.sh also unsets its GIT_AUTHOR_*/GIT_COMMITTER_*)."
             exit 0
             ;;
     esac
@@ -165,11 +174,12 @@ done
 
 # Derive the email from the checkout's git user.email. On an unset or
 # malformed email the helper prints the fix to stderr; stop before anything
-# is assigned, displayed, written or exported, so a sourced failure leaves
-# the caller's AGENT_* values as they were (return when sourced, exit when
-# run).
+# is displayed or written, and unset the AGENT_* variables this script owns
+# so a sourced caller keeps no stale or mixed identity (return when sourced,
+# exit when run).
 if ! _DAI_EMAIL="$(agent_email_for_suffix "$_DAI_SUFFIX")"; then
     unset _DAI_EMAIL _DAI_SUFFIX _DAI_NAME _DAI_MODEL _DAI_FRAMEWORK
+    unset AGENT_NAME AGENT_EMAIL AGENT_MODEL AGENT_FRAMEWORK
     return 1 2>/dev/null || exit 1
 fi
 AGENT_NAME="$_DAI_NAME"

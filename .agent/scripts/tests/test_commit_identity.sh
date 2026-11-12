@@ -291,12 +291,18 @@ for args in '--agent claude-code m' '--detect' '--agent nosuch' 'a b c d'; do
         || fail "stale identity after '$args' (got: $out)"
 done
 
-echo "TEST: a failed sourced detect_agent_identity.sh keeps a pre-exported identity intact"
+echo "TEST: a failed sourced detect_agent_identity.sh leaves nothing of its own set (as set_git_identity_env.sh)"
 PRE_ID=(AGENT_NAME="Codex CLI Agent" AGENT_EMAIL=dev+codex@example.org AGENT_MODEL=gpt-x AGENT_FRAMEWORK=codex)
 out="$(run_in "$sb" "${PRE_ID[@]}" CLAUDECODE=1 -- bash -c \
-    'source "$1" --export >/dev/null 2>&1; echo "rc=$? $AGENT_NAME|$AGENT_EMAIL|$AGENT_MODEL|$AGENT_FRAMEWORK"' _ "$DETECT" 2>&1)"
-[ "$out" = "rc=1 Codex CLI Agent|dev+codex@example.org|gpt-x|codex" ] \
-    && pass "no AGENT_* value changes (framework, name, model or email)" || fail "mixed identity (got: $out)"
+    'source "$1" --export >/dev/null 2>&1; echo "rc=$? ${AGENT_NAME-u}|${AGENT_EMAIL-u}|${AGENT_MODEL-u}|${AGENT_FRAMEWORK-u}"' _ "$DETECT" 2>&1)"
+[ "$out" = "rc=1 u|u|u|u" ] \
+    && pass "every AGENT_* is unset: no stale or mixed identity" || fail "detect failure state (got: $out)"
+out="$(run_in "$sb" -- bash "$DETECT" --help 2>&1)"
+[[ "$out" == *"AGENT_FRAMEWORK are unset"* ]] && pass "detect_agent_identity.sh --help states the clearing" \
+    || fail "detect --help (got: $out)"
+out="$(run_in "$sb" -- bash -c 'source "$1" --help' _ "$SET_ENV" 2>&1)"
+[[ "$out" == *"On any failure it unsets GIT_AUTHOR_NAME"* ]] && pass "set_git_identity_env.sh --help states the clearing" \
+    || fail "set_env --help (got: $out)"
 
 echo "TEST: --detect, detect_agent_identity.sh and configure_git_identity.sh derive from the base"
 sb="$(mk_repo "dev@example.org")"
