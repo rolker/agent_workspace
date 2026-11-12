@@ -529,3 +529,20 @@ def test_clone_states_the_transport_policy(tmp_path, monkeypatch):
         "protocol.file.allow=always",
     }
     assert argv[-3:-1] == ["--", "https://example.com/a.git"]
+
+
+def test_a_failed_clone_reports_git_s_status_not_its_output(tmp_path, monkeypatch):
+    # Round 4: git's stderr was decoded as text (a UnicodeDecodeError traceback when the remote's
+    # file names are not UTF-8) and, when it decoded, quoted in the message.
+    from ros_manifest import extends
+
+    def fake_run(argv, **kwargs):
+        assert "text" not in kwargs
+        return subprocess.CompletedProcess(argv, 128, b"", b"\xff" * 300 + b" remote-file-name")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(ManifestError) as info:
+        extends._clone_or_reuse("https://example.com/a.git", "main", tmp_path / "cache", "leaf")
+    assert str(info.value) == (
+        "leaf: failed to clone its extends base (git exited with status 128)"
+    )

@@ -50,12 +50,16 @@ def _cache_key(url: str, ref: str) -> str:
 def _reject_option_like(value: str, field_name: str) -> None:
     if value.startswith("-"):
         raise ManifestError(
-            f"extends {field_name} '{value}' looks like a command-line option "
-            "(starts with '-') and is rejected to prevent git argument injection"
+            f"extends {field_name} starts with '-', so git could read it as a command-line"
+            " option; it is refused"
         )
 
 
-def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
+# git's output is captured as bytes and never printed: its stderr quotes the url and the
+# remote's own file names, and need not be UTF-8. A failure is reported with git's exit status.
+
+
+def _clone_or_reuse(url: str, ref: str, cache_dir: Path, source: str = "a manifest") -> Path:
     _reject_option_like(url, "url")
     _reject_option_like(ref, "ref")
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -65,25 +69,26 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
     result = subprocess.run(
         ["git", *_TRANSPORT_POLICY, "clone", "--branch", ref, "--depth", "1", "--", url, str(dest)],
         capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise ManifestError(f"failed to clone extends source {url}@{ref}: {result.stderr.strip()}")
-    return dest
-
-
-def _head_commit(clone_dir: Path, url: str, ref: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
     )
     if result.returncode != 0:
         raise ManifestError(
-            f"cannot read the commit of extends source {url}@{ref} (clone: {clone_dir}):"
-            f" {result.stderr.strip()}"
+            f"{source}: failed to clone its extends base (git exited with status"
+            f" {result.returncode})"
         )
-    return result.stdout.strip()
+    return dest
+
+
+def _head_commit(clone_dir: Path, source: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise ManifestError(
+            f"{source}: cannot read the commit of its extends base (clone: {clone_dir}; git"
+            f" exited with status {result.returncode})"
+        )
+    return result.stdout.decode("ascii", errors="replace").strip()
 
 
 @dataclass(frozen=True)
@@ -101,9 +106,14 @@ class _GitOrigin:
 
 
 def _resolve_one(
-    ext: ExtendsRef, declaring_dir: Path, declaring_origin: Optional[_GitOrigin], cache_dir: Path
+    ext: ExtendsRef,
+    declaring_dir: Path,
+    declaring_origin: Optional[_GitOrigin],
+    cache_dir: Path,
+    source: str,
 ) -> Tuple[Path, Optional[_GitOrigin]]:
-    """Return the base manifest's path and its git origin (None for the local filesystem)."""
+    """Return the base manifest's path and its git origin (None for the local filesystem).
+    `source` is the declaring manifest's label: a message names it, not the base's url or ref."""
     if ext.url is None:
         base = declaring_dir.resolve()
         candidate = (base / ext.path).resolve()
@@ -115,7 +125,7 @@ def _resolve_one(
             raise ManifestError(f"extends path not found: {candidate}")
         # Inside a clone, the escape check keeps it in the same clone: same origin.
         return candidate, declaring_origin
-    clone_dir = _clone_or_reuse(ext.url, ext.ref, cache_dir).resolve()
+    clone_dir = _clone_or_reuse(ext.url, ext.ref, cache_dir, source).resolve()
     candidate = (clone_dir / ext.path).resolve()
     if not candidate.is_relative_to(clone_dir):
         raise ManifestError(
@@ -123,12 +133,12 @@ def _resolve_one(
         )
     if not candidate.is_file():
         raise ManifestError(
-            f"extends path '{ext.path}' not found in {ext.url}@{ext.ref} (clone: {clone_dir})"
+            f"{source}: extends path '{ext.path}' not found in its base (clone: {clone_dir})"
         )
     origin = _GitOrigin(
         url=ext.url,
         ref=ext.ref,
-        commit=_head_commit(clone_dir, ext.url, ext.ref),
+        commit=_head_commit(clone_dir, source),
         clone_dir=clone_dir,
     )
     return candidate, origin
@@ -172,7 +182,7 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
             break
         try:
             current_path, current_origin = _resolve_one(
-                manifest.extends, current_path.parent, current_origin, cache_dir
+                manifest.extends, current_path.parent, current_origin, cache_dir, manifest.source
             )
         except (OSError, RuntimeError) as exc:
             raise ManifestError(

@@ -714,3 +714,62 @@ def test_base_reached_through_a_symlink_with_a_newline_in_its_name(tmp_path, cap
     assert "refusing to write the header of the 'underlay' .repos file" in err
     assert "contains a control or invisible character" in err
     assert not out.exists() or _all_files(out) == []
+
+
+# --- no message carries a document value ---------------------------------------------------
+#
+# A ManifestError names a type, a key or name that has passed the character rule, the
+# manifest's label, or a line and column; never a value. Each value-bearing field gets a marker
+# in several refused shapes (a refused URL or ref, a control character, a list, a mapping, a
+# plain string); no line the CLI prints may hold it.
+
+MARKER = "Mk4rkR"
+_VALUE_FIELDS = {
+    "repos.url": "repos:\n  core:\n    a:\n      url: {v}\n      ref: main\n",
+    "repos.ref": "repos:\n  core:\n    a:\n      url: https://e.com/a.git\n      ref: {v}\n",
+    "repos.type": (
+        "repos:\n  core:\n    a:\n      url: https://e.com/a.git\n      ref: main\n"
+        "      type: {v}\n"
+    ),
+    "distros.ref": (
+        "repos:\n  core:\n    a:\n      url: https://e.com/a.git\n      ref: main\n"
+        "      distros:\n        rolling:\n          ref: {v}\n"
+    ),
+    "distros.absent": (
+        "repos:\n  core:\n    a:\n      url: https://e.com/a.git\n      ref: main\n"
+        "      distros:\n        rolling:\n          absent: {v}\n"
+    ),
+    "extends.url": "extends:\n  path: m.yaml\n  url: {v}\n  ref: main\n",
+    "extends.ref": "extends:\n  path: m.yaml\n  url: file:///nonexistent/b.git\n  ref: {v}\n",
+    "groups.default": "groups:\n  g:\n    default: {v}\n",
+}
+_MARKED_VALUES = [
+    f"'https://u:{MARKER}@e.com/a.git'",
+    f"'-{MARKER}'",
+    f"'{MARKER}..x'",
+    f"'{MARKER} x'",
+    f'"{MARKER}\\u202e"',
+    f'"{MARKER}\\nx"',
+    f"[{MARKER}]",
+    f"{{{MARKER}: 1}}",
+    f"{MARKER}",
+    f"file:///nonexistent/{MARKER}.git",  # an accepted url: the clone fails, git quotes it
+]
+
+
+@pytest.mark.parametrize("field", sorted(_VALUE_FIELDS))
+def test_no_message_carries_a_value(field, tmp_path, capsys):
+    for value in _MARKED_VALUES:
+        leaf = tmp_path / "leaf.yaml"
+        leaf.write_text(
+            "layers: [core]\nroles:\n  dev: {}\n" + _VALUE_FIELDS[field].format(v=value)
+        )
+        for command in ("validate", "resolve"):
+            argv = [command, "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"]
+            argv += ["--cache-dir", str(tmp_path / "cache")]
+            if command == "resolve":
+                argv += ["--out", str(tmp_path / "out")]
+            main(argv)
+            captured = capsys.readouterr()
+            for line in (captured.out + captured.err).splitlines():
+                assert MARKER not in line, (field, value, command)

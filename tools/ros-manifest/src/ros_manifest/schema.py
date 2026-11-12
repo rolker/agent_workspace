@@ -330,12 +330,13 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
     if raw is None:
         raw = {}
     raw = _require_dict(raw, source)
+    # First, so that every key a message below names has passed the character rule.
+    _refuse_unsafe_chars(raw, source, "")
     unknown = set(raw) - _TOP_LEVEL_KEYS
     if unknown:
         raise ManifestError(
             f"{source}: unknown top-level key(s): {sorted(repr(k) for k in unknown)}"
         )
-    _refuse_unsafe_chars(raw, source, "")
 
     extends_ref: Optional[ExtendsRef] = None
     if "extends" in raw:
