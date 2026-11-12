@@ -397,3 +397,22 @@ No round-1 or round-2 regression found.
 **Decision**: publish
 
 Round 3 approved. One suggestion stays open for triage: with user.useConfigOnly=true and no user.name, the hook's message says the email is not set when the name is what is missing.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 18:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #457 at `6fc03b60`
+**Sources**: 2 (Local Review (Pre-Push) @ `8a5f68ce` (covers `6fc03b60` via bookkeeping), CI rollup); Copilot skipped (disabled for quota); 0 GitHub reviews, 0 inline comments, 0 conversation comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+CI at `6fc03b60` when checked: Validate Documentation passed (both runs); Lint (pre-commit), Validate Adapter Contract and ros-manifest tests still running in both runs (43332659112, 43332653327). No failure seen. Earlier pre-push rounds (`1886212f`, `7057833f`) are closed: every finding ticked and addressed in the Implementation entries. The `sources` helper dropped nothing.
+
+The open finding was checked against the code. `ident_email` returns "" when `git var` exits non-zero (`identity_base.py:150`), and the hook prints `(not set)` for "" (`check-commit-identity.py:54`). So any `git var` failure, such as `user.useConfigOnly=true` with no `user.name`, is reported as a missing email. An empirical repro in a temp repo was denied by the sandbox, so this ruling rests on reading the code. Classified valid, fix in this PR: under the Quality Standard a misleading error is a defect, not a nit. The fix is small and sits in code this PR wrote: carry `git var`'s stderr or a reason out of `ident_email`, print it in place of `(not set)`, and add a test with `useConfigOnly` and no name.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ 8a5f68ce) When `git var GIT_<kind>_IDENT` fails (e.g. `user.useConfigOnly=true` with no `user.name`), the hook prints "Author email: (not set) / Committer email: (not set)" although the email is set. Fix: make `ident_email` report the failure (git's stderr) and have the hook print it in place of "(not set)", with a test for `useConfigOnly` and no `user.name` — `.agent/scripts/identity_base.py`, `.agent/hooks/check-commit-identity.py`
+
+### False positives
