@@ -1302,6 +1302,42 @@ out="$(run --check)"; rc=$?
     && pass "--check is clean with settings.json symlinked into dotfiles" \
     || fail "--check over a symlinked settings.json (rc=$rc out=${out:0:200})"
 
+# A failed rename onto the dotfiles file is a failed write: install and
+# --uninstall exit 1 saying nothing changed in it, the dotfiles file and the
+# link stay as they were, and neither the staging file beside the dotfiles
+# file nor the mktemp file in ~/.claude is left behind. An `mv` shim fails
+# only the rename onto the dotfiles file.
+mk_fail_shim "$SANDBOX/dotfiles-mv-shim" mv '*/dotfiles/claude-settings.json'
+no_strays() {
+    ! compgen -G "$DOTFILES/claude-settings.json.agent-workspace.*" >/dev/null \
+        && ! compgen -G "$HOMEDIR/.claude/.settings.json.*" >/dev/null
+}
+drop_a_rule
+cp "$DOTFILES/claude-settings.json" "$SANDBOX/dotfiles-before.json"
+for mode in install --uninstall; do
+    if [[ "$mode" == install ]]; then
+        out="$(RUN_PATH_PREFIX="$SANDBOX/dotfiles-mv-shim" run)"; rc=$?
+    else
+        out="$(RUN_PATH_PREFIX="$SANDBOX/dotfiles-mv-shim" run --uninstall)"; rc=$?
+    fi
+    [[ "$rc" -eq 1 && "$out" == *"failed to write $SETTINGS -- nothing changed"* && "$out" != *"user tier removed"* ]] \
+        && pass "$mode over a symlinked settings.json whose rename fails exits 1, saying nothing changed" \
+        || fail "$mode with a failed rename onto the dotfiles file (rc=$rc out=${out:0:400})"
+    cmp -s "$DOTFILES/claude-settings.json" "$SANDBOX/dotfiles-before.json" \
+        && [[ -L "$SETTINGS" && "$(readlink "$SETTINGS")" == "$link_target_before" ]] \
+        && pass "...the dotfiles file and the link unchanged" \
+        || fail "$mode with a failed rename changed the dotfiles file or the link ($(readlink "$SETTINGS"))"
+    no_strays \
+        && pass "...and no staging or temporary file left behind" \
+        || fail "$mode with a failed rename left: $(ls -a "$DOTFILES" "$HOMEDIR/.claude" | tr '\n' ' ')"
+done
+[[ "$(cat "$ROOT_FILE" 2>/dev/null)" == "$WSC" && -L "$HOOK_LINK" ]] \
+    && pass "the failed --uninstall left the root file and the SessionStart link" \
+    || fail "the failed --uninstall removed the root file or the link"
+cp "$SANDBOX/dotfiles-before.json" "$DOTFILES/claude-settings.json"
+rm -f "$SANDBOX/dotfiles-before.json" "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+run >/dev/null
+
 rm -f "$SETTINGS"
 mv "$DOTFILES/claude-settings.json" "$SETTINGS"
 

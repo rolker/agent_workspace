@@ -1703,7 +1703,10 @@ echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
 if [[ "$settings_changed" == false ]]; then
     echo "  $SETTINGS already has our hook entries and $(allow_rules_json | jq 'length') allow-rules -- not rewritten"
 else
-    write_settings <<< "$merged_settings" || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
+    write_settings <<< "$merged_settings" || {
+        echo "ERROR: failed to write $SETTINGS -- nothing changed in it (the backup above is a copy of it); re-run the installer once it can be written" >&2
+        exit 1
+    }
     echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
 fi
 if [[ -n "$install_removed" ]]; then
