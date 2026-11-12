@@ -899,4 +899,4 @@ Untrue at this head: the carve-out names `!!set` and `!!pairs` but not `!!omap`.
 Notes for #447 (not this verdict): an unknown key under a per-distro entry or under `extends` is accepted silently; `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only, so `!!set`, `!!pairs` and `!!omap` contents are skipped. At this check #447's body and comments do not yet mention either, while the README says these cases are "tracked in #447".
 
 ### Findings
-- [ ] (must-fix) carve-out omits `!!omap`, which is accepted unchecked the same way; with the introduction claiming known cases are named, both sentences are untrue for it. Mechanical: "a string inside a `!!set`, `!!pairs` or `!!omap` value under a key the tool ignores" — `tools/ros-manifest/README.md:113-114`
+- [x] (must-fix) carve-out omits `!!omap`, which is accepted unchecked the same way; with the introduction claiming known cases are named, both sentences are untrue for it. Mechanical: "a string inside a `!!set`, `!!pairs` or `!!omap` value under a key the tool ignores" — `tools/ros-manifest/README.md:113-114`

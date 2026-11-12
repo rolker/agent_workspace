@@ -77,7 +77,7 @@ the declaring directory or clone, and a local one that is not found names the fu
 for. A YAML error names the manifest and, where the parser gives one, a line and column; a value
 YAML cannot build, a document nested too deeply and a character the YAML reader refuses (such as
 NUL) give no position. These rules describe what the checks aim at; the cases they are known not
-to reach are named where they apply and tracked in #447. The rules:
+to reach are described where they apply and tracked in #447. The rules:
 
 - Names: a layer is letters, digits, `_` and `-` (the `ros2_colcon` adapter's rule); a
   repository is letters, digits, `_`, `.` and `-`, not starting with `.` or `-`; a group is
@@ -109,9 +109,10 @@ to reach are named where they apply and tracked in #447. The rules:
   option.
 - No string key or value may contain a control character (newline, carriage return, tab, ...),
   a line or paragraph separator, an invisible or bidirectional formatting character (zero-width
-  space, byte-order mark, right-to-left override) or a space other than the ASCII one. A key
-  YAML builds as bytes (`!!binary`), and a string inside a `!!set` or `!!pairs` value under a
-  key the tool ignores, are not checked by this rule
+  space, byte-order mark, right-to-left override) or a space other than the ASCII one. The rule
+  is applied to mappings, sequences and the strings in them. A key or value YAML builds as bytes
+  (`!!binary`), and a string inside any other collection YAML can build (such as `!!set`,
+  `!!pairs` or `!!omap`) under a key the tool ignores, are not checked by this rule
   ([#447](https://github.com/rolker/agent_workspace/issues/447)).
 - YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported with at
   most a line and column, never with the document's text; a value YAML cannot build (`!!int
