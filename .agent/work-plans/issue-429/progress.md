@@ -1034,3 +1034,13 @@ Checks run:
 - [ ] (must-fix) Regression: leading whitespace is stripped before the comment check, so `version:  # TODO pin` and `version: #main` are emitted as the refs `# TODO pin` / `#main`, and `repo_pin` exits 0 with kind unknown. The old parser gave an empty value, which was refused. `adapter_sync` gets the comment as the pin too. Fix: check for the comment before trimming, or treat a leading `#` as a comment. Add both to `test_repo_pin_reads_version_as_yaml`. Found by Claude adversarial; reproduced with the parser's awk — `.agent/project_types/ros2_colcon/adapter.sh:240-247`
 - [ ] (must-fix) A quoted scalar is cut at the next matching quote and the rest of the line is not checked. `'stable''next'` reads as `stable`, `"main" extra` as `main`, and `"x\"y"` as `x\`. Each is printed as a clean ref nobody pinned, and the stray-quote guard never fires. Fix: keep the quoted cut only when nothing follows it except optional whitespace and a ` #` comment; otherwise emit the raw value so the quote guard refuses it. Add tests. Found by codex (must-fix), gemini and Claude adversarial (suggestion); reproduced — `.agent/project_types/ros2_colcon/adapter.sh:237-244`
 - [ ] (suggestion) In `single_project`, when `ls-remote` fails for a reason other than the timeout (rc 128: origin missing or unreachable), the error still says "origin did not name its HEAD". It should say origin could not be asked (gemini) — `.agent/project_types/single_project/adapter.sh:308-321`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second review of the verb's diff found two must-fix defects in the fix itself; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Round 2 of this diff (the counter says 5 because it carries part 1's reviews). Two must-fix, both in the new version parser: a comment directly after "version:" is read as the ref; a quoted value is cut at the closing quote with the rest of the line unchecked. One suggestion: single_project's error text when ls-remote fails for a reason other than the timeout. Fix all three, then a narrow convergence review.
