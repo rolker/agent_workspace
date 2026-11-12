@@ -546,3 +546,39 @@ def test_a_failed_clone_reports_git_s_status_not_its_output(tmp_path, monkeypatc
     assert str(info.value) == (
         "leaf: failed to clone its extends base (git exited with status 128)"
     )
+
+
+def _git_based_leaf(tmp_path):
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(
+        "extends:\n  path: manifest.yaml\n  url: file:///nonexistent/b.git\n  ref: main\n"
+        "layers: [core]\nroles:\n  dev: {}\n"
+    )
+    return leaf
+
+
+def test_missing_git_has_its_own_message(tmp_path, monkeypatch, capsys):
+    # Round 4: it read "its extends cannot be followed (No such file or directory)".
+    from ros_manifest.cli import main
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    leaf = _git_based_leaf(tmp_path)
+    argv = ["validate", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"]
+    assert main(argv + ["--cache-dir", str(tmp_path / "cache")]) == 1
+    assert capsys.readouterr().err == (
+        "ERROR: git is not installed or not on PATH; it is needed to clone an extends base\n"
+    )
+
+
+def test_an_uncreatable_cache_dir_has_its_own_message(tmp_path, capsys):
+    from ros_manifest.cli import main
+
+    (tmp_path / "a-file").write_text("")
+    cache = tmp_path / "a-file" / "cache"
+    leaf = _git_based_leaf(tmp_path)
+    argv = ["validate", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"]
+    assert main(argv + ["--cache-dir", str(cache)]) == 1
+    assert capsys.readouterr().err == (
+        f"ERROR: the extends cache directory {cache} (--cache-dir) cannot be created"
+        " (Not a directory)\n"
+    )

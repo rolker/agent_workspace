@@ -55,6 +55,8 @@ def _reject_option_like(value: str, field_name: str) -> None:
         )
 
 
+_NO_GIT = "git is not installed or not on PATH; it is needed to clone an extends base"
+
 # git's output is captured as bytes and never printed: its stderr quotes the url and the
 # remote's own file names, and need not be UTF-8. A failure is reported with git's exit status.
 
@@ -62,14 +64,35 @@ def _reject_option_like(value: str, field_name: str) -> None:
 def _clone_or_reuse(url: str, ref: str, cache_dir: Path, source: str = "a manifest") -> Path:
     _reject_option_like(url, "url")
     _reject_option_like(ref, "ref")
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    # These two are not the manifest's fault, so they do not name it.
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ManifestError(
+            f"the extends cache directory {cache_dir} (--cache-dir) cannot be created"
+            f" ({exc.strerror or 'an OS error'})"
+        ) from None
     dest = cache_dir / _cache_key(url, ref)
     if dest.is_dir():
         return dest
-    result = subprocess.run(
-        ["git", *_TRANSPORT_POLICY, "clone", "--branch", ref, "--depth", "1", "--", url, str(dest)],
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                *_TRANSPORT_POLICY,
+                "clone",
+                "--branch",
+                ref,
+                "--depth",
+                "1",
+                "--",
+                url,
+                str(dest),
+            ],
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        raise ManifestError(_NO_GIT) from None
     if result.returncode != 0:
         raise ManifestError(
             f"{source}: failed to clone its extends base (git exited with status"
@@ -79,10 +102,13 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path, source: str = "a manife
 
 
 def _head_commit(clone_dir: Path, source: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
-        capture_output=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+            capture_output=True,
+        )
+    except FileNotFoundError:  # a cache hit skips the clone, so this is git's first run
+        raise ManifestError(_NO_GIT) from None
     if result.returncode != 0:
         raise ManifestError(
             f"{source}: cannot read the commit of its extends base (clone: {clone_dir}; git"
