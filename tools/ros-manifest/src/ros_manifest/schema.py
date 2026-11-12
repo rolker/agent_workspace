@@ -376,7 +376,7 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
             if unknown_repo_keys:
                 raise ManifestError(
                     f"{source}: repos.{layer}.{repo_name}: unknown key(s)"
-                    f" {sorted(unknown_repo_keys)}"
+                    f" {sorted(unknown_repo_keys, key=repr)}"
                 )
             if "url" not in entry:
                 raise ManifestError(f"{source}: repos.{layer}.{repo_name}: missing 'url'")
@@ -438,7 +438,7 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         unknown_group_keys = set(gval) - _GROUP_KEYS
         if unknown_group_keys:
             raise ManifestError(
-                f"{source}: groups.{name}: unknown key(s) {sorted(unknown_group_keys)}"
+                f"{source}: groups.{name}: unknown key(s) {sorted(unknown_group_keys, key=repr)}"
             )
         default = gval.get("default")
         if default not in ("include", "exclude"):
@@ -459,7 +459,7 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         unknown_role_keys = set(rval) - _ROLE_KEYS
         if unknown_role_keys:
             raise ManifestError(
-                f"{source}: roles.{name}: unknown key(s) {sorted(unknown_role_keys)}"
+                f"{source}: roles.{name}: unknown key(s) {sorted(unknown_role_keys, key=repr)}"
             )
         subtract = _require_list_of_str(
             rval.get("subtract", []), f"{source}: roles.{name}.subtract"
@@ -484,10 +484,12 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
         unknown_pkg_keys = set(pval) - _PACKAGE_KEYS
         if unknown_pkg_keys:
             raise ManifestError(
-                f"{source}: packages.{name}: unknown key(s) {sorted(unknown_pkg_keys)}"
+                f"{source}: packages.{name}: unknown key(s) {sorted(unknown_pkg_keys, key=repr)}"
             )
         if "repo" not in pval:
             raise ManifestError(f"{source}: packages.{name}: missing 'repo'")
+        # Unchecked, a list here reached merge.py as a dict key: a TypeError and a traceback.
+        _require_str(pval["repo"], source, f"packages.{name}.repo")
         depend = _require_list_of_str(pval.get("depend", []), f"{source}: packages.{name}.depend")
         exec_depend = _require_list_of_str(
             pval.get("exec_depend", []), f"{source}: packages.{name}.exec_depend"

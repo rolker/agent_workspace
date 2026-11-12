@@ -394,6 +394,38 @@ def test_a_value_yaml_cannot_construct_is_a_fixed_message(value, tmp_path, capsy
     assert "Traceback" not in captured.err
 
 
+def _cli_validate(tmp_path, text):
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(text)
+    rc = main(["validate", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"])
+    return rc, leaf
+
+
+# The same class, found while there: values the schema let through that later raised a
+# TypeError (sorting keys of mixed types; a list used as a dict key) and printed a traceback.
+@pytest.mark.parametrize(
+    "body, message",
+    [
+        (
+            "repos:\n  core:\n    a:\n      url: https://e.com/a.git\n      ref: main\n"
+            "      1: x\n      zz: y\n",
+            "repos.core.a: unknown key(s) ['zz', 1]",
+        ),
+        ("groups:\n  g:\n    default: include\n    1: x\n    zz: y\n", "unknown key(s) ['zz', 1]"),
+        ("roles:\n  r:\n    1: x\n    zz: y\n", "roles.r: unknown key(s) ['zz', 1]"),
+        ("packages:\n  p:\n    repo: a\n    1: x\n    zz: y\n", "unknown key(s) ['zz', 1]"),
+        ("packages:\n  p:\n    repo: [a]\n", "packages.p.repo must be a string"),
+        ("packages:\n  p:\n    repo: {a: 1}\n", "packages.p.repo must be a string"),
+    ],
+)
+def test_a_value_of_the_wrong_type_is_a_message_not_a_traceback(body, message, tmp_path, capsys):
+    rc, _ = _cli_validate(tmp_path, "layers: [core]\n" + body)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert message in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_aliases_are_refused():
     with pytest.raises(ManifestError, match="line 1, column 19: aliases .* are not allowed"):
         parse_manifest_text("layers: &a [core, *a]\n", source="t")  # was a RecursionError
