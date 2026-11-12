@@ -52,3 +52,11 @@ issue: 455
 - Keep the `framework_config.sh` table to suffixes only and update its "Currently configured for" header, and reword the `set_git_identity_env.sh` / `configure_git_identity.sh` examples to a placeholder such as `<you>+codex@<domain>`.
 - Ask the owner to approve the `CLAUDE.md` / `CODEX.md` edit (new text: source the script with `--agent claude` / `--detect` or a suffix-only form, naming no address).
 - Include a private-data check in the acceptance run: grep tracked non-test files for the owner's local part and domains.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 17:26 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-455/plan.md` at `6415a8ff`
+
+Shared helper derives the base from the checkout's git user.email (suffix stripped, clone value wins, loud failure when unset); hook, config table and three scripts use it; hermetic test; address-free docs; the CLAUDE.md/CODEX.md edit is a last, owner-approval-gated commit.
