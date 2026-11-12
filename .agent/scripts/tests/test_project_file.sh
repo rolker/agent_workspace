@@ -1503,14 +1503,14 @@ test_dashboard_no_project_pointer() {
     echo "TEST: the dashboard with nothing registered and no project/ points at register_project.sh, not make setup (issue #295)"
     local sb out
     sb="$(make_sandbox)"
-    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" 2>&1 || true)"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
     assert_contains "check line names register_project.sh" \
         "No project is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
     assert_contains "status line names register_project.sh" \
         "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
     assert_not_contains "no make setup pointer" "make setup" "$out"
     echo "bad entry with too many words here" > "$sb/.agent/projects.local"
-    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" 2>&1 || true)"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
     assert_not_contains "malformed registry: not called unregistered" "No project is registered" "$out"
     assert_contains "malformed registry: status says so" "- **Status**: ⚠️ projects.local has malformed entries" "$out"
 }
