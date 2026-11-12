@@ -788,3 +788,36 @@ The host read the round 6 Local Review (Pre-Push) entry at cb2b8809: verdict cha
 
 ### Reported, not fixed (outside this pass)
 - An unknown key under `extends` (for example `foo: 1`) is accepted silently, and `extends.ref` without a `url` is not checked (an option-like `-x` passes). Reproduced through `validate`. The README no longer claims otherwise.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 13:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `868b77ac`
+**Base**: main
+**Depth**: Deep (reason: round 7 convergence check per handoff; the whole-branch tier stays Deep for the CI workflow change and untrusted manifest content)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 7 | **Ship**: recommended — round 7: 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Scope: round 6's one finding and the fix diff `cb2b8809..042387de` (a379382a, cfad8807: `tools/ros-manifest/README.md`, section "What a manifest may contain", and progress.md; the merge at HEAD only brought main in). The question: is every sentence of that section true of the code at this head? Cross-model reviewers not run, per handoff. Code not under review (unchanged since round 5).
+
+Round 6's finding is fixed: the opening now matches the code (`extends.py:148`, `:151`, `:158`; `merge.py:157-161`; `schema.py:233-247`). Checked true against `schema.py`, `extends.py`, `merge.py`, `emit.py`, `cli.py`, and by running the CLI on scratch manifests:
+- the five name patterns (layer = the `ros2_colcon` adapter's `^[A-Za-z0-9_-]+$`, `adapter.sh:91`), the 64 cap, the case-twin rule within a manifest and across the chain
+- the string-type list, now `extends`' `path`, `url` and `ref` only (`schema.py:348-350`), and `absent`
+- the URL shapes and character sets, the refused forms, the local `extends` path kept in its directory
+- the ref rule, `extends.ref` checked only beside a `url` (`schema.py:351-353`)
+- YAML errors: NUL and `!!int 0xz` give no position, an alias or an unknown tag gives line and column
+- `resolve`'s second line: header and `layers.txt` / `optional_layers.txt` lines through `_line` (`emit.py:68`, `:94`), `.repos` entries `yaml.dump`ed (`emit.py:57`), build before write, the transport policy
+- the never-printed list, the still-printed list, the backstop line and its two escapes
+
+The two sentences the fix pass called loose need no change. The case-twin reason ("one would overwrite the other") is literal for layers and repositories only, but the rule it explains is true for all four kinds. "No place for a password or token" is true: no shape has a userinfo password slot, and the ssh user is a login name.
+
+Untrue at this head: "No string key or value may contain a control character ... or a space other than the ASCII one." `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only, so a string inside a `!!set` or `!!pairs` value is not checked. Such a value is accepted under a key the parser ignores: an unknown key under a per-distro entry (`schema.py:413-434` never checks the entry's keys). Reproduced: `distros: {jazzy: {ref: main, extra: !!set {"x y": null}}}` and `extra: !!pairs [{k: "x‮y"}]` both `resolve` with exit 0. The same value as a plain string is refused. The string never reaches output.
+
+Notes for #447 (code, not this verdict): an unknown key under a per-distro entry is accepted silently, a sibling of the unknown `extends` key the fix pass reported; `_refuse_unsafe_chars` does not walk sets or tuples (`!!set`, `!!pairs`, `!!omap`).
+
+### Findings
+- [ ] (must-fix) "No string key or value may contain ..." is untrue: a string inside a `!!set` or `!!pairs` value under an unknown per-distro key is accepted. Either extend the `!!binary` carve-out, e.g. "A key YAML builds as bytes (`!!binary`), and a string inside a `!!set` or `!!pairs` value under a key the tool ignores, are not checked by this rule (#447)", or fix the code in #447 — `tools/ros-manifest/README.md:111-115`
+- [ ] (suggestion) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:101-102`, reproduced: "group 'g' redeclares default 'exclude' (was 'include' ...)"); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:125`
