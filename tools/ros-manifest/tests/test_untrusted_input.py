@@ -372,6 +372,28 @@ def test_invalid_yaml_is_a_fixed_message_with_position_only():
     assert str(info.value) == "t: invalid YAML at line 2, column 8"
 
 
+# Round 3: PyYAML's constructor raises ValueError or KeyError, not a YAMLError, for these, and
+# both the exception's text and its traceback quote the value.
+CONSTRUCTOR_FAILURES = [f"!!float {SECRET}", f"!!int 0x{SECRET}", f"!!bool {SECRET}", "2024-13-45"]
+
+
+@pytest.mark.parametrize("value", CONSTRUCTOR_FAILURES)
+def test_a_value_yaml_cannot_construct_is_a_fixed_message(value, tmp_path, capsys):
+    text = f"layers: [core]\nroles:\n  dev: {{}}\nx: {value}\n"
+    shown = value.split()[-1]
+    with pytest.raises(ManifestError) as info:
+        parse_manifest_text(text, source="t")
+    assert str(info.value) == "t: invalid YAML"
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(text)
+    rc = main(["validate", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.err == f"ERROR: {leaf}: invalid YAML\n"
+    assert shown not in captured.err + captured.out
+    assert "Traceback" not in captured.err
+
+
 def test_aliases_are_refused():
     with pytest.raises(ManifestError, match="line 1, column 19: aliases .* are not allowed"):
         parse_manifest_text("layers: &a [core, *a]\n", source="t")  # was a RecursionError

@@ -492,7 +492,7 @@ New, in the fix's own `_load_yaml`: it catches `yaml.YAMLError` and `RecursionEr
 Not taken (judged in round 2 or recorded by the fix): `ssh://<token-like-user>@host` is a user name to ssh; ref names git refuses but the pattern allows (`a./b`) fail at clone and cannot be read as options; `type` has no allow-list and does not reach a command line.
 
 ### Findings
-- [ ] (must-fix) `_load_yaml` lets non-YAML exceptions from PyYAML's constructor escape (`ValueError`, `KeyError`, `AttributeError`; e.g. `!!float s3cr3t`, `!!int 0xs3cr3t`, `!!bool s3cr3t`, unquoted `2024-13-45`), so the CLI prints a traceback quoting the value. Add a final `except Exception` that raises `ManifestError(f"{source}: invalid YAML")` with no content, and tests for those four inputs that check the message holds neither the value nor a traceback — `tools/ros-manifest/src/ros_manifest/schema.py:213-229`
+- [x] (must-fix) `_load_yaml` lets non-YAML exceptions from PyYAML's constructor escape (`ValueError`, `KeyError`, `AttributeError`; e.g. `!!float s3cr3t`, `!!int 0xs3cr3t`, `!!bool s3cr3t`, unquoted `2024-13-45`), so the CLI prints a traceback quoting the value. Add a final `except Exception` that raises `ManifestError(f"{source}: invalid YAML")` with no content, and tests for those four inputs that check the message holds neither the value nor a traceback — `tools/ros-manifest/src/ros_manifest/schema.py:213-229`
 
 ## Checkpoint
 **Status**: complete

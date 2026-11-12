@@ -227,6 +227,11 @@ def _load_yaml(text: str, source: str):
         raise ManifestError(f"{source}: invalid YAML{where}") from None
     except RecursionError:
         raise ManifestError(f"{source}: invalid YAML: nested too deeply") from None
+    except Exception:
+        # PyYAML's constructor lets Python's own errors through, not as a YAMLError: `!!float x`
+        # and `!!int 0xx` raise ValueError, `!!bool x` KeyError, `2024-13-45` ValueError. Their
+        # text quotes the value, and so would a traceback.
+        raise ManifestError(f"{source}: invalid YAML") from None
 
 
 def _refuse_unsafe_chars(node, source: str, where: str) -> None:
