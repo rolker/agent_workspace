@@ -71,3 +71,11 @@ issue: 451
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. Read: the Issue Review entry (35f3ba0c). No Principle Alignment row is "Action needed", and it lists no question for the owner. Its seven recommendations are inputs to the plan (check a script's `comm` first, name the three pre-setsid positions and their ordering mechanism, fixtures check their own state, remaining limits are hang ceilings, a revert check for each fix, a repo-wide grep in acceptance, a run on a GNU coreutils host); they go into the plan-task handoff. None adds or drops a behaviour the issue asks for.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 14:27 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-451/plan.md` at `53ce1928`
+
+Part 1 sets the fixtures' own comm via /proc/self/comm (a script named "a Z b" shows the interpreter as comm, tested) with state assertions; part 2 replaces the delay matrix with FIFO/marker ordering at three positions and ceilings of 10 s. One PR, two commits; GNU check is CI's ubuntu-latest Lint job.
