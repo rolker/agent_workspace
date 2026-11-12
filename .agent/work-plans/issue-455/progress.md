@@ -296,3 +296,26 @@ Specialists: static (shellcheck --severity=warning, flake8 on changed files: cle
 ### Checks
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0.
 - `test_commit_identity.sh`: 79 passed, 0 failed; `test_gh_create_pr.sh` and `test_gh_create_issue.sh`: 0 failed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent afbf6f45826febd3e, resume 1 of 3)
+
+**Branch**: feature/issue-455 at `7057833f`
+**Base**: main
+**Depth**: Deep (reason: commit-identity hook and identity scripts, enforcement layer plus instruction files; whole-diff classification kept for round 2)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Scope: the nine round-1 findings and the fix diff `39af5058..7057833f`. All nine are addressed in code with tests; two fixes opened new gaps (findings 1 and 2 below). Specialists: governance and plan drift (no new drift); fresh Claude adversarial (empirical, temp repos, git 2.53.0); cross-model gemini (complete, no issues) and codex (complete, 1 must-fix = finding 2); Copilot skipped (disabled for quota). `test_commit_identity.sh`: 79 passed, 0 failed. Coordinator's checks: (a) uppercase, existing `+suffix`, subdomains, hyphens and digits in the domain and `localhost` are accepted and match the email git uses; apostrophe and non-ASCII addresses are rejected (finding 1); (b) `include.path` and `includeIf "gitdir:"` resolve for the base, also from a linked worktree; `git -c user.email=<base>+x` passes, a foreign `-c` value is rejected with a clear message; a `-c`-only email gets a misleading "not set" (finding 4); (c) no script sources `set_git_identity_env.sh` programmatically (`cross_model_review.sh`, `_cli_review.sh`, `_agy_review.sh` and `dispatch_phase.sh` only read `AGENT_*`); skill snippets chain with `&&` / `|| exit 1`, so clearing on failure cannot clobber a caller mid-flow; (d) `configure_git_identity.sh` writes nothing anywhere when the workspace or any `project/*` repo is underivable, verified; (e) nothing in the tree reads `.agent/.identity`, only docs (`source`, bash): bash reads `%q` back exactly, dash misreads `$'...'` forms (finding 6). Not counted: `--detect` / 2-arg form abort under `set -eu` in `detect_cli_env.sh:23`, unchanged by this branch.
+
+### Findings
+- [ ] (must-fix) Address validation rejects real addresses (`o'brien@x.ie`, `jürgen@x.de`, `u@bücher.de`; IDN derived correctly in round 1), so the hook blocks every commit in such a checkout, the human's included; the message says "letters" but rejects ü and the limit is stated nowhere. Accept `'` and non-ASCII (the `.identity` file is now `%q`-quoted, so shell safety no longer needs the narrow set) or state the limit in the message and AI_IDENTITY_STRATEGY.md — `.agent/scripts/identity_base.py:41-53`
+- [ ] (must-fix) The committer is checked only via `GIT_COMMITTER_EMAIL`; git does not export the committer to the pre-commit hook, so `git -c committer.email=foreign@...` or a `committer.email` config passes while the commit records the foreign committer (codex + Claude, both reproduced). Resolve it with `git var GIT_COMMITTER_IDENT` and test — `.agent/hooks/check-commit-identity.py:53`
+- [ ] (suggestion) A configured `u+@x.org` (empty suffix) gives base `u@x.org`, and the hook rejects the `u+@x.org` git commits with; accept the configured email verbatim — `.agent/scripts/identity_base.py:169`
+- [ ] (suggestion) An email set only via `git -c` / `GIT_CONFIG_*` gets "git user.email is not set"; say that `-c` values are ignored for the base and it must come from a config file — `.agent/scripts/identity_base.py:35`
+- [ ] (suggestion) `set_git_identity_env.sh` clears eight variables on failure while `detect_agent_identity.sh` keeps the caller's; state the difference (and the clearing) in `--help` or align them — `.agent/scripts/set_git_identity_env.sh:46`
+- [ ] (suggestion) `.agent/.identity` via `printf %q` emits `$'...'` for tabs, newlines and non-ASCII under `LC_ALL=C`, which a POSIX sh misreads; write single-quoted values (`'` as `'\''`) or document "bash only"; `AI_IDENTITY_STRATEGY.md` still says to "read" the file, which now shows backslash escapes — `.agent/scripts/detect_agent_identity.sh:206`
