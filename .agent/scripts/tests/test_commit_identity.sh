@@ -184,6 +184,13 @@ cfg="$(git -C "$sb/repo" config --local user.email)"
 [[ $rc -ne 0 && "$out" == *"$UNSET_TEXT"* && -z "$cfg" ]] && pass "configure_git_identity.sh writes nothing" \
     || fail "configure unset (rc=$rc, cfg=$cfg, got: $out)"
 
+echo "TEST: a failed sourced detect_agent_identity.sh keeps a pre-exported identity intact"
+PRE_ID=(AGENT_NAME="Codex CLI Agent" AGENT_EMAIL=dev+codex@example.org AGENT_MODEL=gpt-x AGENT_FRAMEWORK=codex)
+out="$(run_in "$sb" "${PRE_ID[@]}" CLAUDECODE=1 -- bash -c \
+    'source "$1" --export >/dev/null 2>&1; echo "rc=$? $AGENT_NAME|$AGENT_EMAIL|$AGENT_MODEL|$AGENT_FRAMEWORK"' _ "$DETECT" 2>&1)"
+[ "$out" = "rc=1 Codex CLI Agent|dev+codex@example.org|gpt-x|codex" ] \
+    && pass "no AGENT_* value changes (framework, name, model or email)" || fail "mixed identity (got: $out)"
+
 echo "TEST: --detect, detect_agent_identity.sh and configure_git_identity.sh derive from the base"
 sb="$(mk_repo "dev@example.org")"
 out="$(run_in "$sb" ANTIGRAVITY_SESSION=1 -- bash -c 'source "$1" --detect >/dev/null; echo "$AGENT_EMAIL"' _ "$SET_ENV" 2>&1)"

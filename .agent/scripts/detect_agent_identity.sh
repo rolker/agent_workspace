@@ -16,7 +16,8 @@
 #   AGENT_EMAIL - Agent email address, derived from the checkout's git
 #                 user.email as <local>+<framework-suffix>@<domain>
 #                 (framework_config.sh); an unset or malformed git email
-#                 fails with a message and nothing is written or exported
+#                 fails with a message and nothing is assigned, written or
+#                 exported (a sourced caller's AGENT_* values stay as they were)
 #   AGENT_MODEL - Detected or default model name
 #   AGENT_FRAMEWORK - Framework identifier (copilot, gemini, etc.)
 #
@@ -39,48 +40,46 @@ else
     exit 1
 fi
 
-# Detect framework using existing detection script
+# Detect the framework in a subshell: detect_cli_env.sh exports
+# AGENT_FRAMEWORK, and nothing identity-related may change in the caller's
+# shell before the email is derived (a sourced failure keeps the previous
+# identity intact).
 if [ -f "$SCRIPT_DIR/detect_cli_env.sh" ]; then
-    source "$SCRIPT_DIR/detect_cli_env.sh"
+    _DAI_FRAMEWORK="$(source "$SCRIPT_DIR/detect_cli_env.sh" >/dev/null 2>&1; echo "${AGENT_FRAMEWORK:-unknown}")"
 else
     echo "⚠️  WARNING: Framework detection script not found"
-    AGENT_FRAMEWORK="unknown"
+    _DAI_FRAMEWORK="unknown"
 fi
+[ -n "$_DAI_FRAMEWORK" ] || _DAI_FRAMEWORK="unknown"
 
-# Get framework details
-if [ "$AGENT_FRAMEWORK" != "unknown" ]; then
+# Get framework details (into _DAI_* only; AGENT_* is assigned after the
+# email has been derived)
+_DAI_NAME=""
+_DAI_SUFFIX=""
+_DAI_MODEL=""
+if [ "$_DAI_FRAMEWORK" != "unknown" ]; then
     # Normalize framework name (remove -cli suffix from end only)
-    FRAMEWORK_KEY="${AGENT_FRAMEWORK%-cli}"
-    FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"  # lowercase
-
-    AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK_KEY]}"
-    EMAIL_SUFFIX="${FRAMEWORK_SUFFIXES[$FRAMEWORK_KEY]}"
-    AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]}"
-
-    # If lookups failed, use defaults
-    if [ -z "$AGENT_NAME" ]; then
-        AGENT_NAME="AI Agent"
+    _DAI_KEY="${_DAI_FRAMEWORK%-cli}"
+    _DAI_KEY="${_DAI_KEY,,}"  # lowercase
+    # An empty key is not a valid array subscript: skip the lookups.
+    if [ -n "$_DAI_KEY" ]; then
+        _DAI_NAME="${FRAMEWORK_NAMES[$_DAI_KEY]:-}"
+        _DAI_SUFFIX="${FRAMEWORK_SUFFIXES[$_DAI_KEY]:-}"
+        _DAI_MODEL="${FRAMEWORK_MODELS[$_DAI_KEY]:-}"
     fi
-    if [ -z "$EMAIL_SUFFIX" ]; then
-        EMAIL_SUFFIX="ai-agent"
-    fi
-    if [ -z "$AGENT_MODEL" ]; then
-        AGENT_MODEL="Unknown Model"
-    fi
-else
-    # Unknown framework - use defaults
-    AGENT_NAME="AI Agent"
-    EMAIL_SUFFIX="ai-agent"
-    AGENT_MODEL="Unknown Model"
-    AGENT_FRAMEWORK="unknown"
+    unset _DAI_KEY
 fi
+# If lookups failed (or the framework is unknown), use defaults
+[ -n "$_DAI_NAME" ] || _DAI_NAME="AI Agent"
+[ -n "$_DAI_SUFFIX" ] || _DAI_SUFFIX="ai-agent"
+[ -n "$_DAI_MODEL" ] || _DAI_MODEL="Unknown Model"
 
 # Try to detect actual model from environment or APIs
 # This is framework-specific and may not always be available
 detect_actual_model() {
     local detected_model=""
 
-    case "$AGENT_FRAMEWORK" in
+    case "$1" in
         codex)
             if [ -n "$CODEX_MODEL" ]; then
                 detected_model="$CODEX_MODEL"
@@ -134,10 +133,11 @@ detect_actual_model() {
 }
 
 # Attempt to detect actual model
-DETECTED_MODEL=$(detect_actual_model)
-if [ -n "$DETECTED_MODEL" ]; then
-    AGENT_MODEL="$DETECTED_MODEL"
+_DAI_DETECTED_MODEL=$(detect_actual_model "$_DAI_FRAMEWORK")
+if [ -n "$_DAI_DETECTED_MODEL" ]; then
+    _DAI_MODEL="$_DAI_DETECTED_MODEL"
 fi
+unset _DAI_DETECTED_MODEL
 
 # Parse command line options
 WRITE_FILE=false
@@ -165,13 +165,18 @@ done
 
 # Derive the email from the checkout's git user.email. On an unset or
 # malformed email the helper prints the fix to stderr; stop before anything
-# is displayed, written or exported (return when sourced, exit when run).
-if ! DERIVED_EMAIL="$(agent_email_for_suffix "$EMAIL_SUFFIX")"; then
-    unset DERIVED_EMAIL EMAIL_SUFFIX
+# is assigned, displayed, written or exported, so a sourced failure leaves
+# the caller's AGENT_* values as they were (return when sourced, exit when
+# run).
+if ! _DAI_EMAIL="$(agent_email_for_suffix "$_DAI_SUFFIX")"; then
+    unset _DAI_EMAIL _DAI_SUFFIX _DAI_NAME _DAI_MODEL _DAI_FRAMEWORK
     return 1 2>/dev/null || exit 1
 fi
-AGENT_EMAIL="$DERIVED_EMAIL"
-unset DERIVED_EMAIL EMAIL_SUFFIX
+AGENT_NAME="$_DAI_NAME"
+AGENT_EMAIL="$_DAI_EMAIL"
+AGENT_MODEL="$_DAI_MODEL"
+AGENT_FRAMEWORK="$_DAI_FRAMEWORK"
+unset _DAI_EMAIL _DAI_SUFFIX _DAI_NAME _DAI_MODEL _DAI_FRAMEWORK
 
 # Display detected identity
 echo "Detected Agent Identity:"
