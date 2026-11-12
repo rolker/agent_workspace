@@ -70,7 +70,13 @@ on a violation.
 
 A manifest, and every manifest it `extends`, is treated as untrusted: its names become file
 paths and its values become lines of the generated files. Anything outside these rules is an
-error that names the manifest and the key (for a YAML error, the line and column):
+error that says where the problem is. Most errors name the manifest and the key. Two names that
+differ only in case are named with their manifest, or with "the composed extends chain" when they
+come from different manifests. An `extends` path that escapes its directory names the path and
+the declaring directory or clone, and a local one that is not found names the full path looked
+for. A YAML error names the manifest and, where the parser gives one, a line and column; a value
+YAML cannot build, a document nested too deeply and a character the YAML reader refuses (such as
+NUL) give no position. The rules:
 
 - Names: a layer is letters, digits, `_` and `-` (the `ros2_colcon` adapter's rule); a
   repository is letters, digits, `_`, `.` and `-`, not starting with `.` or `-`; a group is
@@ -79,8 +85,8 @@ error that names the manifest and the key (for a YAML error, the line and column
   and `_`, starting with a letter. A name is at most 64 characters. Two names of one kind that
   differ only in case (`core` and `Core`) are refused, within a manifest and across the
   `extends` chain: on a case-insensitive disk one would overwrite the other.
-- `url`, `ref`, each per-distro `ref`, `type`, a package's `repo`, and every `extends` field
-  must be strings. Quote a ref that YAML would read as something else: `ref: '1.10'`
+- `url`, `ref`, each per-distro `ref`, `type`, a package's `repo`, and `extends`' `path`, `url`
+  and `ref` must be strings. Quote a ref that YAML would read as something else: `ref: '1.10'`
   (unquoted, it is the number 1.1), `'yes'`, `'2024-01-01'`. A per-distro `absent` must be
   `true` or `false`.
 - A `url` (a repository's, or `extends.url`) must have one of these shapes, matched whole;
@@ -96,21 +102,23 @@ error that names the manifest and the key (for a YAML error, the line and column
   `git://` and a bare local path are not accepted. A local base is still named with
   `extends: {path: ...}` and no `url`; that path must stay inside the declaring manifest's
   directory.
-- A `ref` (a repository's, each per-distro one, `extends.ref`) is letters, digits, `.`, `_`, `/`
-  and `-`, starting with a letter or digit, with no `..` and not ending in `/` or `.lock`. It
+- A `ref` (a repository's, each per-distro one, and `extends.ref` beside a `url`) is letters,
+  digits, `.`, `_`, `/` and `-`, starting with a letter or digit, with no `..` and not ending in `/` or `.lock`. It
   cannot start with `-`, so neither git nor `vcs import` can read it as an option.
 - No string key or value may contain a control character (newline, carriage return, tab, ...),
   a line or paragraph separator, an invisible or bidirectional formatting character (zero-width
   space, byte-order mark, right-to-left override) or a space other than the ASCII one. A key
   YAML builds as bytes (`!!binary`) is not checked by this rule
   ([#447](https://github.com/rolker/agent_workspace/issues/447)).
-- YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported by line
-  and column only, never with the document's text; a value YAML cannot build (`!!int 0xz`, an
-  unquoted `2024-13-45`) is reported as invalid YAML with no position. An integer past 64 bits
-  is refused.
+- YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported with at
+  most a line and column, never with the document's text; a value YAML cannot build (`!!int
+  0xz`, an unquoted `2024-13-45`) is reported as invalid YAML with no position. An integer past
+  64 bits is refused.
 
-As a second line, `resolve` refuses to write a line that holds any of those characters or a file
-that would land outside `--out`, and writes nothing in that case. The `extends` clone states
+As a second line, `resolve` refuses to write a header line, or a line of `layers.txt` or
+`optional_layers.txt`, that holds any of those characters, or a file that would land outside
+`--out`, and writes nothing in that case. The repository entries under a `.repos` header are not
+checked again there; the character rule above is what keeps those characters out of them. The `extends` clone states
 the transports git may use (`https`, `ssh`, `file`; everything else, such as `ext::`, refused)
 on its own command line rather than relying on git's defaults.
 
