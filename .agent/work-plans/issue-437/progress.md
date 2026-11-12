@@ -291,3 +291,24 @@ Draft for the host to put to the owner, not posted: a comment on issue 269's par
 ### Findings
 - [x] (must-fix) The write rule misses two symlink cases and writes into the main checkout (reproduced in a sandbox): a `progress.md` that is itself a symlink to the main checkout's (`progress_append.sh` exits 0, edits main's file, commits a mode change in the worktree; compatibility `persist` is not refused either), and a records folder linked to a main-checkout directory whose path does not name the issue (`rn` empty, so the physical check is skipped; file written, then git fails with exit 3). Judge the physical checkout with `${rn:-$gn}` whenever it differs, gate the file path itself (`records_path --write "$RECORDS/progress.md"`) in `progress_append.sh` and compatibility `persist`, and add both cases to `test_records_write_gate.sh` — `.agent/scripts/_resolve_work_plans_dir.sh:420`, `.agent/scripts/progress_append.sh:94`, `.agent/scripts/review_progress.sh:341`
 - [x] (suggestion) The static detector reads a pathspec only after ` -- `, so `git add "$REL"` / `git commit -m x "$REL"` without `--` is not caught; take the words after the subcommand's options too, or say so in the "Out of reach" comment, and plant such a writer — `.agent/scripts/tests/test_records_write_gate.sh:313`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 12:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-437 at `fbe60ca5`
+**Addressed**: Local Review (Pre-Push) at `46d8f462` (2026-11-12 11:50 -05:00)
+**Commits**: `1bb30442`, `fbe60ca5`
+
+### Actions
+- [x] (must-fix) The write rule is now one statement in `records_path --write`: the file that will be written, every symlink in its path and the file itself resolved (a dangling one refuses), sits at the place its path names in the issue's own checkout. Every writer passes the file itself (`progress_append.sh`, compatibility `persist`; `records_dir` loses `--write`). Tested for both writers: file symlink, folder symlink to a folder named for the issue, folder symlink to one not named, a chain of two, a link inside the issue's own records folder, a dangling link, and the plain case still commits; the new cases fail on the pre-fix scripts (11 failures) — `.agent/scripts/_resolve_work_plans_dir.sh:412`, `.agent/scripts/progress_append.sh:94`, `.agent/scripts/review_progress.sh:341`, `.agent/scripts/tests/test_records_write_gate.sh:241`
+- [x] (suggestion) The static detector reads a pathspec with no ` -- ` as every word after the subcommand up to the end of the command; planted `rogue_nodash.sh` (`git add "$REL"` / `git commit -m x "$REL"`) is caught — `.agent/scripts/tests/test_records_write_gate.sh:313`
+
+### Checks
+- `test_records_write_gate.sh`: 58 passed, 0 failed
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped, the script suite included
+
+### Notes
+- Beyond the two findings' text, the one-statement rule also refuses a symlink inside the issue's own checkout (progress.md linked to another file in its records folder) and the dangling case: without the "at the place its path names" clause such a write exits 0 with the entry left uncommitted, because git commits the unchanged link.
+- `docs/design.md`: the Records sentence states the rule, the `progress_append.sh` gate lines are refreshed (93-94), and a change-log row is added (903 lines).
