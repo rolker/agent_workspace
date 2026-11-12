@@ -195,3 +195,21 @@ The revision answers both earlier high findings and both low ones, and the B mec
 **Decision**: proceed
 
 Host answer under /orchestrator's checkpoint table. Read: the second Plan Review entry (1e5acabe), verdict ready, on the plan at d7d8a1b9. It confirms the revision answers all four earlier findings. Its own findings do not change the approach and go to the implement pass, which reads them on this timeline: (medium) the test's `kill` wrapper must return the real `kill`'s exit status, or the handler's group-wait loop spins and the correct handler fails deaf B; (low) the revert checks need a real way to swap in a reverted helper, since no script variable exists for it; (low) part 1's fixture-state check reads /proc with the test's own code, not the extracted `proc_state`; (info) the test comment says deaf B is the only case reaching "group appears just after the deadline"; (info) a deaf hang ends as exit 137, not 124.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 14:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-451 at `d09d7431`
+
+- Part 1 (53c86856): `test_job_finished_proc_comm_with_space` no longer copies `sleep`. Each fixture is a bash that writes its own comm through `/proc/self/comm` and blocks on a FIFO; the zombie is released only after its parent has exec'd the non-reaping `sleep`, and writes a marker before exiting. Before `job_finished` is asked, the test reads state and comm from `/proc/<pid>/status` and `/proc/<pid>/comm` (its own code, not `proc_state`) and fails by name (`FIXTURE-BAD`) if a fixture is not where its assertion assumes. PATH-without-jq fixture: tools linked from `type -P`, not hardcoded `/usr/bin`/`/bin` (deviation from the plan's `command -v`: `kill` and `printf` are builtins, for which `command -v` prints the bare name).
+- Part 2 (d09d7431): pre-setsid matrix rewritten to positions A / B / C / dead reached by FIFO hold and marker, 7 cases per helper (14, was 22). B's `kill` wrapper returns the real kill's status and is keyed on the CLI PID / `-PID` argument. coop and dead use escalation 30 s beyond the 10 s hang ceiling (`timeout -k 1 10`), the only wall-clock limit; the "returned inside Ns" assertions are gone. Test comment rewritten: ordering points, why B is kept beside deaf A, 124 vs 137.
+- Suite here (Ubuntu 26.04, uutils 0.10.0): `bash .agent/scripts/tests/test_cross_model_review.sh` 891 passed, 0 failed (was 918/2; 88 old matrix assertions replaced by 56, 3 fixture assertions added).
+- Final `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: all hooks passed, including the script test suite hook and shellcheck.
+- Revert checks, run in a scratch copy of `.agent/scripts` (test and helpers copied together so `${SCRIPT_DIR}/../<file>` reads the reverted file; committed helpers unchanged):
+  - #313 r4, `proc_state` with `stat=$(awk '{print $3}' <<<"$stat")`: fixture checks pass; FAIL "a running job named 'a Z b' is reported as running", "a zombie named 'x y' is reported as finished", "no misreport of a running job", "no misreport of a dead job" (4 failed).
+  - #363 TERM-to-PID (`signal_live_<fn> TERM` -> `signal_<fn> TERM`), `_cli_review.sh` and `_agy_review.sh` each: FAIL "<file> coop position A, escalation 30s: handler exits 143" (exit 124); all else passes.
+  - #363 watchdog KILL-to-PID (`signal_live_<fn> KILL` -> `signal_<fn> KILL`), each helper: FAIL deaf position A and deaf position B, "handler exits 143" (exit 137) and "the CLI is killed"; deaf C passes.
+  - Not run: the pre-372d002a group-wait loop for the dead case (the extraction does not apply to that file), as the plan says.
+- Acceptance grep `(cp|ln)\b.*(command -v|type -P|/usr/s?bin/|/bin/|\$path)` over `.agent/scripts/tests`: only same-name symlinks (`test_ros2_colcon.sh:898`, this file's jq fixture and its existing no-setsid shim); no copy or rename of a host binary.
+- Not done here: the GNU coreutils run is left to CI's `ubuntu-latest` Lint job (host decision on this timeline).
