@@ -3762,10 +3762,13 @@ test_claude_unavailable_without_jq() {
     # shadows jq with a non-executable stub so `command -v` misses it.
     local nojq="${TMPDIR_BASE}/nojq"; mkdir -p "$nojq"
     local realbin; realbin=$(mktemp -d -p "$TMPDIR_BASE")
-    local tool
+    # Each tool is linked from wherever this host's PATH has it, under its
+    # own name (a multi-call binary dispatches on that name). `type -P`,
+    # not `command -v`: kill and printf are builtins, for which
+    # `command -v` prints the bare name instead of the file.
+    local tool path
     for tool in bash env timeout mktemp cat tail head grep sed awk tr wc date sleep kill git dirname basename cut rm mkdir ls cp printf; do
-        [[ -x "/usr/bin/${tool}" ]] && ln -sf "/usr/bin/${tool}" "${realbin}/${tool}"
-        [[ -x "/bin/${tool}" && ! -e "${realbin}/${tool}" ]] && ln -sf "/bin/${tool}" "${realbin}/${tool}"
+        if path=$(type -P "$tool"); then ln -sf "$path" "${realbin}/${tool}"; fi
     done
     cd "${MOCK_REPO}"
     local out="${TMPDIR_BASE}/out.txt" ec=0
@@ -3952,9 +3955,15 @@ test_job_finished_proc_comm_with_space() {
     # spaces, so the state must be read after the last `)` — a fixed
     # field misreads both processes below: "a Z b" (running) would read
     # as Z, and "x y" (a zombie) would read as "y)".
-    local bindir="${TMPDIR_BASE}/comm-bin"; mkdir -p "$bindir"
-    cp "$(command -v sleep)" "${bindir}/a Z b"
-    cp "$(command -v sleep)" "${bindir}/x y"
+    # The names are not got by copying a host binary under them: a
+    # multi-call binary (uutils coreutils' `sleep`) dispatches on its file
+    # name and exits at once, and a script given the name shows its
+    # interpreter as comm. Each fixture is a bash that writes its own
+    # comm through /proc/self/comm (printf: no newline into the name; a
+    # builtin, so no exec resets it) and is held on a FIFO opened
+    # read-write, so it blocks without a timed sleep.
+    local run_fifo="${TMPDIR_BASE}/run.fifo" zombie_fifo="${TMPDIR_BASE}/zombie.fifo"
+    mkfifo "$run_fifo" "$zombie_fifo"
     local probe="${TMPDIR_BASE}/probe-proc.sh"
     {
         echo '#!/usr/bin/env bash'
@@ -3962,21 +3971,61 @@ test_job_finished_proc_comm_with_space() {
         echo 'jobs() { :; }'
         sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
         sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
-        echo "bindir='${bindir}'"
+        echo "run_fifo='${run_fifo}'; zombie_fifo='${zombie_fifo}'"
+        echo "run_mark='${TMPDIR_BASE}/run.mark'; ran_mark='${TMPDIR_BASE}/ran.mark'"
         echo "pidfile='${TMPDIR_BASE}/zombie.pid'"
         cat << 'PROBE_EOF'
-"${bindir}/a Z b" 30 &
+# The test's own reading of a fixture, independent of the proc_state
+# under test: "<state letter>|<comm>" from /proc/<pid>/status and
+# /proc/<pid>/comm, neither of which needs the stat line parsed.
+fixture() {
+    local line st='?' comm='?'
+    while IFS= read -r line; do
+        if [[ "$line" == State:* ]]; then st=${line#State:}; st=${st//[[:space:]]/}; st=${st:0:1}; break; fi
+    done < "/proc/$1/status" 2>/dev/null
+    IFS= read -r comm < "/proc/$1/comm" 2>/dev/null
+    printf '%s|%s' "$st" "$comm"
+}
+# Bounded wait for a condition (a command); no verdict rests on its timing.
+await() { local i; for ((i = 0; i < 200; i++)); do "$@" && return 0; sleep 0.05; done; return 1; }
+marked() { [[ -s "$1" ]]; }
+is_fixture() { [[ "$(fixture "$1")" == $2 ]]; }
+not_bash() { [[ "$(fixture "$1")" != *"|bash" ]]; }
+
+bash -c 'printf "a Z b" > /proc/self/comm; echo up > "$1"; read -r _ <&3' _ "$run_mark" 3<> "$run_fifo" &
 live=$!
 # The zombie must belong to a parent that never reaps it. A child of
-# this bash would be reaped by bash's SIGCHLD handler during the sleep
-# below, and job_finished would then return through `kill -0` without
-# ever reading /proc. `exec sleep` replaces the sh, and sleep does not
-# wait, so "x y" stays a zombie until its parent is killed.
-sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10' _ "${bindir}/x y" "$pidfile" &
+# this bash would be reaped by bash's SIGCHLD handler, and job_finished
+# would then return through `kill -0` without ever reading /proc. Its
+# parent execs `sleep`, which does not wait, so "x y" stays a zombie
+# until that parent is killed. "x y" is held on its FIFO until the exec
+# has happened (its parent's comm is no longer bash), then released: it
+# writes its marker, so it really ran, and exits.
+zombie_body='printf "x y" > /proc/self/comm; read -r _ <&3; echo ran > "$1"'
+bash -c 'bash -c "$1" _ "$2" & echo $! > "$3"; exec sleep 30' \
+    _ "$zombie_body" "$ran_mark" "$pidfile" 3<> "$zombie_fifo" &
 reaper=$!
-for _ in $(seq 50); do [[ -s "$pidfile" ]] && break; sleep 0.1; done
+await marked "$pidfile" || echo "FIXTURE-BAD: the 'x y' pid was never recorded"
 dead=$(< "$pidfile")
-sleep 1   # "x y" has exited; its non-reaping parent keeps it a zombie
+await not_bash "$reaper" || echo "FIXTURE-BAD: the zombie's parent never exec'd sleep"
+echo go > "$zombie_fifo"
+await is_fixture "$dead" 'Z|x y' || true
+
+# Each fixture must be in the state its assertion assumes; a fixture
+# that is not fails here, by name, before job_finished is asked.
+await marked "$run_mark" || true
+f=$(fixture "$live")
+if kill -0 "$live" 2>/dev/null && [[ "$f" == [SR]"|a Z b" ]]; then
+    echo "fixture: 'a Z b' running"
+else
+    echo "FIXTURE-BAD: 'a Z b' is not a running process with that comm ($f)"
+fi
+f=$(fixture "$dead")
+if [[ "$(cat "$ran_mark" 2>/dev/null)" == ran && "$f" == "Z|x y" ]]; then
+    echo "fixture: 'x y' ran and is a zombie"
+else
+    echo "FIXTURE-BAD: 'x y' is not a zombie that ran, with that comm ($f)"
+fi
 # Precondition: the zombie still answers kill -0, so the verdict below
 # can only come from the /proc state read.
 kill -0 "$dead" 2>/dev/null && echo "zombie: present" || echo "ZOMBIE-ALREADY-REAPED"
@@ -3987,6 +4036,9 @@ kill "$live" "$reaper" 2>/dev/null; wait 2>/dev/null
 PROBE_EOF
     } > "$probe"
     local output; output=$(bash "$probe" 2>&1)
+    assert_contains "fixture: 'a Z b' is a running process with that comm" "fixture: 'a Z b' running" "$output"
+    assert_contains "fixture: 'x y' ran, exited and is a zombie with that comm" "fixture: 'x y' ran and is a zombie" "$output"
+    assert_not_contains "no fixture is in a state its assertion does not assume" "FIXTURE-BAD" "$output"
     assert_contains "the 'x y' zombie is still unreaped when probed" "zombie: present" "$output"
     assert_contains "a running job named 'a Z b' is reported as running" "running: alive" "$output"
     assert_contains "a zombie named 'x y' is reported as finished" "dead: finished" "$output"
