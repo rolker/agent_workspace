@@ -526,3 +526,43 @@ The host read the round 3 Local Review (Pre-Push) entry at 0b444ef6: verdict cha
 ### Reported, not fixed (outside the loader)
 - `resolve --out` at a path that cannot be created (`/proc/nope`) prints a `FileNotFoundError` traceback from the emitter. The path is a CLI argument, not manifest content.
 - Some deliberate `ManifestError` messages echo document values: `groups.<name>: 'default' must be … got <value>` (`schema.py`) and `package … references undefined repo '<repo>'` (`merge.py`). One line of plain text after the control-character rule, never a URL, but still document content.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 11:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a34531e5de962856c, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `ef9f0975`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff; the whole-branch tier stays Deep for the CI workflow change and untrusted manifest content)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 4 | **Ship**: recommended — round 4: 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Scope: the round 3 finding and the fix diff `0b444ef6..ef9f0975` (`3a0a98a2`, `76144a0b`, `1b0a84fc`, `eb063b1f`). Cross-model: skipped (round-4 convergence check, per handoff). Claude adversarial: ran fresh (complete; 2 must-fix, 5 suggestions proposed). Static analysis: `pre-commit run --files` on the fix diff's 5 files, exit 0. `PYTHONPATH=tools/ros-manifest/src pytest tools/ros-manifest/tests`: 282 passed. Governance and plan drift: no CI, Makefile or plan file in the fix diff.
+
+Round 3's must-fix is closed: `!!float`, `!!int 0x…`, `!!bool` and an unquoted `2024-13-45` are a fixed `invalid YAML` message. The seven extra paths are right and stay at the boundary. Unknown keys are sorted by `repr`. A package `repo` must be a string. In `load_manifest_file`, a non-UTF-8 or unreadable file is a message under the manifest's label. `resolve_chain` wraps only `Path.resolve()` and `_resolve_one`. None of the new messages quotes document text. The broad `except Exception` in `_load_yaml` is kept on purpose: it wraps only `yaml.load`, and a narrower `(ValueError, KeyError)` would reopen `!!timestamp x`, which raises `AttributeError`.
+
+Reproduced this round (scratch files in the session scratchpad):
+- A 4000-digit hex integer (`default: 0xfff…`, or a `? 0xfff…` key under `repos.core` or `packages`) is built by PyYAML without Python's 4300-digit limit. Turning it into text later raises `ValueError: Exceeds the limit (4300 digits)` as a traceback at `schema.py:447` (`{default!r}`), `:247` (`_refuse_unsafe_chars`' key path) and the unknown-key `repr`. It is outside `yaml.load`, so the new catch never sees it.
+- `groups.g.default: https://u:s3cr3t@h` prints the secret in the `'default' must be …` message (`{default!r}`).
+- A base repository reached through `extends` (a `file:///` bare repository) whose branch holds a file named with 300 `0xff` bytes: `git clone` fails, and decoding its stderr (`text=True`) raises `UnicodeDecodeError` as a traceback. The new `except (OSError, RuntimeError)` does not cover it. With a decodable name, the `ERROR:` message quotes git's multi-line stderr, which holds the repository's own file names (the adversarial reviewer's reproduction).
+- `resolve --out /proc/nope` prints a `FileNotFoundError` traceback from `emit.py:137`.
+
+The three items the fix pass reported and did not fix:
+- `resolve --out` at a path that cannot be created: a suggestion. The path is the caller's own command-line argument, not manifest content, and the failure is loud, not silent.
+- The groups `'default'` message: part of this round's must-fix. It is the same line as the integer traceback and echoes any value, a URL with a secret included (reproduced).
+- `references undefined repo '<repo>'` in `merge.py`: out of scope. The reference is a string that has passed the character rule, and the name is what the user needs in order to fix it. Round 2 judged the reference lists acceptable unpatterned.
+
+Not taken from the adversarial review:
+- Narrowing `_load_yaml`'s catch: this would reopen `!!timestamp x`.
+- A failed clone reused from the cache: already recorded as the `extends` cache follow-up (an interrupted clone reused as a hit).
+- The other echoing sites (`optional_layers names '…'`, `extends path '…' escapes`, `references undefined …`): names and references that passed the character rule, as judged in round 2.
+
+### Findings
+- [ ] (must-fix) A YAML integer too long for Python's 4300-digit text conversion (`0x` + 4000 hex digits, as a value or as a `?` key) escapes the loader and is a `ValueError` traceback at the first `repr`/f-string; and the groups `'default'` message echoes its value (`https://u:s3cr3t@h` printed). Bound integers in `_ManifestLoader` (override `construct_yaml_int`, refuse beyond a small `bit_length()` with `_RefusedYAML("a number too large", node.start_mark)`), print only the type for a bad `default`, and test the value, a repository key and a package key — `tools/ros-manifest/src/ros_manifest/schema.py:180-200`, `:446-447`
+- [ ] (suggestion) A base repository whose clone fails with non-UTF-8 stderr gives a `UnicodeDecodeError` traceback, and a decodable failure quotes git's multi-line stderr (the remote's file names) in the `ERROR:` line. Drop `text=True` (or decode with `errors="replace"`) and report fixed text with git's exit status — `tools/ros-manifest/src/ros_manifest/extends.py:64-72`, `:76-85`
+- [ ] (suggestion) `resolve --out` at a path that cannot be created prints a `FileNotFoundError` traceback; catch `OSError` around the mkdir/write and print one `ERROR:` line naming `--out` — `tools/ros-manifest/src/ros_manifest/emit.py:137`
+- [ ] (suggestion) `its extends cannot be followed (No such file or directory)` is also what a missing `git` and an unwritable `--cache-dir` print (`(Permission denied)`), blaming the manifest; give those their own messages — `tools/ros-manifest/src/ros_manifest/extends.py:173-180`
+- [ ] (suggestion) `load_manifest_file` reads with the locale encoding; under a non-UTF-8 locale the "cannot be read as text" branch differs from the tests. Use `read_text(encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/schema.py:521`
