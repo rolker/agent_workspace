@@ -209,3 +209,67 @@ The host read the Plan Review entry at 89a00dfb. All nine findings are taken as 
 **Plan**: `.agent/work-plans/issue-295/plan.md` at `dfee1b5c`
 
 Revision after the plan review (needs-work) and the host's checkpoint. The first pull request is split: A (a fresh clone works with no project: validate drops its project/ block, make setup loses project.done and prints the pointers, setup_project.sh deleted, both gh_create_* scripts accept any registered project's repository via a new registry_repo_slugs read from the main checkout's registry, make sync says no project was synced, two new offline tests, small design edit, AGENTS.md wording as a held last commit with its exact ranges) is planned in full; B and C are one pull request (closes 265) planned in detail for its own plan review, with the install-command machine step first, the per-key stale-file report and the grep acceptance; the pinned entry and the special-case collapse stay an outline, with --type a deprecated alias tied to a roadmap deferral. Findings 1-9 each answered in the plan. dispatch_phase.sh says nothing about several pull requests per issue; next takes the pull request state from the host, so the host passes none for the B and C section, as issue 429's part 2 did.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 12:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #295 — Treat the workspace as a registered project (pinned registry entry + workspace adapter) instead of a --type special case
+**Plan**: `.agent/work-plans/issue-295/plan.md` at `dfee1b5c`
+**Branch**: `feature/issue-295`
+
+Second plan review, narrow: pull request A ("a fresh clone works with no project") in full against the code; the B and C section only for findings 3, 4, 7, 9 of the first review and for anything that boxes A in. Ready with five should-fix notes the implement pass carries; none changes what A builds.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | A is about 13 files (dashboard.sh added by finding 5), 7 commits, the cut the first review gave. |
+| Issue alignment | Good | Serves, as checked: "Workspace goal 'The workspace is project-agnostic and usable on any project' (README, Workspace goals) and machine independence of a fresh clone; `docs/design.md#sessions-and-roots` (registry-only discovery, Target to Now) and `docs/design.md#registry-and-adapters`." First review's findings 1, 2, 5, 6, 8 are answered in A; 3, 4, 7, 9 in the B and C section. |
+| File targeting | Needs work (minor) | `dashboard.sh` (finding 5) and the existing validate test in `test_project_registry.sh` (finding 2) are missing from A's table. Every other A site checked and correct; AGENTS.md ranges 10-11, 19-23, 28, 157-159 verified against the 199-line file. |
+| Consequences | Good | Legacy-machine check below: A breaks nothing for a machine with `project/` and registered projects. |
+| Principle alignment | Good | Tests offline (stamps pre-seeded, `CI=1`, `git_bug_setup.sh` exits 0 on `CI`); design edit in the same change; AGENTS.md held as its own commit. |
+| ADR compliance | Good | ADR-0011 (record only), 0016, 0017, 0018 as the plan states. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checked by running (a scratch clone of this worktree at 54121c0a, scratch HOME, `env -i PATH=/usr/bin:/bin CI=1`, `.make/setup-dev.done` pre-seeded, `origin` a local bare repository)
+
+- `make dashboard` with nothing registered: **exit 0**, no `project/` or `projects/` created (the plan's one unverified point). It prints "⚠️ project/ not configured. Run: make setup" and "Status: ⚠️ Not configured (run: make setup)" (finding 5).
+- `make sync`: exit 0, workspace fetched, then "⚠️ project/ not configured. Run: make setup" (the line A step 4 replaces).
+- `make setup </dev/null` with `setup:` edited to depend on `git-bug.done` only: "CI environment — skipping git-bug setup. / ✅ Setup complete.", exit 0, no `project/`.
+- `validate_workspace.py --verbose` with only the planned lines 159 and 171-200 removed: `NameError: name 'remote_url' is not defined` at the final verbose print (finding 1).
+- `register_project.sh <demo> --skip-run`: refused and rolled back ("FAIL: no build command", "FAIL: no test command", `STATUS=refused`); with `--set build=none --set test=none --skip-run`: registered (finding 4).
+- `gh_create_pr.sh --title t --body b --no-signature` in the demo checkout (origin `github.com/demo-owner/demo`, `gh` stubbed): today refused, "gh would target 'demo-owner/demo' ... Project repo: <not configured>", exit 2: the defect A step 3 fixes is reproduced.
+- The same script run from a worktree of the scratch clone, cwd in the demo checkout: refused earlier, by the user-tier guard: "refusing to run: ... neither inside the workspace (<worktree>) nor under a registered project root (<worktree>/.agent/projects.local)", exit 1 (finding 3).
+- `make build` with nothing registered: still "❌ No project_config.sh found. Create .../project_config.sh", exit 2: B and C's (step 4), not A's; A's new `help` text for `build` disagrees with it until B lands (note 6).
+
+### Legacy machine (`project/` symlink plus registered projects) under A
+
+Nothing breaks. `validate` loses only the `project/` checks (registry entries still delegate to `adapter validate`); `setup` loses a rule whose stamp is already present; the `gh_create_*` accepted set only grows (workspace, `project/` slug, every registered root's slug); the `sync.py` and `dashboard.sh` message changes are in the branches taken only when `project/` is absent; `setup_project.sh` has no caller besides the Makefile rule (grep: Makefile, `script_reference.md`, the `single_project/adapter.sh` comment); the AGENTS.md wording is true there too.
+
+### B and C section
+
+First-review findings answered: 3 (machine step 1 moves the install command before the shared file goes; step 9's per-key stale-file report), 4 (step 11 lists every missed site and carries the grep acceptance), 7 (the correction in step 6), 9 (the `ROS_ROOT_DIR` sentence in the adapter header and `projects.local.example`, step 5). Nothing in it boxes A in: B step 3 keeps A's "No project was synced" path outside the dispatcher's refusal, and B step 8 deletes the `project/` branch A leaves in the `gh_create_*` scripts. If finding 3 drops the git-common-dir resolution, B step 8 needs no change.
+
+### Findings
+
+1. **[File targeting]** (should-fix) A step 1 names lines 159-198, but the end of `validate_workspace()` (lines 335-336, `if verbose: print(f"   project remote: {remote_url}")`) reads `remote_url` from the removed block; removing only the named range makes `make validate` (always `--verbose`) crash with `NameError` (run above). Remove 335-336 with the block. `get_git_branch` (51-64) is then unused, as are the `get_project_path` and `get_project_remote_url` imports.
+2. **[Consequences]** (should-fix) `test_project_registry.sh` `test_validate_neither_shape` (382-389) asserts exit 1 and "project/ directory does not exist"; A makes both false. Rewrite it to exit 0 and the "no project registered" line, in the commit that changes validate, and list `test_project_registry.sh` for that too. That file's `make_validate_sandbox`/`run_validate` fixtures already build the no-project and one-project sandboxes A step 1 asks for; the implement pass may put A step 1's cases there instead of a new `test_validate_workspace_no_project.sh` (B and C step 1 and 9 then name that file).
+3. **[Approach]** (should-fix) A step 3's git-common-dir resolution is unreachable, and its planned test cannot pass. Both scripts run `registry_require_root "$_UT_SCRIPT_DIR/../.."` first (`gh_create_pr.sh` 87, `gh_create_issue.sh` 82); a worktree copy run with cwd in a project checkout is refused there, before the repo-safety check (run above), and a worktree copy run with cwd in the worktree targets the workspace slug, already accepted. Project sessions run the main checkout's copy (`$WS_ROOT` from `~/.claude/agent-workspace-root`, `run-issue/SKILL.md` 676), whose `_WORKSPACE_ROOT` holds the registry. Resolution: `registry_repo_slugs "$_WORKSPACE_ROOT"` (drop the common-dir resolution; do not widen `registry_require_root` in A), and the tests run a sandbox main checkout's copy with cwd in the registered demo checkout (accepted) and in an unrelated `github.com` checkout (refused by the guard; and a registered root whose slug differs from the current repository's, refused by the safety check). Both scripts run `set -euo pipefail` (pr 71, issue 65): `registry_repo_slugs` returns 0 on a parse error or missing registry, as the plan says it prints nothing, or the caller adds `|| true`.
+4. **[Accuracy]** (should-fix) `register_project.sh <demo path> --skip-run` refuses and rolls back with no build or test command (run above). A's acceptance text and assertion (e) of `test_fresh_clone_no_project.sh` use `register_project.sh <demo path> --set build=none --set test=none --skip-run`.
+5. **[Consequences]** (should-fix) `make dashboard` exits 0 with nothing registered (the plan's open point, now verified), so A step 5(c)'s "fix it in A if it fails" does not fire, but its two no-project pointers, `dashboard.sh` 163 (`check_warn "project/ not configured. Run: make setup"`) and 345 (`Not configured (run: make setup)`), send a fresh clone to a `make setup` that, after A, configures no project. Reword both to the A pointer ("No project is registered. Register one: .agent/scripts/register_project.sh <path>"), add `dashboard.sh` to A's files, and have assertion (c) check the dashboard output names `register_project.sh` and does not say "Run: make setup". Both lines sit in branches a machine with `project/` never takes. (`adapter.sh` 229 and `worktree_create.sh` 492 carry the same pointer in code B and C deletes; they stay B's.)
+6. **[Accuracy]** (note) Line references to re-read, no change of intent: the `sync.py` message is at 178-180 (plan: 164-172); the design `setup` row is line 391 (plan: 392). Between A and B, `make build` with nothing registered still says to create `project_config.sh` while A's `help` text says "the project's settings file (PROJECT=<name>)"; B and C step 4 replaces that message, so A leaves it.
+
+### Summary
+
+A is right and buildable from the plan; the acceptance holds by the runs above once findings 1 and 4 are applied, and A breaks nothing on a machine that still has `project/` and registered projects. Pull request A: ready, with the five should-fix notes carried by the implement pass. The B and C section answers findings 3, 4, 7 and 9 and does not constrain A.
+
+### Recommended Actions
+
+- [ ] Remove `validate_workspace.py` 335-336 and the then-unused `get_git_branch` and imports with the `project/` block (finding 1).
+- [ ] Rewrite `test_validate_neither_shape` to the exit-0 outcome in the validate commit (finding 2).
+- [ ] `registry_repo_slugs "$_WORKSPACE_ROOT"`, no common-dir resolution; test with the sandbox main checkout's copy; return 0 on parse errors (finding 3).
+- [ ] `--set build=none --set test=none` on the demo registration in the acceptance and test (finding 4).
+- [ ] Reword `dashboard.sh` 163 and 345 to the `register_project.sh` pointer and assert it in (c) (finding 5).
