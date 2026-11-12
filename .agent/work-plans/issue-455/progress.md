@@ -272,3 +272,27 @@ Specialists: static (shellcheck --severity=warning, flake8 on changed files: cle
 - [x] (suggestion) Derivation follows the cwd, not the repo committed in; say "source in the checkout you commit in" in CLAUDE.md / AI_IDENTITY_STRATEGY.md — `.agent/AI_IDENTITY_STRATEGY.md:16`
 - [x] (suggestion) Literal "<name>" "<email>" form still the primary instruction in AGENT_ONBOARDING.md and the gh_create_pr/issue unset-identity hints; point to `--agent <framework> "<model>"` — `.agent/AGENT_ONBOARDING.md:16`, `.agent/scripts/gh_create_pr.sh:219`, `.agent/scripts/gh_create_issue.sh:148`
 - [x] (suggestion) Empty framework key (`--agent ""`, or `--detect` with an empty detection) hits "bad array subscript" before the friendly error (gemini, Claude) — `.agent/scripts/set_git_identity_env.sh:125,157`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-455 at `897f03ff`
+**Addressed**: Local Review (Pre-Push) at `1886212f` (2026-11-12 18:13 -05:00)
+**Commits**: fff11d19, 202514b2, e10719ac, c39a6d58, 3d274ea0, 0d4a9721, fe136d9b, ee80f07c, 897f03ff
+
+### Actions
+- [x] (must-fix) Base read from git's config files only: `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n` and `GIT_CONFIG` stripped (`GIT_CONFIG_GLOBAL`/`NOSYSTEM` kept); the hook checks the effective (`-c`) email as the commit email; tests for COUNT and PARAMETERS injection, helper derivation and an injected value never standing in for an unset base — `.agent/scripts/identity_base.py`, `.agent/hooks/check-commit-identity.py` (fff11d19)
+- [x] (must-fix) `detect_agent_identity.sh` detects the framework in a subshell and assigns every AGENT_* only after the email is derived; test: a pre-exported codex identity in a Claude Code session is unchanged after a failed sourced `--export` — `.agent/scripts/detect_agent_identity.sh` (202514b2)
+- [x] (suggestion) `set_git_identity_env.sh` unsets the GIT_*/AGENT_* variables it owns on every failure path, documented in its header; test: four failure modes with a pre-exported identity leave all eight unset — `.agent/scripts/set_git_identity_env.sh` (e10719ac)
+- [x] (suggestion) Plain-address validation (one `@`, local `[A-Za-z0-9._%+-]`, dot-separated domain labels), used for the base and the accepted check; a malformed value gets its own message that shows it; suffix restricted; `.agent/.identity` written with `printf %q`; tests for 14 malformed values, 3 good ones, rejected commit emails and an `.identity` round trip that runs nothing — `.agent/scripts/identity_base.py`, `.agent/scripts/detect_agent_identity.sh` (c39a6d58)
+- [x] (suggestion) Hook also checks `GIT_COMMITTER_EMAIL` when set; tests for a foreign and an accepted committer — `.agent/hooks/check-commit-identity.py` (3d274ea0)
+- [x] (suggestion) `configure_git_identity.sh` derives per repository it writes to, all before any write; tests: a clone with its own email keeps its base, one underivable repo writes nothing anywhere; script_reference.md updated — `.agent/scripts/configure_git_identity.sh` (0d4a9721)
+- [x] (suggestion) "Source it in the checkout you commit in" in CLAUDE.md, CODEX.md and AI_IDENTITY_STRATEGY.md (with the config-file base, committer check and cleared identity); design.md Rules row updated — `.agent/AI_IDENTITY_STRATEGY.md` (ee80f07c)
+- [x] (suggestion) AGENT_ONBOARDING.md and the gh_create_pr.sh / gh_create_issue.sh hints name `--agent <framework> "<model-id>"`; their suites assert the hint — `.agent/AGENT_ONBOARDING.md`, `.agent/scripts/gh_create_pr.sh`, `.agent/scripts/gh_create_issue.sh` (897f03ff)
+- [x] (suggestion) Empty framework key tested before indexing in set_git_identity_env.sh, configure_git_identity.sh and framework_email; tests for `--agent ""`, a detection normalising to an empty key, `framework_email ""` and detect_agent_identity.sh's fallback — `.agent/scripts/set_git_identity_env.sh` (fe136d9b)
+
+### Checks
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0.
+- `test_commit_identity.sh`: 79 passed, 0 failed; `test_gh_create_pr.sh` and `test_gh_create_issue.sh`: 0 failed.
