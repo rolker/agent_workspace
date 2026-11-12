@@ -576,3 +576,31 @@ Not taken from the adversarial review:
 **Decision**: address
 
 The host read the round 4 Local Review (Pre-Push) entry at a12e37a1: verdict changes-requested, Ship recommended, one must-fix and four suggestions. Rounds 2, 3 and 4 each found a new route by which an exception or a document value reaches the terminal. The owner's rule of 2026-10-30 applies (a repeat finding in one mechanism asks "is this the right mechanism?" before another point fix), so this fix pass closes the class in two fixed places instead of route by route: (1) the CLI entry point catches every exception that is not a ManifestError and prints one fixed line with the exception's type name only, never its text and never a traceback; (2) no ManifestError message carries a document value: a type, a key name that passed the character rule, or a line and column only, held by one test that walks every raise site. The round's must-fix and its four suggestions are fixed within that.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 12:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aef818f79bbb89a0b, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `98c45300`
+**Addressed**: Local Review (Pre-Push) at `ef9f0975` (2026-11-12 11:49 -05:00), with the host's Checkpoint direction after it (close the class in two fixed places)
+**Commits**: cad21252, 2cff3fec, 2cb9d09d, e8ed6982, 5aa1d847, 83fdb648, 98c45300
+
+### Actions
+- [x] Host rule 1, the CLI backstop: `main()` catches every exception that is not a `ManifestError` and prints only `ERROR: internal error (<type name>)`, exit 1. The per-route loader messages stay. Test: an injected `ValueError`/`KeyError`/`TypeError`/`OSError`/`RuntimeError` whose text holds a marker, for `resolve` and `validate`. — `tools/ros-manifest/src/ros_manifest/cli.py`, `tools/ros-manifest/tests/test_cli.py` (2cff3fec)
+- [x] Host rule 2, no `ManifestError` message carries a document value. Walked all 65 `raise ManifestError` sites (schema 36, merge 12, extends 10, selectors 5, emit 2). Changed 6: the groups `default` message (named by type only, in cad21252); `_reject_option_like` (no longer echoes the url or ref); the failed-clone and clone-commit messages (no url@ref, no git stderr: declaring manifest's label and git's exit status); `not found in <url>@<ref>` (now names the declaring manifest); and the top-level unknown-key message, which named keys before the character rule ran (the rule now runs first). The other 59 name only a label, a type, a line and column, or a key, name or reference that passed the character rule. Test: a marker in every value-bearing field (repository `url`, `ref`, `type`, per-distro `ref` and `absent`, `extends.url`, `extends.ref`, group `default`), in nine refused shapes plus one accepted `file://` url whose clone fails, through `validate` and `resolve`; no printed line holds it. — `schema.py`, `extends.py`, `tests/test_untrusted_input.py` (2cb9d09d)
+- [x] (must-fix) Over-long YAML integer: `_ManifestLoader.construct_yaml_int` refuses an integer past 64 bits as `invalid YAML at line L, column C: a number too large`; the groups `default` message names only the type. Tests: the value, a repository key, a package key, the 64-bit boundary, and a `default` holding a URL with a secret. — `schema.py`, `tests/test_untrusted_input.py` (cad21252)
+- [x] (suggestion) Clone stderr: git's output is captured as bytes (no `text=True`) and never printed; a failure gives git's exit status. Test with 300 `0xff` bytes on stderr. — `extends.py`, `tests/test_extends.py` (2cb9d09d)
+- [x] (suggestion) `resolve --out` that cannot be created: one line, `ERROR: --out <dir>: cannot be written (<reason>)`, exit 1. — `cli.py`, `tests/test_cli.py` (5aa1d847)
+- [x] (suggestion) Missing `git` (at the clone, or at `rev-parse` on a cache hit) and an uncreatable `--cache-dir` have their own messages, which do not blame the manifest. — `extends.py`, `tests/test_extends.py` (e8ed6982)
+- [x] (suggestion) `load_manifest_file` reads with `encoding="utf-8"`. Its test spies on the read's arguments, because Python 3.12 turns a C locale into UTF-8, so a locale-based test would not catch a regression. — `schema.py`, `tests/test_untrusted_input.py` (83fdb648)
+- [x] Host rule 4, README: one sentence each for rules 1 and 2, and the 64-bit integer bound. — `tools/ros-manifest/README.md` (98c45300)
+
+### Verification
+- `PYTHONPATH=tools/ros-manifest/src pytest tools/ros-manifest/tests`: 310 passed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `98c45300`: exit 0, every hook passed, `validate-script-tests` included.
+
+### Notes
+- Left as they are, inside the rule: `_check_name` shows `repr()` of a name that is not a string (an int, date or bool key). It is a key, and with integers bounded it cannot fail. Names and references that passed the character rule (`optional_layers names '…'`, `extends path '…'`, `references undefined …`) stay, as rounds 2 and 4 judged.
+- Process: one run of the marker test before the fix had no `--cache-dir`. It tried a network clone of `https://e.com/b.git` and left an empty `.ros-manifest-cache/` in the worktree. The directory is removed, and the test now uses a local cache and a `file:///nonexistent` base.
