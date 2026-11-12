@@ -935,3 +935,22 @@ Note (host, not this verdict): #447's comment now lists the unknown per-distro a
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 13:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a10566c2a25af6c5f, resume 1 of 3)
+
+**PR**: #449 at `23205f68`
+**Sources**: 3 (Copilot: failed (quota) on every push, latest @ `b553f4ef`, no findings; Local Review @ `b553f4ef` (covers 23205f68 via bookkeeping), approved; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot's hosted review has posted five times, at `c4c73224`, `bc2d2eba`, `2b4375a7`, `ff0c2dc6` and `b553f4ef`. Each review says only "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota." and has no inline comments. No human review was requested, and there are no conversation comments. CI at writing: ros-manifest tests and Validate Documentation pass; Lint (pre-commit) and Validate Adapter Contract are still running.
+
+Local timeline since the Integrated Review at `c4c73224`: both of its findings were fixed in b64b4544 and db2663ad (Implementation at `2b4375a7`). The PR-mode Local Review at `2b4375a7` found that the carve-out did not mention `!!omap`. That was fixed in 36c55d54 by naming the class of skipped values (Implementation at `b553f4ef`). The Local Review at `b553f4ef` approved with no findings; its one unchecked bullet, "No issues found. LGTM.", is not a finding and is not carried. The open boxes of the round-7 pre-push review at `868b77ac` are stale: the code changed since, and the Implementation at `2b4375a7` closed them. I re-checked them at this head. `tools/ros-manifest/README.md:110-116` now limits the character rule to mappings, sequences and their strings, and excepts bytes and other YAML collections under an ignored key. Line 129 reads "nor is a group's `default` that is not `include` or `exclude`". Lines 79-80 say the known gaps are described where they apply and tracked in #447. Follow-up issue #447's comments list the unknown `extends` and per-distro keys, the skipped `!!set`/`!!pairs`/`!!omap` contents, and the `!!binary` value case, so the README's "tracked in #447" is true. Round 5's must-fix and five suggestions stay deferred to #447 on the owner's decision ("Q3: A and yes.").
+
+### Findings
+
+### False positives
