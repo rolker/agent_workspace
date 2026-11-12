@@ -262,3 +262,13 @@ None.
 ### False positives
 
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 15:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner answered "Merge (Recommended)" to the dialog "Merge pull request 453 now?". The dialog put to him: what merges (one file, two commits, no script under test changed); that the "handler returned inside Ns" assertions were removed on purpose and the matrix went from 22 cases to 14; 891 passed, 0 failed on the second machine with the three revert checks failing as intended on both helpers; that the Lint job on the code head ba2a1d35 passed on GitHub's ubuntu-24.04 runner (GNU coreutils) with the script-test hook "Passed" and no per-suite counts in the log, and that the suite was not run on the first machine (a host decision offered for his veto, with "Run on first machine first" as an option he did not take); the reviews (plan review 1 needs-work, plan review 2 ready, code review round 1 approved with no findings, Gemini and Codex ran with no issues as a light read, Copilot skipped because he disabled it); and that two Lint jobs were still running on the newer head 59bcb1b1, which adds only timeline entries. No relaxing flag was asked for or granted.
