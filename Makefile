@@ -73,7 +73,7 @@ help:
 	@echo "  make test             Run the test command from the project's settings file (PROJECT=<name>)"
 	@echo "  make install          Run the install command from the project's settings file (PROJECT=<name>)"
 	@echo "  make dashboard        Show workspace + registered projects status"
-	@echo "  make sync             Fetch/pull workspace + registered projects repos"
+	@echo "  make sync             Fetch/pull workspace + the selected project (PROJECT=<name>)"
 	@echo ""
 	@echo "  PROJECT=<name> selects a registered project from .agent/projects.local"
 	@echo "  (e.g. make build PROJECT=demo); needed when more than one is registered"
