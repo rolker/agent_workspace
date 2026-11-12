@@ -79,8 +79,9 @@
 #     on disk (a <dir> that exists and lacks only the file is someone's
 #     project, not a dead checkout).
 # What a mode removes is only what it can attribute to this installer: ours,
-# and a dead command that sits in an entry carrying the marker (below). An
-# unmarked dead command is not proof of anything -- a drive that is not
+# and a dead command that sits in an entry marked with that command's own
+# checkout (below). Any other dead command -- unmarked, or in an entry
+# marked with another checkout -- is not proof of anything -- a drive that is not
 # mounted looks the same -- so it is reported, by --check as drift and by
 # install as a note, each naming the command and the remedy, and removed
 # only by --force. --force also removes another checkout's commands. Every
@@ -441,10 +442,11 @@ classify_hooks() {  # <settings json>
 #     when unmarked)? "self", "foreign", "dead", or null for the user's. A
 #     "named" or "marked" command is the marked checkout's when its <dir> is
 #     the marker, and the user's anywhere else.
+#   attributed($m): is the dead command (.) in an entry marked with its own
+#     checkout (its <dir> is the marker)? Only then is it this installer's.
 #   remove($m): ours; a dead one when $dead (install, --force) and either
-#     the entry carries a marker (attributable to this installer) or under
-#     --force (an unmarked one is only reported: header); another
-#     checkout's under --force.
+#     attributed or under --force (any other is only reported: header);
+#     another checkout's under --force.
 #   prune: remove those commands from each entry of a hook event's array,
 #     keeping the entry's other commands and keys, and dropping an entry
 #     only when no command is left. An entry that loses a command drops its
@@ -465,9 +467,10 @@ PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
                then (if $k.as == "self" or $k.as == "dead" then $k.as else "foreign" end) else null end)
           else $k.class end;
     def marked($m): ($m | type) == "string" and $m != "";
+    def attributed($m): marked($m) and ($cls[.] // {}).dir == $m;
     def remove($m):
         owner($m) as $o
-        | $o == "self" or ($o == "dead" and $dead and (marked($m) or $force))
+        | $o == "self" or ($o == "dead" and $dead and (attributed($m) or $force))
           or ($o == "foreign" and $force);
     def unmark($m):
         if $m != "" and ($m == $tag or $force) then del(._agent_workspace) else . end;
@@ -1358,16 +1361,16 @@ if [[ "$MODE" == "check" ]]; then
 
     # Hook commands left by a checkout since moved or deleted: a hook this
     # script writes or has retired, under a <dir> no longer on disk. They
-    # fail on every tool call. In an entry carrying the marker, install
-    # removes them; an unmarked one only --force does (header), so the
-    # remedy named differs.
-    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | select(marked($m)) | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
+    # fail on every tool call. In an entry marked with the command's own
+    # checkout, install removes them; any other (unmarked, or marked with
+    # another checkout) only --force does (header), so the remedy differs.
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead" and attributed($m))] | unique | .[]')" || exit 1
     if [[ -n "$dead" ]]; then
         while IFS= read -r d; do
             note "hook entry names a workspace hook in a checkout that is not on disk (moved or deleted?): $d (re-run the installer to remove it)"
         done <<< "$dead"
     fi
-    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | select(marked($m) | not) | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead" and (attributed($m) | not))] | unique | .[]')" || exit 1
     if [[ -n "$dead" ]]; then
         while IFS= read -r d; do
             note "hook command names a workspace hook in a directory that is not on disk: $d -- nothing attributes it to this installer (a moved or deleted checkout, or a drive not mounted?), so a plain install leaves it; if it is a dead checkout's, remove it with: $WS_ROOT/.agent/scripts/user_tier_install.sh --force"

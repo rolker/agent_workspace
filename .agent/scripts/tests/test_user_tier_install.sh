@@ -449,8 +449,8 @@ jq -e --arg c "$DEAD_HOOK" '[.hooks.PreToolUse[].hooks[]?.command] | index($c) !
     || fail "the backup --force named does not hold the removed command"
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
 
-# (i2) a dead command in an entry carrying the marker: attributable to this
-# installer, so a plain install removes it and says so.
+# (i2) a dead command in an entry marked with its own checkout: attributable
+# to this installer, so a plain install removes it and says so.
 GONE_MARKED="$SANDBOX/gone-marked-ws"
 GONE_MARKED_HOOK="$GONE_MARKED/.claude/hooks/log-tool-use.sh"
 jq --arg t "$GONE_MARKED" --arg c "$GONE_MARKED_HOOK" '
@@ -465,6 +465,32 @@ out="$(run)"; rc=$?
    && "$out" == *"removed hook command $GONE_MARKED_HOOK"*"kept at "* ]] \
     && pass "a plain install removes a marked dead hook command and names it" \
     || fail "a plain install over a marked dead hook (rc=$rc held=$(n_holding PreToolUse "$GONE_MARKED_HOOK") out=${out:0:600})"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+
+# (i3) a dead command in an entry marked with ANOTHER checkout: the marker
+# says nothing about the command's own directory, so it is handled like an
+# unmarked dead command -- reported with the --force remedy, named and kept
+# by a plain install, removed by --force.
+OTHER_MARKER="$SANDBOX/marker-of-another-ws"
+GONE_OTHER_HOOK="$SANDBOX/gone-under-other-marker/.claude/hooks/log-tool-use.sh"
+jq --arg t "$OTHER_MARKER" --arg c "$GONE_OTHER_HOOK" '
+    .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not on disk: $GONE_OTHER_HOOK"*"remove it with: $FORCE_REMEDY"* \
+   && "$out" != *"$GONE_OTHER_HOOK (re-run the installer to remove it)"* ]] \
+    && pass "--check reports a dead command marked with another checkout like an unmarked one (--force remedy)" \
+    || fail "dead command under another checkout's marker (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$GONE_OTHER_HOOK")" -eq 1 \
+   && "$out" == *"left in place: hook command $GONE_OTHER_HOOK"*"remove it with: $FORCE_REMEDY"* ]] \
+    && pass "a plain install keeps a dead command marked with another checkout and names it" \
+    || fail "a plain install over a dead command under another checkout's marker (rc=$rc held=$(n_holding PreToolUse "$GONE_OTHER_HOOK") out=${out:0:600})"
+out="$(run --force)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$GONE_OTHER_HOOK")" -eq 0 \
+   && "$out" == *"removed hook command $GONE_OTHER_HOOK"*"kept at "* ]] \
+    && pass "--force removes it and names it" \
+    || fail "--force over a dead command under another checkout's marker (rc=$rc held=$(n_holding PreToolUse "$GONE_OTHER_HOOK") out=${out:0:600})"
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
 
 # (j) the marked variant: an entry an earlier generation marked with a
