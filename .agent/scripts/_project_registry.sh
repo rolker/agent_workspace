@@ -622,6 +622,30 @@ registry_require_root() {
     return 1
 }
 
+# Print the GitHub slug (owner/repo) of the `origin` remote of every
+# registered non-parent root, one per line, for the repo-safety checks of
+# gh_create_pr.sh and gh_create_issue.sh (issue #295): a project session
+# runs from the project's own checkout, so its repository is accepted
+# because it is registered, not because of a project/ symlink. Only
+# github.com remotes are reduced (the same sed the callers apply to their
+# own remote); an entry whose root is not a git checkout, has no origin or
+# a non-GitHub origin prints nothing. A missing registry or one with parse
+# errors prints nothing; always returns 0 (callers run under set -e).
+# Usage: slugs=$(registry_repo_slugs "$root")
+registry_repo_slugs() {
+    local root="$1" entries name type path remote
+    entries="$(registry_entries "$root" 2>/dev/null)" || return 0
+    [ -n "$entries" ] || return 0
+    while IFS=$'\t' read -r name type path; do
+        [ -z "$name" ] && continue
+        [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
+        remote="$(git -C "$path" remote get-url origin 2>/dev/null)" || continue
+        [[ "$remote" == *github.com[:/]* ]] || continue
+        printf '%s\n' "$remote" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//'
+    done <<< "$entries"
+    return 0
+}
+
 # ------------------------------------------- per-project settings (#332) ---
 # The file .agent/projects.d/<name>; grammar and keys in the header above.
 

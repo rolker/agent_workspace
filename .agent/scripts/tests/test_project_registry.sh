@@ -301,6 +301,48 @@ test_build_falls_back_to_workspace_config() {
         "STUB_sharedbuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
 }
 
+# ---- registry_repo_slugs (issue #295) ----
+
+test_registry_repo_slugs() {
+    echo "TEST: registry_repo_slugs prints each registered root's github.com origin slug"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    make_git_repo "$sb/projects/beta" "https://github.com/owner/beta"
+    make_git_repo "$sb/projects/gamma" "file:///nonexistent/gamma.git"
+    mkdir -p "$sb/projects/grp" "$sb/projects/nogit"
+    make_git_repo "$sb/projects/grp/one" "https://github.com/owner/one.git"
+    cat > "$sb/.agent/projects.local" <<EOF
+alpha single_project
+beta single_project
+gamma single_project
+nogit single_project
+grp project $sb/projects/grp
+grp-one single_project $sb/projects/grp/one parent=grp
+EOF
+    out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "slugs (ssh and https, .git stripped; non-GitHub, non-git and parent skipped)" \
+        "owner/alpha
+owner/beta
+owner/one" "$out"
+}
+
+test_registry_repo_slugs_absent_or_broken() {
+    echo "TEST: registry_repo_slugs prints nothing and returns 0 with no registry or a parse error"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "no registry: exit 0" "0" "$rc"
+    assert_eq "no registry: nothing printed" "END" "$out"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    printf 'alpha single_project\nbad name with spaces=\n' > "$sb/.agent/projects.local"
+    rc=0
+    out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "parse error: exit 0 under set -e" "0" "$rc"
+    assert_eq "parse error: nothing printed" "END" "$out"
+}
+
 # ---- sync.py --project-root ----
 
 test_sync_project_root() {
@@ -1553,6 +1595,8 @@ echo ""
 
 test_registry_absent_is_legacy
 test_registry_malformed_line_fails
+test_registry_repo_slugs
+test_registry_repo_slugs_absent_or_broken
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves
