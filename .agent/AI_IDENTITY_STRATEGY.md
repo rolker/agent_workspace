@@ -35,9 +35,12 @@ checkout's configured git email:
 - **Unset or malformed email** (a fresh machine): every entry point prints
   "git user.email is not set ..." with the `git config --global user.email
   <your-address>` fix and fails without exporting or writing anything; a
-  malformed one (angle brackets, commas, spaces, shell metacharacters) gets
-  its own message that shows the value.
-
+  malformed one gets its own message that shows the value.
+- **What counts as malformed**: only what breaks the structure of an address
+  or a `Name <email>` ident: not exactly one `@`, an empty local part or
+  domain, whitespace or control characters, angle brackets or commas.
+  Apostrophes and non-ASCII characters (`o'brien@x.ie`, `jürgen@bücher.de`)
+  are accepted; values are quoted wherever they are written.
 - **Where it is resolved**: in the current directory when the script runs.
   Source `set_git_identity_env.sh` in the checkout you commit in: a clone with
   its own `user.email` gives a different base than the workspace, and an

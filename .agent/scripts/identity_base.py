@@ -14,10 +14,12 @@ One parser for the commit-identity hook and the identity shell scripts
 - agent email: `<local>+<suffix>@<domain>`.
 - accepted commit email: the base itself, or `<local>+<anything>@<domain>`.
 
-A usable address is plain: one `@`, a local part of letters, digits and
-`._%+-`, a domain of dot-separated labels of letters, digits and `-`. No
-whitespace, angle brackets, commas, quotes or shell metacharacters; no RFC
-5322 parsing beyond that.
+A usable address has exactly one `@`, a non-empty local part and a
+non-empty domain, and no whitespace, control characters, angle brackets or
+commas (the characters that break a `Name <email>` ident or a list). Any
+other character is accepted, apostrophes and non-ASCII (`o'brien@x.ie`,
+`jürgen@bücher.de`) included: shell safety comes from quoting where a value
+is written, not from the character set. No RFC 5322 parsing beyond that.
 
 CLI (prints the address on stdout; on an unset or malformed configured
 email prints a message to stderr -- the malformed one shows the value --
@@ -40,26 +42,27 @@ UNSET_MESSAGE = (
 
 MALFORMED_MESSAGE = (
     "git user.email {value!r} is not a usable address (expected "
-    "<local>@<domain>: one `@`, letters, digits and . _ % + - in the local "
-    "part, dot-separated letters, digits and - in the domain; no spaces, "
-    "angle brackets, commas or shell metacharacters). Fix it with "
-    "`git config --global user.email <your-address>` "
+    "<local>@<domain>: exactly one `@`, a non-empty local part and domain, "
+    "and no whitespace, control characters, angle brackets or commas). "
+    "Fix it with `git config --global user.email <your-address>` "
     "(or without `--global` for this clone only)"
 )
 
-# Deliberately simple, not RFC 5322: a plain address with no character a
-# shell, a header or a list separator would treat specially.
-_LOCAL_RE = re.compile(r"[A-Za-z0-9._%+-]+")
-_DOMAIN_RE = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*")
+# Deliberately simple, not RFC 5322: only what breaks the structure of an
+# address or a `Name <email>` ident is refused.
 _SUFFIX_RE = re.compile(r"[A-Za-z0-9._-]+")
 
 
+def _breaks_structure(char):
+    return char.isspace() or not char.isprintable() or char in "<>,"
+
+
 def _parse(email):
-    """(local, domain) of a plain address, or None when it is not one."""
-    if email.count("@") != 1:
+    """(local, domain) of a usable address, or None when it is not one."""
+    if email.count("@") != 1 or any(_breaks_structure(c) for c in email):
         return None
     local, domain = email.split("@")
-    if not _LOCAL_RE.fullmatch(local) or not _DOMAIN_RE.fullmatch(domain):
+    if not local or not domain:
         return None
     return local, domain
 

@@ -71,18 +71,37 @@ out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"
 out="$(run_in "$sb" -- python3 "$HELPER" agent codex 2>&1)"
 [ "$out" = "dev+codex@example.org" ] && pass "agent codex -> <local>+codex@<domain>" || fail "agent (got: $out)"
 
-for bad in "foo" "@example.org" "dev@" "a@b@c" "+x@example.org" "<dev@example.org>" "dev@." "dev@example..org" \
-    "dev@example.org," "dev@exa mple.org" 'dev$(id)@example.org' 'dev;x@example.org' 'dev"@example.org' 'dev`x`@example.org'; do
+for bad in "foo" "@example.org" "dev@" "a@b@c" "+x@example.org" "<dev@example.org>" "dev@example.org>" \
+    "dev@example.org," "a,b@example.org" "dev@exa mple.org" "dev@example.org$(printf '\001')"; do
     sb="$(mk_repo "$bad")"
     out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"; rc=$?
-    [[ $rc -eq 1 && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"$bad"* && "$out" != *"$UNSET_TEXT"* ]] \
-        && pass "malformed '$bad' fails with its own message showing the value" \
+    [[ $rc -eq 1 && "$out" == *"$MALFORMED_TEXT"* && "$out" != *"$UNSET_TEXT"* ]] \
+        && pass "malformed '$bad' fails with its own message" \
         || fail "malformed '$bad' (rc=$rc, got: $out)"
 done
-for good in "dev@localhost" "first.last-x_y%z@sub-1.example.org" "dev+claude-code@example.org"; do
+sb="$(mk_repo "<dev@example.org>")"
+out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"
+[[ "$out" == *"'<dev@example.org>'"* && "$out" == *"no whitespace, control characters, angle brackets or commas"* ]] \
+    && pass "the malformed message shows the value and states the rule" || fail "malformed message (got: $out)"
+for good in "dev@localhost" "first.last-x_y%z@sub-1.example.org" "dev+claude-code@example.org" 'dev$x;y@example.org'; do
     sb="$(mk_repo "$good")"
     out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"; rc=$?
-    [ $rc -eq 0 ] && pass "plain address '$good' is accepted as a base" || fail "good '$good' (rc=$rc, got: $out)"
+    [ $rc -eq 0 ] && pass "address '$good' is accepted as a base" || fail "good '$good' (rc=$rc, got: $out)"
+done
+
+echo "TEST: apostrophes, non-ASCII local parts and IDN domains work end to end"
+for addr in "o'brien@x.ie" "jürgen@x.de" "u@bücher.de"; do
+    local_part="${addr%@*}"; domain="${addr#*@}"
+    sb="$(mk_repo "$addr")"
+    base="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"
+    agent="$(run_in "$sb" -- python3 "$HELPER" agent codex 2>&1)"
+    hook_in "$sb"; human_rc=$HOOK_RC
+    hook_in "$sb" GIT_AUTHOR_EMAIL="$agent" GIT_COMMITTER_EMAIL="$agent"; agent_rc=$HOOK_RC
+    env_email="$(run_in "$sb" -- bash -c 'source "$1" --agent codex >/dev/null 2>&1; echo "$GIT_AUTHOR_EMAIL"' _ "$SET_ENV" 2>&1)"
+    [[ "$base" = "$addr" && "$agent" = "$local_part+codex@$domain" && $human_rc -eq 0 && $agent_rc -eq 0 \
+        && "$env_email" = "$agent" ]] \
+        && pass "'$addr': base, agent address, set_git_identity_env.sh and the hook (human and agent)" \
+        || fail "'$addr' (base=$base agent=$agent env=$env_email human_rc=$human_rc agent_rc=$agent_rc: $HOOK_OUT)"
 done
 out="$(run_in "$sb" -- python3 "$HELPER" agent 'a;b' 2>&1)"; rc=$?
 [ $rc -eq 2 ] && pass "a suffix with a shell metacharacter is refused" || fail "suffix 'a;b' (rc=$rc, got: $out)"
@@ -104,7 +123,7 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=someone@EXAMPLE.ORG
 echo "TEST: the hook rejects another local part, another domain and another base in GIT_AUTHOR_EMAIL"
 for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "someone@example.net" "someone+@example.org" \
     "someoneelse@example.org" "someone+a b@example.org" "someone+x@example.org," "<someone@example.org>" \
-    'someone+x;y@example.org' 'someone+$(id)@example.org'; do
+    "someone+x@example.org$(printf '\t')x"; do
     hook_in "$sb" GIT_AUTHOR_EMAIL="$other"
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
