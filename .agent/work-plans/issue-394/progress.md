@@ -131,3 +131,13 @@ The design is right and the plan is close. The implement pass carries five must-
 - [ ] Make the symlinked-settings case at lines 518-530 a real change and assert the write-through. Add a no-op-writes-no-backup assertion beside line 389 (finding 5).
 - [ ] Put the other-checkout and dead-path computation in one bash helper used by `--check` and install. Compare with `pwd -P` against `$WS_PHYS` (finding 6).
 - [ ] Reword the remaining "tagged" messages at lines 20, 997, 1091 and 1113 (finding 7).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready: an implement pass builds the right thing provided it carries the review's Actions list, five must-fix changes, one should-fix and a wording note, none needing a new plan; the reviewer says so, and a revise round would only copy that list into the plan)
+**After**: plan
+**Decision**: proceed
+
+The host read the Plan Review entry at 0f57c07a. The implement handoff makes the entry's Actions list a requirement equal to the plan, and where the two differ the review wins: the dead-path rule beside reading the marker; only the installer's own command is removed from a mixed entry and the user's is kept; ADR-0016 is not edited; test cases (a) and (f) and the symlinked-settings case are repaired; one helper computes the other-checkout and dead-path lists with physical paths.
