@@ -26,7 +26,14 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         return 1
     selected = select_repos(merged, args.role)
     out = Path(args.out)
-    written = emit_manifest(merged, selected, args.role, args.distro, out, layout=args.layout)
+    try:
+        written = emit_manifest(merged, selected, args.role, args.distro, out, layout=args.layout)
+    except OSError as exc:
+        print(
+            f"ERROR: --out {out}: cannot be written ({exc.strerror or 'an OS error'})",
+            file=sys.stderr,
+        )
+        return 1
     if not written:
         print(
             f"WARNING: role '{args.role}' distro '{args.distro}' selected zero repos",

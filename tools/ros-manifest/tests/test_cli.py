@@ -92,3 +92,14 @@ def test_cli_any_other_exception_is_one_fixed_line(command, error, tmp_path, cap
     assert rc == 1
     assert captured.err == f"ERROR: internal error ({error.__name__})\n"
     assert marker not in captured.out
+
+
+def test_cli_resolve_out_that_cannot_be_created_is_one_line(fixtures_dir, tmp_path, capsys):
+    # Round 4: a FileNotFoundError traceback from the emitter.
+    (tmp_path / "a-file").write_text("")
+    out = tmp_path / "a-file" / "out"
+    manifest = fixtures_dir / "p11" / "manifest.yaml"
+    argv = ["resolve", "--manifest", str(manifest), "--role", "dev", "--distro", "jazzy"]
+    rc = main(argv + ["--out", str(out), "--cache-dir", str(tmp_path / "cache")])
+    assert rc == 1
+    assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
