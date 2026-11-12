@@ -755,3 +755,36 @@ Untrue at this head: the section's opening sentence, "Anything outside these rul
 **Decision**: address
 
 The host read the round 6 Local Review (Pre-Push) entry at cb2b8809: verdict changes-requested, Ship recommended, one must-fix, the README's opening claim that every error "names the manifest and the key" (untrue for the extends path messages and the chain-wide case-twin message). The pass rewords that sentence to match the code and changes nothing else; the nested-too-deeply note goes to follow-up issue 447.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aef818f79bbb89a0b, resume 3 of 3)
+
+**Branch**: feature/issue-436 at `cfad8807`
+**Addressed**: Local Review (Pre-Push) at `746971ea` (2026-11-12 12:40 -05:00), with the host's Checkpoint after it (reword only, no code change)
+**Commits**: a379382a, cfad8807
+
+### Actions
+- [x] (must-fix) The README's opening claim that every error "names the manifest and the key" was untrue. The opening now says:
+  - Most errors name the manifest and the key.
+  - Two names that differ only in case are named with their manifest, or with "the composed extends chain" across manifests.
+  - An escaping `extends` path names the path and the declaring directory or clone; a local one not found names the full path looked for.
+  - A YAML error names the manifest and, where the parser gives one, a line and column. A value YAML cannot build, a document nested too deeply and a character the YAML reader refuses (such as NUL) give no position.
+
+  Each was confirmed by running the CLI. — `tools/ros-manifest/README.md:71-79` (a379382a; cfad8807 reflows two paragraphs, text unchanged)
+- [x] The section's other sentences, checked one by one against the code. Four more were untrue and are corrected:
+  - "every `extends` field must be strings": only `path`, `url` and `ref` are checked (`schema.py:347-350`).
+  - `extends.ref` follows the ref rule only beside a `url` (`schema.py:351-353`).
+  - "A YAML error is reported by line and column only": three cases give none (`schema.py:239-247`).
+  - `resolve` "refuses to write a line that holds any of those characters": `_line` checks header and `layers.txt` / `optional_layers.txt` lines (`emit.py:37-44`, `:68`, `:94`). The repository entries are `yaml.dump`ed (`emit.py:56`), which writes a newline raw; the parse-time character rule is what keeps them clean.
+
+  All other sentences were checked true. — `tools/ros-manifest/README.md`
+
+### Verification
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `cfad8807`: exit 0, every hook passed, `validate-script-tests` included.
+- No code or test changed in this pass.
+
+### Reported, not fixed (outside this pass)
+- An unknown key under `extends` (for example `foo: 1`) is accepted silently, and `extends.ref` without a `url` is not checked (an option-like `-x` passes). Reproduced through `validate`. The README no longer claims otherwise.
