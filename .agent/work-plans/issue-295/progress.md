@@ -420,3 +420,28 @@ Pull request A only ("a fresh clone works with no project"). Re-review of the si
 
 ### Verification
 Static: shellcheck (warning) clean on the changed shell files; flake8 shows only E402 at the existing `sys.path` import pattern in `sync.py` and `validate_workspace.py` (pre-commit passed). Suites run one at a time at `17b686b2`: `test_fresh_clone_no_project.sh` 20/0, `test_project_registry.sh` 302/0, `test_worktree_create.sh` 59/0, `test_gh_create_pr.sh` 0 failed, `test_gh_create_issue.sh` 70/0, `test_adapter.sh` 122/0, `test_script_tests_hook_scope.sh` 301/0. `test_project_file.sh` not run (load on the machine; the fix round did not touch the dashboard test).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 15:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-295 at `752be3e1`
+**Addressed**: Local Review (Pre-Push) at `17b686b2` (2026-11-12 14:45 -05:00)
+**Commits**: `425f1c02`, `e0481904`, `ba7d2bcf`, `7537b7ee`, `752be3e1`
+
+### Actions
+- [x] (must-fix) `sync.py` keeps the registry's parse errors: with malformed lines it says "The project registry in <main checkout> has N malformed line(s); run make validate in that checkout to see them", and with no well-formed line "No project was synced (no well-formed registry line)", never "none registered"; a registry with names and malformed lines prints both lines. Test: `test_fresh_clone_no_project.sh` case (f) continued, a main registry whose only line is malformed, `make sync` in the worktree. It failed against the committed old code (20/1) and passes after (21/0). — `.agent/project_types/single_project/sync.py`, `.agent/scripts/tests/test_fresh_clone_no_project.sh`
+- [x] (must-fix) `docs/design.md`: Table 2 `setup` row names the `git-bug` and `ros-manifest` stamps, `Makefile` line 100, the header listing `setup-dev`, `ros-manifest` and `git-bug`; ADR-0007 register row "setup-dev, then git-bug and ros-manifest (no project stamp since #295)"; Table 1 `worktree_create.sh` 505-510, 594-607, 629-641, 1103-1109 to 511-516, 600-613, 635-647, 1109-1115 (each checked equal to main's range); Table 2 `install` row `Makefile` line 164 to 173 (this branch's setup recipe adds 3 lines before it; main has it at 170). Every other numeric citation of the files this branch edits was re-read: `gh_create_pr.sh` 131-184 is right; `worktree_create.sh` 301-313 and 351-357 sit before this branch's change. The change-log row says what changed; 910 lines, unchanged. — `docs/design.md:378`, `docs/design.md:398`, `docs/design.md:403`, `docs/design.md:744`, `docs/design.md:856`
+- [x] (suggestion) Both helpers rewritten to the reviewer's first option: not the top level of its own repository gives the root; `--git-dir` equal to `--git-common-dir` (a main checkout, also a `--separate-git-dir` one) gives the root; a linked worktree gives the first `git worktree list --porcelain` entry, when that is a directory that is its own top level and shares the common dir, else the root. Comments say what they do and no longer claim to match WS_ROOT; the Makefile's WS_ROOT is unchanged. The Python one is split into `_git_out`, `_git_common_dir` and `_is_own_toplevel` (pylint too-many-return-statements). — `.agent/scripts/lib/workspace.py`, `.agent/scripts/_project_registry.sh`
+- [x] (suggestion) `test_main_checkout_helpers` in `test_project_registry.sh` runs both helpers (the shell one given the directory, the Python one from a copy of `lib/workspace.py` under it) on a plain directory nested in a repository with a registry, a non-git directory, a main checkout, a linked worktree and a `git clone --separate-git-dir` main checkout: 5 cases, each asserting both answers. — `.agent/scripts/tests/test_project_registry.sh`
+
+### Verification
+Intermediate commits used `SKIP=validate-script-tests`. Final run, no SKIP: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only --diff-filter=d main...HEAD)` at `752be3e1`: exit 0, every hook Passed or Skipped, the `.agent/scripts/tests/` suite hook Passed (every suite: a shared helper changed). It passed 600 s, moved to the background and its exit was waited for. No flake re-run. By hand: `test_fresh_clone_no_project.sh` 21/0, `test_project_registry.sh` 307/0, `test_script_tests_hook_scope.sh` 301/0.
+
+### Denied, not run
+- A scratch experiment of how `git worktree list` names the main checkout for a linked worktree of a `--separate-git-dir` checkout was denied by the permission system and not retried another way; that combination is not tested, and the helpers fall back to the worktree itself if git names a path that is not a checkout sharing the common dir.
+- A red run of `test_main_checkout_helpers` against the committed old helpers (copies from `git show HEAD:` into the scratchpad) was denied and not retried another way.
+
+### Reported, not fixed
+- `docs/design.md:384`, Table 1 `_project_registry.sh` row, cites 485-500 for `registry_derive_type_from_dir`; the function is at 575-600 (header comment from 575, body 585-600) on main and on this branch. This branch's changes there come after line 624, so they did not shift it.
