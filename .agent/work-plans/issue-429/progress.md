@@ -974,3 +974,23 @@ Specialists:
 **Decision**: address
 
 The round counter says 4 because part 1 (pull request 445) had three pre-push reviews on this timeline. The diff under review (the repo_pin verb and ADR-0019) had never been reviewed, so the review ran as a full first round with outside reviewers. It found two must-fix defects (a version value cut at any "#"; origin calls with no time limit) and three suggestions. Fix all five, then re-review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `97fa1bd5`
+**Addressed**: Local Review (Pre-Push) at `391a2d03` (2026-11-12 17:57 -05:00)
+**Commits**: 72d89cb1, e416c3ce, 3fd6d185, 37075936, 97fa1bd5
+
+### Actions
+- [x] (must-fix) `version:` read as YAML: `_rc_repos_entries` keeps a quoted scalar whole, starts a comment only at a whitespace-preceded `#`, drops a CRLF line end (name lines too); `repo_pin` refuses a ref still holding `"`, `'` or CR. Test `test_repo_pin_reads_version_as_yaml` (`fix#12` with a branch `fix` also on origin, quoted with trailing comment, `fix # comment`, CRLF file, three stray-quote refusals) — `.agent/project_types/ros2_colcon/adapter.sh:211`
+- [x] (must-fix) Origin queries bounded: the dispatcher gains `_adapter_bounded_git` / `_adapter_git_limit` (same `WT_FETCH_TIMEOUT` knob and `timeout -k 5` as `wt_bounded_git`, #323); `ros2_colcon` falls to the unverified local answer naming the limit, `single_project` names the timeout in its error. Tests `test_repo_pin_hanging_origin_is_bounded` in both `test_ros2_colcon.sh` and `test_adapter.sh` (blocking ssh shim, 2s limit, 60s ceiling); ADR-0019 says so — `.agent/scripts/adapter`, `.agent/project_types/ros2_colcon/adapter.sh:_rc_pin_kind`, `.agent/project_types/single_project/adapter.sh:adapter_repo_pin`
+- [x] (suggestion) Multi-layer same-ref pin judged in the first hit layer whose checkout is cloned; `test_repo_pin_two_layers` extended (cloned only in l2: `branch`, verified, agrees with `--layer l2`) — `.agent/project_types/ros2_colcon/adapter.sh:adapter_repo_pin`
+- [x] (suggestion) Entry with no `version:` key: `_rc_repos_entries --all` emits it; `repo_pin` lists it as known, gives it its own message, and reports it as a differing ref against a layer that pins one. Test `test_repo_pin_entry_without_version`; ADR-0019 says so. Slash keys and flow-style entries are still dropped by the parser (unchanged, as the finding noted) — `.agent/project_types/ros2_colcon/adapter.sh:211`
+- [x] (suggestion) Uppercase 40/64-hex sha matched case-insensitively; tests in `test_repo_pin_kinds_online` (online) and `test_repo_pin_not_cloned` (uncloned); ADR-0019 says "either case" — `.agent/project_types/ros2_colcon/adapter.sh:_rc_pin_kind`
+
+### Checks
+- Pre-commit over `main...HEAD` with no SKIP (main checkout venv): all hooks passed, including `validate-script-tests`. A first run failed only `check-commit-identity` because the identity was not sourced in that shell; re-run with it sourced passed.
+- A revert-and-rerun check that the two-layer test fails on the old code was denied by the permission classifier; not done.
