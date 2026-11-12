@@ -30,6 +30,7 @@ trap 'rm -rf "$SANDBOX"' EXIT
 
 DERIVED_CMD='source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"'
 UNSET_TEXT='git user.email is not set'
+MALFORMED_TEXT='is not a usable address'
 
 # mk_repo [global-email] -> prints the sandbox dir; repo is <dir>/repo, the
 # global config file <dir>/gitconfig (empty when no email is given).
@@ -70,12 +71,21 @@ out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"
 out="$(run_in "$sb" -- python3 "$HELPER" agent codex 2>&1)"
 [ "$out" = "dev+codex@example.org" ] && pass "agent codex -> <local>+codex@<domain>" || fail "agent (got: $out)"
 
-for bad in "foo" "@example.org" "dev@" "a@b@c"; do
+for bad in "foo" "@example.org" "dev@" "a@b@c" "+x@example.org" "<dev@example.org>" "dev@." "dev@example..org" \
+    "dev@example.org," "dev@exa mple.org" 'dev$(id)@example.org' 'dev;x@example.org' 'dev"@example.org' 'dev`x`@example.org'; do
     sb="$(mk_repo "$bad")"
     out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"; rc=$?
-    [[ $rc -eq 1 && "$out" == *"$UNSET_TEXT"* ]] && pass "malformed '$bad' fails with the message" \
+    [[ $rc -eq 1 && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"$bad"* && "$out" != *"$UNSET_TEXT"* ]] \
+        && pass "malformed '$bad' fails with its own message showing the value" \
         || fail "malformed '$bad' (rc=$rc, got: $out)"
 done
+for good in "dev@localhost" "first.last-x_y%z@sub-1.example.org" "dev+claude-code@example.org"; do
+    sb="$(mk_repo "$good")"
+    out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"; rc=$?
+    [ $rc -eq 0 ] && pass "plain address '$good' is accepted as a base" || fail "good '$good' (rc=$rc, got: $out)"
+done
+out="$(run_in "$sb" -- python3 "$HELPER" agent 'a;b' 2>&1)"; rc=$?
+[ $rc -eq 2 ] && pass "a suffix with a shell metacharacter is refused" || fail "suffix 'a;b' (rc=$rc, got: $out)"
 sb="$(mk_repo)"
 out="$(run_in "$sb" -- python3 "$HELPER" agent codex 2>&1)"; rc=$?
 [[ $rc -eq 1 && "$out" == *"$UNSET_TEXT"* && "$out" == *'git config --global user.email'* ]] \
@@ -92,7 +102,9 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=someone@EXAMPLE.ORG
 [ $HOOK_RC -eq 0 ] && pass "domain compared case-insensitively" || fail "domain case (rc=$HOOK_RC: $HOOK_OUT)"
 
 echo "TEST: the hook rejects another local part, another domain and another base in GIT_AUTHOR_EMAIL"
-for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "someone@example.net" "someone+@example.org" "someoneelse@example.org"; do
+for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "someone@example.net" "someone+@example.org" \
+    "someoneelse@example.org" "someone+a b@example.org" "someone+x@example.org," "<someone@example.org>" \
+    'someone+x;y@example.org' 'someone+$(id)@example.org'; do
     hook_in "$sb" GIT_AUTHOR_EMAIL="$other"
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
@@ -112,7 +124,8 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org
     || fail "unset hook (rc=$HOOK_RC: $HOOK_OUT)"
 sb="$(mk_repo "foo")"
 hook_in "$sb"
-[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"$UNSET_TEXT"* ]] && pass "malformed 'foo': exit 1" || fail "malformed hook (rc=$HOOK_RC: $HOOK_OUT)"
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"$MALFORMED_TEXT"* && "$HOOK_OUT" == *"'foo'"* ]] \
+    && pass "malformed 'foo': exit 1, the message shows the value" || fail "malformed hook (rc=$HOOK_RC: $HOOK_OUT)"
 
 echo "TEST: a repo-local user.email beats the global one"
 sb="$(mk_repo "global@example.org")"
@@ -215,6 +228,20 @@ cfg="$(git -C "$sb/repo" config --local user.email)"
 [ "$cfg" = "dev+codex@example.org" ] && pass "configure_git_identity.sh --agent codex" || fail "configure (got: $cfg)"
 out="$(run_in "$sb" -- bash -c 'source "$1" --agent gemini >/dev/null; echo "$AGENT_EMAIL"' _ "$SET_ENV" 2>&1)"
 [ "$out" = "dev+gemini-cli@example.org" ] && pass "after configure, the base is unchanged" || fail "after configure (got: $out)"
+
+echo "TEST: detect_agent_identity.sh --write quotes the values it writes to .agent/.identity"
+# A sandbox copy of the scripts, so the real checkout's .agent/.identity is never written.
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/ws/.agent/scripts"
+for f in detect_agent_identity.sh framework_config.sh identity_base.py detect_cli_env.sh; do
+    cp "$REAL_ROOT/.agent/scripts/$f" "$sb/ws/.agent/scripts/$f"
+done
+evil_model='m"; touch '"$sb"'/pwned1; x="$(touch '"$sb"'/pwned2)`touch '"$sb"'/pwned3`'"'"
+run_in "$sb" CLAUDECODE=1 CLAUDE_MODEL="$evil_model" -- bash "$sb/ws/.agent/scripts/detect_agent_identity.sh" --write >/dev/null 2>&1
+out="$(env -i PATH="$PATH" bash -c 'source "$1"; printf "%s|%s" "$AGENT_EMAIL" "$AGENT_MODEL"' _ "$sb/ws/.agent/.identity" 2>&1)"
+[ "$out" = "dev+claude-code@example.org|$evil_model" ] && pass "the sourced file gives back the exact values" \
+    || fail ".identity round trip (got: $out)"
+ls "$sb"/pwned* >/dev/null 2>&1 && fail "sourcing .identity ran a command" || pass "sourcing .identity runs nothing"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

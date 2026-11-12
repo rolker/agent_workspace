@@ -14,22 +14,54 @@ One parser for the commit-identity hook and the identity shell scripts
 - agent email: `<local>+<suffix>@<domain>`.
 - accepted commit email: the base itself, or `<local>+<anything>@<domain>`.
 
+A usable address is plain: one `@`, a local part of letters, digits and
+`._%+-`, a domain of dot-separated labels of letters, digits and `-`. No
+whitespace, angle brackets, commas, quotes or shell metacharacters; no RFC
+5322 parsing beyond that.
+
 CLI (prints the address on stdout; on an unset or malformed configured
-email prints a message to stderr and exits 1; bad usage exits 2):
+email prints a message to stderr -- the malformed one shows the value --
+and exits 1; bad usage exits 2):
 
     identity_base.py base
     identity_base.py agent <suffix>
 """
 
 import os
+import re
 import subprocess
 import sys
 
 UNSET_MESSAGE = (
-    "git user.email is not set (or has no valid address). Run "
+    "git user.email is not set. Run "
     "`git config --global user.email <your-address>` "
     "(or without `--global` for this clone only)"
 )
+
+MALFORMED_MESSAGE = (
+    "git user.email {value!r} is not a usable address (expected "
+    "<local>@<domain>: one `@`, letters, digits and . _ % + - in the local "
+    "part, dot-separated letters, digits and - in the domain; no spaces, "
+    "angle brackets, commas or shell metacharacters). Fix it with "
+    "`git config --global user.email <your-address>` "
+    "(or without `--global` for this clone only)"
+)
+
+# Deliberately simple, not RFC 5322: a plain address with no character a
+# shell, a header or a list separator would treat specially.
+_LOCAL_RE = re.compile(r"[A-Za-z0-9._%+-]+")
+_DOMAIN_RE = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*")
+_SUFFIX_RE = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def _parse(email):
+    """(local, domain) of a plain address, or None when it is not one."""
+    if email.count("@") != 1:
+        return None
+    local, domain = email.split("@")
+    if not _LOCAL_RE.fullmatch(local) or not _DOMAIN_RE.fullmatch(domain):
+        return None
+    return local, domain
 
 
 class IdentityError(Exception):
@@ -87,17 +119,21 @@ def effective_email(cwd=None):
 def split_base(email):
     """Split an address into (local, domain) with any `+suffix` removed.
 
-    Raises IdentityError for an empty value, a value without exactly one
-    `@`, whitespace, an empty local part (before or after removing the
-    suffix) or an empty domain.
+    Raises IdentityError with UNSET_MESSAGE for an empty value, and with
+    MALFORMED_MESSAGE (which shows the value) for anything that is not a
+    plain `<local>@<domain>` (see _parse) or whose local part is empty once
+    the suffix is removed.
     """
     email = (email or "").strip()
-    if not email or email.count("@") != 1 or any(c.isspace() for c in email):
+    if not email:
         raise IdentityError(UNSET_MESSAGE)
-    local, domain = email.split("@")
+    parsed = _parse(email)
+    if parsed is None:
+        raise IdentityError(MALFORMED_MESSAGE.format(value=email))
+    local, domain = parsed
     local = local.split("+", 1)[0]
-    if not local or not domain:
-        raise IdentityError(UNSET_MESSAGE)
+    if not local:
+        raise IdentityError(MALFORMED_MESSAGE.format(value=email))
     return local, domain
 
 
@@ -114,7 +150,7 @@ def base_email(cwd=None):
 def agent_email(suffix, cwd=None):
     """`<local>+<suffix>@<domain>` from the checkout's configured git email."""
     suffix = (suffix or "").strip()
-    if not suffix or any(c in suffix for c in "@+") or any(c.isspace() for c in suffix):
+    if not _SUFFIX_RE.fullmatch(suffix):
         raise ValueError(f"invalid agent email suffix: {suffix!r}")
     local, domain = configured_base(cwd)
     return f"{local}+{suffix}@{domain}"
@@ -122,10 +158,10 @@ def agent_email(suffix, cwd=None):
 
 def is_accepted(email, local, domain):
     """True when email is `<local>@<domain>` or `<local>+<x>@<domain>`."""
-    email = (email or "").strip()
-    if email.count("@") != 1:
+    parsed = _parse((email or "").strip())
+    if parsed is None:
         return False
-    e_local, e_domain = email.split("@")
+    e_local, e_domain = parsed
     if e_domain.lower() != domain.lower():
         return False
     if e_local == local:
