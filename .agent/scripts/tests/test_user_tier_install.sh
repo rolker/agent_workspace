@@ -598,6 +598,36 @@ out="$(run --check)"; rc=$?
     || fail "--check after the non-array case (rc=$rc out=$out)"
 jq 'del(.hooks.ZzOdd)' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 
+# (p) a marked entry from which nothing is removed: its marker still goes,
+# so --check does not stay red for good. Marked with this checkout: a plain
+# install drops it. Marked with another checkout: a plain install leaves it
+# (that checkout's), --force drops it. The user's command stays either way.
+OTHER_MARK="$SANDBOX/some-other-checkout"
+jq --arg t "$WSC" --arg o "$OTHER_MARK" '.hooks.PreToolUse += [
+        {_agent_workspace: $t, hooks: [{type: "command", command: "/opt/mine-m.sh"}]},
+        {_agent_workspace: $o, hooks: [{type: "command", command: "/opt/mine-f.sh"}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"marked with this checkout holds a command outside it: /opt/mine-m.sh"* \
+   && "$out" == *"another workspace checkout: $OTHER_MARK"* ]] \
+    && pass "--check reports both marked entries" \
+    || fail "marked entries not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(entry_of /opt/mine-m.sh)" == '[{"hooks":[{"command":"/opt/mine-m.sh","type":"command"}]}]' ]] \
+    && pass "install drops this checkout's marker from an entry it removes nothing from; the command stays" \
+    || fail "install over a marked user-only entry (entry: $(entry_of /opt/mine-m.sh))"
+jq -e --arg o "$OTHER_MARK" '[.hooks.PreToolUse[] | select(._agent_workspace == $o)] | length == 1' "$SETTINGS" >/dev/null \
+    && pass "a plain install leaves another checkout's marker" \
+    || fail "a plain install changed another checkout's marked entry ($(entry_of /opt/mine-f.sh))"
+run --force >/dev/null
+[[ "$(entry_of /opt/mine-f.sh)" == '[{"hooks":[{"command":"/opt/mine-f.sh","type":"command"}]}]' ]] \
+    && pass "--force drops another checkout's marker from an entry it removes nothing from; the command stays" \
+    || fail "--force over another checkout's marked user-only entry (entry: $(entry_of /opt/mine-f.sh))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean once install and --force have dropped the markers" \
+    || fail "--check after dropping the markers (rc=$rc out=$out)"
+
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"
@@ -616,6 +646,10 @@ jq --arg l "$LOG_HOOK" '.hooks.PreToolUse |= map(
         then .matcher = "Bash" | .hooks += [{type: "command", command: "/opt/mine-u.sh"}] else . end)' \
     "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 cli_rewrite
+# ...and, after the rewrite, an entry an earlier generation marked with this
+# checkout that holds only the user's command: uninstall drops the marker.
+jq --arg t "$WSC" '.hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: "/opt/mine-um.sh"}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --uninstall)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "uninstall exits 0" || fail "uninstall failed (rc=$rc out=$out)"
 [[ ! -e "$ROOT_FILE" ]] && pass "uninstall removes agent-workspace-root" || fail "root file survived uninstall"
@@ -626,6 +660,9 @@ out="$(run --uninstall)"; rc=$?
 missing="$(forms_kept)" \
     && pass "uninstall keeps every user look-alike hook command" \
     || fail "uninstall removed the user's hook command: $missing"
+[[ "$(entry_of /opt/mine-um.sh)" == '[{"hooks":[{"command":"/opt/mine-um.sh","type":"command"}]}]' ]] \
+    && pass "uninstall drops this checkout's marker from an entry it removes nothing from; the command stays" \
+    || fail "uninstall over a marked user-only entry (entry: $(entry_of /opt/mine-um.sh))"
 jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | index("/opt/mine.sh") != null' "$SETTINGS" >/dev/null \
     && pass "uninstall leaves the user's own hook entry alone" \
     || fail "uninstall removed the user's own hook entry"

@@ -83,7 +83,9 @@
 # dropped only when no command is left in it. Earlier generations tagged
 # each entry "_agent_workspace": "<checkout>". That marker is no longer
 # written, but it is still read where an entry carries it: a classified
-# command under the marked checkout is that checkout's.
+# command under the marked checkout is that checkout's. Install and
+# --uninstall drop this checkout's marker from every entry, and --force
+# every marker, whether or not a command was removed from the entry.
 #
 # Modes:
 #   (default)            install or repair; idempotent, safe to re-run
@@ -404,7 +406,11 @@ classify_hooks() {  # <settings json>
 #   prune: remove those commands from each entry of a hook event's array,
 #     keeping the entry's other commands and keys, and dropping an entry
 #     only when no command is left. An entry that loses a command drops its
-#     marker. An entry that loses nothing is left exactly as it is.
+#     marker. Every entry marked with this checkout drops the marker, and
+#     under --force every marked entry does, whether or not a command was
+#     removed: otherwise --check reports the marker for good and no run
+#     clears it. An unmarked entry that loses nothing is left exactly as it
+#     is.
 PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
     def owner($m):
         ($cls[.] // null) as $k
@@ -416,6 +422,8 @@ PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
     def remove($m):
         owner($m) as $o
         | $o == "self" or ($o == "dead" and $dead) or ($o == "foreign" and $force);
+    def unmark($m):
+        if $m != "" and ($m == $tag or $force) then del(._agent_workspace) else . end;
     def prune:
         map(
             (._agent_workspace // "") as $m
@@ -423,7 +431,7 @@ PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
               then (.hooks |= map(select(((.command? | strings) // "") as $c | ($c != "" and ($c | remove($m))) | not)))
                    | del(._agent_workspace)
                    | select((.hooks // []) | length > 0)
-              else . end);
+              else unmark($m) end);
 '
 
 # --------------------------------------------------------------- helpers ---
@@ -1136,7 +1144,7 @@ if [[ "$MODE" == "uninstall" ]]; then
         backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
         # This checkout's commands only (classify_hooks); another checkout's
         # and dead ones are install's to clear. The user's commands in the
-        # same entry stay.
+        # same entry stay, and this checkout's marker goes from every entry.
         uninstall_settings="$(read_settings)"
         uninstall_cls="$(classify_hooks "$uninstall_settings")" || exit 1
         jq --arg tag "$TAG" --argjson force false --argjson dead false \
@@ -1251,14 +1259,15 @@ if [[ "$MODE" == "check" ]]; then
         done <<< "$dead"
     fi
 
-    # Every command in an entry still marked with this checkout (an earlier
-    # generation's) must be this checkout's.
+    # An entry still carrying this checkout's marker (an earlier generation
+    # wrote it) beside a command that is not this checkout's. The command is
+    # the user's and stays; the marker is what install drops.
     stale="$(class_query '
         [hook_entries | select((._agent_workspace // "") == $tag)
          | entry_commands | select(owner($tag) != "self")] | unique | .[]')" || exit 1
     if [[ -n "$stale" ]]; then
         while IFS= read -r st; do
-            note "hook entry marked with this checkout points outside it: $st"
+            note "hook entry marked with this checkout holds a command outside it: $st (re-run the installer: it drops the marker and keeps the command)"
         done <<< "$stale"
     fi
 
