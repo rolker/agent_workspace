@@ -114,3 +114,11 @@ The approach is sound and matches the owner's direction: one helper, derived fro
 **Decision**: revise
 
 Plan review found one high finding: the instruction-file setup lines and the hook change must land together, because on a machine whose git email has another base the new hook blocks every agent commit that still uses the literal setup line, this pull request's own later phases included. Also: run-issue's skill text and the dispatch handoff pass an explicit agent email and are not in the plan; three low findings. The owner approved the instruction-file edits on 2026-11-12: "yes, remove the addresses from CLAUDE.md and CODEX.md". Revise the plan to address all five findings.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 17:29 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-455/plan.md` at `f93a2b6f`
+
+Revision after plan review: the hook, instruction files, run-issue/onboard-project skill text and the test land in one pivot commit (C3) after the helper and script commits; commits from C3 on use the derived `--agent claude-code "<model-id>"` form. Caller list completed, Serves names the Modular goal, test hermetic with example.org fixtures and a suites_for_files mapping.
