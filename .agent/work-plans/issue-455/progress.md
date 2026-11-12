@@ -416,3 +416,13 @@ The open finding was checked against the code. `ident_email` returns "" when `gi
 - [ ] (suggestion, Local Review (Pre-Push) @ 8a5f68ce) When `git var GIT_<kind>_IDENT` fails (e.g. `user.useConfigOnly=true` with no `user.name`), the hook prints "Author email: (not set) / Committer email: (not set)" although the email is set. Fix: make `ident_email` report the failure (git's stderr) and have the hook print it in place of "(not set)", with a test for `useConfigOnly` and no `user.name` — `.agent/scripts/identity_base.py`, `.agent/hooks/check-commit-identity.py`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid, fix in this pull request)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 457: when git var fails (user.useConfigOnly=true with no user.name), the hook prints git's own error text, not "(not set)" for the email; with a test.
