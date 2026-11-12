@@ -639,6 +639,68 @@ out="$(run)"; rc=$?
     || fail "the installer overwrote a user-owned skill directory"
 rm -rf "$SKILLS_DIR/zz-fixture-both-real"
 
+# ------------------------------------------------ uninstall that fails ---
+# --uninstall reads, classifies, builds and backs up settings.json, and
+# writes it, before it removes anything else. Each failure up to that write
+# exits 1 with everything as it was: the root file, the rules record, the
+# SessionStart link, the plugin (here enabled in this checkout itself, so a
+# removal would show in the stub log) and settings.json, and no "removed".
+mk_fail_shim() {  # <dir> <command> <glob an argument must match to fail>
+    mkdir -p "$1"
+    cat > "$1/$2" <<SHIMEOF
+#!/usr/bin/env bash
+for a in "\$@"; do [[ "\$a" == $3 ]] && exit 1; done
+exec $(command -v "$2") "\$@"
+SHIMEOF
+    chmod +x "$1/$2"
+}
+U_LOCAL="$WSC/.claude/settings.local.json"
+jq -n --arg p "$WSC" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
+    extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$U_LOCAL"
+U_RULES="$HOMEDIR/.claude/agent-workspace-rules.json"
+uninstall_refuses() {  # <what> <shim dir or ""> <text the output must hold>
+    local log_n local_before
+    cp "$SETTINGS" "$SANDBOX/u-before.json"
+    log_n="$(wc -l < "$STUB_LOG")"
+    local_before="$(cat "$U_LOCAL")"
+    out="$(RUN_PATH_PREFIX="$2" run --uninstall)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"$3"* && "$out" != *"user tier removed"* ]] \
+        && pass "--uninstall with $1 exits 1 and says why" \
+        || fail "--uninstall with $1 (rc=$rc out=${out:0:400})"
+    [[ "$(cat "$ROOT_FILE" 2>/dev/null)" == "$WSC" && -f "$U_RULES" && -L "$HOOK_LINK" ]] \
+        && pass "...leaving the root file, the rules record and the SessionStart link" \
+        || fail "--uninstall with $1 removed files (root: $([[ -e "$ROOT_FILE" ]] && echo yes || echo no), rules: $([[ -e "$U_RULES" ]] && echo yes || echo no), link: $([[ -L "$HOOK_LINK" ]] && echo yes || echo no))"
+    [[ "$(wc -l < "$STUB_LOG")" -eq "$log_n" && "$(cat "$U_LOCAL")" == "$local_before" ]] \
+        && pass "...and the plugin (no claude CLI call)" \
+        || fail "--uninstall with $1 touched the plugin ($(tail -n +"$((log_n + 1))" "$STUB_LOG"))"
+    cmp -s "$SETTINGS" "$SANDBOX/u-before.json" \
+        && ! compgen -G "$HOMEDIR/.claude/.settings.json.*" >/dev/null \
+        && pass "...and settings.json unchanged, no temporary file left" \
+        || fail "--uninstall with $1 changed settings.json or left a temporary file"
+    cp "$SANDBOX/u-before.json" "$SETTINGS"
+    rm -f "$SANDBOX/u-before.json"
+}
+u_with() {  # <jq filter>: settings.json as the next case reads it
+    jq "$1" "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+}
+cp "$SETTINGS" "$SANDBOX/u-clean.json"
+u_with '.hooks.ZzBool = true'
+uninstall_refuses "a boolean hook event value" "" "could not build the rewrite"
+cp "$SANDBOX/u-clean.json" "$SETTINGS"
+u_with '.permissions.allow = "not-an-array"'
+uninstall_refuses "a permissions.allow that is not an array" "" "could not build the rewrite"
+cp "$SANDBOX/u-clean.json" "$SETTINGS"
+u_with '.hooks.PreToolUse += ["not-an-object"]'
+uninstall_refuses "a hooks array holding a non-object entry" "" "could not build the rewrite"
+cp "$SANDBOX/u-clean.json" "$SETTINGS"
+mk_fail_shim "$SANDBOX/u-jq-shim" jq '*@base64*'
+uninstall_refuses "a failed classification" "$SANDBOX/u-jq-shim" "could not read the hook commands"
+mk_fail_shim "$SANDBOX/u-cp-shim" cp '*agent-workspace-backup*'
+uninstall_refuses "a failed backup" "$SANDBOX/u-cp-shim" "could not back up"
+mk_fail_shim "$SANDBOX/u-mv-shim" mv '*/.claude/settings.json'
+uninstall_refuses "a refused settings.json write" "$SANDBOX/u-mv-shim" "failed to write"
+rm -f "$U_LOCAL" "$SANDBOX/u-clean.json" "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+
 # ----------------------------------------------------------- uninstall ---
 # As the CLI leaves it (no markers), with our PreToolUse command sharing an
 # entry with the user's own: uninstall removes ours and keeps theirs.

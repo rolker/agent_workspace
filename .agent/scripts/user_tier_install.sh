@@ -540,10 +540,11 @@ write_settings() {  # <json on stdin>
         local staged="$real.agent-workspace.$$"
         cp "$tmp" "$staged" || { rm -f "$tmp" "$staged"; return 1; }
         rm -f "$tmp"
-        mv "$staged" "$real"
+        # A failed rename is a failed write: callers stop on it.
+        mv "$staged" "$real" || { rm -f "$staged"; return 1; }
         return 0
     fi
-    mv "$tmp" "$SETTINGS"
+    mv "$tmp" "$SETTINGS" || { rm -f "$tmp"; return 1; }
 }
 
 # CLAUDE_CONFIG_DIR moves where the CLI reads its settings from, but the
@@ -1108,6 +1109,45 @@ if [[ "$MODE" == "uninstall" ]]; then
         echo "agent_workspace user tier: nothing installed at $CLAUDE_DIR"
         exit 0
     fi
+    # The same order as install: settings.json is read, classified, its
+    # rewrite built and backed up, and written, before anything else is
+    # removed. Any failure up to and including that write exits 1 with
+    # everything as it was -- the root file, the rules record, the link and
+    # the plugin still in place -- rather than a tier that reads as removed
+    # while our hook commands still run from settings.json.
+    if [[ -f "$SETTINGS" ]]; then
+        require_parseable_settings || exit 1
+        # This checkout's commands only (classify_hooks); another checkout's
+        # and dead ones are install's to clear. The user's commands in the
+        # same entry stay, and this checkout's marker goes from every entry.
+        uninstall_settings="$(read_settings)"
+        uninstall_cls="$(classify_hooks "$uninstall_settings")" || exit 1
+        uninstall_rules="$(installed_rules_json)" || {
+            echo "ERROR: could not read the allow-rules this checkout wrote ($RULES_FILE) -- nothing changed" >&2
+            exit 1
+        }
+        uninstall_merged="$(jq --arg tag "$TAG" --argjson force false --argjson dead false \
+            --argjson cls "$uninstall_cls" \
+            --argjson rules "$uninstall_rules" "$PRUNE_JQ_DEFS"'
+            .hooks //= {} |
+            .hooks |= with_entries(
+                .value |= (if type == "array" then prune else . end)
+            ) |
+            .hooks |= with_entries(select(.value | length > 0)) |
+            if (.permissions.allow? // null) != null then
+                .permissions.allow |= map(select(. as $a | ($rules | index($a)) == null))
+            else . end
+        ' <<< "$uninstall_settings")" || {
+            echo "ERROR: could not build the rewrite of $SETTINGS (jq failed: see above) -- nothing changed" >&2
+            exit 1
+        }
+        backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding; nothing changed" >&2; exit 1; }
+        write_settings <<< "$uninstall_merged" || {
+            echo "ERROR: failed to write $SETTINGS -- nothing changed (the backup above is a copy of it)" >&2
+            exit 1
+        }
+        echo "  removed this checkout's hook commands and allow-rules from $SETTINGS"
+    fi
     [[ -f "$ROOT_FILE" ]] && [[ "$(cat "$ROOT_FILE")" == "$WS_ROOT" ]] && rm -f "$ROOT_FILE" \
         && echo "  removed $ROOT_FILE"
     [[ -L "$SESSION_HOOK_LINK" ]] && rm -f "$SESSION_HOOK_LINK" \
@@ -1139,30 +1179,9 @@ if [[ "$MODE" == "uninstall" ]]; then
         esac
     done <<< "$PLUGIN_ROOTS"
     uninstall_plugin_from "$WS_ROOT"
-    if [[ -f "$SETTINGS" ]]; then
-        require_parseable_settings || exit 1
-        backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
-        # This checkout's commands only (classify_hooks); another checkout's
-        # and dead ones are install's to clear. The user's commands in the
-        # same entry stay, and this checkout's marker goes from every entry.
-        uninstall_settings="$(read_settings)"
-        uninstall_cls="$(classify_hooks "$uninstall_settings")" || exit 1
-        jq --arg tag "$TAG" --argjson force false --argjson dead false \
-            --argjson cls "$uninstall_cls" \
-            --argjson rules "$(installed_rules_json)" "$PRUNE_JQ_DEFS"'
-            .hooks //= {} |
-            .hooks |= with_entries(
-                .value |= (if type == "array" then prune else . end)
-            ) |
-            .hooks |= with_entries(select(.value | length > 0)) |
-            if (.permissions.allow? // null) != null then
-                .permissions.allow |= map(select(. as $a | ($rules | index($a)) == null))
-            else . end
-        ' <<< "$uninstall_settings" | write_settings \
-            && echo "  removed this checkout's hook commands and allow-rules from $SETTINGS"
-    fi
-    # Only now: the rewrite above reads this file to find rules written by an
-    # earlier manifest generation, so removing it first would orphan them.
+    # Only once settings.json is rewritten: its rewrite read this file to
+    # find rules written by an earlier manifest generation, and a failed
+    # rewrite exited above with the file still here.
     [[ -f "$RULES_FILE" ]] && rm -f "$RULES_FILE" && echo "  removed $RULES_FILE"
     if [[ "$uninstall_rc" -ne 0 ]]; then
         echo "agent_workspace user tier removed, except the plugin in the root(s) above." >&2
