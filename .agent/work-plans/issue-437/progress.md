@@ -397,3 +397,15 @@ None open.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Q6 is working towards dropping compatability mode right? Merge it."
+
+Q6 as put to him: merge pull request 448? The decision summary was presented in the session: three pre-push rounds (two must-fixes, both fixed; round 3 approved), triage with no open findings, CI all passing, Copilot failed on quota, Gemini and Codex ran in rounds 1 and 2. The host's answer to his question: yes, this narrows compatibility mode (it now refuses a write from the wrong checkout like strict mode does); dropping it altogether is the parked item on issue 269, whose drafted comment is not posted.
