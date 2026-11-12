@@ -104,12 +104,18 @@ error that names the manifest and the key:
   byte-order mark, right-to-left override) or a space other than the ASCII one.
 - YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported by line
   and column only, never with the document's text; a value YAML cannot build (`!!int 0xz`, an
-  unquoted `2024-13-45`) is reported as invalid YAML with no position.
+  unquoted `2024-13-45`) is reported as invalid YAML with no position. An integer past 64 bits
+  is refused.
 
 As a second line, `resolve` refuses to write a line that holds any of those characters or a file
 that would land outside `--out`, and writes nothing in that case. The `extends` clone states
 the transports git may use (`https`, `ssh`, `file`; everything else, such as `ext::`, refused)
 on its own command line rather than relying on git's defaults.
+
+No error message prints a value from a manifest: it names only the manifest, a key or name that
+passed the rules above, a type, or a line and column (a failed `extends` clone gives git's exit
+status, not its output). Any other failure prints `ERROR: internal error (<exception type>)`
+and exits 1: never the exception's text, never a traceback.
 
 ### The `extends` cache
 
