@@ -821,3 +821,13 @@ Notes for #447 (code, not this verdict): an unknown key under a per-distro entry
 ### Findings
 - [ ] (must-fix) "No string key or value may contain ..." is untrue: a string inside a `!!set` or `!!pairs` value under an unknown per-distro key is accepted. Either extend the `!!binary` carve-out, e.g. "A key YAML builds as bytes (`!!binary`), and a string inside a `!!set` or `!!pairs` value under a key the tool ignores, are not checked by this rule (#447)", or fix the code in #447 — `tools/ros-manifest/README.md:111-115`
 - [ ] (suggestion) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:101-102`, reproduced: "group 'g' redeclares default 'exclude' (was 'include' ...)"); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:125`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:11 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the owner's answer of this morning stands, "Q3: A and yes.": publish now with the code findings in follow-up issue 447. Round 7 confirmed round 6's sentence and the four other corrections, and found one more README sentence that is untrue only for a string inside a `!!set` or `!!pairs` value under an ignored key. Three rounds have now each found one more README sentence; a further pre-push round would repeat that, so the pull request is published and the sentence is corrected in the first fix round on the pull request, before the merge decision)
+**After**: rounds
+**Decision**: publish
+
+The host read the round 7 Local Review (Pre-Push) entry at 06142c48: verdict changes-requested, Ship recommended, one must-fix (README lines 111-115, the character rule's reach) and one suggestion (the wording about a group's default). Both stay open boxes on the timeline, so triage raises them and the fix lands on the pull request: the README's rules section gets the two corrections and one sentence saying the listed gaps are tracked in issue 447, so it stops claiming completeness. The code notes (an unknown key under a per-distro entry is accepted; the character check skips `!!set`, `!!pairs` and `!!omap` contents) go to issue 447 with the owner's yes.
