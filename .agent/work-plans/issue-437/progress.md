@@ -351,3 +351,21 @@ Round 1's two findings are resolved: the symlink rule is one statement in `recor
 ### Checks
 - `test_records_write_gate.sh`: 68 passed, 0 failed; against the round-2 scripts the same test fails 6 (the four spellings, the trailing slash, the linked bare `progress.md`)
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped, the script suite included
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 12:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a9583ba7b1d7c0446, resume 2 of 3)
+
+**Branch**: feature/issue-437 at `8d9c33bb`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Narrow check of round 2's three findings and the fix diff `39b6562e..8d9c33bb`; cross-model skipped (round-3 convergence check, per handoff). All three are closed: the place check now compares the named path (absolute, normalised by text) with the same path fully resolved, for every `--write`; `./`, `//`, a trailing slash, a `..` landing on the same file and a bare `progress.md` in the records folder pass, a link to another file there is refused; the exit-code comment names `records_path --write`. A fresh adversarial pass re-ran every round 2 allowed case (symlinked parent folder, cwd through a link, `-C` through a link from the main checkout, first entry) and every refusal; all hold. Nine suites pass (test_records_write_gate 68/68).
+
+### Findings
+- [ ] No issues found. LGTM.
