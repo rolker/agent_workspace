@@ -104,3 +104,13 @@ The approach is sound and matches the owner's direction: one helper, derived fro
 - [ ] Add `.claude/skills/run-issue/SKILL.md` (and check `orchestrator/SKILL.md` and the `dispatch_phase.sh` handoff text) to the file list.
 - [ ] Fix the Serves goal name to a real `README.md#workspace-goals` section.
 - [ ] Note the brand-guidelines grep hit as expected. Swap the `test_dispatch_phase.sh` address to `example.org`. Add `GIT_CONFIG_NOSYSTEM=1` to the test.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 17:28 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work; first revise at this checkpoint)
+**After**: plan
+**Decision**: revise
+
+Plan review found one high finding: the instruction-file setup lines and the hook change must land together, because on a machine whose git email has another base the new hook blocks every agent commit that still uses the literal setup line, this pull request's own later phases included. Also: run-issue's skill text and the dispatch handoff pass an explicit agent email and are not in the plan; three low findings. The owner approved the instruction-file edits on 2026-11-12: "yes, remove the addresses from CLAUDE.md and CODEX.md". Revise the plan to address all five findings.
