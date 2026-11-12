@@ -142,3 +142,46 @@ Host answer under /orchestrator's checkpoint table (first `revise` at this check
 **Plan**: `.agent/work-plans/issue-451/plan.md` at `d7d8a1b9`
 
 Revision answering the plan review: position B now delivers the KILL while the deaf child is held, then releases it (keyed on the CLI PID); time checks kept by an escalation of 30 s beyond the 10 s ceiling, with a TERM revert step and the escalation-0 case kept; dead case reaps with wait; acceptance grep corrected. Reverts for TERM and KILL tried on a prototype here.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 14:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #451 — test_cross_model_review.sh: fixtures depend on the host's process behaviour
+**Plan**: `.agent/work-plans/issue-451/plan.md` at `d7d8a1b9`
+**Branch**: `feature/issue-451`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One file, two commits, part 1 first; line 3767 taken as the two-line change the issue allows. |
+| Issue alignment | Good | Serves: "Quality of the work (results that can be trusted, tests that mean what they say), `docs/design.md#rules`" (unchanged from the checked first review). Every earlier finding is answered: B now KILLs the held child then releases (keyed on the PID argument); coop, coop-esc-0 and dead use escalation 30 s beyond the 10 s ceiling; a `signal_live_cli TERM` revert step is added; dead reaps with `wait`; grep expected output corrected; the GNU line is the host's recorded decision (CI `ubuntu-latest` Lint). |
+| File targeting | Good | Test file only; helper docs conditional. |
+| Consequences | Good | Header comment rewrite, fixture comments, conditional helper docs. |
+| Principle alignment | Good, with notes | "Test what breaks": verified here that B as revised discriminates (findings below are about stating the mechanics so the implementation reproduces the prototype). |
+| ADR compliance | Good | ADR-0015 only if helpers change (not planned); ADR-0017 no design change. |
+| ROS conventions | N/A | Workspace plan. |
+
+Verified by running (this machine, uutils, scratch copies only): deaf A and deaf B against `_cli_review.sh` both exit 143 with the child gone in 0.4 s; with the watchdog reverted to `signal_cli KILL` both exit 137 at the ceiling with the child alive. The step 4 grep today lists exactly `test_ros2_colcon.sh:898` and `test_cross_model_review.sh` 3767, 3768, 3956, 3957, as the plan says. `proc_state` is at `cross_model_review.sh:919` and the awk revert would misread both fixtures as the plan expects (reasoned from `job_finished`).
+
+### Findings
+
+1. **[Principle alignment — Test what breaks]** (medium) The `kill` wrapper must return the real `kill`'s exit status. The handler's group-wait loop reads it (`while signal_cli 0 "$CLI_PID" && kill -0 "$watchdog"`), and a wrapper written as the plan words it ("runs the real kill, then, if ..., writes the FIFO") ends in an `if` that returns 0, so `kill -0` always succeeds and the fixed handler spins to the ceiling. Run here: such a wrapper makes deaf B fail on the unreverted `_cli_review.sh` (exit 137 after 6 s); saving `rc` from `builtin kill` and returning it passes in 0.4 s. State this in the plan or the test comment.
+2. **[Approach — revert check]** (low) "a scratch copy of the helper that the test's script variable points at": the test has no such variable. Both probes read `${SCRIPT_DIR}/../<file>`, and `SCRIPT_DIR` comes from `BASH_SOURCE` (line 11). Name the real mechanism (edit the helper in the worktree and restore it with `git checkout --`, or copy test and helpers into a scratch tree).
+3. **[Approach — part 1]** (low) The new fixture-state check ("state `S`/`R`", "state `Z`") should read `/proc/<pid>/stat` with test-side code, not the extracted `proc_state`. Otherwise, with the #313 r4 revert, the fixture check itself reports the fixture in the wrong state and the revert record cannot tell a broken fixture from the caught regression.
+4. **[Issue alignment]** (info) Under every listed revert deaf B gives the same verdict as deaf A (both hang, run here). B is still the only case that reaches "group appears just after the deadline" as the issue names it; a sentence in the test comment saying so would stop a later reader from deleting it as a duplicate.
+5. **[Approach — wording]** (info) "a timeout shows as exit 124": the handler ignores TERM, so a deaf hang ended as 137 here (`timeout -k 1`). Either fails "handler exits 143"; only the wording is off.
+
+### Summary
+
+The revision answers both earlier high findings and both low ones, and the B mechanism works as described when run. The remaining points are implementation details to carry into the code (finding 1 is the one that would make a correct handler fail); ready for implementation.
+
+### Recommended Actions
+
+- [ ] The `kill` wrapper keeps and returns `builtin kill`'s status; say so in the test comment.
+- [ ] Name the actual revert mechanism (no script variable exists).
+- [ ] Part 1 fixture-state checks parse `/proc` in test code, independent of `proc_state`.
+- [ ] Note in the test comment why deaf B is kept beside deaf A; fix the 124/137 wording.
