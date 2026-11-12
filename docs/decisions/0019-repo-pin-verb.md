@@ -43,8 +43,10 @@ Add `repo_pin` to `REQUIRED_VERBS` (13 verbs):
   them. The verb does not decide that; it only reports.
 - **`ros2_colcon`** reads the `version:` of `<repo>` in the manifest's
   `repos/<layer>.repos` files, YAML quotes stripped (a `#` starts a comment
-  only after whitespace; a ref still holding a quote or carriage return is
-  refused). An entry with no `version:` key pins nothing, and the verb exits
+  only right after the key or after whitespace, so a comment alone is an
+  empty `version:`, refused; a quoted value counts only when nothing but a
+  comment follows its closing quote; a ref still holding a quote or
+  carriage return is refused). An entry with no `version:` key pins nothing, and the verb exits
   1 saying so rather than reporting the default branch. A repository pinned in
   more than one layer at different refs needs `--layer`, and without it the
   verb exits 1 naming each layer and ref; the same ref in several layers is
