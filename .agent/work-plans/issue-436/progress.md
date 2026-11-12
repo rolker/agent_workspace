@@ -848,7 +848,7 @@ Local timeline: round 7's two open findings carry forward; both re-checked again
 
 ### Findings
 - [x] (must-fix, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "No string key or value may contain ..." is untrue: a string inside a `!!set` or `!!pairs` value under an unknown per-distro key is accepted. Either extend the `!!binary` carve-out, e.g. "A key YAML builds as bytes (`!!binary`), and a string inside a `!!set` or `!!pairs` value under a key the tool ignores, are not checked by this rule (#447)", or fix the code in #447 — `tools/ros-manifest/README.md:109-113`
-- [ ] (suggestion, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:99-102`); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:126`
+- [x] (suggestion, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:99-102`); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:126`
 
 ### False positives
 

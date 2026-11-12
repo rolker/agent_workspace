@@ -124,12 +124,12 @@ checked again there; the character rule above is what keeps those characters out
 `extends` clone states the transports git may use (`https`, `ssh`, `file`; everything else,
 such as `ext::`, refused) on its own command line rather than relying on git's defaults.
 
-A `url` or `ref` that fails its rule is never printed, nor is a group's `default`; a failed
-`extends` clone gives git's exit status, not its output. Some error messages do still print a
-value from the manifest: an `extends` path, an `optional_layers` entry, an entry of a reference
-list (a group's `repos`; a role's `subtract`, `add` or `roots`; a package's `repo`, `depend` or
-`exec_depend`), a key, and a name that fails its rule. Closing that is
-[#447](https://github.com/rolker/agent_workspace/issues/447).
+A `url` or `ref` that fails its rule is never printed, nor is a group's `default` that is not
+`include` or `exclude`; a failed `extends` clone gives git's exit status, not its output. Some
+error messages do still print a value from the manifest: an `extends` path, an `optional_layers`
+entry, an entry of a reference list (a group's `repos`; a role's `subtract`, `add` or `roots`; a
+package's `repo`, `depend` or `exec_depend`), a key, and a name that fails its rule. Closing that
+is [#447](https://github.com/rolker/agent_workspace/issues/447).
 
 An unexpected error prints one line, `ERROR: internal error (<exception type>)`, and exits 1:
 never the exception's text, never a traceback. Two cases still escape that line, also in #447:
