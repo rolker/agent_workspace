@@ -281,3 +281,13 @@ The revision answers the ten findings. Pull request A is one sentence short of r
 - [ ] PR B step 1: say who writes the user-scope suite cases, and that steps 2-8 wait for the FACT lines (finding 2); the copy gets `aw-accept-<pid>@aw-accept-<pid>: false` in its committed `.claude/settings.json` (finding 3)
 - [ ] Migration: no CLI from a linked worktree, or establish where local scope writes from one (finding 4); state which notes repeat, and read the user-scope state back after migrating (finding 5)
 - [ ] Reason for the non-git-subdirectory refusal (finding 6); remove the stale "unverified" lines and the conditional Design Picture wording (finding 7); trap signals and diff the real settings around the live run (finding 8)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review found all ten earlier findings answered and eight new ones, four should-fix and four minor, each a sentence or short paragraph of plan text and none a change to what the owner asked for; second host revise in a row on this plan, so the next plan answer other than proceed is the owner's)
+**After**: plan
+**Decision**: revise
+
+The host read the Plan Review entry at 03821f15. All eight findings are taken as written, with these choices where the reviewer offered two: finding 1, keep reading the marker when present and stop only writing it; finding 2, the first implement dispatch for pull request B is limited to the live-suite commit and ends with a hand-back, and steps 2 to 8 wait for the FACT lines on the timeline; finding 4, the CLI path requires git-dir equal to git-common-dir and a linked worktree gets the report-only path; finding 6, the second shape (a subdirectory of a root in no git repository) keeps its refusal with its own true reason. Pull request A is driven on issue 394's own worktree and timeline, starting now; its plan pass copies this plan's A section with finding 1's sentence.
