@@ -275,3 +275,19 @@ Checks: the main checkout's venv `pre-commit run --files $(git diff --name-only 
 
 Draft for the host to put to the owner, not posted: a comment on issue 269's parked strict-mode item (B2):
 > Issue 437 makes compatibility mode refuse exactly like strict mode whenever the checkout is not the issue's own (a main checkout on its default branch, or another issue's worktree). The "would have aborted" notice is now left for two cases only: `WORKTREE_ISSUE` names another issue while the checkout is right, or `WORK_PLANS_DIR_OVERRIDE` is set. So when the notices stop, the reason is that these cases now refuse, not that runs got cleaner. Strict mode is not flipped by 437, and B2 stays the owner's call. To undo: drop `--write` from the compatibility branch of `review_progress.sh` `_persist_impl`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 11:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-437 at `46d8f462`
+**Base**: main
+**Depth**: Deep (reason: 1118 changed lines across 17 files, including the enforcement scripts `_resolve_work_plans_dir.sh`, `progress_append.sh` and `review_progress.sh` and four skill files)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) The write rule misses two symlink cases and writes into the main checkout (reproduced in a sandbox): a `progress.md` that is itself a symlink to the main checkout's (`progress_append.sh` exits 0, edits main's file, commits a mode change in the worktree; compatibility `persist` is not refused either), and a records folder linked to a main-checkout directory whose path does not name the issue (`rn` empty, so the physical check is skipped; file written, then git fails with exit 3). Judge the physical checkout with `${rn:-$gn}` whenever it differs, gate the file path itself (`records_path --write "$RECORDS/progress.md"`) in `progress_append.sh` and compatibility `persist`, and add both cases to `test_records_write_gate.sh` — `.agent/scripts/_resolve_work_plans_dir.sh:420`, `.agent/scripts/progress_append.sh:94`, `.agent/scripts/review_progress.sh:341`
+- [ ] (suggestion) The static detector reads a pathspec only after ` -- `, so `git add "$REL"` / `git commit -m x "$REL"` without `--` is not caught; take the words after the subcommand's options too, or say so in the "Out of reach" comment, and plant such a writer — `.agent/scripts/tests/test_records_write_gate.sh:313`
