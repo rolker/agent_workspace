@@ -65,11 +65,19 @@
 #     the path and the file itself resolved) sits in issue <N>'s own
 #     checkout by _wpd_checkout_is_issue, at the place <path> names, so the
 #     checkout the caller's `git commit` runs in is the one the file is in.
-#     A main checkout on its default branch, another issue's worktree, a
-#     path in no git checkout, or a symlink anywhere from the named .agent
-#     down is refused (stderr naming the issue's worktree, or the command
-#     that creates it; return 1). Without --write nothing changes: reads
-#     are never refused by this rule.
+#     "At the place it names" compares two paths computed the same way, not
+#     text: <path> made absolute (from $PWD) and lexically normalised with
+#     no symlink resolved (".", "..", repeated and trailing slashes gone),
+#     and <path> fully resolved. Below the checkout root they must be equal,
+#     and the named part above it must resolve to that root (a worktree
+#     reached through a linked parent folder, or -C through a link, passes).
+#     The issue number comes from either path, so a bare progress.md run
+#     inside the records folder is judged too. A main checkout on its
+#     default branch, another issue's worktree, a path in no git checkout,
+#     or a symlink anywhere inside the checkout on the way to the file is
+#     refused (stderr naming the issue's worktree, or the command that
+#     creates it; return 1). Without --write nothing changes: reads are
+#     never refused by this rule.
 #   records_dir <N> [<dir>]
 #     <dir>'s git toplevel (default .) + /.agent/work-plans/issue-<N>,
 #     through records_path with <dir> as <from-dir>. A read: a writer
@@ -277,6 +285,25 @@ _wpd_physical() {
     fi
 }
 
+# Lexical absolute form of <path>: relative to $PWD, with ".", "..",
+# repeated and trailing slashes removed by text alone, no symlink resolved
+# (the counterpart _wpd_physical is compared against).
+_wpd_lexical() {
+    local p="${1:-}" part out=""
+    local -a parts=() stack=()
+    case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
+    IFS=/ read -r -a parts <<< "$p"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ""|.) ;;
+            ..) [ "${#stack[@]}" -gt 0 ] && unset 'stack[${#stack[@]}-1]' ;;
+            *) stack+=("$part") ;;
+        esac
+    done
+    for part in "${stack[@]}"; do out="$out/$part"; done
+    printf '%s\n' "${out:-/}"
+}
+
 # Nearest existing directory at or above <path> (an absolute path).
 _wpd_existing_dir() {
     local p="$1"
@@ -382,7 +409,7 @@ records_path() {
         write=1
         shift
     fi
-    local path="${1:-}" from="${2:-$PWD}" gn="" gprefix="" gtail="" rn="" phys gloc="" named=""
+    local path="${1:-}" from="${2:-$PWD}" gn="" gprefix="" rn="" phys gloc="" named="" top="" rel=""
     local re='^(.*/)?\.agent/work-plans/issue-([0-9]+)(/.*)?$'
     if [ -z "$path" ]; then
         echo "ERROR: records_path: a path is required" >&2
@@ -391,7 +418,6 @@ records_path() {
     if [[ "$path" =~ $re ]]; then
         gn="${BASH_REMATCH[2]}"
         gprefix="${BASH_REMATCH[1]:-./}"
-        gtail="${BASH_REMATCH[3]}"
     fi
     phys=$(_wpd_physical "$path") || {
         echo "ERROR: refusing to use $path as an issue's records: it cannot be resolved to a physical location." >&2
@@ -419,22 +445,26 @@ records_path() {
     # Where it resolves to.
     issue_checkout_guard "$(_wpd_existing_dir "$phys")" "${gn:-$rn}" "$from" || return 1
     # The write rule (issue 437), one statement: the physical file sits in
-    # issue <N>'s own checkout, at the place the path names.
+    # issue <N>'s own checkout, at the place the path names. "At the place
+    # it names": inside that checkout, the path as named (made absolute and
+    # lexically normalised, no symlink resolved) and the path fully resolved
+    # are the same, and the named part above it resolves to the checkout.
     if [ "$write" = 1 ]; then
         _wpd_write_guard "$(_wpd_existing_dir "$phys")" "${gn:-$rn}" || return 1
-        if [ -n "$gn" ]; then
-            named="${gloc%/}/.agent/work-plans/issue-$gn$gtail"
-            while [ "${#named}" -gt 1 ] && [ "${named%/}" != "$named" ]; do named="${named%/}"; done
-            if [ "$phys" != "$named" ]; then
-                {
-                    echo "ERROR: refusing to write issue #${gn}'s records through $path: it resolves to"
-                    echo "  $phys, not to the place it names ($named)."
-                    echo "  A write that changes a timeline goes to the file at the place its path names, in"
-                    echo "  the issue's own checkout: a symlink on the way would put the write in one place"
-                    echo "  and the commit in another. Reads are not refused."
-                } >&2
-                return 1
-            fi
+        named=$(_wpd_lexical "$path")
+        top=$(git -C "$(_wpd_existing_dir "$phys")" rev-parse --show-toplevel 2>/dev/null) || top=""
+        [ -n "$top" ] && top=$(cd -P "$top" 2>/dev/null && pwd -P) || top=""
+        rel="${phys#"$top"/}"
+        if [ -z "$top" ] || [ "$rel" = "$phys" ] || [ "${named%/"$rel"}" = "$named" ] \
+            || [ "$(_wpd_physical "${named%/"$rel"}")" != "$top" ]; then
+            {
+                echo "ERROR: refusing to write issue #${gn:-$rn}'s records through $path: it resolves to"
+                echo "  $phys, not to the place it names ($named)."
+                echo "  A write that changes a timeline goes to the file at the place its path names, in"
+                echo "  the issue's own checkout: a symlink on the way would put the write in one place"
+                echo "  and the commit in another. Reads are not refused."
+            } >&2
+            return 1
         fi
     fi
     printf '%s\n' "$path"

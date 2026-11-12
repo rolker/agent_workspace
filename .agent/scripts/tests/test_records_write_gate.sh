@@ -302,6 +302,51 @@ EXTRA_WATCH=()
 allowed "the plain case: progress_append.sh 17 in W17, no symlink" "$W17" 17 "$W17" "$S/progress_append.sh" 17
 allowed "the plain case: persist (compatibility mode) 17 in W17" "$W17" 17 "$W17" "$S/review_progress.sh" persist --issue 17
 
+# ------------------------------------------------------------------ case 6b
+echo "TEST: spellings: the named path and the resolved path are compared, not their text"
+P7W="$W7/.agent/work-plans/issue-7"
+gate() {  # <cwd> <path>: records_path --write, prints "rc=<n> <output>"
+    local o r
+    o=$(cd "$1" && source "$S/_resolve_work_plans_dir.sh" && records_path --write "$2" 2>&1); r=$?
+    printf 'rc=%s %s' "$r" "$o"
+}
+for spelling in "$P7W/./progress.md" "$P7W//progress.md" "$P7W/../issue-7/progress.md" \
+    "./.agent/work-plans/issue-7/./progress.md"; do
+    out=$(gate "$W7" "$spelling")
+    check "records_path --write $spelling (issue 7's own file): allowed" "$([[ "$out" == "rc=0 "* ]]; echo $?)" "$out"
+done
+out=$(gate "$P7W" progress.md)
+check "a bare progress.md from inside issue 7's records folder: allowed" "$([[ "$out" == "rc=0 "* ]]; echo $?)" "$out"
+out=$(gate "$P7W" ../issue-7/progress.md)
+check "../issue-7/progress.md from inside the folder (a .. landing on the same file): allowed" \
+    "$([[ "$out" == "rc=0 "* ]]; echo $?)" "$out"
+before=$(git -C "$W7" rev-parse HEAD)
+out=$(cd "$W7" && "$S/review_progress.sh" check --progress "$P7W/"/progress.md --index 0 2>&1); rc=$?
+check "check --progress with a trailing slash on the folder ticks the box" \
+    "$([[ "$rc" -eq 0 && "$out" == "- [x] (must-fix) open finding"* ]]; echo $?)" "rc=$rc out=$out"
+git -C "$W7" checkout -q -- .agent/work-plans/issue-7/progress.md
+# A worktree reached through a linked parent folder, and -C through that
+# link from the main checkout (the shape merge_pr.sh uses), still pass.
+ln -s "$WS/worktrees" "$SANDBOX/wtlink"
+out=$(gate "$WS" "$SANDBOX/wtlink/workspace/issue-workspace-7/.agent/work-plans/issue-7/progress.md")
+check "issue 7's file through a linked parent folder of its worktree: allowed" "$([[ "$out" == "rc=0 "* ]]; echo $?)" "$out"
+allowed "progress_append.sh -C <the worktree through a linked parent> from the main checkout" \
+    "$W7" 7 "$WS" "$S/progress_append.sh" -C "$SANDBOX/wtlink/workspace/issue-workspace-7" 7
+rm "$SANDBOX/wtlink"
+# A bare progress.md linked to another file in the same records folder is
+# refused, though its path names no records folder. (W17's committed
+# progress.md, from the plain case above, is set aside meanwhile.)
+mv "$R17/progress.md" "$SANDBOX/progress17.keep"
+{ printf -- '---\nissue: 17\n---\n\n# Issue #17\n\n'; review_entry; } > "$R17/real.md"
+ln -s real.md "$R17/progress.md"
+before=$(md5sum < "$R17/real.md")
+out=$(cd "$R17" && "$S/review_progress.sh" check --progress progress.md --index 0 2>&1); rc=$?
+check "check --progress progress.md inside the folder, linked to real.md there: refused, real.md unchanged" \
+    "$([[ "$rc" -eq 4 && "$out" == *"not to the place it names"* && "$before" == "$(md5sum < "$R17/real.md")" ]]; echo $?)" \
+    "rc=$rc out=$out"
+rm "$R17/progress.md" "$R17/real.md"
+mv "$SANDBOX/progress17.keep" "$R17/progress.md"
+
 # ------------------------------------------------------------------ case 7
 echo "TEST: reads from the main checkout are not refused"
 P7="$W7/.agent/work-plans/issue-7"
