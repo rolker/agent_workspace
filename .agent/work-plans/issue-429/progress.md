@@ -928,3 +928,39 @@ Scope of this pass: the verb's pull request only, the first of part 2's pull req
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0.
   - Hooks: adapter contract, design anchors, shellcheck, and the script-suite hook. The hook selects 40 suites (`suites_for_files.sh` over the in-scope files; the adapters reach most suites), and every one passed.
   - Run on their own while building: test_adapter 139/0, test_ros2_colcon 254/0.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 17:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `391a2d03`
+**Base**: main
+**Depth**: Deep (reason: extends the ADR-0011 adapter contract that every project type implements, adds ADR-0019 and design/governance text; 10 files, about 545 lines outside the timeline)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue (round 1: 2 must-fix; the first round always gets a re-review after fixes)
+
+Round correction by the host: `review_progress.sh round` counts this as round 4, because part 1 (merged as PR 445) had three pre-push reviews on this branch's timeline. The diff under review (`main...HEAD`: the `repo_pin` verb, its tests, ADR-0019 and the design and knowledge text) had never been reviewed. So it was treated as round 1: a cold read of the whole diff at full depth, with the cross-model reviewers dispatched. The round-3 "narrow convergence check" rule was not applied.
+
+Specialists:
+- Static: shellcheck `--severity=warning` on the 5 changed shell files, rc 0. test_ros2_colcon 254/0, test_adapter 139/0. `validate_adapter.sh`: 13/13 for both types.
+- Governance: ADR-0008 followed (new ADR, Status and References addendum only on ADR-0011). ADR-0011 and ADR-0017 followed (the design bullet, Table 2, the register and the change log were all updated).
+- Plan drift: the five adaptations were judged acceptable:
+  - one exact-compared `ls-remote` call;
+  - "unverified" reported on stderr;
+  - an uncloned full sha reported as `commit`;
+  - equal refs in two layers accepted, different refs refused;
+  - three extra files, which are consequences the anchors check requires.
+- Claude adversarial subagent: ran.
+- Cross-model:
+  - gemini (agy): complete, 2 suggestions.
+  - codex: complete, 1 must-fix (`#` truncation).
+  - Copilot: skipped (disabled for quota).
+
+### Findings
+- [ ] (must-fix) The `_rc_repos_entries` parser cuts the version at any `#`, so `version: fix#12` reads as `fix`, and `"fix#12"` reads as `"fix` with the quote left in; the verb then exits 0 with the wrong ref (a silent wrong base when a branch `fix` exists). Strip only a whitespace-preceded `#` comment, refuse a ref left holding `"`, `'` or `\r` (CRLF files give `dev\r`), and add tests (codex and Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:225`
+- [ ] (must-fix) The origin queries in `repo_pin` have no time limit: `GIT_TERMINAL_PROMPT=0` does not stop SSH prompts or a stalled host. A reproduction with a 15s ssh stub took 30s. The worktree creation path that ADR-0019 names as a caller bounds every origin call with `wt_bounded_git` (#323), so bound these the same way; a timeout should fall to the unverified local answer — `.agent/project_types/ros2_colcon/adapter.sh:891`, `.agent/project_types/single_project/adapter.sh:311`
+- [ ] (suggestion) When the same ref is pinned in several layers, the kind is judged in the first layer's checkout even if only a later layer has it cloned. The result is `unknown (unverified)` for a valid branch, where `--layer l2` gives `branch`. Use the first hit layer whose checkout exists, and extend `test_repo_pin_two_layers` (gemini and Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:977`
+- [ ] (suggestion) An entry with no `version:` key (vcstool uses the default branch) is reported as "no repository ... pinned (known: ...)" and left out of the known list. Give it its own message. Slash keys and flow-style entries are dropped the same way; that comes from the existing parser (Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:215-229`
+- [ ] (suggestion) An uppercase 40-hex sha is reported as `unknown`, although git accepts it. Match case-insensitively, or say "lowercase" in ADR-0019 (gemini) — `.agent/project_types/ros2_colcon/adapter.sh:878`
