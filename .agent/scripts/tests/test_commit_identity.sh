@@ -187,6 +187,24 @@ out="$(run_in "$sb" -- bash -c 'source "$1" "Custom Agent" "x+y@example.net" "m"
 out="$(run_in "$sb" -- bash -c 'source "$1" --agent nosuch >/dev/null; echo "rc=$? ${AGENT_EMAIL-unset}"' _ "$SET_ENV" 2>&1)"
 [ "$out" = "rc=1 unset" ] && pass "unknown framework fails, nothing exported" || fail "unknown fw (got: $out)"
 
+echo "TEST: an empty framework key gives the intended error, not 'bad array subscript'"
+out="$(run_in "$sb" -- bash -c 'source "$1" --agent "" 2>&1; echo "rc=$?"' _ "$SET_ENV" 2>&1)"
+[[ "$out" == *"Unknown framework ''"* && "$out" == *"rc=1" && "$out" != *"bad array subscript"* ]] \
+    && pass "set_git_identity_env.sh --agent \"\"" || fail "--agent empty (got: $out)"
+out="$(run_in "$sb" AI_AGENT_NAME=-cli -- bash -c 'source "$1" --detect 2>&1; echo "rc=$?"' _ "$SET_ENV" 2>&1)"
+[[ "$out" == *"no predefined identity for detected framework '-cli'"* && "$out" == *"rc=1" && "$out" != *"bad array subscript"* ]] \
+    && pass "set_git_identity_env.sh --detect with an empty normalised key" || fail "--detect empty key (got: $out)"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent "" 2>&1)"; rc=$?
+[[ $rc -eq 1 && "$out" == *"Unknown framework ''"* && "$out" != *"bad array subscript"* ]] \
+    && pass "configure_git_identity.sh --agent \"\"" || fail "configure empty (rc=$rc, got: $out)"
+out="$(run_in "$sb" -- bash -c 'source "$1"; framework_email ""; echo "rc=$?"' _ \
+    "$REAL_ROOT/.agent/scripts/framework_config.sh" 2>&1)"
+[[ "$out" == *"no email suffix configured for framework ''"* && "$out" == *"rc=1" && "$out" != *"bad array subscript"* ]] \
+    && pass "framework_email \"\"" || fail "framework_email empty (got: $out)"
+out="$(run_in "$sb" AI_AGENT_NAME=-cli -- bash "$DETECT" 2>&1)"; rc=$?
+[[ $rc -eq 0 && "$out" == *"Email:      dev+ai-agent@example.org"* && "$out" != *"bad array subscript"* ]] \
+    && pass "detect_agent_identity.sh falls back to ai-agent for an empty key" || fail "detect empty key (rc=$rc, got: $out)"
+
 echo "TEST: unset email fails loudly with nothing exported (every entry point)"
 sb="$(mk_repo)"
 out="$(run_in "$sb" -- bash -c 'source "$1" --agent claude-code "m" >/dev/null; echo "rc=$? ${AGENT_EMAIL-unset} ${GIT_AUTHOR_EMAIL-unset} ${AGENT_NAME-unset}"' _ "$SET_ENV" 2>&1)"

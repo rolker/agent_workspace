@@ -143,7 +143,8 @@ if [ "$1" == "--agent" ]; then
     fi
 
     FRAMEWORK="${2,,}"  # Convert to lowercase
-    if [ -z "${FRAMEWORK_NAMES[$FRAMEWORK]:-}" ]; then
+    # An empty key is not a valid array subscript: test it first.
+    if [ -z "$FRAMEWORK" ] || [ -z "${FRAMEWORK_NAMES[$FRAMEWORK]:-}" ]; then
         echo "Error: Unknown framework '$2'"
         echo "Supported frameworks: ${!FRAMEWORK_NAMES[*]}"
         _sgi_clear_identity
@@ -177,7 +178,7 @@ elif [ "$1" == "--detect" ]; then
     FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"
     echo "Detected framework: $DETECTED"
 
-    if [ -z "${FRAMEWORK_NAMES[$FRAMEWORK_KEY]:-}" ]; then
+    if [ -z "$FRAMEWORK_KEY" ] || [ -z "${FRAMEWORK_NAMES[$FRAMEWORK_KEY]:-}" ]; then
         echo "Error: no predefined identity for detected framework '$DETECTED'"
         echo "Please use --agent <framework> or provide name/email manually"
         _sgi_clear_identity
@@ -204,7 +205,8 @@ elif [ $# -eq 2 ]; then
     if [ "$DETECTED" != "unknown" ]; then
         FRAMEWORK_KEY="${DETECTED%-cli}"
         FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"
-        AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]:-Unknown Model}"
+        AGENT_MODEL="Unknown Model"
+        [ -n "$FRAMEWORK_KEY" ] && AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]:-Unknown Model}"
         AGENT_FRAMEWORK="$DETECTED"
     else
         AGENT_MODEL="Unknown Model"

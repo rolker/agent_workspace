@@ -63,7 +63,9 @@ agent_email_for_suffix() {
 # Prints the agent email for a framework key of FRAMEWORK_SUFFIXES; returns 1
 # (message on stderr) for an unknown key or an unusable git email.
 framework_email() {
-    local suffix="${FRAMEWORK_SUFFIXES[$1]:-}"
+    local suffix=""
+    # An empty key is not a valid array subscript: test it first.
+    [ -n "$1" ] && suffix="${FRAMEWORK_SUFFIXES[$1]:-}"
     if [ -z "$suffix" ]; then
         echo "Error: no email suffix configured for framework '$1'" >&2
         return 1

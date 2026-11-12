@@ -99,7 +99,9 @@ if [ "$1" == "--agent" ]; then
     fi
 
     FRAMEWORK="${2,,}"  # Convert to lowercase
-    AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK]}"
+    # An empty key is not a valid array subscript: test it first.
+    AGENT_NAME=""
+    [ -n "$FRAMEWORK" ] && AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK]:-}"
 
     if [ -z "$AGENT_NAME" ]; then
         echo "Error: Unknown framework '$2'"
@@ -118,7 +120,8 @@ elif [ "$1" == "--detect" ]; then
     fi
 
     echo "Detected framework: $DETECTED"
-    AGENT_NAME="${FRAMEWORK_NAMES[$DETECTED]}"
+    AGENT_NAME=""
+    [ -n "$DETECTED" ] && AGENT_NAME="${FRAMEWORK_NAMES[$DETECTED]:-}"
     if [ -z "$AGENT_NAME" ]; then
         echo "Error: no predefined identity for detected framework '$DETECTED'"
         echo "Please use --agent <framework> or provide name/email manually"
