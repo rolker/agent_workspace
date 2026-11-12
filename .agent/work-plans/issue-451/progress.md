@@ -79,3 +79,45 @@ Host answer under /orchestrator's checkpoint table. Read: the Issue Review entry
 **Plan**: `.agent/work-plans/issue-451/plan.md` at `53ce1928`
 
 Part 1 sets the fixtures' own comm via /proc/self/comm (a script named "a Z b" shows the interpreter as comm, tested) with state assertions; part 2 replaces the delay matrix with FIFO/marker ordering at three positions and ceilings of 10 s. One PR, two commits; GNU check is CI's ubuntu-latest Lint job.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 14:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #451 — test_cross_model_review.sh: fixtures depend on the host's process behaviour
+**Plan**: `.agent/work-plans/issue-451/plan.md` at `53ce1928`
+**Branch**: `feature/issue-451`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One file, two commits, part 1 first (it unblocks `make lint`); line 3767 taken as the two-line change the issue allows. |
+| Issue alignment | Needs work | Serves: "Quality of the work (results that can be trusted, tests that mean what they say), `docs/design.md#rules`" (checked: `README.md` "Quality of the work", `docs/design.md` "## Rules"). Part 1 meets the issue and every review-issue action. Part 2's table answers the review-issue action, but position B as written does not reach "group appears just after the deadline" (finding 1), and two properties the old matrix checked are lost (finding 2). |
+| File targeting | Good | Test file only; helper files and `script_reference.md` named as conditional consequences. |
+| Consequences | Good | Header comment rewrite, fixture comments, conditional helper docs all listed. |
+| Principle alignment | Needs work | "Test what breaks": the revert check would not fail for position B, and the TERM-to-PID and no-wait paths of #363 go untested once the time assertions are removed (findings 1, 2). Part 1 checked here: a bash that writes `/proc/self/comm` gives `(a Z b) S` running and `(x y) Z` zombie with its marker written (bash 5.3.9, this machine). |
+| ADR compliance | Good | ADR-0015 only if helpers change (not planned); ADR-0017 no design change. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — Test what breaks]** (high) Position B's ordering is inverted. The wrapper "releases the FIFO and polls until the group exists, then lets the watchdog's `kill -KILL` through", so the KILL always lands on an existing group: that is position C after the deadline. Under the plan's own #363 revert (watchdog `signal_cli KILL`, group only) the group KILL finds the group and kills it, so B passes, and the claim "expect position A deaf and position B to fail" is false for B. The #363 defect (372d002a: "the watchdog found no group and did nothing, ... and the group appeared just after") needs the KILL delivered while the child is still held pre-setsid, then the FIFO released: fixed code kills the PID, the revert misses and the deaf `setsid sleep 30` then hangs `wait` to the ceiling. Also key the trigger on the CLI PID argument, not "the first `kill -KILL`": the watchdog is a subshell, so a "first" flag set there is not seen by the handler, whose own later `kill -KILL "$watchdog"` would match again.
+2. **[Issue alignment — keep every case the matrix found]** (high) Replacing every "handler returned inside Ns" assertion with state assertions and a 10 s ceiling drops what the escalation axis checked. `coop:0.3:5:2` (escalation 5, limit 2) proved the TERM reaches the pre-setsid PID (#363 step 1); with escalation 0.4 and state-only asserts, coop A still passes if the TERM never reaches it, because the deadline KILL ends it. `dead:0:5:1` caught the old group-wait loop ("the dead case takes 5.5 s on the previous code", 372d002a); a 5.5 s return passes a 10 s ceiling. The 12-case list also drops `coop:0.5:0:1` (escalation 0) without saying what it covered. Resolution: for coop and dead, use an escalation beyond the hang ceiling (e.g. 30 s), so returning before the ceiling proves the TERM/no-wait path by a margin of seconds, not hundredths; or log signals with the `kill` wrapper and assert no KILL was sent. Add a revert step for `signal_live_cli TERM` -> `signal_cli TERM` with its expected failing case, and keep or explicitly retire the escalation-0 case.
+3. **[Principle alignment]** (low) Dead case: a marker the child writes before exiting does not show it has exited and been reaped when `terminate_child` runs; the handler may then TERM a live child and the case stops testing "dead". `wait "$<P>_PID"` in the probe reaps it deterministically.
+4. **[Consequences — acceptance grep]** (low) After step 3, line 3767 becomes `ln -sf "$(command -v "$tool")" ...`, which matches `ln .*command -v`, so "lists only `test_ros2_colcon.sh:898`" is wrong. The pattern also misses copies by fixed path (`cp /usr/bin/sleep "x y"`). State the expected output and widen the pattern (e.g. any `cp`/`ln` whose target name differs from the tool's) or say the grep is a heuristic.
+5. **[Issue alignment — acceptance]** (info, owner) The issue's acceptance names "the first machine with GNU coreutils"; the plan offers CI's `ubuntu-latest` Lint job (checked: `validate.yml` runs `make lint`; the hook comment says the all-files run reaches every suite) with the owner's machine as backup. Owner to confirm the CI run satisfies that line.
+
+### Summary
+
+Part 1 is sound and verified on this machine. Part 2's structure (FIFO hold, marker, test-side `kill` wrapper, no helper change) is right, but position B as written tests position C, and dropping every time assertion loses the coop-TERM and dead no-wait checks; fix both before implementation so the revert check proves what it claims.
+
+### Recommended Actions
+
+- [ ] Reorder position B: deliver the watchdog's KILL while the deaf child is still held, then release; trigger on the CLI PID argument; correct the revert-check expectation.
+- [ ] Give coop and dead cases an escalation beyond the hang ceiling (or a no-KILL assertion from a kill log), add a `signal_live_cli TERM` revert step, and account for the escalation-0 case.
+- [ ] Dead case: reap the child with `wait` in the probe instead of a marker.
+- [ ] Fix the step 4 grep's expected output (line 3767 will match) and widen or qualify the pattern.
+- [ ] Ask the owner whether CI's `ubuntu-latest` Lint job satisfies the "first machine with GNU coreutils" acceptance line.
