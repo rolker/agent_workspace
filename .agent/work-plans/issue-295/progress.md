@@ -472,3 +472,13 @@ Pull request A only ("a fresh clone works with no project"). Narrow convergence 
 
 ### Verification
 `test_fresh_clone_no_project.sh` 21/0 (includes the new malformed-registry case), `test_project_registry.sh` 307/0 (includes `test_main_checkout_helpers`, 5 cases), run one at a time at `94395d86`. Design citations checked by `sed -n` on the Makefile and grep on `_project_registry.sh` here and on main.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 15:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; all ten findings of rounds 1 and 2 are closed)
+**After**: publish
+**Decision**: publish
+
+The host read the round 3 Local Review (Pre-Push) entry at d355e2ef: verdict approved, Ship recommended, two open suggestions (four comments that still name the old lookup rule; a linked worktree of a separate-git-dir main checkout, where the helpers fall back and the message says "none registered"). Both concern a layout the reviewer calls rare and neither is needed for this pull request; they stay open boxes so triage raises them, and whether they are fixed here or carried into pull request B's plan is put to the owner with the merge decision. The AGENTS.md rewording is not in this pull request: the owner did not approve the proposed wording and decided on 2026-11-12 that a project is any registered folder, so it is redrafted from that.
