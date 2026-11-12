@@ -964,3 +964,13 @@ Specialists:
 - [ ] (suggestion) When the same ref is pinned in several layers, the kind is judged in the first layer's checkout even if only a later layer has it cloned. The result is `unknown (unverified)` for a valid branch, where `--layer l2` gives `branch`. Use the first hit layer whose checkout exists, and extend `test_repo_pin_two_layers` (gemini and Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:977`
 - [ ] (suggestion) An entry with no `version:` key (vcstool uses the default branch) is reported as "no repository ... pinned (known: ...)" and left out of the known list. Give it its own message. Slash keys and flow-style entries are dropped the same way; that comes from the existing parser (Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:215-229`
 - [ ] (suggestion) An uppercase 40-hex sha is reported as `unknown`, although git accepts it. Match case-insensitively, or say "lowercase" in ADR-0019 (gemini) — `.agent/project_types/ros2_colcon/adapter.sh:878`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 17:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round limit was reached only because the counter carries part 1's three reviews; this was the first review of the verb's diff and it found two must-fix defects; first host address at this checkpoint)
+**After**: rounds
+**Decision**: address
+
+The round counter says 4 because part 1 (pull request 445) had three pre-push reviews on this timeline. The diff under review (the repo_pin verb and ADR-0019) had never been reviewed, so the review ran as a full first round with outside reviewers. It found two must-fix defects (a version value cut at any "#"; origin calls with no time limit) and three suggestions. Fix all five, then re-review.
