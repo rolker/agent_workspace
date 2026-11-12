@@ -398,3 +398,39 @@ Neither changes what PR B builds, and the step-6 wording can be carried by the i
 **Decision**: proceed
 
 The host read the Plan Review entry at 43014931. Pull request A (issue 394) is merged and main is merged into this branch (dc7ca120). The owner approved the live check as the plan recommends (a temporary aw-accept-<pid> plugin at user scope in the real ~/.claude), recorded by the host session of 2026-11-12. The installer has not been re-run on this machine yet (--check reports each hook registered three times); that run edits the owner's real ~/.claude/settings.json and waits for his yes. It is needed before the live suite is run, not before the suite is written, so the first implement dispatch goes ahead, limited as the plan says to step 1's suite commit and ending with a hand-back. Findings 2 and 3 of the review (the true reason for the second refusal shape; the hand removal described by scope and projectPath) go into the later dispatch for steps 2 to 8.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-446 at `72d40918`
+
+Limited dispatch: step 1's live-suite commit only; steps 2 to 8 not started, the suite not run.
+
+What changed, all in `.agent/scripts/tests/live/plugin_acceptance.sh` (commits `ea8f955e`, `72d40918`):
+
+- **Case selection**: `PLUGIN_ACCEPTANCE_CASES` is `per-root` (the default, cases A to K as before), `user` (only U0 to U8), or `all` (A to K, then U0 to U8). Any other value exits 2.
+- **U0 setup**: the copy's `.claude/settings.json` gains `"aw-accept-<pid>@aw-accept-<pid>": false` under `enabledPlugins` and is committed in the copy before the committed-off and worktree cases (a PASS line checks `HEAD:.claude/settings.json`). The copy also gets a `.gitignore` with `projects/` and `.claude/settings.local.json`, the two lines of the real one that bear on the in-tree shape. Then the plugin is enabled at user scope from the sandbox, after checking that the sandbox is in no git repository.
+- **Cases U1 to U8**: committed-off repository root, a plain subdirectory root of it, a worktree of it, an in-tree root, a repository nested in an ordinary root, an unregistered folder, local `true` plus user `true`, and a local `false` under user `true` (its own control skill must answer first). Each prints one FACT line. After them come four STOP-CHECK lines, one per stop condition of the plan, and a CHECK U7 line for "listed once" (not a stop condition; step 2's migration rests on it).
+- **Safety extras**:
+  - Traps on EXIT, INT, TERM and HUP. The signal traps exit, so cleanup runs once, and cleanup ignores further signals.
+  - `USER_ENABLED=1` is set before the CLI call.
+  - The two hand-removal commands, plus the cache path, are printed at the start, before the sandbox is made.
+  - The real settings file is compared under `jq -S` before and after. Empty objects are pruned on both sides and expected; any other difference is printed as a FACT, not counted as a failure.
+  - The suite removes the user-scope enable at the end of the cases (U-end) and again in cleanup if it is still there.
+  - The real `agent-workspace` entry is never named.
+- **Header**: the old promise ("never touches `~/.claude/settings.json`") is rewritten. It now says the per-root cases never touch the file, and the user-scope cases add the two entries for the minutes they take, then remove them, as described above.
+- **Per-root cases**: unchanged. Their probe helpers moved above them so both groups share them. They sit in an `if` block that is not re-indented, because re-indenting would put leading spaces into their heredoc SKILL.md files.
+- **Second commit**: `test_plugin_acceptance_helpers.sh` evals the suite's text from `ENABLED_ROOTS=()` to the sandbox line under `set -u`. The first commit's start-of-run print in that range read `RUN_USER`, unbound there, which failed 3 helper checks. The print, `REAL_SETTINGS` and `user_removal_lines` moved above that range.
+
+Checks run:
+
+- `bash -n`: ok.
+- shellcheck: `--severity=warning`, the hook's level, is clean. At info level there are only SC2015 notes, the existing `&& pass || fail` style.
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on `72d40918`: exit 0, the script test suites included.
+
+Not done, and why:
+
+- A dry check of the new jq filters against synthetic stream-json and settings data was denied (the dispatch limits checks to `bash -n` and shellcheck). Left as is.
+- The `us_session` stream-json init-line shape (`slash_commands`) is assumed, not observed. If it differs, U7 FAILs loudly saying so, and the other cases are unaffected unless the result line is missing too, in which case every session reads as failed.
+- `test_plugin_acceptance_helpers.sh` has no case yet for cleanup's new user-scope branch. This dispatch was barred from editing other files, so it belongs to the later dispatch.
