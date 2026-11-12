@@ -201,7 +201,7 @@ test_validator_passes_complete_adapters() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "reports single_project complete" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "reports single_project complete" "single_project: all 13 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_verbs() {
@@ -215,7 +215,7 @@ test_validator_flags_missing_verbs() {
     assert_eq "exit 1" "1" "$rc"
     assert_contains "flags partial_type" "partial_type: missing verbs" "$out"
     assert_contains "lists a missing verb" "adapter_scope_for_pr" "$out"
-    assert_contains "complete type still passes" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "complete type still passes" "single_project: all 13 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_adapter_file() {
@@ -590,6 +590,102 @@ test_worktree_repos_requires_issue() {
     assert_contains "explains the requirement" "requires --issue" "$out"
 }
 
+# ---- repo_pin (ADR-0019, single_project) ----
+
+# project/ as a committed repo on branch trunk whose origin is a local bare
+# repo with HEAD at trunk. Leaves origin/HEAD unset locally.
+make_pin_project() {  # <sb>
+    local sb="$1"
+    git init --quiet --bare -b trunk "$sb/origin.git"
+    mkdir -p "$sb/project"
+    git -C "$sb/project" init --quiet -b trunk
+    git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    git -C "$sb/project" remote add origin "$sb/origin.git"
+    git -C "$sb/project" push --quiet origin trunk
+    git -C "$sb/project" fetch --quiet origin
+}
+
+test_repo_pin_from_origin_head() {
+    echo "TEST: single_project repo_pin prints the default branch recorded as origin/HEAD"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" branch --quiet stable
+    git -C "$sb/project" push --quiet origin stable
+    git -C "$sb/project" fetch --quiet origin
+    # Recorded locally as stable: the local record answers, not the remote.
+    git -C "$sb/project" remote set-head origin stable >/dev/null
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "origin/HEAD's branch, kind branch" "stable	branch" "$out"
+}
+
+test_repo_pin_asks_origin_without_origin_head() {
+    echo "TEST: single_project repo_pin asks origin for HEAD when origin/HEAD is not recorded"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "origin's HEAD, kind branch" "trunk	branch" "$out"
+}
+
+test_repo_pin_undetermined_fails() {
+    echo "TEST: single_project repo_pin fails when neither origin/HEAD nor origin answers"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    git -C "$sb/project" remote set-url origin "$sb/no-such-origin.git"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "says why" "cannot determine the default branch" "$out"
+    assert_not_contains "no guessed main" "main	branch" "$out"
+}
+
+test_repo_pin_other_name_fails() {
+    echo "TEST: single_project repo_pin refuses a name other than the one repos prints"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin other_repo 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the known repo" "no repository 'other_repo' in this project (known: project)" "$out"
+}
+
+test_repo_pin_rejects_layer_and_requires_name() {
+    echo "TEST: single_project repo_pin rejects --layer and needs a name"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project --layer l1 2>&1)" || rc=$?
+    assert_eq "--layer exits nonzero" "1" "$rc"
+    assert_contains "no layers" "does not support --layer" "$out"
+    rc=0
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin 2>&1)" || rc=$?
+    assert_eq "no name exits nonzero" "1" "$rc"
+    assert_contains "names the usage" "repo_pin requires a repository name" "$out"
+}
+
+test_validator_flags_missing_repo_pin() {
+    echo "TEST: validator flags a type that implements every verb but repo_pin"
+    local sb out rc=0 v
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/project_types/no_pin_type"
+    cp "$sb/.agent/project_types/single_project/unused_settings" \
+        "$sb/.agent/project_types/single_project/registration.conf" \
+        "$sb/.agent/project_types/no_pin_type/"
+    for v in setup sync validate build test install env project_root repos scope_for_pr worktree_repos worktree_env; do
+        echo "adapter_${v}() { :; }"
+    done > "$sb/.agent/project_types/no_pin_type/adapter.sh"
+    out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "flags no_pin_type" "no_pin_type: missing verbs" "$out"
+    assert_contains "names repo_pin" "adapter_repo_pin" "$out"
+    assert_not_contains "no other verb missing" "adapter_worktree_env" "$out"
+}
+
 test_worktree_env_emits_nothing() {
     echo "TEST: single_project worktree_env emits nothing and exits 0"
     local sb out rc=0
@@ -843,6 +939,12 @@ test_worktree_repos_accepts_qualified_issue
 test_worktree_repos_rejects_layer_flags
 test_worktree_repos_requires_issue
 test_worktree_env_emits_nothing
+test_repo_pin_from_origin_head
+test_repo_pin_asks_origin_without_origin_head
+test_repo_pin_undetermined_fails
+test_repo_pin_other_name_fails
+test_repo_pin_rejects_layer_and_requires_name
+test_validator_flags_missing_repo_pin
 test_setup_aborts_failed_rebase
 test_setup_replaces_broken_symlink
 test_setup_replaces_valid_symlink_to_nonrepo

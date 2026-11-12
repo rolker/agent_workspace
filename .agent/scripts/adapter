@@ -23,6 +23,9 @@
 #                   to worktree for an issue (ADR-0012)
 #   worktree_env    Print sourceable bash (or nothing) for a package worktree
 #                   built by worktree_repos (ADR-0012)
+#   repo_pin        Given a repo name [--layer <l>], print <ref>\t<kind>: the
+#                   ref the project pins it at and whether that ref is a
+#                   branch, tag, commit or unknown (ADR-0019)
 #
 # `adapter env` output protocol: each stdout line is a complete shell
 # statement; callers eval the whole stdout. Example caller:
@@ -65,7 +68,7 @@
 set -euo pipefail
 
 # Single source of truth for the contract. validate_adapter.sh imports this.
-REQUIRED_VERBS=(setup sync validate build test install env project_root repos scope_for_pr worktree_repos worktree_env)
+REQUIRED_VERBS=(setup sync validate build test install env project_root repos scope_for_pr worktree_repos worktree_env repo_pin)
 
 _ADAPTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(dirname "$(dirname "$_ADAPTER_SCRIPT_DIR")")"

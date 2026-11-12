@@ -275,6 +275,49 @@ adapter_worktree_env() {
     :
 }
 
+adapter_repo_pin() {
+    # <repo>: a single repository pins nothing, so its base is its default
+    # branch: "<branch>\tbranch" (ADR-0019). <repo> must be the name
+    # adapter_repos prints. The default branch is origin/HEAD as git
+    # recorded it, else what origin says HEAD points at; never a guess.
+    local repo=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --layer) echo "ERROR: single_project does not support --layer (no layers)" >&2; return 1 ;;
+            -*) echo "ERROR: repo_pin: unknown argument '$1'" >&2; return 1 ;;
+            *)
+                if [ -n "$repo" ]; then
+                    echo "ERROR: repo_pin: one repository name only (got '$repo' and '$1')" >&2
+                    return 1
+                fi
+                repo="$1"; shift ;;
+        esac
+    done
+    if [ -z "$repo" ]; then
+        echo "ERROR: repo_pin requires a repository name: repo_pin <repo>" >&2
+        return 1
+    fi
+    local line name root
+    line="$(adapter_repos)" || return 1
+    name="${line%%:*}"
+    root="${line#*:}"
+    if [ "$repo" != "$name" ]; then
+        echo "ERROR: repo_pin: no repository '$repo' in this project (known: $name)" >&2
+        return 1
+    fi
+    local branch="" symref
+    if symref="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"; then
+        branch="${symref#refs/remotes/origin/}"
+    elif symref="$(GIT_TERMINAL_PROMPT=0 git -C "$root" ls-remote --symref origin HEAD 2>/dev/null)"; then
+        branch="$(awk -F'\t' '$1 ~ /^ref: refs\/heads\// && $2 == "HEAD" { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }' <<< "$symref")"
+    fi
+    if [ -z "$branch" ]; then
+        echo "ERROR: repo_pin: cannot determine the default branch of $root: origin/HEAD is not set and origin did not name its HEAD" >&2
+        return 1
+    fi
+    printf '%s\tbranch\n' "$branch"
+}
+
 adapter_scope_for_pr() {
     local path="${1:-}"
     if [ -z "$path" ]; then

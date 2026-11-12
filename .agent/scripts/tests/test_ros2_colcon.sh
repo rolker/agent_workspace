@@ -668,8 +668,8 @@ test_validator_accepts_ros2_colcon() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "ros2_colcon complete" "ros2_colcon: all 12 verbs implemented" "$out"
-    assert_contains "single_project still complete" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "ros2_colcon complete" "ros2_colcon: all 13 verbs implemented" "$out"
+    assert_contains "single_project still complete" "single_project: all 13 verbs implemented" "$out"
 }
 
 # ---- Distro resolution ----
@@ -1543,6 +1543,195 @@ test_cwd_discovery_resolves_colcon_project() {
     assert_eq "resolved from deep inside a layer" "$proj" "$out"
 }
 
+# ---- repo_pin (ADR-0019) ----
+
+# Write a .repos file from name=version pairs; the version is written as
+# given, so a test can quote it.
+write_pin_repos() {  # <file> <name=version>...
+    local file="$1" pair
+    shift
+    {
+        echo "repositories:"
+        for pair in "$@"; do
+            echo "  ${pair%%=*}:"
+            echo "    type: git"
+            echo "    url: file:///nonexistent/${pair%%=*}.git"
+            echo "    version: ${pair#*=}"
+        done
+    } > "$file"
+}
+
+# A committed package checkout under <layer>/src/<name> whose origin is a
+# local bare repo holding main, a branch "pinned" and a tag "v1.0". Prints
+# the full sha of main's commit.
+make_pin_pkg() {  # <sb> <proj> <layer> <name>
+    local sb="$1" proj="$2" layer="$3" name="$4" dir
+    dir="$proj/layers/main/${layer}_ws/src/$name"
+    make_committed_pkg_repo "$proj" "$layer" "$name"
+    git init --quiet --bare -b main "$sb/${name}_origin.git"
+    git -C "$dir" remote set-url origin "$sb/${name}_origin.git"
+    git -C "$dir" branch --quiet pinned
+    git -C "$dir" tag v1.0
+    git -C "$dir" push --quiet origin main pinned v1.0
+    git -C "$dir" fetch --quiet origin
+    git -C "$dir" rev-parse HEAD
+}
+
+test_repo_pin_kinds_online() {
+    echo "TEST: repo_pin prints the pinned ref and its kind, judged by origin"
+    local sb out rc proj sha
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    sha="$(make_pin_pkg "$sb" "$proj" l1 pkg_a)"
+    local kind ref pair
+    for pair in "pinned=branch" "v1.0=tag" "$sha=commit" "nowhere=unknown"; do
+        ref="${pair%%=*}"
+        kind="${pair#*=}"
+        write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=$ref" "pkg_b=fakefox"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "$kind: exit 0" "0" "$rc"
+        assert_eq "$kind: ref and kind" "$ref	$kind" "$out"
+    done
+}
+
+test_repo_pin_branch_before_tag() {
+    echo "TEST: repo_pin calls a ref that is both a branch and a tag on origin a branch"
+    local sb out proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" tag pinned main
+    git -C "$dir" push --quiet origin refs/tags/pinned
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "branch wins" "pinned	branch" "$out"
+}
+
+test_repo_pin_strips_quotes() {
+    echo "TEST: repo_pin strips YAML quoting around the ref"
+    local sb out proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    make_pin_pkg "$sb" "$proj" l1 pkg_b >/dev/null
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" 'pkg_a="pinned"' "pkg_b='v1.0'"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "double quotes stripped" "pinned	branch" "$out"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "single quotes stripped" "v1.0	tag" "$out"
+}
+
+test_repo_pin_deleted_upstream_branch_is_not_a_branch() {
+    echo "TEST: repo_pin does not call a branch deleted on origin a branch, though a stale remote ref is left"
+    local sb out err proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git --git-dir="$sb/pkg_a_origin.git" branch --quiet -D pinned
+    # Not pruned: refs/remotes/origin/pinned is still there.
+    git -C "$dir" show-ref --verify --quiet refs/remotes/origin/pinned
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    err="$sb/err"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    assert_eq "unknown, not branch" "pinned	unknown" "$out"
+    assert_not_contains "online: no unverified note" "unverified" "$(< "$err")"
+}
+
+test_repo_pin_offline_uses_local_refs() {
+    echo "TEST: repo_pin falls back to local refs when origin cannot be reached, and says so"
+    local sb out err proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" remote set-url origin "$sb/gone.git"
+    err="$sb/err"
+    local pair ref kind
+    for pair in "pinned=branch" "v1.0=tag" "nowhere=unknown"; do
+        ref="${pair%%=*}"
+        kind="${pair#*=}"
+        write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=$ref"
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+        assert_eq "offline $kind" "$ref	$kind" "$out"
+        assert_contains "offline $kind: says unverified" "could not be reached" "$(< "$err")"
+    done
+    # A local branch of that name is not origin's: not enough offline either.
+    git -C "$dir" branch --quiet localonly
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=localonly"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "a local-only branch is unknown" "localonly	unknown" "$out"
+}
+
+test_repo_pin_not_cloned() {
+    echo "TEST: repo_pin for a repo not cloned yet: unknown (or commit for a full sha), unverified"
+    local sb out err proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    err="$sb/err"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned" \
+        "pkg_b=0123456789abcdef0123456789abcdef01234567"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    assert_eq "unknown" "pinned	unknown" "$out"
+    assert_contains "says not cloned" "not a cloned repository" "$(< "$err")"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "full sha is a commit" "0123456789abcdef0123456789abcdef01234567	commit" "$out"
+}
+
+test_repo_pin_not_found() {
+    echo "TEST: repo_pin names the known repos when the name is not pinned"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_colcon_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" repo_pin pkg_ghost 2>&1)" || rc=$?
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "names the known repos" \
+        "no repository 'pkg_ghost' pinned in the manifest (known: pkg_a pkg_b pkg_c pkg_priv)" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin 2>&1)" || rc=$?
+    assert_eq "no name exits 1" "1" "$rc"
+    assert_contains "names the usage" "repo_pin requires a repository name" "$out"
+}
+
+test_repo_pin_two_layers() {
+    echo "TEST: repo_pin for a repo pinned in two layers: same ref answers, different refs need --layer"
+    local sb out rc proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=pinned" "pkg_c=fakefox"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "same ref: exit 0" "0" "$rc"
+    assert_eq "same ref: one answer" "pinned	branch" "$out"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=v1.0" "pkg_c=fakefox"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "different refs: exit 1" "1" "$rc"
+    assert_contains "names both layers and refs" "l1 (pinned), l2 (v1.0); pass --layer <l>" "$out"
+    out="$(run_adapter "$sb" repo_pin pkg_a --layer l1 2>/dev/null)" || true
+    assert_eq "--layer l1 answers" "pinned	branch" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_c --layer l1 2>&1)" || rc=$?
+    assert_eq "not in that layer: exit 1" "1" "$rc"
+    assert_contains "names the layer" "no repository 'pkg_c' pinned in layer 'l1' of the manifest" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a --layer nolayer 2>&1)" || rc=$?
+    assert_eq "unknown layer: exit 1" "1" "$rc"
+    assert_contains "names the bad layer" "layer 'nolayer' is not defined" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
@@ -1606,6 +1795,14 @@ test_validate_flags_missing_repo
 test_validate_flags_unsetup_layer
 test_install_noop_by_default
 test_cwd_discovery_resolves_colcon_project
+test_repo_pin_kinds_online
+test_repo_pin_branch_before_tag
+test_repo_pin_strips_quotes
+test_repo_pin_deleted_upstream_branch_is_not_a_branch
+test_repo_pin_offline_uses_local_refs
+test_repo_pin_not_cloned
+test_repo_pin_not_found
+test_repo_pin_two_layers
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

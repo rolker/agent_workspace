@@ -865,6 +865,144 @@ adapter_worktree_env() {
     # `set -e` with no install present) rather than trusting this comment.
 }
 
+# The kind of a pinned ref, judged in the package checkout at $1 (which may
+# not exist yet): branch, tag, commit or unknown. Online, origin decides:
+# refs/heads/<ref> is a branch, refs/tags/<ref> a tag (branch first, since a
+# same-named tag does not stop a branch being a base), and a stale
+# remote-tracking ref is not enough. When origin cannot be asked (offline,
+# or the repo is not cloned), the local refs decide and a NOTE on stderr says
+# the answer is unverified. A 40- or 64-hex ref nobody names is a commit.
+_rc_pin_kind() {
+    local dir="$1" ref="$2" out kind="" toplevel dir_real
+    local is_hex=false
+    [[ "$ref" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] && is_hex=true
+    # A ref git cannot name as a branch or tag is never asked about.
+    if ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
+        if [ "$is_hex" = true ]; then echo commit; else echo unknown; fi
+        return 0
+    fi
+    toplevel=""
+    dir_real=""
+    if [ -d "$dir" ]; then
+        toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        dir_real="$(cd "$dir" && pwd -P)"
+    fi
+    if [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ] \
+        && out="$(GIT_TERMINAL_PROMPT=0 git -C "$dir" ls-remote origin \
+            "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)"; then
+        if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$out"; then
+            kind=branch
+        elif awk -F'\t' -v r="refs/tags/$ref" '$2 == r || $2 == r "^{}" { f = 1 } END { exit !f }' <<< "$out"; then
+            kind=tag
+        fi
+    else
+        if [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ]; then
+            echo "NOTE: repo_pin: origin of $dir could not be reached; the kind of '$ref' comes from local refs (unverified)" >&2
+            if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+                kind=branch
+            elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
+                kind=tag
+            fi
+        else
+            echo "NOTE: repo_pin: $dir is not a cloned repository; the kind of '$ref' is not checked against origin (unverified)" >&2
+        fi
+    fi
+    if [ -z "$kind" ]; then
+        if [ "$is_hex" = true ]; then kind=commit; else kind=unknown; fi
+    fi
+    echo "$kind"
+}
+
+adapter_repo_pin() {
+    # <repo> [--layer <l>]: the version: <repo> is pinned at in the
+    # manifest's repos/<layer>.repos files, as "<ref>\t<kind>" (ADR-0019).
+    # A repo pinned in more than one layer at different refs needs --layer;
+    # the same ref in several layers is one answer.
+    local repo="" layer=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --layer)
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    echo "ERROR: repo_pin: --layer requires a layer name" >&2
+                    return 1
+                fi
+                layer="$2"; shift 2 ;;
+            -*) echo "ERROR: repo_pin: unknown argument '$1'" >&2; return 1 ;;
+            *)
+                if [ -n "$repo" ]; then
+                    echo "ERROR: repo_pin: one repository name only (got '$repo' and '$1')" >&2
+                    return 1
+                fi
+                repo="$1"; shift ;;
+        esac
+    done
+    if [ -z "$repo" ]; then
+        echo "ERROR: repo_pin requires a repository name: repo_pin <repo> [--layer <l>]" >&2
+        return 1
+    fi
+    _rc_require_manifest || return 1
+    if [ -n "$layer" ]; then
+        local l found=0
+        while IFS= read -r l; do
+            [ "$l" = "$layer" ] && found=1
+        done < <(_rc_layers)
+        if [ "$found" -ne 1 ]; then
+            echo "ERROR: repo_pin: layer '$layer' is not defined in layers.txt" >&2
+            return 1
+        fi
+    fi
+    local mdir l entry name version
+    local -a hits=() known=()
+    mdir="$(_rc_manifest_dir)"
+    while IFS= read -r l; do
+        [ -n "$layer" ] && [ "$l" != "$layer" ] && continue
+        while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            name="${entry%%$'\t'*}"
+            version="${entry#*$'\t'}"
+            # YAML quoting around the ref is not part of it.
+            if [[ "$version" =~ ^\"(.*)\"$ ]] || [[ "$version" =~ ^\'(.*)\'$ ]]; then
+                version="${BASH_REMATCH[1]}"
+            fi
+            known+=("$name")
+            [ "$name" = "$repo" ] && hits+=("$l"$'\t'"$version")
+        done < <(_rc_repos_entries "$mdir/repos/${l}.repos")
+    done < <(_rc_layers)
+    local where="the manifest"
+    [ -n "$layer" ] && where="layer '$layer' of the manifest"
+    if [ "${#hits[@]}" -eq 0 ]; then
+        local list
+        list="$(printf '%s\n' ${known[@]+"${known[@]}"} | sort -u | tr '\n' ' ')"
+        list="${list% }"
+        echo "ERROR: repo_pin: no repository '$repo' pinned in $where (known: ${list:-none})" >&2
+        return 1
+    fi
+    local hit ref="" hit_layer="" differ=false
+    for hit in "${hits[@]}"; do
+        if [ -z "$hit_layer" ]; then
+            hit_layer="${hit%%$'\t'*}"
+            ref="${hit#*$'\t'}"
+        elif [ "${hit#*$'\t'}" != "$ref" ]; then
+            differ=true
+        fi
+    done
+    if [ "$differ" = true ]; then
+        local named=""
+        for hit in "${hits[@]}"; do
+            named="${named:+$named, }${hit%%$'\t'*} (${hit#*$'\t'})"
+        done
+        echo "ERROR: repo_pin: '$repo' is pinned in more than one layer at different refs: $named; pass --layer <l>" >&2
+        return 1
+    fi
+    if [ -z "$ref" ]; then
+        echo "ERROR: repo_pin: '$repo' has an empty version: in layer '$hit_layer'" >&2
+        return 1
+    fi
+    local kind
+    kind="$(_rc_pin_kind "$(_rc_layer_dir "$hit_layer")/src/$repo" "$ref")"
+    printf '%s\t%s\n' "$ref" "$kind"
+}
+
 adapter_scope_for_pr() {
     # Walk up from a path to the owning package repo's origin owner/repo.
     # Same URL parsing as single_project (proven by its adapter tests).
