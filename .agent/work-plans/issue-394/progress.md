@@ -389,3 +389,28 @@ So a failed settings.json write (a refused rename, once the backup has succeeded
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 13:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a1a4e6ba7a6b77f09, resume 1 of 3)
+
+**PR**: #450 at `5bc37b46`
+**Sources**: 3 (Local Review @ `46c7cdfa` (covers `5bc37b46` via bookkeeping), Copilot @ `46c7cdfa` (failed: quota), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot: failed (quota) — its three reviews (at `715ae2ff`, `d7000e73`, `46c7cdfa`) each say "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota"; no inline comments. No human review requested; no conversation comments. CI after the host's push, at the time of writing: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass on both runs; Lint (pre-commit) pending on both.
+
+Both findings of the Integrated Review at `715ae2ff` are closed, checked here against the code at the head and by running `bash .agent/scripts/tests/test_user_tier_install.sh` (312 passed, 0 failed):
+- Dead command under another checkout's marker: `attributed($m)` (`marked($m)` and the command's `dir == $m`) replaces `marked($m)` in `remove`, and `--check`'s two dead-command reports split on the same test; test (i3) covers keep-and-name on a plain install and removal under `--force` (492c5fa8).
+- Failed rename onto a symlinked settings.json: tested for install and `--uninstall` — exit 1, dotfiles file byte-identical, link unchanged, no staging or temporary file left (404e79ae).
+
+The round-3 Local Review (Pre-Push) suggestion at `1e02b457` is the first of those two, fixed in 492c5fa8. The Local Review at `46c7cdfa` approved with 0 must-fix and 0 suggestions; its "No issues found" box is not a finding.
+
+Recorded judgment, not a finding: install's write order. A failed settings.json write on a first install or a `--force` takeover leaves the root file, the rules record and the SessionStart link written, with settings.json unchanged. The Local Review at `46c7cdfa` judged this acceptable for this pull request: the run exits 1 with a true message, `--check` reports the drift, a re-run converges, and nothing the owner wrote is lost. I agree. The reverse order would leave settings.json naming a SessionStart link that a later failure leaves missing, an error in every session. The root file only tells skills where the workspace is.
+
+### Findings
+
+### False positives
