@@ -34,7 +34,22 @@ checkout's configured git email:
 - **Accepted by the hook**: the base itself, or `<local>+<anything>@<domain>`.
 - **Unset or malformed email** (a fresh machine): every entry point prints
   "git user.email is not set ..." with the `git config --global user.email
-  <your-address>` fix and fails without exporting or writing anything.
+  <your-address>` fix and fails without exporting or writing anything; a
+  malformed one (angle brackets, commas, spaces, shell metacharacters) gets
+  its own message that shows the value.
+
+- **Where it is resolved**: in the current directory when the script runs.
+  Source `set_git_identity_env.sh` in the checkout you commit in: a clone with
+  its own `user.email` gives a different base than the workspace, and an
+  identity sourced elsewhere and then used with `git -C <other>` carries the
+  other checkout's base (the hook in `<other>` then rejects it).
+  `configure_git_identity.sh` derives per repository it writes to.
+- **Not from the environment**: the base is read from git's config files
+  only; `git -c user.email=...` and `GIT_CONFIG_PARAMETERS` /
+  `GIT_CONFIG_COUNT` injection never change it (the hook still checks a `-c`
+  value as the commit email, and checks `GIT_COMMITTER_EMAIL` when set).
+- **A failed re-source** of `set_git_identity_env.sh` unsets the `GIT_*` and
+  `AGENT_*` variables it owns, so no stale identity is left behind.
 
 Different machines may use different addresses; each derives its own.
 

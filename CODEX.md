@@ -20,7 +20,8 @@ source .agent/scripts/set_git_identity_env.sh --agent codex "<your-model-id>"
 Use your actual runtime model when you pass a model. The email is derived from
 this machine's git email (`git config user.email` in the checkout, any `+suffix`
 removed) as `<local>+codex@<domain>`; if it is not set, the script says how to
-set it.
+set it. Source it in the checkout you commit in: the email follows the current
+directory's git email, not the repository a later `git -C` targets.
 
 ## Worktree Entry
 

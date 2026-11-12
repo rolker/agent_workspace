@@ -12,7 +12,9 @@ Replace `<your-model-id>` with your actual model ID from your system prompt
 (e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The email is derived from this
 machine's git email (`git config user.email` in the checkout, any `+suffix`
 removed) as `<local>+claude-code@<domain>`; if it is not set, the script says
-how to set it. Do NOT edit `framework_config.sh`.
+how to set it. Source it in the checkout you commit in: the email follows the
+current directory's git email, not the repository a later `git -C` targets.
+Do NOT edit `framework_config.sh`.
 
 ## Claude-Specific Notes
 
