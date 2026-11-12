@@ -285,8 +285,11 @@ to write as `## Plan`) through the same persistence call `review-code`,
 `triage-reviews`, and `address-findings` use. It creates the file with
 frontmatter and the `--title` heading when absent, and applies the
 `PROGRESS_PERSISTENCE_STRICT` switch: compatibility (default) keeps this
-skill's previous inline commit in the current worktree, printing the
-"would have aborted" notice if the strict resolver would have refused;
+skill's previous inline commit in the current worktree, but refuses (exit 4)
+exactly as strict does when that checkout is not issue `<N>`'s (a main
+checkout on its default branch, another issue's worktree; issue 437); it
+prints the "would have aborted" notice and commits only when
+`WORKTREE_ISSUE` names another issue or `WORK_PLANS_DIR_OVERRIDE` is set;
 strict (`--strict`, or the env var set to `1`) goes through
 `resolve_work_plans_dir()` and `progress_append.sh`. Echo the printed line
 in step 9's report.
