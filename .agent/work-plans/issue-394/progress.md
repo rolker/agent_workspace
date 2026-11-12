@@ -75,3 +75,11 @@ So the issue needs one scope note, not a rewrite: the fix also removes the depen
 **Decision**: proceed
 
 The host read the Issue Review entry at 3d512a6e. The plan takes the four actions as requirements: keep reading the marker when present and stop only writing it (the host's choice between the two the review offers, the same as on issue 446's plan), with the moved-or-deleted-checkout test. The scope note is carried in the plan and the pull request text; no comment is posted on the issue for it.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 12:07 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-394/plan.md` at `a4fc6888`
+
+Issue 446's pull request A, made self-contained and checked against the script and its tests on this branch: hook entries matched by command path, marker still read but no longer written, no-op settings writes skipped (backup moved behind the comparison), .gitignore entry, stub-CLI tests including the moved-checkout case, header, design.md and ADR-0016 wording.
