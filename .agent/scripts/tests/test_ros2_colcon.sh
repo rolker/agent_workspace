@@ -1756,6 +1756,26 @@ test_sync_reads_quoted_and_commented_pins() {
     rc=0
     out="$(run_adapter "$sb" validate 2>&1)" || rc=$?
     assert_contains "validate sees both repos checked out" "checkout matches the manifest" "$out"
+
+    # A detached checkout has no branch: an empty pin (comment-only, or
+    # "") must not match it. Sync fetches, so origin's new commit arrives.
+    local pin new
+    for pin in '  # TODO pin' ' ""'; do
+        rm -rf "$src/pkg_d"
+        git clone --quiet "$origin" "$src/pkg_d" 2>/dev/null
+        git -C "$src/pkg_d" checkout --quiet --detach
+        (cd "$origin" && echo "$pin" >> f.txt \
+            && git -c user.name=t -c user.email=t@t commit -qam more)
+        new="$(git -C "$origin" rev-parse HEAD)"
+        printf 'repositories:\n  pkg_d:\n    type: git\n    version:%s\n' "$pin" > "$mdir/repos/l1.repos"
+        rc=0
+        out="$(run_adapter "$sb" sync 2>&1)" || rc=$?
+        assert_eq "detached, pin [$pin]: exit 0" "0" "$rc"
+        assert_contains "detached, pin [$pin]: fetched" "pkg_d: on 'detached' (pinned: ) — fetching" "$out"
+        assert_not_contains "detached, pin [$pin]: not pulled" "pull failed" "$out"
+        assert_eq "detached, pin [$pin]: origin's new commit fetched" "$new" \
+            "$(git -C "$src/pkg_d" rev-parse refs/remotes/origin/fakefox)"
+    done
 }
 
 test_repo_pin_deleted_upstream_branch_is_not_a_branch() {

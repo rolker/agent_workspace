@@ -605,7 +605,9 @@ adapter_sync() {
                 continue
             fi
             branch="$(git -C "$repo_dir" branch --show-current 2>/dev/null)"
-            if [ "$branch" = "$version" ]; then
+            # A detached checkout has no branch; an empty pin must not
+            # match it and send it down the pull path.
+            if [ -n "$branch" ] && [ "$branch" = "$version" ]; then
                 echo "  $layer/$name: on '$branch' — pulling..."
                 if ! git -C "$repo_dir" pull --rebase 2>/dev/null; then
                     # Abort a wedged rebase so the checkout stays usable.
