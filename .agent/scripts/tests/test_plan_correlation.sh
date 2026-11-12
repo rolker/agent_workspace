@@ -99,9 +99,12 @@ fi
 MIS="$TMPD/issue-workspace-99"; mk_repo "$MIS" feature/issue-99
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY_PA" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --strict 2>&1); rc=$?
 [[ "$rc" -eq 4 ]] && pass "plan-task strict: mismatched worktree aborts (rc 4)" || fail "plan-task strict mismatched (rc=$rc)"
+# Compatibility mode refuses the same way (issue 437): the checkout is issue 99's.
+head_before=$(git -C "$MIS" rev-parse HEAD)
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY_PA" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --title "Seven" 2>&1); rc=$?
-[[ "$rc" -eq 0 && "$out" == *"would have aborted"*"PROGRESS_PERSISTENCE_STRICT=0"* && "$(git -C "$MIS" log -1 --format=%s)" == "progress: plan authored for #7" ]] \
-    && pass "plan-task compat: mismatched worktree completes with the notice, entry committed inline" || fail "plan-task compat (rc=$rc out=$out)"
+[[ "$rc" -eq 4 && "$out" == *"refusing to write issue #7's records"* && "$out" != *"would have aborted"* \
+   && "$(git -C "$MIS" rev-parse HEAD)" == "$head_before" && ! -e "$MIS/.agent/work-plans/issue-7/progress.md" ]] \
+    && pass "plan-task compat: mismatched worktree is refused (rc 4) like strict, nothing committed" || fail "plan-task compat (rc=$rc out=$out)"
 MATCH="$TMPD/issue-workspace-8"; mk_repo "$MATCH" feature/issue-8
 out=$(cd "$MATCH" && printf '%s\n' "${ENTRY_PA//issue-7/issue-8}" | "$RP" persist --issue 8 --title "Eight" 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" != *notice* ]] && pass "plan-task compat: matching worktree produces no notice" || fail "plan-task compat matching (rc=$rc out=$out)"
