@@ -954,3 +954,15 @@ Local timeline since the Integrated Review at `c4c73224`: both of its findings w
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Q9 yes, Q10 yes"
+
+Q9 as put to him: merge pull request 449 (pull request (a) of five)? The decision summary was presented in the session: seven pre-push rounds and two on the pull request, rounds 1 to 4's defects fixed, round 5's findings carried in issue 447 on his earlier decision, the later rounds README wording only, the final triage with nothing open, CI all passing, Gemini and Codex in rounds 1 and 2, Copilot failed on quota each time. Said to him: nothing calls the new layout yet, and whether manifests are untrusted input at all is the first question on issue 447.
