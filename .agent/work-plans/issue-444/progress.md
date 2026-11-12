@@ -207,3 +207,39 @@ For pull request 2 and the reviewers:
 "q12 do it now"
 
 Q12 as put to him: the implement entry is partial because 12 of the plan's 18 independence runs were made (the host interrupted the batch at 14:01, wrongly taking it for stalled); finish the remaining six now (three at two jobs, one at eight, two at four jobs under load; about 40 minutes on a quiet machine) or hold until another drive's pull request is published. The host recommended hold; he chose now. The retry makes those six runs and, since the sitrep interrupt test was changed after the shuffled runs (90ad6aa3), repeats enough shuffled runs to show the fix holds. The code is otherwise complete.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 15:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-444 at `d3e20de9`
+**Dispatch**: resumed (agent a7304691c591ccf00, resume 2 of 3)
+
+This retry covered the plan's step 10 only. The 6 runs it still lacked are now made, and 3 shuffled four-job runs were repeated on the head that has the sitrep fix (90ad6aa3). Every run in this retry exited 0 and matched the serial baseline. No tracked file changed, apart from this entry.
+
+All runs, with the serial baseline being serial1 (which serial2 matches). "Matches" means each of the 45 suites has the same PASS/FAIL line counts, this run's own root is removed, none of this run's processes are left, `git status --porcelain` is empty and `.agent/scratchpad` has no new entries:
+
+| Run | Jobs | Seconds | Exit | Matches baseline |
+|---|---|---|---|---|
+| serial1 | 1 | 680 | 0 | baseline |
+| serial2 | 1 | 694 | 0 | yes |
+| j4 seeds 1-8, 10 | 4 | 177-320 | 0 | yes (each) |
+| j4 seed 9 (before 90ad6aa3) | 4 | 355 | 1 | no: test_sitrep_checks.sh "(skill 1) TERM", fixed in 90ad6aa3 |
+| j2_run1 | 2 | 384 | 0 | yes |
+| j2_run2 | 2 | 372 | 0 | yes |
+| j2_run3 | 2 | 400 | 0 | yes |
+| j8_run1 | 8 | 163 | 0 | yes |
+| j4_loaded1 (seed 101, 8 busy loops) | 4 | 423 | 0 | yes |
+| j4_loaded2 (seed 102, 8 busy loops) | 4 | 422 | 0 | yes |
+| j4 seed 9 repeat | 4 | 279 | 0 | yes |
+| j4 seed 1 repeat | 4 | 199 | 0 | yes |
+| j4 seed 5 repeat | 4 | 250 | 0 | yes |
+
+Seed 9 was the run that failed before the fix. Repeated in the same order on the fixed head, it passes and matches the baseline.
+
+Overlap with other load, as the owner accepted ("q12 do it now"): the driver no longer waits for a quiet machine. It sampled other runner processes, outside the run's own session, every 10 s.
+- In this retry, every run overlapped other drives' runs. The most seen at once per run: j2_run1 4, j2_run2 3, j2_run3 2, j8_run1 2, j4_loaded1 3, j4_loaded2 1, seed 9 repeat 4, seed 1 repeat 4, seed 5 repeat 1.
+- The highest 1-minute load average per run was between 6.05 (seed 1 repeat) and 18.64 (j4_loaded2).
+- In the earlier batch the driver checked only at the start of each run. Other runs were going then for serial1, serial2 and seeds 2, 8 and 9.
+
+The driver and the logs are in this session's scratchpad (`indep/`); they are not checked in, as decision D7 of the plan says. Every run named its job count. The only counts above 4 are the plan's own eight-job run and its 8 busy loops, all within the 16 CPUs.
