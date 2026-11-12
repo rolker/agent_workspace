@@ -4,9 +4,11 @@
 One parser for the commit-identity hook and the identity shell scripts
 (issue #455). No address is stored anywhere in the workspace:
 
-- base: `git config user.email` as resolved in the current checkout (a
-  clone-level value wins over the global one; `--global` is never used),
-  with any `+suffix` removed from the local part. A clone configured by
+- base: `git config user.email` as resolved from git's config files in the
+  current checkout (a clone-level value wins over the global one;
+  `--global` is never used; `git -c` and GIT_CONFIG_PARAMETERS /
+  GIT_CONFIG_COUNT injection are ignored), with any `+suffix` removed from
+  the local part. A clone configured by
   configure_git_identity.sh holds `<local>+<framework>@<domain>`, which
   therefore still yields the same base.
 - agent email: `<local>+<suffix>@<domain>`.
@@ -19,6 +21,7 @@ email prints a message to stderr and exits 1; bad usage exits 2):
     identity_base.py agent <suffix>
 """
 
+import os
 import subprocess
 import sys
 
@@ -33,8 +36,24 @@ class IdentityError(Exception):
     """The configured git email is missing or not a usable address."""
 
 
-def configured_email(cwd=None):
-    """Return `git config user.email` as resolved in cwd, or "" when unset."""
+def _file_config_env():
+    """The environment without command-line or environment config injection.
+
+    `git -c` (GIT_CONFIG_PARAMETERS), GIT_CONFIG_COUNT / GIT_CONFIG_KEY_<n> /
+    GIT_CONFIG_VALUE_<n> and GIT_CONFIG are dropped, so the base is read from
+    git's config files only (system, global, local, worktree; normal
+    precedence). GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM / GIT_CONFIG_NOSYSTEM
+    only choose which files are read, and stay.
+    """
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CONFIG")
+        and not key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+    }
+
+
+def _git_user_email(cwd, env):
     try:
         result = subprocess.run(
             ["git", "config", "user.email"],
@@ -42,12 +61,27 @@ def configured_email(cwd=None):
             text=True,
             check=False,
             cwd=cwd,
+            env=env,
         )
     except OSError:
         return ""
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def configured_email(cwd=None):
+    """`git config user.email` from the config files in cwd, or "" when unset.
+
+    Never from `git -c` or GIT_CONFIG_* injection: this is the base the
+    accepted set derives from.
+    """
+    return _git_user_email(cwd, _file_config_env())
+
+
+def effective_email(cwd=None):
+    """`git config user.email` as a commit in cwd would use it, `-c` included."""
+    return _git_user_email(cwd, None)
 
 
 def split_base(email):

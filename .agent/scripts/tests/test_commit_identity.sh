@@ -124,6 +124,28 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=global+codex@example.org
 out="$(run_in "$sb" -- bash -c 'source "$1" --agent codex >/dev/null; echo "$AGENT_EMAIL"' _ "$SET_ENV" 2>&1)"
 [ "$out" = "clone+codex@example.net" ] && pass "--agent codex uses the clone value" || fail "clone --agent (got: $out)"
 
+echo "TEST: the base comes from config files, never from git -c / GIT_CONFIG_* injection"
+sb="$(mk_repo "someone@example.org")"
+hook_in "$sb" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.email GIT_CONFIG_VALUE_0=evil@example.net \
+    GIT_AUTHOR_EMAIL=evil+x@example.net
+[ $HOOK_RC -ne 0 ] && pass "GIT_CONFIG_COUNT-injected base does not admit its own domain" \
+    || fail "GIT_CONFIG_COUNT base accepted (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" "GIT_CONFIG_PARAMETERS='user.email'='evil@example.net'"
+[[ $HOOK_RC -ne 0 && "$HOOK_OUT" == *"evil@example.net"* && "$HOOK_OUT" == *"someone@example.org"* ]] \
+    && pass "git -c user.email=<other>: base stays the file value, the -c value is the one checked" \
+    || fail "git -c base (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" "GIT_CONFIG_PARAMETERS='user.email'='someone+codex@example.org'"
+[ $HOOK_RC -eq 0 ] && pass "git -c user.email=<accepted agent address> passes" \
+    || fail "git -c accepted (rc=$HOOK_RC: $HOOK_OUT)"
+out="$(run_in "$sb" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.email GIT_CONFIG_VALUE_0=evil@example.net \
+    -- python3 "$HELPER" agent codex 2>&1)"
+[ "$out" = "someone+codex@example.org" ] && pass "helper derives from the file value under injection" \
+    || fail "helper under injection (got: $out)"
+sb="$(mk_repo)"
+hook_in "$sb" "GIT_CONFIG_PARAMETERS='user.email'='evil@example.net'" GIT_AUTHOR_EMAIL=evil@example.net
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"$UNSET_TEXT"* ]] && pass "an injected value never stands in for an unset base" \
+    || fail "injected unset base (rc=$HOOK_RC: $HOOK_OUT)"
+
 echo "TEST: an agent-configured clone (local+claude-code@d) normalises to the base"
 sb="$(mk_repo)"
 git -C "$sb/repo" config user.email "dev+claude-code@example.org"

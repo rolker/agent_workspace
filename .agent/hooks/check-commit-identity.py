@@ -8,9 +8,12 @@ set_git_identity_env.sh. This hook catches that before it becomes a problem.
 No address is hardcoded (issue #455). The accepted set derives from the
 checkout's configured `git config user.email` (a clone value wins over the
 global one), with any `+suffix` removed: `<local>@<domain>` (the human) or
-`<local>+<anything>@<domain>` (an agent). The base never comes from the
-environment; the email checked is GIT_AUTHOR_EMAIL when set, else the
-configured one. An unset or malformed configured email blocks the commit.
+`<local>+<anything>@<domain>` (an agent). The base is read from git's
+config files only, never from the environment (`git -c`,
+GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT injection are ignored for it);
+the email checked is GIT_AUTHOR_EMAIL when set, else the effective
+`user.email` (a `git -c user.email=...` value included). An unset or
+malformed configured email blocks the commit.
 """
 
 import os
@@ -26,12 +29,13 @@ DERIVED_COMMAND = 'source .agent/scripts/set_git_identity_env.sh --agent <framew
 def get_commit_email():
     """Get the email that will be used for the next commit.
 
-    GIT_AUTHOR_EMAIL env var takes precedence over git config user.email.
+    GIT_AUTHOR_EMAIL env var takes precedence over git config user.email
+    (as the commit resolves it, `git -c` included).
     """
     email = os.environ.get("GIT_AUTHOR_EMAIL", "").strip()
     if email:
         return email
-    return identity_base.configured_email()
+    return identity_base.effective_email()
 
 
 def main():
