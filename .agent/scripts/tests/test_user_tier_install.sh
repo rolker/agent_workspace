@@ -693,6 +693,41 @@ out="$(run --check)"; rc=$?
     && pass "--check is clean after the spaced-path cases" \
     || fail "--check after the spaced-path cases (rc=$rc out=$out)"
 
+# (r) --check judges our commands under their own event and counts them,
+# so it agrees with what install would change: a second copy (the state
+# #394's bug left) and a copy only under another event are drift, and
+# install leaves one, where it belongs.
+jq --arg l "$LOG_HOOK" --arg s "$HOOK_LINK" '
+    .hooks.PreToolUse += [{hooks: [{type: "command", command: $l, timeout: 5}]}]
+    | .hooks.SessionStart += [{hooks: [{type: "command", command: $s, timeout: 10}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"$LOG_HOOK is registered 2 times under PreToolUse"* \
+   && "$out" == *"$HOOK_LINK is registered 2 times under SessionStart"* ]] \
+    && pass "--check reports our hook command held twice under its event" \
+    || fail "duplicate hook entries not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$LOG_HOOK")" -eq 1 && "$(n_holding SessionStart "$HOOK_LINK")" -eq 1 ]] \
+    && pass "install leaves one copy of each" \
+    || fail "install left duplicates (PreToolUse $(n_holding PreToolUse "$LOG_HOOK"), SessionStart $(n_holding SessionStart "$HOOK_LINK"))"
+jq --arg l "$LOG_HOOK" '
+    .hooks.PreToolUse |= map(select(any(.hooks[]?; .command == $l) | not))
+    | .hooks.PostToolUse = [{hooks: [{type: "command", command: $l}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"missing hook entry for $LOG_HOOK (under PreToolUse)"* \
+   && "$out" == *"$LOG_HOOK is registered under PostToolUse"* ]] \
+    && pass "--check reports our hook command held only under another event" \
+    || fail "hook under the wrong event not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$LOG_HOOK")" -eq 1 && "$(n_holding PostToolUse "$LOG_HOOK")" -eq 0 ]] \
+    && pass "install moves it under its own event" \
+    || fail "install over the wrong event (PreToolUse $(n_holding PreToolUse "$LOG_HOOK"), PostToolUse $(n_holding PostToolUse "$LOG_HOOK"))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean once install has fixed both" \
+    || fail "--check after the event cases (rc=$rc out=$out)"
+
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"

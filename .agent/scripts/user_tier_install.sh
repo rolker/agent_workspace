@@ -1282,13 +1282,31 @@ if [[ "$MODE" == "check" ]]; then
         }
     }
 
-    # Our hook commands, present in some entry.
+    # Our hook commands, each exactly once under its own event -- what
+    # install leaves. A second copy (the duplicate #394's bug left behind)
+    # or a copy under another event is drift too: install removes it, so a
+    # --check that only asked "present anywhere?" would call current a file
+    # the next install changes.
     # while-read, not `for cmd in $(...)`: a checkout path containing a space
     # or a glob character would otherwise word-split into permanent drift.
+    check_event_count() {  # <command> <event>
+        local here elsewhere
+        here="$(class_query '[(.hooks // {} | objects | .[$ev]) | arrays | .[] | objects
+                | entry_commands | select(. == $c)] | length' --arg c "$1" --arg ev "$2")" || return 1
+        elsewhere="$(class_query '[.hooks // {} | objects | to_entries[] | select(.key != $ev)
+                | select(any(.value | arrays | .[] | objects | entry_commands; . == $c)) | .key]
+                | join(", ")' --arg c "$1" --arg ev "$2")" || return 1
+        if [[ "$here" -eq 0 ]]; then
+            note "missing hook entry for $1 (under $2)"
+        elif [[ "$here" -gt 1 ]]; then
+            note "hook command $1 is registered $here times under $2 (re-run the installer: it keeps one)"
+        fi
+        [[ -z "$elsewhere" ]] || note "hook command $1 is registered under $elsewhere, where it does not belong (re-run the installer: it keeps it under $2 only)"
+    }
     while IFS= read -r cmd; do
-        present="$(class_query '[hook_entries | entry_commands] | index($c) != null' --arg c "$cmd")" || exit 1
-        [[ "$present" == true ]] || note "missing hook entry for $cmd"
-    done < <(hook_commands; printf '%s\n' "$SESSION_HOOK_LINK")
+        check_event_count "$cmd" PreToolUse || exit 1
+    done < <(hook_commands)
+    check_event_count "$SESSION_HOOK_LINK" SessionStart || exit 1
 
     # Hook entries from a DIFFERENT checkout (a second clone installed over
     # us): marked with it, or holding a command classified as its.
