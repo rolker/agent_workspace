@@ -215,9 +215,10 @@ was the same run.
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
 - The user tier is installed from a workspace checkout by `.agent/scripts/user_tier_install.sh`: a
-  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. Everything it
-  writes is tagged with the checkout, so install is repeatable and `--uninstall` removes only its own
-  entries (`user_tier_install.sh` header).
+  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. It recognises
+  its own hook commands by their path (the `claude plugin` commands drop any marker in the file), so
+  install is repeatable, `--check` tells another checkout's hooks from the user's own, and
+  `--uninstall` removes only its own commands (`user_tier_install.sh` header).
 - Registration is a workspace operation, not something a project session does to itself (ADR-0016
   decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
   when the user tier is installed from that checkout, re-runs its installer so the new root gets the
