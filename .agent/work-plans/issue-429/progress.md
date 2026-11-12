@@ -1145,3 +1145,22 @@ Text after `    version:` → value emitted (`repo_pin` outcome):
 **Decision**: publish
 
 The convergence review approved the verb's diff with three suggestions (sync's pull path on an empty pin with a detached checkout; backslash in the quote guard; YAML typing of unquoted values), two of which predate this change. Publish; triage decides them.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #456 at `d0eb4a84`
+**Sources**: 2 (Local Review (Pre-Push) @ `3ab6be9` (covers d0eb4a84 via bookkeeping), CI rollup). Copilot review skipped (disabled for quota); no GitHub reviews or conversation comments. Earlier pre-push entries of this diff (`391a2d03`, `45ad3988`) have no open findings; the stale `a6c2d2f` entry belongs to part 1 / PR #445 and is out of scope.
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit) x2 and one Validate Adapter Contract still running; ros-manifest tests, Validate Documentation, the other Validate Adapter Contract pass)
+
+All three suggestions were re-read against the code and reproduced; each is a fix in this pull request.
+
+### Findings
+- [ ] (should-fix, Local Review @ `3ab6be9`) `adapter_sync`: an empty pin on a detached checkout equals the empty `git branch --show-current`, so sync takes the pull path, which fails with a misleading "pull failed", and the fetch is skipped (stale checkout). Widened by this diff: comment-only and `""` pins now parse empty. Fix: take the pull path only when `[ -n "$branch" ] && [ "$branch" = "$version" ]`; add a test with a detached checkout and an empty or comment-only pin that asserts the fetch runs — `.agent/project_types/ros2_colcon/adapter.sh:607-608`
+- [ ] (should-fix, Local Review @ `3ab6be9`) A double-quoted value with a backslash escape is decoded wrongly by the parser. Reproduced: `"a\" #b"` gives `a\` (YAML: `a" #b`), and `"v\x31.0"` gives `v\x31.0` (YAML: `v1.0`), both exit 0. Callers refuse both as kind `unknown`, so no wrong base results, but the error message is wrong. This diff also contradicts its own parser comment ("an escaped quote" is emitted raw). Correction to the review: the quoted-scalar decoding and the quote guard are both new in this diff, so it does not predate it. Fix: in `_rc_repos_entries`, send a double-quoted value whose content holds `\` down the raw branch; add `\\` to the repo_pin guard's character class (line 1055); add both cases to `test_repos_entries_parser_table` and the repo_pin refusal tests — `.agent/project_types/ros2_colcon/adapter.sh:246-260,1055`
+- [ ] (should-fix, Local Review @ `3ab6be9`) YAML typing of plain scalars is ignored. Verified: vcstool `import_.py:173` passes `str(repo['version'])` from `yaml.safe_load`, so `version: 1.10` checks out `1.1` while repo_pin answers `1.10`. That is a silent wrong base when both tags exist, and a wrong error otherwise. The parser's `$2` predates the diff, but repo_pin, the new consumer that turns it into a base, is new here. Fix: in repo_pin, refuse a plain (unquoted) value that PyYAML's implicit resolvers type as bool, null, int or float (`yes/no/on/off/true/false`, `~/null`, decimal/octal/hex/sexagesimal ints, floats incl. `.inf`/`.nan`), or that starts with a YAML indicator (`! & * | > % @` or a backtick), with a message to quote it. A quoted value stays accepted. Add table tests. If the host wants to keep scope, the alternative is a follow-up issue opened before merge, not an unrecorded deferral — `.agent/project_types/ros2_colcon/adapter.sh:236-262,1048-1058`
+
+### False positives
