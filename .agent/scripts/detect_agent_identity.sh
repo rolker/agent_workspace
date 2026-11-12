@@ -13,7 +13,10 @@
 #
 # Exports (with --export):
 #   AGENT_NAME - Full agent name (e.g., "Copilot CLI Agent")
-#   AGENT_EMAIL - Agent email address
+#   AGENT_EMAIL - Agent email address, derived from the checkout's git
+#                 user.email as <local>+<framework-suffix>@<domain>
+#                 (framework_config.sh); an unset or malformed git email
+#                 fails with a message and nothing is written or exported
 #   AGENT_MODEL - Detected or default model name
 #   AGENT_FRAMEWORK - Framework identifier (copilot, gemini, etc.)
 #
@@ -51,15 +54,15 @@ if [ "$AGENT_FRAMEWORK" != "unknown" ]; then
     FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"  # lowercase
 
     AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK_KEY]}"
-    AGENT_EMAIL="${FRAMEWORK_EMAILS[$FRAMEWORK_KEY]}"
+    EMAIL_SUFFIX="${FRAMEWORK_SUFFIXES[$FRAMEWORK_KEY]}"
     AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]}"
 
     # If lookups failed, use defaults
     if [ -z "$AGENT_NAME" ]; then
         AGENT_NAME="AI Agent"
     fi
-    if [ -z "$AGENT_EMAIL" ]; then
-        AGENT_EMAIL="roland+ai-agent@ccom.unh.edu"
+    if [ -z "$EMAIL_SUFFIX" ]; then
+        EMAIL_SUFFIX="ai-agent"
     fi
     if [ -z "$AGENT_MODEL" ]; then
         AGENT_MODEL="Unknown Model"
@@ -67,7 +70,7 @@ if [ "$AGENT_FRAMEWORK" != "unknown" ]; then
 else
     # Unknown framework - use defaults
     AGENT_NAME="AI Agent"
-    AGENT_EMAIL="roland+ai-agent@ccom.unh.edu"
+    EMAIL_SUFFIX="ai-agent"
     AGENT_MODEL="Unknown Model"
     AGENT_FRAMEWORK="unknown"
 fi
@@ -159,6 +162,16 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+# Derive the email from the checkout's git user.email. On an unset or
+# malformed email the helper prints the fix to stderr; stop before anything
+# is displayed, written or exported (return when sourced, exit when run).
+if ! DERIVED_EMAIL="$(agent_email_for_suffix "$EMAIL_SUFFIX")"; then
+    unset DERIVED_EMAIL EMAIL_SUFFIX
+    return 1 2>/dev/null || exit 1
+fi
+AGENT_EMAIL="$DERIVED_EMAIL"
+unset DERIVED_EMAIL EMAIL_SUFFIX
 
 # Display detected identity
 echo "Detected Agent Identity:"

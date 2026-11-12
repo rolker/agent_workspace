@@ -8,9 +8,15 @@
 #   ./configure_git_identity.sh --detect
 #
 # Examples:
-#   ./configure_git_identity.sh "Copilot CLI Agent" "roland+copilot-cli@ccom.unh.edu"
 #   ./configure_git_identity.sh --agent copilot
 #   ./configure_git_identity.sh --detect
+#   ./configure_git_identity.sh "Copilot CLI Agent" "<you>+copilot-cli@<domain>"
+#
+# --agent and --detect derive the email from the checkout's git user.email
+# (<local>+<framework-suffix>@<domain>; see framework_config.sh). The address
+# written here keeps the same base, because the +suffix is removed when the
+# base is derived again. An unset or malformed git email fails before any
+# config is written.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -27,29 +33,33 @@ if [ -f "${FRAMEWORK_CONFIG}" ]; then
     source "${FRAMEWORK_CONFIG}"
 else
     echo "❌ ERROR: Framework configuration not found at ${FRAMEWORK_CONFIG}."
-    echo "This script expects FRAMEWORK_NAMES and FRAMEWORK_EMAILS to be defined in a shared config."
+    echo "This script expects FRAMEWORK_NAMES and FRAMEWORK_SUFFIXES to be defined in a shared config."
     exit 1
 fi
 
 # Add aliases for backward compatibility
 FRAMEWORK_NAMES["copilot-cli"]="${FRAMEWORK_NAMES[copilot]}"
-FRAMEWORK_EMAILS["copilot-cli"]="${FRAMEWORK_EMAILS[copilot]}"
+FRAMEWORK_SUFFIXES["copilot-cli"]="${FRAMEWORK_SUFFIXES[copilot]}"
 FRAMEWORK_NAMES["gemini-cli"]="${FRAMEWORK_NAMES[gemini]}"
-FRAMEWORK_EMAILS["gemini-cli"]="${FRAMEWORK_EMAILS[gemini]}"
+FRAMEWORK_SUFFIXES["gemini-cli"]="${FRAMEWORK_SUFFIXES[gemini]}"
 
 show_usage() {
     echo "Usage: $0 [OPTIONS] [\"<Agent Name>\" \"<email>\"]"
     echo ""
     echo "Options:"
     echo "  --agent <framework>    Use predefined identity for framework"
-    echo "                         Supported: copilot, gemini, antigravity, claude"
+    echo "                         Supported: codex, copilot, gemini, antigravity, claude, claude-code"
     echo "  --detect              Auto-detect framework from environment"
     echo ""
+    echo "--agent and --detect derive the email from this checkout's git user.email:"
+    echo "  <local>+<framework>@<domain>, where <local>@<domain> is \`git config user.email\`"
+    echo "  with any +suffix removed."
+    echo ""
     echo "Examples:"
-    echo "  $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\""
     echo "  $0 --agent copilot"
     echo "  $0 --agent gemini"
     echo "  $0 --detect"
+    echo "  $0 \"Copilot CLI Agent\" \"<you>+copilot-cli@<domain>\""
     echo ""
     echo "This configures git identity in:"
     echo "  - The workspace repository (agent_workspace)"
@@ -88,13 +98,13 @@ if [ "$1" == "--agent" ]; then
 
     FRAMEWORK="${2,,}"  # Convert to lowercase
     AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK]}"
-    AGENT_EMAIL="${FRAMEWORK_EMAILS[$FRAMEWORK]}"
 
     if [ -z "$AGENT_NAME" ]; then
         echo "Error: Unknown framework '$2'"
         echo "Supported frameworks: ${!FRAMEWORK_NAMES[*]}"
         exit 1
     fi
+    AGENT_EMAIL="$(framework_email "$FRAMEWORK")" || exit 1
 
 elif [ "$1" == "--detect" ]; then
     DETECTED=$(detect_framework)
@@ -105,9 +115,14 @@ elif [ "$1" == "--detect" ]; then
         exit 1
     fi
 
-    AGENT_NAME="${FRAMEWORK_NAMES[$DETECTED]}"
-    AGENT_EMAIL="${FRAMEWORK_EMAILS[$DETECTED]}"
     echo "Detected framework: $DETECTED"
+    AGENT_NAME="${FRAMEWORK_NAMES[$DETECTED]}"
+    if [ -z "$AGENT_NAME" ]; then
+        echo "Error: no predefined identity for detected framework '$DETECTED'"
+        echo "Please use --agent <framework> or provide name/email manually"
+        exit 1
+    fi
+    AGENT_EMAIL="$(framework_email "$DETECTED")" || exit 1
 
 elif [ $# -eq 2 ]; then
     # Manual name and email
