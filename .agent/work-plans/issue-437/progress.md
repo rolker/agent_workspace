@@ -332,3 +332,22 @@ Round 1's two findings are resolved: the symlink rule is one statement in `recor
 - [x] (must-fix) The place comparison is textual, so a harmless spelling refuses a valid write in the issue's own checkout (reproduced: `records_path --write .agent/work-plans/issue-437/./progress.md` and `.../issue-437//progress.md` return 1, the plain spelling 0; `review_progress.sh check --progress "$dir/progress.md"` with a trailing slash on `$dir` would exit 4). Normalise `//` and `/./` in the named tail before comparing, keeping real symlink redirection refused, and add both spellings to `test_records_write_gate.sh` — `.agent/scripts/_resolve_work_plans_dir.sh:425`
 - [x] (suggestion) The place clause runs only when the path names `.agent/work-plans/issue-<N>` (`gn` set): `check --progress progress.md` run inside the records folder, with `progress.md` linked to another file there, passes. Either refuse `--write` on a path that does not name the records folder, or judge the place from the resolved folder; add the case — `.agent/scripts/_resolve_work_plans_dir.sh:424`
 - [x] (suggestion) The exit-code comment still says "records_dir in _resolve_work_plans_dir.sh names the right one"; the script now calls `records_path --write` — `.agent/scripts/progress_append.sh:39`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 12:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71730de86d9f7a22, resume 1 of 3)
+
+**Branch**: feature/issue-437 at `c0e92c0a`
+**Addressed**: Local Review (Pre-Push) at `0ea9b4c4` (2026-11-12 12:15 -05:00)
+**Commits**: `f7abbdda`, `c0e92c0a`
+
+### Actions
+- [x] (must-fix) The place clause now compares two paths computed the same way, not text: the named path made absolute and lexically normalised (`_wpd_lexical`, no symlink resolved) and the fully resolved path; below the checkout root they must be equal and the named part above must resolve to that root. `./`, `//`, a trailing slash on the folder (through `check --progress`) and a `..` landing on the same file are allowed; a worktree through a linked parent folder and `-C` through that link from the main checkout still pass — `.agent/scripts/_resolve_work_plans_dir.sh:444`, `.agent/scripts/tests/test_records_write_gate.sh` case 6b
+- [x] (suggestion) The same comparison runs for every `--write`, whether or not the path's text names the records folder: a bare `progress.md` inside the folder is allowed plain and refused when linked to another file there (`check` exits 4, the target unchanged) — `.agent/scripts/_resolve_work_plans_dir.sh:444`, `.agent/scripts/tests/test_records_write_gate.sh` case 6b
+- [x] (suggestion) The exit-code comment names `records_path --write` and the symlink refusal; line count kept so the design doc's cited lines 93-94 and 107-108 hold — `.agent/scripts/progress_append.sh:39`
+
+### Checks
+- `test_records_write_gate.sh`: 68 passed, 0 failed; against the round-2 scripts the same test fails 6 (the four spellings, the trailing slash, the linked bare `progress.md`)
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped, the script suite included
