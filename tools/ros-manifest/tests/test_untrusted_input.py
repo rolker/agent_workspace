@@ -426,6 +426,59 @@ def test_a_value_of_the_wrong_type_is_a_message_not_a_traceback(body, message, t
     assert "Traceback" not in captured.err
 
 
+# And the file system: reading the file and following `extends` raised UnicodeDecodeError,
+# PermissionError, OSError (a name too long, quoting the manifest's extends path) and, before
+# Python 3.13, RuntimeError (a symlink loop), each a traceback.
+def _cli_error(leaf, capsys):
+    rc = main(["validate", "--manifest", str(leaf), "--role", "dev", "--distro", "jazzy"])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Traceback" not in captured.err
+    return captured.err + captured.out
+
+
+def test_a_manifest_that_is_not_text_is_a_message(tmp_path, capsys):
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_bytes(b"layers: [core]\nx: \xff" + SECRET.encode() + b"\n")
+    out = _cli_error(leaf, capsys)
+    assert out == f"ERROR: {leaf}: cannot be read as text\n"
+
+
+def test_an_unreadable_manifest_is_a_message(tmp_path, capsys):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads any file")
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text("layers: [core]\n")
+    leaf.chmod(0)
+    try:
+        assert _cli_error(leaf, capsys) == f"ERROR: {leaf}: cannot be read (Permission denied)\n"
+    finally:
+        leaf.chmod(0o600)
+
+
+@pytest.mark.parametrize("ext_path", [SECRET + "a" * 5000, (SECRET + "a" * 300 + "/") * 2 + "m"])
+def test_an_extends_path_too_long_is_a_message_without_the_path(ext_path, tmp_path, capsys):
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(f"extends:\n  path: {ext_path}\nlayers: [core]\n")
+    out = _cli_error(leaf, capsys)
+    assert out == f"ERROR: {leaf}: its extends cannot be followed (File name too long)\n"
+    assert SECRET not in out
+
+
+def test_a_symlink_loop_is_a_message(tmp_path, capsys):
+    (tmp_path / "l1").symlink_to(tmp_path / "l2")
+    (tmp_path / "l2").symlink_to(tmp_path / "l1")
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text("extends:\n  path: l1\nlayers: [core]\n")
+    # Which message depends on the Python version (3.13's resolve() no longer raises); either
+    # way it is one ERROR line.
+    for manifest in (leaf, tmp_path / "l1"):
+        out = _cli_error(manifest, capsys)
+        assert out.startswith("ERROR: ") and out.count("\n") == 1
+
+
 def test_aliases_are_refused():
     with pytest.raises(ManifestError, match="line 1, column 19: aliases .* are not allowed"):
         parse_manifest_text("layers: &a [core, *a]\n", source="t")  # was a RecursionError

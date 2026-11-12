@@ -134,9 +134,24 @@ def _resolve_one(
     return candidate, origin
 
 
+def _os_reason(exc: Exception) -> str:
+    """Why a path could not be followed, without the path: an OSError's own text quotes it, and
+    past the leaf that path comes from a manifest's `extends`."""
+    if isinstance(exc, OSError) and exc.strerror:
+        return exc.strerror
+    if isinstance(exc, RuntimeError):  # `Path.resolve()` before Python 3.13: a symlink loop
+        return "a symlink loop"
+    return "an OS error"
+
+
 def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List[Manifest]:
-    """Return the extends chain for `manifest_path`, ordered base-first, leaf last."""
-    manifest_path = Path(manifest_path).resolve()
+    """Return the extends chain for `manifest_path`, ordered base-first, leaf last. A path that
+    cannot be followed (a name too long, a symlink loop, no permission) is a ManifestError, not
+    a traceback."""
+    try:
+        manifest_path = Path(manifest_path).resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ManifestError(f"{manifest_path}: cannot be followed ({_os_reason(exc)})") from None
     if cache_dir is None:
         cache_dir = Path.cwd() / ".ros-manifest-cache"
     cache_dir = Path(cache_dir)
@@ -155,9 +170,14 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
         chain.append(manifest)
         if manifest.extends is None:
             break
-        current_path, current_origin = _resolve_one(
-            manifest.extends, current_path.parent, current_origin, cache_dir
-        )
+        try:
+            current_path, current_origin = _resolve_one(
+                manifest.extends, current_path.parent, current_origin, cache_dir
+            )
+        except (OSError, RuntimeError) as exc:
+            raise ManifestError(
+                f"{manifest.source}: its extends cannot be followed ({_os_reason(exc)})"
+            ) from None
 
     chain.reverse()  # base first
     return chain

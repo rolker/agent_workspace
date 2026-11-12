@@ -514,6 +514,15 @@ def load_manifest_file(path: Path, source: Optional[str] = None) -> Manifest:
     """Load one manifest file. `source` is its provenance label; it defaults to the file path
     (a git-backed `extends` base passes `url#ref:path@<commit>` instead, see ``extends.py``)."""
     path = Path(path)
-    if not path.is_file():
-        raise ManifestError(f"manifest not found: {path}")
-    return parse_manifest_text(path.read_text(), source=source if source else str(path))
+    label = source if source else str(path)
+    try:
+        if not path.is_file():
+            raise ManifestError(f"manifest not found: {path}")
+        text = path.read_text()
+    # A file that cannot be read or decoded is a message under the same label every other
+    # message uses, not a traceback (no permission, a name too long, bytes that are not text).
+    except UnicodeDecodeError:
+        raise ManifestError(f"{label}: cannot be read as text") from None
+    except OSError as exc:
+        raise ManifestError(f"{label}: cannot be read ({exc.strerror or 'an OS error'})") from None
+    return parse_manifest_text(text, source=label)
