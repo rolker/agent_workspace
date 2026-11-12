@@ -60,20 +60,30 @@
 #
 # Hook commands in ~/.claude/settings.json are recognised by their path, one
 # command at a time, because the `claude plugin` commands rewrite that file
-# and drop any key they do not know (#394):
-#   - ours: the SessionStart link above, or a command under this checkout's
-#     .claude/hooks/ (its physical path too, so a symlinked alias counts);
-#   - another checkout's: <dir>/.claude/hooks/<file>, where <dir> holds
-#     .agent/user_tier_scripts.txt (the test foreign_skill_link uses);
-#   - left by a checkout since moved or deleted: <dir>/.claude/hooks/<name>,
-#     <name> a hook this script writes or has retired (INSTALLER_HOOK_NAMES,
-#     RETIRED_HOOK_NAMES), and the path not on disk.
-# Only those commands are removed from an entry; the user's own commands in
-# the same entry, and its other keys, stay, and an entry is dropped only when
-# no command is left in it. Earlier generations tagged each entry
-# "_agent_workspace": "<checkout>". That marker is no longer written, but it
-# is still read where an entry carries it: a marked entry's commands under
-# the marked checkout are that checkout's too.
+# and drop any key they do not know (#394). One function, classify_hooks,
+# decides for --check, install, --force and --uninstall. A command is
+# classified only when it is exactly a command this script writes, or when
+# the whole command string is a literal absolute path -- it starts with `/`
+# and holds no whitespace, quote, `$`, `~`, backslash, glob character or
+# shell operator -- of the form <dir>/.claude/hooks/<name>, <name> a hook
+# this script writes or has retired (INSTALLER_HOOK_NAMES,
+# RETIRED_HOOK_NAMES). Such a command is:
+#   - ours: <dir> is this checkout (its physical path too, so a symlinked
+#     alias counts);
+#   - another checkout's: <dir> holds .agent/user_tier_scripts.txt (the test
+#     foreign_skill_link uses);
+#   - dead, left by a checkout since moved or deleted: <dir> itself is not
+#     on disk (a <dir> that exists and lacks only the file is someone's
+#     project, not a dead checkout).
+# Anything else -- a quoted or variable path, an interpreter prefix, a
+# trailing argument, `~` or a relative path, any other name -- is the
+# user's, and is never removed, reported or rewritten, whatever it looks
+# like. Only the classified commands are removed from an entry; the user's
+# own commands in the same entry, and its other keys, stay, and an entry is
+# dropped only when no command is left in it. Earlier generations tagged
+# each entry "_agent_workspace": "<checkout>". That marker is no longer
+# written, but it is still read where an entry carries it: a classified
+# command under the marked checkout is that checkout's.
 #
 # Modes:
 #   (default)            install or repair; idempotent, safe to re-run
@@ -291,8 +301,8 @@ installed_rules_json() {
 
 # The hooks this script registers by checkout path, and the ones an earlier
 # generation registered and #328 retired (checked across the script's
-# history: no generation wrote any other). Together they are the names the
-# dead-path rule in hook_path_lists recognises.
+# history: no generation wrote any other). Together they are the only names
+# classify_hooks recognises.
 INSTALLER_HOOK_NAMES=(log-tool-use.sh)
 RETIRED_HOOK_NAMES=(block-bash-tool-mapping.sh)
 
@@ -303,78 +313,113 @@ hook_commands() {
     done
 }
 
-# Lines on stdin -> a JSON array of the distinct non-empty ones.
-lines_json() { jq -R . | jq -s 'map(select(. != "")) | unique'; }
+# Shared jq definition: the hook entries of a settings file, type-guarded,
+# so an event whose value is not an array (or an entry that is not an
+# object) is skipped rather than an error that empties every list built on
+# it.
+HOOK_ENTRIES_JQ='def hook_entries: .hooks // {} | objects | .[] | arrays | .[] | objects;
+    def entry_commands: .hooks | arrays | .[] | objects | .command | strings;'
 
-# Classify every hook command in <settings json> of the form
-# <dir>/.claude/hooks/<file> by its <dir>. The filesystem decides, so this
-# is computed here and handed to jq. Prints one JSON object:
-#   self:    the .claude/hooks/ prefixes of this checkout -- lexical and
-#            physical, plus any <dir> whose physical path is this checkout's
-#            (an entry written through a symlinked alias is ours, not another
-#            checkout's);
-#   foreign: each other <dir> that holds .agent/user_tier_scripts.txt;
-#   dead:    each command elsewhere whose <file> is a hook this script
-#            writes or has retired and whose path is not on disk -- left by
-#            a checkout since moved or deleted. A user's own dead hook with
-#            any other name is not ours to judge and is left alone.
-# A command of any other form is in none of the lists.
-hook_path_lists() {  # <settings json>
-    local cmd dir name phys n
-    local -a self_l=("$WS_ROOT/.claude/hooks/" "$WS_PHYS/.claude/hooks/") foreign_l=() dead_l=()
-    while IFS= read -r cmd; do
-        [[ "$cmd" == "$SESSION_HOOK_LINK" ]] && continue
-        [[ "$cmd" =~ ^(.*)/\.claude/hooks/([^/]+)$ ]] || continue
-        dir="${BASH_REMATCH[1]}"
-        name="${BASH_REMATCH[2]}"
-        phys=""
-        [[ -d "$dir" ]] && phys="$(cd "$dir" 2>/dev/null && pwd -P)"
-        if [[ "$dir" == "$WS_ROOT" || "$dir" == "$WS_PHYS" || "$phys" == "$WS_PHYS" ]]; then
-            self_l+=("$dir/.claude/hooks/")
-        elif [[ -f "$dir/.agent/user_tier_scripts.txt" ]]; then
-            foreign_l+=("$dir")
-        elif [[ ! -e "$cmd" ]]; then
+# Any character that makes a command string something other than a literal
+# path: whitespace, a quote, `$`, `~`, a backslash, a glob character or a
+# shell operator.
+NOT_LITERAL_RE='[][[:space:]'"'"'"$~\;&|<>()`*?{}!#]'
+
+# THE rule that decides whose a hook command is (header; #394). Every mode
+# that reports or removes a hook command -- --check, install, --force,
+# --uninstall -- classifies through this function and nothing else. Prints
+# one JSON object, keyed by command, for the commands it classifies:
+#   {"<command>": {"class": "self"|"foreign"|"dead"|"named", "dir": "<dir>"}}
+#   self:    a command this script writes (exactly), or a literal
+#            <dir>/.claude/hooks/<name> with <dir> this checkout (lexical or
+#            physical);
+#   foreign: <dir> holds .agent/user_tier_scripts.txt (another checkout);
+#   dead:    <dir> itself is not on disk (a checkout since moved or deleted);
+#   named:   <dir> exists and is none of the above. The user's, unless an
+#            entry marked with <dir> holds it (owner, below).
+# A command not in the object is the user's. <name> must be one of
+# INSTALLER_HOOK_NAMES or RETIRED_HOOK_NAMES. A jq failure is an error
+# (return 1, a message on stderr), never an empty object: an empty one
+# would read as "nothing to remove" and let a run report current.
+classify_hooks() {  # <settings json>
+    local enc b cmd dir name phys n w class known
+    local -a out=() written=("$SESSION_HOOK_LINK")
+    while IFS= read -r w; do written+=("$w"); done < <(hook_commands)
+    enc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | entry_commands] | unique | .[] | @base64' <<< "$1")" || {
+        echo "ERROR: could not read the hook commands in $SETTINGS (jq failed) -- nothing changed" >&2
+        return 1
+    }
+    while IFS= read -r b; do
+        [[ -z "$b" ]] && continue
+        # The x keeps a trailing newline in the command from being stripped.
+        cmd="$(base64 -d <<< "$b"; printf x)" || return 1
+        cmd="${cmd%x}"
+        class=""
+        dir=""
+        for w in "${written[@]}"; do
+            [[ "$cmd" == "$w" ]] && class=self
+        done
+        if [[ -n "$class" ]]; then
+            :
+        elif [[ "$cmd" == /* ]] && ! [[ "$cmd" =~ $NOT_LITERAL_RE ]] \
+             && [[ "$cmd" =~ ^(/.*)/\.claude/hooks/([^/]+)$ ]]; then
+            dir="${BASH_REMATCH[1]}"
+            name="${BASH_REMATCH[2]}"
+            known=false
             for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
-                [[ "$name" == "$n" ]] && { dead_l+=("$cmd"); break; }
+                [[ "$name" == "$n" ]] && known=true
             done
+            if [[ "$known" == true ]]; then
+                phys=""
+                [[ -d "$dir" ]] && phys="$(cd "$dir" 2>/dev/null && pwd -P)"
+                if [[ "$dir" == "$WS_ROOT" || "$dir" == "$WS_PHYS" || "$phys" == "$WS_PHYS" ]]; then
+                    class=self
+                elif [[ -f "$dir/.agent/user_tier_scripts.txt" ]]; then
+                    class=foreign
+                elif [[ ! -e "$dir" ]]; then
+                    class=dead
+                else
+                    class=named
+                fi
+            fi
         fi
-    done < <(jq -r '[.hooks // {} | .[]? | .[]? | .hooks[]? | .command? | strings] | unique | .[]' <<< "$1")
-    jq -n \
-        --argjson self "$(printf '%s\n' "${self_l[@]}" | lines_json)" \
-        --argjson foreign "$( ((${#foreign_l[@]})) && printf '%s\n' "${foreign_l[@]}" | lines_json || echo '[]')" \
-        --argjson dead "$( ((${#dead_l[@]})) && printf '%s\n' "${dead_l[@]}" | lines_json || echo '[]')" \
-        '{self: $self, foreign: $foreign, dead: $dead}'
+        [[ -n "$class" ]] || continue
+        out+=("$(jq -cn --arg c "$cmd" --arg k "$class" --arg d "$dir" '{($c): {class: $k, dir: $d}}')") || return 1
+    done <<< "$enc"
+    if ((${#out[@]})); then
+        printf '%s\n' "${out[@]}" | jq -cs 'add'
+    else
+        echo '{}'
+    fi || { echo "ERROR: could not classify the hook commands in $SETTINGS (jq failed) -- nothing changed" >&2; return 1; }
 }
 
-# jq definitions shared by install and --uninstall. With $paths (from
-# hook_path_lists), $link, $tag and $force bound:
-#   remove($m): is the command (.) one to remove from an entry whose marker
-#     is $m ("" when unmarked)? Ours by path; under this checkout in an
-#     entry marked with it; a dead path; and under --force, another
-#     checkout's by path or by marker.
+# jq definitions shared by --check, install and --uninstall, on top of
+# HOOK_ENTRIES_JQ. With $cls (from classify_hooks), $tag, $force and $dead
+# bound:
+#   owner($m): whose is the command (.) in an entry whose marker is $m (""
+#     when unmarked)? "self", "foreign", "dead", or null for the user's. A
+#     "named" command is the marked checkout's when its <dir> is the marker.
+#   remove($m): ours; a dead one when $dead (install, --force); another
+#     checkout's under --force.
 #   prune: remove those commands from each entry of a hook event's array,
-#     keeping the entry's other commands and keys. An entry that loses a
-#     command drops its marker (it no longer holds anything of a
-#     checkout's) and is dropped when no command is left. An entry that
-#     loses nothing is left exactly as it is.
-PRUNE_JQ_DEFS='
-    # <dir> of a <dir>/.claude/hooks/<file> command, else null. Collected
-    # in an array: a capture that does not match yields nothing at all,
-    # which would make every test built on it yield nothing as well.
-    def hookdir: ([capture("^(?<d>.*)/\\.claude/hooks/[^/]+$")] | .[0].d) // null;
+#     keeping the entry's other commands and keys, and dropping an entry
+#     only when no command is left. An entry that loses a command drops its
+#     marker. An entry that loses nothing is left exactly as it is.
+PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
+    def owner($m):
+        ($cls[.] // null) as $k
+        | if $k == null then null
+          elif $k.class == "named" then
+              (if ($m | type) == "string" and $m != "" and $k.dir == $m
+               then (if $m == $tag then "self" else "foreign" end) else null end)
+          else $k.class end;
     def remove($m):
-        . as $c
-        | ($c == $link)
-          or any($paths.self[]; . as $p | $c | startswith($p))
-          or ($m == $tag and ($c | startswith($tag + "/")))
-          or (($paths.dead | index($c)) != null)
-          or ($force and (
-                (($c | hookdir) as $d | $d != null and ($paths.foreign | index($d)) != null)
-                or ($m != "" and ($c | startswith($m + "/")))));
+        owner($m) as $o
+        | $o == "self" or ($o == "dead" and $dead) or ($o == "foreign" and $force);
     def prune:
         map(
             (._agent_workspace // "") as $m
-            | if any(.hooks[]?; (.command? | strings) as $c | $c | remove($m))
+            | if any(.hooks[]?; (.command? | strings) | remove($m))
               then (.hooks |= map(select(((.command? | strings) // "") as $c | ($c != "" and ($c | remove($m))) | not)))
                    | del(._agent_workspace)
                    | select((.hooks // []) | length > 0)
@@ -1089,13 +1134,13 @@ if [[ "$MODE" == "uninstall" ]]; then
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
         backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
-        # This checkout's commands only (ours by path, or under it in an
-        # entry marked with it); another checkout's and dead paths are
-        # install's to clear. The user's commands in the same entry stay.
+        # This checkout's commands only (classify_hooks); another checkout's
+        # and dead ones are install's to clear. The user's commands in the
+        # same entry stay.
         uninstall_settings="$(read_settings)"
-        uninstall_paths="$(hook_path_lists "$uninstall_settings" | jq '.foreign = [] | .dead = []')"
-        jq --arg tag "$TAG" --arg link "$SESSION_HOOK_LINK" --argjson force false \
-            --argjson paths "$uninstall_paths" \
+        uninstall_cls="$(classify_hooks "$uninstall_settings")" || exit 1
+        jq --arg tag "$TAG" --argjson force false --argjson dead false \
+            --argjson cls "$uninstall_cls" \
             --argjson rules "$(installed_rules_json)" "$PRUNE_JQ_DEFS"'
             .hooks //= {} |
             .hooks |= with_entries(
@@ -1161,29 +1206,35 @@ if [[ "$MODE" == "check" ]]; then
     settings="$(read_settings)"
     export WS_ROOT_PREFIX="$WS_ROOT/"
 
-    # Hook commands are judged by path, marked or not (header; #394).
-    paths_json="$(hook_path_lists "$settings")"
+    # Hook commands are judged by classify_hooks, marked or not (header;
+    # #394). A jq failure in any query built on it is an error, not a clean
+    # report.
+    cls_json="$(classify_hooks "$settings")" || exit 1
+    # Each caller adds `|| exit 1`: the function runs in a command
+    # substitution, where its own exit would end only that subshell.
+    class_query() {  # <jq filter> [jq args...] -- over settings.json, with the shared defs
+        jq -r --arg tag "$TAG" --argjson cls "$cls_json" --argjson force false --argjson dead true \
+            "${@:2}" "$PRUNE_JQ_DEFS$1" <<< "$settings" || {
+            echo "ERROR: could not check the hook commands in $SETTINGS (jq failed)" >&2
+            return 1
+        }
+    }
 
     # Our hook commands, present in some entry.
     # while-read, not `for cmd in $(...)`: a checkout path containing a space
     # or a glob character would otherwise word-split into permanent drift.
     while IFS= read -r cmd; do
-        if ! jq -e --arg c "$cmd" '
-            [.hooks // {} | to_entries[] | .value[]?
-             | .hooks[]? | .command] | index($c) != null
-        ' <<< "$settings" >/dev/null; then
-            note "missing hook entry for $cmd"
-        fi
+        present="$(class_query '[hook_entries | entry_commands] | index($c) != null' --arg c "$cmd")" || exit 1
+        [[ "$present" == true ]] || note "missing hook entry for $cmd"
     done < <(hook_commands; printf '%s\n' "$SESSION_HOOK_LINK")
 
     # Hook entries from a DIFFERENT checkout (a second clone installed over
-    # us): marked with it, or naming a hook under it.
-    foreign="$(jq -r --arg tag "$TAG" --argjson paths "$paths_json" '
-        ([.hooks // {} | to_entries[] | .value[]?
-          | select((._agent_workspace // "") != "" and (._agent_workspace != $tag))
-          | ._agent_workspace]
-         + $paths.foreign) | unique | .[]
-    ' <<< "$settings")"
+    # us): marked with it, or holding a command classified as its.
+    foreign="$(class_query '
+        [hook_entries | (._agent_workspace // "") as $m
+         | (if ($m | type) == "string" and $m != "" and $m != $tag then $m else empty end),
+           (entry_commands | select(owner($m) == "foreign") | $cls[.].dir)]
+        | unique | .[]')" || exit 1
     if [[ -n "$foreign" ]]; then
         while IFS= read -r f; do
             note "settings.json has hook entries from another workspace checkout: $f"
@@ -1191,27 +1242,20 @@ if [[ "$MODE" == "check" ]]; then
     fi
 
     # Hook commands left by a checkout since moved or deleted: a hook this
-    # script writes or has retired, at a path no longer on disk. Without a
-    # marker nothing else attributes them, and they fail on every tool call.
-    dead="$(jq -r '.dead[]' <<< "$paths_json")"
+    # script writes or has retired, under a <dir> no longer on disk. Without
+    # a marker nothing else attributes them, and they fail on every tool call.
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
     if [[ -n "$dead" ]]; then
         while IFS= read -r d; do
-            note "hook entry names a workspace hook that is not on disk (a checkout since moved or deleted?): $d (re-run the installer to remove it)"
+            note "hook entry names a workspace hook in a checkout that is not on disk (moved or deleted?): $d (re-run the installer to remove it)"
         done <<< "$dead"
     fi
 
-    # The SessionStart entry deliberately names the ~/.claude symlink, not
-    # the checkout path -- that indirection is what lets the hook be found
-    # without the user tier hard-coding a checkout into every session. Every
-    # OTHER command in an entry still marked with this checkout (an earlier
-    # generation's) must live in this checkout.
-    stale="$(jq -r --arg tag "$TAG" --arg ws "$WS_ROOT/" --arg link "$SESSION_HOOK_LINK" '
-        [.hooks // {} | to_entries[] | .value[]?
-         | select((._agent_workspace // "") == $tag)
-         | .hooks[]? | .command
-         | select(. != $link)
-         | select(startswith($ws) | not)] | .[]
-    ' <<< "$settings")"
+    # Every command in an entry still marked with this checkout (an earlier
+    # generation's) must be this checkout's.
+    stale="$(class_query '
+        [hook_entries | select((._agent_workspace // "") == $tag)
+         | entry_commands | select(owner($tag) != "self")] | unique | .[]')" || exit 1
     if [[ -n "$stale" ]]; then
         while IFS= read -r st; do
             note "hook entry marked with this checkout points outside it: $st"
@@ -1219,24 +1263,17 @@ if [[ "$MODE" == "check" ]]; then
     fi
 
     # Our commands that the current generation no longer produces -- a hook
-    # retired from the user tier (#328): any command under this checkout's
-    # .claude/hooks/ (not under the whole checkout: a user's own hook may
-    # run one of its scripts), or under this checkout in an entry marked
-    # with it. None of the checks above fire for it, so without this case
-    # --check says "installed and current" while settings.json still runs a
-    # hook the checkout no longer ships (or no longer has on disk).
-    # Re-running the installer removes it.
+    # retired from the user tier (#328), or one of ours written through a
+    # symlinked alias of this checkout. None of the checks above fire for
+    # it, so without this case --check says "installed and current" while
+    # settings.json still runs a hook the checkout no longer ships (or no
+    # longer has on disk). Re-running the installer removes it.
     wanted_json="$( { hook_commands; printf '%s\n' "$SESSION_HOOK_LINK"; } \
         | jq -R . | jq -s . )"
-    retired="$(jq -r --arg tag "$TAG" --argjson want "$wanted_json" --argjson paths "$paths_json" '
-        [.hooks // {} | to_entries[] | .value[]?
-         | (._agent_workspace // "") as $m
-         | .hooks[]? | .command | strings
-         | . as $c
-         | select(any($paths.self[]; . as $p | $c | startswith($p))
-                  or ($m == $tag and ($c | startswith($tag + "/"))))
-         | select(($want | index($c)) == null)] | unique | .[]
-    ' <<< "$settings")"
+    retired="$(class_query '
+        [hook_entries | (._agent_workspace // "") as $m
+         | entry_commands | select(owner($m) == "self")] | unique
+        | map(select(. as $c | ($want | index($c)) == null)) | .[]' --argjson want "$wanted_json")" || exit 1
     if [[ -n "$retired" ]]; then
         while IFS= read -r rt; do
             note "hook command of this checkout is no longer generated: $rt (re-run the installer)"
@@ -1430,11 +1467,11 @@ fi
 ln -sfn "$SESSION_HOOK_TARGET" "$SESSION_HOOK_LINK"
 echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
 
-# 3+4. settings.json: our hook entries and allow-rules, replacing any
-# previous generation of ours (that is what makes this idempotent) and
-# leaving everything else in the file untouched. No marker is written: the
-# `claude plugin` commands drop it (#394), so entries are told apart by
-# command path (header).
+# 3+4. settings.json: our hook entries and allow-rules, replacing any previous
+# generation of ours (that is what makes this idempotent) and leaving
+# everything else in the file untouched. No marker is written: the
+# `claude plugin` commands drop it (#394), so commands are told apart by
+# classify_hooks (header).
 PRE_HOOKS_JSON="$(jq -n --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" '
     {
       hooks: [
@@ -1448,11 +1485,11 @@ SESSION_HOOKS_JSON="$(jq -n --arg cmd "$SESSION_HOOK_LINK" '
     }')"
 
 current_settings="$(read_settings)"
+install_cls="$(classify_hooks "$current_settings")" || exit 1
 # Remove the previous generation of our commands, the user's own commands
-# staying (prune, PRUNE_JQ_DEFS): ours by path, an entry still marked with
-# this checkout, and a dead path. Under --force we are deliberately taking
-# the tier over from another checkout, so its commands go too, by path or
-# by marker -- otherwise the takeover leaves the old checkout's SessionStart
+# staying (prune, PRUNE_JQ_DEFS): ours, and dead ones. Under --force we are
+# deliberately taking the tier over from another checkout, so its commands
+# go too -- otherwise the takeover leaves the old checkout's SessionStart
 # and PreToolUse commands beside ours, both layers get injected into every
 # session, and --check reports drift immediately after a --force that
 # exited 0 claiming success. A plain install leaves another checkout's
@@ -1462,9 +1499,9 @@ current_settings="$(read_settings)"
 # that is already current comes out unchanged rather than reordered.
 merged_settings="$(jq \
     --arg tag "$TAG" \
-    --arg link "$SESSION_HOOK_LINK" \
     --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
-    --argjson paths "$(hook_path_lists "$current_settings")" \
+    --argjson dead true \
+    --argjson cls "$install_cls" \
     --argjson pre "$PRE_HOOKS_JSON" \
     --argjson ses "$SESSION_HOOKS_JSON" \
     --argjson rules "$(allow_rules_json)" "$PRUNE_JQ_DEFS"'

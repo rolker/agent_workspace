@@ -308,10 +308,11 @@ out="$(run --check)"; rc=$?
 
 # (f) a hook entry marked with this checkout (an earlier generation wrote
 # the marker), in-checkout, that the current generation no longer produces
-# -- a hook retired from the user tier (#328). Marked with this checkout and
-# pointing inside it, so (a)-(c) do not fire for it. The marker is still
-# read where present.
-RETIRED_HOOK="$WSC/.claude/hooks/zz-retired-hook.sh"
+# -- the hook retired from the user tier (#328), by its real name: only the
+# names the installer writes or has retired are classified. Marked with
+# this checkout and pointing inside it, so (a)-(c) do not fire for it. The
+# marker is still read where present.
+RETIRED_HOOK="$WSC/.claude/hooks/block-bash-tool-mapping.sh"
 jq --arg t "$WSC" --arg c "$RETIRED_HOOK" '
     .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c, timeout: 5}]}]' \
     "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
@@ -431,10 +432,13 @@ run >/dev/null
     || fail "install left the dead-checkout hook command"
 
 # (j) the marked variant: an entry an earlier generation marked with a
-# checkout since moved, the CLI not run since. The marker attributes it
-# whatever the hook's name (x.sh is no name the dead-path rule knows).
+# checkout since moved, the CLI not run since. Its directory still exists
+# but without the manifest beside it, so the path alone would leave the
+# command to the user; the marker attributes it to that checkout.
 MOVED_WS="$SANDBOX/moved-ws"
-jq --arg t "$MOVED_WS" --arg c "$MOVED_WS/.claude/hooks/x.sh" '
+mkdir -p "$MOVED_WS"
+MOVED_HOOK="$MOVED_WS/.claude/hooks/log-tool-use.sh"
+jq --arg t "$MOVED_WS" --arg c "$MOVED_HOOK" '
     .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c}]}]' \
     "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --check)"; rc=$?
@@ -442,7 +446,7 @@ out="$(run --check)"; rc=$?
     && pass "--check reports a marked entry of a moved checkout" \
     || fail "marked moved-checkout entry not reported (rc=$rc out=$out)"
 run --force >/dev/null
-[[ "$(n_holding PreToolUse "$MOVED_WS/.claude/hooks/x.sh")" -eq 0 ]] \
+[[ "$(n_holding PreToolUse "$MOVED_HOOK")" -eq 0 ]] \
     && pass "--force removes the marked entry of a moved checkout" \
     || fail "--force left the marked moved-checkout entry"
 
@@ -468,7 +472,7 @@ run >/dev/null
 # (l) mixed entries: the user's own command in the same entry as one of
 # ours, or of another checkout's (marked or not). Only the installer's
 # command goes; the user's stays, in the same entry, with its other keys.
-jq --arg l "$LOG_HOOK" --arg o "$OTHER_HOOK" --arg t "$MOVED_WS" --arg m "$MOVED_WS/.claude/hooks/x.sh" '
+jq --arg l "$LOG_HOOK" --arg o "$OTHER_HOOK" --arg t "$MOVED_WS" --arg m "$MOVED_HOOK" '
     .hooks.PreToolUse += [
         {matcher: "Bash", hooks: [{type: "command", command: $l}, {type: "command", command: "/opt/mine-a.sh"}]},
         {matcher: "Edit", hooks: [{type: "command", command: $o}, {type: "command", command: "/opt/mine-b.sh"}]},
@@ -519,6 +523,81 @@ run >/dev/null
     || fail "install over an alias-path command (alias: $(n_holding PreToolUse "$ALIAS_HOOK"), ours: $(n_holding PreToolUse "$LOG_HOOK"))"
 rm -f "$SANDBOX/ws-alias"
 
+# (n) the user's own hooks that only look like ours. A command is classified
+# only when the whole string is a literal absolute path with a hook name the
+# installer writes or has retired, so none of these is ever reported or
+# removed: a quoted variable, an interpreter prefix, a tilde, a relative
+# path (run from inside this checkout and from inside another one, where
+# it used to resolve against the installer's cwd), our own hook with a
+# trailing argument, a same-named hook in an existing project that lacks
+# only the file (not a dead checkout: its directory is on disk), and a
+# hook wired directly to another file in this checkout's .claude/hooks/
+# (not a name the installer writes or has retired).
+NO_HOOK_PROJ="$SANDBOX/project-without-hook"
+mkdir -p "$NO_HOOK_PROJ/.claude"
+# shellcheck disable=SC2016,SC2088 # literal strings, never expanded
+USER_FORMS=(
+    '"$CLAUDE_PROJECT_DIR"/.claude/hooks/log-tool-use.sh'
+    "bash $SANDBOX/deleted-ws/.claude/hooks/log-tool-use.sh"
+    '~/gone/.claude/hooks/log-tool-use.sh'
+    './.claude/hooks/log-tool-use.sh'
+    "$LOG_HOOK --verbose"
+    "$NO_HOOK_PROJ/.claude/hooks/log-tool-use.sh"
+    "$WSC/.claude/hooks/session_start_project_layer.sh"
+)
+USER_FORMS_JSON="$(printf '%s\n' "${USER_FORMS[@]}" | jq -R . | jq -sc .)"
+jq --argjson f "$USER_FORMS_JSON" '.hooks.PreToolUse += [$f[] | {hooks: [{type: "command", command: .}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+# Each user form held exactly once; else prints every one that is not.
+forms_kept() {
+    local f rc=0
+    for f in "${USER_FORMS[@]}"; do
+        [[ "$(n_holding PreToolUse "$f")" -eq 1 ]] || { printf '[%s] ' "$f"; rc=1; }
+    done
+    return "$rc"
+}
+out="$( cd "$WSC" && run --check )"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check (run in this checkout) reports none of the user's look-alike hook commands" \
+    || fail "--check reported a user's look-alike hook (rc=$rc out=$out)"
+out="$( cd "$OTHER_WS" && run --check )"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"another workspace checkout"* ]] \
+    && pass "--check run inside another checkout does not resolve a relative hook path against its cwd" \
+    || fail "--check from another checkout's cwd (rc=$rc out=$out)"
+( cd "$WSC" && run ) >/dev/null
+missing="$(forms_kept)" \
+    && pass "install (run in this checkout) keeps every user look-alike hook command" \
+    || fail "install removed the user's hook command: $missing"
+( cd "$WSC" && run --force ) >/dev/null
+missing="$(forms_kept)" \
+    && pass "--force keeps every user look-alike hook command" \
+    || fail "--force removed the user's hook command: $missing"
+
+# (o) a hook event whose value is not an array: skipped by every
+# classification, not an error that empties the lists. A dead checkout's
+# command elsewhere in the file is still reported and removed, and the odd
+# event is left exactly as it is.
+DEAD2_WS="$SANDBOX/deleted-ws-2"
+DEAD2_HOOK="$DEAD2_WS/.claude/hooks/log-tool-use.sh"
+jq --arg c "$DEAD2_HOOK" '.hooks.ZzOdd = {a: 1} | .hooks.PreToolUse += [{hooks: [{type: "command", command: $c}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not on disk"*"$DEAD2_HOOK"* ]] \
+    && pass "--check with a non-array event value still reports a dead checkout's hook" \
+    || fail "--check with a non-array event value (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$DEAD2_HOOK")" -eq 0 ]] \
+    && pass "install with a non-array event value still removes a dead checkout's hook" \
+    || fail "install with a non-array event value (rc=$rc held=$(n_holding PreToolUse "$DEAD2_HOOK") out=${out:0:300})"
+jq -e '.hooks.ZzOdd == {a: 1}' "$SETTINGS" >/dev/null \
+    && pass "...and leaves the non-array event value as it was" \
+    || fail "install changed the non-array event value ($(jq -c '.hooks.ZzOdd' "$SETTINGS"))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean with a non-array event value once the dead hook is gone" \
+    || fail "--check after the non-array case (rc=$rc out=$out)"
+jq 'del(.hooks.ZzOdd)' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"
@@ -541,9 +620,12 @@ out="$(run --uninstall)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "uninstall exits 0" || fail "uninstall failed (rc=$rc out=$out)"
 [[ ! -e "$ROOT_FILE" ]] && pass "uninstall removes agent-workspace-root" || fail "root file survived uninstall"
 [[ ! -e "$HOOK_LINK" ]] && pass "uninstall removes the SessionStart symlink" || fail "hook symlink survived uninstall"
-[[ -z "$(jq -r --arg p "$WSC/" --arg l "$HOOK_LINK" '[.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
-         | select(startswith($p) or . == $l)] | .[]' "$SETTINGS")" ]] \
+[[ -z "$(jq -r --arg p "$WSC/" --arg l "$HOOK_LINK" --argjson keep "$USER_FORMS_JSON" '[.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
+         | select(startswith($p) or . == $l) | select(. as $c | $keep | index($c) == null)] | .[]' "$SETTINGS")" ]] \
     && pass "uninstall removes our hook commands" || fail "our hook commands survived uninstall"
+missing="$(forms_kept)" \
+    && pass "uninstall keeps every user look-alike hook command" \
+    || fail "uninstall removed the user's hook command: $missing"
 jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | index("/opt/mine.sh") != null' "$SETTINGS" >/dev/null \
     && pass "uninstall leaves the user's own hook entry alone" \
     || fail "uninstall removed the user's own hook entry"
@@ -613,6 +695,7 @@ ls "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* >/dev/null 2>&1 \
     && pass "a timestamped backup is written before the rewrite" \
     || fail "no backup written (out=${out:0:160})"
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+
 
 # --------------------------------------------- a second workspace checkout ---
 # Round 1 must-fix: the root file was overwritten unconditionally, and the
