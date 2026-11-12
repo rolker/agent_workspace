@@ -217,6 +217,16 @@ echo "=== Hard fail when env vars unset (workspace policy) ==="
 unset AGENT_NAME AGENT_MODEL
 assert_exit_code "unset AGENT_NAME hard-fails" 2 \
     --title "T" --body "B"
+# The hint names the derived form, not a literal name/email (#455).
+reset_capture
+hint_out="$(run_wrapper --title "T" --body "B" 2>&1)"
+if [[ "$hint_out" == *'set_git_identity_env.sh --agent <framework> "<model-id>"'* && "$hint_out" != *'"email"'* ]]; then
+    echo "  PASS: unset hint names --agent <framework> \"<model-id>\""
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: unset hint (got: $hint_out)"
+    FAIL=$((FAIL + 1))
+fi
 # But --no-signature should still allow pass-through
 assert_calls_gh "unset + --no-signature still calls gh" \
     --title "T" --body "B" --no-signature
