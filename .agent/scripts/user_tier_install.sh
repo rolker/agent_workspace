@@ -78,6 +78,14 @@
 #   - dead, left by a checkout since moved or deleted: <dir> itself is not
 #     on disk (a <dir> that exists and lacks only the file is someone's
 #     project, not a dead checkout).
+# What a mode removes is only what it can attribute to this installer: ours,
+# and a dead command that sits in an entry carrying the marker (below). An
+# unmarked dead command is not proof of anything -- a drive that is not
+# mounted looks the same -- so it is reported, by --check as drift and by
+# install as a note, each naming the command and the remedy, and removed
+# only by --force. --force also removes another checkout's commands. Every
+# command a run removes that it does not write back is printed, with the
+# path of the settings.json backup taken before the change.
 # Anything else -- a quoted or variable path, an interpreter prefix, a
 # trailing argument, `~` or a relative path, any other name -- is the
 # user's, and is never removed, reported or rewritten, whatever it looks
@@ -433,7 +441,9 @@ classify_hooks() {  # <settings json>
 #     when unmarked)? "self", "foreign", "dead", or null for the user's. A
 #     "named" or "marked" command is the marked checkout's when its <dir> is
 #     the marker, and the user's anywhere else.
-#   remove($m): ours; a dead one when $dead (install, --force); another
+#   remove($m): ours; a dead one when $dead (install, --force) and either
+#     the entry carries a marker (attributable to this installer) or under
+#     --force (an unmarked one is only reported: header); another
 #     checkout's under --force.
 #   prune: remove those commands from each entry of a hook event's array,
 #     keeping the entry's other commands and keys, and dropping an entry
@@ -454,9 +464,11 @@ PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
               (if ($m | type) == "string" and $m != "" and $k.dir == $m
                then (if $k.as == "self" or $k.as == "dead" then $k.as else "foreign" end) else null end)
           else $k.class end;
+    def marked($m): ($m | type) == "string" and $m != "";
     def remove($m):
         owner($m) as $o
-        | $o == "self" or ($o == "dead" and $dead) or ($o == "foreign" and $force);
+        | $o == "self" or ($o == "dead" and $dead and (marked($m) or $force))
+          or ($o == "foreign" and $force);
     def unmark($m):
         if $m != "" and ($m == $tag or $force) then del(._agent_workspace) else . end;
     def prune:
@@ -518,6 +530,7 @@ read_settings() {
 # A timestamped copy beside the original, before any rewrite. Cheap, and the
 # difference between a bad merge being an annoyance and being a data loss.
 BACKUP_KEEP=5
+BACKUP_PATH=""   # the newest backup this run took, for the messages that cite it
 backup_settings() {
     local stamp dest n=0
     [[ -f "$SETTINGS" ]] || return 0
@@ -532,6 +545,7 @@ backup_settings() {
         dest="$SETTINGS.agent-workspace-backup.$stamp-$n"
     done
     cp -p "$SETTINGS" "$dest" || return 1
+    BACKUP_PATH="$dest"
     echo "  backed up $SETTINGS -> $dest"
 
     # Keep only the newest few: these accumulate on every install, and an
@@ -1322,12 +1336,20 @@ if [[ "$MODE" == "check" ]]; then
     fi
 
     # Hook commands left by a checkout since moved or deleted: a hook this
-    # script writes or has retired, under a <dir> no longer on disk. Without
-    # a marker nothing else attributes them, and they fail on every tool call.
-    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
+    # script writes or has retired, under a <dir> no longer on disk. They
+    # fail on every tool call. In an entry carrying the marker, install
+    # removes them; an unmarked one only --force does (header), so the
+    # remedy named differs.
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | select(marked($m)) | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
     if [[ -n "$dead" ]]; then
         while IFS= read -r d; do
             note "hook entry names a workspace hook in a checkout that is not on disk (moved or deleted?): $d (re-run the installer to remove it)"
+        done <<< "$dead"
+    fi
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | select(marked($m) | not) | entry_commands | select(owner($m) == "dead")] | unique | .[]')" || exit 1
+    if [[ -n "$dead" ]]; then
+        while IFS= read -r d; do
+            note "hook command names a workspace hook in a directory that is not on disk: $d -- nothing attributes it to this installer (a moved or deleted checkout, or a drive not mounted?), so a plain install leaves it; if it is a dead checkout's, remove it with: $WS_ROOT/.agent/scripts/user_tier_install.sh --force"
         done <<< "$dead"
     fi
 
@@ -1594,6 +1616,26 @@ merged_settings="$(jq \
     | .permissions.allow = ((.permissions.allow + $rules) | unique)
 ' <<< "$current_settings")" || { echo "ERROR: could not merge $SETTINGS -- nothing changed" >&2; exit 1; }
 
+# What the merge removes and does not write back, and the dead commands it
+# leaves because nothing attributes them to this installer (header): both
+# are named after the write. Same definitions and arguments as the merge.
+install_report_query() {  # <jq filter>
+    jq -r --arg tag "$TAG" \
+        --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
+        --argjson dead true \
+        --argjson cls "$install_cls" \
+        --argjson want "$( { hook_commands; printf '%s\n' "$SESSION_HOOK_LINK"; } | jq -R . | jq -s . )" \
+        "$PRUNE_JQ_DEFS$1" <<< "$current_settings"
+}
+install_removed="$(install_report_query '
+    [hook_entries | (._agent_workspace // "") as $m | entry_commands
+     | select(remove($m)) | select(. as $c | ($want | index($c)) == null)
+     | "\(owner($m))\t\(.)"] | unique | .[]')" \
+    && install_left="$(install_report_query '
+    [hook_entries | (._agent_workspace // "") as $m | entry_commands
+     | select(owner($m) == "dead" and (remove($m) | not))] | unique | .[]')" \
+    || { echo "ERROR: could not list the hook commands this run removes from $SETTINGS -- nothing changed" >&2; exit 1; }
+
 # Write only when something changed, compared ignoring key order: the CLI
 # re-emits the file in its own key order, and rewriting it on every run in
 # jq's would churn it (and pile up backups) for nothing.
@@ -1628,6 +1670,22 @@ if [[ "$settings_changed" == false ]]; then
 else
     write_settings <<< "$merged_settings" || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
     echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
+fi
+if [[ -n "$install_removed" ]]; then
+    while IFS=$'\t' read -r owner cmd; do
+        case "$owner" in
+            dead)    why="a workspace hook in a checkout not on disk" ;;
+            foreign) why="another workspace checkout's, removed by --force" ;;
+            *)       why="this checkout's, no longer generated" ;;
+        esac
+        echo "  removed hook command $cmd ($why)"
+    done <<< "$install_removed"
+    echo "  the settings.json from before these removals is kept at $BACKUP_PATH"
+fi
+if [[ -n "$install_left" ]]; then
+    while IFS= read -r cmd; do
+        echo "  NOTE: left in place: hook command $cmd names a workspace hook in a directory that is not on disk, and nothing attributes it to this installer (a moved or deleted checkout, or a drive not mounted?). If it is a dead checkout's, remove it with: $WS_ROOT/.agent/scripts/user_tier_install.sh --force"
+    done <<< "$install_left"
 fi
 
 # 5. retire legacy skill symlinks (ADR-0018), this checkout's or another's

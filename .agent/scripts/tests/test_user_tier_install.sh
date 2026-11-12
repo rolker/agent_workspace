@@ -416,6 +416,10 @@ out="$(run --check)"; rc=$?
 
 # (i) a checkout moved or deleted after the install, the CLI having
 # stripped the marker: its PreToolUse command names a path no longer on disk.
+# Nothing attributes it to this installer (a drive not mounted looks the
+# same), so --check reports it with the remedy, a plain install names it and
+# leaves it, and only --force removes it, printing the command and the
+# backup path.
 DEAD_WS="$SANDBOX/deleted-ws"
 mkdir -p "$DEAD_WS/.agent" "$DEAD_WS/.claude/hooks"
 : > "$DEAD_WS/.agent/user_tier_scripts.txt"
@@ -423,14 +427,45 @@ DEAD_HOOK="$DEAD_WS/.claude/hooks/log-tool-use.sh"
 jq --arg c "$DEAD_HOOK" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c, timeout: 5}]}]' \
     "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 rm -rf "$DEAD_WS"
+FORCE_REMEDY="$WSC/.agent/scripts/user_tier_install.sh --force"
 out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"not on disk"*"$DEAD_HOOK"* ]] \
-    && pass "--check reports an unmarked hook command left by a deleted checkout" \
+[[ "$rc" -eq 1 && "$out" == *"not on disk"*"$DEAD_HOOK"*"remove it with: $FORCE_REMEDY"* ]] \
+    && pass "--check reports an unmarked hook command left by a deleted checkout, naming --force as the remedy" \
     || fail "dead-checkout hook not reported (rc=$rc out=$out)"
-run >/dev/null
-[[ "$(n_holding PreToolUse "$DEAD_HOOK")" -eq 0 ]] \
-    && pass "install removes the unmarked hook command left by a deleted checkout" \
-    || fail "install left the dead-checkout hook command"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$DEAD_HOOK")" -eq 1 \
+   && "$out" == *"left in place: hook command $DEAD_HOOK"*"remove it with: $FORCE_REMEDY"* ]] \
+    && pass "a plain install leaves an unmarked dead hook command in place and names it with the remedy" \
+    || fail "a plain install over an unmarked dead hook (rc=$rc held=$(n_holding PreToolUse "$DEAD_HOOK") out=${out:0:600})"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+out="$(run --force)"; rc=$?
+dead_backup="$(ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/dev/null | head -1)"
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$DEAD_HOOK")" -eq 0 && -n "$dead_backup" \
+   && "$out" == *"removed hook command $DEAD_HOOK"* && "$out" == *"kept at $dead_backup"* ]] \
+    && pass "--force removes it, printing the command and the backup path" \
+    || fail "--force over an unmarked dead hook (rc=$rc held=$(n_holding PreToolUse "$DEAD_HOOK") out=${out:0:600})"
+jq -e --arg c "$DEAD_HOOK" '[.hooks.PreToolUse[].hooks[]?.command] | index($c) != null' "$dead_backup" >/dev/null \
+    && pass "...and the backup it names still holds the command" \
+    || fail "the backup --force named does not hold the removed command"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+
+# (i2) a dead command in an entry carrying the marker: attributable to this
+# installer, so a plain install removes it and says so.
+GONE_MARKED="$SANDBOX/gone-marked-ws"
+GONE_MARKED_HOOK="$GONE_MARKED/.claude/hooks/log-tool-use.sh"
+jq --arg t "$GONE_MARKED" --arg c "$GONE_MARKED_HOOK" '
+    .hooks.PreToolUse += [{_agent_workspace: $t, hooks: [{type: "command", command: $c}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"checkout that is not on disk"*"$GONE_MARKED_HOOK (re-run the installer to remove it)"* ]] \
+    && pass "--check reports a marked dead hook command, naming a plain install as the remedy" \
+    || fail "marked dead hook not reported (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_holding PreToolUse "$GONE_MARKED_HOOK")" -eq 0 \
+   && "$out" == *"removed hook command $GONE_MARKED_HOOK"*"kept at "* ]] \
+    && pass "a plain install removes a marked dead hook command and names it" \
+    || fail "a plain install over a marked dead hook (rc=$rc held=$(n_holding PreToolUse "$GONE_MARKED_HOOK") out=${out:0:600})"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
 
 # (j) the marked variant: an entry an earlier generation marked with a
 # checkout since moved, the CLI not run since. Its directory still exists
@@ -576,8 +611,8 @@ missing="$(forms_kept)" \
 
 # (o) a hook event whose value is not an array: skipped by every
 # classification, not an error that empties the lists. A dead checkout's
-# command elsewhere in the file is still reported and removed, and the odd
-# event is left exactly as it is.
+# command elsewhere in the file is still reported, named by a plain install
+# and removed by --force, and the odd event is left exactly as it is.
 DEAD2_WS="$SANDBOX/deleted-ws-2"
 DEAD2_HOOK="$DEAD2_WS/.claude/hooks/log-tool-use.sh"
 jq --arg c "$DEAD2_HOOK" '.hooks.ZzOdd = {a: 1} | .hooks.PreToolUse += [{hooks: [{type: "command", command: $c}]}]' \
@@ -587,12 +622,16 @@ out="$(run --check)"; rc=$?
     && pass "--check with a non-array event value still reports a dead checkout's hook" \
     || fail "--check with a non-array event value (rc=$rc out=$out)"
 out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"left in place: hook command $DEAD2_HOOK"* ]] \
+    && pass "install with a non-array event value still names a dead checkout's hook" \
+    || fail "install with a non-array event value (rc=$rc out=${out:0:300})"
+out="$(run --force)"; rc=$?
 [[ "$rc" -eq 0 && "$(n_holding PreToolUse "$DEAD2_HOOK")" -eq 0 ]] \
-    && pass "install with a non-array event value still removes a dead checkout's hook" \
-    || fail "install with a non-array event value (rc=$rc held=$(n_holding PreToolUse "$DEAD2_HOOK") out=${out:0:300})"
+    && pass "--force with a non-array event value still removes a dead checkout's hook" \
+    || fail "--force with a non-array event value (rc=$rc held=$(n_holding PreToolUse "$DEAD2_HOOK") out=${out:0:300})"
 jq -e '.hooks.ZzOdd == {a: 1}' "$SETTINGS" >/dev/null \
     && pass "...and leaves the non-array event value as it was" \
-    || fail "install changed the non-array event value ($(jq -c '.hooks.ZzOdd' "$SETTINGS"))"
+    || fail "install or --force changed the non-array event value ($(jq -c '.hooks.ZzOdd' "$SETTINGS"))"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
     && pass "--check is clean with a non-array event value once the dead hook is gone" \
