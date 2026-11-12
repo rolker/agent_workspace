@@ -1181,6 +1181,13 @@ if [[ $rc -eq 0 && "$(ran "$U2_MARKS")" == "a b c d e" \
 else
     fail "(u2) -j 3, all pass: every suite runs once, passing output hidden, today's closing line (rc=$rc, ran=$(ran "$U2_MARKS"), out=$out)"
 fi
+u2_rows=$(printf '%s\n' "$out" | sed -n '/^run_script_tests: suite times, slowest first:$/,/^$/p' \
+    | sed -n 's/^ *[0-9][0-9]*s  pass   \(test_[^ ]*\)$/\1/p' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')
+if [[ "$u2_rows" == "test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh" ]]; then
+    pass "(u2) the suite times list every suite once, with its seconds and status"
+else
+    fail "(u2) the suite times list every suite once, with its seconds and status (rows=$u2_rows, out=$out)"
+fi
 out=$("$RUNNER" -j 3 --show-passed "$U2" 2>&1); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qx '===== passed: test_c.sh =====' \
         && printf '%s\n' "$out" | grep -A1 -x '===== passed: test_c.sh =====' | grep -qx 'u2-output-c'; then
@@ -1191,7 +1198,7 @@ fi
 
 # --- Case (u3): a failing suite's output is not interleaved with
 #     another's. Two suites print 200 numbered lines each, slowly enough to
-#     overlap, and both fail; each block must come out whole. Run twice. ---
+#     overlap, and both fail; each block must come out whole. Run five times. ---
 U3="$TMPD/case_u3"
 mkdir -p "$U3"
 write_checkpoint_stub "$U3"
@@ -1205,7 +1212,7 @@ contiguous() {
     got="$(printf '%s\n' "$1" | grep -E '^[AB]-[0-9]+$' | sed -n "/^$2-1\$/,/^$2-200\$/p")"
     [[ "$got" == "$want" ]]
 }
-for round in 1 2; do
+for round in 1 2 3 4 5; do
     out=$("$RUNNER" -j 2 "$U3" 2>&1); rc=$?
     if [[ $rc -eq 1 ]] && contiguous "$out" A && contiguous "$out" B \
             && printf '%s\n' "$out" | grep -qx '===== FAILED: test_A.sh =====' \
