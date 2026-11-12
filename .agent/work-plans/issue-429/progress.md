@@ -1044,3 +1044,51 @@ Checks run:
 **Decision**: address
 
 Round 2 of this diff (the counter says 5 because it carries part 1's reviews). Two must-fix, both in the new version parser: a comment directly after "version:" is read as the ref; a quoted value is cut at the closing quote with the rest of the line unchecked. One suggestion: single_project's error text when ls-remote fails for a reason other than the timeout. Fix all three, then a narrow convergence review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `f30044c0`
+**Addressed**: Local Review (Pre-Push) at `45ad3988` (2026-11-12 18:26 -05:00)
+**Commits**: ff1297ef, 25407246, f30044c0
+
+### Actions
+- [x] (must-fix) A comment right after the key (`version:  # TODO pin`, `version: #main`) now leaves the value empty, before any trimming; `repo_pin` refuses it as "has an empty version:". Tests: `test_repo_pin_reads_version_as_yaml` (both forms), `test_repos_entries_parser_table` — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`
+- [x] (must-fix) A quoted value is unquoted only when nothing but whitespace and a ` #` comment follows its closing quote; otherwise the raw text (quotes included) is emitted and `repo_pin`'s quote guard refuses it. The parser now unquotes for every caller (so `adapter_sync` compares a quoted pin to the branch correctly) and `repo_pin` dropped its own strip. Fixed with finding 1 in one commit (ff1297ef): same lines. Tests: `test_repo_pin_reads_version_as_yaml` (`'stable''next'`, `"main" extra`, `"x\"y"`, `"main"#c` refused), `test_repos_entries_parser_table`, `test_sync_reads_quoted_and_commented_pins` (sync pulls `"fakefox" # pinned`, fetches the comment-only pin as `pinned: `; validate sees both repos). ADR-0019 states the rules (25407246) — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`
+- [x] (suggestion) `single_project`: an `ls-remote` failure other than the timeout now says "origin could not be asked (git ls-remote exited <rc>)"; "origin did not name its HEAD" stays for an origin that answers without a branch HEAD. Test: `test_repo_pin_undetermined_fails` (unreachable origin; origin whose HEAD names a missing branch) — `.agent/project_types/single_project/adapter.sh:adapter_repo_pin`
+
+### Parser input table (`test_repos_entries_parser_table`)
+Text after `    version:` → value emitted (`repo_pin` outcome):
+
+| Input | Emitted | repo_pin |
+|-------|---------|----------|
+| ` pinned` | `pinned` | ref |
+| ` fix#12` | `fix#12` | ref |
+| ` fix # a comment` | `fix` | ref |
+| ` "fix#12"` | `fix#12` | ref |
+| ` 'v1.0'` | `v1.0` | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | ref |
+| `  'v1.0'   ` | `v1.0` | ref |
+| `  # TODO pin` (comment only) | empty | refused, empty |
+| ` #main` | empty | refused, empty |
+| (nothing) | empty | refused, empty |
+| ` ""` | empty | refused, empty |
+| ` dev` + CRLF | `dev` | ref |
+| ` "dev"` + CRLF | `dev` | ref |
+| ` dev # c` + CRLF | `dev` | ref |
+| ` "fix` | `"fix` | refused, quote |
+| ` fix'` | `fix'` | refused, quote |
+| ` fi"x` | `fi"x` | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | refused, quote |
+| ` "main" extra` | `"main" extra` | refused, quote |
+| ` "x\"y"` | `"x\"y"` | refused, quote |
+| ` "main"#c` | `"main"#c` | refused, quote |
+| no `version:` key | name alone (with `--all`) | own message |
+
+`adapter_validate` reads only names, and every row emits its name; `adapter_sync` gets the emitted value (checked end to end for the quoted+comment and comment-only rows).
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
