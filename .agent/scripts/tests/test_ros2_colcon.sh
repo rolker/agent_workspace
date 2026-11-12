@@ -1585,7 +1585,8 @@ test_repo_pin_kinds_online() {
     proj="$(make_colcon_project "$sb")"
     sha="$(make_pin_pkg "$sb" "$proj" l1 pkg_a)"
     local kind ref pair
-    for pair in "pinned=branch" "v1.0=tag" "$sha=commit" "nowhere=unknown"; do
+    # An uppercase sha is a commit too: git reads object names in either case.
+    for pair in "pinned=branch" "v1.0=tag" "$sha=commit" "${sha^^}=commit" "nowhere=unknown"; do
         ref="${pair%%=*}"
         kind="${pair#*=}"
         write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=$ref" "pkg_b=fakefox"
@@ -1762,6 +1763,10 @@ test_repo_pin_not_cloned() {
     assert_contains "says not cloned" "not a cloned repository" "$(< "$err")"
     out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
     assert_eq "full sha is a commit" "0123456789abcdef0123456789abcdef01234567	commit" "$out"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" \
+        "pkg_b=0123456789ABCDEF0123456789ABCDEF01234567"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "uppercase full sha is a commit" "0123456789ABCDEF0123456789ABCDEF01234567	commit" "$out"
 }
 
 test_repo_pin_not_found() {

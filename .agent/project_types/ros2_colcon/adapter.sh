@@ -899,7 +899,8 @@ adapter_worktree_env() {
 _rc_pin_kind() {
     local dir="$1" ref="$2" out kind="" toplevel dir_real
     local is_hex=false
-    [[ "$ref" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] && is_hex=true
+    # Either case: git reads an object name case-insensitively.
+    [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] && is_hex=true
     # A ref git cannot name as a branch or tag is never asked about.
     if ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
         if [ "$is_hex" = true ]; then echo commit; else echo unknown; fi

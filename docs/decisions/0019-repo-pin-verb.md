@@ -51,7 +51,7 @@ Add `repo_pin` to `REQUIRED_VERBS` (13 verbs):
   one answer. The kind comes from git, in the package checkout under the
   layer's `src/`: on origin, `refs/heads/<ref>` is a branch, then
   `refs/tags/<ref>` a tag (a same-named tag does not stop a branch), then a
-  40- or 64-hex ref is a commit, else unknown. A remote-tracking ref left
+  40- or 64-hex ref (either case) is a commit, else unknown. A remote-tracking ref left
   behind after the branch was deleted on origin is not enough when origin
   answers. When origin cannot be asked, or the repository is not cloned, the
   local refs (`refs/remotes/origin/<ref>`, `refs/tags/<ref>`) decide and a
