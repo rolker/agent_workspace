@@ -896,3 +896,35 @@ The revision resolves both must-fixes, the Flexibility findings and the `--base`
 Host read the second Plan Review (ready). Carried to the implementer: `repo_pin` is recorded in a new short ADR, with only a one-line Status note on ADR-0011 (ADR-0008 forbids editing its verb table); the four "all 12 verbs implemented" assertions and the two "12-verb" texts become 13; `repo_pin` takes the layer, or refuses naming both, when a repository is pinned in two layers; two exits in the GitHub table are reworded as the review says; `_m_rel` is carried in `_PKG_MATCHES` for 2b. Order: the verb with its ADR is its own pull request first; the base mechanism follows it; 2b in parallel.
 
 NOT dispatched: the owner's stop time (15:00 on 2026-11-10) was reached, and no phase starts after it. The loop resumes here: the next step is the implement pass for the verb's pull request.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 17:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `bfe6ebba`
+**Commits**: afd01eac, bfe6ebba
+
+Scope of this pass: the verb's pull request only, the first of part 2's pull requests, as the plan checkpoint of 2026-11-10 15:00 ordered ("the verb with its ADR is its own pull request first; the base mechanism follows it; 2b in parallel"). The base mechanism (2a steps 3 to 8) and 2b are later pull requests and are not on this branch.
+
+- `afd01eac` `repo_pin <repo> [--layer <l>]` is the 13th entry of `REQUIRED_VERBS` (`.agent/scripts/adapter`, header and usage). It prints `<ref><TAB><kind>`, kind `branch`, `tag`, `commit` or `unknown`.
+  - `ros2_colcon`: the `version:` of the repo in `repos/<layer>.repos` (through `_rc_repos_entries`), quotes stripped. On origin, `refs/heads/<ref>` is a branch, then `refs/tags/<ref>` a tag. A 40- or 64-hex ref is a commit, else unknown. When origin cannot be asked, or the repo is not cloned, the local refs decide and stderr says "unverified". A repo pinned in two layers at different refs refuses, naming each layer and ref, unless `--layer` is given.
+  - `single_project`: only the name `adapter repos` prints. It answers `origin/HEAD`, else `ls-remote --symref origin HEAD`, kind `branch`. It exits 1 when neither answers, and refuses `--layer`.
+  - Tests: `test_adapter.sh` gets 6 cases, among them the validator on a type that lacks only `repo_pin`. `test_ros2_colcon.sh` gets 8 cases: all four kinds online, branch before tag, a branch deleted upstream with a stale remote ref (unknown), offline fallback including a local-only branch, not cloned, quoted refs, not found, and two layers. The four "all 12 verbs implemented" assertions now say 13.
+- `bfe6ebba` New `docs/decisions/0019-repo-pin-verb.md`. ADR-0011 gets only a Status-line and References addendum (ADR-0008). Other texts:
+  - `docs/design.md`: the contract bullet says 13 verbs and what the verb does; Table 2 gets the row (tally 5 real); the decision register gets the 0019 row, and ADR-0011's row says 13; a change-log row (917 lines).
+  - `principles_review_guide.md`: "13-verb", and a 0019 row.
+  - `script_reference.md`: the `adapter` row.
+
+### Adaptations from the plan
+- Drift check against the tree after the merge from main: `REQUIRED_VERBS` still had 12 entries. `_rc_repos_entries`, `adapter_worktree_repos`'s owning rule and the four assertions were where the reviews cited them, and the "12-verb" texts were at `docs/design.md:347` (the review said 341) and `principles_review_guide.md:46`. No mechanical drift changed a step.
+- Kind lookup: the plan's separate `ls-remote --heads` and `--tags` calls are replaced by one `ls-remote origin refs/heads/<ref> refs/tags/<ref>` call. Its output is compared exactly, because ls-remote patterns match on the tail. A ref that `git check-ref-format` rejects is never sent to origin.
+- "Unverified" is a NOTE on stderr. The stdout line stays the plan's two fields.
+- Not cloned: a 40- or 64-hex ref is still `commit`, since that needs no repository. Any other ref is `unknown`.
+- Two layers: the same ref in several layers is one answer. Only different refs refuse. The checkpoint's wording ("takes the layer, or refuses naming both") does not cover equal refs.
+- Not in the plan's file list, added as consequences: Table 2 of the design (the dated verb probe), the review guide's 0019 row (its "An ADR" consequence row), and the decision-register row, which `check_design_anchors.sh` requires for every ADR file.
+- Issue 436 is untouched. The plan's note that whichever of the two quote-strippers lands second drops the duplicate still stands.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0.
+  - Hooks: adapter contract, design anchors, shellcheck, and the script-suite hook. The hook selects 40 suites (`suites_for_files.sh` over the in-scope files; the adapters reach most suites), and every one passed.
+  - Run on their own while building: test_adapter 139/0, test_ros2_colcon 254/0.
