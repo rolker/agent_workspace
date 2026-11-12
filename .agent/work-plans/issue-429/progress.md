@@ -1092,3 +1092,46 @@ Text after `    version:` → value emitted (`repo_pin` outcome):
 
 ### Checks
 - Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a590f22537565001a, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `3ab6be9d`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; the whole diff extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 3 | **Ship**: recommended (no must-fix findings; the remaining suggestions can be applied or tracked)
+
+**Round note:** the dispatcher says round 6, and its counter carries part 1's reviews. This is round 3 of this diff. Per the round-3 convergence rule:
+- Scope: the round-2 findings and the fix diff `6444f844..3ab6be9d` (ff1297ef, 25407246, f30044c0).
+- Cross-model: skipped (round-3 convergence check, per handoff).
+- A fresh Claude adversarial sub-review ran.
+
+**Round-2 findings, all three addressed:**
+- A comment after the key is now an empty value, which is refused.
+- A quoted value counts only when nothing but a comment follows its closing quote; otherwise it is emitted raw and the quote guard refuses it.
+- `single_project` says "origin could not be asked (git ls-remote exited N)".
+
+**The parser table:** all 21 rows plus the no-`version:` row were run through the real `_rc_repos_entries` (`test_repos_entries_parser_table` sources the adapter). Every row emits what the Implementation table says.
+
+**Callers:**
+- `adapter_sync` changes only as claimed: main's `$2` parse kept `"fakefox"`, so a quoted pin never matched its branch; it now pulls. Comment-only pins were already empty on main.
+- `adapter_validate` reads names only, so it is unchanged.
+
+**Rounds 1-2:** nothing regressed (CRLF, `#` inside a ref, `--all`, uppercase sha, bounded `ls-remote`, first cloned layer).
+
+**Checks:**
+- test_ros2_colcon: 327 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck at warning severity: rc 0.
+- `validate_adapter.sh`: 13/13 verbs for both types.
+- No leftover `sleep 300` processes.
+
+### Findings
+- [ ] (suggestion) In `adapter_sync`, an empty pinned version on a detached checkout equals the empty `git branch --show-current`. Sync then takes the pull path, which fails ("pull failed (continuing)"), and skips the fetch. This diff widens the case from a literal empty `version:` to comment-only and `""` pins, and it does no harm beyond the skipped fetch. Fix: take the pull path only when `$branch` is non-empty (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:607`
+- [ ] (suggestion) A double-quoted value with backslash escapes is not decoded: `"a\" #b"` gives `a\`, and `"v\x31.0"` gives `v\x31.0`, both with exit 0. Each still contains a backslash, which git forbids in a ref, so the kind is `unknown`, which callers refuse; no wrong base results. Add `\\` to the guard's character class so the error message is right (Claude adversarial; this predates the diff) — `.agent/project_types/ros2_colcon/adapter.sh:1048`
+- [ ] (suggestion) YAML typing of plain scalars is ignored. vcstool checks out `str(value)`, so `version: 1.10` is `1.1` to vcstool, while repo_pin answers `1.10<TAB>tag` (and `null`, `yes` or `!!str x` similarly). Refuse plain values that YAML types as a number, null or bool, or that start with `!`, `>`, `|`, `&` or `*`, or track it in a follow-up issue. This predates the diff and was not introduced in this round (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:236-262`
