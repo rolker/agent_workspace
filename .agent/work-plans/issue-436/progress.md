@@ -877,3 +877,26 @@ The host read the Integrated Review entry at a36c6346. The fix pass corrects the
 - [x] (host-directed, not a review finding) section introduction now says the rules describe what the checks aim at, and that known gaps are named where they apply and tracked in #447 — `tools/ros-manifest/README.md:79-80` (2abd515b)
 
 Branch-wide `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: all hooks passed (exit 0), script suite included. README only; no code or tests changed. Not pushed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 13:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #449 at `2b4375a7`
+**Depth**: Deep (reason: whole-PR tier stays Deep for the CI workflow change and untrusted manifest content; this pass scoped by handoff to the fix diff a36c6346..2b4375a7, README only)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the Integrated Review's two findings and the three README commits b64b4544, db2663ad, 2abd515b (`tools/ros-manifest/README.md`, "What a manifest may contain"). Cross-model reviewers not run, per handoff (note: the skill's round-3 rule counts this as PR-mode round 1; the host's handoff set the scope). No separate adversarial subagent: the lead checked each sentence against the code and by reproduction. Static: `pre-commit run --files tools/ros-manifest/README.md` passed; CI at writing: ros-manifest tests, Validate Adapter Contract and Validate Documentation pass, Lint pending.
+
+Integrated Review suggestion: fixed as worded (db2663ad). A bad `default` is reported as "another string" or its type name (`schema.py:458-462`), never its value; the only message that prints a default is the redeclaration (`merge.py:99-102`), which sees parsed values only, `include` or `exclude`.
+
+Integrated Review must-fix: fixed as worded (b64b4544). Reproduced with `parse_manifest_text`: a string with U+202E inside `!!set` or `!!pairs` under an unknown per-distro key, or under an unknown `extends` key, is accepted; the same as a plain string is refused. Under a key the tool reads, a set is refused by its type check (`layers`, a group's `default`). "Under a key the tool ignores" is true: the only ignored keys are those under a per-distro entry and under `extends`.
+
+Untrue at this head: the carve-out names `!!set` and `!!pairs` but not `!!omap`. `!!omap` builds the same list of pairs, and `distros: {jazzy: {ref: main, extra: !!omap [{k: "x‮y"}]}}` (also under `extends`) is accepted. So "No string key or value may contain ..." states the opposite of the code for an `!!omap` value, and the new introduction (2abd515b, "the cases they are known not to reach are named where they apply") is untrue for it: `!!omap` was a known case, named in round 7's notes and in the checkpoint after it. The gap comes from round 7's own suggested wording, which this fix copied.
+
+Notes for #447 (not this verdict): an unknown key under a per-distro entry or under `extends` is accepted silently; `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only, so `!!set`, `!!pairs` and `!!omap` contents are skipped. At this check #447's body and comments do not yet mention either, while the README says these cases are "tracked in #447".
+
+### Findings
+- [ ] (must-fix) carve-out omits `!!omap`, which is accepted unchecked the same way; with the introduction claiming known cases are named, both sentences are untrue for it. Mechanical: "a string inside a `!!set`, `!!pairs` or `!!omap` value under a key the tool ignores" — `tools/ros-manifest/README.md:113-114`
