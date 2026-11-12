@@ -622,6 +622,83 @@ registry_require_root() {
     return 1
 }
 
+# Print the main checkout of the workspace repository whose checkout is
+# <root> (issue #295), which holds the gitignored registry a linked
+# worktree does not have. It decides the "is a project registered?"
+# messages only; the mirror in lib/workspace.py is get_main_checkout_root.
+# The rule:
+#   - <root> is not the top level of its own repository (not a git
+#     checkout, or a plain directory inside another repository, which must
+#     not borrow that repository's registry): print <root>;
+#   - git's --git-dir equals its --git-common-dir (a main checkout, also
+#     one made with `git clone --separate-git-dir`): print <root>;
+#   - otherwise (a linked worktree): print the first worktree that
+#     `git worktree list --porcelain` names, which is the main checkout,
+#     when that is a directory that is the top level of a checkout sharing
+#     this common dir; else print <root>.
+# Any git failure prints <root>. Always returns 0.
+# Usage: main="$(registry_main_checkout "$root")"
+registry_main_checkout() {
+    local root="$1" abs top gitdir common main mtop mcommon
+    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\n' "$root"; return 0; }
+    top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" &&
+        top="$(cd "$top" 2>/dev/null && pwd -P)" &&
+        [ "$top" = "$abs" ] &&
+        gitdir="$(git -C "$abs" rev-parse --path-format=absolute --git-dir 2>/dev/null)" &&
+        gitdir="$(cd "$gitdir" 2>/dev/null && pwd -P)" &&
+        common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
+        common="$(cd "$common" 2>/dev/null && pwd -P)" ||
+        { printf '%s\n' "$root"; return 0; }
+    if [ "$gitdir" = "$common" ]; then
+        printf '%s\n' "$root"
+        return 0
+    fi
+    main="$(git -C "$abs" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')" || main=""
+    [ -n "$main" ] &&
+        main="$(cd "$main" 2>/dev/null && pwd -P)" &&
+        mtop="$(git -C "$main" rev-parse --show-toplevel 2>/dev/null)" &&
+        mtop="$(cd "$mtop" 2>/dev/null && pwd -P)" &&
+        [ "$mtop" = "$main" ] &&
+        mcommon="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
+        mcommon="$(cd "$mcommon" 2>/dev/null && pwd -P)" &&
+        [ "$mcommon" = "$common" ] ||
+        { printf '%s\n' "$root"; return 0; }
+    printf '%s\n' "$main"
+}
+
+# Print the GitHub slug (owner/repo) of the `origin` remote of every
+# registered non-parent root, one per line, for the repo-safety checks of
+# gh_create_pr.sh and gh_create_issue.sh (issue #295): a project session
+# runs from the project's own checkout, so its repository is accepted
+# because it is registered, not because of a project/ symlink. Only
+# github.com remotes are reduced (the same sed the callers apply to their
+# own remote); an entry whose root is not a git checkout, has no origin or
+# a non-GitHub origin prints nothing. "Not a git checkout" means the root is
+# not the top level of its own repository: git would otherwise walk up from
+# a plain directory to an enclosing repository (the workspace, say) and
+# return that repository's origin, so the entry is skipped unless
+# `rev-parse --show-toplevel` is the root itself. A missing registry or one
+# with parse errors prints nothing; always returns 0 (callers run under
+# set -e).
+# Usage: slugs=$(registry_repo_slugs "$root")
+registry_repo_slugs() {
+    local root="$1" entries name type path abs top remote
+    entries="$(registry_entries "$root" 2>/dev/null)" || return 0
+    [ -n "$entries" ] || return 0
+    while IFS=$'\t' read -r name type path; do
+        [ -z "$name" ] && continue
+        [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
+        abs="$(cd "$path" 2>/dev/null && pwd -P)" || continue
+        top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" || continue
+        top="$(cd "$top" 2>/dev/null && pwd -P)" || continue
+        [ "$top" = "$abs" ] || continue
+        remote="$(git -C "$abs" remote get-url origin 2>/dev/null)" || continue
+        [[ "$remote" == *github.com[:/]* ]] || continue
+        printf '%s\n' "$remote" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//'
+    done <<< "$entries"
+    return 0
+}
+
 # ------------------------------------------- per-project settings (#332) ---
 # The file .agent/projects.d/<name>; grammar and keys in the header above.
 

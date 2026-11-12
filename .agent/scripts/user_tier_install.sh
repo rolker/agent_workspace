@@ -17,7 +17,7 @@
 #      .claude/hooks/log-tool-use.sh. It carries the registry_require_root
 #      guard, so it is inert outside the workspace checkout and outside every
 #      registered root. (The tool-mapping hook was promoted alongside it and
-#      retired by #328; --check reports a leftover entry for it as drift.)
+#      retired by #328; --check reports a leftover command for it as drift.)
 #   4. Permission allow-rules for the promoted scripts in
 #      .agent/user_tier_scripts.txt, by absolute path.
 #   5. The agent-workspace Claude Code plugin (ADR-0018), enabled at local
@@ -58,9 +58,46 @@
 #   Those links were global to the machine and shadowed a project's own
 #   same-named skills. Install removes any left behind; --check reports them.)
 #
-# Every entry this script writes into ~/.claude/settings.json is tagged
-# "_agent_workspace": "<this checkout>", which is what makes --check able to
-# tell OUR entries from the user's own and from another checkout's.
+# Hook commands in ~/.claude/settings.json are recognised by their path, one
+# command at a time, because the `claude plugin` commands rewrite that file
+# and drop any key they do not know (#394). One function, classify_hooks,
+# decides for --check, install, --force and --uninstall. A command is
+# classified only when it is exactly a command this script writes or wrote
+# (the SessionStart link, or this checkout's path -- lexical or physical --
+# + /.claude/hooks/<name>), exactly <marker>/.claude/hooks/<name> inside an
+# entry marked with <marker> (below), or when
+# the whole command string is a literal absolute path -- it starts with `/`
+# and holds no whitespace, quote, `$`, `~`, backslash, glob character or
+# shell operator -- of the form <dir>/.claude/hooks/<name>, <name> a hook
+# this script writes or has retired (INSTALLER_HOOK_NAMES,
+# RETIRED_HOOK_NAMES). Such a command is:
+#   - ours: <dir> is this checkout (its physical path too, so a symlinked
+#     alias counts);
+#   - another checkout's: <dir> holds .agent/user_tier_scripts.txt (the test
+#     foreign_skill_link uses);
+#   - dead, left by a checkout since moved or deleted: <dir> itself is not
+#     on disk (a <dir> that exists and lacks only the file is someone's
+#     project, not a dead checkout).
+# What a mode removes is only what it can attribute to this installer: ours,
+# and a dead command that sits in an entry marked with that command's own
+# checkout (below). Any other dead command -- unmarked, or in an entry
+# marked with another checkout -- is not proof of anything -- a drive that is not
+# mounted looks the same -- so it is reported, by --check as drift and by
+# install as a note, each naming the command and the remedy, and removed
+# only by --force. --force also removes another checkout's commands. Every
+# command a run removes that it does not write back is printed, with the
+# path of the settings.json backup taken before the change.
+# Anything else -- a quoted or variable path, an interpreter prefix, a
+# trailing argument, `~` or a relative path, any other name -- is the
+# user's, and is never removed, reported or rewritten, whatever it looks
+# like. Only the classified commands are removed from an entry; the user's
+# own commands in the same entry, and its other keys, stay, and an entry is
+# dropped only when no command is left in it. Earlier generations tagged
+# each entry "_agent_workspace": "<checkout>". That marker is no longer
+# written, but it is still read where an entry carries it: a classified
+# command under the marked checkout is that checkout's. Install and
+# --uninstall drop this checkout's marker from every entry, and --force
+# every marker, whether or not a command was removed from the entry.
 #
 # Modes:
 #   (default)            install or repair; idempotent, safe to re-run
@@ -70,9 +107,10 @@
 #                        it. Exits 1 on drift when it IS installed.
 #   --check --require    also exit 1 when it is not installed, for a machine
 #                        that expects it.
-#   --uninstall          remove every entry tagged with this checkout, and
-#                        the plugin from every root where this checkout
-#                        declared it (another checkout's is left alone).
+#   --uninstall          remove this checkout's hook commands and
+#                        allow-rules, and the plugin from every root where
+#                        this checkout declared it (another checkout's is
+#                        left alone).
 #   --disable-root <name>
 #                        remove the plugin from one registered root, the
 #                        way --uninstall does for every root (this
@@ -144,6 +182,8 @@ KNOWN_MARKETPLACES="$CLI_HOME/plugins/known_marketplaces.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
 
+# The "_agent_workspace" marker value an earlier generation wrote for this
+# checkout. Read where present, never written (header).
 TAG="$WS_ROOT"
 
 # Modes are mutually exclusive. Previously they were last-one-wins, so
@@ -273,9 +313,176 @@ installed_rules_json() {
     jq -n --argjson a "$recorded" --argjson b "$(allow_rules_json)" '($a + $b) | unique'
 }
 
+# The hooks this script registers by checkout path, and the ones an earlier
+# generation registered and #328 retired (checked across the script's
+# history: no generation wrote any other). Together they are the only names
+# classify_hooks recognises.
+INSTALLER_HOOK_NAMES=(log-tool-use.sh)
+RETIRED_HOOK_NAMES=(block-bash-tool-mapping.sh)
+
 hook_commands() {
-    echo "$WS_ROOT/.claude/hooks/log-tool-use.sh"
+    local n
+    for n in "${INSTALLER_HOOK_NAMES[@]}"; do
+        echo "$WS_ROOT/.claude/hooks/$n"
+    done
 }
+
+# Shared jq definition: the hook entries of a settings file, type-guarded,
+# so an event whose value is not an array (or an entry that is not an
+# object) is skipped rather than an error that empties every list built on
+# it.
+HOOK_ENTRIES_JQ='def hook_entries: .hooks // {} | objects | .[] | arrays | .[] | objects;
+    def entry_commands: .hooks | arrays | .[] | objects | .command | strings;'
+
+# Any character that makes a command string something other than a literal
+# path: whitespace, a quote, `$`, `~`, a backslash, a glob character or a
+# shell operator.
+NOT_LITERAL_RE='[][[:space:]'"'"'"$~\;&|<>()`*?{}!#]'
+
+# Whose is a checkout-shaped <dir>? self: this checkout (lexical or
+# physical); foreign: it holds .agent/user_tier_scripts.txt (another
+# checkout); dead: <dir> itself is not on disk (a checkout since moved or
+# deleted -- or an unmounted drive); named: it exists and is none of these.
+dir_class() {  # <dir>
+    local phys=""
+    [[ -d "$1" ]] && phys="$(cd "$1" 2>/dev/null && pwd -P)"
+    if [[ "$1" == "$WS_ROOT" || "$1" == "$WS_PHYS" || "$phys" == "$WS_PHYS" ]]; then
+        echo self
+    elif [[ -f "$1/.agent/user_tier_scripts.txt" ]]; then
+        echo foreign
+    elif [[ ! -e "$1" ]]; then
+        echo dead
+    else
+        echo named
+    fi
+}
+
+# THE rule that decides whose a hook command is (header; #394). Every mode
+# that reports or removes a hook command -- --check, install, --force,
+# --uninstall -- classifies through this function and nothing else. Prints
+# one JSON object, keyed by command, for the commands it classifies:
+#   {"<command>": {"class": "self"|"foreign"|"dead"|"named"|"marked",
+#                  "dir": "<dir>", "as": <dir_class of a marked <dir>>}}
+#   self:    exactly a command this script writes or wrote -- the
+#            SessionStart link, or $WS_ROOT or $WS_PHYS +
+#            /.claude/hooks/<name> -- or a literal <dir>/.claude/hooks/<name>
+#            with <dir> this checkout (dir_class);
+#   foreign, dead, named: a literal <dir>/.claude/hooks/<name>, by
+#            dir_class. A named one is the user's, unless an entry marked
+#            with <dir> holds it (owner, below);
+#   marked:  exactly <marker>/.claude/hooks/<name> for a marker some entry
+#            carries, though not literal (a space in the path, say). Only an
+#            entry marked with <dir> attributes it ("as" says to whom);
+#            anywhere else it is the user's.
+# A command not in the object is the user's. <name> must be one of
+# INSTALLER_HOOK_NAMES or RETIRED_HOOK_NAMES. A jq failure is an error
+# (return 1, a message on stderr), never an empty object: an empty one
+# would read as "nothing to remove" and let a run report current.
+classify_hooks() {  # <settings json>
+    local enc menc b cmd dir name n w m class known as
+    local -a out=() written=("$SESSION_HOOK_LINK")
+    local -A marked=()
+    for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
+        written+=("$WS_ROOT/.claude/hooks/$n" "$WS_PHYS/.claude/hooks/$n")
+    done
+    enc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | entry_commands] | unique | .[] | @base64' <<< "$1")" \
+        && menc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | ._agent_workspace | strings | select(. != "")] | unique | .[] | @base64' <<< "$1")" || {
+        echo "ERROR: could not read the hook commands in $SETTINGS (jq failed) -- nothing changed" >&2
+        return 1
+    }
+    while IFS= read -r b; do
+        [[ -z "$b" ]] && continue
+        m="$(base64 -d <<< "$b"; printf x)" || return 1
+        m="${m%x}"
+        for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
+            marked["$m/.claude/hooks/$n"]="$m"
+        done
+    done <<< "$menc"
+    while IFS= read -r b; do
+        [[ -z "$b" ]] && continue
+        # The x keeps a trailing newline in the command from being stripped.
+        cmd="$(base64 -d <<< "$b"; printf x)" || return 1
+        cmd="${cmd%x}"
+        class=""
+        dir=""
+        as=""
+        for w in "${written[@]}"; do
+            [[ "$cmd" == "$w" ]] && class=self
+        done
+        if [[ -n "$class" ]]; then
+            :
+        elif [[ "$cmd" == /* ]] && ! [[ "$cmd" =~ $NOT_LITERAL_RE ]] \
+             && [[ "$cmd" =~ ^(/.*)/\.claude/hooks/([^/]+)$ ]]; then
+            dir="${BASH_REMATCH[1]}"
+            name="${BASH_REMATCH[2]}"
+            known=false
+            for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
+                [[ "$name" == "$n" ]] && known=true
+            done
+            [[ "$known" == true ]] && class="$(dir_class "$dir")"
+        elif [[ -n "${marked["$cmd"]+set}" ]]; then
+            dir="${marked["$cmd"]}"
+            class=marked
+            as="$(dir_class "$dir")"
+        fi
+        [[ -n "$class" ]] || continue
+        out+=("$(jq -cn --arg c "$cmd" --arg k "$class" --arg d "$dir" --arg a "$as" '{($c): {class: $k, dir: $d, as: $a}}')") || return 1
+    done <<< "$enc"
+    if ((${#out[@]})); then
+        printf '%s\n' "${out[@]}" | jq -cs 'add'
+    else
+        echo '{}'
+    fi || { echo "ERROR: could not classify the hook commands in $SETTINGS (jq failed) -- nothing changed" >&2; return 1; }
+}
+
+# jq definitions shared by --check, install and --uninstall, on top of
+# HOOK_ENTRIES_JQ. With $cls (from classify_hooks), $tag, $force and $dead
+# bound:
+#   owner($m): whose is the command (.) in an entry whose marker is $m (""
+#     when unmarked)? "self", "foreign", "dead", or null for the user's. A
+#     "named" or "marked" command is the marked checkout's when its <dir> is
+#     the marker, and the user's anywhere else.
+#   attributed($m): is the dead command (.) in an entry marked with its own
+#     checkout (its <dir> is the marker)? Only then is it this installer's.
+#   remove($m): ours; a dead one when $dead (install, --force) and either
+#     attributed or under --force (any other is only reported: header);
+#     another checkout's under --force.
+#   prune: remove those commands from each entry of a hook event's array,
+#     keeping the entry's other commands and keys, and dropping an entry
+#     only when no command is left. An entry that loses a command drops its
+#     marker. Every entry marked with this checkout drops the marker, and
+#     under --force every marked entry does, whether or not a command was
+#     removed: otherwise --check reports the marker for good and no run
+#     clears it. An unmarked entry that loses nothing is left exactly as it
+#     is.
+PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
+    def owner($m):
+        ($cls[.] // null) as $k
+        | if $k == null then null
+          elif $k.class == "named" then
+              (if ($m | type) == "string" and $m != "" and $k.dir == $m
+               then (if $m == $tag then "self" else "foreign" end) else null end)
+          elif $k.class == "marked" then
+              (if ($m | type) == "string" and $m != "" and $k.dir == $m
+               then (if $k.as == "self" or $k.as == "dead" then $k.as else "foreign" end) else null end)
+          else $k.class end;
+    def marked($m): ($m | type) == "string" and $m != "";
+    def attributed($m): marked($m) and ($cls[.] // {}).dir == $m;
+    def remove($m):
+        owner($m) as $o
+        | $o == "self" or ($o == "dead" and $dead and (attributed($m) or $force))
+          or ($o == "foreign" and $force);
+    def unmark($m):
+        if $m != "" and ($m == $tag or $force) then del(._agent_workspace) else . end;
+    def prune:
+        map(
+            (._agent_workspace // "") as $m
+            | if any(.hooks[]?; (.command? | strings) | remove($m))
+              then (.hooks |= map(select(((.command? | strings) // "") as $c | ($c != "" and ($c | remove($m))) | not)))
+                   | del(._agent_workspace)
+                   | select((.hooks // []) | length > 0)
+              else unmark($m) end);
+'
 
 # --------------------------------------------------------------- helpers ---
 installed() {
@@ -323,9 +530,24 @@ read_settings() {
     fi
 }
 
+# The hook events install adds an entry to must hold an array, or nothing:
+# placing our entry in any other value would replace it, and drop whatever
+# it held. Prints one line per such value; nothing when the shape is fine.
+hook_shape_errors() {  # <settings json>
+    jq -r '
+        if .hooks == null then empty
+        elif (.hooks | type) != "object" then "\"hooks\" is \(.hooks | type), not an object"
+        else .hooks | to_entries[]
+             | select(.key == "PreToolUse" or .key == "SessionStart")
+             | select(.value != null and (.value | type) != "array")
+             | "\"hooks.\(.key)\" is \(.value | type), not an array"
+        end' <<< "$1"
+}
+
 # A timestamped copy beside the original, before any rewrite. Cheap, and the
 # difference between a bad merge being an annoyance and being a data loss.
 BACKUP_KEEP=5
+BACKUP_PATH=""   # the newest backup this run took, for the messages that cite it
 backup_settings() {
     local stamp dest n=0
     [[ -f "$SETTINGS" ]] || return 0
@@ -340,6 +562,7 @@ backup_settings() {
         dest="$SETTINGS.agent-workspace-backup.$stamp-$n"
     done
     cp -p "$SETTINGS" "$dest" || return 1
+    BACKUP_PATH="$dest"
     echo "  backed up $SETTINGS -> $dest"
 
     # Keep only the newest few: these accumulate on every install, and an
@@ -383,10 +606,11 @@ write_settings() {  # <json on stdin>
         local staged="$real.agent-workspace.$$"
         cp "$tmp" "$staged" || { rm -f "$tmp" "$staged"; return 1; }
         rm -f "$tmp"
-        mv "$staged" "$real"
+        # A failed rename is a failed write: callers stop on it.
+        mv "$staged" "$real" || { rm -f "$staged"; return 1; }
         return 0
     fi
-    mv "$tmp" "$SETTINGS"
+    mv "$tmp" "$SETTINGS" || { rm -f "$tmp"; return 1; }
 }
 
 # CLAUDE_CONFIG_DIR moves where the CLI reads its settings from, but the
@@ -951,6 +1175,45 @@ if [[ "$MODE" == "uninstall" ]]; then
         echo "agent_workspace user tier: nothing installed at $CLAUDE_DIR"
         exit 0
     fi
+    # The same order as install: settings.json is read, classified, its
+    # rewrite built and backed up, and written, before anything else is
+    # removed. Any failure up to and including that write exits 1 with
+    # everything as it was -- the root file, the rules record, the link and
+    # the plugin still in place -- rather than a tier that reads as removed
+    # while our hook commands still run from settings.json.
+    if [[ -f "$SETTINGS" ]]; then
+        require_parseable_settings || exit 1
+        # This checkout's commands only (classify_hooks); another checkout's
+        # and dead ones are install's to clear. The user's commands in the
+        # same entry stay, and this checkout's marker goes from every entry.
+        uninstall_settings="$(read_settings)"
+        uninstall_cls="$(classify_hooks "$uninstall_settings")" || exit 1
+        uninstall_rules="$(installed_rules_json)" || {
+            echo "ERROR: could not read the allow-rules this checkout wrote ($RULES_FILE) -- nothing changed" >&2
+            exit 1
+        }
+        uninstall_merged="$(jq --arg tag "$TAG" --argjson force false --argjson dead false \
+            --argjson cls "$uninstall_cls" \
+            --argjson rules "$uninstall_rules" "$PRUNE_JQ_DEFS"'
+            .hooks //= {} |
+            .hooks |= with_entries(
+                .value |= (if type == "array" then prune else . end)
+            ) |
+            .hooks |= with_entries(select(.value | length > 0)) |
+            if (.permissions.allow? // null) != null then
+                .permissions.allow |= map(select(. as $a | ($rules | index($a)) == null))
+            else . end
+        ' <<< "$uninstall_settings")" || {
+            echo "ERROR: could not build the rewrite of $SETTINGS (jq failed: see above) -- nothing changed" >&2
+            exit 1
+        }
+        backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding; nothing changed" >&2; exit 1; }
+        write_settings <<< "$uninstall_merged" || {
+            echo "ERROR: failed to write $SETTINGS -- nothing changed (the backup above is a copy of it)" >&2
+            exit 1
+        }
+        echo "  removed this checkout's hook commands and allow-rules from $SETTINGS"
+    fi
     [[ -f "$ROOT_FILE" ]] && [[ "$(cat "$ROOT_FILE")" == "$WS_ROOT" ]] && rm -f "$ROOT_FILE" \
         && echo "  removed $ROOT_FILE"
     [[ -L "$SESSION_HOOK_LINK" ]] && rm -f "$SESSION_HOOK_LINK" \
@@ -982,22 +1245,9 @@ if [[ "$MODE" == "uninstall" ]]; then
         esac
     done <<< "$PLUGIN_ROOTS"
     uninstall_plugin_from "$WS_ROOT"
-    if [[ -f "$SETTINGS" ]]; then
-        require_parseable_settings || exit 1
-        backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
-        read_settings | jq --arg tag "$TAG" --argjson rules "$(installed_rules_json)" '
-            .hooks //= {} |
-            .hooks |= with_entries(
-                .value |= map(select((._agent_workspace // "") != $tag))
-            ) |
-            .hooks |= with_entries(select(.value | length > 0)) |
-            if (.permissions.allow? // null) != null then
-                .permissions.allow |= map(select(. as $a | ($rules | index($a)) == null))
-            else . end
-        ' | write_settings && echo "  removed settings entries tagged $TAG"
-    fi
-    # Only now: the rewrite above reads this file to find rules written by an
-    # earlier manifest generation, so removing it first would orphan them.
+    # Only once settings.json is rewritten: its rewrite read this file to
+    # find rules written by an earlier manifest generation, and a failed
+    # rewrite exited above with the file still here.
     [[ -f "$RULES_FILE" ]] && rm -f "$RULES_FILE" && echo "  removed $RULES_FILE"
     if [[ "$uninstall_rc" -ne 0 ]]; then
         echo "agent_workspace user tier removed, except the plugin in the root(s) above." >&2
@@ -1049,68 +1299,111 @@ if [[ "$MODE" == "check" ]]; then
     settings="$(read_settings)"
     export WS_ROOT_PREFIX="$WS_ROOT/"
 
-    # Our hook entries, present and pointing at this checkout.
+    # Hook commands are judged by classify_hooks, marked or not (header;
+    # #394). A jq failure in any query built on it is an error, not a clean
+    # report.
+    cls_json="$(classify_hooks "$settings")" || exit 1
+    # Each caller adds `|| exit 1`: the function runs in a command
+    # substitution, where its own exit would end only that subshell.
+    class_query() {  # <jq filter> [jq args...] -- over settings.json, with the shared defs
+        jq -r --arg tag "$TAG" --argjson cls "$cls_json" --argjson force false --argjson dead true \
+            "${@:2}" "$PRUNE_JQ_DEFS$1" <<< "$settings" || {
+            echo "ERROR: could not check the hook commands in $SETTINGS (jq failed)" >&2
+            return 1
+        }
+    }
+
+    # Our hook commands, each exactly once under its own event -- what
+    # install leaves. A second copy (the duplicate #394's bug left behind)
+    # or a copy under another event is drift too: install removes it, so a
+    # --check that only asked "present anywhere?" would call current a file
+    # the next install changes.
     # while-read, not `for cmd in $(...)`: a checkout path containing a space
     # or a glob character would otherwise word-split into permanent drift.
-    while IFS= read -r cmd; do
-        if ! jq -e --arg c "$cmd" --arg tag "$TAG" '
-            [.hooks // {} | to_entries[] | .value[]
-             | select((._agent_workspace // "") == $tag)
-             | .hooks[]? | .command] | index($c) != null
-        ' <<< "$settings" >/dev/null; then
-            note "missing hook entry for $cmd"
+    check_event_count() {  # <command> <event>
+        local here elsewhere
+        here="$(class_query '[(.hooks // {} | objects | .[$ev]) | arrays | .[] | objects
+                | entry_commands | select(. == $c)] | length' --arg c "$1" --arg ev "$2")" || return 1
+        elsewhere="$(class_query '[.hooks // {} | objects | to_entries[] | select(.key != $ev)
+                | select(any(.value | arrays | .[] | objects | entry_commands; . == $c)) | .key]
+                | join(", ")' --arg c "$1" --arg ev "$2")" || return 1
+        if [[ "$here" -eq 0 ]]; then
+            note "missing hook entry for $1 (under $2)"
+        elif [[ "$here" -gt 1 ]]; then
+            note "hook command $1 is registered $here times under $2 (re-run the installer: it keeps one)"
         fi
-    done < <(hook_commands; printf '%s\n' "$SESSION_HOOK_LINK")
+        [[ -z "$elsewhere" ]] || note "hook command $1 is registered under $elsewhere, where it does not belong (re-run the installer: it keeps it under $2 only)"
+    }
+    # A hook event install would refuse to write into (hook_shape_errors).
+    shape_errors="$(hook_shape_errors "$settings")" || { echo "ERROR: could not check the hooks in $SETTINGS (jq failed)" >&2; exit 1; }
+    if [[ -n "$shape_errors" ]]; then
+        while IFS= read -r e; do
+            note "settings.json: $e -- the installer refuses to rewrite it; fix it by hand"
+        done <<< "$shape_errors"
+    fi
+    while IFS= read -r cmd; do
+        check_event_count "$cmd" PreToolUse || exit 1
+    done < <(hook_commands)
+    check_event_count "$SESSION_HOOK_LINK" SessionStart || exit 1
 
-    # Entries tagged as ours but naming a path outside this checkout, or
-    # tagged for a DIFFERENT checkout (a second clone installed over us).
-    foreign="$(jq -r --arg tag "$TAG" '
-        [.hooks // {} | to_entries[] | .value[]
-         | select((._agent_workspace // "") != "" and (._agent_workspace != $tag))
-         | ._agent_workspace] | unique | .[]
-    ' <<< "$settings")"
+    # Hook entries from a DIFFERENT checkout (a second clone installed over
+    # us): marked with it, or holding a command classified as its.
+    foreign="$(class_query '
+        [hook_entries | (._agent_workspace // "") as $m
+         | (if ($m | type) == "string" and $m != "" and $m != $tag then $m else empty end),
+           (entry_commands | select(owner($m) == "foreign") | $cls[.].dir)]
+        | unique | .[]')" || exit 1
     if [[ -n "$foreign" ]]; then
         while IFS= read -r f; do
             note "settings.json has hook entries from another workspace checkout: $f"
         done <<< "$foreign"
     fi
 
-    # The SessionStart entry deliberately names the ~/.claude symlink, not
-    # the checkout path -- that indirection is what lets the hook be found
-    # without the user tier hard-coding a checkout into every session. Every
-    # OTHER command tagged as ours must live in this checkout.
-    stale="$(jq -r --arg tag "$TAG" --arg ws "$WS_ROOT/" --arg link "$SESSION_HOOK_LINK" '
-        [.hooks // {} | to_entries[] | .value[]
-         | select((._agent_workspace // "") == $tag)
-         | .hooks[]? | .command
-         | select(. != $link)
-         | select(startswith($ws) | not)] | .[]
-    ' <<< "$settings")"
+    # Hook commands left by a checkout since moved or deleted: a hook this
+    # script writes or has retired, under a <dir> no longer on disk. They
+    # fail on every tool call. In an entry marked with the command's own
+    # checkout, install removes them; any other (unmarked, or marked with
+    # another checkout) only --force does (header), so the remedy differs.
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead" and attributed($m))] | unique | .[]')" || exit 1
+    if [[ -n "$dead" ]]; then
+        while IFS= read -r d; do
+            note "hook entry names a workspace hook in a checkout that is not on disk (moved or deleted?): $d (re-run the installer to remove it)"
+        done <<< "$dead"
+    fi
+    dead="$(class_query '[hook_entries | (._agent_workspace // "") as $m | entry_commands | select(owner($m) == "dead" and (attributed($m) | not))] | unique | .[]')" || exit 1
+    if [[ -n "$dead" ]]; then
+        while IFS= read -r d; do
+            note "hook command names a workspace hook in a directory that is not on disk: $d -- nothing attributes it to this installer (a moved or deleted checkout, or a drive not mounted?), so a plain install leaves it; if it is a dead checkout's, remove it with: $WS_ROOT/.agent/scripts/user_tier_install.sh --force"
+        done <<< "$dead"
+    fi
+
+    # An entry still carrying this checkout's marker (an earlier generation
+    # wrote it) beside a command that is not this checkout's. The command is
+    # the user's and stays; the marker is what install drops.
+    stale="$(class_query '
+        [hook_entries | select((._agent_workspace // "") == $tag)
+         | entry_commands | select(owner($tag) != "self")] | unique | .[]')" || exit 1
     if [[ -n "$stale" ]]; then
         while IFS= read -r st; do
-            note "hook entry tagged as ours points outside this checkout: $st"
+            note "hook entry marked with this checkout holds a command outside it: $st (re-run the installer: it drops the marker and keeps the command)"
         done <<< "$stale"
     fi
 
-    # Entries tagged as ours, inside this checkout, that the current
-    # generation no longer produces -- a hook retired from the user tier
-    # (#328). None of the checks above fire for it: it is tagged with this
-    # checkout and names a path inside it, so without this case --check says
-    # "installed and current" while settings.json still runs a hook the
-    # checkout no longer ships (or no longer has on disk). Re-running the
-    # installer clears it: install replaces our whole tagged generation.
+    # Our commands that the current generation no longer produces -- a hook
+    # retired from the user tier (#328), or one of ours written through a
+    # symlinked alias of this checkout. None of the checks above fire for
+    # it, so without this case --check says "installed and current" while
+    # settings.json still runs a hook the checkout no longer ships (or no
+    # longer has on disk). Re-running the installer removes it.
     wanted_json="$( { hook_commands; printf '%s\n' "$SESSION_HOOK_LINK"; } \
         | jq -R . | jq -s . )"
-    retired="$(jq -r --arg tag "$TAG" --arg ws "$WS_ROOT/" --argjson want "$wanted_json" '
-        [.hooks // {} | to_entries[] | .value[]
-         | select((._agent_workspace // "") == $tag)
-         | .hooks[]? | .command
-         | select(startswith($ws))
-         | . as $c | select(($want | index($c)) == null)] | unique | .[]
-    ' <<< "$settings")"
+    retired="$(class_query '
+        [hook_entries | (._agent_workspace // "") as $m
+         | entry_commands | select(owner($m) == "self")] | unique
+        | map(select(. as $c | ($want | index($c)) == null)) | .[]' --argjson want "$wanted_json")" || exit 1
     if [[ -n "$retired" ]]; then
         while IFS= read -r rt; do
-            note "hook entry tagged as ours is no longer generated: $rt (re-run the installer)"
+            note "hook command of this checkout is no longer generated: $rt (re-run the installer)"
         done <<< "$retired"
     fi
 
@@ -1275,10 +1568,121 @@ if [[ -n "${other_root:-}" && "$FORCE" == true ]]; then
     echo "  --force: taking the user tier over from $other_root"
 fi
 
-mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
 config_dir_note
 
-backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
+# Everything that can refuse is checked, and the settings.json merge built
+# and backed up, before anything in ~/.claude is written: a refusal or a
+# failed backup then leaves the tier exactly as it was, rather than a root
+# file that reads as installed beside an unchanged settings.json.
+
+# The SessionStart hook symlink's preconditions (written in step 2).
+if [[ ! -e "$SESSION_HOOK_TARGET" ]]; then
+    echo "ERROR: hook target missing: $SESSION_HOOK_TARGET" >&2
+    exit 1
+fi
+if [[ -e "$SESSION_HOOK_LINK" && ! -L "$SESSION_HOOK_LINK" ]]; then
+    echo "ERROR: $SESSION_HOOK_LINK exists and is not a symlink -- not overwriting" >&2
+    exit 1
+fi
+
+# settings.json: our hook entries and allow-rules, replacing any previous
+# generation of ours (that is what makes this idempotent) and leaving
+# everything else in the file untouched. No marker is written: the
+# `claude plugin` commands drop it (#394), so commands are told apart by
+# classify_hooks (header).
+PRE_HOOKS_JSON="$(jq -n --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" '
+    {
+      hooks: [
+        {type: "command", command: $log, timeout: 5}
+      ]
+    }')"
+
+SESSION_HOOKS_JSON="$(jq -n --arg cmd "$SESSION_HOOK_LINK" '
+    {
+      hooks: [{type: "command", command: $cmd, timeout: 10}]
+    }')"
+
+current_settings="$(read_settings)"
+shape_errors="$(hook_shape_errors "$current_settings")" || {
+    echo "ERROR: could not read the hooks in $SETTINGS (jq failed) -- nothing changed" >&2
+    exit 1
+}
+if [[ -n "$shape_errors" ]]; then
+    echo "ERROR: refusing to rewrite $SETTINGS -- nothing changed:" >&2
+    while IFS= read -r e; do
+        echo "  $e; the installer adds its entry to an array there and will not replace what it holds -- fix it by hand, then re-run" >&2
+    done <<< "$shape_errors"
+    exit 1
+fi
+install_cls="$(classify_hooks "$current_settings")" || exit 1
+# Remove the previous generation of our commands, the user's own commands
+# staying (prune, PRUNE_JQ_DEFS): ours, and dead ones. Under --force we are
+# deliberately taking the tier over from another checkout, so its commands
+# go too -- otherwise the takeover leaves the old checkout's SessionStart
+# and PreToolUse commands beside ours, both layers get injected into every
+# session, and --check reports drift immediately after a --force that
+# exited 0 claiming success. A plain install leaves another checkout's
+# commands alone (--check reports them).
+#
+# The first entry that already is exactly ours stays where it is, so a file
+# that is already current comes out unchanged rather than reordered.
+merged_settings="$(jq \
+    --arg tag "$TAG" \
+    --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
+    --argjson dead true \
+    --argjson cls "$install_cls" \
+    --argjson pre "$PRE_HOOKS_JSON" \
+    --argjson ses "$SESSION_HOOKS_JSON" \
+    --argjson rules "$(allow_rules_json)" "$PRUNE_JQ_DEFS"'
+    def place($w):
+        (map(. == $w) | index(true)) as $i
+        | [to_entries[] | if .key == $i then .value else ([.value] | prune | .[]) end]
+        | if $i == null then . + [$w] else . end;
+    .hooks //= {}
+    | .hooks.PreToolUse //= []
+    | .hooks.SessionStart //= []
+    | .hooks |= with_entries(
+        if .key == "PreToolUse" then .value |= place($pre)
+        elif .key == "SessionStart" then .value |= place($ses)
+        elif (.value | type) == "array" then .value |= prune
+        else . end)
+    | .permissions //= {}
+    | .permissions.allow //= []
+    | .permissions.allow = ((.permissions.allow + $rules) | unique)
+' <<< "$current_settings")" || { echo "ERROR: could not merge $SETTINGS -- nothing changed" >&2; exit 1; }
+
+# What the merge removes and does not write back, and the dead commands it
+# leaves because nothing attributes them to this installer (header): both
+# are named after the write. Same definitions and arguments as the merge.
+install_report_query() {  # <jq filter>
+    jq -r --arg tag "$TAG" \
+        --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
+        --argjson dead true \
+        --argjson cls "$install_cls" \
+        --argjson want "$( { hook_commands; printf '%s\n' "$SESSION_HOOK_LINK"; } | jq -R . | jq -s . )" \
+        "$PRUNE_JQ_DEFS$1" <<< "$current_settings"
+}
+install_removed="$(install_report_query '
+    [hook_entries | (._agent_workspace // "") as $m | entry_commands
+     | select(remove($m)) | select(. as $c | ($want | index($c)) == null)
+     | "\(owner($m))\t\(.)"] | unique | .[]')" \
+    && install_left="$(install_report_query '
+    [hook_entries | (._agent_workspace // "") as $m | entry_commands
+     | select(owner($m) == "dead" and (remove($m) | not))] | unique | .[]')" \
+    || { echo "ERROR: could not list the hook commands this run removes from $SETTINGS -- nothing changed" >&2; exit 1; }
+
+# Write only when something changed, compared ignoring key order: the CLI
+# re-emits the file in its own key order, and rewriting it on every run in
+# jq's would churn it (and pile up backups) for nothing.
+settings_changed=true
+if [[ "$(jq -S . <<< "$merged_settings")" == "$(jq -S . <<< "$current_settings")" ]]; then
+    settings_changed=false
+fi
+if [[ "$settings_changed" == true ]]; then
+    backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding; nothing changed" >&2; exit 1; }
+fi
+
+mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
 
 # 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
 printf '%s' "$WS_ROOT" > "$ROOT_FILE"
@@ -1292,63 +1696,35 @@ allow_rules_json > "$RULES_FILE"
 echo "  recorded $(jq 'length' < "$RULES_FILE") generated allow-rule(s) in $RULES_FILE"
 
 # 2. the SessionStart hook symlink
-if [[ ! -e "$SESSION_HOOK_TARGET" ]]; then
-    echo "ERROR: hook target missing: $SESSION_HOOK_TARGET" >&2
-    exit 1
-fi
-if [[ -e "$SESSION_HOOK_LINK" && ! -L "$SESSION_HOOK_LINK" ]]; then
-    echo "ERROR: $SESSION_HOOK_LINK exists and is not a symlink -- not overwriting" >&2
-    exit 1
-fi
 ln -sfn "$SESSION_HOOK_TARGET" "$SESSION_HOOK_LINK"
 echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
 
-# 3+4. settings.json: our hook entries and allow-rules, replacing any
-# previous generation of ours (that is what makes this idempotent) and
-# leaving everything else in the file untouched.
-PRE_HOOKS_JSON="$(jq -n --arg tag "$TAG" \
-    --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" '
-    {
-      _agent_workspace: $tag,
-      hooks: [
-        {type: "command", command: $log, timeout: 5}
-      ]
-    }')"
-
-SESSION_HOOKS_JSON="$(jq -n --arg tag "$TAG" --arg cmd "$SESSION_HOOK_LINK" '
-    {
-      _agent_workspace: $tag,
-      hooks: [{type: "command", command: $cmd, timeout: 10}]
-    }')"
-
-read_settings | jq \
-    --arg tag "$TAG" \
-    --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
-    --argjson pre "$PRE_HOOKS_JSON" \
-    --argjson ses "$SESSION_HOOKS_JSON" \
-    --argjson rules "$(allow_rules_json)" '
-    .hooks //= {}
-    | .hooks.PreToolUse //= []
-    | .hooks.SessionStart //= []
-    # Drop the previous generation of agent_workspace entries, keeping the
-    # user'"'"'s own (which carry no marker at all).
-    #
-    # Normally that means entries tagged with THIS checkout. Under --force we
-    # are deliberately taking the tier over from another checkout, so every
-    # marker-carrying entry goes regardless of which checkout tagged it --
-    # otherwise the takeover leaves the old checkout'"'"'s SessionStart and
-    # PreToolUse entries in place beside ours, both layers get injected into
-    # every session, and --check reports drift immediately after a --force
-    # that exited 0 claiming success.
-    | .hooks.PreToolUse   |= map(select(($force and (._agent_workspace // "") != "") | not) | select((._agent_workspace // "") != $tag))
-    | .hooks.SessionStart |= map(select(($force and (._agent_workspace // "") != "") | not) | select((._agent_workspace // "") != $tag))
-    | .hooks.PreToolUse   += [$pre]
-    | .hooks.SessionStart += [$ses]
-    | .permissions //= {}
-    | .permissions.allow //= []
-    | .permissions.allow = ((.permissions.allow + $rules) | unique)
-' | write_settings || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
-echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
+# 3+4. settings.json, merged and backed up above
+if [[ "$settings_changed" == false ]]; then
+    echo "  $SETTINGS already has our hook entries and $(allow_rules_json | jq 'length') allow-rules -- not rewritten"
+else
+    write_settings <<< "$merged_settings" || {
+        echo "ERROR: failed to write $SETTINGS -- nothing changed in it (the backup above is a copy of it); re-run the installer once it can be written" >&2
+        exit 1
+    }
+    echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
+fi
+if [[ -n "$install_removed" ]]; then
+    while IFS=$'\t' read -r owner cmd; do
+        case "$owner" in
+            dead)    why="a workspace hook in a checkout not on disk" ;;
+            foreign) why="another workspace checkout's, removed by --force" ;;
+            *)       why="this checkout's, no longer generated" ;;
+        esac
+        echo "  removed hook command $cmd ($why)"
+    done <<< "$install_removed"
+    echo "  the settings.json from before these removals is kept at $BACKUP_PATH"
+fi
+if [[ -n "$install_left" ]]; then
+    while IFS= read -r cmd; do
+        echo "  NOTE: left in place: hook command $cmd names a workspace hook in a directory that is not on disk, and nothing attributes it to this installer (a moved or deleted checkout, or a drive not mounted?). If it is a dead checkout's, remove it with: $WS_ROOT/.agent/scripts/user_tier_install.sh --force"
+    done <<< "$install_left"
+fi
 
 # 5. retire legacy skill symlinks (ADR-0018), this checkout's or another's
 while IFS= read -r link; do

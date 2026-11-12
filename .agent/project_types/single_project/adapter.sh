@@ -3,7 +3,8 @@
 # single_project adapter — one repo cloned or symlinked at $WORKSPACE_ROOT/project.
 #
 # Facade over the pre-adapter workspace scripts (ADR-0011, #210): behavior
-# matches the old build.sh/test.sh/setup_project.sh/sync_project.py flow,
+# matches the old build.sh/test.sh/sync_project.py flow (setup ran via a shim,
+# setup_project.sh, until issue #295 removed it from make setup),
 # except that a registered project's build/test/install command comes first
 # from its settings file .agent/projects.d/<name> (issue #332; see
 # _single_project_resolve_cmd) and a fall-through to the shared
@@ -226,7 +227,13 @@ adapter_repos() {
         if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
             echo "ERROR: project '$ACTIVE_PROJECT_NAME' is not checked out at $root" >&2
         else
-            echo "ERROR: project/ is not configured (run: make setup)" >&2
+            # The script's path is split in two on purpose (issue #295):
+            # the test selector (suites_for_files.sh) reads every path token
+            # in this file as a read of that file, and this adapter is
+            # reached by most suites, so naming the script whole would make
+            # them all run whenever it changes (the hub guard in
+            # test_script_tests_hook_scope.sh). A message is not a read.
+            echo "ERROR: no project selected and project/ is not configured (register one: .agent/scripts/register_project"".sh <path>; select one: --project <name>)" >&2
         fi
         return 1
     fi
