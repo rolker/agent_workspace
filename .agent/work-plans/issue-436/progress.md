@@ -831,3 +831,23 @@ Notes for #447 (code, not this verdict): an unknown key under a per-distro entry
 **Decision**: publish
 
 The host read the round 7 Local Review (Pre-Push) entry at 06142c48: verdict changes-requested, Ship recommended, one must-fix (README lines 111-115, the character rule's reach) and one suggestion (the wording about a group's default). Both stay open boxes on the timeline, so triage raises them and the fix lands on the pull request: the README's rules section gets the two corrections and one sentence saying the listed gaps are tracked in issue 447, so it stops claiming completeness. The code notes (an unknown key under a per-distro entry is accepted; the character check skips `!!set`, `!!pairs` and `!!omap` contents) go to issue 447 with the owner's yes.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 13:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #449 at `c4c73224`
+**Sources**: 3 (Copilot @ `c4c73224`: failed (quota), no findings; Local Review (Pre-Push) round 7 @ `868b77ac` (covers c4c73224 via bookkeeping); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot's hosted review posted only "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota." (check `copilot-pull-request-reviewer`: failure). No human review requested; no conversation comments. CI at writing: ros-manifest tests, Validate Adapter Contract and Validate Documentation pass; Lint (pre-commit) still running.
+
+Local timeline: round 7's two open findings carry forward; both re-checked against the README at this head (unchanged since 868b77ac). The rule is at lines 109-113 and the `default` sentence at line 126; `merge.py:99-102` prints both defaults on a conflicting redeclaration. Round 5's must-fix and five suggestions, and the matching Implementation boxes, are ticked as deferred to follow-up issue #447 on the owner's decision ("Q3: A and yes."), so they are not open here.
+
+### Findings
+- [ ] (must-fix, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "No string key or value may contain ..." is untrue: a string inside a `!!set` or `!!pairs` value under an unknown per-distro key is accepted. Either extend the `!!binary` carve-out, e.g. "A key YAML builds as bytes (`!!binary`), and a string inside a `!!set` or `!!pairs` value under a key the tool ignores, are not checked by this rule (#447)", or fix the code in #447 — `tools/ros-manifest/README.md:109-113`
+- [ ] (suggestion, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:99-102`); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:126`
+
+### False positives
