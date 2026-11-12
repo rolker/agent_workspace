@@ -622,6 +622,28 @@ registry_require_root() {
     return 1
 }
 
+# Print the main checkout of the workspace repository whose checkout is
+# <root> (issue #295): git's common dir with a trailing /.git removed, the
+# way the Makefile's WS_ROOT is found. In a worktree that is the main
+# checkout, which holds the gitignored registry a worktree does not have.
+# It decides the "is a project registered?" messages only, so make setup,
+# make validate, make sync and the dashboard agree inside a worktree; the
+# mirror in lib/workspace.py is get_main_checkout_root. Prints <root>
+# unchanged when git gives no answer or <root> is not the top level of its
+# own repository (a plain directory inside another repository must not
+# borrow that repository's registry). Always returns 0.
+# Usage: main="$(registry_main_checkout "$root")"
+registry_main_checkout() {
+    local root="$1" abs top common
+    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\n' "$root"; return 0; }
+    top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" &&
+        top="$(cd "$top" 2>/dev/null && pwd -P)" &&
+        [ "$top" = "$abs" ] &&
+        common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
+        [ -n "$common" ] || { printf '%s\n' "$root"; return 0; }
+    printf '%s\n' "${common%/.git}"
+}
+
 # Print the GitHub slug (owner/repo) of the `origin` remote of every
 # registered non-parent root, one per line, for the repo-safety checks of
 # gh_create_pr.sh and gh_create_issue.sh (issue #295): a project session

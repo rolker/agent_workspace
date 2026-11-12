@@ -42,6 +42,41 @@ def get_workspace_root():
     return str(workspace_root)
 
 
+def get_main_checkout_root():
+    """
+    Return the main checkout of the workspace repository (issue #295).
+
+    Found the way the Makefile's WS_ROOT is: git's common dir, with a
+    trailing /.git removed. In the main checkout that is the workspace root
+    itself; in a worktree it is the main checkout, which holds the
+    gitignored per-machine registry (.agent/projects.local) a worktree does
+    not have. Used for the "is a project registered?" messages, so make
+    validate, make sync, make setup and the dashboard agree inside a
+    worktree. Falls back to get_workspace_root() when git gives no answer,
+    or when the workspace root is not the top level of its own repository
+    (a copy that is a plain directory inside another repository must not
+    borrow that repository's registry).
+    """
+    root = get_workspace_root()
+
+    def _git(*args):
+        result = subprocess.run(
+            ["git", "-C", root, *args], capture_output=True, text=True, check=True
+        )
+        return result.stdout.strip()
+
+    try:
+        top = _git("rev-parse", "--show-toplevel")
+        common = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    except (OSError, subprocess.CalledProcessError):
+        return root
+    if not top or not common or _canonical(top) != _canonical(root):
+        return root
+    if common.endswith("/.git"):
+        common = common[: -len("/.git")]
+    return common
+
+
 def get_project_path():
     """
     Return the Path to the project/ directory (may not exist yet).

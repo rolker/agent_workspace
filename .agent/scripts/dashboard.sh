@@ -152,6 +152,16 @@ REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     # partial project list from a malformed registry.
     REGISTRY_ENTRIES=""
 }
+# Whether any project is registered, for the "No project is registered"
+# lines only: read from the main checkout found through git's common dir, as
+# make setup, make validate and make sync find it (issue #295), so the four
+# agree inside a worktree wherever it lives. Everything else here keeps
+# reading MAIN_ROOT's registry. A registry with parse errors is not "none".
+NONE_REGISTERED=0
+if _MAIN_ENTRIES="$(registry_entries "$(registry_main_checkout "$ROOT_DIR")" 2>/dev/null)" &&
+    [ -z "$_MAIN_ENTRIES" ]; then
+    NONE_REGISTERED=1
+fi
 if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
     PROJECT_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
     if [ -n "$PROJECT_REMOTE" ]; then
@@ -159,7 +169,7 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
     else
         check_warn "project/ is a git repo but has no remote"
     fi
-elif [ -z "$REGISTRY_ENTRIES" ] && [ "$REGISTRY_OK" -eq 1 ]; then
+elif [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
     check_warn "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
 fi
 if [ -n "$REGISTRY_ENTRIES" ]; then
@@ -341,10 +351,12 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
 else
     if [ -n "${REGISTRY_ENTRIES:-}" ]; then
         echo "- **Status**: (legacy project/ not configured; registered projects below)"
-    elif [ "${REGISTRY_OK:-1}" -eq 1 ]; then
+    elif [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
         echo "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>"
-    else
+    elif [ "${REGISTRY_OK:-1}" -eq 0 ]; then
         echo "- **Status**: ⚠️ projects.local has malformed entries (see the checks above)"
+    else
+        echo "- **Status**: (legacy project/ not configured)"
     fi
 fi
 echo ""

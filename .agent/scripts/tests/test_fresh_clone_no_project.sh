@@ -178,6 +178,53 @@ else
 fi
 no_project_dirs "(e)"
 
+echo "=== A worktree of the copy, with the demo project registered in the main checkout ==="
+
+# (f) The registry is gitignored, so a worktree has none of its own. Every
+# "is a project registered?" message reads the main checkout's registry,
+# found through git's common dir, so none of them says that no project is
+# registered here. The worktree lives outside worktrees/workspace/, where
+# the dashboard's path-based main-checkout guess does not reach.
+WT="$SANDBOX/ws-wt"
+fixture_git -C "$WS" worktree add -q -b wt-check "$WT" main
+if [[ -f "$WS/.agent/projects.local" && ! -e "$WT/.agent/projects.local" ]]; then
+    pass "(f) the worktree has no registry of its own; the main checkout has one"
+else
+    fail "(f) fixture: registry files not as expected"
+fi
+NONE_PATTERNS=("no project registered" "No project is registered" "none registered")
+says_none() {
+    local p
+    for p in "${NONE_PATTERNS[@]}"; do
+        [[ "$OUT" == *"$p"* ]] && return 0
+    done
+    return 1
+}
+run_clean "$WT" make --no-print-directory validate
+if [[ "$RC" -eq 0 ]] && ! says_none; then
+    pass "(f) make validate in the worktree does not say no project is registered"
+else
+    fail "(f) make validate in the worktree: rc=$RC out=${OUT:0:800}"
+fi
+run_clean "$WT" make --no-print-directory sync
+if [[ "$RC" -eq 0 && "$OUT" == *"Sync complete."* ]] && ! says_none; then
+    pass "(f) make sync in the worktree does not say no project is registered"
+else
+    fail "(f) make sync in the worktree: rc=$RC out=${OUT:0:800}"
+fi
+run_clean "$WT" make --no-print-directory setup
+if [[ "$RC" -eq 0 ]] && ! says_none; then
+    pass "(f) make setup in the worktree does not say no project is registered"
+else
+    fail "(f) make setup in the worktree: rc=$RC out=${OUT:0:800}"
+fi
+run_clean "$WT" make --no-print-directory dashboard
+if [[ "$RC" -eq 0 ]] && ! says_none; then
+    pass "(f) make dashboard in the worktree does not say no project is registered"
+else
+    fail "(f) make dashboard in the worktree: rc=$RC out=${OUT:0:1200}"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]

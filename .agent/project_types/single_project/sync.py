@@ -23,6 +23,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
 from workspace import (
+    get_main_checkout_root,
     get_workspace_root,
     get_project_path,
     is_project_configured,
@@ -183,9 +184,12 @@ def main():
         print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:
         # No project resolved: the workspace alone was synced (issue #295).
-        # Say why, and how to get a project synced.
+        # Say why, and how to get a project synced. The registry read is the
+        # main checkout's, found through git's common dir as make setup,
+        # make validate and the dashboard find it: a worktree has no
+        # registry of its own (projects.local is gitignored).
         print("Checking project...")
-        entries, _errors = read_projects_registry(root_dir)
+        entries, _errors = read_projects_registry(get_main_checkout_root())
         names = [e["name"] for e in entries]
         if names:
             print(

@@ -39,6 +39,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
 from workspace import (
+    get_main_checkout_root,
     get_workspace_root,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
@@ -149,8 +150,20 @@ def validate_workspace(verbose=False):
     for err in registry_errors:
         issues.append(f"projects.local: {err}")
 
-    if not registry_entries and not registry_errors and verbose:
-        print(f"  no project registered (register one with {REGISTER_PROJECT_POINTER})")
+    # Whether any project is registered is read from the main checkout's
+    # registry, found through git's common dir as make setup, make sync and
+    # the dashboard find it (issue #295): a worktree has no registry of its
+    # own (projects.local is gitignored), so reading its copy would say "no
+    # project registered" on a machine that has some. The checks below still
+    # run on this checkout's entries.
+    if verbose:
+        main_root = get_main_checkout_root()
+        if Path(main_root) == workspace_root:
+            main_entries, main_errors = registry_entries, registry_errors
+        else:
+            main_entries, main_errors = read_projects_registry(main_root)
+        if not main_entries and not main_errors:
+            print(f"  no project registered (register one with {REGISTER_PROJECT_POINTER})")
 
     # Validate registry entries: known project type, valid checkout
     for entry in registry_entries:
