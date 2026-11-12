@@ -70,7 +70,7 @@ on a violation.
 
 A manifest, and every manifest it `extends`, is treated as untrusted: its names become file
 paths and its values become lines of the generated files. Anything outside these rules is an
-error that names the manifest and the key:
+error that names the manifest and the key (for a YAML error, the line and column):
 
 - Names: a layer is letters, digits, `_` and `-` (the `ros2_colcon` adapter's rule); a
   repository is letters, digits, `_`, `.` and `-`, not starting with `.` or `-`; a group is
@@ -90,8 +90,8 @@ error that names the manifest and the key:
   - `<user>@<host>:<path>` (scp-style, as `git@github.com:org/repo.git`)
   - `file:///<absolute path>`, for local and test use
 
-  Host, user and path are letters, digits, `.`, `_` and `-`, with `/` in a path; none starts
-  with `-`. There is no place for a password or token (use a credential helper or an ssh
+  A host is letters, digits, `.` and `-`; a user and a path also allow `_`, and a path `/`;
+  none starts with `-`. There is no place for a password or token (use a credential helper or an ssh
   remote), a query, a fragment, whitespace, or git's `<transport>::` form. Plain `http://`,
   `git://` and a bare local path are not accepted. A local base is still named with
   `extends: {path: ...}` and no `url`; that path must stay inside the declaring manifest's
@@ -99,9 +99,11 @@ error that names the manifest and the key:
 - A `ref` (a repository's, each per-distro one, `extends.ref`) is letters, digits, `.`, `_`, `/`
   and `-`, starting with a letter or digit, with no `..` and not ending in `/` or `.lock`. It
   cannot start with `-`, so neither git nor `vcs import` can read it as an option.
-- No key or value may contain a control character (newline, carriage return, tab, ...), a line
-  or paragraph separator, an invisible or bidirectional formatting character (zero-width space,
-  byte-order mark, right-to-left override) or a space other than the ASCII one.
+- No string key or value may contain a control character (newline, carriage return, tab, ...),
+  a line or paragraph separator, an invisible or bidirectional formatting character (zero-width
+  space, byte-order mark, right-to-left override) or a space other than the ASCII one. A key
+  YAML builds as bytes (`!!binary`) is not checked by this rule
+  ([#447](https://github.com/rolker/agent_workspace/issues/447)).
 - YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported by line
   and column only, never with the document's text; a value YAML cannot build (`!!int 0xz`, an
   unquoted `2024-13-45`) is reported as invalid YAML with no position. An integer past 64 bits
@@ -112,10 +114,17 @@ that would land outside `--out`, and writes nothing in that case. The `extends` 
 the transports git may use (`https`, `ssh`, `file`; everything else, such as `ext::`, refused)
 on its own command line rather than relying on git's defaults.
 
-No error message prints a value from a manifest: it names only the manifest, a key or name that
-passed the rules above, a type, or a line and column (a failed `extends` clone gives git's exit
-status, not its output). Any other failure prints `ERROR: internal error (<exception type>)`
-and exits 1: never the exception's text, never a traceback.
+A `url` or `ref` that fails its rule is never printed, nor is a group's `default`; a failed
+`extends` clone gives git's exit status, not its output. Some error messages do still print a
+value from the manifest: an `extends` path, an `optional_layers` entry, an entry of a reference
+list (a group's `repos`; a role's `subtract`, `add` or `roots`; a package's `repo`, `depend` or
+`exec_depend`), a key, and a name that fails its rule. Closing that is
+[#447](https://github.com/rolker/agent_workspace/issues/447).
+
+An unexpected error prints one line, `ERROR: internal error (<exception type>)`, and exits 1:
+never the exception's text, never a traceback. Two cases still escape that line, also in #447:
+Ctrl-C prints a traceback, and a broken pipe found at exit prints Python's `BrokenPipeError`
+notice. Neither holds manifest text.
 
 ### The `extends` cache
 
