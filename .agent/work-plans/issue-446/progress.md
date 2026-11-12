@@ -291,3 +291,11 @@ The revision answers the ten findings. Pull request A is one sentence short of r
 **Decision**: revise
 
 The host read the Plan Review entry at 03821f15. All eight findings are taken as written, with these choices where the reviewer offered two: finding 1, keep reading the marker when present and stop only writing it; finding 2, the first implement dispatch for pull request B is limited to the live-suite commit and ends with a hand-back, and steps 2 to 8 wait for the FACT lines on the timeline; finding 4, the CLI path requires git-dir equal to git-common-dir and a linked worktree gets the report-only path; finding 6, the second shape (a subdirectory of a root in no git repository) keeps its refusal with its own true reason. Pull request A is driven on issue 394's own worktree and timeline, starting now; its plan pass copies this plan's A section with finding 1's sentence.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 12:05 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-446/plan.md` at `8e9e97c1`
+
+Second revision answering the eight findings of the plan review at 03821f15 with the host's choices: the marker is still read and no longer written, with a moved-checkout test; B's first implement dispatch is limited to the live-suite commit and ends with a hand-back; the copy gets its renamed off entry; the CLI migration path excludes linked worktrees; repeated notes and read-back stated; the second session_root shape has its own reason; stale passages aligned; four live-run safety extras added. A sequencing note sits at the top.
