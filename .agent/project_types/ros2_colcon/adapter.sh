@@ -1037,8 +1037,19 @@ adapter_repo_pin() {
         echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref: '$ref'" >&2
         return 1
     fi
-    local kind
-    kind="$(_rc_pin_kind "$(_rc_layer_dir "$hit_layer")/src/$repo" "$ref")"
+    # The same ref pinned in several layers: judge it in the first of them
+    # whose checkout is cloned, not merely the first, so a layer not set up
+    # yet does not turn a known branch into an unverified unknown.
+    local kind check_dir d
+    check_dir="$(_rc_layer_dir "$hit_layer")/src/$repo"
+    for hit in "${hits[@]}"; do
+        d="$(_rc_layer_dir "${hit%%$'\t'*}")/src/$repo"
+        if [ -e "$d/.git" ]; then
+            check_dir="$d"
+            break
+        fi
+    done
+    kind="$(_rc_pin_kind "$check_dir" "$ref")"
     printf '%s\t%s\n' "$ref" "$kind"
 }
 

@@ -1808,6 +1808,20 @@ test_repo_pin_two_layers() {
     out="$(run_adapter "$sb" repo_pin pkg_a --layer nolayer 2>&1)" || rc=$?
     assert_eq "unknown layer: exit 1" "1" "$rc"
     assert_contains "names the bad layer" "layer 'nolayer' is not defined" "$out"
+    # The same ref in two layers, cloned only in the later one: the kind is
+    # judged where it is cloned, as --layer l2 would judge it.
+    make_pin_pkg "$sb" "$proj" l2 pkg_b >/dev/null
+    [ ! -e "$proj/layers/main/l1_ws/src/pkg_b" ] || rm -rf "$proj/layers/main/l1_ws/src/pkg_b"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned" "pkg_b=pinned"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_b=pinned"
+    local err="$sb/err"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>"$err")" || rc=$?
+    assert_eq "cloned in l2 only: exit 0" "0" "$rc"
+    assert_eq "cloned in l2 only: judged there" "pinned	branch" "$out"
+    assert_not_contains "cloned in l2 only: verified" "unverified" "$(< "$err")"
+    out="$(run_adapter "$sb" repo_pin pkg_b --layer l2 2>/dev/null)" || true
+    assert_eq "--layer l2 agrees" "pinned	branch" "$out"
 }
 
 # ---- Run all tests ----
