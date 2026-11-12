@@ -900,3 +900,18 @@ Notes for #447 (not this verdict): an unknown key under a per-distro entry or un
 
 ### Findings
 - [x] (must-fix) carve-out omits `!!omap`, which is accepted unchecked the same way; with the introduction claiming known cases are named, both sentences are untrue for it. Mechanical: "a string inside a `!!set`, `!!pairs` or `!!omap` value under a key the tool ignores" — `tools/ros-manifest/README.md:113-114`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a98520162906b995b, resume 1 of 3)
+
+**PR**: #449 at `36c55d54`
+**Addressed**: Local Review at `2b4375a7` (2026-11-12 13:31 -05:00)
+**Commits**: 36c55d54
+
+### Actions
+- [x] (must-fix) carve-out omits `!!omap`: fixed by class, not by adding a tag, per host direction. `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only; the loader (`_ManifestLoader`, a `yaml.SafeLoader` subclass) also builds bytes (`!!binary`), a Python set (`!!set`) and lists of tuples (`!!pairs`, `!!omap`), whose contents the walk skips. Reproduced with `parse_manifest_text` under an unknown per-distro key: a U+202E string is refused as a plain value, in a list and in a mapping, and accepted inside `!!set`, `!!pairs`, `!!omap` (also nested in a list), and a `!!binary` key or value holding a newline is accepted; under `layers` an `!!omap` or `!!set` is refused, and a `!!binary` `url` is refused. README now states the rule is applied to mappings, sequences and the strings in them, and carves out bytes key or value plus "a string inside any other collection YAML can build (such as `!!set`, `!!pairs` or `!!omap`) under a key the tool ignores"; introduction "named where they apply" became "described where they apply" — `tools/ros-manifest/README.md:79-80,112-116`
+
+The box was ticked by hand: `review_progress.sh check` indexes only the latest Integrated Review / Local Review (Pre-Push), and a post-PR `## Local Review` is not a source for it. Branch-wide `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: all hooks passed (exit 0), script suite included. README only; no code or tests changed. Not pushed. Open for the host: the review noted that #447's body and comments do not yet mention these cases, while the README says they are "tracked in #447".
