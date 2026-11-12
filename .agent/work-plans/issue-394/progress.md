@@ -330,3 +330,13 @@ Both findings below were checked against the code at the head. The host's publis
 - [ ] (test gap, Local Review (Pre-Push) @ `1e02b457`, raised by the host Checkpoint) The failed write to a symlinked settings.json is untested: `write_settings` returns 1 when the `mv` onto the resolved dotfiles file fails, but the only `mv` shim matches `*/.claude/settings.json`, which the symlink branch never passes to `mv`, and the dotfiles tests cover only the success path — `.agent/scripts/tests/test_user_tier_install.sh` (around 859 and 1211-1276), `user_tier_install.sh` `write_settings`. Fix: a shim that fails the rename onto the dotfiles target; check that install and `--uninstall` exit 1 with "nothing changed", the dotfiles file and the link are unchanged, and no `.agent-workspace.<pid>` staging file or temporary file is left behind.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Integrated Review has two open findings, both about what the installer may do to the owner's settings file; a review with open findings is sent back for fixes, not merged past)
+**After**: findings
+**Decision**: address
+
+The host read the Integrated Review entry at b85e49f5. The fix pass does the two findings as the entry words them: a dead command is the installer's only in an entry marked with its own checkout, and the failed write onto a symlinked settings file gets its test.
