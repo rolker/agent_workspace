@@ -17,8 +17,18 @@
 # --agent and --detect derive the email from this checkout's git user.email
 # (<local>@<domain>, clone value over global, any +suffix removed) as
 # <local>+<framework-suffix>@<domain>; see framework_config.sh and
-# identity_base.py. An unset or malformed git email fails with a message and
-# exports nothing.
+# identity_base.py. An unset or malformed git email fails with a message.
+#
+# On ANY failure (unset or malformed git email, unknown framework, bad
+# arguments) the script unsets what it owns -- GIT_AUTHOR_NAME,
+# GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, AGENT_NAME,
+# AGENT_EMAIL, AGENT_MODEL, AGENT_FRAMEWORK -- and returns 1, so a failed
+# re-source never leaves the previous session's identity (or a mix of old
+# and new values) in the shell. Re-source successfully before committing.
+#
+# Source it in the checkout you commit in: the email derives from the git
+# user.email resolved in the current directory, not in the repository a
+# later `git -C <other>` commit targets.
 #
 # This sets identity ONLY for the current shell session without modifying .git/config.
 # The user's .git/config remains unchanged, allowing them to commit as themselves afterward.
@@ -31,6 +41,13 @@
 # variables; it performs no repo-affecting action, so it needs no
 # registry_require_root guard (#265 PR 3, ADR-0016).
 
+# Unset every variable this script exports; called before each failure
+# return so a failed re-source leaves no stale or mixed identity.
+_sgi_clear_identity() {
+    unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL \
+        AGENT_NAME AGENT_EMAIL AGENT_MODEL AGENT_FRAMEWORK
+}
+
 # Load framework identity lookup table from shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_CONFIG="${SCRIPT_DIR}/framework_config.sh"
@@ -41,6 +58,7 @@ if [ -f "${FRAMEWORK_CONFIG}" ]; then
 else
     echo "❌ ERROR: Framework configuration not found at ${FRAMEWORK_CONFIG}."
     echo "This script expects FRAMEWORK_NAMES and FRAMEWORK_SUFFIXES to be defined in a shared config."
+    _sgi_clear_identity
     return 1
 fi
 
@@ -107,6 +125,7 @@ detect_framework() {
 # Parse arguments
 if [ $# -eq 0 ]; then
     show_usage
+    _sgi_clear_identity
     return 1
 fi
 
@@ -119,6 +138,7 @@ if [ "$1" == "--agent" ]; then
     if [ $# -lt 2 ] || [ $# -gt 3 ]; then
         echo "Error: --agent requires framework name (and optionally a model)"
         show_usage
+        _sgi_clear_identity
         return 1
     fi
 
@@ -126,11 +146,13 @@ if [ "$1" == "--agent" ]; then
     if [ -z "${FRAMEWORK_NAMES[$FRAMEWORK]:-}" ]; then
         echo "Error: Unknown framework '$2'"
         echo "Supported frameworks: ${!FRAMEWORK_NAMES[*]}"
+        _sgi_clear_identity
         return 1
     fi
     # Derive the email before assigning anything: a failure exports nothing.
     if ! _SGI_EMAIL="$(framework_email "$FRAMEWORK")"; then
         unset _SGI_EMAIL
+        _sgi_clear_identity
         return 1
     fi
 
@@ -146,6 +168,7 @@ elif [ "$1" == "--detect" ]; then
     if [ "$DETECTED" == "unknown" ]; then
         echo "Error: Could not auto-detect framework"
         echo "Please use --agent <framework> or provide name/email manually"
+        _sgi_clear_identity
         return 1
     fi
 
@@ -157,11 +180,13 @@ elif [ "$1" == "--detect" ]; then
     if [ -z "${FRAMEWORK_NAMES[$FRAMEWORK_KEY]:-}" ]; then
         echo "Error: no predefined identity for detected framework '$DETECTED'"
         echo "Please use --agent <framework> or provide name/email manually"
+        _sgi_clear_identity
         return 1
     fi
     # Derive the email before assigning anything: a failure exports nothing.
     if ! _SGI_EMAIL="$(framework_email "$FRAMEWORK_KEY")"; then
         unset _SGI_EMAIL
+        _sgi_clear_identity
         return 1
     fi
 
@@ -194,6 +219,7 @@ elif [ $# -eq 3 ]; then
 else
     echo "Error: Invalid arguments"
     show_usage
+    _sgi_clear_identity
     return 1
 fi
 

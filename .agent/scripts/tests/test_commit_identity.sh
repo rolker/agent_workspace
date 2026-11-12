@@ -184,6 +184,19 @@ cfg="$(git -C "$sb/repo" config --local user.email)"
 [[ $rc -ne 0 && "$out" == *"$UNSET_TEXT"* && -z "$cfg" ]] && pass "configure_git_identity.sh writes nothing" \
     || fail "configure unset (rc=$rc, cfg=$cfg, got: $out)"
 
+echo "TEST: a failed re-source of set_git_identity_env.sh leaves no previous identity behind"
+OWNED='${GIT_AUTHOR_NAME-u}|${GIT_AUTHOR_EMAIL-u}|${GIT_COMMITTER_NAME-u}|${GIT_COMMITTER_EMAIL-u}|${AGENT_NAME-u}|${AGENT_EMAIL-u}|${AGENT_MODEL-u}|${AGENT_FRAMEWORK-u}'
+PRE_GIT=(GIT_AUTHOR_NAME=Old GIT_AUTHOR_EMAIL=old+codex@example.org GIT_COMMITTER_NAME=Old
+    GIT_COMMITTER_EMAIL=old+codex@example.org AGENT_NAME=Old AGENT_EMAIL=old+codex@example.org
+    AGENT_MODEL=old AGENT_FRAMEWORK=codex)
+for args in '--agent claude-code m' '--detect' '--agent nosuch' 'a b c d'; do
+    # $args is spliced into the inner script and word-split there on purpose.
+    out="$(run_in "$sb" "${PRE_GIT[@]}" CLAUDECODE=1 -- bash -c \
+        "source \"\$1\" $args >/dev/null 2>&1; echo \"rc=\$? $OWNED\"" _ "$SET_ENV" 2>&1)"
+    [ "$out" = "rc=1 u|u|u|u|u|u|u|u" ] && pass "failed '$args' unsets every owned variable" \
+        || fail "stale identity after '$args' (got: $out)"
+done
+
 echo "TEST: a failed sourced detect_agent_identity.sh keeps a pre-exported identity intact"
 PRE_ID=(AGENT_NAME="Codex CLI Agent" AGENT_EMAIL=dev+codex@example.org AGENT_MODEL=gpt-x AGENT_FRAMEWORK=codex)
 out="$(run_in "$sb" "${PRE_ID[@]}" CLAUDECODE=1 -- bash -c \
