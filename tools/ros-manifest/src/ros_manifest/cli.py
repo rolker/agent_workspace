@@ -103,6 +103,11 @@ def main(argv=None) -> int:
     except ManifestError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+    except Exception as exc:
+        # The backstop for a route the loader does not turn into a ManifestError: the
+        # exception's text, and a traceback, can quote manifest content. Only its type is shown.
+        print(f"ERROR: internal error ({type(exc).__name__})", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
