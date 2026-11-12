@@ -1626,6 +1626,46 @@ test_repo_pin_strips_quotes() {
     assert_eq "single quotes stripped" "v1.0	tag" "$out"
 }
 
+test_repo_pin_reads_version_as_yaml() {
+    echo "TEST: repo_pin keeps a '#' inside a ref, drops a comment and a CRLF, refuses a stray quote"
+    local sb out rc proj dir f
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    # Both "fix" and "fix#12" are branches on origin: cutting at the "#"
+    # would answer with the wrong, existing branch.
+    git -C "$dir" branch --quiet fix
+    git -C "$dir" branch --quiet 'fix#12'
+    git -C "$dir" push --quiet origin fix 'fix#12'
+    f="$proj/configs/manifest/repos/l1.repos"
+    local pair want
+    for pair in 'fix#12|fix#12	branch' '"fix#12"|fix#12	branch' \
+        '"fix#12" # pinned for #12|fix#12	branch' 'fix # a comment|fix	branch'; do
+        write_pin_repos "$f" "pkg_a=${pair%%|*}"
+        want="${pair#*|}"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[${pair%%|*}]: exit 0" "0" "$rc"
+        assert_eq "[${pair%%|*}]: ref and kind" "$want" "$out"
+    done
+    # A CRLF file: the CR is a line end, not part of the ref.
+    printf 'repositories:\r\n  pkg_a:\r\n    type: git\r\n    version: pinned\r\n' > "$f"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "CRLF: exit 0" "0" "$rc"
+    assert_eq "CRLF: no CR in the ref" "pinned	branch" "$out"
+    # An unclosed quote is refused, not printed as a ref.
+    for pair in '"fix' "fix'" 'fi"x'; do
+        write_pin_repos "$f" "pkg_a=$pair"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$pair]: exit 1" "1" "$rc"
+        assert_contains "[$pair]: says why" "cannot be read as a ref" "$out"
+    done
+}
+
 test_repo_pin_deleted_upstream_branch_is_not_a_branch() {
     echo "TEST: repo_pin does not call a branch deleted on origin a branch, though a stale remote ref is left"
     local sb out err proj dir
@@ -1798,6 +1838,7 @@ test_cwd_discovery_resolves_colcon_project
 test_repo_pin_kinds_online
 test_repo_pin_branch_before_tag
 test_repo_pin_strips_quotes
+test_repo_pin_reads_version_as_yaml
 test_repo_pin_deleted_upstream_branch_is_not_a_branch
 test_repo_pin_offline_uses_local_refs
 test_repo_pin_not_cloned

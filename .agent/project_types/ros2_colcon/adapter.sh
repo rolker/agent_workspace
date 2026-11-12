@@ -211,21 +211,45 @@ _rc_underlay() {
 
 # Parse a vcstool .repos file: emit "<name>\t<version>" per repository.
 # Format: two-space-indented "name:" entries under "repositories:", with
-# four-space-indented keys (type/url/version).
+# four-space-indented keys (type/url/version). The version is the rest of
+# its line: a CRLF line end is dropped, a quoted scalar is kept whole with
+# its quotes (a "#" inside it is part of the ref), and otherwise a "#"
+# starts a comment only after whitespace, as in YAML ("fix#12" is a ref).
+# With --all, an entry with no version: key is emitted too, as "<name>"
+# alone (no tab): vcstool checks such a repository out at its default branch.
 _rc_repos_entries() {
-    local repos_file="$1"
+    local repos_file="$1" all=0
+    [ "${2:-}" = "--all" ] && all=1
     [ -f "$repos_file" ] || return 0
-    awk '
+    awk -v all="$all" '
+        function flush() {
+            if (name != "" && all) printf "%s\n", name
+            name = ""
+        }
         /^[[:space:]]*#/ { next }
         /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
-            name = $1; sub(/:$/, "", name)
+            flush()
+            name = $1; sub(/\r$/, "", name); sub(/:$/, "", name)
             next
         }
         /^    version:/ && name != "" {
-            version = $2; sub(/#.*/, "", version)
-            printf "%s\t%s\n", name, version
+            v = $0
+            sub(/\r$/, "", v)
+            sub(/^    version:/, "", v)
+            sub(/^[ \t]+/, "", v)
+            q = substr(v, 1, 1)
+            e = 0
+            if (q == "\"" || q == "\047") e = index(substr(v, 2), q)
+            if (e > 0) {
+                v = substr(v, 1, e + 1)
+            } else {
+                sub(/[ \t]+#.*$/, "", v)
+                sub(/[ \t]+$/, "", v)
+            }
+            printf "%s\t%s\n", name, v
             name = ""
         }
+        END { flush() }
     ' "$repos_file"
 }
 
@@ -996,6 +1020,13 @@ adapter_repo_pin() {
     fi
     if [ -z "$ref" ]; then
         echo "ERROR: repo_pin: '$repo' has an empty version: in layer '$hit_layer'" >&2
+        return 1
+    fi
+    # A quote or carriage return left in the ref means the line was not
+    # read as YAML would read it (an unclosed quote, a stray CR): refuse it
+    # rather than print a ref nobody pinned.
+    if [[ "$ref" == *[\"\'$'\r']* ]]; then
+        echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref: '$ref'" >&2
         return 1
     fi
     local kind
