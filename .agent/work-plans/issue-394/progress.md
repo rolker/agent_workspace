@@ -263,3 +263,40 @@ Dismissed: Gemini and Codex "ADR-0016 lines 207-210 not updated" (deliberate, AD
 
 ### Next step
 `/review-code --branch`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 13:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a06a5823d94870b2d, resume 1 of 3)
+
+**Branch**: feature/issue-394 at `1e02b457`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff 1717 changed lines across 6 files, enforcement script that edits the user's ~/.claude/settings.json)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the remaining suggestion can be applied or tracked
+
+Narrow check of the round 2 findings and the fix diff 22a52c40..1e02b457 (33261037, 9613a9fa, 0a53c3c6, 4c5d851b, 86614aa2). Cross-model: skipped (round-3 convergence check, per handoff). Specialists: static analysis (shellcheck --severity=warning on both files: clean), governance, plan drift, Claude adversarial (fresh subagent; its scratch-HOME reproduction was denied by the permission system and not worked around, so its findings are from reading). Tests: `test_user_tier_install.sh` 302 passed, 0 failed. The real `~/.claude` was not touched.
+
+All five round 2 findings are closed. The must-fix: `--uninstall` now checks, classifies, builds, backs up and writes settings.json before it removes anything, and every failure up to the write exits 1 with "nothing changed". The four suggestions: exact match for retired names and marked checkouts, `--check` counting per event, removals named with the backup path (plain install leaves unmarked dead commands, per the host's direction), and refusal of a non-array event.
+
+Mutation check by reading (the run was denied to the fix pass). Each new case fails against the round 2 script:
+- the six `--uninstall` failure cases: round 2 removed the root file and the link, and called the stub CLI for the plugin enabled in the checkout, before touching settings.json, so the "leaving ..." and "no claude CLI call" assertions fail; the messages "could not build the rewrite" and "failed to write" do not exist there;
+- (q): round 2 classified neither the spaced retired command nor the spaced marked one, and `--force` dropped the marker and kept the command;
+- (r): round 2 tested presence anywhere, so `--check` exits 0;
+- (s): round 2 had no shape check, so install exits 0;
+- (i): round 2 removed an unmarked dead command on a plain install.
+
+### Findings
+- [ ] (suggestion) A dead command in an entry carrying any marker, not only its own checkout's, is attributed to the installer and removed by a plain install: `owner` returns "dead" without comparing `$k.dir` with the marker, and `remove` only asks `marked($m)`. A moved checkout's entry always has the command under the marker's own path, so requiring `$k.dir == $m` for "dead" loses nothing and keeps the rule to "an entry marked with that checkout" (adversarial) — `user_tier_install.sh:459-471`
+
+Fix-pass choices, judged:
+- `write_settings` returns 1 on a failed rename and removes its temporary file: agreed. The must-fix depends on it, and the symlinked-settings branch returned 0 after a failed `mv`, a false success of the same kind. Its failure is tested only on the plain path: the `mv` shim matches `*/.claude/settings.json`, not a dotfiles target.
+- The printed removals include this checkout's retired or alias-path commands: agreed. Every command taken out of the owner's file is named, at a cost of one line per command.
+
+Dismissed:
+- Adversarial "`--check` is clean when our command sits in a mixed or marked entry that install moves to a fresh entry": converges in one run, the hook runs once either way, and a leftover marker is reported separately.
+- Adversarial "the `--force` remedy also removes other checkouts' commands": `--check` reports those on lines of their own, and from the owning checkout `--force` takes nothing over.
+- Adversarial "install writes the root file and the link before settings.json": either order leaves a window; `--check` reports it and a re-run converges; the backup-first order asked for in round 1 holds.
+- Adversarial "`--uninstall` adds `hooks: {}` and drops empty events": predates the branch, and the key holds nothing.
