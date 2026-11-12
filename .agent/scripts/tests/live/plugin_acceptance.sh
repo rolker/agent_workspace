@@ -136,33 +136,10 @@ FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 
-# Every root the suite enables the plugin in, recorded BEFORE the CLI runs
-# there, so a half-finished enable is still undone on exit.
-ENABLED_ROOTS=()
-# Every `claude plugin` call, stdin closed, so a prompt the CLI might show
-# fails the call instead of hanging the suite.
-cli_plugin() { claude plugin "$@" </dev/null; }
-
-# The CLI's machine-level record of this run's marketplace, and its source.
-KM="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/known_marketplaces.json"
-km_source() {
-    jq -r --arg m "$NAME" '.[$m].source.path? // empty' "$KM" 2>/dev/null || true
-}
-
-# ------------------------------------------------- user-scope state ---
-# The real user settings the user-scope cases change, and the run's state
-# about them. USER_ENABLED is set BEFORE the enabling CLI call (as
-# ENABLED_ROOTS is), so an interrupted call is still undone; it is cleared
-# only when the settings read back without this run's entries. USER_TOUCHED
-# stays set, so the plugin cache is removed on exit. REAL_BEFORE is the
-# file's `jq -S` form taken just before the enable.
+# The real user settings the user-scope cases change, and the hand removal
+# for a run killed in a way no trap sees, printed at the start, before
+# anything is created.
 REAL_SETTINGS="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/settings.json"
-USER_ENABLED=0
-USER_TOUCHED=0
-REAL_BEFORE=""
-REAL_COMPARED=0
-# The hand removal, for a run killed in a way no trap sees. Printed at the
-# start, before anything is created.
 user_removal_lines() {
     local env_prefix=""
     [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && env_prefix="CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR "
@@ -177,6 +154,31 @@ if [[ "$RUN_USER" == 1 ]]; then
     echo "  (and its cached copy: rm -rf ${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/$NAME)"
     echo ""
 fi
+
+# Every root the suite enables the plugin in, recorded BEFORE the CLI runs
+# there, so a half-finished enable is still undone on exit.
+ENABLED_ROOTS=()
+# Every `claude plugin` call, stdin closed, so a prompt the CLI might show
+# fails the call instead of hanging the suite.
+cli_plugin() { claude plugin "$@" </dev/null; }
+
+# The CLI's machine-level record of this run's marketplace, and its source.
+KM="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/known_marketplaces.json"
+km_source() {
+    jq -r --arg m "$NAME" '.[$m].source.path? // empty' "$KM" 2>/dev/null || true
+}
+
+# ------------------------------------------------- user-scope state ---
+# The run's state about the real user settings (REAL_SETTINGS, above).
+# USER_ENABLED is set BEFORE the enabling CLI call (as ENABLED_ROOTS is),
+# so an interrupted call is still undone; it is cleared only when the
+# settings read back without this run's entries. USER_TOUCHED stays set,
+# so the plugin cache is removed on exit. REAL_BEFORE is the file's `jq -S`
+# form taken just before the enable.
+USER_ENABLED=0
+USER_TOUCHED=0
+REAL_BEFORE=""
+REAL_COMPARED=0
 # user_scope_entries: this run's two entries in the real user settings, as
 # one line for a FACT. Names only this run's id and marketplace.
 user_scope_entries() {
