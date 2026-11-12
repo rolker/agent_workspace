@@ -7,7 +7,6 @@
 #   setup-dev.done  — venv + pre-commit installed
 #   ros-manifest.done — the ros-manifest resolver installed in the venv
 #   git-bug.done    — git-bug identity + GitHub bridge configured
-#   project.done    — project/ configured (cloned or symlinked)
 #
 # Target tiers:
 #   Tier 1 — Setup chain (stamp-based, mostly invisible)
@@ -65,21 +64,22 @@ help:
 	@echo "Agent Workspace - Makefile"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make setup            Full setup (venv + pre-commit + project clone)"
+	@echo "  make setup            Full setup (venv + pre-commit + ros-manifest resolver + git-bug)"
 	@echo "  make lint             Install and run pre-commit on all files"
 	@echo "  make validate         Check workspace configuration is valid"
 	@echo "  make repair           Fix stale venv/hooks after workspace rename"
 	@echo "  make install-ros-manifest  Install the ros-manifest resolver into the venv (part of setup)"
 	@echo ""
 	@echo "Development:"
-	@echo "  make build            Run BUILD_CMD from .agent/project_config.sh"
-	@echo "  make test             Run TEST_CMD from .agent/project_config.sh"
-	@echo "  make install          Run INSTALL_CMD (no-op when unset)"
-	@echo "  make dashboard        Show workspace + project status"
-	@echo "  make sync             Fetch/pull workspace + project repos"
+	@echo "  make build            Run the build command from the project's settings file (PROJECT=<name>)"
+	@echo "  make test             Run the test command from the project's settings file (PROJECT=<name>)"
+	@echo "  make install          Run the install command from the project's settings file (PROJECT=<name>)"
+	@echo "  make dashboard        Show workspace + registered projects status"
+	@echo "  make sync             Fetch/pull workspace + the selected project (PROJECT=<name>)"
 	@echo ""
-	@echo "  PROJECT=<name> targets a registered project from .agent/projects.local"
-	@echo "  (e.g. make build PROJECT=boat_sim); default is the legacy project/ symlink."
+	@echo "  PROJECT=<name> selects a registered project from .agent/projects.local"
+	@echo "  (e.g. make build PROJECT=demo); needed when more than one is registered"
+	@echo "  or the current directory is inside none."
 	@echo ""
 	@echo "Worktrees:"
 	@echo "  .agent/scripts/worktree_create.sh --issue <N> --type workspace"
@@ -97,8 +97,11 @@ help:
 	@echo "  make clean            Remove stamp files (forces re-setup)"
 	@echo ""
 
-setup: $(STAMP)/project.done $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
+setup: $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
 	@echo "✅ Setup complete."
+	@grep -Eqs '^[[:space:]]*[^#[:space:]]' $(WS_ROOT)/.agent/projects.local || \
+	    echo "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
+	@echo "Optional, enable the workspace in project sessions: .agent/scripts/user_tier_install.sh"
 
 # Multi-tenant hosting (issue #227): PROJECT=<name> selects a project from
 # .agent/projects.local; unset means legacy project/ (or cwd discovery in
@@ -205,13 +208,3 @@ $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
 	@mkdir -p $(STAMP)
 	@$(MAIN_ROOT)/.agent/scripts/git_bug_setup.sh
 	@touch $@
-
-# project: configure project/ directory
-$(STAMP)/project.done: $(STAMP)/setup-dev.done
-	@echo "--- Configuring project ---"
-	@if [ -d "$(MAIN_ROOT)/project" ] && git -C "$(MAIN_ROOT)/project" rev-parse --git-dir &>/dev/null; then \
-	    echo "project/ already configured."; \
-	else \
-	    $(MAIN_ROOT)/.agent/scripts/setup_project.sh; \
-	fi
-	touch $@

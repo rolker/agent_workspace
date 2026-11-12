@@ -22,7 +22,14 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
-from workspace import get_workspace_root, get_project_path, is_project_configured
+from workspace import (
+    get_main_checkout_root,
+    get_workspace_root,
+    get_project_path,
+    is_project_configured,
+    read_projects_registry,
+    REGISTER_PROJECT_POINTER,
+)
 
 
 def run_git_cmd(repo_path, cmd_args, dry_run=False):
@@ -176,8 +183,35 @@ def main():
         print("Checking project...")
         print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:
+        # No project resolved: the workspace alone was synced (issue #295).
+        # Say why, and how to get a project synced. The registry read is the
+        # main checkout's, found through git's common dir as make setup,
+        # make validate and the dashboard find it: a worktree has no
+        # registry of its own (projects.local is gitignored). A registry
+        # whose lines fail to parse is not an empty one: say so rather than
+        # "none registered" (only a worktree reaches here with one; from the
+        # main checkout the adapter refuses a malformed registry first).
         print("Checking project...")
-        print("  ⚠️  project/ not configured. Run: make setup")
+        main_root = get_main_checkout_root()
+        entries, errors = read_projects_registry(main_root)
+        names = [e["name"] for e in entries]
+        if names:
+            print(
+                "  ⚠️  No project was synced (none selected; registered: "
+                f"{', '.join(names)}; pass PROJECT=<name>)"
+            )
+        if errors:
+            print(
+                f"  ⚠️  The project registry in {main_root} has {len(errors)} "
+                "malformed line(s); run make validate in that checkout to see them."
+            )
+            if not names:
+                print("  No project was synced (no well-formed registry line).")
+        if not names and not errors:
+            print(
+                "  No project was synced (none registered; register one: "
+                f"{REGISTER_PROJECT_POINTER})"
+            )
 
     print("\n✅ Sync complete.")
 

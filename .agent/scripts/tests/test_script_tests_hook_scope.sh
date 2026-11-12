@@ -203,6 +203,10 @@ declare -A ROOT_READERS=(
     # files:/exclude: regex could cover.
     [test_cross_model_review.sh]=""
     [test_dispatch_phase.sh]=".agent/project_types .agent/scripts"
+    # Exports the committed tree (`git archive HEAD`) into a scratch copy and
+    # runs make validate/setup/dashboard/sync and the registration and PR
+    # scripts there (issue #295): the Makefile and these two prefixes.
+    [test_fresh_clone_no_project.sh]="Makefile .agent/scripts .agent/project_types"
     # Runs the real wrapper against the real worktree (its remote and repo
     # root); copies the wrapper and the registry helper into a sandbox.
     [test_gh_create_issue.sh]=".agent/scripts"

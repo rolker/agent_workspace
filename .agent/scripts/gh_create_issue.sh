@@ -174,6 +174,16 @@ if [ -z "$GH_REPO" ]; then
         _PROJECT_SLUG=$(echo "$_PROJ_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
     fi
 
+    # Every registered root's repository (issue #295): a project session runs
+    # from the project's own checkout, so it is accepted because it is
+    # registered in this checkout's .agent/projects.local. _PROJECT_SLUGS is
+    # the whole accepted project set, one per line.
+    _PROJECT_SLUGS="$(registry_repo_slugs "$_WORKSPACE_ROOT")"
+    if [ -n "$_PROJECT_SLUG" ]; then
+        _PROJECT_SLUGS="$(printf '%s\n%s' "$_PROJECT_SLUG" "$_PROJECT_SLUGS")"
+    fi
+    _PROJECT_SLUGS="$(printf '%s\n' "$_PROJECT_SLUGS" | awk 'NF && !seen[$0]++')"
+
     # Validate slug format (owner/repo) before comparing — non-GitHub remotes
     # (enterprise hosts, SSH aliases, GitLab) produce slugs that won't match.
     # Skip the safety check rather than false-positive aborting.
@@ -184,7 +194,7 @@ if [ -z "$GH_REPO" ]; then
     if [ -n "$_CURRENT_SLUG" ] && [[ "$_CURRENT_SLUG" =~ $_SLUG_PATTERN ]]; then
         if [ "$_CURRENT_SLUG" = "$_WS_SLUG" ]; then
             _REPO_OK=true
-        elif [ -n "$_PROJECT_SLUG" ] && [ "$_CURRENT_SLUG" = "$_PROJECT_SLUG" ]; then
+        elif [ -n "$_PROJECT_SLUGS" ] && grep -qxF -- "$_CURRENT_SLUG" <<< "$_PROJECT_SLUGS"; then
             _REPO_OK=true
         fi
     else
@@ -195,7 +205,11 @@ if [ -z "$GH_REPO" ]; then
     if [ "$_REPO_OK" = false ]; then
         echo "❌ Error: gh would target '${_CURRENT_SLUG}', which is not the workspace or project repo." >&2
         echo "   Workspace repo: ${_WS_SLUG:-<not detected>}" >&2
-        echo "   Project repo:   ${_PROJECT_SLUG:-<not configured>}" >&2
+        if [ -n "$_PROJECT_SLUGS" ]; then
+            echo "   Project repo:   $(printf '%s' "$_PROJECT_SLUGS" | paste -sd, - | sed 's/,/, /g')" >&2
+        else
+            echo "   Project repo:   <none registered>" >&2
+        fi
         echo "" >&2
         echo "   You are likely inside a scratchpad clone. Use -R to target the correct repo:" >&2
         echo "   $0 -R ${_WS_SLUG:-owner/repo} [other args]" >&2
