@@ -61,3 +61,13 @@ issue: 451
 - [ ] In the plan, show the revert check concretely: the command to revert the #313 round 4 fix and the #363 fix locally, and the expected failing assertion for each, run once and recorded in the PR description.
 - [ ] Add to acceptance a repo-wide grep (`cp "$(command -v` and `ln`/`cp` of multi-call tools in `.agent/scripts/tests/`) so "no test copies or renames a host binary" is checked over all 45 suites, not just this file.
 - [ ] Run the suite (about 2.5 minutes) on a GNU coreutils host as well; this machine is uutils, so the GNU run is not covered by what was reproduced here.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (none of the review's actions changes scope)
+**After**: issue-actions
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. Read: the Issue Review entry (35f3ba0c). No Principle Alignment row is "Action needed", and it lists no question for the owner. Its seven recommendations are inputs to the plan (check a script's `comm` first, name the three pre-setsid positions and their ordering mechanism, fixtures check their own state, remaining limits are hang ceilings, a revert check for each fix, a repo-wide grep in acceptance, a run on a GNU coreutils host); they go into the plan-task handoff. None adds or drops a behaviour the issue asks for.
