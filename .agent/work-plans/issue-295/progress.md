@@ -506,3 +506,15 @@ Pull request A ("a fresh clone works with no project"). No GitHub reviews, inlin
 - Gemini: ran in rounds 1 and 2 (pre-push); its findings were triaged there and are closed; not run in round 3 (per handoff).
 - Codex: ran in rounds 1 and 2 (pre-push, short, read-only); only the common-dir false positive both times; not run in round 3.
 - Human: none requested.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 15:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"q16 yes."
+
+Q16 as put to him: what to do with pull request 454 once CI is green; the option he chose: merge it, with the two open suggestions carried into the next pull request's plan. F1: four code comments describe the old way of finding the main checkout (and `make setup`'s WS_ROOT keeps the old rule). F2: in a linked worktree of a clone made with a separate git directory, a message says "none registered" when a registry exists. Said to him: both concern one rare layout that cannot occur on his machines as they are set up, and the next pull request (the legacy fallbacks go) touches the same code. The merge waits for the lint job to pass.
