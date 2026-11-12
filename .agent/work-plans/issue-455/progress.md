@@ -182,3 +182,39 @@ Second plan review: the five earlier findings are resolved. Two new medium findi
 **Plan**: `.agent/work-plans/issue-455/plan.md` at `fff4b3fa`
 
 Second revision. Run identity: implement pass starts literal (C1, C2) and switches to the derived form from the worktree's script at the pivot commit C3, and the host does the same until the merge. Post-merge step (update in-flight branches from main, also in the PR body) with a new-hook failure message naming the derived command, tested. Design change-log row added. Unset-email test also covers --detect and detect_agent_identity.sh.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 17:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #455 — Owner's email addresses are hardcoded in the identity hook and scripts
+**Plan**: `.agent/work-plans/issue-455/plan.md` at `fff4b3fa`
+**Branch**: `feature/issue-455`
+
+Third review, a convergence check. All four findings of the second review are resolved, checked against the plan and the code. 1 (run identity): the commit-order section now says the implement phase is one dispatched pass, started with the literal identity because the main checkout's `set_git_identity_env.sh` refuses `--agent <fw> "<model>"` (`$# -ne 2`, line 108). C1 and C2 use the literal. C3 and every later commit source the worktree's own script in the derived form, and the host does the same from C3 until the merge. The old hook passes C1 and C2, and the new hook (run from the working tree, `.pre-commit-config.yaml:28`) accepts C3, so no commit is blocked. 2 (after the merge): a post-merge section, also in the PR body, says in-flight branches are updated from main before their next commit and names issue 429's worktree. Step 4 has the hook's failure text print the base, the exact derived command and the stale-literal / not-updated-from-main cause, and step 5 tests that text. 3: step 7 and C2 add one `docs/design.md` change-log row for "Rules, Identity" (#455). 4: step 5's unset-email case now covers `--detect` and `detect_agent_identity.sh`. Nothing the earlier reviews confirmed has regressed: Serves still names "Modular", the brand-guidelines hit is still marked as expected, the test is still hermetic with `GIT_CONFIG_NOSYSTEM=1` and `example.org` fixtures and is mapped in `suites_for_files.sh`, and run-issue, onboard-project and `test_skill_paths.sh` are still in C3.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR in ordered commits C1..C4+. |
+| Issue alignment | Good | Covers every owner direction: derived from git config with no config file, unset email handled, clone-level email honoured, both of the owner's domains accepted through the machine's base, instruction files edited. Serves: Workspace goal "Modular" (`README.md#modular`: project-agnostic, no owner-specific data in the infrastructure) — `docs/design.md#identity`. |
+| File targeting | Good | Unchanged from the second review, which confirmed it. |
+| Consequences | Good | The run identity, post-merge branches and the change-log row are all covered. |
+| Principle alignment | Good | Fails loudly, keeps the hook blocking, adds no config, plans a test, updates the design text. |
+| ADR compliance | Good | ADR-0003, ADR-0004/0005 and ADR-0017 are addressed. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+None.
+
+### Summary
+
+The plan is ready for implementation. The pivot-commit sequencing works with the scripts as they are today, the post-merge risk is stated and tested, and the earlier findings stay resolved.
+
+### Recommended Actions
+
+- [ ] None before implementation.
