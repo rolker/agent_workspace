@@ -667,3 +667,17 @@ The fix pass's note on `_check_name` is not right as stated. It shows `repr()` n
 - [ ] (suggestion) A broken pipe on small `validate` output is found only at Python's exit flush and prints `Exception ignored … BrokenPipeError`. Flush stdout inside the `try` — `cli.py:105-117`
 - [ ] (suggestion) The emitter writes with the locale encoding while the read side is now UTF-8. Under `LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0`, the em dash in every header gave `internal error (UnicodeEncodeError)` and left an empty `core.repos`, against the "writes nothing" promise (adversarial reviewer's reproduction). Use `write_text(text, encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/emit.py:139`
 - [ ] (suggestion) The `extends` clone inherits stdin and allows git and ssh prompts, so a base url that asks for credentials prompts on the terminal or hangs. Pass `stdin=subprocess.DEVNULL`, `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND="ssh -o BatchMode=yes"` (not run: no network) — `tools/ros-manifest/src/ros_manifest/extends.py:80-95`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:26 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"Q3: A and yes."
+
+Q3 as put to him: what should happen with this pull request after round 5 (one must-fix open: error messages can still print a manifest value). Option A: "Publish now, with the last finding as a follow-up issue ... The README sentence that claims otherwise gets corrected in a small fix first." "and yes" answers the Ask-First item: the 9 lines added to the CI job validate-adapter-contract are allowed.
+
+So this address pass is limited to making the README true (no message prints a traceback; a message may still name a value from the manifest in the listed cases, tracked in the follow-up issue). The round 5 must-fix and its five suggestions are not fixed here; they are in follow-up issue https://github.com/rolker/agent_workspace/issues/447. After the pass and its convergence check, the pull request is published on this same answer.
