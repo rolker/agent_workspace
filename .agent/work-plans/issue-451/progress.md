@@ -185,3 +185,13 @@ The revision answers both earlier high findings and both low ones, and the B mec
 - [ ] Name the actual revert mechanism (no script variable exists).
 - [ ] Part 1 fixture-state checks parse `/proc` in test code, independent of `proc_state`.
 - [ ] Note in the test comment why deaf B is kept beside deaf A; fix the 124/137 wording.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review's verdict is ready; its findings are implementation details)
+**After**: plan
+**Decision**: proceed
+
+Host answer under /orchestrator's checkpoint table. Read: the second Plan Review entry (1e5acabe), verdict ready, on the plan at d7d8a1b9. It confirms the revision answers all four earlier findings. Its own findings do not change the approach and go to the implement pass, which reads them on this timeline: (medium) the test's `kill` wrapper must return the real `kill`'s exit status, or the handler's group-wait loop spins and the correct handler fails deaf B; (low) the revert checks need a real way to swap in a reverted helper, since no script variable exists for it; (low) part 1's fixture-state check reads /proc with the test's own code, not the extracted `proc_state`; (info) the test comment says deaf B is the only case reaching "group appears just after the deadline"; (info) a deaf hang ends as exit 137, not 124.
