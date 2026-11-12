@@ -1,5 +1,11 @@
 # Plan: Enable the agent-workspace plugin once for the whole machine (user scope), as decided 2026-10-13
 
+> **Sequencing, read first.** Pull request A (issue 394) is driven on issue
+> 394's own worktree and timeline (started 2026-11-12); this plan's A section
+> is the source its plan pass copies. Pull request B's implementation on this
+> branch starts only after A is merged and installed, `main` is merged in, and
+> the owner has answered how the live check runs.
+
 ## Issue
 
 https://github.com/rolker/agent_workspace/issues/446
@@ -82,8 +88,10 @@ Not verified (cannot be done without a model session):
   (the `p11-*` shape), and whether a session in a repository nested in a
   registered root lists the `agent-workspace:` skills.
 - Whether local scope `true` plus user scope `true` lists the skills once.
-- What a second `marketplace add` of the same name from a different path at
-  user scope does.
+
+(A second user-scope `marketplace add` of the same name from another path
+repoints both records: verified on 2.1.322 by the first plan review; see
+Approach, PR B step 2.)
 
 These become PR B's step 1, a live session case run by the host or owner with a stop
 condition (below). The stop condition is part of the plan, not a risk to
@@ -113,19 +121,21 @@ when its pass starts; this plan is its source.
    hooks of #328, which the retired-hook check at about lines 1095-1115 and
    its test at `test_user_tier_install.sh:305` only find today when tagged).
    `--check`, the re-run, `--force` and `--uninstall` use this rule whether or
-   not the marker is present. Another checkout's entry is recognised the way
+   not the marker is present. When the `_agent_workspace` marker is present
+   it is still read, as today: the "foreign" check, the "points outside this
+   checkout" check and the `--force` removal keep honouring it, so an entry
+   whose checkout was moved or deleted (a dead command path, which the
+   path rule alone cannot attribute) is still reported and removed. Another checkout's entry is recognised the way
    `foreign_skill_link` does: the entry's directory (two levels above
    `.claude/hooks/`) holds `.agent/user_tier_scripts.txt` and is not
    `$WS_ROOT`; a same-named hook in an unrelated repository is not caught
    (finding 6c). A re-run over unmarked entries does not add a second copy.
-2. Idempotent write (finding 6b): the installer stops writing the marker
-   (command-path matching makes it carry nothing the command does not; the
-   foreign-checkout rule above no longer needs it), and skips the write of
+2. Idempotent write (finding 6b): the installer stops **writing** the marker
+   (command-path matching makes it carry nothing the command does not) but
+   keeps **reading** it where present (step 1), and skips the write of
    `settings.json` when the merged result equals the current content under
-   `jq -S` (this also covers the CLI reordering keys). If dropping the marker
-   leaves a reader of `_agent_workspace` in the repo, the implement pass
-   removes that reader too; if one cannot be removed, the marker stays and
-   only the no-op-write skip is added.
+   `jq -S` (this also covers the CLI reordering keys). `backup_settings`
+   (line 1281) moves behind that comparison so a no-op run writes no backup.
 3. Add `.claude/settings.local.json` to `.gitignore`.
 4. Tests (scratch HOME, stub CLI that strips markers and reorders keys on
    every call): install, CLI call, then `--check` passes (exit 0) and a
@@ -134,7 +144,9 @@ when its pass starts; this plan is its source.
    found by `--check` and replaced by install; a same-named hook outside the
    checkout without `user_tier_scripts.txt` is left alone; one with it is
    reported as another checkout's; `--uninstall` after a strip removes the
-   entries.
+   entries; a marked entry whose command points into a checkout that was
+   moved or deleted (path gone from disk) is still reported by `--check` and
+   removed by `--force`.
 
 **PR B: user-scope enable and removal of the per-root machinery (this issue,
 branch `feature/issue-446`, after A is merged and installed).** One pull
@@ -149,12 +161,38 @@ request, commits in this order:
    `aw-accept-<pid>` plugin, cleanup on exit) gains user-scope cases that
    enable the renamed test plugin at user scope in the real `~/.claude` for
    the minutes the run takes and then remove it. A trap removes it on any
-   exit; the suite prints, at the start, the one command that removes it by
-   hand if the run is killed. The suite's header promise ("never touches
+   exit; the suite prints, at the start, the commands that remove it by hand if
+   the run is killed (see the safety extras below). The suite's header promise ("never touches
    `~/.claude/settings.json`") is rewritten to say exactly this. The run is
-   made by the host or the owner, **not by an implement sub-agent**, before
-   B's implementation starts; its FACT lines go on the timeline and in
-   "Implementation Notes". Cases: a session in the committed-off repository,
+   made by the host or the owner, **not by an implement sub-agent**; its
+   FACT lines go on the timeline and in "Implementation Notes".
+   **Who writes the cases, and the limit on the first dispatch:** the first
+   implement dispatch for PR B is limited to this step's suite commit (the
+   user-scope cases, the copy's off entry, the safety extras below, the
+   header rewrite) and **ends with a hand-back when that commit is made**. It
+   must not start steps 2 to 8, run the suite, or edit anything else; steps 2
+   to 8 begin only in a later dispatch, after the suite's FACT lines are on
+   the timeline and the stop conditions below have been checked against them.
+   An implement agent reading only this plan stops after the suite commit.
+   **The copy's off entry (finding 3):** the suite runs on a copy of the
+   checkout whose plugin is renamed `aw-accept-<pid>`; before the
+   committed-off-repository and worktree cases are made, it writes
+   `"aw-accept-<pid>@aw-accept-<pid>": false` into the copy's
+   `.claude/settings.json` (under `enabledPlugins`) and commits it there (step
+   5's real entry names `agent-workspace@agent-workspace`, which would not
+   cover the renamed plugin). Without it a session at the copy's root would
+   list the probe twice and the first stop condition would fire on a test
+   defect.
+   **Safety extras (finding 8):** the trap covers EXIT, INT, TERM and HUP; the
+   suite records "user-scope enabled" before making the CLI call (as
+   `ENABLED_ROOTS` is recorded today) so an interrupted call is still cleaned
+   up; it prints a removal line naming both commands,
+   `claude plugin uninstall aw-accept-<pid>@aw-accept-<pid> --scope user` and
+   `claude plugin marketplace remove aw-accept-<pid> --scope user`; and it
+   compares the real `~/.claude/settings.json` under `jq -S` before and after
+   the run, treating leftover empty objects as expected and printing any other
+   difference (the CLI's rewrite races the owner's concurrent sessions). The
+   real `agent-workspace` entry is never named. Cases: a session in the committed-off repository,
    in a plain subdirectory root of it, in a worktree of it; an in-tree root
    (the `p11-*` shape: a registered root inside the workspace tree with no
    `.git` of its own); a repository nested in an ordinary root; an
@@ -203,12 +241,17 @@ request, commits in this order:
      `"scope":"local"` for this plugin id, `projectPath` = the root), so a
      root unregistered by hand or moved is still found (finding 4; a
      `projectPath` that no longer exists gets the one note below). It runs
-     the CLI only where the root is its own git toplevel or in no git
-     repository; from a plain subdirectory the CLI would change the
-     toplevel's file and leave the root's own entry, so every run would find
-     it again. Elsewhere (an in-tree `p11-*` root, a `parent=` instance that
-     is a plain directory of its parent's repository) it prints the entry
-     and the one-line hand removal, and `--check` notes it; never an error.
+     the CLI only where the root is its own git toplevel **with git-dir equal
+     to git-common-dir** (not a linked worktree), or is in no git repository;
+     from a plain subdirectory the CLI would change the toplevel's file and
+     leave the root's own entry, so every run would find it again, and from a
+     linked worktree where `--scope local` writes is not established (the
+     deleted `instance_cli_reason` said so; a write to the main repository's
+     file could also remove its deliberate local `false`). Elsewhere (a plain
+     subdirectory, a linked worktree, an in-tree `p11-*` root, a `parent=`
+     instance that is a plain directory of its parent's repository) it
+     prints the entry and the one-line hand removal, and `--check` notes it;
+     never an error.
      It reads `<root>/.claude/settings.local.json`:
      `enabledPlugins[id] == true` from this checkout, run from the root:
      `claude plugin uninstall "$PLUGIN_ID" --scope local` and
@@ -220,7 +263,18 @@ request, commits in this order:
      no error, and the next run tries again (idempotent). An unparseable file:
      a note, not an error (the same plugin enabled at two scopes is not a
      doubling; verified in step 1, and if not, this becomes an error).
-     A second run finds nothing to migrate and prints nothing about it.
+     A second run finds nothing to migrate and prints nothing about it, except
+     two kinds of entry that get a note on every run: a report-only entry
+     (plain subdirectory or linked worktree), and an
+     `installed_plugins.json` `projectPath` that no longer exists (for that
+     one the note gives the hand removal, since the CLI cannot be run from a
+     directory that does not exist: delete that entry from the `local` list of
+     `~/.claude/plugins/installed_plugins.json`).
+     After migrating, the installer reads the user-scope state and the
+     machine record (`known_marketplaces.json`) back and fails if either was
+     lost (whether a local `uninstall` with the same plugin installed at user
+     scope leaves the user-scope install intact is not checked on 2.1.322; the
+     read-back is the guard, and a failure there is an error naming it).
    - `--check`: read-only. Drift if the user settings do not show the plugin
      enabled from this checkout; if `plugins/known_marketplaces.json` has no
      entry for it or a different source; if the workspace checkout's committed
@@ -262,13 +316,18 @@ request, commits in this order:
      "plugin is not enabled for this root" line becomes "if no
      `agent-workspace:` skills are listed, the user-tier plugin is not
      installed: run the installer".
-   - `session_root.sh`: keeps refusing a package repository nested in a root
-     (the root rule is about which root a session works under, not about the
-     plugin). Only the reason text (lines 149-155, "neither the root's plugin nor its
-     layer reaches the session") is reworded to cite the design's rule that a
-     root is the registered hosting directory, never a nested package
-     repository (finding 8); whether to relax the refusal is a follow-up issue
-     opened in this PR, not part of this change.
+   - `session_root.sh`: keeps both refusals (lines 149-155; the root rule is
+     about which root a session works under, not about the plugin). Only the
+     reason text ("neither the root's plugin nor its layer reaches the
+     session") is reworded, per shape. (1) A package repository nested in a
+     root: "a multi-repo project's root is its registered hosting directory,
+     never a package repository nested in it". (2) A subdirectory of a root
+     in no git repository: the session's layer (the root's settings and
+     adapter) is found from the session's git toplevel, which such a
+     directory lacks, so the true reason is that no root's layer can be
+     located from it; the text says that, not the plugin. Whether to relax
+     either refusal is a follow-up issue opened in this PR, not part of this
+     change.
    - `run-issue` SKILL.md prefix step, `script_reference.md`,
      `project_integration_audit.sh` where it names the per-root enable;
      `.agent/knowledge/principles_review_guide.md` line 53 (the ADR-0018 row:
@@ -300,9 +359,11 @@ request, commits in this order:
    - `docs/design.md`: "Sessions and roots" plugin bullet (line 248-251),
      the registry/`--remove` bullet (lines 314-320), the root-rule text at
      lines 205-207 (unconditionally: "sessions do not read the root's local
-     settings" is false after this change; the refusal's remaining reason is
+     settings" is false after this change; the refusal's remaining reasons are
      the design's "a multi-repo project's root is its registered hosting
-     directory, never a package repository nested in it", around line 200),
+     directory, never a package repository nested in it", around line 200,
+     and, for a subdirectory of a root in no git repository, that no root's
+     layer can be located from it),
      the register row for ADR-0018 (line 744) and C4 (line 767), and a
      history row.
 7. **Tests** (scratch HOME and synthetic sandbox roots, a stub CLI that
@@ -334,7 +395,12 @@ request, commits in this order:
      inside-tree root bare; `test_user_tier_guard.sh` lines 249-272 (which
      assert exit 1 from an unregistered repository) are rewritten to the new
      answer;
-   - migration extras: a legacy entry in a root that is a plain
+   - migration extras: a legacy entry in a root that is a linked git
+     worktree is reported with the hand removal, no CLI call is made, and the
+     main repository's local `false` is untouched; a gone `projectPath` is
+     noted on every run with the hand removal; the user-scope entry and
+     machine record are read back after migration (a stub that drops them
+     makes the run fail); a legacy entry in a root that is a plain
      subdirectory of a repository is reported, not migrated, and the next
      run neither re-migrates it nor calls it drift; a root found only in
      `installed_plugins.json` is migrated; a re-run with the machine record
@@ -378,8 +444,9 @@ request, commits in this order:
 - Per-root opt-out through the root's own `enabledPlugins` false is the
   CLI's own scope rule, so no installer feature is built for it.
 - `claim_machine_record` was built for a per-root world with several
-  declarations of one name; at user scope there is one declaration, so it is
-  dropped unless the unverified third spike fact says otherwise.
+  declarations of one name; at user scope there is one declaration, and the
+  first plan review verified that a second user-scope `marketplace add` of the
+  same name repoints both records, so it is dropped.
 - #351 (hooks into the plugin) would remove the marker problem at the root;
   it is out of scope, hence the PR A fix.
 
@@ -392,7 +459,7 @@ each project root) and Easy to use (one install per machine) --
 ## Design Picture
 
 Yes. `docs/design.md#sessions-and-roots` (plugin bullet, registry/`--remove`
-bullet, and the nested-repository note if step 1 changes it),
+bullet, and the root-rule note at lines 205-207, edited unconditionally in step 6),
 `docs/design.md#registry-and-adapters` where it says unregistering removes
 the plugin enable, the ADR-0018 row of the decision register (now "enabled at
 user scope") and C4, in PR B (ADR-0017).
