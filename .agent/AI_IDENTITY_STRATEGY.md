@@ -74,13 +74,16 @@ Agent identity is determined from these sources (in order of preference):
    - Can export variables or write to file
 
 3. **`.agent/.identity` file** (if it exists) - Runtime-generated configuration file
-   - Contains all identity components
+   - Contains all identity components as shell-quoted assignments
+     (`AGENT_MODEL='...'`, an embedded `'` written as `'\''`): source it
+     (`. .agent/.identity`, bash or any POSIX sh) to get the values; the raw
+     text shows the quoting
    - **Note**: This is a git-ignored runtime file that may become stale if model/config changes during session
    - Template is at `.agent/.identity.template`
 
 **How to determine your identity:**
 1. **Use environment variables** (recommended) - Set by `set_git_identity_env.sh --detect`
-2. **Read from** `.agent/.identity` file if it exists (check with `[ -f .agent/.identity ]`)
+2. **Source** the `.agent/.identity` file if it exists: `[ -f .agent/.identity ] && . .agent/.identity`
 3. **Ask the user** if auto-detection fails
 4. **Use fallback** values if necessary: "AI Agent" / "Unknown Model"
 5. **Configure git** with your identity before making any commits
@@ -215,7 +218,7 @@ The signature must include both:
 
 **How to determine your model:**
 1. **Use environment variables** (recommended) - Check `$AGENT_MODEL` set by `set_git_identity_env.sh`
-2. **Read from `.agent/.identity` file** (if exists) - Check file exists first: `[ -f .agent/.identity ] && source .agent/.identity`
+2. **Source the `.agent/.identity` file** (if exists) - Check file exists first: `[ -f .agent/.identity ] && . .agent/.identity`
 3. **Auto-detect** - Run `.agent/scripts/detect_agent_identity.sh --export`
 4. **Fallback** - Use "Unknown Model" if detection fails
 
@@ -263,7 +266,7 @@ We distinguish the **content** author from the **setup** author.
     - **Email format**: `<local>+<platform>@<domain>`, derived from the checkout's `git config user.email`
     - **Model name**: Your actual runtime model (e.g., "GPT-4o", "Gemini 2.5 Pro")
     - **Auto-detect** using: `source .agent/scripts/set_git_identity_env.sh --detect`
-    - **Or read from**: `.agent/.identity` file
+    - **Or source**: the `.agent/.identity` file (`. .agent/.identity`)
     - **Ask the user** if auto-detection fails
 2.  **Choose the appropriate configuration method**:
     - **Host-based agents (Codex CLI, Copilot CLI, Gemini CLI)**: Use ephemeral identity (environment variables)

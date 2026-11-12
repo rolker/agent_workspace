@@ -198,9 +198,11 @@ echo ""
 
 # Write to file if requested
 if [ "$WRITE_FILE" = true ]; then
-    # Values are written shell-quoted (printf %q): a model name or framework
-    # taken from the environment may hold quotes or `$(...)`, and the file is
-    # meant to be sourced.
+    # Values are written POSIX single-quoted (an embedded ' becomes '\''):
+    # a model name or framework taken from the environment may hold quotes,
+    # `$(...)`, tabs, newlines or non-ASCII, and the file is meant to be
+    # sourced by bash or a POSIX sh alike (printf %q may emit bash-only $'...').
+    _dai_sq() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
     {
         cat << EOF
 # Agent Identity Configuration
@@ -212,11 +214,12 @@ if [ "$WRITE_FILE" = true ]; then
 # set_git_identity_env.sh which are always current for the active shell.
 
 EOF
-        printf 'AGENT_NAME=%q\n' "$AGENT_NAME"
-        printf 'AGENT_EMAIL=%q\n' "$AGENT_EMAIL"
-        printf 'AGENT_MODEL=%q\n' "$AGENT_MODEL"
-        printf 'AGENT_FRAMEWORK=%q\n' "$AGENT_FRAMEWORK"
+        printf 'AGENT_NAME=%s\n' "$(_dai_sq "$AGENT_NAME")"
+        printf 'AGENT_EMAIL=%s\n' "$(_dai_sq "$AGENT_EMAIL")"
+        printf 'AGENT_MODEL=%s\n' "$(_dai_sq "$AGENT_MODEL")"
+        printf 'AGENT_FRAMEWORK=%s\n' "$(_dai_sq "$AGENT_FRAMEWORK")"
     } > "$IDENTITY_FILE"
+    unset -f _dai_sq
     echo "✅ Identity written to: $IDENTITY_FILE"
     echo "   (This is a runtime file, git-ignored)"
     echo ""

@@ -336,18 +336,26 @@ ws="$(git -C "$sb/repo" config --local user.email)"
 [[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"project/bad"* ]] \
     && pass "one underivable repository: nothing is written anywhere" || fail "partial write (rc=$rc, ws=$ws, got: $out)"
 
-echo "TEST: detect_agent_identity.sh --write quotes the values it writes to .agent/.identity"
+echo "TEST: .agent/.identity reads back exactly in bash and in a POSIX sh"
 # A sandbox copy of the scripts, so the real checkout's .agent/.identity is never written.
-sb="$(mk_repo "dev@example.org")"
+sb="$(mk_repo "o'brien@x.ie")"
 mkdir -p "$sb/ws/.agent/scripts"
 for f in detect_agent_identity.sh framework_config.sh identity_base.py detect_cli_env.sh; do
     cp "$REAL_ROOT/.agent/scripts/$f" "$sb/ws/.agent/scripts/$f"
 done
-evil_model='m"; touch '"$sb"'/pwned1; x="$(touch '"$sb"'/pwned2)`touch '"$sb"'/pwned3`'"'"
-run_in "$sb" CLAUDECODE=1 CLAUDE_MODEL="$evil_model" -- bash "$sb/ws/.agent/scripts/detect_agent_identity.sh" --write >/dev/null 2>&1
-out="$(env -i PATH="$PATH" bash -c 'source "$1"; printf "%s|%s" "$AGENT_EMAIL" "$AGENT_MODEL"' _ "$sb/ws/.agent/.identity" 2>&1)"
-[ "$out" = "dev+claude-code@example.org|$evil_model" ] && pass "the sourced file gives back the exact values" \
-    || fail ".identity round trip (got: $out)"
+evil_model='m"; touch '"$sb"'/pwned1; x="$(touch '"$sb"'/pwned2)`touch '"$sb"'/pwned3`'"'"' it'"'"'s Jürgen'"$(printf '\t')"'tab'"$(printf '\n')"'line2'
+id_file="$sb/ws/.agent/.identity"
+for loc in C.UTF-8 C; do
+    rm -f "$id_file"
+    run_in "$sb" LC_ALL="$loc" CLAUDECODE=1 CLAUDE_MODEL="$evil_model" -- \
+        bash "$sb/ws/.agent/scripts/detect_agent_identity.sh" --write >/dev/null 2>&1
+    for shell in bash sh; do
+        out="$(env -i PATH="$PATH" LC_ALL="$loc" "$shell" -c '. "$1"; printf "%s|%s" "$AGENT_EMAIL" "$AGENT_MODEL"' _ "$id_file" 2>&1)"
+        [ "$out" = "o'brien+claude-code@x.ie|$evil_model" ] \
+            && pass "$shell (written under LC_ALL=$loc) reads back the apostrophe, non-ASCII, tab and newline exactly" \
+            || fail "$shell round trip under $loc (got: $out)"
+    done
+done
 ls "$sb"/pwned* >/dev/null 2>&1 && fail "sourcing .identity ran a command" || pass "sourcing .identity runs nothing"
 
 echo ""
