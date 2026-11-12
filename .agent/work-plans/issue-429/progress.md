@@ -1135,3 +1135,13 @@ Text after `    version:` → value emitted (`repo_pin` outcome):
 - [ ] (suggestion) In `adapter_sync`, an empty pinned version on a detached checkout equals the empty `git branch --show-current`. Sync then takes the pull path, which fails ("pull failed (continuing)"), and skips the fetch. This diff widens the case from a literal empty `version:` to comment-only and `""` pins, and it does no harm beyond the skipped fetch. Fix: take the pull path only when `$branch` is non-empty (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:607`
 - [ ] (suggestion) A double-quoted value with backslash escapes is not decoded: `"a\" #b"` gives `a\`, and `"v\x31.0"` gives `v\x31.0`, both with exit 0. Each still contains a backslash, which git forbids in a ref, so the kind is `unknown`, which callers refuse; no wrong base results. Add `\\` to the guard's character class so the error message is right (Claude adversarial; this predates the diff) — `.agent/project_types/ros2_colcon/adapter.sh:1048`
 - [ ] (suggestion) YAML typing of plain scalars is ignored. vcstool checks out `str(value)`, so `version: 1.10` is `1.1` to vcstool, while repo_pin answers `1.10<TAB>tag` (and `null`, `yes` or `!!str x` similarly). Refuse plain values that YAML types as a number, null or bool, or that start with `!`, `>`, `|`, `&` or `*`, or track it in a follow-up issue. This predates the diff and was not introduced in this round (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:236-262`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3 of this diff, no must-fix; three suggestions go to triage)
+**After**: publish
+**Decision**: publish
+
+The convergence review approved the verb's diff with three suggestions (sync's pull path on an empty pin with a detached checkout; backslash in the quote guard; YAML typing of unquoted values), two of which predate this change. Publish; triage decides them.
