@@ -493,3 +493,13 @@ Not taken (judged in round 2 or recorded by the fix): `ssh://<token-like-user>@h
 
 ### Findings
 - [ ] (must-fix) `_load_yaml` lets non-YAML exceptions from PyYAML's constructor escape (`ValueError`, `KeyError`, `AttributeError`; e.g. `!!float s3cr3t`, `!!int 0xs3cr3t`, `!!bool s3cr3t`, unquoted `2024-13-45`), so the CLI prints a traceback quoting the value. Add a final `except Exception` that raises `ManifestError(f"{source}: invalid YAML")` with no content, and tests for those four inputs that check the message holds neither the value nor a traceback — `tools/ros-manifest/src/ros_manifest/schema.py:213-229`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 11:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 closed all nine round 2 findings and found one must-fix, a mechanical one: non-YAML exceptions from the YAML constructor escape `_load_yaml` and print a traceback quoting the value. A review with a must-fix open is not published; first host address at rounds on this issue)
+**After**: rounds
+**Decision**: address
+
+The host read the round 3 Local Review (Pre-Push) entry at 0b444ef6: verdict changes-requested, Ship recommended ("fix and ship rather than another full round"), one open must-fix in tools/ros-manifest/src/ros_manifest/schema.py:213-229. The fix pass is limited to that finding and its four tests.
