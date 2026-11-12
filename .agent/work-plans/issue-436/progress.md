@@ -745,3 +745,13 @@ Untrue at this head: the section's opening sentence, "Anything outside these rul
 
 ### Findings
 - [ ] (must-fix) The README's opening claim, that every error "names the manifest and the key", is untrue for the `extends` path messages (they name the declaring directory or clone; `extends.py:148`, `:151`, `:158`) and the chain-wide case-twin message ("the composed extends chain", `merge.py:157-161`). Either reword it to match, e.g. "names where the problem is: the manifest, or for an `extends` path its directory, or the chain for names that differ only in case across it, and the key", or prefix `{source}:` in those three `extends.py` messages and keep it. #447 covers the code change — `tools/ros-manifest/README.md:71-72`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (inside the owner's answer of this morning, "Q3: A and yes.": publish once the README is true. Round 6 found one more untrue README sentence, a one-line reword with no code change; the previous rounds answer was the owner's, so this is the first host answer since)
+**After**: rounds
+**Decision**: address
+
+The host read the round 6 Local Review (Pre-Push) entry at cb2b8809: verdict changes-requested, Ship recommended, one must-fix, the README's opening claim that every error "names the manifest and the key" (untrue for the extends path messages and the chain-wide case-twin message). The pass rewords that sentence to match the code and changes nothing else; the nested-too-deeply note goes to follow-up issue 447.
