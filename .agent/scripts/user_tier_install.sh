@@ -1450,21 +1450,14 @@ if [[ -n "${other_root:-}" && "$FORCE" == true ]]; then
     echo "  --force: taking the user tier over from $other_root"
 fi
 
-mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
 config_dir_note
 
-# 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
-printf '%s' "$WS_ROOT" > "$ROOT_FILE"
-echo "  wrote $ROOT_FILE"
+# Everything that can refuse is checked, and the settings.json merge built
+# and backed up, before anything in ~/.claude is written: a refusal or a
+# failed backup then leaves the tier exactly as it was, rather than a root
+# file that reads as installed beside an unchanged settings.json.
 
-# 1b. and a record of exactly which allow-rules this generation wrote.
-# Without it, uninstall could only match the CURRENT manifest, so rules from
-# an earlier generation -- a script since renamed or dropped from the
-# manifest -- stayed in settings.json forever with nothing able to name them.
-allow_rules_json > "$RULES_FILE"
-echo "  recorded $(jq 'length' < "$RULES_FILE") generated allow-rule(s) in $RULES_FILE"
-
-# 2. the SessionStart hook symlink
+# The SessionStart hook symlink's preconditions (written in step 2).
 if [[ ! -e "$SESSION_HOOK_TARGET" ]]; then
     echo "ERROR: hook target missing: $SESSION_HOOK_TARGET" >&2
     exit 1
@@ -1473,10 +1466,8 @@ if [[ -e "$SESSION_HOOK_LINK" && ! -L "$SESSION_HOOK_LINK" ]]; then
     echo "ERROR: $SESSION_HOOK_LINK exists and is not a symlink -- not overwriting" >&2
     exit 1
 fi
-ln -sfn "$SESSION_HOOK_TARGET" "$SESSION_HOOK_LINK"
-echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
 
-# 3+4. settings.json: our hook entries and allow-rules, replacing any previous
+# settings.json: our hook entries and allow-rules, replacing any previous
 # generation of ours (that is what makes this idempotent) and leaving
 # everything else in the file untouched. No marker is written: the
 # `claude plugin` commands drop it (#394), so commands are told apart by
@@ -1529,15 +1520,40 @@ merged_settings="$(jq \
     | .permissions //= {}
     | .permissions.allow //= []
     | .permissions.allow = ((.permissions.allow + $rules) | unique)
-' <<< "$current_settings")" || { echo "ERROR: could not merge $SETTINGS" >&2; exit 1; }
+' <<< "$current_settings")" || { echo "ERROR: could not merge $SETTINGS -- nothing changed" >&2; exit 1; }
 
 # Write only when something changed, compared ignoring key order: the CLI
 # re-emits the file in its own key order, and rewriting it on every run in
 # jq's would churn it (and pile up backups) for nothing.
+settings_changed=true
 if [[ "$(jq -S . <<< "$merged_settings")" == "$(jq -S . <<< "$current_settings")" ]]; then
+    settings_changed=false
+fi
+if [[ "$settings_changed" == true ]]; then
+    backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding; nothing changed" >&2; exit 1; }
+fi
+
+mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
+
+# 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
+printf '%s' "$WS_ROOT" > "$ROOT_FILE"
+echo "  wrote $ROOT_FILE"
+
+# 1b. and a record of exactly which allow-rules this generation wrote.
+# Without it, uninstall could only match the CURRENT manifest, so rules from
+# an earlier generation -- a script since renamed or dropped from the
+# manifest -- stayed in settings.json forever with nothing able to name them.
+allow_rules_json > "$RULES_FILE"
+echo "  recorded $(jq 'length' < "$RULES_FILE") generated allow-rule(s) in $RULES_FILE"
+
+# 2. the SessionStart hook symlink
+ln -sfn "$SESSION_HOOK_TARGET" "$SESSION_HOOK_LINK"
+echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
+
+# 3+4. settings.json, merged and backed up above
+if [[ "$settings_changed" == false ]]; then
     echo "  $SETTINGS already has our hook entries and $(allow_rules_json | jq 'length') allow-rules -- not rewritten"
 else
-    backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
     write_settings <<< "$merged_settings" || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
     echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
 fi

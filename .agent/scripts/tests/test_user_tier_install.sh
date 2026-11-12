@@ -111,12 +111,13 @@ INST_TMP="$SANDBOX/tmp"
 mkdir -p "$INST_TMP"
 # CLAUDE_CONFIG_DIR is never inherited from the caller; RUN_CFG=<dir> sets
 # it for one call. Like the real CLI (2.1.282), the stub then keeps its
-# machine-level record there instead of in ~/.claude.
+# machine-level record there instead of in ~/.claude. RUN_PATH_PREFIX=<dir>
+# puts <dir> first on PATH for one call (a shim for one command).
 run() {  # run the installer with the sandbox HOME and the claude stub
     (
         unset CLAUDE_CONFIG_DIR
         [[ -n "${RUN_CFG:-}" ]] && export CLAUDE_CONFIG_DIR="$RUN_CFG"
-        HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="${RUN_TMPDIR:-$INST_TMP}" \
+        HOME="$HOMEDIR" PATH="${RUN_PATH_PREFIX:+$RUN_PATH_PREFIX:}$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="${RUN_TMPDIR:-$INST_TMP}" \
             AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" "$@" 2>&1
     )
 }
@@ -733,6 +734,35 @@ ls "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* >/dev/null 2>&1 \
     || fail "no backup written (out=${out:0:160})"
 rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
 
+# The backup is taken before anything in ~/.claude is written: a failed
+# backup leaves the root file, the allow-rule record, the SessionStart link
+# and settings.json exactly as they were. A `cp` shim fails the backup copy
+# alone.
+CP_SHIM="$SANDBOX/cp-shim"
+mkdir -p "$CP_SHIM"
+cat > "$CP_SHIM/cp" <<SHIMEOF
+#!/usr/bin/env bash
+for a in "\$@"; do [[ "\$a" == *agent-workspace-backup* ]] && exit 1; done
+exec $(command -v cp) "\$@"
+SHIMEOF
+chmod +x "$CP_SHIM/cp"
+RULES_FILE="$HOMEDIR/.claude/agent-workspace-rules.json"
+rm -f "$ROOT_FILE" "$HOOK_LINK" "$RULES_FILE"
+drop_a_rule
+cp "$SETTINGS" "$SANDBOX/settings-before.json"
+out="$(RUN_PATH_PREFIX="$CP_SHIM" run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"could not back up"* ]] \
+    && pass "a failed backup stops the install (exit 1)" \
+    || fail "a failed backup did not stop the install (rc=$rc out=${out:0:300})"
+[[ ! -e "$ROOT_FILE" && ! -e "$RULES_FILE" && ! -L "$HOOK_LINK" ]] \
+    && pass "...before the root file, the allow-rule record or the SessionStart link is written" \
+    || fail "a failed backup left writes behind (root file: $([[ -e "$ROOT_FILE" ]] && echo yes || echo no), rules: $([[ -e "$RULES_FILE" ]] && echo yes || echo no), link: $([[ -L "$HOOK_LINK" ]] && echo yes || echo no))"
+cmp -s "$SETTINGS" "$SANDBOX/settings-before.json" && [[ "$(n_backups)" -eq 0 ]] \
+    && pass "...and with settings.json unchanged and no backup file" \
+    || fail "a failed backup changed settings.json or left a backup ($(n_backups))"
+rm -f "$SANDBOX/settings-before.json"
+run >/dev/null
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
 
 # --------------------------------------------- a second workspace checkout ---
 # Round 1 must-fix: the root file was overwritten unconditionally, and the
