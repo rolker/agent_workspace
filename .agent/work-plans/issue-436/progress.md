@@ -566,3 +566,13 @@ Not taken from the adversarial review:
 - [ ] (suggestion) `resolve --out` at a path that cannot be created prints a `FileNotFoundError` traceback; catch `OSError` around the mkdir/write and print one `ERROR:` line naming `--out` — `tools/ros-manifest/src/ros_manifest/emit.py:137`
 - [ ] (suggestion) `its extends cannot be followed (No such file or directory)` is also what a missing `git` and an unwritable `--cache-dir` print (`(Permission denied)`), blaming the manifest; give those their own messages — `tools/ros-manifest/src/ros_manifest/extends.py:173-180`
 - [ ] (suggestion) `load_manifest_file` reads with the locale encoding; under a non-UTF-8 locale the "cannot be read as text" branch differs from the tests. Use `read_text(encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/schema.py:521`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 11:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 closed round 3's must-fix and found one more of the same class: an over-long YAML integer escapes as a traceback, and the groups 'default' message echoes its value. A must-fix is open, so not published. Second host address at rounds in a row on this issue; the next rounds answer is the owner's)
+**After**: rounds
+**Decision**: address
+
+The host read the round 4 Local Review (Pre-Push) entry at a12e37a1: verdict changes-requested, Ship recommended, one must-fix and four suggestions. Rounds 2, 3 and 4 each found a new route by which an exception or a document value reaches the terminal. The owner's rule of 2026-10-30 applies (a repeat finding in one mechanism asks "is this the right mechanism?" before another point fix), so this fix pass closes the class in two fixed places instead of route by route: (1) the CLI entry point catches every exception that is not a ManifestError and prints one fixed line with the exception's type name only, never its text and never a traceback; (2) no ManifestError message carries a document value: a type, a key name that passed the character rule, or a line and column only, held by one test that walks every raise site. The round's must-fix and its four suggestions are fixed within that.
