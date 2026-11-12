@@ -73,3 +73,11 @@ issue: 446
 **Decision**: proceed
 
 The host read the Issue Review entry at 3c1e5e4c. The plan takes all five actions as requirements. Listed for the owner's veto: issue 394 becomes a precondition inside this work; the installer's per-root enable and its --disable-root flag go, with per-root opt-out left to a root's own settings (narrower scope wins, to be re-verified by the spike step); ADR-0016 decision 2 and ADR-0018 decisions 3 and 4 are amended.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 11:49 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-446/plan.md` at `ef7fd2cc`
+
+Two PRs: first the 394 hook-marker fix, then one PR for user-scope install, migration of per-root entries through the CLI, and removal of the per-root machinery as its own commit, with ADR-0016/0018 and design.md amended in it. The spike was run on Claude Code 2.1.322 in a scratch HOME: CLI facts verified (user-scope writes only under the scratch ~/.claude; committed-off entry holds in a worktree; narrower scope wins), session-level facts (root inside the workspace tree, nested repository) need a model session and are the implement pass's step 1 with a stop condition.
