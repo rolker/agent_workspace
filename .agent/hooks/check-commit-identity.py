@@ -11,13 +11,13 @@ global one), with any `+suffix` removed: `<local>@<domain>` (the human) or
 `<local>+<anything>@<domain>` (an agent). The base is read from git's
 config files only, never from the environment (`git -c`,
 GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT injection are ignored for it);
-the emails checked are GIT_AUTHOR_EMAIL when set, else the effective
-`user.email` (a `git -c user.email=...` value included), and
-GIT_COMMITTER_EMAIL when set. An unset or malformed configured email
-blocks the commit.
+the emails checked are the author and the committer exactly as git will
+record them (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`: the
+GIT_*_EMAIL variables, `author.email` / `committer.email` / `user.email`
+in any config file and `git -c` values all count). An unset or malformed
+configured email blocks the commit.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -25,18 +25,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import identity_base  # noqa: E402  pylint: disable=wrong-import-position
 
 DERIVED_COMMAND = 'source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"'
-
-
-def get_commit_email():
-    """Get the email that will be used for the next commit.
-
-    GIT_AUTHOR_EMAIL env var takes precedence over git config user.email
-    (as the commit resolves it, `git -c` included).
-    """
-    email = os.environ.get("GIT_AUTHOR_EMAIL", "").strip()
-    if email:
-        return email
-    return identity_base.effective_email()
 
 
 def main():
@@ -49,13 +37,11 @@ def main():
         print()
         return 1
 
-    email = get_commit_email()
-    committer = os.environ.get("GIT_COMMITTER_EMAIL", "").strip()
     rejected = []
-    if not identity_base.is_accepted(email, local, domain):
-        rejected.append(("Current email", email))
-    if committer and not identity_base.is_accepted(committer, local, domain):
-        rejected.append(("Committer email (GIT_COMMITTER_EMAIL)", committer))
+    for kind, label in (("AUTHOR", "Author email"), ("COMMITTER", "Committer email")):
+        email = identity_base.ident_email(kind)
+        if not identity_base.is_accepted(email, local, domain):
+            rejected.append((label, email))
     if not rejected:
         return 0
 

@@ -119,6 +119,30 @@ def effective_email(cwd=None):
     return _git_user_email(cwd, None)
 
 
+def ident_email(kind, cwd=None):
+    """The email git will record as `kind` ("AUTHOR" or "COMMITTER"), or "".
+
+    `git var GIT_<kind>_IDENT` with the full environment, so every source git
+    itself uses counts: GIT_<kind>_EMAIL, `<kind>.email` and `user.email` in
+    any config file, and `git -c` / GIT_CONFIG_* injection.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "var", f"GIT_{kind}_IDENT"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=cwd,
+        )
+    except OSError:
+        return ""
+    ident = result.stdout.strip()
+    start, end = ident.rfind("<"), ident.rfind(">")
+    if result.returncode != 0 or start < 0 or end < start:
+        return ""
+    return ident[start + 1 : end]
+
+
 def split_base(email):
     """Split an address into (local, domain) with any `+suffix` removed.
 

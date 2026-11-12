@@ -49,8 +49,10 @@ checkout's configured git email:
   `configure_git_identity.sh` derives per repository it writes to.
 - **Not from the environment**: the base is read from git's config files
   only; `git -c user.email=...` and `GIT_CONFIG_PARAMETERS` /
-  `GIT_CONFIG_COUNT` injection never change it (the hook still checks a `-c`
-  value as the commit email, and checks `GIT_COMMITTER_EMAIL` when set).
+  `GIT_CONFIG_COUNT` injection never change it. The hook checks the author
+  and the committer exactly as git will record them (`git var
+  GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`), so `-c` values,
+  `author.email` / `committer.email` and `GIT_*_EMAIL` all count there.
 - **A failed re-source** of `set_git_identity_env.sh` unsets the `GIT_*` and
   `AGENT_*` variables it owns, so no stale identity is left behind.
 

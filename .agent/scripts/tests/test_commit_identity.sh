@@ -39,6 +39,8 @@ mk_repo() {
     sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/home"
     : > "$sb/gitconfig"
+    # A name, so `git var GIT_*_IDENT` (the hook's view of the commit) resolves.
+    git config --file "$sb/gitconfig" user.name "Tester"
     if [ -n "${1:-}" ]; then
         git config --file "$sb/gitconfig" user.email "$1"
     fi
@@ -122,18 +124,34 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=someone@EXAMPLE.ORG
 
 echo "TEST: the hook rejects another local part, another domain and another base in GIT_AUTHOR_EMAIL"
 for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "someone@example.net" "someone+@example.org" \
-    "someoneelse@example.org" "someone+a b@example.org" "someone+x@example.org," "<someone@example.org>" \
-    "someone+x@example.org$(printf '\t')x"; do
+    "someoneelse@example.org" "someone+a b@example.org" "someone+x@example.org$(printf '\t')x"; do
+    # (a trailing comma or enclosing <> is stripped by git itself before it
+    # records the ident, so the hook sees the clean address: not listed here)
     hook_in "$sb" GIT_AUTHOR_EMAIL="$other"
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
 
-echo "TEST: the hook also checks GIT_COMMITTER_EMAIL when it is set"
+echo "TEST: the hook checks the committer git will record, wherever it comes from"
 hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org GIT_COMMITTER_EMAIL=other@example.net
-[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"GIT_COMMITTER_EMAIL"*"other@example.net"* ]] \
-    && pass "a foreign committer email is rejected and named" || fail "committer (rc=$HOOK_RC: $HOOK_OUT)"
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"Committer email: other@example.net"* ]] \
+    && pass "GIT_COMMITTER_EMAIL foreign: rejected and named" || fail "committer env (rc=$HOOK_RC: $HOOK_OUT)"
 hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org GIT_COMMITTER_EMAIL=someone+x@example.org
 [ $HOOK_RC -eq 0 ] && pass "an accepted committer email passes" || fail "committer ok (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org "GIT_CONFIG_PARAMETERS='committer.email'='foreign@example.net'"
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"Committer email: foreign@example.net"* ]] \
+    && pass "git -c committer.email=<foreign>: rejected" || fail "committer -c (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=author.email GIT_CONFIG_VALUE_0=foreign@example.net
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"Author email: foreign@example.net"* ]] \
+    && pass "injected author.email=<foreign>: rejected" || fail "author injection (rc=$HOOK_RC: $HOOK_OUT)"
+sbc="$(mk_repo "someone@example.org")"
+git -C "$sbc/repo" config committer.email "foreign@example.net"
+hook_in "$sbc"
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"Committer email: foreign@example.net"* ]] \
+    && pass "committer.email=<foreign> in config: rejected" || fail "committer config (rc=$HOOK_RC: $HOOK_OUT)"
+git -C "$sbc/repo" config committer.email "someone+codex@example.org"
+hook_in "$sbc"
+[ $HOOK_RC -eq 0 ] && pass "committer.email=<accepted agent address> in config passes" \
+    || fail "committer config ok (rc=$HOOK_RC: $HOOK_OUT)"
 
 echo "TEST: a failing hook names the base, the exact derived command and the likely cause"
 hook_in "$sb" GIT_AUTHOR_EMAIL=other+claude-code@example.net
