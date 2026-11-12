@@ -482,3 +482,27 @@ Pull request A only ("a fresh clone works with no project"). Narrow convergence 
 **Decision**: publish
 
 The host read the round 3 Local Review (Pre-Push) entry at d355e2ef: verdict approved, Ship recommended, two open suggestions (four comments that still name the old lookup rule; a linked worktree of a separate-git-dir main checkout, where the helpers fall back and the message says "none registered"). Both concern a layout the reviewer calls rare and neither is needed for this pull request; they stay open boxes so triage raises them, and whether they are fixed here or carried into pull request B's plan is put to the owner with the merge decision. The AGENTS.md rewording is not in this pull request: the owner did not approve the proposed wording and decided on 2026-11-12 that a project is any registered folder, so it is redrafted from that.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 15:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #454 at `11a4012`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `94395d8` (covers `11a4012` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Pull request A ("a fresh clone works with no project"). No GitHub reviews, inline comments or conversation comments on the pull request at `11a4012`. Rounds 1 and 2 left no open boxes (all ten findings ticked); round 3 approved with two open suggestions, both checked against the code at HEAD and still true (`validate_workspace.py:153-155` comment and `Makefile:41` `WS_ROOT` rule; `_project_registry.sh:656-666` fallback to the root). Per the publish Checkpoint they stay open: fixing them on this pull request or carrying them into pull request B's plan is the owner's call at the merge decision. CI at entry time: Validate Documentation and ros-manifest tests passed; Lint (pre-commit) and Validate Adapter Contract still running.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) R3 @ `94395d8`) Comments still say the registry is "found through git's common dir as make setup … find it", which is no longer how the helpers work, and `make setup` keeps the old rule (`WS_ROOT` = common dir minus `/.git`), so in a `--separate-git-dir` main checkout setup prints "No project is registered" while validate, sync and the dashboard do not. Reword the four comments to name `get_main_checkout_root` / `registry_main_checkout`; aligning `WS_ROOT` is B's (it also decides `STAMP` and `VENV_DIR`). — `.agent/project_types/single_project/sync.py:188`, `.agent/scripts/validate_workspace.py:154`, `.agent/scripts/dashboard.sh:156`, `.agent/scripts/tests/test_fresh_clone_no_project.sh:187`, `Makefile:41`
+- [ ] (suggestion, Local Review (Pre-Push) R3 @ `94395d8`) The fix pass's untested combination behaves as it guessed and gives a false message: in a linked worktree of a `--separate-git-dir` main checkout, git 2.43 lists the git dir (`…/sep.git`) as the first worktree, which is not a checkout, so both helpers return the worktree itself and sync and validate say "none registered" with a registry present in the main checkout. Git does not record that checkout, so it cannot be found from git alone; add the case to `test_main_checkout_helpers` so the fallback is a recorded decision, and consider "no registry found here" over "none registered" when the helper fell back from a linked worktree. Rare layout; not needed for this pull request. — `.agent/scripts/tests/test_project_registry.sh:~414`, `.agent/scripts/_project_registry.sh:658-666`, `.agent/scripts/lib/workspace.py:74-80`
+
+### False positives
+
+### Reviewer outcomes
+- Copilot: not requested (automatic review switched off 2026-11-12); checked once, no review or comment on the pull request.
+- Gemini: ran in rounds 1 and 2 (pre-push); its findings were triaged there and are closed; not run in round 3 (per handoff).
+- Codex: ran in rounds 1 and 2 (pre-push, short, read-only); only the common-dir false positive both times; not run in round 3.
+- Human: none requested.
