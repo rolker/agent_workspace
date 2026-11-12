@@ -211,3 +211,30 @@ Dismissed: Gemini and Codex "ADR-0016 lines 207-210 not reworded" (deliberate: A
 
 ### Next step
 `/review-code --branch`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 13:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-394 at `086d86ff`
+**Base**: main
+**Depth**: Deep (reason: 1248 changed lines across 6 files, enforcement script that edits the user's ~/.claude/settings.json; whole-diff classification, fix round)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Re-review of aecbb853, 6130d151 and f0ae3b8a (round 1's two must-fix and three suggestions: all five fixed as described; checked against the code and the tests). Specialists: static analysis (shellcheck --severity=warning on both files: clean), governance, plan drift, Claude adversarial (fresh subagent), cross-model (Gemini and Codex both ran). Tests: `test_user_tier_install.sh` 255 passed, 0 failed. Scratch HOME and stub CLI only; the real `~/.claude` was not touched.
+
+### Findings
+- [ ] (must-fix) `--uninstall` removes the root file, the SessionStart link and the plugin from every root before it checks, classifies and backs up settings.json, and its rewrite (`jq ... | write_settings && echo`) has no failure branch: a jq failure (a non-object entry in a hooks array, a boolean event value, a non-array `permissions.allow`) or a refused write still deletes `agent-workspace-rules.json`, prints "user tier removed." and exits 0 with our hook commands left in settings.json; a classify or backup failure exits 1 with the files already gone. Do what install now does: parse check, classify, build the rewrite and back up first, then remove anything; on a failed rewrite exit 1 and keep the rules file. Test each failure (reproduced by the adversarial specialist) — `user_tier_install.sh:1111-1172`
+- [ ] (suggestion) The exact-match rule covers only the commands written today. With a space in a checkout path, this checkout's retired `block-bash-tool-mapping.sh` is never reported or removed, and `--force` keeps another checkout's marked command while dropping its marker, after which `--check` reports current and nothing can attribute it. Extend the exact match to `$WS_ROOT`/`$WS_PHYS` + `/.claude/hooks/<retired name>` and, inside a marked entry, to `<marker>/.claude/hooks/<known name>` (Codex) — `user_tier_install.sh:361-366,426`
+- [ ] (suggestion) `--check` reports "installed and current" when our command sits in two PreToolUse entries (the state this issue's bug left behind) or only under another event: it tests presence anywhere. Check `.hooks.PreToolUse` and `.hooks.SessionStart` themselves and flag a count above one, so `--check` agrees with what install would change — `user_tier_install.sh:1234-1237`
+- [ ] (suggestion) A plain install removes a dead command, and a whole entry with its matcher when nothing else is left, without naming it; a user's own `log-tool-use.sh` on an unmounted drive goes this way. Print each dead or foreign command removed, with the backup path (Codex, adversarial) — `user_tier_install.sh:1500-1523`
+- [ ] (suggestion) A `PreToolUse` or `SessionStart` value that is an object rather than an array is turned into an array by `place`, and its keys are dropped. Refuse with "nothing changed" instead — `user_tier_install.sh:1508-1516`
+
+Fix-pass choice, judged: a command exactly equal to one the installer writes counts as ours even when the path holds a character the literal rule rejects. Agreed: it is equality with a string the installer itself produced, not a guess from its shape, so a user hook can only match by being that exact command; without it a checkout path with a space makes every install add a second copy. The second suggestion applies the same reasoning to the strings earlier generations wrote.
+
+`--uninstall` ordering (reported by the fix pass, not fixed): belongs in this pull request, as must-fix 1. Same file, same class as round 1's suggestion 5 that this branch fixed for install, the block was already rewritten here (and gained a new late failure point, `classify_hooks`), and the silent exit 0 is a failure the Quality Standard does not leave for later.
+
+Dismissed: Gemini and Codex "ADR-0016 lines 207-210 not updated" (deliberate, ADR-0017; Plan Review finding 3, as in round 1); Gemini "the SessionStart link is always classified ours, even in an entry marked with another checkout" (the link is one per machine and the installer's own, and `--uninstall` already removes the link file itself, unchanged from main); Gemini "a marked entry with an empty hooks array passes --check" (harmless; install drops the marker); adversarial "a non-object entry in a hooks array fails install" (fails safe, predates the branch, dismissed in round 1; its uninstall consequence is must-fix 1).
