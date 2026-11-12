@@ -173,3 +173,11 @@ The plan's shape is right: issue 394 first, user scope with the per-root code de
 **Decision**: revise
 
 The host read the Plan Review entry at 0cbb326d. Findings 2 to 10 are taken as written. Finding 1 (an implement sub-agent cannot start an authenticated live session without touching the owner's real ~/.claude) has a part only the owner can answer, how the live sessions are authenticated; it is put to him separately. The revised plan writes step 1 for the host's recommended answer (the live case runs after pull request A is merged and installed, with a renamed test plugin enabled at user scope in the real ~/.claude for the minutes it runs, removed on exit) and marks it as waiting for his yes; no live session starts before it. Pull request A does not depend on that answer.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 11:58 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-446/plan.md` at `2d29b087`
+
+Revision answering the ten findings of the plan review. Pull request A (issue 394) moves to its own worktree and timeline because dispatch_phase.sh next ends a timeline at one merged pull request; B follows on this branch after A is merged, with main merged in. Step 1's live check is written for the recommended answer (user-scope cases in the opt-in live suite, trap-removed) and waits for the owner's yes; the in-tree root failing is a stop and the skill_prefix.sh fallback is dropped. Migration, install idempotence, PR A's hook matching and write skip, the added files, and the committed-entry veto item are in the plan.
