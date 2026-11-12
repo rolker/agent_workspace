@@ -163,3 +163,13 @@ The plan's shape is right: issue 394 first, user scope with the per-root code de
 - [ ] In migration: run the CLI only where the root is its own toplevel or in no git repository, report the rest; add `installed_plugins.json` as the source for unregistered roots; order user-scope add before migration, and make the no-CLI shortcut require the machine record (findings 4, 5)
 - [ ] In PR A: treat any command under `$WS_ROOT/.claude/hooks/` as ours; stop writing the marker or skip a no-op write; recognise a foreign checkout by `.agent/user_tier_scripts.txt` (finding 6)
 - [ ] Add `test_user_tier_guard.sh`, `principles_review_guide.md` and the unconditional `docs/design.md` root-rule edit to the file list (finding 7); name `session_root.sh`'s new reason (finding 8); say how PR A and PR B are sequenced (finding 9); list the committed-entry departure for veto (finding 10)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 11:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work: one must-fix and nine smaller findings, all about how the change is built and verified, none a change to what the owner asked for; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+The host read the Plan Review entry at 0cbb326d. Findings 2 to 10 are taken as written. Finding 1 (an implement sub-agent cannot start an authenticated live session without touching the owner's real ~/.claude) has a part only the owner can answer, how the live sessions are authenticated; it is put to him separately. The revised plan writes step 1 for the host's recommended answer (the live case runs after pull request A is merged and installed, with a renamed test plugin enabled at user scope in the real ~/.claude for the minutes it runs, removed on exit) and marks it as waiting for his yes; no live session starts before it. Pull request A does not depend on that answer.
