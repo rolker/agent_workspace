@@ -103,8 +103,9 @@ NUL) give no position. The rules:
   `extends: {path: ...}` and no `url`; that path must stay inside the declaring manifest's
   directory.
 - A `ref` (a repository's, each per-distro one, and `extends.ref` beside a `url`) is letters,
-  digits, `.`, `_`, `/` and `-`, starting with a letter or digit, with no `..` and not ending in `/` or `.lock`. It
-  cannot start with `-`, so neither git nor `vcs import` can read it as an option.
+  digits, `.`, `_`, `/` and `-`, starting with a letter or digit, with no `..` and not ending in
+  `/` or `.lock`. It cannot start with `-`, so neither git nor `vcs import` can read it as an
+  option.
 - No string key or value may contain a control character (newline, carriage return, tab, ...),
   a line or paragraph separator, an invisible or bidirectional formatting character (zero-width
   space, byte-order mark, right-to-left override) or a space other than the ASCII one. A key
@@ -118,9 +119,9 @@ NUL) give no position. The rules:
 As a second line, `resolve` refuses to write a header line, or a line of `layers.txt` or
 `optional_layers.txt`, that holds any of those characters, or a file that would land outside
 `--out`, and writes nothing in that case. The repository entries under a `.repos` header are not
-checked again there; the character rule above is what keeps those characters out of them. The `extends` clone states
-the transports git may use (`https`, `ssh`, `file`; everything else, such as `ext::`, refused)
-on its own command line rather than relying on git's defaults.
+checked again there; the character rule above is what keeps those characters out of them. The
+`extends` clone states the transports git may use (`https`, `ssh`, `file`; everything else,
+such as `ext::`, refused) on its own command line rather than relying on git's defaults.
 
 A `url` or `ref` that fails its rule is never printed, nor is a group's `default`; a failed
 `extends` clone gives git's exit status, not its output. Some error messages do still print a
