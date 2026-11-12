@@ -1164,3 +1164,13 @@ All three suggestions were re-read against the code and reproduced; each is a fi
 - [ ] (should-fix, Local Review @ `3ab6be9`) YAML typing of plain scalars is ignored. Verified: vcstool `import_.py:173` passes `str(repo['version'])` from `yaml.safe_load`, so `version: 1.10` checks out `1.1` while repo_pin answers `1.10`. That is a silent wrong base when both tags exist, and a wrong error otherwise. The parser's `$2` predates the diff, but repo_pin, the new consumer that turns it into a base, is new here. Fix: in repo_pin, refuse a plain (unquoted) value that PyYAML's implicit resolvers type as bool, null, int or float (`yes/no/on/off/true/false`, `~/null`, decimal/octal/hex/sexagesimal ints, floats incl. `.inf`/`.nan`), or that starts with a YAML indicator (`! & * | > % @` or a backtick), with a message to quote it. A quoted value stays accepted. Add table tests. If the host wants to keep scope, the alternative is a follow-up issue opened before merge, not an unrecorded deferral — `.agent/project_types/ros2_colcon/adapter.sh:236-262,1048-1058`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified all three open findings valid and should-fix in this pull request; one is a silent wrong base)
+**After**: findings
+**Decision**: address
+
+Fix all three in pull request 456: sync's pull path on an empty pin with a detached checkout; a backslash inside a double-quoted value; repo_pin refusing an unquoted value that YAML types as bool, null or number, or that starts with a YAML indicator, asking for it to be quoted.
