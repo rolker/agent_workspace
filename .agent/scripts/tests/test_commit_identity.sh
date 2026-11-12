@@ -109,6 +109,13 @@ for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
 
+echo "TEST: the hook also checks GIT_COMMITTER_EMAIL when it is set"
+hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org GIT_COMMITTER_EMAIL=other@example.net
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"GIT_COMMITTER_EMAIL"*"other@example.net"* ]] \
+    && pass "a foreign committer email is rejected and named" || fail "committer (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org GIT_COMMITTER_EMAIL=someone+x@example.org
+[ $HOOK_RC -eq 0 ] && pass "an accepted committer email passes" || fail "committer ok (rc=$HOOK_RC: $HOOK_OUT)"
+
 echo "TEST: a failing hook names the base, the exact derived command and the likely cause"
 hook_in "$sb" GIT_AUTHOR_EMAIL=other+claude-code@example.net
 [[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"someone@example.org"* && "$HOOK_OUT" == *"someone+*@example.org"* ]] \

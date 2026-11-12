@@ -11,9 +11,10 @@ global one), with any `+suffix` removed: `<local>@<domain>` (the human) or
 `<local>+<anything>@<domain>` (an agent). The base is read from git's
 config files only, never from the environment (`git -c`,
 GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT injection are ignored for it);
-the email checked is GIT_AUTHOR_EMAIL when set, else the effective
-`user.email` (a `git -c user.email=...` value included). An unset or
-malformed configured email blocks the commit.
+the emails checked are GIT_AUTHOR_EMAIL when set, else the effective
+`user.email` (a `git -c user.email=...` value included), and
+GIT_COMMITTER_EMAIL when set. An unset or malformed configured email
+blocks the commit.
 """
 
 import os
@@ -49,13 +50,20 @@ def main():
         return 1
 
     email = get_commit_email()
-    if identity_base.is_accepted(email, local, domain):
+    committer = os.environ.get("GIT_COMMITTER_EMAIL", "").strip()
+    rejected = []
+    if not identity_base.is_accepted(email, local, domain):
+        rejected.append(("Current email", email))
+    if committer and not identity_base.is_accepted(committer, local, domain):
+        rejected.append(("Committer email (GIT_COMMITTER_EMAIL)", committer))
+    if not rejected:
         return 0
 
     print()
     print("ERROR: Commit identity is not configured or not recognized!")
     print()
-    print(f"  Current email: {email or '(not set)'}")
+    for label, value in rejected:
+        print(f"  {label}: {value or '(not set)'}")
     print()
     print("  Accepted (derived from this checkout's git user.email):")
     print(f"    {local}@{domain}, {local}+*@{domain}")
