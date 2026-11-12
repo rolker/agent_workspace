@@ -76,7 +76,8 @@ come from different manifests. An `extends` path that escapes its directory name
 the declaring directory or clone, and a local one that is not found names the full path looked
 for. A YAML error names the manifest and, where the parser gives one, a line and column; a value
 YAML cannot build, a document nested too deeply and a character the YAML reader refuses (such as
-NUL) give no position. The rules:
+NUL) give no position. These rules describe what the checks aim at; the cases they are known not
+to reach are named where they apply and tracked in #447. The rules:
 
 - Names: a layer is letters, digits, `_` and `-` (the `ros2_colcon` adapter's rule); a
   repository is letters, digits, `_`, `.` and `-`, not starting with `.` or `-`; a group is
