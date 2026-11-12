@@ -247,3 +247,28 @@ Deviation: `suites_for_files.sh` needed no edit; the new suite maps by derivatio
 Checks: final `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, running all 48 suites (`set_git_identity_env.sh` is a full-run trigger). An earlier run failed once in `test_cross_model_review.sh` (>64 KiB Approach case); the same case also failed once on an export of main and passed on rerun, so it is an intermittent failure not caused by this branch. Acceptance grep for the owner's addresses (excluding tests, work-plans, brand-guidelines) finds none; the inspiration digest keeps three domain-only mentions in a past record, left as the plan says.
 
 Post-merge (for the PR body): update every in-flight branch or worktree from main before its next commit (issue 429's worktree exists today).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-455 at `1886212f`
+**Base**: main
+**Depth**: Deep (reason: commit-identity hook and identity scripts, enforcement layer plus instruction files, 21 files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static (shellcheck --severity=warning, flake8 on changed files: clean); governance; plan drift; Claude adversarial (empirical probes in temp repos); cross-model gemini (complete), codex (complete); Copilot skipped (disabled for quota). `test_commit_identity.sh`: 39 passed, 0 failed. CI skips the hook (`.github/workflows/validate.yml:24`, verified). Issue 359 (agent commits under the owner's plain address): unchanged, the configured base is still accepted when nothing was sourced. The intermittent `test_cross_model_review.sh` >64 KiB Approach case: not plausibly affected, that suite does not touch the identity scripts or the hook, and this diff does not change `cross_model_review.sh`. Plan drift: none material (`suites_for_files.sh` maps the new suite by derivation, checked per file).
+
+### Findings
+- [ ] (must-fix) Hook's accepted base can come from the environment: `git -c user.email=X` (GIT_CONFIG_PARAMETERS / GIT_CONFIG_COUNT) with a matching author passes any domain, contradicting the docstring "base never comes from the environment"; read config with those vars stripped and add a test — `.agent/scripts/identity_base.py:36`, `.agent/hooks/check-commit-identity.py:11`
+- [ ] (must-fix) `detect_agent_identity.sh` assigns AGENT_NAME/AGENT_MODEL (and detect_cli_env exports AGENT_FRAMEWORK) before the email check, so a sourced failure leaves a mixed identity despite the "nothing is exported" contract; derive the email first, test with a pre-exported identity (codex + Claude) — `.agent/scripts/detect_agent_identity.sh:56-76,169`
+- [ ] (suggestion) A failed re-source of `set_git_identity_env.sh --agent/--detect` leaves the previous session's GIT_*/AGENT_* values exported; unset them on failure or document it — `.agent/scripts/set_git_identity_env.sh:131`
+- [ ] (suggestion) Tighten `split_base`/`is_accepted`: malformed values report "not set" without the value; `<dev@x>`, `dev@.`, trailing comma accepted; internal whitespace not rejected in `is_accepted` (gemini); shell metacharacters reach the unquoted `.agent/.identity` file (codex) — `.agent/scripts/identity_base.py:61,90`
+- [ ] (suggestion) GIT_COMMITTER_EMAIL is never checked (pre-existing, cheap to add) — `.agent/hooks/check-commit-identity.py:26`
+- [ ] (suggestion) `configure_git_identity.sh` derives once from the cwd and writes that address into every `project/*` repo, overriding a repo's own clone-level base; derive per repo — `.agent/scripts/configure_git_identity.sh:146`
+- [ ] (suggestion) Derivation follows the cwd, not the repo committed in; say "source in the checkout you commit in" in CLAUDE.md / AI_IDENTITY_STRATEGY.md — `.agent/AI_IDENTITY_STRATEGY.md:16`
+- [ ] (suggestion) Literal "<name>" "<email>" form still the primary instruction in AGENT_ONBOARDING.md and the gh_create_pr/issue unset-identity hints; point to `--agent <framework> "<model>"` — `.agent/AGENT_ONBOARDING.md:16`, `.agent/scripts/gh_create_pr.sh:219`, `.agent/scripts/gh_create_issue.sh:148`
+- [ ] (suggestion) Empty framework key (`--agent ""`, or `--detect` with an empty detection) hits "bad array subscript" before the friendly error (gemini, Claude) — `.agent/scripts/set_git_identity_env.sh:125,157`
