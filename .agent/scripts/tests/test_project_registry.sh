@@ -468,6 +468,26 @@ test_validate_registered_no_legacy_verbose() {
     assert_not_contains "no 'none registered' line" "no project registered" "$out"
 }
 
+test_validate_entry_path_missing_no_legacy() {
+    echo "TEST: validate --verbose with no project/ still reports a registry line whose path is missing (issue #295)"
+    local sb out rc=0 ghost
+    sb="$(make_validate_sandbox)"
+    # A line with no path field (its default projects/<name> is absent) and
+    # a line naming a path that does not exist: both stay reported as before
+    # the project/ block went, and neither reads as "nothing registered".
+    ghost="$sb/elsewhere/phantom"
+    printf 'ghost single_project\nphantom single_project %s\n' "$ghost" > "$sb/.agent/projects.local"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "the line without a path is reported at its default" \
+        "project 'ghost': hosting dir does not exist: $sb/projects/ghost" "$out"
+    assert_contains "the line with a missing path is reported at that path" \
+        "project 'phantom': hosting dir does not exist: $ghost" "$out"
+    assert_not_contains "not told that nothing is registered" "no project registered" "$out"
+    [[ -e "$sb/project" || -e "$sb/projects" || -e "$ghost" ]] && rc=1 || rc=0
+    assert_eq "nothing created" "0" "$rc"
+}
+
 # ---- Per-type checkout-shape delegation (issue #330) ----
 
 # Minimal real ros2_colcon checkout (no .git at its root): one layer "l1"
@@ -1640,6 +1660,7 @@ test_validate_malformed_registry
 test_validate_legacy_still_works
 test_validate_neither_shape
 test_validate_registered_no_legacy_verbose
+test_validate_entry_path_missing_no_legacy
 test_validate_ros2_colcon_entry_without_git_passes
 test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry

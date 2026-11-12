@@ -616,6 +616,32 @@ else
     fail295 "registry parse error: rc=$RC295 out=${OUT295:0:300}"
 fi
 
+# The first machine's shape: a legacy project/ checkout and registered roots
+# that are clones of the same repository (ssh and https origins). The
+# accepted set holds that slug once, and each place is accepted.
+git init -q -b main "$WS295/project"
+git -C "$WS295/project" remote add origin git@github.com:demo-owner/demo.git
+DEMO295B="$R295/demo-b"
+git init -q -b main "$DEMO295B"
+git -C "$DEMO295B" remote add origin https://github.com/demo-owner/demo.git
+printf 'demo single_project %s\ndemo-b single_project %s\n' "$DEMO295" "$DEMO295B" \
+    > "$WS295/.agent/projects.local"
+run295 "$DEMO295/scratch"
+LISTED295="$(grep -F 'Project repo:' <<< "$OUT295")"
+if [[ "$RC295" -eq 2 && ! -f "$ARGV_LOG" && "$LISTED295" == "   Project repo:   demo-owner/demo" ]]; then
+    pass295 "legacy project/ plus registered roots, one slug: listed once in the refusal"
+else
+    fail295 "legacy project/ plus registered roots: rc=$RC295 listed=[$LISTED295] out=${OUT295:0:300}"
+fi
+for CWD295 in "$WS295/project" "$DEMO295" "$DEMO295B"; do
+    run295 "$CWD295"
+    if [[ "$RC295" -eq 0 && -f "$ARGV_LOG" ]]; then
+        pass295 "legacy project/ plus registered roots: ${CWD295#"$R295"/} accepted"
+    else
+        fail295 "legacy project/ plus registered roots, ${CWD295#"$R295"/}: rc=$RC295 out=${OUT295:0:300}"
+    fi
+done
+
 echo
 echo "=== Temp files ==="
 if [[ -s "$LEAK_LOG" ]]; then
