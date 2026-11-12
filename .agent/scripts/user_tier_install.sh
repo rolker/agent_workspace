@@ -62,7 +62,10 @@
 # command at a time, because the `claude plugin` commands rewrite that file
 # and drop any key they do not know (#394). One function, classify_hooks,
 # decides for --check, install, --force and --uninstall. A command is
-# classified only when it is exactly a command this script writes, or when
+# classified only when it is exactly a command this script writes or wrote
+# (the SessionStart link, or this checkout's path -- lexical or physical --
+# + /.claude/hooks/<name>), exactly <marker>/.claude/hooks/<name> inside an
+# entry marked with <marker> (below), or when
 # the whole command string is a literal absolute path -- it starts with `/`
 # and holds no whitespace, quote, `$`, `~`, backslash, glob character or
 # shell operator -- of the form <dir>/.claude/hooks/<name>, <name> a hook
@@ -327,30 +330,65 @@ HOOK_ENTRIES_JQ='def hook_entries: .hooks // {} | objects | .[] | arrays | .[] |
 # shell operator.
 NOT_LITERAL_RE='[][[:space:]'"'"'"$~\;&|<>()`*?{}!#]'
 
+# Whose is a checkout-shaped <dir>? self: this checkout (lexical or
+# physical); foreign: it holds .agent/user_tier_scripts.txt (another
+# checkout); dead: <dir> itself is not on disk (a checkout since moved or
+# deleted -- or an unmounted drive); named: it exists and is none of these.
+dir_class() {  # <dir>
+    local phys=""
+    [[ -d "$1" ]] && phys="$(cd "$1" 2>/dev/null && pwd -P)"
+    if [[ "$1" == "$WS_ROOT" || "$1" == "$WS_PHYS" || "$phys" == "$WS_PHYS" ]]; then
+        echo self
+    elif [[ -f "$1/.agent/user_tier_scripts.txt" ]]; then
+        echo foreign
+    elif [[ ! -e "$1" ]]; then
+        echo dead
+    else
+        echo named
+    fi
+}
+
 # THE rule that decides whose a hook command is (header; #394). Every mode
 # that reports or removes a hook command -- --check, install, --force,
 # --uninstall -- classifies through this function and nothing else. Prints
 # one JSON object, keyed by command, for the commands it classifies:
-#   {"<command>": {"class": "self"|"foreign"|"dead"|"named", "dir": "<dir>"}}
-#   self:    a command this script writes (exactly), or a literal
-#            <dir>/.claude/hooks/<name> with <dir> this checkout (lexical or
-#            physical);
-#   foreign: <dir> holds .agent/user_tier_scripts.txt (another checkout);
-#   dead:    <dir> itself is not on disk (a checkout since moved or deleted);
-#   named:   <dir> exists and is none of the above. The user's, unless an
-#            entry marked with <dir> holds it (owner, below).
+#   {"<command>": {"class": "self"|"foreign"|"dead"|"named"|"marked",
+#                  "dir": "<dir>", "as": <dir_class of a marked <dir>>}}
+#   self:    exactly a command this script writes or wrote -- the
+#            SessionStart link, or $WS_ROOT or $WS_PHYS +
+#            /.claude/hooks/<name> -- or a literal <dir>/.claude/hooks/<name>
+#            with <dir> this checkout (dir_class);
+#   foreign, dead, named: a literal <dir>/.claude/hooks/<name>, by
+#            dir_class. A named one is the user's, unless an entry marked
+#            with <dir> holds it (owner, below);
+#   marked:  exactly <marker>/.claude/hooks/<name> for a marker some entry
+#            carries, though not literal (a space in the path, say). Only an
+#            entry marked with <dir> attributes it ("as" says to whom);
+#            anywhere else it is the user's.
 # A command not in the object is the user's. <name> must be one of
 # INSTALLER_HOOK_NAMES or RETIRED_HOOK_NAMES. A jq failure is an error
 # (return 1, a message on stderr), never an empty object: an empty one
 # would read as "nothing to remove" and let a run report current.
 classify_hooks() {  # <settings json>
-    local enc b cmd dir name phys n w class known
+    local enc menc b cmd dir name n w m class known as
     local -a out=() written=("$SESSION_HOOK_LINK")
-    while IFS= read -r w; do written+=("$w"); done < <(hook_commands)
-    enc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | entry_commands] | unique | .[] | @base64' <<< "$1")" || {
+    local -A marked=()
+    for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
+        written+=("$WS_ROOT/.claude/hooks/$n" "$WS_PHYS/.claude/hooks/$n")
+    done
+    enc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | entry_commands] | unique | .[] | @base64' <<< "$1")" \
+        && menc="$(jq -r "$HOOK_ENTRIES_JQ"'[hook_entries | ._agent_workspace | strings | select(. != "")] | unique | .[] | @base64' <<< "$1")" || {
         echo "ERROR: could not read the hook commands in $SETTINGS (jq failed) -- nothing changed" >&2
         return 1
     }
+    while IFS= read -r b; do
+        [[ -z "$b" ]] && continue
+        m="$(base64 -d <<< "$b"; printf x)" || return 1
+        m="${m%x}"
+        for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
+            marked["$m/.claude/hooks/$n"]="$m"
+        done
+    done <<< "$menc"
     while IFS= read -r b; do
         [[ -z "$b" ]] && continue
         # The x keeps a trailing newline in the command from being stripped.
@@ -358,6 +396,7 @@ classify_hooks() {  # <settings json>
         cmd="${cmd%x}"
         class=""
         dir=""
+        as=""
         for w in "${written[@]}"; do
             [[ "$cmd" == "$w" ]] && class=self
         done
@@ -371,22 +410,14 @@ classify_hooks() {  # <settings json>
             for n in "${INSTALLER_HOOK_NAMES[@]}" "${RETIRED_HOOK_NAMES[@]}"; do
                 [[ "$name" == "$n" ]] && known=true
             done
-            if [[ "$known" == true ]]; then
-                phys=""
-                [[ -d "$dir" ]] && phys="$(cd "$dir" 2>/dev/null && pwd -P)"
-                if [[ "$dir" == "$WS_ROOT" || "$dir" == "$WS_PHYS" || "$phys" == "$WS_PHYS" ]]; then
-                    class=self
-                elif [[ -f "$dir/.agent/user_tier_scripts.txt" ]]; then
-                    class=foreign
-                elif [[ ! -e "$dir" ]]; then
-                    class=dead
-                else
-                    class=named
-                fi
-            fi
+            [[ "$known" == true ]] && class="$(dir_class "$dir")"
+        elif [[ -n "${marked["$cmd"]+set}" ]]; then
+            dir="${marked["$cmd"]}"
+            class=marked
+            as="$(dir_class "$dir")"
         fi
         [[ -n "$class" ]] || continue
-        out+=("$(jq -cn --arg c "$cmd" --arg k "$class" --arg d "$dir" '{($c): {class: $k, dir: $d}}')") || return 1
+        out+=("$(jq -cn --arg c "$cmd" --arg k "$class" --arg d "$dir" --arg a "$as" '{($c): {class: $k, dir: $d, as: $a}}')") || return 1
     done <<< "$enc"
     if ((${#out[@]})); then
         printf '%s\n' "${out[@]}" | jq -cs 'add'
@@ -400,7 +431,8 @@ classify_hooks() {  # <settings json>
 # bound:
 #   owner($m): whose is the command (.) in an entry whose marker is $m (""
 #     when unmarked)? "self", "foreign", "dead", or null for the user's. A
-#     "named" command is the marked checkout's when its <dir> is the marker.
+#     "named" or "marked" command is the marked checkout's when its <dir> is
+#     the marker, and the user's anywhere else.
 #   remove($m): ours; a dead one when $dead (install, --force); another
 #     checkout's under --force.
 #   prune: remove those commands from each entry of a hook event's array,
@@ -418,6 +450,9 @@ PRUNE_JQ_DEFS="$HOOK_ENTRIES_JQ"'
           elif $k.class == "named" then
               (if ($m | type) == "string" and $m != "" and $k.dir == $m
                then (if $m == $tag then "self" else "foreign" end) else null end)
+          elif $k.class == "marked" then
+              (if ($m | type) == "string" and $m != "" and $k.dir == $m
+               then (if $k.as == "self" or $k.as == "dead" then $k.as else "foreign" end) else null end)
           else $k.class end;
     def remove($m):
         owner($m) as $o

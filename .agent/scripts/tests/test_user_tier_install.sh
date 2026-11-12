@@ -629,6 +629,70 @@ out="$(run --check)"; rc=$?
     && pass "--check is clean once install and --force have dropped the markers" \
     || fail "--check after dropping the markers (rc=$rc out=$out)"
 
+# (q) a checkout path the literal rule rejects (a space in it). The exact
+# match covers every command this script writes or wrote under this
+# checkout, a retired hook included, and, inside an entry marked with a
+# checkout, that checkout's commands; the same string in an unmarked entry
+# stays the user's.
+WSS="$SANDBOX/ws with space"
+mkdir -p "$WSS"
+cp -r "$WSC/.agent" "$WSC/.claude" "$WSC/.claude-plugin" "$WSS/"
+rm -f "$WSS/.agent/projects.local"
+HOMES="$SANDBOX/home-space"
+mkdir -p "$HOMES"
+run_space() {
+    HOME="$HOMES" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="$INST_TMP" CLAUDE_CONFIG_DIR='' \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$WSS/.agent/scripts/user_tier_install.sh" "$@" 2>&1
+}
+SPACE_SETTINGS="$HOMES/.claude/settings.json"
+SPACE_RETIRED="$WSS/.claude/hooks/block-bash-tool-mapping.sh"
+run_space >/dev/null
+jq --arg c "$SPACE_RETIRED" '.hooks.PreToolUse += [{hooks: [{type: "command", command: $c}]}]' \
+    "$SPACE_SETTINGS" > "$tmp" && mv "$tmp" "$SPACE_SETTINGS"
+out="$(run_space --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"no longer generated: $SPACE_RETIRED"* ]] \
+    && pass "--check reports this checkout's retired hook when the checkout path holds a space" \
+    || fail "retired hook under a spaced checkout path not reported (rc=$rc out=$out)"
+run_space >/dev/null
+jq -e --arg c "$SPACE_RETIRED" --arg l "$WSS/.claude/hooks/log-tool-use.sh" '
+    [.hooks.PreToolUse[].hooks[]?.command] | (index($c) == null) and (map(select(. == $l)) | length == 1)' \
+    "$SPACE_SETTINGS" >/dev/null \
+    && pass "install removes it, and holds our own spaced hook command once" \
+    || fail "install over a spaced checkout path ($(jq -c '.hooks.PreToolUse' "$SPACE_SETTINGS"))"
+out="$(run_space --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean for a spaced checkout path after the re-install" \
+    || fail "--check for a spaced checkout path (rc=$rc out=$out)"
+rm -rf "$WSS" "$HOMES"
+
+SPACE_OTHER="$SANDBOX/other ws"
+mkdir -p "$SPACE_OTHER/.agent"
+: > "$SPACE_OTHER/.agent/user_tier_scripts.txt"
+SPACE_OTHER_HOOK="$SPACE_OTHER/.claude/hooks/log-tool-use.sh"
+jq --arg t "$SPACE_OTHER" --arg c "$SPACE_OTHER_HOOK" '.hooks.PreToolUse += [
+        {_agent_workspace: $t, hooks: [{type: "command", command: $c}]},
+        {matcher: "Unmarked", hooks: [{type: "command", command: $c}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"another workspace checkout: $SPACE_OTHER"* ]] \
+    && pass "--check reports another checkout's marked entry under a spaced path" \
+    || fail "spaced marked entry not reported (rc=$rc out=$out)"
+run >/dev/null
+[[ "$(n_holding PreToolUse "$SPACE_OTHER_HOOK")" -eq 2 ]] \
+    && pass "a plain install leaves another checkout's marked command under a spaced path" \
+    || fail "a plain install changed the spaced marked entry ($(n_holding PreToolUse "$SPACE_OTHER_HOOK"))"
+run --force >/dev/null
+[[ "$(entry_of "$SPACE_OTHER_HOOK")" == "$(jq -cnS --arg c "$SPACE_OTHER_HOOK" '[{matcher: "Unmarked", hooks: [{type: "command", command: $c}]}]')" ]] \
+    && pass "--force removes the marked entry's command, and leaves the same string in an unmarked entry (the user's)" \
+    || fail "--force over a spaced marked entry (entries: $(entry_of "$SPACE_OTHER_HOOK"))"
+jq --arg c "$SPACE_OTHER_HOOK" '.hooks.PreToolUse |= map(select(any(.hooks[]?; .command == $c) | not))' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+rm -rf "$SPACE_OTHER"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean after the spaced-path cases" \
+    || fail "--check after the spaced-path cases (rc=$rc out=$out)"
+
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"
