@@ -134,3 +134,11 @@ Host answer under /orchestrator's checkpoint table (first `revise` at this check
 
 ### Decisions made (owner may veto)
 - The acceptance line "passes on the first machine with GNU coreutils" is met by a green Lint job on GitHub's `ubuntu-latest` runner (GNU coreutils), confirmed in that job's log, since no GNU host is reachable from this session; the issue's intent is a pass on both coreutils. Undoing it: run the suite once on the first machine before merge.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 14:33 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-451/plan.md` at `d7d8a1b9`
+
+Revision answering the plan review: position B now delivers the KILL while the deaf child is held, then releases it (keyed on the CLI PID); time checks kept by an escalation of 30 s beyond the 10 s ceiling, with a TERM revert step and the escalation-0 case kept; dead case reaps with wait; acceptance grep corrected. Reverts for TERM and KILL tried on a prototype here.
