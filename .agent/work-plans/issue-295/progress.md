@@ -98,3 +98,11 @@ issue: 295
 The host read the Issue Review entry at 15b85e63. Planning goes ahead for the first pull request only: a workspace with no project validates and sets up, the legacy `project/` and `projects/` fallbacks and their documentation go, the `projects.d/<name>.sh` reading and the shared-config fallback go with them (item 4 of issue 265's plan; the owner's "no migration necessary" removes the only users), with a fresh-clone no-project test. Order against other work, decided by the host: this pull request goes ahead of issue 429 part 2, which rebases onto it, because the second machine cannot validate until it lands and issue 429 part 2 is to be driven from that machine; it waits only for issue 437 (pull request 448).
 
 The review's owner questions, as the host reads the record: B (is the workspace a registered project) is the owner's own idea of 2026-09-18 and the issue's title, so it is not re-asked. A (whether --type survives) was delegated to the plan by his 2026-09-18 comment ("Decide in the plan whether `--type` survives as a deprecated alias"), so the plan for the second and third pull requests decides it and lists it for his veto. C (what a pinned entry changes for the session-root rule and the plugin) is put to him on its own when the second pull request is planned. D (make setup points at register_project.sh) is a host decision: yes. The AGENTS.md wording change is Ask First and is shown to him before it is committed.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 12:45 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-295/plan.md` at `14b714c4`
+
+Pull request 1 of three is planned in full (a workspace with no project validates and sets up; the project/ and projects/ fallbacks, the .sh and shared-config reading, and the worktrees/project transition are removed, each with a test; docs and a fresh-clone test included; the AGENTS.md wording is a separate last commit awaiting the owner). Pull requests 2 (pinned entry and workspace adapter) and 3 (special-case collapse) are an outline with the open questions; --type is proposed to survive as a deprecated alias for the owner's veto.
