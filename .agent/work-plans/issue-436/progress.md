@@ -861,3 +861,19 @@ Local timeline: round 7's two open findings carry forward; both re-checked again
 **Decision**: address
 
 The host read the Integrated Review entry at a36c6346. The fix pass corrects the two README sentences (lines 109-113 and 126) and adds one sentence saying the known gaps of these rules are tracked in issue 447. No code change.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #449 at `2abd515b`
+**Addressed**: Integrated Review at `c4c73224` (2026-11-12 13:12 -05:00)
+**Commits**: b64b4544, db2663ad, 2abd515b
+
+### Actions
+- [x] (must-fix) character rule no longer claims completeness: the `!!binary` carve-out now also names a string inside a `!!set` or `!!pairs` value under a key the tool ignores (#447) — `tools/ros-manifest/README.md:110-115` (b64b4544)
+- [x] (suggestion) "nor is a group's `default` that is not `include` or `exclude`", matching the redeclaration message in `merge.py:99-102` — `tools/ros-manifest/README.md:128-129` (db2663ad)
+- [x] (host-directed, not a review finding) section introduction now says the rules describe what the checks aim at, and that known gaps are named where they apply and tracked in #447 — `tools/ros-manifest/README.md:79-80` (2abd515b)
+
+Branch-wide `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: all hooks passed (exit 0), script suite included. README only; no code or tests changed. Not pushed.
