@@ -310,3 +310,23 @@ Dismissed:
 **Decision**: publish
 
 The host read the round 3 Local Review (Pre-Push) entry at 6cf7a38d: verdict approved, Ship recommended, one open suggestion (a dead command is attributed to the installer in an entry carrying any marker, not only its own checkout's; require the command's directory to equal the marker). That suggestion is about what a plain install may remove from the owner's settings file, so it is not left as a suggestion: its box stays open, triage raises it, and it is fixed on the pull request before the merge decision, together with a test for the symlinked-settings failed-write path the reviewer noted is untested.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 13:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #450 at `715ae2ff`
+**Sources**: 3 (Local Review (Pre-Push) round 3 @ `1e02b457` (covers `715ae2ff` via bookkeeping), Copilot @ `715ae2ff` (failed: quota), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot: failed (quota) — its review at the head says "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota"; no inline comments. No human review requested; no conversation comments. Earlier local rounds 1 and 2 were closed by the Implementation entries and confirmed closed by round 3. CI at the time of writing: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass on both runs; Lint (pre-commit) pending on both.
+
+Both findings below were checked against the code at the head. The host's publish Checkpoint (13:36) rules that they are fixed on this pull request before the merge decision, not left as suggestions: they decide what a plain install may remove from the owner's settings file, and whether a failed write to it is reported.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `1e02b457`) A dead command in an entry carrying any marker, not only its own checkout's, is attributed to the installer and removed by a plain install: `owner` returns "dead" without comparing `$k.dir` with the marker, and `remove` only asks `marked($m)`. A moved checkout's entry always has the command under the marker's own path, so requiring `$k.dir == $m` for "dead" loses nothing and keeps the rule to "an entry marked with that checkout" (adversarial) — `user_tier_install.sh:459-471`. Confirmed: the `else $k.class` branch of `owner` returns "dead" for any marker. Fix: attribute a dead command to the installer only when `$k.dir == $m`; one in an entry marked with another checkout is handled like an unmarked dead command (reported by `--check` and named by a plain install with the `--force` remedy, left in place; `--force` removes it), and `--check`'s two dead-command reports (around line 1364) follow the same split. Test: a dead command inside an entry marked with another checkout — a plain install keeps it and names it, `--force` removes it.
+- [ ] (test gap, Local Review (Pre-Push) @ `1e02b457`, raised by the host Checkpoint) The failed write to a symlinked settings.json is untested: `write_settings` returns 1 when the `mv` onto the resolved dotfiles file fails, but the only `mv` shim matches `*/.claude/settings.json`, which the symlink branch never passes to `mv`, and the dotfiles tests cover only the success path — `.agent/scripts/tests/test_user_tier_install.sh` (around 859 and 1211-1276), `user_tier_install.sh` `write_settings`. Fix: a shim that fails the rename onto the dotfiles target; check that install and `--uninstall` exit 1 with "nothing changed", the dotfiles file and the link are unchanged, and no `.agent-workspace.<pid>` staging file or temporary file is left behind.
+
+### False positives
