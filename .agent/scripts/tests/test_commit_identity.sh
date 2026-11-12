@@ -131,6 +131,16 @@ for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
 
+echo "TEST: a configured address with an empty suffix is accepted as configured"
+sbe="$(mk_repo "u+@example.org")"
+hook_in "$sbe"
+[ $HOOK_RC -eq 0 ] && pass "configured u+@example.org: the human commit passes" || fail "empty suffix (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sbe" GIT_AUTHOR_EMAIL=u+codex@example.org GIT_COMMITTER_EMAIL=u+codex@example.org
+[ $HOOK_RC -eq 0 ] && pass "and its agent address u+codex@example.org passes" || fail "empty suffix agent (rc=$HOOK_RC: $HOOK_OUT)"
+hook_in "$sb" GIT_AUTHOR_EMAIL=someone+@example.org
+[ $HOOK_RC -ne 0 ] && pass "an empty suffix that is not the configured address is still rejected" \
+    || fail "someone+@ accepted when not configured"
+
 echo "TEST: the hook checks the committer git will record, wherever it comes from"
 hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org GIT_COMMITTER_EMAIL=other@example.net
 [[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"Committer email: other@example.net"* ]] \

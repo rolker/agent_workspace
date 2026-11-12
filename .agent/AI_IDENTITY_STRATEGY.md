@@ -31,7 +31,8 @@ checkout's configured git email:
   `FRAMEWORK_SUFFIXES` table in `.agent/scripts/framework_config.sh`; the
   derivation is `.agent/scripts/identity_base.py`, shared by the scripts and the
   commit-identity hook.
-- **Accepted by the hook**: the base itself, or `<local>+<anything>@<domain>`.
+- **Accepted by the hook**: the base itself, `<local>+<anything>@<domain>`, or
+  the configured address verbatim (a configured `u+@x.org` is accepted as is).
 - **Unset or malformed email** (a fresh machine): every entry point prints
   "git user.email is not set ..." with the `git config --global user.email
   <your-address>` fix and fails without exporting or writing anything; a

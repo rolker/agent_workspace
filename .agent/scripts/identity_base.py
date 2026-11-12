@@ -12,7 +12,8 @@ One parser for the commit-identity hook and the identity shell scripts
   configure_git_identity.sh holds `<local>+<framework>@<domain>`, which
   therefore still yields the same base.
 - agent email: `<local>+<suffix>@<domain>`.
-- accepted commit email: the base itself, or `<local>+<anything>@<domain>`.
+- accepted commit email: the base itself, `<local>+<anything>@<domain>`, or
+  the configured address verbatim.
 
 A usable address has exactly one `@`, a non-empty local part and a
 non-empty domain, and no whitespace, control characters, angle brackets or
@@ -183,9 +184,14 @@ def agent_email(suffix, cwd=None):
     return f"{local}+{suffix}@{domain}"
 
 
-def is_accepted(email, local, domain):
-    """True when email is `<local>@<domain>` or `<local>+<x>@<domain>`."""
-    parsed = _parse((email or "").strip())
+def is_accepted(email, local, domain, configured=None):
+    """True when email is `<local>@<domain>` or `<local>+<x>@<domain>`, or
+    the configured address itself (verbatim: a configured `u+@x.org`, whose
+    empty suffix gives base `u@x.org`, is what git commits with)."""
+    email = (email or "").strip()
+    if configured and email == configured.strip():
+        return True
+    parsed = _parse(email)
     if parsed is None:
         return False
     e_local, e_domain = parsed

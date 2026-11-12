@@ -8,7 +8,9 @@ set_git_identity_env.sh. This hook catches that before it becomes a problem.
 No address is hardcoded (issue #455). The accepted set derives from the
 checkout's configured `git config user.email` (a clone value wins over the
 global one), with any `+suffix` removed: `<local>@<domain>` (the human) or
-`<local>+<anything>@<domain>` (an agent). The base is read from git's
+`<local>+<anything>@<domain>` (an agent), and the configured address
+itself verbatim (e.g. `u+@x.org`, whose empty suffix yields base
+`u@x.org`). The base is read from git's
 config files only, never from the environment (`git -c`,
 GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT injection are ignored for it);
 the emails checked are the author and the committer exactly as git will
@@ -40,7 +42,7 @@ def main():
     rejected = []
     for kind, label in (("AUTHOR", "Author email"), ("COMMITTER", "Committer email")):
         email = identity_base.ident_email(kind)
-        if not identity_base.is_accepted(email, local, domain):
+        if not identity_base.is_accepted(email, local, domain, identity_base.configured_email()):
             rejected.append((label, email))
     if not rejected:
         return 0
