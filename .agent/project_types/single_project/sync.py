@@ -187,16 +187,27 @@ def main():
         # Say why, and how to get a project synced. The registry read is the
         # main checkout's, found through git's common dir as make setup,
         # make validate and the dashboard find it: a worktree has no
-        # registry of its own (projects.local is gitignored).
+        # registry of its own (projects.local is gitignored). A registry
+        # whose lines fail to parse is not an empty one: say so rather than
+        # "none registered" (only a worktree reaches here with one; from the
+        # main checkout the adapter refuses a malformed registry first).
         print("Checking project...")
-        entries, _errors = read_projects_registry(get_main_checkout_root())
+        main_root = get_main_checkout_root()
+        entries, errors = read_projects_registry(main_root)
         names = [e["name"] for e in entries]
         if names:
             print(
                 "  ⚠️  No project was synced (none selected; registered: "
                 f"{', '.join(names)}; pass PROJECT=<name>)"
             )
-        else:
+        if errors:
+            print(
+                f"  ⚠️  The project registry in {main_root} has {len(errors)} "
+                "malformed line(s); run make validate in that checkout to see them."
+            )
+            if not names:
+                print("  No project was synced (no well-formed registry line).")
+        if not names and not errors:
             print(
                 "  No project was synced (none registered; register one: "
                 f"{REGISTER_PROJECT_POINTER})"

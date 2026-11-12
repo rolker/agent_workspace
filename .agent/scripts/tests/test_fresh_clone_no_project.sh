@@ -227,6 +227,20 @@ else
     fail "(f) make dashboard in the worktree: rc=$RC out=${OUT:0:1200}"
 fi
 
+# (f) continued: the main checkout's registry exists but no line parses. A
+# registry with malformed lines is not an empty one, so sync in the worktree
+# says the registry has malformed lines, never that none is registered.
+cp "$WS/.agent/projects.local" "$SANDBOX/projects.local.saved"
+printf '%s\n' '../bad-name single_project /nowhere' > "$WS/.agent/projects.local"
+run_clean "$WT" make --no-print-directory sync
+if [[ "$RC" -eq 0 && "$OUT" == *"Sync complete."* && "$OUT" == *"malformed line"* \
+      && "$OUT" == *"make validate"* ]] && ! says_none; then
+    pass "(f) make sync in the worktree, malformed main registry: says malformed, not none registered"
+else
+    fail "(f) make sync in the worktree, malformed main registry: rc=$RC out=${OUT:0:800}"
+fi
+cp "$SANDBOX/projects.local.saved" "$WS/.agent/projects.local"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
