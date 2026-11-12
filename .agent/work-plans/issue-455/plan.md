@@ -38,12 +38,15 @@ the same base.
    (scripts dir on `sys.path`). Commit email stays `GIT_AUTHOR_EMAIL` first, then git config; the accepted
    set derives from the configured base only, never from the env. Unset or malformed configured email:
    helper message, exit 1 (blocking, ADR-0004/0005). Failure output prints `<local>@<domain>` /
-   `<local>+*@<domain>` built from the base.
+   `<local>+*@<domain>` built from the base, a "To fix" block with the exact derived command
+   (`source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"`) and the note that an old
+   literal setup line or a branch not yet updated from main is the likely cause.
 5. **Test `.agent/scripts/tests/test_commit_identity.sh`** (`chmod +x`; hermetic: temp repos,
    `GIT_CONFIG_GLOBAL` at a temp file, `GIT_CONFIG_NOSYSTEM=1`, `HOME` isolated; fixtures use
    `example.org`). Cases: arbitrary base passes as human and as `local+x@domain`; another local part and
-   another domain fail; unset email gives the message and exit 1 (hook, `--agent`,
-   `configure_git_identity.sh`); malformed (`foo`, `@d`) fails; repo-local `user.email` beats global;
+   another domain fail; unset email gives the message, exit 1 and no exported `AGENT_EMAIL` (hook, `--agent`,
+   `--detect`, `detect_agent_identity.sh`, `configure_git_identity.sh`); the hook failure text contains the exact derived
+   command and the stale-literal / not-updated-from-main hint; malformed (`foo`, `@d`) fails; repo-local `user.email` beats global;
    configured `local+claude-code@d` normalises to base and `--agent codex` yields `local+codex@d`;
    `--agent claude-code "<model>"` sets that model; `GIT_AUTHOR_EMAIL` on another base fails. Map the new
    suite in `.agent/scripts/tests/suites_for_files.sh` for the hook, the helper, `framework_config.sh` and
@@ -63,7 +66,7 @@ the same base.
 7. **Docs without addresses**: `.agent/AI_IDENTITY_STRATEGY.md` (16, 47-50, 68, 86, 219) to placeholder
    form plus the derive-from-git rule; `docs/design.md` Identity section (662, 671-672) and Rules row
    (160); `script_reference.md` entries (helper, `--agent` model argument; verify text first);
-   `docs/roadmap.md:420` reworded. The inspiration digest is a past record, left alone unless it holds a
+   `docs/roadmap.md:420` reworded; one `docs/design.md` change-log row for "Rules, Identity" (#455) with the new line count. The inspiration digest is a past record, left alone unless it holds a
    real owner address, then reworded.
 8. **Acceptance check**: grep tracked files for the owner's local part and the two domains (pattern
    assembled in the command, never written into a file), excluding tests, work-plans and
@@ -78,18 +81,39 @@ hook and fails the new one; the derived form does the opposite. The hook is ther
 
 | # | Commit | Identity used by the committing agent |
 |---|---|---|
-| C1 | Helper + `framework_config.sh` + three scripts + `--agent <fw> [model]` (steps 1-3). Old hook still in the tree. | Old literal 3-arg line from the current `CLAUDE.md` (unchanged so far) |
-| C2 | Doc rewrites (step 7) and `test_dispatch_phase.sh` fixture | Same literal line |
-| C3 | **Pivot, atomic**: hook (step 4) + new test and `suites_for_files.sh` mapping (step 5) + `CLAUDE.md`, `CODEX.md`, run-issue, onboard-project and `test_skill_paths.sh` (step 6) | Derived: `source .agent/scripts/set_git_identity_env.sh --agent claude-code "<model-id>"` (works from C1's committed scripts; the new hook runs on this commit and accepts it) |
-| C4+ | Every later commit (plan sync, review fixes), and every host / phase / progress-entry commit | Derived form only |
+| C1 | Helper + `framework_config.sh` + three scripts + `--agent <fw> [model]` (steps 1-3). Old hook still in the tree. | Literal 3-arg line from the current `CLAUDE.md` (unchanged so far) |
+| C2 | Doc rewrites (step 7, including the `docs/design.md` change-log row) and `test_dispatch_phase.sh` fixture | Same literal line |
+| C3 | **Pivot, atomic**: hook (step 4) + new test and `suites_for_files.sh` mapping (step 5) + `CLAUDE.md`, `CODEX.md`, run-issue, onboard-project and `test_skill_paths.sh` (step 6) | Derived form, sourced from the worktree's script |
+| C4+ | Every later commit (plan sync, review fixes), and every host / phase / progress-entry commit | Derived form, worktree's script, until the merge |
 
-Rules: the hook file is edited in the working tree last, and C3 is the first commit made with the derived
-form. The test lives in C3 because it exercises the new hook (it would fail in C1/C2). The new
-instruction-file lines never land after the hook, so no later session is blocked. The run-issue host
-sources `--agent claude-code "<model-id>"` before C3's phase and for all phases after; the handoff then
-prints the derived `agent_email=`, which phases may pass through unchanged. Before C3 the host keeps the
-literal. Concrete line for phases after the switch (starting every chain with `cd <worktree> &&`):
-`source .agent/scripts/set_git_identity_env.sh --agent claude-code "<model-id>" && git commit ...`.
+**During this run.** The implement phase is ONE dispatched pass that makes C1..C3 and later commits. It is
+dispatched with the literal identity (the host's `agent_email=` from the main checkout's old script), because
+the main checkout's `set_git_identity_env.sh` is still the old one and refuses `--agent <fw> "<model>"`
+(`$# -ne 2`). Inside the pass:
+
+- C1, C2 (literal, exact line from the current `CLAUDE.md`, with the real model id):
+  `cd <worktree> && source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "<the address in CLAUDE.md>" "<model-id>" && git commit ...`
+- C3 and after (derived; `.agent/scripts/...` is relative to the worktree, so it is the worktree's copy, which
+  has C1's new script; the main checkout's copy has not):
+  `cd <worktree> && source .agent/scripts/set_git_identity_env.sh --agent claude-code "<model-id>" && git commit ...`
+
+The hook file is edited in the working tree last, and C3 is the first commit made with the derived form (the
+new hook runs on C3 and accepts it). From C3 until the merge, the host and every later phase (review-code,
+triage, address-findings, progress-entry commits) source the WORKTREE's copy, never `$WS_ROOT`'s:
+`cd <worktree> && source <worktree>/.agent/scripts/set_git_identity_env.sh --agent claude-code "<model-id>" && git commit ...`.
+Phases may also pass through the derived `agent_email=` in the 3-arg form once the host has printed it from
+the worktree's script. Before C3 the host keeps the literal.
+
+## After the merge (post-merge step, also in the pull request body)
+
+Once main carries the new hook, scripts and instruction lines: **every in-flight branch or worktree is
+updated from main (merge or rebase) before its next commit.** Reason: pre-commit runs the hook from the
+branch's own working tree, so a branch not yet updated keeps the old hook, which rejects the derived address;
+conversely a session still holding the old literal setup line is rejected by the new hook. At least one other
+worktree exists today (issue 429's). The new hook's failure text prints the configured base and the exact
+derived command (`source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"`) and says an
+old literal setup line, or a branch not yet updated from main, is the likely cause. A test asserts that
+message (step 5).
 
 ## Files to Change
 
