@@ -1108,7 +1108,22 @@ jobs_case() {
         fail "(u1) $label (rc=$rc, out=$out)"
     fi
 }
-jobs_case "the default is one job, and says so" 0 "run_script_tests: running with 1 job (default)" "" "$U1"
+# The default is one job; its line names the count the machine suits, a
+# quarter of its CPUs, at least 2, at most 6, never more than it has. A
+# stub nproc first on PATH sets the CPU count.
+U1_BIN="$TMPD/u1_bin"
+mkdir -p "$U1_BIN"
+for cpus_want in "16 4" "40 6" "4 2" "1 1"; do
+    read -r u1_cpus u1_want <<<"$cpus_want"
+    printf '#!/bin/sh\necho %s\n' "$u1_cpus" > "$U1_BIN/nproc"
+    chmod +x "$U1_BIN/nproc"
+    out=$(PATH="$U1_BIN:$PATH" "$RUNNER" "$U1" 2>&1); rc=$?
+    if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qxF "run_script_tests: running with 1 job (default; -j $u1_want suits this machine's $u1_cpus CPUs)"; then
+        pass "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs"
+    else
+        fail "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs (rc=$rc, out=$out)"
+    fi
+done
 jobs_case "-j 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j 3 "$U1"
 jobs_case "-j3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j3 "$U1"
 jobs_case "--jobs 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" --jobs 3 "$U1"

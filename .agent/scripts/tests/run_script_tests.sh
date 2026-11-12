@@ -47,8 +47,10 @@
 #   -j N, --jobs N   run N suites at a time. Without it RUN_SCRIPT_TESTS_JOBS
 #                    sets the count, else the default, 1. A count above 8
 #                    runs with 8 and says so; one that is not a whole number
-#                    of at least 1 is refused. Every run prints its count.
-#                    Suites do not inherit RUN_SCRIPT_TESTS_JOBS. The hook's
+#                    of at least 1 is refused. Every run prints its count;
+#                    at the default it also names the count this machine
+#                    suits (a quarter of its CPUs, at least 2 and at most
+#                    6, never more than it has). Suites do not inherit RUN_SCRIPT_TESTS_JOBS. The hook's
 #                    entry ends in --files, so the environment variable is
 #                    the hook's only way to set the count.
 #   --shuffle[=SEED] start the suites in an order drawn from SEED (a whole
@@ -154,6 +156,18 @@ FILES_MAX=200
 # Job count (issue #444): the default, and the cap no request goes past.
 JOBS_DEFAULT=1
 JOBS_MAX=8
+# The count this machine suits for a parallel run: a quarter of its CPUs,
+# at least 2 and at most 6, and never more than it has. Only printed while
+# the default is 1; empty when the CPU count cannot be read.
+jobs_suited=""
+cpus=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null) || cpus=""
+if [[ "$cpus" =~ ^[0-9]+$ ]] && (( 10#$cpus >= 1 )); then
+    cpus=$(( 10#$cpus ))
+    jobs_suited=$(( cpus / 4 ))
+    (( jobs_suited >= 2 )) || jobs_suited=2
+    (( jobs_suited <= 6 )) || jobs_suited=6
+    (( jobs_suited <= cpus )) || jobs_suited=$cpus
+fi
 
 # --- Arguments: [options] [tests-dir] [--files <file>...] ---
 USAGE="usage: run_script_tests.sh [-j N] [--shuffle[=SEED]] [--show-passed] [tests-dir] [--files <file>...]"
@@ -216,6 +230,9 @@ if [[ ! "$jobs_asked" =~ ^[0-9]+$ ]] || (( 10#$jobs_asked < 1 )); then
 fi
 jobs=$(( 10#$jobs_asked ))
 jobs_note="$jobs_from"
+if [[ "$jobs_from" == default && -n "$jobs_suited" ]]; then
+    jobs_note="default; -j $jobs_suited suits this machine's $cpus CPUs"
+fi
 if (( jobs > JOBS_MAX )); then
     jobs_note="$jobs_from asked for $jobs; the cap is $JOBS_MAX"
     jobs=$JOBS_MAX
