@@ -64,7 +64,7 @@ help:
 	@echo "Agent Workspace - Makefile"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make setup            Full setup (venv + pre-commit + git-bug)"
+	@echo "  make setup            Full setup (venv + pre-commit + ros-manifest resolver + git-bug)"
 	@echo "  make lint             Install and run pre-commit on all files"
 	@echo "  make validate         Check workspace configuration is valid"
 	@echo "  make repair           Fix stale venv/hooks after workspace rename"

@@ -13,7 +13,9 @@
 #
 # Offline and hermetic: a scratch HOME (so the real ~/.claude and the real
 # registry are never read or written), CI=1 and a pre-seeded
-# .make/setup-dev.done (so make never runs pip and git-bug setup skips), the
+# .make/setup-dev.done and .make/ros-manifest.done (so make never runs pip:
+# setup-dev installs the venv, ros-manifest pip-installs the resolver into
+# it, and the scratch copy has no .venv; git-bug setup skips), the
 # copy's `origin` is a local bare repository, and `gh` is a stub on PATH
 # that records `gh pr create` and fails every other call. No real project
 # is named; the registered project is a synthetic `demo` checkout whose
@@ -64,7 +66,7 @@ fixture_git -C "$WS" remote add origin "$BARE"
 fixture_git -C "$WS" fetch -q origin
 fixture_git -C "$WS" branch -q --set-upstream-to=origin/main main
 mkdir -p "$WS/.make"
-touch "$WS/.make/setup-dev.done"
+touch "$WS/.make/setup-dev.done" "$WS/.make/ros-manifest.done"
 
 # --- The gh stub -------------------------------------------------------------
 cat > "$STUB_BIN/gh" <<EOF
