@@ -46,35 +46,65 @@ def get_main_checkout_root():
     """
     Return the main checkout of the workspace repository (issue #295).
 
-    Found the way the Makefile's WS_ROOT is: git's common dir, with a
-    trailing /.git removed. In the main checkout that is the workspace root
-    itself; in a worktree it is the main checkout, which holds the
-    gitignored per-machine registry (.agent/projects.local) a worktree does
-    not have. Used for the "is a project registered?" messages, so make
-    validate, make sync, make setup and the dashboard agree inside a
-    worktree. Falls back to get_workspace_root() when git gives no answer,
-    or when the workspace root is not the top level of its own repository
-    (a copy that is a plain directory inside another repository must not
-    borrow that repository's registry).
+    The main checkout holds the gitignored per-machine registry
+    (.agent/projects.local) that a linked worktree does not have. Used for
+    the "is a project registered?" messages. The rule, mirrored by
+    registry_main_checkout in _project_registry.sh:
+
+    - the workspace root is not the top level of its own repository (not a
+      git checkout, or a plain directory inside another repository, which
+      must not borrow that repository's registry): the workspace root;
+    - git's --git-dir equals its --git-common-dir (a main checkout, also
+      one made with `git clone --separate-git-dir`): the workspace root;
+    - otherwise (a linked worktree): the first worktree that
+      `git worktree list --porcelain` names, which is the main checkout,
+      when that is a directory that is the top level of a checkout sharing
+      this common dir; else the workspace root.
+
+    Any git failure gives the workspace root.
     """
     root = get_workspace_root()
-
-    def _git(*args):
-        result = subprocess.run(
-            ["git", "-C", root, *args], capture_output=True, text=True, check=True
-        )
-        return result.stdout.strip()
-
     try:
-        top = _git("rev-parse", "--show-toplevel")
-        common = _git("rev-parse", "--path-format=absolute", "--git-common-dir")
+        if not _is_own_toplevel(root):
+            return root
+        common = _git_common_dir(root)
+        git_dir = _git_out(root, "rev-parse", "--path-format=absolute", "--git-dir")
+        if _canonical(git_dir) == _canonical(common):
+            return root
+        first = _git_out(root, "worktree", "list", "--porcelain").splitlines()
+        main = first[0][len("worktree ") :] if first and first[0].startswith("worktree ") else ""
+        if (
+            main
+            and _is_own_toplevel(main)
+            and _canonical(_git_common_dir(main)) == _canonical(common)
+        ):
+            return main
     except (OSError, subprocess.CalledProcessError):
-        return root
-    if not top or not common or _canonical(top) != _canonical(root):
-        return root
-    if common.endswith("/.git"):
-        common = common[: -len("/.git")]
-    return common
+        pass
+    return root
+
+
+def _git_out(where, *args):
+    """stdout of `git -C <where> <args>`, stripped; raises on failure."""
+    result = subprocess.run(
+        ["git", "-C", str(where), *args], capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
+
+
+def _git_common_dir(where):
+    """git's common dir for the checkout at <where>, as an absolute path."""
+    return _git_out(where, "rev-parse", "--path-format=absolute", "--git-common-dir")
+
+
+def _is_own_toplevel(path):
+    """True when <path> is a directory that is the top level of its own
+    repository (not a plain directory inside another one); raises on a git
+    failure."""
+    if not Path(path).is_dir():
+        return False
+    top = _git_out(path, "rev-parse", "--show-toplevel")
+    return bool(top) and _canonical(top) == _canonical(path)
 
 
 def get_project_path():

@@ -623,25 +623,47 @@ registry_require_root() {
 }
 
 # Print the main checkout of the workspace repository whose checkout is
-# <root> (issue #295): git's common dir with a trailing /.git removed, the
-# way the Makefile's WS_ROOT is found. In a worktree that is the main
-# checkout, which holds the gitignored registry a worktree does not have.
-# It decides the "is a project registered?" messages only, so make setup,
-# make validate, make sync and the dashboard agree inside a worktree; the
-# mirror in lib/workspace.py is get_main_checkout_root. Prints <root>
-# unchanged when git gives no answer or <root> is not the top level of its
-# own repository (a plain directory inside another repository must not
-# borrow that repository's registry). Always returns 0.
+# <root> (issue #295), which holds the gitignored registry a linked
+# worktree does not have. It decides the "is a project registered?"
+# messages only; the mirror in lib/workspace.py is get_main_checkout_root.
+# The rule:
+#   - <root> is not the top level of its own repository (not a git
+#     checkout, or a plain directory inside another repository, which must
+#     not borrow that repository's registry): print <root>;
+#   - git's --git-dir equals its --git-common-dir (a main checkout, also
+#     one made with `git clone --separate-git-dir`): print <root>;
+#   - otherwise (a linked worktree): print the first worktree that
+#     `git worktree list --porcelain` names, which is the main checkout,
+#     when that is a directory that is the top level of a checkout sharing
+#     this common dir; else print <root>.
+# Any git failure prints <root>. Always returns 0.
 # Usage: main="$(registry_main_checkout "$root")"
 registry_main_checkout() {
-    local root="$1" abs top common
+    local root="$1" abs top gitdir common main mtop mcommon
     abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\n' "$root"; return 0; }
     top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" &&
         top="$(cd "$top" 2>/dev/null && pwd -P)" &&
         [ "$top" = "$abs" ] &&
+        gitdir="$(git -C "$abs" rev-parse --path-format=absolute --git-dir 2>/dev/null)" &&
+        gitdir="$(cd "$gitdir" 2>/dev/null && pwd -P)" &&
         common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
-        [ -n "$common" ] || { printf '%s\n' "$root"; return 0; }
-    printf '%s\n' "${common%/.git}"
+        common="$(cd "$common" 2>/dev/null && pwd -P)" ||
+        { printf '%s\n' "$root"; return 0; }
+    if [ "$gitdir" = "$common" ]; then
+        printf '%s\n' "$root"
+        return 0
+    fi
+    main="$(git -C "$abs" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')" || main=""
+    [ -n "$main" ] &&
+        main="$(cd "$main" 2>/dev/null && pwd -P)" &&
+        mtop="$(git -C "$main" rev-parse --show-toplevel 2>/dev/null)" &&
+        mtop="$(cd "$mtop" 2>/dev/null && pwd -P)" &&
+        [ "$mtop" = "$main" ] &&
+        mcommon="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
+        mcommon="$(cd "$mcommon" 2>/dev/null && pwd -P)" &&
+        [ "$mcommon" = "$common" ] ||
+        { printf '%s\n' "$root"; return 0; }
+    printf '%s\n' "$main"
 }
 
 # Print the GitHub slug (owner/repo) of the `origin` remote of every
