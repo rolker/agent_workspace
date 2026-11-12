@@ -164,3 +164,33 @@ Host read the Plan Review (needs-work, 2 must-fix, suggestions) and carries all 
 - A suite's temporary directory is not deleted right after its own check: keep every directory until all suites have finished, then check them all once more, so a late write is still caught as it is today.
 - Stay with bash and `wait -n -p`. State and test the argument order (options, then the tests directory, with `--files` last). At one job, keep today's stop at the first failure until pull request 2 turns parallel on, so a failing full run does not get slower in between. The independence check does not require a FAIL count of 0 in a suite's own output (one suite prints "FAIL: 0" when it passes) and looks only at this run's own directory and processes. Left out of pull request 1, as the review suggests: the `# serial:` marker, the `--timings` flag and the `sleep_arg` change, since nothing collided in the reviewer's runs; they come back only if the 16-run check finds a collision.
 - For pull request 2: the run-time figures to update are in `dispatch_phase.sh` and the address-findings skill, checked by `test_dispatch_phase.sh`, not in AGENTS.md; add the reviewer's timing-limited cases in the cross-model suite to the load-sensitive list; re-run the CI job twice more.
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-12 14:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-444 at `90ad6aa3`
+
+Pull request 1's code is complete and the branch pre-commit run passed. The independence check (plan step 10) is two-thirds done: 12 of its 18 runs were made, and 6 were not. That is why the status is partial.
+
+Done by the earlier pass (03a131a7 to 052e6543), compared with the plan as the checkpoint amended it: the one-job contract cases (step 1); one TMPDIR per suite, kept until the run ends and swept a second time (step 2); the job pool with `-j`/`--jobs`, then `RUN_SCRIPT_TESTS_JOBS`, then the default of 1, with a cap of 8; jobs started under `set -m` with stdin from /dev/null; `wait -n -p`; output printed whole, failures first; `--show-passed`; and the interrupt (step 3). Also `--shuffle[=SEED]` and the times table at more than one job (step 4); run-all with the exit code of the first failing suite in list order, while one job still stops at the first failure (step 5); the header, the hook comment and the script_reference row (step 7). Left out, as the checkpoint said: the `# serial:` marker, `--timings` and the `sleep_arg` change.
+
+Added in this pass:
+- a922e4f4: at the default, the job-count line names the count this machine suits, clamp(nproc/4, 2, 6), as the plan's pull request 2 outline says pull request 1 already prints it. The count is also kept at or below nproc, by the owner's rule that a parallel run never exceeds the CPU count. Case (u1) checks it for 16, 40, 4 and 1 CPUs through a stub nproc. The header and the reference row say so too.
+- e852d31a: the one-job cases of the runner's suite name `-j 1` (step 8, suspect 7), so they keep testing one job when pull request 2 changes the default.
+- da0f71af: case (u3), unmixed failure output, now runs 5 rounds as step 9 says, not 2. Case (u2) checks that every suite appears in the times table.
+- 90ad6aa3: test_sitrep_checks.sh. Its interrupt cases poll for up to 5 s for the killed check to go, in place of one fixed 0.2 s wait (step 8, suspect 4). This is the one finding from step 10, described below.
+
+Step 10, independence (a driver kept in this session's scratchpad, not checked in). Each run went in a session of its own, so its root and processes could be checked exactly:
+- Runs made: 2 serial runs at `-j 1` (680 s and 694 s, both exit 0). Then 10 shuffled runs at `-j 4` with seeds 1 to 10, taking 177 to 355 s. In every run the root was removed, no process of the run was left, `git status --porcelain` was empty and `.agent/scratchpad` had no new entries. Each suite's PASS/FAIL line counts matched the serial baseline in 9 of the 10 parallel runs.
+- The finding: seed 9 failed in test_sitrep_checks.sh, case "(skill 1) TERM". The killed check was still alive 0.2 s after the step exited. It passed serially and in the other 9 parallel runs. Fixed in 90ad6aa3 by a wider bound. After the fix, the suite was rerun alone (210 PASS, the baseline), but the shuffled runs were not repeated.
+- Not run: the 3 runs at `-j 2`, the 1 at `-j 8` and the 2 loaded runs at `-j 4`. The batch was stopped at 14:01 while it waited for a quiet machine before its first `-j 2` run.
+- Quiet: not always. Other drives' runner runs overlapped both serial runs and seeds 2, 8 and 9. The load average at the start ranged from 1.4 to 15.3, and each run's summary line records its own.
+- Files under `~/.claude` newer than the start of the seed 1 run were checked: none were written by a suite (only session backups, the tool-use log, skills sync and agent-status).
+
+Branch pre-commit run (`.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP): exit 0, every hook passed or had no files. validate-script-tests made a full run at one job, which took 865 s with another drive's pre-commit run on the machine at the same time.
+
+For pull request 2 and the reviewers:
+- Pull request 2 data, gathered under load: test_cross_model_review.sh took 156 s and test_project_integration_audit.sh 153 s at `-j 4`, so the two slowest suites are close.
+- Runner sections, old line ranges on main and new ones on this branch (step 11): arguments 114-131 -> 172-215; job count (new) 216-254; deletions 132-166 -> 255-290; preflight 171-249 -> 294-372; selection 250-308 -> 373-436; guard 309-381 -> 437-555; start order (new) 556-583; parallel run (new) 584-754; one-job loop 382-419 -> 755-798; summary 420-428 -> 799-807.
+- The earlier pass also added one line per finished suite (`--- <suite> passed in Ns (k of n done)`) to a parallel run's live output. The plan does not name these lines; they are printed by the runner, not by a suite.
