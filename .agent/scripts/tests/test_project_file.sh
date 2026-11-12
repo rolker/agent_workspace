@@ -1499,6 +1499,22 @@ test_dashboard_orphans_without_registered_projects() {
     assert_not_contains "malformed registry: no orphan guess" "belongs to no registered project" "$out"
 }
 
+test_dashboard_no_project_pointer() {
+    echo "TEST: the dashboard with nothing registered and no project/ points at register_project.sh, not make setup (issue #295)"
+    local sb out
+    sb="$(make_sandbox)"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" 2>&1 || true)"
+    assert_contains "check line names register_project.sh" \
+        "No project is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_contains "status line names register_project.sh" \
+        "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_not_contains "no make setup pointer" "make setup" "$out"
+    echo "bad entry with too many words here" > "$sb/.agent/projects.local"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" 2>&1 || true)"
+    assert_not_contains "malformed registry: not called unregistered" "No project is registered" "$out"
+    assert_contains "malformed registry: status says so" "- **Status**: ⚠️ projects.local has malformed entries" "$out"
+}
+
 test_type_unused_settings_refused() {
     echo "TEST: a key the project's type never reads is refused by set, fails check and stops the adapter; ros2_colcon reads install"
     local sb rc_dir f out rc stub real
@@ -1704,6 +1720,7 @@ test_malformed_file_stops_dispatcher
 test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
+test_dashboard_no_project_pointer
 test_parent_root_settings_file_is_flagged
 test_type_unused_settings_refused
 test_unused_settings_list_unreadable_or_crlf

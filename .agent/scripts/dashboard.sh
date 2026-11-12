@@ -159,8 +159,8 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
     else
         check_warn "project/ is a git repo but has no remote"
     fi
-elif [ -z "$REGISTRY_ENTRIES" ]; then
-    check_warn "project/ not configured. Run: make setup"
+elif [ -z "$REGISTRY_ENTRIES" ] && [ "$REGISTRY_OK" -eq 1 ]; then
+    check_warn "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
 fi
 if [ -n "$REGISTRY_ENTRIES" ]; then
     while IFS=$'\t' read -r _name _type _path; do
@@ -341,8 +341,10 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
 else
     if [ -n "${REGISTRY_ENTRIES:-}" ]; then
         echo "- **Status**: (legacy project/ not configured; registered projects below)"
+    elif [ "${REGISTRY_OK:-1}" -eq 1 ]; then
+        echo "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>"
     else
-        echo "- **Status**: ⚠️ Not configured (run: make setup)"
+        echo "- **Status**: ⚠️ projects.local has malformed entries (see the checks above)"
     fi
 fi
 echo ""
