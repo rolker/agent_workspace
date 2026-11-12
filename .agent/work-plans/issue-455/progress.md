@@ -122,3 +122,45 @@ Plan review found one high finding: the instruction-file setup lines and the hoo
 **Plan**: `.agent/work-plans/issue-455/plan.md` at `f93a2b6f`
 
 Revision after plan review: the hook, instruction files, run-issue/onboard-project skill text and the test land in one pivot commit (C3) after the helper and script commits; commits from C3 on use the derived `--agent claude-code "<model-id>"` form. Caller list completed, Serves names the Modular goal, test hermetic with example.org fixtures and a suites_for_files mapping.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 17:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #455 — Owner's email addresses are hardcoded in the identity hook and scripts
+**Plan**: `.agent/work-plans/issue-455/plan.md` at `f93a2b6f`
+**Branch**: `feature/issue-455`
+
+Second review, after the revision. The five earlier findings are resolved, checked against the plan and the code. 1 (pivot): the hook, `CLAUDE.md` / `CODEX.md`, the skill text and the new test land together in C3, and the "stands alone" claim is gone. 2 (callers): run-issue:253 and its handoff text, onboard-project:381/409/450 and `test_skill_paths.sh` are in C3. orchestrator has no email. `dispatch_phase.sh` only prints `AGENT_EMAIL` (lines 503-514), so its code needs no change. 3: Serves names "Modular", a real section of `README.md#workspace-goals`. 4: the brand-guidelines hit is marked as expected, and `test_dispatch_phase.sh` gets an `example.org` fixture. 5: the test sets `GIT_CONFIG_NOSYSTEM=1` and is mapped in `suites_for_files.sh`. The two new findings below are about which identity the run uses and when, around the pivot and after the merge.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR in four ordered commits. |
+| Issue alignment | Good | Every location in the issue and every owner direction is covered: derive from git, no config file, unset email, clone-level email, instruction files. The unset case is tested for the hook, `--agent` and `configure_git_identity.sh`. The clone-level case is tested with a repo-local value over global, and a `+claude-code` clone value normalises to the base. Serves: Workspace goal "Modular" (`README.md#modular`: project-agnostic, no owner-specific data in the infrastructure) — `docs/design.md#identity`. |
+| File targeting | Good | A grep of every `set_git_identity_env` caller finds the rest are placeholders or `--agent` / `--detect` (copilot, gemini, `AGENT_ONBOARDING.md`, the `gh_create_*` hints) and hold no owner address. `worktree_create.sh` reads only names and models. |
+| Consequences | Needs work | Findings 1 and 2: the host's identity script path during the run, and in-flight branches after the merge. Finding 3: the `docs/design.md` change-log row. |
+| Principle alignment | Good | Fails loudly, keeps the hook blocking, adds no config, plans a test, states its prior art, updates the design text. |
+| ADR compliance | Good | ADR-0003, ADR-0004/0005 and ADR-0017 are addressed. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences] (medium)**: The host lines in the commit-order section do not match how run-issue sources identity. The run-issue host sources `$WS_ROOT/.agent/scripts/set_git_identity_env.sh` (SKILL.md:253), and `$WS_ROOT` is the main checkout. Until this merges, main's script has the literal table and refuses `--agent <fw> "<model>"` (`$# -ne 2`). So the plan's "the host sources `--agent claude-code "<model-id>"` before C3's phase" cannot work as written. C1, C2 and C3 are one implement phase, and that phase is dispatched before C1 exists. Resolution: say that the implement phase is dispatched with the literal identity and switches to the derived one inside the phase, at C3. From C3 until the merge, the host sources the worktree's script (`<worktree>/.agent/scripts/set_git_identity_env.sh --agent claude-code "<model>"`), not `$WS_ROOT`'s. The phases after that get the derived `agent_email=` and use it in the 3-arg form, which works.
+2. **[Consequences] (medium)**: The plan does not handle the reverse case after the merge. Once main has the new instruction lines and script, sessions on this machine derive the address from the machine's git email. Any branch not yet updated from main keeps the old hook in its working tree, and pre-commit runs the hook from there (`entry: python3 .agent/hooks/check-commit-identity.py`). Today that includes `worktrees/workspace/issue-workspace-429`. The old hook rejects the derived address, and its "To fix" advice (`--agent` / `--detect`) produces the same derived address again, so the session loops with no clear way out. The opposite case also needs care: a session still holding the old `CLAUDE.md` text sources the literal and is rejected by the new hook. Resolution: (a) the PR description and the merge step tell the owner to update in-flight branches from main (merge or rebase) before their next commit, naming the open worktrees. (b) The new hook's failure output keeps a "To fix" block that names the configured base and the exact derived command (`source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"`), and says that an old literal setup line is the likely cause. Add a test assertion for that message.
+3. **[Consequences] (low)**: `docs/design.md` requires one change-log row for each change to a section, appended in the same change (the change-log table, around line 790). Step 7 edits Identity (662, 671-672) and the Rules row (160) but plans no row. Add a row for "Rules, Identity" for #455, with the new line count.
+4. **[Issue alignment] (low)**: The unset-email test covers the hook, `--agent` and `configure_git_identity.sh`. It does not cover `set_git_identity_env.sh --detect` or `detect_agent_identity.sh`, which are also on the issue review's fail-loudly list. Add one assertion each (exit nonzero, no `AGENT_EMAIL` exported).
+
+### Summary
+
+The revision resolves all five earlier findings, and the pivot-commit design is correct: C1 and C2 pass the old hook with the literal, and C3 passes the new hook with the derived address. What remains is operational. The host's identity during the run has to come from the worktree's script, because main's script cannot take the new form. After the merge, branches not yet updated keep the old hook, which rejects the derived address and gives looping advice. Both need a sentence in the plan and the PR, plus a clear new-hook message, before implementation starts.
+
+### Recommended Actions
+
+- [ ] Rewrite the host lines in the commit-order section. The implement phase is dispatched with the literal and switches to the derived identity at C3. From C3 until the merge, the host sources `<worktree>/.agent/scripts/set_git_identity_env.sh`, not `$WS_ROOT`'s.
+- [ ] Add a post-merge step: update in-flight branches from main before their next commit (say so in the PR body). Make the new hook's failure text name the derived command and the stale-literal cause, and test it.
+- [ ] Add the `docs/design.md` change-log row for #455.
+- [ ] Extend the unset-email test to `--detect` and `detect_agent_identity.sh`.
