@@ -5,12 +5,14 @@
 ## Environment Setup
 
 ```bash
-source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@rolker.net" "<your-model-id>"
+source .agent/scripts/set_git_identity_env.sh --agent claude-code "<your-model-id>"
 ```
 
 Replace `<your-model-id>` with your actual model ID from your system prompt
-(e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The 3-arg form skips all
-detection and uses exactly what you provide — do NOT edit `framework_config.sh`.
+(e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The email is derived from this
+machine's git email (`git config user.email` in the checkout, any `+suffix`
+removed) as `<local>+claude-code@<domain>`; if it is not set, the script says
+how to set it. Do NOT edit `framework_config.sh`.
 
 ## Claude-Specific Notes
 

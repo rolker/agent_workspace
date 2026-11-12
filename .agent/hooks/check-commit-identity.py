@@ -4,24 +4,23 @@ Pre-commit hook to block commits with unconfigured or unrecognized git identity.
 
 Agents frequently commit with wrong identity when they forget to run
 set_git_identity_env.sh. This hook catches that before it becomes a problem.
+
+No address is hardcoded (issue #455). The accepted set derives from the
+checkout's configured `git config user.email` (a clone value wins over the
+global one), with any `+suffix` removed: `<local>@<domain>` (the human) or
+`<local>+<anything>@<domain>` (an agent). The base never comes from the
+environment; the email checked is GIT_AUTHOR_EMAIL when set, else the
+configured one. An unset or malformed configured email blocks the commit.
 """
 
-import fnmatch
 import os
-import subprocess
 import sys
+from pathlib import Path
 
-# Accepted email patterns
-# - roland+*@ccom.unh.edu: any agent identity (copilot, gemini, claude, etc.)
-# - roland+*@rolker.net: any agent identity on the personal domain (codex, claude, etc.)
-# - roland@ccom.unh.edu: human (work)
-# - roland@rolker.net: human (personal)
-ACCEPTED_PATTERNS = [
-    "roland+*@ccom.unh.edu",
-    "roland+*@rolker.net",
-    "roland@ccom.unh.edu",
-    "roland@rolker.net",
-]
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+import identity_base  # noqa: E402  pylint: disable=wrong-import-position
+
+DERIVED_COMMAND = 'source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"'
 
 
 def get_commit_email():
@@ -32,50 +31,38 @@ def get_commit_email():
     email = os.environ.get("GIT_AUTHOR_EMAIL", "").strip()
     if email:
         return email
-
-    try:
-        result = subprocess.run(
-            ["git", "config", "user.email"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError:
-        return ""
-
-
-def is_accepted(email):
-    """Check if email matches any accepted pattern."""
-    if not email:
-        return False
-    for pattern in ACCEPTED_PATTERNS:
-        if fnmatch.fnmatch(email, pattern):
-            return True
-    return False
+    return identity_base.configured_email()
 
 
 def main():
     """Verify commit identity is configured correctly."""
-    email = get_commit_email()
+    try:
+        local, domain = identity_base.configured_base()
+    except identity_base.IdentityError as exc:
+        print()
+        print(f"ERROR: {exc}")
+        print()
+        return 1
 
-    if is_accepted(email):
+    email = get_commit_email()
+    if identity_base.is_accepted(email, local, domain):
         return 0
 
     print()
     print("ERROR: Commit identity is not configured or not recognized!")
     print()
-    if email:
-        print(f"  Current email: {email}")
-    else:
-        print("  Current email: (not set)")
+    print(f"  Current email: {email or '(not set)'}")
     print()
-    print(f"  Accepted patterns: {', '.join(ACCEPTED_PATTERNS)}")
+    print("  Accepted (derived from this checkout's git user.email):")
+    print(f"    {local}@{domain}, {local}+*@{domain}")
     print()
-    print("  To fix, run one of:")
-    print("    source .agent/scripts/set_git_identity_env.sh --detect")
-    print("    source .agent/scripts/set_git_identity_env.sh --agent codex")
-    print("    source .agent/scripts/set_git_identity_env.sh --agent <framework>")
+    print("  To fix, source the identity derived from the machine's git email:")
+    print(f"    {DERIVED_COMMAND}")
+    print("  e.g. --agent claude-code or --agent codex; or --detect.")
+    print()
+    print("  Likely cause: an old setup line with a literal email address, or a")
+    print("  branch not yet updated from main (its scripts or hook predate the")
+    print("  derived identity). Update the branch from main, then re-source.")
     print()
     return 1
 

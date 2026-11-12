@@ -14,10 +14,13 @@ source .agent/scripts/set_git_identity_env.sh --detect
 source .agent/scripts/set_git_identity_env.sh --agent codex
 
 # Or pin the exact runtime model yourself
-source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "roland+codex@rolker.net" "<your-model-id>"
+source .agent/scripts/set_git_identity_env.sh --agent codex "<your-model-id>"
 ```
 
-Use your actual runtime model when you provide the 3-argument form.
+Use your actual runtime model when you pass a model. The email is derived from
+this machine's git email (`git config user.email` in the checkout, any `+suffix`
+removed) as `<local>+codex@<domain>`; if it is not set, the script says how to
+set it.
 
 ## Worktree Entry
 
