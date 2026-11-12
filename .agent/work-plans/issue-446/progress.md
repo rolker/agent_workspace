@@ -434,3 +434,31 @@ Not done, and why:
 - A dry check of the new jq filters against synthetic stream-json and settings data was denied (the dispatch limits checks to `bash -n` and shellcheck). Left as is.
 - The `us_session` stream-json init-line shape (`slash_commands`) is assumed, not observed. If it differs, U7 FAILs loudly saying so, and the other cases are unaffected unless the result line is missing too, in which case every session reads as failed.
 - `test_plugin_acceptance_helpers.sh` has no case yet for cleanup's new user-scope branch. This dispatch was barred from editing other files, so it belongs to the later dispatch.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The host ran the live suite's user-scope cases at 72d40918 (Claude Code 2.1.323, model haiku; 12 passed, 1 failed) after the owner's yes to re-running the installer ("Q1 yes"); the installer check passed before and after. Stop condition 1 of plan step 1 fired, and the host put it to the owner as "Is a doubled skill list in workspace-subfolder sessions acceptable?", recommending to accept it (both names run the same skill; nothing per-root is written; the in-tree roots are due to be unregistered under issue 295). The owner's answer, verbatim: "Q1 accept it". Steps 2 to 8 go ahead on that answer.
+
+The host counts U4 as doubled too, despite the suite's "clear": its init command list holds both names, and the verdict rests on one call to the prefixed name not going through.
+
+FACT lines of the run (aw-accept-884313 shortened to N):
+
+- U0 user-scope marketplace add + install, run from a directory in no git repository: exit 0; settings now has enabledPlugins[N@N]=true extraKnownMarketplaces[N].source.path=<the copy>; machine record source: <the copy>
+- U1 committed-off repository, at its root: bare /zz-probe reached; /N:zz-probe not reached; init command list: zz-probe
+- U2 committed-off repository, in a plain subdirectory root of it: bare /zz-probe reached; /N:zz-probe reached; init command list: zz-probe,N:zz-probe
+- U3 committed-off repository, in a worktree of it outside its directory: bare /zz-probe reached; /N:zz-probe not reached; init command list: zz-probe
+- U4 in-tree root (inside the copy's tree, ignored by its git, no .git of its own): bare /zz-probe reached; /N:zz-probe not reached; init command list: zz-probe,N:zz-probe
+- U5 repository nested in an ordinary root: bare /zz-probe reached; /N:zz-probe reached; init command list: N:zz-probe
+- U6 unregistered folder in no git repository: bare /zz-probe reached; /N:zz-probe reached; init command list: N:zz-probe
+- U7 local true plus user true: bare /zz-probe reached; /N:zz-probe reached; init command list: N:zz-probe (listed once)
+- U8 root whose local entry is false under user true: bare /zz-probe not reached; /N:zz-probe not reached; init command list: <none>; its own control skill answered
+- U-end after the user-scope uninstall + marketplace remove: neither entry left; machine record source: <none>; real settings differ only by empty objects left behind (expected)
+- STOP-CHECK 1 (U1, U2, U3): FIRES (U2). STOP-CHECK 2 (U4): clear by the suite, counted as doubled by the host. STOP-CHECK 3 (U5): clear. STOP-CHECK 4 (U8): clear. CHECK U7: yes.
+
+In U5 and U6 the bare /zz-probe also "reached" while the list holds only the prefixed name: the bare outcome there is not evidence of a bare skill.
