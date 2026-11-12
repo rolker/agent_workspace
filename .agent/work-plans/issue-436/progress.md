@@ -503,3 +503,26 @@ Not taken (judged in round 2 or recorded by the fix): `ssh://<token-like-user>@h
 **Decision**: address
 
 The host read the round 3 Local Review (Pre-Push) entry at 0b444ef6: verdict changes-requested, Ship recommended ("fix and ship rather than another full round"), one open must-fix in tools/ros-manifest/src/ros_manifest/schema.py:213-229. The fix pass is limited to that finding and its four tests.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 11:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-436 at `eb063b1f`
+**Addressed**: Local Review (Pre-Push) at `400b2652` (2026-11-12 11:23 -05:00)
+**Commits**: 3a0a98a2, 76144a0b, 1b0a84fc, eb063b1f
+
+### Actions
+- [x] (must-fix) `_load_yaml` lets PyYAML constructor errors (`ValueError`, `KeyError`) escape as a traceback quoting the value: a final `except Exception` now raises `ManifestError("<source>: invalid YAML")` with no content; tests for `!!float`, `!!int 0x…`, `!!bool` and unquoted `2024-13-45`, through `parse_manifest_text` and the CLI, assert the exact message, that the value is absent and that there is no traceback — `tools/ros-manifest/src/ros_manifest/schema.py:228-232`, `tools/ros-manifest/tests/test_untrusted_input.py` (3a0a98a2)
+- [x] Class check, asked by the host (same class, closed at the loader): probing ~30 hostile inputs through `main()` found seven more paths that left the loader as a traceback. Parse time: unknown keys of mixed types (an int and a string) made `sorted()` raise `TypeError` in the repos/groups/roles/packages messages (now sorted by `repr`); a package `repo` that is a list or mapping reached `merge.py` as a dict key (`TypeError`; now must be a string) — `schema.py` (76144a0b). File system: a non-UTF-8 manifest (`UnicodeDecodeError`), an unreadable one (`PermissionError`), an `extends` path too long (`OSError`, its text quoting the manifest's extends path) and a symlink loop at the leaf or in `extends` (`RuntimeError` on Python 3.12) — now `ManifestError` under the manifest's label with the OS reason and without the path — `schema.py` `load_manifest_file`, `extends.py` `resolve_chain` (1b0a84fc). Each has a CLI test asserting rc 1, one ERROR line and no traceback. The probe re-run after the fixes found no escape.
+- [x] Consequence: the README's input rules now name a package's `repo` among the string fields, and say a value YAML cannot build is reported as invalid YAML with no position — `tools/ros-manifest/README.md` (eb063b1f)
+
+### Verification
+- `PYTHONPATH=tools/ros-manifest/src pytest tools/ros-manifest/tests`: 282 passed. A bare `pytest tools/ros-manifest/tests` cannot import `ros_manifest` here (8 collection errors): the main venv's editable install points at the main checkout, so the worktree's source is named on `PYTHONPATH`.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `eb063b1f`: every hook passed, `validate-script-tests` included.
+- Not run: a negative run of the new constructor tests against the old `schema.py` (the scratch-copy command was denied); the pre-fix probe at `9167bc0e` showed all four inputs escaping.
+
+### Reported, not fixed (outside the loader)
+- `resolve --out` at a path that cannot be created (`/proc/nope`) prints a `FileNotFoundError` traceback from the emitter. The path is a CLI argument, not manifest content.
+- Some deliberate `ManifestError` messages echo document values: `groups.<name>: 'default' must be … got <value>` (`schema.py`) and `package … references undefined repo '<repo>'` (`merge.py`). One line of plain text after the control-character rule, never a URL, but still document content.
