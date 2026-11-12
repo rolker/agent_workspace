@@ -325,7 +325,7 @@ _persist_impl() {
 
     # Compatibility mode (PROGRESS_PERSISTENCE_STRICT=0, the PR B default):
     # the current worktree, inline append + commit, as before PR B, but only
-    # after the records gate with --write (records_dir --write), the same
+    # after the records gate with --write on progress.md itself, the same
     # gate the strict path passes in progress_append.sh. It refuses (exit 4)
     # inside a package worktree a checkout that is not the issue's own (a
     # sibling with the same issue number, or the worktree's top folder;
@@ -338,7 +338,7 @@ _persist_impl() {
     # WORK_PLANS_DIR_OVERRIDE is set.
     local root file_rel file
     root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: persist: not in a git repository" >&2; exit 3; }
-    records_dir --write "$issue" >/dev/null || {
+    records_path --write "$root/.agent/work-plans/issue-$issue/progress.md" >/dev/null || {
         echo "error: progress persistence aborted: not the issue's own checkout — see the message above" >&2
         exit 4
     }

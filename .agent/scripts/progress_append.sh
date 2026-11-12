@@ -78,20 +78,20 @@ fi
 ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null) \
     || { echo "error: '$DIR' is not inside a git repository" >&2; exit 2; }
 
-# The records gate (records_dir --write, _resolve_work_plans_dir.sh), run
-# before anything is written. Inside a package worktree (a .worktree-repos
-# manifest encloses the target or <dir>), only the issue's own checkout
-# commits its records: a sibling checkout with the same issue number, or the
-# worktree's top folder (whose toplevel is some other repository), is
-# refused (issue 429). Everywhere, the target checkout (<dir>'s, never the
-# current directory's) must be issue <N>'s: not on its default branch, on
-# feature/issue-<N>, or for a detached HEAD or another branch name in a
-# folder issue-*-<N>; a main checkout or another issue's worktree is refused
-# (issue 437). The merge script's record, -C <the PR's worktree> from the
-# root, passes.
+# The records gate (records_path --write on progress.md itself, see
+# _resolve_work_plans_dir.sh), before anything is written. Inside a package
+# worktree (a .worktree-repos manifest encloses the target or <dir>), only
+# the issue's own checkout commits its records: a sibling checkout with the
+# same issue number, or the worktree's top folder, is refused (issue 429).
+# Everywhere, the file, every symlink resolved, must sit at the place it
+# names in issue <N>'s own checkout (<dir>'s, never the current directory's):
+# not on its default branch, on feature/issue-<N>, or for a detached HEAD or
+# another branch name in a folder issue-*-<N> (issue 437). The merge
+# script's record, -C <the PR's worktree> from the root, passes.
 # shellcheck source=_resolve_work_plans_dir.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve_work_plans_dir.sh"
-RECORDS=$(records_dir --write "$ISSUE" "$DIR") || exit 4
+RECORDS="$ROOT/.agent/work-plans/issue-$ISSUE"
+records_path --write "$RECORDS/progress.md" "$DIR" >/dev/null || exit 4
 
 ENTRY=$(cat)
 # All entry/title validation (heading, writable-type whitelist, one heading

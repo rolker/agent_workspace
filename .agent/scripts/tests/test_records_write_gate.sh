@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_records_write_gate.sh
 # The records gate's write rule (issue 437): a call that changes a timeline
-# (records_path --write / records_dir --write in _resolve_work_plans_dir.sh)
-# goes through only when the checkout holding the timeline is the issue's
-# own: not on its default branch; on feature/issue-<N>, where the branch
-# alone decides; or, for a detached HEAD or another branch name, in a
-# folder issue-*-<N>. Reads are never refused by it.
+# (records_path --write <file> in _resolve_work_plans_dir.sh) goes through
+# only when the file, every symlink resolved, sits at the place its path
+# names in the issue's own checkout: not on its default branch; on
+# feature/issue-<N>, where the branch alone decides; or, for a detached
+# HEAD or another branch name, in a folder issue-*-<N>. Reads are never
+# refused by it.
 #
 # Synthetic and offline: a workspace repository made from this tree's
 # scripts with linked worktrees made by `git worktree add`, a package
@@ -15,8 +16,8 @@
 # files changed.
 #
 # The last part is a static test over .agent/scripts/*.sh: every script
-# that commits a work-plans path calls records_dir --write or
-# records_path --write, and those scripts are exactly progress_append.sh
+# that commits a work-plans path calls records_path --write, and those
+# scripts are exactly progress_append.sh
 # and review_progress.sh. How it finds a committing writer is pinned in
 # the comment above find_writers, and a planted writer proves it.
 #
@@ -113,6 +114,7 @@ PJW="$SANDBOX/pj-worktrees/issue-pj-5"
 git -C "$PJ" worktree add -q -b feature/issue-5 "$PJW" >/dev/null 2>&1 || { echo "setup failed: $PJW"; exit 1; }
 
 ALL_CHECKOUTS=("$WS" "$W7" "$W17" "$W8" "$W20" "$W30" "$O30" "$W40" "$WSK" "$PKG" "$PJ" "$PJW")
+EXTRA_WATCH=()  # more files whose content state() reports (a symlink's target)
 state() {  # every checkout's HEAD, status, and the content of every timeline file
     local d f
     for d in "${ALL_CHECKOUTS[@]}"; do
@@ -122,6 +124,9 @@ state() {  # every checkout's HEAD, status, and the content of every timeline fi
                 printf '  %s %s\n' "$f" "$(md5sum < "$f")"
             done < <(find "$d/.agent/work-plans" -type f | sort)
         fi
+    done
+    for f in "${EXTRA_WATCH[@]}"; do
+        printf '  %s %s\n' "$f" "$(md5sum < "$f" 2>/dev/null || echo absent)"
     done
 }
 ckpt() {  # a Checkpoint entry, different on every call (an identical tail is a no-op)
@@ -238,21 +243,64 @@ allowed "progress_append.sh -C <the project's issue worktree> from the workspace
     "$PJW" 5 "$WS" "$S/progress_append.sh" -C "$PJW" 5
 
 # ------------------------------------------------------------------ case 6
-echo "TEST: a symlink: the checkout where the commit runs and where the records really are"
-# Issue 17's records folder in its worktree is a symlink to the main
-# checkout's issue-17 folder: the commit would run in W17 (allowed), but
-# the file it changes is in the main checkout, which is judged too.
-mkdir -p "$WS/.agent/work-plans/issue-17"
-printf -- '---\nissue: 17\n---\n\n# Issue #17\n' > "$WS/.agent/work-plans/issue-17/progress.md"
+echo "TEST: symlinks: the write gate judges the file's fully resolved physical path"
+# One rule covers every shape: the file that will be written, every symlink
+# in its path and the file itself resolved, must sit at the place its path
+# names in the issue's own checkout. Each shape below is W17 writing issue
+# 17's timeline from W17 (its own checkout), so only the link refuses it.
+# Main-checkout targets: a records folder and a plain folder.
+M17="$WS/.agent/work-plans/issue-17"
+mkdir -p "$M17" "$WS/notes"
+printf -- '---\nissue: 17\n---\n\n# Issue #17\n' > "$M17/progress.md"
+cp "$M17/progress.md" "$WS/notes/progress.md"
 mkdir -p "$W17/.agent/work-plans"
-ln -s "$WS/.agent/work-plans/issue-17" "$W17/.agent/work-plans/issue-17"
-before=$(state; md5sum < "$WS/.agent/work-plans/issue-17/progress.md")
-out=$(cd "$W17" && ckpt | "$S/progress_append.sh" 17 2>&1); rc=$?
-check "progress_append.sh 17 in W17 whose records folder links into the main checkout: refused" \
-    "$([[ "$rc" -eq 4 && "$out" == *"in $WS: it is on its default branch"* \
-          && "$before" == "$(state; md5sum < "$WS/.agent/work-plans/issue-17/progress.md")" ]]; echo $?)" "rc=$rc out=$out"
-rm "$W17/.agent/work-plans/issue-17"
-rm -rf "$WS/.agent/work-plans/issue-17"
+R17="$W17/.agent/work-plans/issue-17"
+EXTRA_WATCH=("$M17/progress.md" "$WS/notes/progress.md")
+unlink_all() { rm -rf "$R17" "$SANDBOX/hop.md"; }
+# both writers, from W17, refused with <want> in the message
+both_refused() {  # <shape> <want>
+    refused "progress_append.sh 17, $1" "$W17" "$2" "$S/progress_append.sh" 17
+    refused "persist (compatibility mode) 17, $1" "$W17" "$2" "$S/review_progress.sh" persist --issue 17
+}
+mkdir -p "$R17"
+ln -s "$M17/progress.md" "$R17/progress.md"
+both_refused "progress.md a symlink to the main checkout's" "in $WS: it is on its default branch"
+unlink_all
+ln -s "$M17" "$R17"
+both_refused "the records folder a symlink to the main checkout's issue-17 folder" "in $WS: it is on its default branch"
+unlink_all
+ln -s "$WS/notes" "$R17"
+both_refused "the records folder a symlink to a main-checkout folder not named for the issue" \
+    "in $WS: it is on its default branch"
+unlink_all
+mkdir -p "$R17"
+ln -s "$M17/progress.md" "$SANDBOX/hop.md"
+ln -s "$SANDBOX/hop.md" "$R17/progress.md"
+both_refused "progress.md a chain of two symlinks ending in the main checkout" "in $WS: it is on its default branch"
+unlink_all
+# Inside the issue's own checkout, a link still puts the write and the
+# commit in different places (git would commit the link, not the entry).
+mkdir -p "$R17"
+printf -- '---\nissue: 17\n---\n\n# Issue #17\n' > "$R17/real.md"
+EXTRA_WATCH+=("$R17/real.md")
+ln -s real.md "$R17/progress.md"
+both_refused "progress.md a symlink to another file in its own records folder" "not to the place it names"
+EXTRA_WATCH=("$M17/progress.md" "$WS/notes/progress.md")
+unlink_all
+mkdir -p "$R17"
+ln -s missing.md "$R17/progress.md"
+before=$(state)
+for cmd in "$S/progress_append.sh 17" "$S/review_progress.sh persist --issue 17"; do
+    out=$(cd "$W17" && ckpt | $cmd 2>&1); rc=$?
+    check "${cmd##*/}, progress.md a dangling symlink: refused as unresolvable, nothing created" \
+        "$([[ "$rc" -eq 4 && "$out" == *"cannot be resolved"* && ! -e "$R17/missing.md" && "$before" == "$(state)" ]]; echo $?)" \
+        "rc=$rc out=$out"
+done
+unlink_all
+rm -rf "$M17" "$WS/notes"
+EXTRA_WATCH=()
+allowed "the plain case: progress_append.sh 17 in W17, no symlink" "$W17" 17 "$W17" "$S/progress_append.sh" 17
+allowed "the plain case: persist (compatibility mode) 17 in W17" "$W17" 17 "$W17" "$S/review_progress.sh" persist --issue 17
 
 # ------------------------------------------------------------------ case 7
 echo "TEST: reads from the main checkout are not refused"
@@ -278,7 +326,7 @@ check "the reads changed nothing" "$([[ "$before" == "$(state)" ]]; echo $?)"
 # ------------------------------------------------------------------ case 8
 # The static test. find_writers <dir> prints "<script>\t<0|1>" for every
 # committing writer of a work-plans path among <dir>/*.sh, 1 when the script
-# calls records_dir --write or records_path --write on a non-comment line.
+# calls records_path --write on a non-comment line.
 # A script is a committing writer when, after joining backslash-continued
 # lines and dropping comment lines (first non-blank character #):
 #   - it runs `git [<options>] commit` (options: -C <arg>, -c <arg>, a
@@ -300,7 +348,7 @@ WP = ".agent/work-plans"
 GIT = re.compile(r'\bgit((?:\s+-[Cc]\s+\S+|\s+"\$\{[^}]*\}"|\s+--?[A-Za-z][\w-]*(?:=\S+)?)*)\s+(commit|add)\b(.*)')
 ASSIGN = re.compile(r'(?:^|[\s;(])([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\'[^\']*\'|\S*)')
 VAR = re.compile(r'\$\{?([A-Za-z_][A-Za-z0-9_]*)')
-WRITE = re.compile(r'\brecords_(?:dir|path)\s+--write\b')
+WRITE = re.compile(r'\brecords_path\s+--write\b')
 for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.sh"))):
     text = open(path, encoding="utf-8", errors="replace").read().replace("\\\n", " ")
     lines = [l for l in text.split("\n") if not l.lstrip().startswith("#")]
@@ -346,9 +394,9 @@ EOF
 cat > "$PL/flagged.sh" <<'EOF'
 #!/bin/bash
 source _resolve_work_plans_dir.sh
-d=$(records_dir --write "$1") || exit 4
 file_rel=".agent/work-plans/issue-$1/progress.md"
-git -C "$d" commit -m x -- "$file_rel"
+records_path --write "$file_rel" >/dev/null || exit 4
+git commit -m x -- "$file_rel"
 EOF
 cat > "$PL/reader.sh" <<'EOF'
 #!/bin/bash

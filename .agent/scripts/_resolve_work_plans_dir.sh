@@ -56,29 +56,34 @@
 #     holds the named .agent (so a records folder that is a symlink is
 #     judged where the link sits, not only where it points), the physical
 #     one where it resolves. Two different issue numbers refuse, and so
-#     does a path that cannot be resolved. Neither matching: no timeline,
-#     printed unchanged (a --no-progress temp dir, a test fixture).
-#     --write (issue 437): the caller will change the timeline (append,
-#     commit, tick a box). After the checks above, the checkout that holds
-#     the records must be issue <N>'s own by _wpd_checkout_is_issue: the
-#     git toplevel of the named location (where the caller's `git commit`
-#     runs), and also the physical location's when a symlink makes the two
-#     differ. A main checkout on its default branch, another issue's
-#     worktree, or a path in no git checkout is refused (stderr naming the
-#     issue's worktree, or the command that creates it; return 1). Without
-#     --write nothing changes: reads are never refused by this rule.
-#   records_dir [--write] <N> [<dir>]
+#     does a path that cannot be resolved (a dangling symlink included).
+#     Neither matching: no timeline, printed unchanged (a --no-progress
+#     temp dir, a test fixture).
+#     --write (issue 437): <path> is the file the caller will change (append
+#     and commit, tick a box), never its folder. The write rule, in one
+#     statement: the file's fully resolved physical path (every symlink in
+#     the path and the file itself resolved) sits in issue <N>'s own
+#     checkout by _wpd_checkout_is_issue, at the place <path> names, so the
+#     checkout the caller's `git commit` runs in is the one the file is in.
+#     A main checkout on its default branch, another issue's worktree, a
+#     path in no git checkout, or a symlink anywhere from the named .agent
+#     down is refused (stderr naming the issue's worktree, or the command
+#     that creates it; return 1). Without --write nothing changes: reads
+#     are never refused by this rule.
+#   records_dir <N> [<dir>]
 #     <dir>'s git toplevel (default .) + /.agent/work-plans/issue-<N>,
-#     through records_path with <dir> as <from-dir> (and --write passed on).
+#     through records_path with <dir> as <from-dir>. A read: a writer
+#     passes the file itself to records_path --write.
 # Callers: resolve_work_plans_dir (every rule), progress_append.sh, every
 # review_progress.sh subcommand that takes or builds a records path (round,
 # persist, sources, findings, check, plan-sha), dispatch_phase.sh
 # (resolve_issue_dir and `next --progress`) and merge_pr.sh's gate lookup.
-# The ones that change a timeline pass --write: progress_append.sh,
-# review_progress.sh persist (compatibility mode; strict mode writes
-# through progress_append.sh) and review_progress.sh check.
+# The ones that change a timeline pass the file to records_path --write:
+# progress_append.sh, review_progress.sh persist (compatibility mode;
+# strict mode writes through progress_append.sh) and review_progress.sh
+# check.
 # tests/test_records_write_gate.sh fails when a script commits a
-# work-plans path without it.
+# work-plans path without records_path --write.
 #
 # Also exposes:
 #   issue_checkout_of <worktree-dir> <N>
@@ -234,7 +239,8 @@ issue_checkout_guard() {
 # Physical absolute form of <path>: every existing component resolved,
 # symlinks included (a symlinked last component too), and a missing tail
 # appended as written. Fails on a "." or ".." in the missing tail, on a
-# symlink chain longer than 40, or when a directory cannot be entered.
+# symlink chain longer than 40, on a dangling symlink (one whose target does
+# not exist), or when a directory cannot be entered.
 # POSIX tools only (cd -P, pwd -P, readlink with no option), so it behaves
 # the same where GNU realpath -m does not exist.
 _wpd_physical() {
@@ -251,6 +257,8 @@ _wpd_physical() {
                 /*) p="$target" ;;
                 *) p="$(dirname "$p")/$target" ;;
             esac
+            # A dangling link (its target does not exist) cannot be resolved.
+            [ -e "$p" ] || [ -L "$p" ] || return 1
             continue
         fi
         if [ -d "$p" ]; then
@@ -374,7 +382,7 @@ records_path() {
         write=1
         shift
     fi
-    local path="${1:-}" from="${2:-$PWD}" gn="" gprefix="" rn="" phys gloc="" gtop="" ptop=""
+    local path="${1:-}" from="${2:-$PWD}" gn="" gprefix="" gtail="" rn="" phys gloc="" named=""
     local re='^(.*/)?\.agent/work-plans/issue-([0-9]+)(/.*)?$'
     if [ -z "$path" ]; then
         echo "ERROR: records_path: a path is required" >&2
@@ -383,6 +391,7 @@ records_path() {
     if [[ "$path" =~ $re ]]; then
         gn="${BASH_REMATCH[2]}"
         gprefix="${BASH_REMATCH[1]:-./}"
+        gtail="${BASH_REMATCH[3]}"
     fi
     phys=$(_wpd_physical "$path") || {
         echo "ERROR: refusing to use $path as an issue's records: it cannot be resolved to a physical location." >&2
@@ -409,19 +418,22 @@ records_path() {
     fi
     # Where it resolves to.
     issue_checkout_guard "$(_wpd_existing_dir "$phys")" "${gn:-$rn}" "$from" || return 1
-    # The write rule (issue 437): the checkout where the commit runs, and
-    # the physical one too when a symlink makes them differ.
+    # The write rule (issue 437), one statement: the physical file sits in
+    # issue <N>'s own checkout, at the place the path names.
     if [ "$write" = 1 ]; then
+        _wpd_write_guard "$(_wpd_existing_dir "$phys")" "${gn:-$rn}" || return 1
         if [ -n "$gn" ]; then
-            _wpd_write_guard "$(_wpd_existing_dir "$gloc")" "$gn" || return 1
-            gtop=$(git -C "$(_wpd_existing_dir "$gloc")" rev-parse --show-toplevel 2>/dev/null) || gtop=""
-            [ -n "$gtop" ] && gtop=$(cd "$gtop" 2>/dev/null && pwd -P)
-        fi
-        if [ -n "$rn" ]; then
-            ptop=$(git -C "$(_wpd_existing_dir "$phys")" rev-parse --show-toplevel 2>/dev/null) || ptop=""
-            [ -n "$ptop" ] && ptop=$(cd "$ptop" 2>/dev/null && pwd -P)
-            if [ -z "$gn" ] || [ "$ptop" != "$gtop" ]; then
-                _wpd_write_guard "$(_wpd_existing_dir "$phys")" "$rn" || return 1
+            named="${gloc%/}/.agent/work-plans/issue-$gn$gtail"
+            while [ "${#named}" -gt 1 ] && [ "${named%/}" != "$named" ]; do named="${named%/}"; done
+            if [ "$phys" != "$named" ]; then
+                {
+                    echo "ERROR: refusing to write issue #${gn}'s records through $path: it resolves to"
+                    echo "  $phys, not to the place it names ($named)."
+                    echo "  A write that changes a timeline goes to the file at the place its path names, in"
+                    echo "  the issue's own checkout: a symlink on the way would put the write in one place"
+                    echo "  and the commit in another. Reads are not refused."
+                } >&2
+                return 1
             fi
         fi
     fi
@@ -429,11 +441,6 @@ records_path() {
 }
 
 records_dir() {
-    local write=""
-    if [ "${1:-}" = "--write" ]; then
-        write="--write"
-        shift
-    fi
     local issue="${1:-}" dir="${2:-.}" top
     if ! [[ "$issue" =~ ^[0-9]+$ ]]; then
         echo "ERROR: records_dir: a numeric issue number is required (got '${issue}')" >&2
@@ -443,7 +450,7 @@ records_dir() {
         echo "ERROR: records_dir: '$dir' is not inside a git repository" >&2
         return 1
     }
-    records_path ${write:+"$write"} "$top/.agent/work-plans/issue-$issue" "$dir"
+    records_path "$top/.agent/work-plans/issue-$issue" "$dir"
 }
 
 resolve_work_plans_dir() {
