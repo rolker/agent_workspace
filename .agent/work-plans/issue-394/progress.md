@@ -414,3 +414,15 @@ Recorded judgment, not a finding: install's write order. A failed settings.json 
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Q9 yes, Q10 yes"
+
+Q10 as put to him: merge pull request 450? The decision summary was presented in the session: three pre-push rounds (2 must-fix, then 1, then approved), one tightening and one missing test added on the pull request, the re-review approved, the final triage with nothing open, 312 installer tests passing in a sandbox home, CI all passing, Gemini and Codex in rounds 1 and 2, Copilot failed on quota each time. Said to him: nothing changes on his machine until the installer is next run, and the host asks before running it there.
