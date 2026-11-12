@@ -60,3 +60,47 @@ issue: 455
 **Plan**: `.agent/work-plans/issue-455/plan.md` at `6415a8ff`
 
 Shared helper derives the base from the checkout's git user.email (suffix stripped, clone value wins, loud failure when unset); hook, config table and three scripts use it; hermetic test; address-free docs; the CLAUDE.md/CODEX.md edit is a last, owner-approval-gated commit.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 17:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #455 — Owner's email addresses are hardcoded in the identity hook and scripts
+**Plan**: `.agent/work-plans/issue-455/plan.md` at `6415a8ff`
+**Branch**: `feature/issue-455`
+
+**Owner direction (2026-11-12, received during this review)**: "yes, remove the addresses from CLAUDE.md and CODEX.md". Step 8 is approved for `CLAUDE.md` and `CODEX.md` and is no longer conditional. His yes covers only those two files. `.github/copilot-instructions.md` and `.agent/instructions/` were checked and hold no owner address, so nothing there needs a further yes.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR: helper, hook, config table, three scripts, one test, address-free docs; instruction files as a gated last commit. |
+| Issue alignment | Needs work | Covers every location in the issue and all review-issue findings (suffix stripping, unset/malformed email, clone-level config, #359 not widened, one shared helper, hermetic test, privacy grep). Serves as written: "Workspace usable by anyone who clones it (agent identity and attribution) — `docs/design.md#identity`". The anchor exists, but the goal is not a section of `README.md#workspace-goals` (finding 3). |
+| File targeting | Needs work | All `FRAMEWORK_EMAILS` consumers found (`worktree_create.sh` sources the config but reads only names/models, so it is safe). Missing: `.claude/skills/run-issue/SKILL.md:253`, which has hosts source the identity with an explicit `"<agent email>"`; the host takes that address from `CLAUDE.md` (finding 2). |
+| Consequences | Concern | The claim that steps 1-7 stand alone and "the existing 3-arg line still works on the owner's machine" is false on this machine (finding 1). |
+| Principle alignment | Good | Fail loudly, only what's needed, enforcement kept blocking, design picture text updated (ADR-0017), test planned; prior art stated. |
+| ADR compliance | Good | ADR-0003, ADR-0004/0005 and ADR-0017 are each addressed. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences] (high)**: Step 8 cannot be separated from steps 1-7. I checked without printing the address: this machine's configured `user.email` (global scope, no clone value) has a different base from the address in the `CLAUDE.md` / `CODEX.md` setup lines. Once the new hook is committed on this branch, pre-commit runs it from the working tree. Every commit from an agent that sources the `CLAUDE.md` 3-arg line would then be blocked: the rest of this PR's own implement, review and triage commits, and after merge every Claude and Codex session on this machine. The run-issue host passes the same literal to each phase in `agent_email=`. Resolution: (a) the owner has now approved step 8 (quote above). Land the `CLAUDE.md` / `CODEX.md` edit in the same PR, in the same commit as the hook change or before it, never after it; (b) from the hook commit on, the implementer and host use the derived form (`--agent claude-code` / `--detect`) for their own commits; (c) correct the plan's "stands alone" statement.
+2. **[File targeting] (medium)**: `.claude/skills/run-issue/SKILL.md` (identity paragraph, around line 253) tells the host to source `set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>"`, and the host fills in the email from the instruction file. Switch it to the derived form (`--agent <framework>` plus the model), or document where the email now comes from. Also check `orchestrator/SKILL.md` and `dispatch_phase.sh`'s `agent_email=` handoff text for the same assumption. This is a skill, not an instruction file, so it is not Ask First.
+3. **[Issue alignment] (low)**: The `## Serves` line names a goal, "Workspace usable by anyone who clones it", that is not a section of `README.md#workspace-goals`. Name the actual section, likely "Modular" (project-agnostic) or "Easy to use" (setting up is something an agent can do), and keep `docs/design.md#identity`.
+4. **[Consequences] (low)**: The step 7 acceptance grep on the two domains also matches a non-owner institutional address in `.claude/skills/brand-guidelines/SKILL.md` (a public contact address, not the owner's). Say that it is expected, so the implementer does not "fix" it. Also, `test_dispatch_phase.sh` (around lines 442 and 446) does hold the owner's real agent address, so the plan's conditional applies: swap it to an `example.org` value.
+5. **[Principle alignment] (low)**: For the hermetic test, also set `GIT_CONFIG_NOSYSTEM=1` (alongside `GIT_CONFIG_GLOBAL` and `HOME`), so a system-level `user.email` cannot make the unset-email case pass or fail depending on the machine. Map the new suite in `suites_for_files.sh` for the hook, the helper, `framework_config.sh` and the three scripts.
+
+### Summary
+
+The approach is sound and matches the owner's direction: one helper, derived from the checkout's git email, with clear failures and per-clone config honoured. But the plan's sequencing rests on a false premise. On this machine the hardcoded setup line does not share a base with the configured email, so the hook change blocks agent commits until the instruction-file edit lands. Step 8 is now approved by the owner, so it moves from a conditional last step to a required step ordered with the hook change. The run-issue skill's identity line also belongs in scope.
+
+### Recommended Actions
+
+- [ ] Make step 8 unconditional (owner approved `CLAUDE.md` / `CODEX.md`). Order it with or before the hook commit, and remove the "stands alone" statement.
+- [ ] State that from the hook commit on, the implementer and host use `--agent claude-code` (derived email) for their own commits.
+- [ ] Add `.claude/skills/run-issue/SKILL.md` (and check `orchestrator/SKILL.md` and the `dispatch_phase.sh` handoff text) to the file list.
+- [ ] Fix the Serves goal name to a real `README.md#workspace-goals` section.
+- [ ] Note the brand-guidelines grep hit as expected. Swap the `test_dispatch_phase.sh` address to `example.org`. Add `GIT_CONFIG_NOSYSTEM=1` to the test.
