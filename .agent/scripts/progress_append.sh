@@ -36,9 +36,9 @@
 # Exit codes: 0 ok, 2 usage/validation error, 3 git failure, 4 refused: the
 # target checkout is not the issue's own (a main checkout or one on its
 # default branch, another issue's worktree, or inside a package worktree a
-# checkout that is not the issue's; records_dir in
-# _resolve_work_plans_dir.sh names the right one). The refusal comes before
-# entry validation, so an invalid entry aimed at the wrong checkout exits 4.
+# checkout that is not the issue's, or progress.md reached through a symlink;
+# records_path --write in _resolve_work_plans_dir.sh names the right checkout).
+# The refusal comes before entry validation: a bad entry aimed there exits 4.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
