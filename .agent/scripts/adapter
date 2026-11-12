@@ -105,6 +105,26 @@ fi
 # shellcheck source=_project_registry.sh
 source "$_ADAPTER_SCRIPT_DIR/_project_registry.sh"
 
+# For the type adapters: a git call that asks origin, bounded the way
+# wt_bounded_git bounds worktree creation's calls (#323), with the same
+# WT_FETCH_TIMEOUT knob (default 60s). GIT_TERMINAL_PROMPT=0 stops an
+# HTTPS credential prompt; `timeout` (when installed) also ends an SSH
+# passphrase or host-key prompt and a stalled host. The exit status is
+# git's, or 124 (137 after the -k grace) when the limit ended it.
+# Usage: _adapter_bounded_git -C <repo> ls-remote ...
+_adapter_git_limit() {
+    local limit="${WT_FETCH_TIMEOUT:-60}"
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    echo "$limit"
+}
+_adapter_bounded_git() {
+    local -a bound=()
+    if command -v timeout >/dev/null 2>&1; then
+        bound=(timeout -k 5 "$(_adapter_git_limit)")
+    fi
+    GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} git "$@"
+}
+
 usage() {
     echo "Usage: adapter [--from <dir>] [--project <name>] <verb> [args...]" >&2
     echo "Verbs: ${REQUIRED_VERBS[*]}" >&2

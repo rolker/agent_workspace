@@ -911,25 +911,33 @@ _rc_pin_kind() {
         toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
         dir_real="$(cd "$dir" && pwd -P)"
     fi
-    if [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ] \
-        && out="$(GIT_TERMINAL_PROMPT=0 git -C "$dir" ls-remote origin \
-            "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)"; then
+    local cloned=false rc=1 why="could not be reached"
+    [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ] && cloned=true
+    if [ "$cloned" = true ]; then
+        # Bounded (#323): a prompt or a stalled host must not hang the
+        # caller; a timeout falls to the local answer below.
+        rc=0
+        out="$(_adapter_bounded_git -C "$dir" ls-remote origin \
+            "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)" || rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            why="did not answer within $(_adapter_git_limit)s"
+        fi
+    fi
+    if [ "$cloned" = true ] && [ "$rc" -eq 0 ]; then
         if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$out"; then
             kind=branch
         elif awk -F'\t' -v r="refs/tags/$ref" '$2 == r || $2 == r "^{}" { f = 1 } END { exit !f }' <<< "$out"; then
             kind=tag
         fi
-    else
-        if [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ]; then
-            echo "NOTE: repo_pin: origin of $dir could not be reached; the kind of '$ref' comes from local refs (unverified)" >&2
-            if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
-                kind=branch
-            elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
-                kind=tag
-            fi
-        else
-            echo "NOTE: repo_pin: $dir is not a cloned repository; the kind of '$ref' is not checked against origin (unverified)" >&2
+    elif [ "$cloned" = true ]; then
+        echo "NOTE: repo_pin: origin of $dir $why; the kind of '$ref' comes from local refs (unverified)" >&2
+        if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+            kind=branch
+        elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
+            kind=tag
         fi
+    else
+        echo "NOTE: repo_pin: $dir is not a cloned repository; the kind of '$ref' is not checked against origin (unverified)" >&2
     fi
     if [ -z "$kind" ]; then
         if [ "$is_hex" = true ]; then kind=commit; else kind=unknown; fi

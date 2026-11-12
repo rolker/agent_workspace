@@ -59,7 +59,13 @@ Add `repo_pin` to `REQUIRED_VERBS` (13 verbs):
   When neither answers it exits 1; it never guesses a name such as `main`.
   It refuses `--layer`.
 
-Plain git answers every case; no forge is asked.
+Plain git answers every case; no forge is asked. Every query to origin is
+bounded as worktree creation's are (#323): `GIT_TERMINAL_PROMPT=0` and,
+where `timeout` is installed, the `WT_FETCH_TIMEOUT` limit (default 60s),
+so a prompt or a stalled host cannot hang a caller. A query that times out
+counts as origin not answering: `ros2_colcon` falls to the unverified local
+answer, and `single_project` without a recorded `origin/HEAD` exits 1
+naming the timeout.
 
 ## Consequences
 

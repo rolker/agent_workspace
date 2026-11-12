@@ -1710,6 +1710,44 @@ test_repo_pin_offline_uses_local_refs() {
     assert_eq "a local-only branch is unknown" "localonly	unknown" "$out"
 }
 
+test_repo_pin_hanging_origin_is_bounded() {
+    echo "TEST: repo_pin bounds its origin query and falls back to local refs when origin hangs"
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIP: no timeout command"
+        return 0
+    fi
+    local sb out err proj dir shim pidfile started elapsed
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt
+    # or a stalled host would. Only WT_FETCH_TIMEOUT can end it; the
+    # ceiling below is far above the 2s limit and far below the block.
+    shim="$sb/hang-ssh"
+    pidfile="$sb/hang-ssh.pid"
+    printf '#!/usr/bin/env bash\necho $$ > "%s"\nexec sleep 300\n' "$pidfile" > "$shim"
+    chmod +x "$shim"
+    git -C "$dir" remote set-url origin "ssh://git@example.invalid/pkg_a.git"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    err="$sb/err"
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$shim" WT_FETCH_TIMEOUT=2 run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    elapsed=$((SECONDS - started))
+    local reached=no
+    if [ -s "$pidfile" ]; then
+        reached=yes
+        kill "$(< "$pidfile")" 2>/dev/null || true
+    fi
+    assert_eq "the hanging ssh was reached" "yes" "$reached"
+    assert_eq "local answer: branch" "pinned	branch" "$out"
+    assert_contains "names the timeout" "did not answer within 2s" "$(< "$err")"
+    assert_contains "says unverified" "(unverified)" "$(< "$err")"
+    assert_eq "ended by WT_FETCH_TIMEOUT, not by the block (${elapsed}s < 60s)" "yes" \
+        "$([ "$elapsed" -lt 60 ] && echo yes || echo no)"
+}
+
 test_repo_pin_not_cloned() {
     echo "TEST: repo_pin for a repo not cloned yet: unknown (or commit for a full sha), unverified"
     local sb out err proj
@@ -1841,6 +1879,7 @@ test_repo_pin_strips_quotes
 test_repo_pin_reads_version_as_yaml
 test_repo_pin_deleted_upstream_branch_is_not_a_branch
 test_repo_pin_offline_uses_local_refs
+test_repo_pin_hanging_origin_is_bounded
 test_repo_pin_not_cloned
 test_repo_pin_not_found
 test_repo_pin_two_layers

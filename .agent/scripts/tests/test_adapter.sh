@@ -644,6 +644,39 @@ test_repo_pin_undetermined_fails() {
     assert_not_contains "no guessed main" "main	branch" "$out"
 }
 
+test_repo_pin_hanging_origin_is_bounded() {
+    echo "TEST: single_project repo_pin bounds its origin query and names the timeout"
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIP: no timeout command"
+        return 0
+    fi
+    local sb out rc=0 shim pidfile started elapsed reached=no
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt
+    # or a stalled host would. Only WT_FETCH_TIMEOUT can end it; the
+    # ceiling below is far above the 2s limit and far below the block.
+    shim="$sb/hang-ssh"
+    pidfile="$sb/hang-ssh.pid"
+    printf '#!/usr/bin/env bash\necho $$ > "%s"\nexec sleep 300\n' "$pidfile" > "$shim"
+    chmod +x "$shim"
+    git -C "$sb/project" remote set-url origin "ssh://git@example.invalid/project.git"
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$shim" WT_FETCH_TIMEOUT=2 \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    elapsed=$((SECONDS - started))
+    if [ -s "$pidfile" ]; then
+        reached=yes
+        kill "$(< "$pidfile")" 2>/dev/null || true
+    fi
+    assert_eq "the hanging ssh was reached" "yes" "$reached"
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "names the timeout" "origin did not answer within 2s" "$out"
+    assert_eq "ended by WT_FETCH_TIMEOUT, not by the block (${elapsed}s < 60s)" "yes" \
+        "$([ "$elapsed" -lt 60 ] && echo yes || echo no)"
+}
+
 test_repo_pin_other_name_fails() {
     echo "TEST: single_project repo_pin refuses a name other than the one repos prints"
     local sb out rc=0
@@ -942,6 +975,7 @@ test_worktree_env_emits_nothing
 test_repo_pin_from_origin_head
 test_repo_pin_asks_origin_without_origin_head
 test_repo_pin_undetermined_fails
+test_repo_pin_hanging_origin_is_bounded
 test_repo_pin_other_name_fails
 test_repo_pin_rejects_layer_and_requires_name
 test_validator_flags_missing_repo_pin

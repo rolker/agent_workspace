@@ -305,14 +305,20 @@ adapter_repo_pin() {
         echo "ERROR: repo_pin: no repository '$repo' in this project (known: $name)" >&2
         return 1
     fi
-    local branch="" symref
+    local branch="" symref rc=0 why="origin did not name its HEAD"
     if symref="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"; then
         branch="${symref#refs/remotes/origin/}"
-    elif symref="$(GIT_TERMINAL_PROMPT=0 git -C "$root" ls-remote --symref origin HEAD 2>/dev/null)"; then
-        branch="$(awk -F'\t' '$1 ~ /^ref: refs\/heads\// && $2 == "HEAD" { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }' <<< "$symref")"
+    else
+        # Bounded (#323): a prompt or a stalled host must not hang the caller.
+        symref="$(_adapter_bounded_git -C "$root" ls-remote --symref origin HEAD 2>/dev/null)" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            branch="$(awk -F'\t' '$1 ~ /^ref: refs\/heads\// && $2 == "HEAD" { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }' <<< "$symref")"
+        elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            why="origin did not answer within $(_adapter_git_limit)s"
+        fi
     fi
     if [ -z "$branch" ]; then
-        echo "ERROR: repo_pin: cannot determine the default branch of $root: origin/HEAD is not set and origin did not name its HEAD" >&2
+        echo "ERROR: repo_pin: cannot determine the default branch of $root: origin/HEAD is not set and $why" >&2
         return 1
     fi
     printf '%s\tbranch\n' "$branch"
