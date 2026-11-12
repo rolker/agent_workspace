@@ -32,8 +32,9 @@
 # Run: bash .agent/scripts/tests/test_run_script_tests.sh
 
 set -u
-# Every nested run below takes the runner's default job count unless a
-# case asks for another; an outer run's setting is not inherited.
+# Every nested run below names its job count (-j 1 in the one-job cases),
+# except the cases about the default and RUN_SCRIPT_TESTS_JOBS themselves;
+# an outer run's setting is not inherited.
 unset RUN_SCRIPT_TESTS_JOBS
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run_script_tests.sh"
@@ -71,7 +72,7 @@ exit 0
 EOF
 chmod +x "$CASE_A/test_synthetic.sh"
 
-out=$("$RUNNER" "$CASE_A" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_A" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$MARKER_A" ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(a) discovers and runs a synthetic test_*.sh fixture via glob"
 else
@@ -87,7 +88,7 @@ exit 0
 EOF
 chmod +x "$CASE_B/test_other.sh"
 
-out=$("$RUNNER" "$CASE_B" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_B" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qi 'test_checkpoint_269.sh'; then
     pass "(b) fails loudly when test_checkpoint_269.sh is absent from the discovered set"
 else
@@ -118,7 +119,7 @@ exit 0
 EOF
 chmod +x "$CASE_C"/test_*.sh
 
-out=$("$RUNNER" "$CASE_C" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_C" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ ! -f "$MARKER_C_LATER" ] \
     && printf '%s' "$out" | grep -q 'FAILED at test_b_fail.sh' \
     && ! printf '%s' "$out" | grep -q 'test_z_never'; then
@@ -152,7 +153,7 @@ chmod +x "$CASE_D/test_synthetic.sh"
 for t in bash date basename dirname env python3; do
     p=$(command -v "$t") && ln -s "$p" "$TMPD/bin_nojq/$t"
 done
-out=$(PATH="$TMPD/bin_nojq" "$RUNNER" "$CASE_D" 2>&1); rc=$?
+out=$(PATH="$TMPD/bin_nojq" "$RUNNER" -j 1 "$CASE_D" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_D" ] && printf '%s' "$out" | grep -q "'jq' not found"; then
     pass "(d) missing jq is named by the preflight and no suite runs"
 else
@@ -174,7 +175,7 @@ exit 0
 EOF
 chmod +x "$CASE_E/test_aaa_leaker.sh"
 
-out=$("$RUNNER" "$CASE_E" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_E" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_leaker.sh' \
     && printf '%s' "$out" | grep -q 'leaked_by_fixture'; then
     pass "(e) a suite leaking into TMPDIR fails the run with exit 2, naming the suite"
@@ -198,7 +199,7 @@ exit 0
 EOF
 chmod +x "$CASE_F/test_tidy.sh"
 
-out=$("$RUNNER" "$CASE_F" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_F" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(f) a suite that cleans up its own TMPDIR files still passes"
 else
@@ -217,7 +218,7 @@ mkdir -p "$CASE_G" "$CALLER_TMPDIR"
 write_checkpoint_stub "$CASE_G"
 cp "$CASE_E/test_aaa_leaker.sh" "$CASE_G/test_aaa_leaker.sh"
 
-out=$(TMPDIR="$CALLER_TMPDIR" "$RUNNER" "$CASE_G" 2>&1); rc=$?
+out=$(TMPDIR="$CALLER_TMPDIR" "$RUNNER" -j 1 "$CASE_G" 2>&1); rc=$?
 caller_leftovers=$(find "$CALLER_TMPDIR" -mindepth 1 2>/dev/null)
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_leaker.sh' \
     && [ -z "$caller_leftovers" ]; then
@@ -247,7 +248,7 @@ exit 0
 EOF
 chmod +x "$CASE_H"/test_*.sh
 
-out=$("$RUNNER" "$CASE_H" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_H" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_H" ] \
     && printf '%s' "$out" | grep -q 'test_absolute_template.sh'; then
     pass "(h) the preflight lint names an absolute-/tmp template and exits 1 before any suite runs"
@@ -281,7 +282,7 @@ EOF
     chmod +x "$dir"/test_*.sh
 
     local out rc
-    out=$("$RUNNER" "$dir" 2>&1); rc=$?
+    out=$("$RUNNER" -j 1 "$dir" 2>&1); rc=$?
     if [ "$rc" -eq 1 ] && [ ! -f "$marker" ] \
         && printf '%s' "$out" | grep -q "test_absolute_${label}.sh"; then
         pass "(i) the lint rejects the $label spelling before any suite runs"
@@ -319,7 +320,7 @@ exit 0
 EOF
 chmod +x "$CASE_J/test_nested_tmp_path.sh"
 
-out=$("$RUNNER" "$CASE_J" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_J" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(j) a non-root .../tmp/ path is not a lint hit"
 else
@@ -342,7 +343,7 @@ printf '#!/usr/bin/env bash\n# mktemp is never handed %sfile.XXXXXX as a templat
     "$ABS_TMP_ROOT" "$ABS_TMP_ROOT" > "$CASE_J2/test_tmpfile_sibling.sh"
 chmod +x "$CASE_J2/test_tmpfile_sibling.sh"
 
-out=$("$RUNNER" "$CASE_J2" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_J2" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(j2) a /tmp-prefixed sibling name is not a lint hit"
 else
@@ -363,7 +364,7 @@ exit 0
 EOF
 chmod +x "$CASE_K/test_aaa_nested_leaker.sh"
 
-out=$("$RUNNER" "$CASE_K" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_K" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_nested_leaker.sh' \
     && printf '%s' "$out" | grep -q 'sandbox/deeper/telltale_file'; then
     pass "(k) the leak message lists the leaked tree recursively"
@@ -808,7 +809,7 @@ ran() { (cd "$1" && ls | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'); }
 
 # --- Case (m): the runner in --files mode runs only the chosen suites. ---
 M_MARKS="$TMPD/m_marks"
-out=$(run_syn "$M_MARKS" "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
+out=$(run_syn "$M_MARKS" -j 1 "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
 if [[ $rc -eq 0 && "$(ran "$M_MARKS")" == "test_alpha.sh test_always.sh test_checkpoint_269.sh test_noref.sh" ]] \
         && printf '%s' "$out" | grep -q "scoped run, 4 of $SYN_N suites"; then
     pass "(m) --files runs only the selected suites and says so"
@@ -820,7 +821,7 @@ fi
 check_full() {  # <label> <runner args>...
     local label="$1" out rc
     shift
-    out=$(run_syn "$TMPD/n_marks" "$SYN_T" "$@"); rc=$?
+    out=$(run_syn "$TMPD/n_marks" -j 1 "$SYN_T" "$@"); rc=$?
     local n_ran
     n_ran=$(find "$TMPD/n_marks" -mindepth 1 | wc -l | tr -d ' ')
     if [[ $rc -eq 0 && "$n_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q "all $SYN_N suites passed"; then
@@ -847,7 +848,7 @@ hook_case() {
     rm -rf "$r" "$hooks" "$log"
     make_syn_repo "$r" || { fail "(o) $label: could not build the repository"; return; }
     mkdir -p "$hooks"
-    printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+    printf '#!/usr/bin/env bash\nbash %q -j 1 %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
         "$RUNNER" "$r/.agent/scripts/tests" "$log" > "$hooks/pre-commit"
     chmod +x "$hooks/pre-commit"
     sgit -C "$r" config core.hooksPath "$hooks"
@@ -888,7 +889,7 @@ make_syn_repo "$P" && sgit -C "$P" rm -q .agent/scripts/other.sh && sgit -C "$P"
 p_run() {
     rm -rf "$TMPD/p_marks" && mkdir -p "$TMPD/p_marks"
     (cd "$P" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/p_marks" \
-        "$RUNNER" "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
+        "$RUNNER" -j 1 "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
 }
 out=$(p_run); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "other.sh' is deleted"; then
@@ -906,7 +907,7 @@ else
 fi
 P_HOOKS="$TMPD/p_hooks" P_LOG="$TMPD/p_hook.log"
 mkdir -p "$P_HOOKS" "$TMPD/p_marks"
-printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+printf '#!/usr/bin/env bash\nbash %q -j 1 %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
     "$RUNNER" "$P/.agent/scripts/tests" "$P_LOG" > "$P_HOOKS/pre-commit"
 chmod +x "$P_HOOKS/pre-commit"
 sgit -C "$P" config core.hooksPath "$P_HOOKS"
@@ -927,7 +928,7 @@ make_syn_repo "$Q" && sgit -C "$Q" checkout -q main \
     && sgit -C "$Q" checkout -q -B feature && sgit -C "$Q" rm -q "$CAFE" && sgit -C "$Q" commit -q -m "delete café"
 rm -rf "$TMPD/q_marks" && mkdir -p "$TMPD/q_marks"
 out=$(cd "$Q" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/q_marks" \
-    "$RUNNER" "$Q/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+    "$RUNNER" -j 1 "$Q/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "café.sh' is deleted"; then
     pass "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run"
 else
@@ -941,7 +942,7 @@ R="$TMPD/syn_r"
 make_syn_repo "$R" && sgit -C "$R" branch -q -D main
 rm -rf "$TMPD/r_marks" && mkdir -p "$TMPD/r_marks"
 out=$(cd "$R" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/r_marks" \
-    "$RUNNER" "$R/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+    "$RUNNER" -j 1 "$R/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
 r_ran=$(find "$TMPD/r_marks" -mindepth 1 | wc -l | tr -d ' ')
 if [[ $rc -eq 0 && "$r_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q 'full run.*no default branch available here' \
         && ! printf '%s' "$out" | grep -q 'ERROR'; then
@@ -976,7 +977,7 @@ mkdir -p "$S1"
 write_checkpoint_stub "$S1"
 make_stub "$S1" test_a_pass.sh 'echo "a-says-hi"'
 make_stub "$S1" test_m_pass.sh 'echo "m-says-hi"'
-out=$("$RUNNER" "$S1" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$S1" 2>&1); rc=$?
 s1_first=$(printf '%s\n' "$out" | head -n 1)
 s1_last=$(printf '%s\n' "$out" | tail -n 1)
 s1_a_block=$(printf '%s\n' "$out" | sed -n '/^=== run_script_tests: running test_a_pass.sh ===$/,/^=== run_script_tests: running /p')
@@ -997,7 +998,7 @@ write_checkpoint_stub "$S2"
 make_stub "$S2" test_a_pass.sh 'exit 0'
 make_stub "$S2" test_b_fail.sh 'echo "b-failing"; exit 3'
 make_stub "$S2" test_z_later.sh "touch '$S2_LATER'"
-out=$("$RUNNER" "$S2" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$S2" 2>&1); rc=$?
 if [[ $rc -eq 1 && ! -e "$S2_LATER" && "$(running_lines "$out")" == "test_a_pass.sh test_b_fail.sh" ]] \
         && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_fail\.sh \(suite 2 of 4\) after [0-9]+s — stopping, remaining suites not run$' \
         && printf '%s\n' "$out" | grep -q '^b-failing$'; then
@@ -1015,7 +1016,7 @@ write_checkpoint_stub "$S3"
 make_stub "$S3" test_a_clean.sh 'd=$(mktemp -d); rm -rf "$d"'
 make_stub "$S3" test_b_leaks.sh ': > "${TMPDIR:?}/left_by_b"'
 make_stub "$S3" test_z_later.sh "touch '$S3_LATER'"
-out=$("$RUNNER" "$S3" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$S3" 2>&1); rc=$?
 if [[ $rc -eq 2 && ! -e "$S3_LATER" ]] \
         && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_leaks\.sh \(suite 2 of 4\) after [0-9]+s — it left 1 entry behind in TMPDIR \(' \
         && printf '%s\n' "$out" | grep -q '/left_by_b$' \
@@ -1038,7 +1039,7 @@ write_checkpoint_stub "$S4"
 make_stub "$S4" test_live.sh "echo 's4-live-line'
 for _ in \$(seq 1 100); do [ -e '$S4_GO' ] && exit 0; sleep 0.1; done
 echo 's4: never released'; exit 1"
-"$RUNNER" "$S4" > "$S4_LOG" 2>&1 &
+"$RUNNER" -j 1 "$S4" > "$S4_LOG" 2>&1 &
 s4_pid=$!
 s4_seen=no
 for _ in $(seq 1 100); do
@@ -1077,7 +1078,7 @@ check_late_leak() {
 }
 T1="$TMPD/case_t1"
 late_leak_dir "$T1"
-out=$("$RUNNER" "$T1" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$T1" 2>&1); rc=$?
 check_late_leak "(t1) one job: a write after its suite exited is caught at the end, charged to that suite, exit 2" "$out" "$rc"
 
 # ===================================================================
@@ -1258,10 +1259,10 @@ V="$TMPD/case_v"
 mkdir -p "$V"
 write_checkpoint_stub "$V"
 for n in a b c d e f g h; do make_stub "$V" "test_$n.sh" ':'; done
-v7a=$("$RUNNER" --shuffle=7 "$V" 2>&1); rc=$?
-v7b=$("$RUNNER" --shuffle=7 "$V" 2>&1)
+v7a=$("$RUNNER" -j 1 --shuffle=7 "$V" 2>&1); rc=$?
+v7b=$("$RUNNER" -j 1 --shuffle=7 "$V" 2>&1)
 v7j=$("$RUNNER" -j 2 --shuffle=7 "$V" 2>&1)
-v8=$("$RUNNER" --shuffle=8 "$V" 2>&1)
+v8=$("$RUNNER" -j 1 --shuffle=8 "$V" 2>&1)
 sorted_order="test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh test_f.sh test_g.sh test_h.sh"
 if [[ $rc -eq 0 ]] && printf '%s\n' "$v7a" | grep -qx 'run_script_tests: shuffle seed 7 (this order again: --shuffle=7)' \
         && [[ "$(running_lines "$v7a")" == "$(running_lines "$v7b")" && "$(running_lines "$v7a")" == "$(running_lines "$v7j")" ]] \
@@ -1271,10 +1272,10 @@ if [[ $rc -eq 0 ]] && printf '%s\n' "$v7a" | grep -qx 'run_script_tests: shuffle
 else
     fail "(v) --shuffle=7 prints its seed and starts the same order twice and at -j 2; --shuffle=8 differs (7: $(running_lines "$v7a") | 7 again: $(running_lines "$v7b") | 7 at -j 2: $(running_lines "$v7j") | 8: $(running_lines "$v8"))"
 fi
-out=$("$RUNNER" --shuffle "$V" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 --shuffle "$V" 2>&1); rc=$?
 v_seed=$(printf '%s\n' "$out" | sed -n 's/^run_script_tests: shuffle seed \([0-9][0-9]*\) (this order again: --shuffle=[0-9]*)$/\1/p')
 if [[ $rc -eq 0 && -n "$v_seed" ]] \
-        && [[ "$(running_lines "$out")" == "$(running_lines "$("$RUNNER" --shuffle="$v_seed" "$V" 2>&1)")" ]]; then
+        && [[ "$(running_lines "$out")" == "$(running_lines "$("$RUNNER" -j 1 --shuffle="$v_seed" "$V" 2>&1)")" ]]; then
     pass "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order"
 else
     fail "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order (seed=$v_seed, out=$out)"
