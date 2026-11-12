@@ -157,7 +157,7 @@ only.
 | Rule | Principle or ADR | Enforced by | The check |
 |---|---|---|---|
 | No commit to `main` | Leave a trail; start limits strict | `hook` | `no-commit-to-branch` (`.pre-commit-config.yaml`), local only. GitHub also refuses a direct push: the repository ruleset `require_pr` is active on `main` (`gh api repos/rolker/agent_workspace/rules/branches/main`, 2026-10-09) |
-| Commits carry an agent or owner identity | Leave a trail; start limits strict | `hook` | `.agent/hooks/check-commit-identity.py` fails a commit whose author email matches none of its accepted patterns, local only |
+| Commits carry an agent or owner identity | Leave a trail; start limits strict | `hook` | `.agent/hooks/check-commit-identity.py` fails a commit whose author email is neither the checkout's configured git email (`<local>@<domain>`, any `+suffix` removed) nor `<local>+<anything>@<domain>`, and fails when that git email is unset; local only |
 | Hooks are not skipped (no `--no-verify`) | Enforce what matters, as simply as possible | `CI` | The Lint job runs `make lint`, which runs every hook on all files; the four local-state hooks above are skipped there. A local `--no-verify` is not detected |
 | Issue number matches the branch | Leave a trail; start limits strict | `nothing` | `.agent/hooks/verify-issue-branch.py` prints the issue's title and state and always returns 0 (its docstring: "Informational only") |
 | A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
@@ -660,7 +660,10 @@ Status: `decided`
 Status: `decided`
 
 - An agent signs its work with a framework identity: a name, an email of the form
-  `roland+<framework>@<domain>`, a model name and a framework key. The table of frameworks is
+  `<local>+<framework>@<domain>`, a model name and a framework key. No address is stored: `<local>@<domain>`
+  is the checkout's configured `git config user.email` (a clone value wins over the global one) with any
+  `+suffix` removed, derived by `.agent/scripts/identity_base.py` for the scripts and the hook alike, and
+  an unset or malformed git email fails with the fix. The table of frameworks and suffixes is
   `.agent/scripts/framework_config.sh`; the strategy and the reasons are in
   [`.agent/AI_IDENTITY_STRATEGY.md`](../.agent/AI_IDENTITY_STRATEGY.md). The identity is on the commit
   and, through `AGENT_NAME` and `AGENT_MODEL`, in the signature on GitHub text.
@@ -669,7 +672,7 @@ Status: `decided`
   and leaves `.git/config` alone, so the owner commits as himself afterwards. Shell state does not
   carry between tool calls, so it is sourced in the same call as the command that needs it.
 - Three things refuse to run without an identity or with a wrong one: the `check-commit-identity` hook
-  (accepted emails are the agent pattern and the owner's two addresses), `dispatch_phase.sh` (exit 2
+  (accepted emails are derived from the configured git email: the base or `<local>+<anything>@<domain>`), `dispatch_phase.sh` (exit 2
   when `AGENT_NAME` or `AGENT_EMAIL` is unset, with no fallback to the owner's git config) and
   `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` and `gh_create_issue.sh` exit 2
   for an unsigned body ([Rules](#rules)).
@@ -854,6 +857,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-10 | Registry and adapters, Worktrees | A timeline write from outside the issue's checkout is refused (issue 437): the Records bullet no longer lists "a write from outside any worktree, which commits on that checkout's own branch" among what the records gate does not cover, and says that a write that changes a timeline is refused unless its target is the issue's own checkout, wherever the command runs, and that reads are not; the cited line numbers of `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees grows by four lines and stays past the 60-line prompt: the bullet names the gate whose header holds the rule, and the mechanics stay there, so no detail moves | #437 | 901 |
 | 2026-11-12 | Registry and adapters, Worktrees | Review fix (issue 437): the Records bullet states the write rule as one statement, the file a write changes, every symlink resolved, sits at the place its path names in the issue's own checkout, after a file symlink and a records folder linked to a main-checkout folder got past the checkout test; the cited `progress_append.sh` gate lines are refreshed. Worktrees grows by one line and stays past the 60-line prompt: the mechanics stay in the gate's header | #437 | 903 |
 | 2026-11-12 | Sessions and roots, Registry and adapters | A fresh clone works with no project (#295, first pull request; part of #265): a Sessions and roots Now bullet says a workspace with no registered project and no `project/` validates, sets up without a prompt, shows its dashboard and syncs, and that the `gh_create_*` repo-safety check accepts every registered root's repository; Table 1's `gh_create_pr.sh` row says registered roots are consulted (lines refreshed); Table 2's `setup` row names the stamps `make setup` depends on now (`git-bug` and `ros-manifest`, no `project`) and the Makefile lines of `setup` and `user-tier-install` are refreshed; Table 1's `worktree_create.sh` line citations are refreshed after this change moved them; the ADR-0007 register row names the setup stamps as they are now. Sessions and roots is 121 lines and Registry and adapters 125, past the 60-line prompt: the bullet names the test and the helper that hold the detail, so no detail moves | #295 | 910 |
+| 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
 
 ## Glossary
 
