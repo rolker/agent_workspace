@@ -65,3 +65,13 @@ So the issue needs one scope note, not a rewrite: the fix also removes the depen
 - [ ] Scope note on the issue (comment only): the fix may also stop writing `_agent_workspace` and skip a settings write that changes nothing; it must keep detecting a hook entry from a checkout that has since been moved or deleted. State that "fix before #332 PR 2" is now "fix before #446 pull request B".
 - [ ] Add to the test list: install, CLI strip and reorder, `--check` exits 0, a second install leaves `settings.json` byte-identical with no new backup; a moved-or-deleted-checkout entry is still reported by `--check` and removed by `--force`.
 - [ ] Reword the header comment in `user_tier_install.sh` about the marker in the same pull request.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review finds the issue well-scoped and answered by the design in issue 446's plan, pull request A; its four actions are a test case, a comment-only scope note, a test list and a header reword, none a change of scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The host read the Issue Review entry at 3d512a6e. The plan takes the four actions as requirements: keep reading the marker when present and stop only writing it (the host's choice between the two the review offers, the same as on issue 446's plan), with the moved-or-deleted-checkout test. The scope note is carried in the plan and the pull request text; no comment is posted on the issue for it.
