@@ -45,9 +45,16 @@ Add `repo_pin` to `REQUIRED_VERBS` (13 verbs):
   `repos/<layer>.repos` files, YAML quotes stripped (a `#` starts a comment
   only right after the key or after whitespace, so a comment alone is an
   empty `version:`, refused; a quoted value counts only when nothing but a
-  comment follows its closing quote; a ref still holding a quote or
-  carriage return is refused). An entry with no `version:` key pins nothing, and the verb exits
-  1 saying so rather than reporting the default branch. A repository pinned in
+  comment follows its closing quote and, double-quoted, it holds no
+  backslash escape; a ref still holding a quote, backslash or carriage
+  return is refused). vcstool checks out `str()` of the value PyYAML's
+  `safe_load` gives, so an unquoted value YAML 1.1 types as a bool, null,
+  int or float, or one starting with a YAML indicator character, is refused
+  with a request to quote it (`version: 1.10` is the float 1.1 there;
+  `version: "1.10"` is accepted). The check is an explicit pattern list in
+  the adapter, with no YAML library. An entry with no `version:` key pins
+  nothing, and the verb exits 1 saying so rather than reporting the default
+  branch. A repository pinned in
   more than one layer at different refs needs `--layer`, and without it the
   verb exits 1 naming each layer and ref; the same ref in several layers is
   one answer. The kind comes from git, in the package checkout under the

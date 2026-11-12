@@ -1679,40 +1679,98 @@ test_repo_pin_reads_version_as_yaml() {
     done
 }
 
+test_repo_pin_refuses_yaml_typed_plain_pins() {
+    echo "TEST: repo_pin refuses an unquoted pin YAML reads as a non-string, and accepts it quoted"
+    local sb out rc proj dir f pair val what
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" tag 1.10
+    git -C "$dir" push --quiet origin refs/tags/1.10
+    f="$proj/configs/manifest/repos/l1.repos"
+    # vcstool would check out str(1.1) for an unquoted 1.10.
+    for pair in '1.10|a float' '.inf|a float' '1e+5|' 'yes|a bool' 'Off|a bool' '~|null' \
+        'Null|null' '0x1F|an int' '017|an int' '42|an int' '1_000|an int' \
+        '!tag|a YAML indicator' '&anchor|a YAML indicator' '@x|a YAML indicator'; do
+        val="${pair%%|*}"
+        what="${pair#*|}"
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        if [ -z "$what" ]; then
+            # 1e+5 has no dot: PyYAML 1.1 keeps it a string.
+            assert_eq "[$val]: a string, exit 0" "0" "$rc"
+            continue
+        fi
+        assert_eq "[$val]: exit 1" "1" "$rc"
+        assert_contains "[$val]: names the type" "unquoted, which YAML reads as $what" "$out"
+        assert_contains "[$val]: asks for quotes" "quote it: version: \"$val\"" "$out"
+    done
+    for val in '"1.10"' "'1.10'"; do
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$val]: exit 0" "0" "$rc"
+        assert_eq "[$val]: the tag as written" "1.10	tag" "$out"
+    done
+    # The same ref, quoted in one layer and plain in another: the plain
+    # one is still read as 1.1 there, so it is refused, naming that layer.
+    write_pin_repos "$f" 'pkg_a="1.10"'
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=1.10"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "plain in l2 only: exit 1" "1" "$rc"
+    assert_contains "plain in l2 only: names l2" "in layer 'l2' unquoted" "$out"
+}
+
 # The full input table for the .repos parser that repo_pin, sync and
-# validate share: each "version:" text (after "    version:") and the
-# value _rc_repos_entries emits for it. validate reads only the names, so
-# every row must still emit its name.
+# validate share: each "version:" text (after "    version:"), the value
+# _rc_repos_entries emits for it, and the form --detail adds (quoted or
+# plain; repo_pin refuses a plain value YAML types as a non-string). sync
+# reads the plain "<name>\t<value>" output, which must not change for any
+# row (an unquoted 1.10 stays "1.10" there); validate reads only the
+# names, so every row must still emit its name.
 test_repos_entries_parser_table() {
     echo "TEST: _rc_repos_entries reads each version: form as the table says"
-    local sb f i=0 row input want got
+    local sb f i=0 row input want form got
     sb="$(make_sandbox)"
     f="$sb/table.repos"
     local -a rows=(
-        ' pinned|pinned'
-        ' fix#12|fix#12'
-        ' fix # a comment|fix'
-        ' "fix#12"|fix#12'
-        " 'v1.0'|v1.0"
-        ' "fix#12" # pinned for #12|fix#12'
-        "  'v1.0'   |v1.0"
-        '  # TODO pin|'
-        ' #main|'
-        '|'
-        ' ""|'
-        $' dev\r|dev'
-        $' "dev"\r|dev'
-        $' dev # c\r|dev'
-        ' "fix|"fix'
-        " fix'|fix'"
-        ' fi"x|fi"x'
-        " 'stable''next'|'stable''next'"
-        ' "main" extra|"main" extra'
-        ' "x\"y"|"x\"y"'
-        ' "main"#c|"main"#c'
-        ' "a\" #b"|"a\"'
-        ' "v\x31.0"|"v\x31.0"'
-        " 'a\\b'|a\\b"
+        ' pinned|pinned|plain'
+        ' fix#12|fix#12|plain'
+        ' fix # a comment|fix|plain'
+        ' "fix#12"|fix#12|quoted'
+        " 'v1.0'|v1.0|quoted"
+        ' "fix#12" # pinned for #12|fix#12|quoted'
+        "  'v1.0'   |v1.0|quoted"
+        '  # TODO pin||plain'
+        ' #main||plain'
+        '||plain'
+        ' ""||quoted'
+        $' dev\r|dev|plain'
+        $' "dev"\r|dev|quoted'
+        $' dev # c\r|dev|plain'
+        ' "fix|"fix|plain'
+        " fix'|fix'|plain"
+        ' fi"x|fi"x|plain'
+        " 'stable''next'|'stable''next'|plain"
+        ' "main" extra|"main" extra|plain'
+        ' "x\"y"|"x\"y"|plain'
+        ' "main"#c|"main"#c|plain'
+        ' "a\" #b"|"a\"|plain'
+        ' "v\x31.0"|"v\x31.0"|plain'
+        " 'a\\b'|a\\b|quoted"
+        ' 1.10|1.10|plain'
+        ' "1.10"|1.10|quoted'
+        " '1.10'|1.10|quoted"
+        ' yes|yes|plain'
+        ' ~|~|plain'
+        ' 0x1F|0x1F|plain'
+        ' .inf|.inf|plain'
+        ' !tag|!tag|plain'
+        ' 2024-01-01|2024-01-01|plain'
     )
     {
         echo "repositories:"
@@ -1722,18 +1780,25 @@ test_repos_entries_parser_table() {
         done
         printf '  noversion:\n    type: git\n'
     } > "$f"
-    local parsed
-    parsed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2" --all' \
+    local parsed detailed
+    parsed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2"' \
+        _ "$sb" "$f")"
+    detailed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2" --detail' \
         _ "$sb" "$f")"
     i=0
     for row in "${rows[@]}"; do
         i=$((i + 1))
         input="${row%%|*}"
         want="${row#*|}"
-        got="$(awk -F'\t' -v n="r$i" '$1 == n { print substr($0, length(n) + 2); f = 1 } END { if (!f) print "<missing>" }' <<< "$parsed")"
-        assert_eq "version:${input//$'\r'/\\r} -> [$want]" "$want" "$got"
+        form="${want#*|}"
+        want="${want%|*}"
+        got="$(awk -F'\t' -v n="r$i" '$1 == n { print; f = 1 } END { if (!f) print "<missing>" }' <<< "$parsed")"
+        assert_eq "version:${input//$'\r'/\\r} -> [$want]" "r$i	$want" "$got"
+        got="$(awk -F'\t' -v n="r$i" '$1 == n { print; f = 1 } END { if (!f) print "<missing>" }' <<< "$detailed")"
+        assert_eq "version:${input//$'\r'/\\r} --detail -> [$want] $form" "r$i	$want	$form" "$got"
     done
-    assert_contains "no version: key: name alone with --all" $'\nnoversion' $'\n'"$parsed"
+    assert_not_contains "no version: key: left out without --detail" "noversion" "$parsed"
+    assert_contains "no version: key: form none with --detail" $'\nnoversion\t\tnone' $'\n'"$detailed"
 }
 
 test_sync_reads_quoted_and_commented_pins() {
@@ -2039,6 +2104,7 @@ test_repo_pin_branch_before_tag
 test_repo_pin_strips_quotes
 test_repo_pin_reads_version_as_yaml
 test_repos_entries_parser_table
+test_repo_pin_refuses_yaml_typed_plain_pins
 test_sync_reads_quoted_and_commented_pins
 test_repo_pin_deleted_upstream_branch_is_not_a_branch
 test_repo_pin_offline_uses_local_refs

@@ -220,15 +220,18 @@ _rc_underlay() {
 # "x\"y" or "v\x31.0", which this parser does not decode) is emitted raw,
 # quotes left in, so a caller can refuse a value that holds a quote rather
 # than act on part of it.
-# With --all, an entry with no version: key is emitted too, as "<name>"
-# alone (no tab): vcstool checks such a repository out at its default branch.
+# With --detail, each line is "<name>\t<version>\t<form>": form is
+# "quoted" (a quoted scalar, unquoted above), "plain" (the text as
+# written, which YAML may type as a number, bool or null) or "none" (no
+# version: key, version empty: vcstool checks out the default branch, and
+# such entries are emitted only with --detail).
 _rc_repos_entries() {
-    local repos_file="$1" all=0
-    [ "${2:-}" = "--all" ] && all=1
+    local repos_file="$1" detail=0
+    [ "${2:-}" = "--detail" ] && detail=1
     [ -f "$repos_file" ] || return 0
-    awk -v all="$all" '
+    awk -v detail="$detail" '
         function flush() {
-            if (name != "" && all) printf "%s\n", name
+            if (name != "" && detail) printf "%s\t\tnone\n", name
             name = ""
         }
         /^[[:space:]]*#/ { next }
@@ -256,14 +259,17 @@ _rc_repos_entries() {
                 # A quoted scalar with nothing after it but a comment: its
                 # content, unquoted.
                 v = substr(v, 2, e - 1)
+                form = "quoted"
             } else {
+                form = "plain"
                 # Plain, or a quote that does not close the value cleanly
                 # ("main" extra, x"y, an escaped quote): the raw text,
                 # quotes and all, for the caller to refuse.
                 sub(/[ \t]+#.*$/, "", v)
                 sub(/[ \t]+$/, "", v)
             }
-            printf "%s\t%s\n", name, v
+            if (detail) printf "%s\t%s\t%s\n", name, v, form
+            else printf "%s\t%s\n", name, v
             name = ""
         }
         END { flush() }
@@ -915,6 +921,44 @@ adapter_worktree_env() {
 # remote-tracking ref is not enough. When origin cannot be asked (offline,
 # or the repo is not cloned), the local refs decide and a NOTE on stderr says
 # the answer is unverified. A 40- or 64-hex ref nobody names is a commit.
+# What YAML makes of an unquoted (plain) version: value other than a
+# string, or nothing when it stays a string. vcstool reads .repos with
+# PyYAML's yaml.safe_load (YAML 1.1 implicit resolvers) and checks out
+# str() of the value, so these forms do not round-trip. The patterns are
+# PyYAML's resolvers, written out:
+#   bool   yes/no/true/false/on/off, each lower, Capitalised or UPPER
+#   null   ~, null/Null/NULL (an empty value is refused before this)
+#   int    [-+]0b binary, [-+]0 octal, [-+] decimal, [-+]0x hex and
+#          [-+] sexagesimal (1:30), all allowing "_"
+#   float  [-+]1.5 / 1. / 1.5e+3, .5, sexagesimal 1:30.5, [-+].inf, .nan
+#   indicator  a first character YAML reads as syntax, not text:
+#          ! & * | > % @ ` [ ] { } ,  (a tag, anchor, alias, block or flow
+#          scalar, directive, reserved, or flow collection)
+# A timestamp with a time part also changes under str(), but it holds a
+# ":" no git ref can, so it is never a branch anyway; a date alone
+# (2024-01-01) round-trips. No YAML library: the shell path stays plain.
+_rc_yaml_plain_type() {
+    local v="$1"
+    case "$v" in
+        [\!\&\*\|\>%@\`\[\]\{\},]*) echo "a YAML indicator ('${v:0:1}' starts it)"; return 0 ;;
+    esac
+    if [[ "$v" =~ ^(yes|Yes|YES|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$ ]]; then
+        echo "a bool"
+    elif [[ "$v" =~ ^(~|null|Null|NULL)$ ]]; then
+        echo "null"
+    elif [[ "$v" =~ ^[-+]?0b[01_]+$ ]] || [[ "$v" =~ ^[-+]?0[0-7_]+$ ]] \
+        || [[ "$v" =~ ^[-+]?(0|[1-9][0-9_]*)$ ]] || [[ "$v" =~ ^[-+]?0x[0-9a-fA-F_]+$ ]] \
+        || [[ "$v" =~ ^[-+]?[1-9][0-9_]*(:[0-5]?[0-9])+$ ]]; then
+        echo "an int"
+    elif [[ "$v" =~ ^[-+]?[0-9][0-9_]*\.[0-9_]*([eE][-+][0-9]+)?$ ]] \
+        || [[ "$v" =~ ^\.[0-9_]+([eE][-+][0-9]+)?$ ]] \
+        || [[ "$v" =~ ^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+\.[0-9_]*$ ]] \
+        || [[ "$v" =~ ^[-+]?\.(inf|Inf|INF)$ ]] || [[ "$v" =~ ^\.(nan|NaN|NAN)$ ]]; then
+        echo "a float"
+    fi
+    return 0
+}
+
 _rc_pin_kind() {
     local dir="$1" ref="$2" out kind="" toplevel dir_real
     local is_hex=false
@@ -1003,8 +1047,8 @@ adapter_repo_pin() {
             return 1
         fi
     fi
-    local mdir l entry name version
-    local -a hits=() known=()
+    local mdir l entry name version form
+    local -a hits=() known=() forms=()
     # Stands for an entry with no version: key (vcstool then checks out
     # origin's default branch); no ref can hold this byte.
     local nov=$'\x1f'
@@ -1014,11 +1058,16 @@ adapter_repo_pin() {
         while IFS= read -r entry; do
             [ -z "$entry" ] && continue
             name="${entry%%$'\t'*}"
+            form="${entry##*$'\t'}"
             version="${entry#*$'\t'}"
-            [[ "$entry" == *$'\t'* ]] || version="$nov"
+            version="${version%$'\t'*}"
+            [ "$form" = none ] && version="$nov"
             known+=("$name")
-            [ "$name" = "$repo" ] && hits+=("$l"$'\t'"$version")
-        done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --all)
+            if [ "$name" = "$repo" ]; then
+                hits+=("$l"$'\t'"$version")
+                forms+=("$form")
+            fi
+        done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --detail)
     done < <(_rc_layers)
     local where="the manifest"
     [ -n "$layer" ] && where="layer '$layer' of the manifest"
@@ -1064,6 +1113,18 @@ adapter_repo_pin() {
         echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref (a stray quote, a backslash escape or a carriage return): '$ref'" >&2
         return 1
     fi
+    # vcstool checks out str() of the YAML value, so an unquoted pin YAML
+    # types as something other than a string is not the ref written
+    # (version: 1.10 is the float 1.1). Every layer pinning it is checked.
+    local i ytype
+    for i in "${!hits[@]}"; do
+        [ "${forms[$i]}" = plain ] || continue
+        ytype="$(_rc_yaml_plain_type "$ref")"
+        if [ -n "$ytype" ]; then
+            echo "ERROR: repo_pin: '$repo' has version: $ref in layer '${hits[$i]%%$'\t'*}' unquoted, which YAML reads as $ytype, so vcstool would not check out '$ref'; quote it: version: \"$ref\"" >&2
+            return 1
+        fi
+    done
     # The same ref pinned in several layers: judge it in the first of them
     # whose checkout is cloned, not merely the first, so a layer not set up
     # yet does not turn a known branch into an unverified unknown.
