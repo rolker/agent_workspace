@@ -79,9 +79,10 @@ error that names the manifest and the key:
   and `_`, starting with a letter. A name is at most 64 characters. Two names of one kind that
   differ only in case (`core` and `Core`) are refused, within a manifest and across the
   `extends` chain: on a case-insensitive disk one would overwrite the other.
-- `url`, `ref`, each per-distro `ref`, `type`, and every `extends` field must be strings. Quote
-  a ref that YAML would read as something else: `ref: '1.10'` (unquoted, it is the number 1.1),
-  `'yes'`, `'2024-01-01'`. A per-distro `absent` must be `true` or `false`.
+- `url`, `ref`, each per-distro `ref`, `type`, a package's `repo`, and every `extends` field
+  must be strings. Quote a ref that YAML would read as something else: `ref: '1.10'`
+  (unquoted, it is the number 1.1), `'yes'`, `'2024-01-01'`. A per-distro `absent` must be
+  `true` or `false`.
 - A `url` (a repository's, or `extends.url`) must have one of these shapes, matched whole;
   anything else is refused, and the message lists the shapes without printing the URL:
   - `https://<host>[:port]/<path>`
@@ -102,7 +103,8 @@ error that names the manifest and the key:
   or paragraph separator, an invisible or bidirectional formatting character (zero-width space,
   byte-order mark, right-to-left override) or a space other than the ASCII one.
 - YAML aliases (`*name`) and repeated mapping keys are refused. A YAML error is reported by line
-  and column only, never with the document's text.
+  and column only, never with the document's text; a value YAML cannot build (`!!int 0xz`, an
+  unquoted `2024-13-45`) is reported as invalid YAML with no position.
 
 As a second line, `resolve` refuses to write a line that holds any of those characters or a file
 that would land outside `--out`, and writes nothing in that case. The `extends` clone states
