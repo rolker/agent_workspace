@@ -1780,6 +1780,31 @@ test_repo_pin_not_found() {
     assert_contains "names the usage" "repo_pin requires a repository name" "$out"
 }
 
+test_repo_pin_entry_without_version() {
+    echo "TEST: repo_pin names an entry with no version: key, rather than calling it not pinned"
+    local sb out rc proj f
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    f="$proj/configs/manifest/repos/l1.repos"
+    printf 'repositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n  pkg_b:\n    type: git\n    version: main\n' > "$f"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "no version: exit 1" "1" "$rc"
+    assert_contains "no version: its own message" "'pkg_a' has no version: key in layer 'l1'" "$out"
+    assert_not_contains "no version: not 'not pinned'" "no repository 'pkg_a'" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_ghost 2>&1)" || rc=$?
+    assert_eq "unknown name: exit 1" "1" "$rc"
+    assert_contains "the versionless entry is a known repo" "known: pkg_a pkg_b" "$out"
+    # Pinned in one layer, unpinned in another: the refs differ.
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=main"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "pinned in one layer only: exit 1" "1" "$rc"
+    assert_contains "names both" "l1 (no version:), l2 (main); pass --layer <l>" "$out"
+}
+
 test_repo_pin_two_layers() {
     echo "TEST: repo_pin for a repo pinned in two layers: same ref answers, different refs need --layer"
     local sb out rc proj
@@ -1896,6 +1921,7 @@ test_repo_pin_offline_uses_local_refs
 test_repo_pin_hanging_origin_is_bounded
 test_repo_pin_not_cloned
 test_repo_pin_not_found
+test_repo_pin_entry_without_version
 test_repo_pin_two_layers
 
 echo ""

@@ -985,6 +985,9 @@ adapter_repo_pin() {
     fi
     local mdir l entry name version
     local -a hits=() known=()
+    # Stands for an entry with no version: key (vcstool then checks out
+    # origin's default branch); no ref can hold this byte.
+    local nov=$'\x1f'
     mdir="$(_rc_manifest_dir)"
     while IFS= read -r l; do
         [ -n "$layer" ] && [ "$l" != "$layer" ] && continue
@@ -992,13 +995,14 @@ adapter_repo_pin() {
             [ -z "$entry" ] && continue
             name="${entry%%$'\t'*}"
             version="${entry#*$'\t'}"
+            [[ "$entry" == *$'\t'* ]] || version="$nov"
             # YAML quoting around the ref is not part of it.
             if [[ "$version" =~ ^\"(.*)\"$ ]] || [[ "$version" =~ ^\'(.*)\'$ ]]; then
                 version="${BASH_REMATCH[1]}"
             fi
             known+=("$name")
             [ "$name" = "$repo" ] && hits+=("$l"$'\t'"$version")
-        done < <(_rc_repos_entries "$mdir/repos/${l}.repos")
+        done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --all)
     done < <(_rc_layers)
     local where="the manifest"
     [ -n "$layer" ] && where="layer '$layer' of the manifest"
@@ -1019,11 +1023,17 @@ adapter_repo_pin() {
         fi
     done
     if [ "$differ" = true ]; then
-        local named=""
+        local named="" v
         for hit in "${hits[@]}"; do
-            named="${named:+$named, }${hit%%$'\t'*} (${hit#*$'\t'})"
+            v="${hit#*$'\t'}"
+            [ "$v" = "$nov" ] && v="no version:"
+            named="${named:+$named, }${hit%%$'\t'*} ($v)"
         done
         echo "ERROR: repo_pin: '$repo' is pinned in more than one layer at different refs: $named; pass --layer <l>" >&2
+        return 1
+    fi
+    if [ "$ref" = "$nov" ]; then
+        echo "ERROR: repo_pin: '$repo' has no version: key in layer '$hit_layer', so vcstool checks out origin's default branch; repo_pin reports only a pinned ref (add a version: to pin one)" >&2
         return 1
     fi
     if [ -z "$ref" ]; then
