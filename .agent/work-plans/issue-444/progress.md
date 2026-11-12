@@ -194,3 +194,16 @@ For pull request 2 and the reviewers:
 - Pull request 2 data, gathered under load: test_cross_model_review.sh took 156 s and test_project_integration_audit.sh 153 s at `-j 4`, so the two slowest suites are close.
 - Runner sections, old line ranges on main and new ones on this branch (step 11): arguments 114-131 -> 172-215; job count (new) 216-254; deletions 132-166 -> 255-290; preflight 171-249 -> 294-372; selection 250-308 -> 373-436; guard 309-381 -> 437-555; start order (new) 556-583; parallel run (new) 584-754; one-job loop 382-419 -> 755-798; summary 420-428 -> 799-807.
 - The earlier pass also added one line per finished suite (`--- <suite> passed in Ns (k of n done)`) to a parallel run's live output. The plan does not name these lines; they are printed by the runner, not by a suite.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: implement
+
+"q12 do it now"
+
+Q12 as put to him: the implement entry is partial because 12 of the plan's 18 independence runs were made (the host interrupted the batch at 14:01, wrongly taking it for stalled); finish the remaining six now (three at two jobs, one at eight, two at four jobs under load; about 40 minutes on a quiet machine) or hold until another drive's pull request is published. The host recommended hold; he chose now. The retry makes those six runs and, since the sitrep interrupt test was changed after the shuffled runs (90ad6aa3), repeats enough shuffled runs to show the fix holds. The code is otherwise complete.
