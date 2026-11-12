@@ -273,3 +273,13 @@ A is right and buildable from the plan; the acceptance holds by the runs above o
 - [ ] `registry_repo_slugs "$_WORKSPACE_ROOT"`, no common-dir resolution; test with the sandbox main checkout's copy; return 0 on parse errors (finding 3).
 - [ ] `--set build=none --set test=none` on the demo registration in the acceptance and test (finding 4).
 - [ ] Reword `dashboard.sh` 163 and 345 to the `register_project.sh` pointer and assert it in (c) (finding 5).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review's verdict is ready for pull request A, verified in a scratch clone, with five should-fix notes and one accuracy note the implement pass can carry; none changes what is built)
+**After**: plan
+**Decision**: proceed
+
+The host read the Plan Review entry at 3ad2d4f4. This implement pass builds pull request A only ("a fresh clone works with no project"). The review's findings 1 to 6 are requirements equal to the plan, and where they differ the review wins. The AGENTS.md commit is not made in this pass: the owner has been shown the four passages and has not yet answered. Pull request B and C's section gets its own plan review before it is implemented.
