@@ -12,11 +12,13 @@
 #   ./configure_git_identity.sh --detect
 #   ./configure_git_identity.sh "Copilot CLI Agent" "<you>+copilot-cli@<domain>"
 #
-# --agent and --detect derive the email from the checkout's git user.email
-# (<local>+<framework-suffix>@<domain>; see framework_config.sh). The address
-# written here keeps the same base, because the +suffix is removed when the
-# base is derived again. An unset or malformed git email fails before any
-# config is written.
+# --agent and --detect derive the email per repository written to, from that
+# repository's own git user.email (<local>+<framework-suffix>@<domain>; see
+# framework_config.sh): a clone with its own address keeps it as its base.
+# The address written keeps the same base, because the +suffix is removed
+# when the base is derived again. Every address is derived before anything is
+# written: an unset or malformed git email in any of the repositories fails
+# with nothing written.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -104,7 +106,7 @@ if [ "$1" == "--agent" ]; then
         echo "Supported frameworks: ${!FRAMEWORK_NAMES[*]}"
         exit 1
     fi
-    AGENT_EMAIL="$(framework_email "$FRAMEWORK")" || exit 1
+    FW_KEY="$FRAMEWORK"
 
 elif [ "$1" == "--detect" ]; then
     DETECTED=$(detect_framework)
@@ -122,47 +124,66 @@ elif [ "$1" == "--detect" ]; then
         echo "Please use --agent <framework> or provide name/email manually"
         exit 1
     fi
-    AGENT_EMAIL="$(framework_email "$DETECTED")" || exit 1
+    FW_KEY="$DETECTED"
 
 elif [ $# -eq 2 ]; then
     # Manual name and email
     AGENT_NAME="$1"
     AGENT_EMAIL="$2"
+    FW_KEY=""
 else
     echo "Error: Invalid arguments"
     show_usage
     exit 1
 fi
 
-echo "Configuring git identity for: $AGENT_NAME <$AGENT_EMAIL>"
+# The repositories written to: the workspace (the current directory) and
+# every repository under project/.
+REPOS=(".")
+if [ -d "project" ]; then
+    while IFS= read -r git_dir; do
+        REPOS+=("$(dirname "$git_dir")")
+    done < <(find project -type d -name ".git" -not -path "*/worktrees/*")
+fi
+
+# Derive each repository's address before writing any (manual mode uses the
+# given address everywhere).
+declare -A REPO_EMAILS=()
+for repo_dir in "${REPOS[@]}"; do
+    if [ -n "$FW_KEY" ]; then
+        if ! REPO_EMAILS["$repo_dir"]="$(cd "$repo_dir" && framework_email "$FW_KEY")"; then
+            echo "Error: cannot derive the agent email for $repo_dir; nothing was written." >&2
+            exit 1
+        fi
+    else
+        REPO_EMAILS["$repo_dir"]="$AGENT_EMAIL"
+    fi
+done
+
+echo "Configuring git identity for: $AGENT_NAME"
 echo ""
 
 # Configure workspace repository
 echo "Configuring workspace repository..."
 git config user.name "$AGENT_NAME"
-git config user.email "$AGENT_EMAIL"
-echo "  ✓ Workspace repository configured"
+git config user.email "${REPO_EMAILS[.]}"
+echo "  ✓ Workspace repository configured <${REPO_EMAILS[.]}>"
 
 # Configure all repositories in project/
-
 if [ -d "project" ]; then
     REPO_COUNT=0
-    # Use process substitution with find to be robust against weird filenames
-    # and avoid subshell exit issues with set -e
-    while IFS= read -r git_dir; do
-        repo_dir="$(dirname "$git_dir")"
-        echo "Configuring $repo_dir..."
+    for repo_dir in "${REPOS[@]}"; do
+        [ "$repo_dir" = "." ] && continue
+        echo "Configuring $repo_dir <${REPO_EMAILS[$repo_dir]}>..."
 
         # Capture failure but don't crash whole script immediately if one fails
         if ! git -C "$repo_dir" config user.name "$AGENT_NAME" || \
-           ! git -C "$repo_dir" config user.email "$AGENT_EMAIL"; then
+           ! git -C "$repo_dir" config user.email "${REPO_EMAILS[$repo_dir]}"; then
             echo "  ✗ Failed to configure $repo_dir" >&2
-            # Decide if we want to fail hard or continue.
-            # Continuing sees more errors.
             continue
         fi
         ((REPO_COUNT++))
-    done < <(find project -type d -name ".git" -not -path "*/worktrees/*")
+    done
 
     if [ $REPO_COUNT -gt 0 ]; then
         echo "  ✓ Configured $REPO_COUNT repositories in project/"
