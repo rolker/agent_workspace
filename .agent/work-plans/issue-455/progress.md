@@ -387,3 +387,13 @@ No round-1 or round-2 regression found.
 
 ### Findings
 - [ ] (suggestion) With `user.useConfigOnly=true` and no `user.name`, `git var` fails, and the hook prints "Author email: (not set) / Committer email: (not set)" while the email is set. Git would refuse the commit anyway, but the message points at the wrong cause. Pass through `git var`'s stderr, or say the name is missing — `.agent/scripts/identity_base.py:131`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3, no must-fix; one suggestion goes to triage)
+**After**: publish
+**Decision**: publish
+
+Round 3 approved. One suggestion stays open for triage: with user.useConfigOnly=true and no user.name, the hook's message says the email is not set when the name is what is missing.
