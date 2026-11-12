@@ -258,3 +258,20 @@ Both must-fixes and all eight suggestions are resolved as worded. The revised ru
 **Decision**: proceed
 
 Host read the second Plan Review (ready). Carried to the implementer: the comment on issue 269's parked strict-mode item is drafted as text for the host to put to the owner, not posted; the rule judges the checkout where the commit runs, plus the physical one when a symlink makes them differ; the static test says exactly how it finds a committing writer; the package-manifest shortcut stays out of the shared helper. Implementation is NOT dispatched yet: it starts only after issue 429's first pull request has merged and main is merged into this branch, as the plan's step 1 says.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 11:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-437 at `d9c473a5`
+
+This pass finished the implementation stopped on 2026-11-10. It checked the three earlier commits against the plan step by step and found nothing missing or wrong, so it added no code:
+- Step 1: issue 429's first pull request (PR 445) is merged and main is merged into this branch (`3dafaec6`).
+- Steps 2 to 6 (`cf199ef2`): `records_path` and `records_dir` take `--write`. The shared helper `_wpd_checkout_is_issue` refuses the default branch. On `feature/issue-M` the branch decides; for a detached HEAD or another branch name the folder `issue-*-N` decides. It has no manifest shortcut, and resolver rule 2b calls it. The write rule judges the checkout where the commit runs, and also the physical one when a symlink makes them differ. A refusal names the issue's worktree or the `worktree_create.sh` command that creates it. `progress_append.sh`, compatibility `persist` and `check` pass `--write`. Strict `persist` keeps `progress_append.sh`'s exit 4. The notice and the headers are updated.
+- Step 7 (`a06e79c0`, plus the test edits in `cf199ef2`): new suite `test_records_write_gate.sh` (45 assertions) with every refusal and allowed case the plan lists, including issue 20 in a folder on branch `feature/issue-21` and a symlinked records folder. Its static test is pinned down in the suite's comment, and planted scripts prove that it catches a writer without the flag. `test_progress_append` now uses a `feature/issue-7` fixture, and its other-issue cases switch branch. The four intended flips are made.
+- Step 8 (`d9c473a5`): the design.md Records bullet and a change-log row (cited line numbers checked against the current tree), the three script_reference rows, and the four skill passages.
+
+Checks: the main checkout's venv `pre-commit run --files $(git diff --name-only main...HEAD)`, with no SKIP, ran all 46 suites (the branch touches the shared helper `_resolve_work_plans_dir.sh`). The first run failed one assertion in `test_sitrep_checks` ("(skill 1) TERM: rc=143 took=0s alive=yes"), a kill-timing case. That suite references none of the changed files, and it passed 210 of 210 twice when run alone. The same command run again on the unchanged tree passed every hook.
+
+Draft for the host to put to the owner, not posted: a comment on issue 269's parked strict-mode item (B2):
+> Issue 437 makes compatibility mode refuse exactly like strict mode whenever the checkout is not the issue's own (a main checkout on its default branch, or another issue's worktree). The "would have aborted" notice is now left for two cases only: `WORKTREE_ISSUE` names another issue while the checkout is right, or `WORK_PLANS_DIR_OVERRIDE` is set. So when the notices stop, the reason is that these cases now refuse, not that runs got cleaner. Strict mode is not flipped by 437, and B2 stays the owner's call. To undo: drop `--write` from the compatibility branch of `review_progress.sh` `_persist_impl`.
