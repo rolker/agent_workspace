@@ -1174,3 +1174,63 @@ All three suggestions were re-read against the code and reproduced; each is a fi
 **Decision**: address
 
 Fix all three in pull request 456: sync's pull path on an empty pin with a detached checkout; a backslash inside a double-quoted value; repo_pin refusing an unquoted value that YAML types as bool, null or number, or that starts with a YAML indicator, asking for it to be quoted.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 2 of 3)
+
+**PR**: #456 at `942a442c`
+**Addressed**: Integrated Review at `d0eb4a84` (2026-11-12 18:43 -05:00)
+**Commits**: d4a7750b, 7127cc81, 942a442c
+
+### Actions
+- [x] (should-fix) `adapter_sync` pulls only when `[ -n "$branch" ] && [ "$branch" = "$version" ]`, so a detached checkout with an empty pin is fetched rather than sent down the pull path. Test: `test_sync_reads_quoted_and_commented_pins` extended (detached checkout, pins `  # TODO pin` and `""`: the "fetching" line, no "pull failed", and origin's new commit is in `origin/fakefox`) — `.agent/project_types/ros2_colcon/adapter.sh:adapter_sync`
+- [x] (should-fix) A double-quoted value holding a backslash is emitted raw; the `repo_pin` guard also refuses `\`, and its message names "a stray quote, a backslash escape or a carriage return". Tests: parser table rows, and `test_repo_pin_reads_version_as_yaml` refusals for `"a\" #b"`, `"v\x31.0"`, `'a\b'` — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`, `adapter_repo_pin`
+- [x] (should-fix) `repo_pin` refuses an unquoted value that PyYAML `safe_load` (YAML 1.1) types as a bool, null, int or float, or that starts with an indicator character (`! & * | > % @` backtick `[ ] { } ,`). The message asks for quotes, e.g. `quote it: version: "1.10"`. Every layer pinning the repo is checked, so a ref that is quoted in l1 but plain in l2 is refused, naming l2. `_rc_yaml_plain_type` is an explicit pattern list whose comment names the forms. A dev-time comparison against PyYAML 6.0.3 on 70 samples agreed on every value. The differences were only the documented ones: indicators, which PyYAML rejects or reads as a non-string, and a date alone, which round-trips. Timestamps with a time part are not covered: they hold a `:`, which no git ref can. To tell quoted from plain, `_rc_repos_entries --all` became `--detail`, which adds a `quoted`/`plain`/`none` field; the default output that sync and validate read is unchanged, so sync still compares an unquoted `1.10` as `1.10`. Tests: `test_repo_pin_refuses_yaml_typed_plain_pins` (14 values, quoted `"1.10"` and `'1.10'` accepted as `1.10 tag`, mixed layers), parser table. ADR-0019 updated — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_type`, `adapter_repo_pin`
+
+### Parser input table (`test_repos_entries_parser_table`, both outputs checked)
+Text after `    version:` → value (default output, read by sync), the form `--detail` adds, and the `repo_pin` result:
+
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` pinned` | `pinned` | plain | ref |
+| ` fix#12` | `fix#12` | plain | ref |
+| ` fix # a comment` | `fix` | plain | ref |
+| ` "fix#12"` | `fix#12` | quoted | ref |
+| ` 'v1.0'` | `v1.0` | quoted | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | quoted | ref |
+| `  'v1.0'   ` | `v1.0` | quoted | ref |
+| `  # TODO pin` | empty | plain | refused, empty |
+| ` #main` | empty | plain | refused, empty |
+| (nothing) | empty | plain | refused, empty |
+| ` ""` | empty | quoted | refused, empty |
+| ` dev` + CRLF | `dev` | plain | ref |
+| ` "dev"` + CRLF | `dev` | quoted | ref |
+| ` dev # c` + CRLF | `dev` | plain | ref |
+| ` "fix` | `"fix` | plain | refused, quote |
+| ` fix'` | `fix'` | plain | refused, quote |
+| ` fi"x` | `fi"x` | plain | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | plain | refused, quote |
+| ` "main" extra` | `"main" extra` | plain | refused, quote |
+| ` "x\"y"` | `"x\"y"` | plain | refused, quote |
+| ` "main"#c` | `"main"#c` | plain | refused, quote |
+| ` "a\" #b"` (new) | `"a\"` | plain | refused, quote/backslash |
+| ` "v\x31.0"` (new) | `"v\x31.0"` | plain | refused, quote/backslash |
+| ` 'a\b'` (new) | `a\b` | quoted | refused, backslash |
+| ` 1.10` (new) | `1.10` | plain | refused, a float |
+| ` "1.10"` (new) | `1.10` | quoted | ref |
+| ` '1.10'` (new) | `1.10` | quoted | ref |
+| ` yes` (new) | `yes` | plain | refused, a bool |
+| ` ~` (new) | `~` | plain | refused, null |
+| ` 0x1F` (new) | `0x1F` | plain | refused, an int |
+| ` .inf` (new) | `.inf` | plain | refused, a float |
+| ` !tag` (new) | `!tag` | plain | refused, indicator |
+| ` 2024-01-01` (new) | `2024-01-01` | plain | ref (a date round-trips) |
+| no `version:` key | (left out) | none (only with `--detail`) | own message |
+
+`adapter_validate` reads only names, and every row emits its name. `adapter_sync` reads the default value column, which this pass leaves unchanged for every earlier row; its own handling of an unquoted numeric-looking pin is unchanged.
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
