@@ -230,3 +230,13 @@ Verified: `bash .agent/scripts/tests/test_cross_model_review.sh` 891 passed, 0 f
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 14:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 pre-push review approved with no findings; Ship: recommended)
+**After**: publish
+**Decision**: publish
+
+Host answer under /orchestrator's checkpoint table. Read: the Local Review (Pre-Push) entry (7c641373), round 1, verdict approved, ship=recommended, must-fix 0, suggestions 0. Suite 891 passed, 0 failed on this machine under load; the adversarial reviewer put back the behaviour the #363 fix removed in a scratch copy and four cases failed as intended. Outside reviewers: Gemini (agy 1.5.7) ran, no issues; Codex (0.167.2) ran, no issues; both within one 38.5 s run, so a light read. The pull request description states that the "handler returned inside Ns" assertions were removed and the matrix went from 22 cases to 14, as the review asks. Still open and left to CI: the GNU coreutils run (the ubuntu-latest Lint job).
