@@ -300,3 +300,13 @@ Dismissed:
 - Adversarial "the `--force` remedy also removes other checkouts' commands": `--check` reports those on lines of their own, and from the owning checkout `--force` takes nothing over.
 - Adversarial "install writes the root file and the link before settings.json": either order leaves a window; `--check` reports it and a re-run converges; the backup-first order asked for in round 1 holds.
 - Adversarial "`--uninstall` adds `hooks: {}` and drops empty events": predates the branch, and the key holds nothing.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; all five round 2 findings are closed and each new failure test was checked by reading to fail against the round 2 script)
+**After**: publish
+**Decision**: publish
+
+The host read the round 3 Local Review (Pre-Push) entry at 6cf7a38d: verdict approved, Ship recommended, one open suggestion (a dead command is attributed to the installer in an entry carrying any marker, not only its own checkout's; require the command's directory to equal the marker). That suggestion is about what a plain install may remove from the owner's settings file, so it is not left as a suggestion: its box stays open, triage raises it, and it is fixed on the pull request before the merge decision, together with a test for the symlinked-settings failed-write path the reviewer noted is untested.
