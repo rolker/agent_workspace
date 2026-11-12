@@ -308,3 +308,40 @@ Verification: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files <th
 On the owner's first machine (project/ symlink plus registered projects): `make validate` no longer checks or prints `project/` (a broken symlink there is no longer reported; registered entries are still checked); `make setup` no longer runs the project step (its stale `project.done` stamp is harmless) and prints only the user-tier pointer line; `make help` text changed; the `gh_create_*` accepted set grows by the registered roots' slugs. Sync and dashboard messages change only in branches taken without `project/`.
 
 Out of scope, reported not fixed: none found beyond the hub-guard interaction above.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 13:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-295 at `cecf7709`
+**Base**: main
+**Depth**: Standard (reason: Makefile and docs/design.md are governance files; 21 files, +1095 -102, most of it tests and the timeline)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Pull request A only ("a fresh clone works with no project"), held against the plan's A section and the second Plan Review's findings 1 to 6. The AGENTS.md rewording is left out on purpose and is not a finding.
+
+### Findings
+- [ ] (must-fix) `registry_repo_slugs` walks up to an enclosing repository when a registered root is not itself a git checkout, so that repository's slug is accepted. On the first machine both ros2_colcon roots under `projects/` print `rolker/agent_workspace` (run with the main checkout's registry). The header says such an entry "prints nothing". Fix: skip the entry unless `git -C "$path" rev-parse --show-toplevel` equals the root's resolved path. Add a test with a root inside another repository; the `nogit` case passes only because its sandbox is outside any repository. Cross-confirmed by Gemini and the Claude adversarial pass. — `.agent/scripts/_project_registry.sh:637-646`
+- [ ] (must-fix) Inside a workspace worktree, `make validate` and `make sync` now say "no project registered (register one with …)" and "No project was synced (none registered; register one: …)". On the first machine, which has three projects registered, both are false (run in this worktree). `sync.py` and `validate_workspace.py` read the registry from `get_workspace_root()`, which is the worktree, and `.agent/projects.local` is gitignored there. `make setup` (`$(WS_ROOT)`) and `dashboard.sh` (`MAIN_ROOT`) read the main checkout, so the three targets disagree inside one worktree. Pick one: read the main checkout's registry for these messages (git common dir, as the Makefile does), or name the file read ("none registered in <path>"). — `.agent/project_types/single_project/sync.py:188-199`, `.agent/scripts/validate_workspace.py:152-153`
+- [ ] (suggestion) Two pointers still send a user to `make setup`, which no longer configures a project after this change: `adapter repos` prints "project/ is not configured (run: make setup)", and `worktree_create.sh --type project` with nothing registered prints "Run: make setup (or register …)". The plan review left both for B, but A is what makes them wrong. The fix is two strings plus the `test_adapter.sh:499` assertion. — `.agent/project_types/single_project/adapter.sh:230`, `.agent/scripts/worktree_create.sh:491-492`
+- [ ] (suggestion) The `make help` line for sync says "Fetch/pull workspace + registered projects repos". `make sync` actually syncs the workspace and at most one project: the one selected, or the legacy `project/`. Say "workspace + the selected project (PROJECT=<name>)". — `Makefile:76`
+- [ ] (suggestion) The merge resolution keeps the rows in the right order: main's two #437 rows, then this branch's. But this branch's row still gives the document as 902 lines. After the merge it is 909, and the rule is "the line count of the document after the change". — `docs/design.md:855`
+- [ ] (suggestion) No test covers the first machine's shape, a legacy `project/` checkout plus registered roots with the same slug, which the `awk` dedup handles. The plan's validate case for a registry line missing its path was not carried over when the cases moved into `test_project_registry.sh`. — `.agent/scripts/tests/test_gh_create_pr.sh`, `.agent/scripts/tests/test_project_registry.sh`
+
+### Decisions for veto (implement pass)
+1. `REGISTER_PROJECT_POINTER` split in two: accept for this pull request. The selector deliberately over-approximates: any path token counts as a read. A message string is a false positive, so hiding it loses no test relevance. The comment says why, and the printed text is unchanged. Teaching the selector an exception means touching a full-run trigger and the hook-scope test, which issue 444 also edits, so that is bigger. B's `adapter` refusal will meet the same guard, so B should carry a selector annotation (or a follow-up issue should) rather than repeat the split.
+2. Setup prints the "No project is registered" line only when the registry is empty: accept. It avoids a false line on the first machine.
+3. Sync says "none selected; registered: …": accept. It is true from the main checkout. From a worktree, see must-fix 2.
+4. A malformed registry gets its own dashboard status line: accept. `check_fail` already counts it.
+5. The design sentence in Now: accept. It describes built behaviour.
+
+### Legacy machine
+On the first machine the accepted repository set of `gh_create_*` does not grow. Run with its registry, it is the workspace slug plus the `project/` slug, because the registered single_project root is the same repository. With the walk-up fixed, the ros2_colcon roots add nothing. In general, a cwd must first pass `registry_require_root`, and the slug is the cwd's own `origin`. A pull request or issue can therefore only go to a registered repository from a clone of that repository: the same class as the old `project/` rule. `make validate` no longer checks `project/`, but its target is a registered root there and is still checked by its adapter.
+
+### Outside reviewers
+- Gemini: ran (2 KB, about one minute). Its must-fix (resolve the git common dir as the plan said) is a false positive: Plan Review finding 3 dropped that resolution, because the user-tier guard refuses a worktree copy first. Its walk-up note is must-fix 1. Its test-file note is the accepted plan-review finding 2.
+- Codex: ran (1 KB, short, read-only). It raised the same common-dir point as Gemini, the same false positive.
+- Claude adversarial: ran. It confirmed must-fix 1 and 2 and suggestions 1 and 4, and ran the touched suites with 0 failed.
