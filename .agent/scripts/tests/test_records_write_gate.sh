@@ -333,7 +333,9 @@ check "the reads changed nothing" "$([[ "$before" == "$(state)" ]]; echo $?)"
 #     quoted "${array[@]}" expansion, --flag / -f[=value]; so a
 #     `rev-parse "...^{commit}"` is no commit), and
 #   - a `git [<options>] commit` or `git [<options>] add` in it names a
-#     work-plans path in its pathspec (the words after ` -- `): a literal
+#     work-plans path in its pathspec (the words after ` -- `, or with no
+#     ` -- ` every word after the subcommand, its options and their
+#     arguments included, up to the end of the command): a literal
 #     containing `.agent/work-plans`, or $VAR / ${VAR} where the script
 #     assigns VAR (NAME=..., local or not) a value containing
 #     `.agent/work-plans`.
@@ -358,10 +360,10 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.sh"))):
         for m in GIT.finditer(l):
             if m.group(2) == "commit":
                 commits = True
-            rest = m.group(3)
-            if " -- " not in rest + " ":
-                continue
-            spec = re.split(r";|&&|\|\||\)|\bthen\b", (rest + " ").split(" -- ", 1)[1])[0]
+            rest = m.group(3) + " "
+            if " -- " in rest:
+                rest = rest.split(" -- ", 1)[1]
+            spec = re.split(r";|&&|\|\||\)|\bthen\b", rest)[0]
             if WP in spec or any(v in wpvars for v in VAR.findall(spec)):
                 names_wp = True
     if commits and names_wp:
@@ -376,7 +378,8 @@ check "each of them states --write" "$([[ -n "$real" && "$(cut -f2 <<< "$real" |
 
 # The detector on planted scripts: it must catch a writer without the flag
 # (a variable pathspec on a continued line; a staged path committed without
-# a pathspec), count one with the flag, and pass by reads and ^{commit}.
+# a pathspec; a pathspec with no ` -- `), count one with the flag, and pass
+# by reads and ^{commit}.
 PL="$SANDBOX/planted"
 mkdir -p "$PL"
 cat > "$PL/rogue.sh" <<'EOF'
@@ -390,6 +393,12 @@ cat > "$PL/rogue_add.sh" <<'EOF'
 #!/bin/bash
 git add -- ".agent/work-plans/issue-$1/progress.md"
 git commit -m "progress: x"
+EOF
+cat > "$PL/rogue_nodash.sh" <<'EOF'
+#!/bin/bash
+REL=".agent/work-plans/issue-$1/progress.md"
+git add "$REL"
+git commit -m x "$REL"
 EOF
 cat > "$PL/flagged.sh" <<'EOF'
 #!/bin/bash
@@ -407,7 +416,7 @@ git log -1 --format=%h -- "$P"
 EOF
 planted=$(find_writers "$PL")
 check "the detector catches the planted writers and only them" \
-    "$([[ "$planted" == $'flagged.sh\t1\nrogue.sh\t0\nrogue_add.sh\t0' ]]; echo $?)" "$planted"
+    "$([[ "$planted" == $'flagged.sh\t1\nrogue.sh\t0\nrogue_add.sh\t0\nrogue_nodash.sh\t0' ]]; echo $?)" "$planted"
 
 echo
 echo "test_records_write_gate: $PASS passed, $FAIL failed"
