@@ -299,3 +299,92 @@ The host read the Plan Review entry at 03821f15. All eight findings are taken as
 **Plan**: `.agent/work-plans/issue-446/plan.md` at `8e9e97c1`
 
 Second revision answering the eight findings of the plan review at 03821f15 with the host's choices: the marker is still read and no longer written, with a moved-checkout test; B's first implement dispatch is limited to the live-suite commit and ends with a hand-back; the copy gets its renamed off entry; the CLI migration path excludes linked worktrees; repeated notes and read-back stated; the second session_root shape has its own reason; stale passages aligned; four live-run safety extras added. A sequencing note sits at the top.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 12:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #446 — Enable the agent-workspace plugin once for the whole machine (user scope), as decided 2026-10-13
+**Plan**: `.agent/work-plans/issue-446/plan.md` at `8e9e97c1`
+**Branch**: `feature/issue-446`
+
+Third review, a narrow convergence check. It checks the eight findings of the Plan Review at `03821f15`, with the host's choices in the Checkpoint at `8b229638`, against the revision at `8e9e97c1`. It does not re-review what the first two reviews passed and this revision did not touch.
+
+Checked against:
+
+- the plan diff `2d29b087..8e9e97c1`
+- `user_tier_install.sh`: `TAG` (line 147), `SESSION_HOOK_LINK` (line 144), the marker readers (lines 991, 1058, 1069, 1084, 1106, 1343-1344) and writers (lines 1312, 1320)
+- issue 394's body: "Any `claude plugin` command that rewrites that file ... drops the field"
+- `session_root.sh` lines 123-160
+- `skill_prefix.sh` lines 33-37 (live case G) and 80-115
+- `docs/design.md` lines 193-208 and 248-256
+- `tests/live/plugin_acceptance.sh` lines 11, 181, 216, 236
+- the shape of `installed_plugins.json` (read only)
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged. The sequencing note at the top matches the Checkpoint. |
+| Issue alignment | Good | Serves, as checked: "Light touch on projects (the workspace stops writing a plugin entry into each project root) and Easy to use (one install per machine) -- `docs/design.md#sessions-and-roots`". |
+| File targeting | Good | Unchanged. |
+| Consequences | Good | The repeated notes, the read-back after migration and the linked-worktree test are in step 7. |
+| Principle alignment | Needs work (small) | "Verify before claiming": the new reason for the second refusal shape is not true (finding 2). "Test what breaks": the chosen fix for the moved-checkout hook covers almost no real entry (finding 1, PR A only). |
+| ADR compliance | Good | Unchanged. |
+| ROS conventions | N/A | Workspace plan |
+
+Status of the second review's eight findings:
+
+- **Resolved:**
+  - 2: the first B dispatch is limited to the suite commit and ends with a hand-back; steps 2 to 8 wait for the FACT lines.
+  - 3: the copy gets `"aw-accept-<pid>@aw-accept-<pid>": false` and commits it. The copy is `git init`ed (suite line 236), so the commit can be made.
+  - 4: the CLI path needs git-dir equal to git-common-dir; a linked worktree is report-only; a test was added.
+  - 5: the repeated notes are stated; the read-back of the user-scope state and the machine record is added and tested.
+  - 7: the "Not verified" line, the Prior Art line and the Design Picture wording are aligned. No stale "unverified third fact" text remains.
+  - 8: all four extras are in. They are the signal traps, the record before the call, the two-command removal line, and the `jq -S` diff of the real settings.
+- **Written as chosen, but not resolved in effect:** 1 (finding 1 below).
+- **Written as chosen, but the reason is not true:** 6 (finding 2 below).
+
+The revision added nothing unasked. The `backup_settings` move and the sequencing note both come from the second review and the Checkpoint.
+
+### Findings
+
+1. **[PR A: reading the marker does not catch a moved checkout after B] (should-fix, PR A section only)**
+   - The host chose "keep reading the marker when present, stop only writing it".
+   - That keeps the check only for entries that still carry the marker. Issue 394's own finding is that every `claude plugin` command that rewrites `~/.claude/settings.json` drops the marker.
+   - PR B's install makes user-scope `claude plugin` calls. So after B's first install, no hook entry on the machine carries a marker.
+   - From then on, the case finding 1 described is back, with nothing to report it. A checkout is moved or deleted. Its `log-tool-use.sh` PreToolUse command points at a path that no longer exists. That entry is not under the new `$WS_ROOT/.claude/hooks/` and has no `user_tier_scripts.txt`, so neither `--check` nor `--force` sees it.
+   - The new step-4 test uses a marked entry, so it passes while the real case fails.
+   - This is my second review's mistake: it offered the two fixes as equal, and they are not.
+   - Fix: add the second rule as well. Any hook command whose path ends in `/.claude/hooks/<a hook the installer writes or has retired>` and does not exist on disk is drift for `--check`, and install and `--force` remove it.
+   - Test it with an unmarked entry pointing into a deleted checkout.
+   - The SessionStart entry names the `~/.claude` link, not the checkout (line 144), so only the PreToolUse command needs this.
+   - Issue 394's plan pass, now running, copies this section, so this sentence has to reach it. PR B's build is not affected.
+2. **[PR B step 6: the reason for the second refusal shape is not true] (should-fix, wording only)**
+   - The plan says a subdirectory of a root in no git repository is refused because "the session's layer (the root's settings and adapter) is found from the session's git toplevel, which such a directory lacks, so ... no root's layer can be located from it". Step 6 puts the same words into `docs/design.md` lines 205-207.
+   - First, the root can be located from that directory. `session_root.sh` finds it by registry prefix (`root_of`, line 143) before the refusal, and the refusal message names it ("start the session at $S_ROOT").
+   - Second, the mechanism is wrong. The recorded rule (live case G) is that outside git a session reads the settings of **its own directory**: `session_root.sh` lines 149-155, `skill_prefix.sh` lines 33-37, `docs/design.md` lines 205-206. It does not fail to find a toplevel and then read nothing.
+   - Third, "adapter" is probably wrong too. Claude Code loads `CLAUDE.md` from the cwd and its parent directories, so the root's adapter likely does reach such a session. This was not checked live here.
+   - True reason, to use in both places: "a session started outside git reads the settings of its own directory, so the root's `.claude/settings.json` and `.claude/settings.local.json` (its hooks and permission rules) never reach a session in a subdirectory of the root".
+   - That is the same kind of reason as shape 1, a different directory's settings. It is also what the refusal message at line 159 already says.
+3. **[PR B step 2: the hand removal names a list that does not exist] (minor)**
+   - The note for a `projectPath` that no longer exists says "delete that entry from the `local` list of `~/.claude/plugins/installed_plugins.json`".
+   - The file has no such list. `.plugins["agent-workspace@agent-workspace"]` is an array of objects, each with its own `scope` and `projectPath` (plan line 240 describes it right).
+   - The note should say: delete the object with `"scope": "local"` and that `projectPath` from that array.
+
+### Summary
+
+Six of the eight findings are resolved as written, and the revision broke nothing in PR B. Two choices fall short in effect.
+
+- Finding 1's marker read stops working once B's first `claude plugin` call strips the markers. PR A also needs the dangling-path rule.
+- Finding 6's new reason is false. A one-sentence true reason is given above.
+
+Neither changes what PR B builds, and the step-6 wording can be carried by the implement pass. The PR A sentence has to reach issue 394's plan pass, which is running now.
+
+### Recommended Actions
+
+- [ ] PR A, on issue 394's plan: also report and remove any hook command under `.../.claude/hooks/` whose path does not exist on disk, and test it with an unmarked entry (finding 1)
+- [ ] PR B step 6 and the `docs/design.md` edit: use the true reason for the second shape, the root's settings files never reach a session outside git in a subdirectory (finding 2); the implement pass can carry it
+- [ ] PR B step 2: describe the hand removal by `scope` and `projectPath` inside the plugin's array (finding 3); the implement pass can carry it
