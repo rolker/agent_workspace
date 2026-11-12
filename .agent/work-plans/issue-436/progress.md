@@ -915,3 +915,23 @@ Notes for #447 (not this verdict): an unknown key under a per-distro entry or un
 - [x] (must-fix) carve-out omits `!!omap`: fixed by class, not by adding a tag, per host direction. `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only; the loader (`_ManifestLoader`, a `yaml.SafeLoader` subclass) also builds bytes (`!!binary`), a Python set (`!!set`) and lists of tuples (`!!pairs`, `!!omap`), whose contents the walk skips. Reproduced with `parse_manifest_text` under an unknown per-distro key: a U+202E string is refused as a plain value, in a list and in a mapping, and accepted inside `!!set`, `!!pairs`, `!!omap` (also nested in a list), and a `!!binary` key or value holding a newline is accepted; under `layers` an `!!omap` or `!!set` is refused, and a `!!binary` `url` is refused. README now states the rule is applied to mappings, sequences and the strings in them, and carves out bytes key or value plus "a string inside any other collection YAML can build (such as `!!set`, `!!pairs` or `!!omap`) under a key the tool ignores"; introduction "named where they apply" became "described where they apply" — `tools/ros-manifest/README.md:79-80,112-116`
 
 The box was ticked by hand: `review_progress.sh check` indexes only the latest Integrated Review / Local Review (Pre-Push), and a post-PR `## Local Review` is not a source for it. Branch-wide `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: all hooks passed (exit 0), script suite included. README only; no code or tests changed. Not pushed. Open for the host: the review noted that #447's body and comments do not yet mention these cases, while the README says they are "tracked in #447".
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 13:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad8dbb8585ab5b56c, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #449 at `b553f4ef`
+**Depth**: Deep (reason: whole-PR tier stays Deep for the CI workflow change and untrusted manifest content; this pass scoped by handoff to the fix diff ff0c2dc6..b553f4ef, README only)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the previous Local Review's one finding (`!!omap` missing from the carve-out) and commit 36c55d54 (`tools/ros-manifest/README.md:79-80,110-116`). Cross-model reviewers not run, per handoff. Code not under review.
+
+The finding is fixed. The carve-out now names the class, which the code supports: `_refuse_unsafe_chars` (`schema.py:250-267`) walks dicts, lists and str only. Reproduced with `parse_manifest_text` under an unknown per-distro key: a U+202E string is refused as a plain value, in a list and in a mapping; it is accepted inside `!!omap` and inside a `!!set` nested in a list; a `!!binary` value is accepted. Under keys the tool reads, other collections are refused by the type checks (`roles.r.roots: !!omap`, `packages.p.depend: !!set`), so "under a key the tool ignores" holds. "The rule is applied to mappings, sequences and the strings in them" is true. "Described where they apply" is true of the section: each known gap is stated in the rule it concerns or in the paragraphs after the rules.
+
+Note (host, not this verdict): #447's comment now lists the unknown per-distro and `extends` keys and the skipped collections; the `!!binary` value case is not in it yet, which the host says it will add.
+
+### Findings
+- [ ] No issues found. LGTM.
