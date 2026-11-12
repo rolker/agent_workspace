@@ -86,3 +86,15 @@ issue: 295
 - [ ] Owner question D (small, may be a host call listed for veto): should `make setup` ever prompt for a project, or point at `register_project.sh <path>` in its output? The loose-end text says setup must not depend on a project; the printed pointer is a mechanism choice.
 - [ ] Add the fresh-clone check as the acceptance test of PR 1 and of the whole issue: clone the workspace to an empty directory with no `project/`, no registry, and run `make setup`, `make validate`, `make test`. The second-machine move (the pickerel transition) is the real run.
 - [ ] Do not widen: leave #429, #446 and #437 alone; list their overlap on the issue so the plan sequences against them.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's goal and the owner's 2026-11-12 direction to do it together with issue 265's fourth pull request; it orders the work as three pull requests and finds the first needs no design decision)
+**After**: issue-actions
+**Decision**: proceed
+
+The host read the Issue Review entry at 15b85e63. Planning goes ahead for the first pull request only: a workspace with no project validates and sets up, the legacy `project/` and `projects/` fallbacks and their documentation go, the `projects.d/<name>.sh` reading and the shared-config fallback go with them (item 4 of issue 265's plan; the owner's "no migration necessary" removes the only users), with a fresh-clone no-project test. Order against other work, decided by the host: this pull request goes ahead of issue 429 part 2, which rebases onto it, because the second machine cannot validate until it lands and issue 429 part 2 is to be driven from that machine; it waits only for issue 437 (pull request 448).
+
+The review's owner questions, as the host reads the record: B (is the workspace a registered project) is the owner's own idea of 2026-09-18 and the issue's title, so it is not re-asked. A (whether --type survives) was delegated to the plan by his 2026-09-18 comment ("Decide in the plan whether `--type` survives as a deprecated alias"), so the plan for the second and third pull requests decides it and lists it for his veto. C (what a pinned entry changes for the session-root rule and the plugin) is put to him on its own when the second pull request is planned. D (make setup points at register_project.sh) is a host decision: yes. The AGENTS.md wording change is Ask First and is shown to him before it is committed.
