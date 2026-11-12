@@ -994,3 +994,43 @@ The round counter says 4 because part 1 (pull request 445) had three pre-push re
 ### Checks
 - Pre-commit over `main...HEAD` with no SKIP (main checkout venv): all hooks passed, including `validate-script-tests`. A first run failed only `check-commit-identity` because the identity was not sourced in that shell; re-run with it sourced passed.
 - A revert-and-rerun check that the two-layer test fails on the old code was denied by the permission classifier; not done.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a590f22537565001a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `45ad3988`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification is unchanged; the change extends the ADR-0011 adapter contract and adds ADR-0019. Fix-round rule: no lower than the whole diff)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended (round 2: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round)
+
+Round note: the dispatcher labels this round 5, and `review_progress.sh round` counts part 1's reviews (PR 445). The host made the same correction as at round 1: this is round 2 of this diff. Scope: the five round-1 findings and the fix diff `9a62100a..45ad3988` (72d89cb1, e416c3ce, 3fd6d185, 37075936, 97fa1bd5). Specialists run: a fresh Claude adversarial sub-review, and cross-model gemini (agy) and codex, both complete. Copilot was skipped (disabled for quota).
+
+Round-1 findings, all five addressed:
+- `#` inside a ref: fixed, but the fix brought in a new must-fix (below).
+- Bounded origin queries: fixed.
+- First cloned layer: fixed.
+- No-`version:` message: fixed.
+- Uppercase sha: fixed.
+
+Host's questions:
+- **Two-layer test:** it pins the fix. `pkg_b` is pinned in l1 and l2 at the same ref, and the test removes l1's checkout. The old code judged the first hit layer (l1), so it would print "not a cloned repository (unverified)" and `pinned<TAB>unknown`. The test asserts `pinned<TAB>branch` with no "unverified", so it fails on the old code. This rests on reading the code; a revert-and-run was not done.
+- **Hanging-origin tests:** not timing-fragile. There is a 2s limit against a 60s ceiling, the shim blocks for 300s, and `ssh://…example.invalid` does no DNS lookup under `GIT_SSH_COMMAND`. Measured runs: 2s in each suite; test_ros2_colcon took 20s in all, test_adapter 4.6s.
+- **Leftover processes:** none. `pgrep 'sleep 300'` was empty after the runs. This machine's uutils `timeout` 0.10.0 kills the whole process group: verified with a `sleep 30` child that did not survive. The tests also kill the shim's pid from the pidfile.
+- **Other parser callers:** `adapter_sync:608` and `adapter_validate:650` use it without `--all`. Their output is unchanged except for CRLF (now stripped, an improvement) and the leading-comment regression below.
+- **Codex's "sync regression" on quoted versions:** dismissed as not a regression. Main's `$2` parse already kept the quotes of `"pinned"`, checked with `git show main:…adapter.sh`. The planned issue-436 parser change is where quote stripping for sync belongs.
+
+Checks run:
+- test_ros2_colcon: 289 passed, 0 failed.
+- test_adapter: 143 passed, 0 failed.
+- shellcheck `--severity=warning` on the 5 shell files: rc 0.
+- `validate_adapter.sh`: 13/13 verbs for both types.
+
+### Findings
+- [ ] (must-fix) Regression: leading whitespace is stripped before the comment check, so `version:  # TODO pin` and `version: #main` are emitted as the refs `# TODO pin` / `#main`, and `repo_pin` exits 0 with kind unknown. The old parser gave an empty value, which was refused. `adapter_sync` gets the comment as the pin too. Fix: check for the comment before trimming, or treat a leading `#` as a comment. Add both to `test_repo_pin_reads_version_as_yaml`. Found by Claude adversarial; reproduced with the parser's awk — `.agent/project_types/ros2_colcon/adapter.sh:240-247`
+- [ ] (must-fix) A quoted scalar is cut at the next matching quote and the rest of the line is not checked. `'stable''next'` reads as `stable`, `"main" extra` as `main`, and `"x\"y"` as `x\`. Each is printed as a clean ref nobody pinned, and the stray-quote guard never fires. Fix: keep the quoted cut only when nothing follows it except optional whitespace and a ` #` comment; otherwise emit the raw value so the quote guard refuses it. Add tests. Found by codex (must-fix), gemini and Claude adversarial (suggestion); reproduced — `.agent/project_types/ros2_colcon/adapter.sh:237-244`
+- [ ] (suggestion) In `single_project`, when `ls-remote` fails for a reason other than the timeout (rc 128: origin missing or unreachable), the error still says "origin did not name its HEAD". It should say origin could not be asked (gemini) — `.agent/project_types/single_project/adapter.sh:308-321`
