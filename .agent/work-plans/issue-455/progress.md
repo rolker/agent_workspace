@@ -344,3 +344,46 @@ Scope: the nine round-1 findings and the fix diff `39af5058..7057833f`. All nine
 ### Checks
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, including the `.agent/scripts/tests/` suite hook (Passed).
 - `test_commit_identity.sh`: 92 passed, 0 failed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent afbf6f45826febd3e, resume 2 of 3)
+
+**Branch**: feature/issue-455 at `8a5f68ce`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the six round-2 findings and the fix diff `df0c64fd..8a5f68ce` (356e421e, f5a19d85, 610ba87c, 05f28f52, c2a717c2, 66847592). Cross-model: skipped (round-3 convergence check, per handoff). All six round-2 findings are resolved:
+- Addresses with apostrophes and non-ASCII characters are accepted, and an end-to-end test covers them.
+- Author and committer are resolved through `git var GIT_*_IDENT`.
+- A configured address is accepted verbatim.
+- The `-c`-only case has its own message.
+- The two scripts now behave the same on failure, and `--help` says so.
+- `.agent/.identity` is written POSIX single-quoted.
+
+Probed in temp repos (git config isolated via HOME / GIT_CONFIG_GLOBAL / GIT_CONFIG_NOSYSTEM):
+- With `user.name` unset, `git var` falls back to the passwd name and the hook passes.
+- In a linked worktree, an agent author and committer pass, and a foreign `GIT_COMMITTER_EMAIL` is rejected with a clear labelled message.
+- `git -c committer.email=<foreign>` and `committer.email` in config are rejected; the tests cover this.
+- Fix-agent claim verified: git strips the trailing `,` and the enclosing `<>`, and `GIT_AUTHOR_EMAIL='<u+a@x.org>,'` is recorded as `u+a@x.org`. Dropping those two hook cases is therefore correct.
+- An inner comma (`u+a,b@x.org`) is kept by git and rejected by the hook. That is the safe direction.
+- A configured `<u@x.org>` is refused with a message that shows the value.
+
+`detect_agent_identity.sh` returns when sourced and exits when run. No script sources or calls it; only docs and comments name it.
+
+Tests:
+- `test_commit_identity.sh`: 92 passed, 0 failed.
+- `test_dispatch_phase.sh`: 140 passed, 0 failed.
+- `test_skill_paths.sh`: 136 passed, 0 failed.
+- `test_gh_create_pr.sh` and `test_gh_create_issue.sh`: exit 0.
+- shellcheck and flake8: clean.
+
+No round-1 or round-2 regression found.
+
+### Findings
+- [ ] (suggestion) With `user.useConfigOnly=true` and no `user.name`, `git var` fails, and the hook prints "Author email: (not set) / Committer email: (not set)" while the email is set. Git would refuse the commit anyway, but the message points at the wrong cause. Pass through `git var`'s stderr, or say the name is missing — `.agent/scripts/identity_base.py:131`
