@@ -5,6 +5,7 @@
 #
 # Stamp chain:
 #   setup-dev.done  — venv + pre-commit installed
+#   ros-manifest.done — the ros-manifest resolver installed in the venv
 #   git-bug.done    — git-bug identity + GitHub bridge configured
 #
 # Target tiers:
@@ -53,7 +54,7 @@ FLOCK := $(shell command -v flock 2>/dev/null)
 LOCKED = $(if $(FLOCK),$(FLOCK) $(STAMP)/.lock sh -c,sh -c)
 
 # --- Phony targets ---
-.PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills generate-user-tier-skills user-tier-install skip-git-bug repair merge-pr
+.PHONY: help setup install-ros-manifest build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills generate-user-tier-skills user-tier-install skip-git-bug repair merge-pr
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -67,6 +68,7 @@ help:
 	@echo "  make lint             Install and run pre-commit on all files"
 	@echo "  make validate         Check workspace configuration is valid"
 	@echo "  make repair           Fix stale venv/hooks after workspace rename"
+	@echo "  make install-ros-manifest  Install the ros-manifest resolver into the venv (part of setup)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make build            Run the build command from the project's settings file (PROJECT=<name>)"
@@ -95,7 +97,7 @@ help:
 	@echo "  make clean            Remove stamp files (forces re-setup)"
 	@echo ""
 
-setup: $(STAMP)/git-bug.done
+setup: $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
 	@echo "✅ Setup complete."
 	@grep -Eqs '^[[:space:]]*[^#[:space:]]' $(WS_ROOT)/.agent/projects.local || \
 	    echo "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
@@ -114,6 +116,8 @@ test: $(STAMP)/setup-dev.done
 
 install: $(STAMP)/setup-dev.done
 	@$(MAIN_ROOT)/.agent/scripts/adapter $(PROJECT_FLAG) install
+
+install-ros-manifest: $(STAMP)/ros-manifest.done
 
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files
@@ -185,6 +189,19 @@ $(STAMP):
 $(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
 	@$(LOCKED) 'python3 -m venv $(VENV_DIR) && $(VENV_BIN)/python3 -m pip install --quiet --upgrade pip && $(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && touch $@'
+
+# ros-manifest: the manifest resolver (tools/ros-manifest), installed
+# editable into the shared venv from the main checkout, so the ros2_colcon
+# adapter finds it at .venv/bin/ros-manifest from any worktree. Editable
+# means code changes on main need no reinstall; the stamp is re-made only
+# when pyproject.toml (dependencies, entry point) changes. A make target and
+# not a requirements.txt line (ADR-0009 tier 1): requirements.txt is
+# installed with `pip install -r` before the recipe cds to WS_ROOT, so a
+# relative `-e tools/ros-manifest` there would resolve against the caller's
+# cwd, and that file lists PyPI tools; this is a path in this repository.
+$(STAMP)/ros-manifest.done: $(WS_ROOT)/tools/ros-manifest/pyproject.toml $(STAMP)/setup-dev.done
+	@echo "--- Installing the ros-manifest resolver ---"
+	@$(LOCKED) '$(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/ros-manifest && touch $@'
 
 # git-bug: configure identity + GitHub bridge
 $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
