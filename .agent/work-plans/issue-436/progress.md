@@ -706,3 +706,42 @@ The six deferrals were recorded with the skill's own step 3.2 (`review_progress.
 ### Verification
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `a71bbe58`: exit 0, every hook passed, `validate-script-tests` included.
 - No code or test changed in this pass, so the ros-manifest suite was not re-run (310 passed at `1192f674` in round 5).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 12:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a34531e5de962856c, resume 3 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `746971ea`
+**Base**: main
+**Depth**: Deep (reason: round 6 convergence check per handoff; the whole-branch tier stays Deep for the CI workflow change and untrusted manifest content)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 6 | **Ship**: recommended — round 6: 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Scope: the fix diff `478dd72c..746971ea`. That is `ed76b348` (the README's input-rules section) and `a71bbe58` (round 5's six boxes deferred to #447); no code or test changed. The question asked: is every statement in `tools/ros-manifest/README.md`'s "What a manifest may contain" section true of the code at this head, and does #447 carry everything the README and the deferred boxes point to?
+- Cross-model reviewers and the adversarial reviewer were not run: a README-only diff, per handoff.
+- `pre-commit run --files tools/ros-manifest/README.md`: exit 0.
+- The six deferred findings are the owner's decision (Checkpoint, "Q3: A and yes.") and are not findings again.
+
+Checked true against `schema.py`, `extends.py`, `cli.py` and `emit.py`:
+- the five name patterns, the 64-character cap and the case-twin rule
+- the string-type fields, including a package's `repo`, and the boolean `absent`
+- the four URL shapes, and the host, user and path character sets (the corrected host sentence is right: `_HOST` has no `_`)
+- `http://`, `git://` and a bare path are refused
+- a local `extends` path is kept inside its directory
+- the ref rule
+- the character rule covers string keys and values only, and a `!!binary` key skips it
+- aliases, repeated keys, the 64-bit integer bound, and the no-position message for a value YAML cannot build
+- the emitter's build-then-write refusal and the transport policy
+- a failing `url` or `ref` and a group's `default` are never printed, and a failed clone gives git's exit status
+- the list of messages that still print a value matches round 5's sites
+- the backstop line, and its two escapes (Ctrl-C, a broken pipe at exit)
+
+#447 (open) carries all six deferred findings and every item the README points to it: the value echoes, the `!!binary` key, Ctrl-C and the broken pipe.
+
+Untrue at this head: the section's opening sentence, "Anything outside these rules is an error that names the manifest and the key (for a YAML error, the line and column)". A local `extends` path that escapes is a rule of this section, and its message names the declaring directory, not the manifest. Reproduced: `ERROR: extends path '../base.yaml' escapes its declaring directory <D>/sub: <D>/base.yaml`. The same holds for `extends.py:151` (local base not found) and `:158` (git base path escaping its clone). Names that differ only in case across the chain name "the composed extends chain", not a manifest (`merge.py:157-161`). #447's first item already says "`extends.path` messages name only the declaring manifest", so the code side is carried.
+
+### Findings
+- [ ] (must-fix) The README's opening claim, that every error "names the manifest and the key", is untrue for the `extends` path messages (they name the declaring directory or clone; `extends.py:148`, `:151`, `:158`) and the chain-wide case-twin message ("the composed extends chain", `merge.py:157-161`). Either reword it to match, e.g. "names where the problem is: the manifest, or for an `extends` path its directory, or the chain for names that differ only in case across it, and the key", or prefix `{source}:` in those three `extends.py` messages and keep it. #447 covers the code change — `tools/ros-manifest/README.md:71-72`
