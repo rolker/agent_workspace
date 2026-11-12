@@ -369,3 +369,14 @@ Intermediate commits used `SKIP=validate-script-tests`. Final run, no SKIP: `/ho
 ### Reported, not fixed
 - From a workspace worktree, sync's message "none selected; registered: <names>; pass PROJECT=<name>" (this pull request's text) is now true about what is registered, but its advice does not work there: `adapter --project <name>` resolves names from the worktree's own registry, which is empty, and refuses ("project '<name>' is not registered in <worktree>/.agent/projects.local"). The adapter's resolution was left as the host directed; from the main checkout the advice works.
 - From a worktree, `make validate` still checks the worktree's registry entries (none), so registered projects are not checked there; unchanged by direction.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 14:39 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Branch**: feature/issue-295 at `f70d534f`
+
+Consequence of merging main at 4b1e7cb3 (main's new `ros-manifest.done` setup step):
+- test_fresh_clone_no_project.sh seeds `.make/ros-manifest.done` beside `setup-dev.done` (the scratch copy has no .venv, so the resolver install would fail and must never pip-install); comment says why. 20 passed, 0 failed.
+- Makefile `help` line for `make setup` now names the resolver install.
+- docs/design.md change-log row for #295: line count 909 -> 910 (`wc -l`).
