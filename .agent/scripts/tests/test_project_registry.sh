@@ -328,6 +328,27 @@ owner/beta
 owner/one" "$out"
 }
 
+test_registry_repo_slugs_no_walk_up() {
+    echo "TEST: registry_repo_slugs skips a root that is a plain directory inside another repository"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    # The workspace sandbox is itself a repository with a GitHub origin, as a
+    # real workspace checkout is; a registered root under it that is not a
+    # checkout of its own must not borrow that origin.
+    make_git_repo "$sb" "https://github.com/owner/workspace.git"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    mkdir -p "$sb/projects/plain" "$sb/projects/plainsub/inner"
+    cat > "$sb/.agent/projects.local" <<EOF
+alpha single_project
+plain single_project
+plainsub single_project $sb/projects/plainsub/inner
+EOF
+    out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "only the root that is its own checkout prints a slug" "owner/alpha" "$out"
+    assert_not_contains "the enclosing repository's slug is not accepted" "owner/workspace" "$out"
+}
+
 test_registry_repo_slugs_absent_or_broken() {
     echo "TEST: registry_repo_slugs prints nothing and returns 0 with no registry or a parse error"
     local sb out rc=0
@@ -1596,6 +1617,7 @@ echo ""
 test_registry_absent_is_legacy
 test_registry_malformed_line_fails
 test_registry_repo_slugs
+test_registry_repo_slugs_no_walk_up
 test_registry_repo_slugs_absent_or_broken
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
