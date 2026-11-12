@@ -681,3 +681,28 @@ The fix pass's note on `_check_name` is not right as stated. It shows `repr()` n
 Q3 as put to him: what should happen with this pull request after round 5 (one must-fix open: error messages can still print a manifest value). Option A: "Publish now, with the last finding as a follow-up issue ... The README sentence that claims otherwise gets corrected in a small fix first." "and yes" answers the Ask-First item: the 9 lines added to the CI job validate-adapter-contract are allowed.
 
 So this address pass is limited to making the README true (no message prints a traceback; a message may still name a value from the manifest in the listed cases, tracked in the follow-up issue). The round 5 must-fix and its five suggestions are not fixed here; they are in follow-up issue https://github.com/rolker/agent_workspace/issues/447. After the pass and its convergence check, the pull request is published on this same answer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 12:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aef818f79bbb89a0b, resume 2 of 3)
+
+**Branch**: feature/issue-436 at `a71bbe58`
+**Addressed**: Local Review (Pre-Push) at `1192f674` (2026-11-12 12:17 -05:00), with the owner's Checkpoint after it ("Q3: A and yes.": publish now, carry the round 5 findings in follow-up issue #447)
+**Commits**: ed76b348, a71bbe58
+
+### Actions
+- [x] README input rules made true at `1192f674`; no code or test change. The paragraph "No error message prints a value from a manifest" is replaced with two paragraphs. The first says a `url` or `ref` that fails its rule, a group's `default` and git's clone output are never printed. It then lists the messages that still print a manifest value: an `extends` path, an `optional_layers` entry, a reference-list entry, a key, and a name that fails its rule (#447). The second says an unexpected error is one `ERROR: internal error (<type>)` line, and names the two cases that escape it: Ctrl-C and a broken pipe at exit (#447). Checking the section's other claims against the code corrected three. The host in a URL has no `_`. The character rule covers string keys only, and a `!!binary` key is not checked (#447). A YAML error names a line and column, not a key. — `tools/ros-manifest/README.md` (ed76b348)
+- [x] (must-fix) Rule 2 is not met: messages still print document values — `schema.py`, `merge.py`, `extends.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) String keys that passed only the character rule are echoed — `schema.py`, `merge.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) Ctrl-C prints a `KeyboardInterrupt` traceback — `cli.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) A broken pipe at exit prints `BrokenPipeError` — `cli.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) The emitter writes with the locale encoding — `emit.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) The `extends` clone inherits stdin and allows prompts — `extends.py` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+
+The six deferrals were recorded with the skill's own step 3.2 (`review_progress.sh check --index <i> --deferred "<reason>"`), committed in a71bbe58. I confirmed that #447's body carries each item the README now points to.
+
+### Verification
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on `a71bbe58`: exit 0, every hook passed, `validate-script-tests` included.
+- No code or test changed in this pass, so the ros-manifest suite was not re-run (310 passed at `1192f674` in round 5).
