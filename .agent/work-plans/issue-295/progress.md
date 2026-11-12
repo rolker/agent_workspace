@@ -106,3 +106,88 @@ The review's owner questions, as the host reads the record: B (is the workspace 
 **Plan**: `.agent/work-plans/issue-295/plan.md` at `14b714c4`
 
 Pull request 1 of three is planned in full (a workspace with no project validates and sets up; the project/ and projects/ fallbacks, the .sh and shared-config reading, and the worktrees/project transition are removed, each with a test; docs and a fresh-clone test included; the AGENTS.md wording is a separate last commit awaiting the owner). Pull requests 2 (pinned entry and workspace adapter) and 3 (special-case collapse) are an outline with the open questions; --type is proposed to survive as a deprecated alias for the owner's veto.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 12:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #295 — Treat the workspace as a registered project (pinned registry entry + workspace adapter) instead of a --type special case
+**Plan**: `.agent/work-plans/issue-295/plan.md` at `14b714c4`
+**Branch**: `feature/issue-295`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Concern | One pull request of ~55 files, +1,000/-1,700, 12 commits, removal-heavy. The plan's reason for not splitting ("cannot be split without leaving a half-legacy state that fails validate") is contradicted by the fresh-clone run below: only one check fails, and every other legacy branch is dormant when `project/` is absent. Split recommended (finding 1). |
+| Issue alignment | Good | Covers the Issue Review's PR 1 list, the owner's 2026-11-12 directions and #265 item 4. Serves, as checked: "Workspace goal 'The workspace is project-agnostic and usable on any project' (README, Workspace goals) and machine independence of a fresh clone; `docs/design.md#sessions-and-roots` (registry-only discovery, Target to Now) and `docs/design.md#registry-and-adapters`." Goal and sections exist; no rule broken. |
+| File targeting | Needs work | Missed sites: `gh_create_issue.sh` 172-173 and `pr_status.sh` 40 read `project/`; `.claude/skills/review-plan/SKILL.md` 104-123 calls `wt_legacy_worktree_dirs`, which step 6 deletes; docs not listed (finding 4). |
+| Consequences | Needs work | Machine step 3 silently drops the install command of the owner's registered single-repo project (finding 3); `make sync` refusal creates a new fresh-clone loose end (finding 5). |
+| Principle alignment | Needs work | "Improve incrementally": the split is possible and serves the blocked machine (finding 1). "Test what breaks": the fresh-clone test must not do network installs inside the pre-commit-run suite (finding 6). Design picture and prior art are stated. |
+| ADR compliance | Good | ADR-0011, 0012, 0016, 0017, 0018 handled as the plan says; ADR-0011's mention of `setup_project.sh` is a record and needs no edit. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Fresh-clone check (point 2 of the brief): run, not left unverified
+
+`git clone` of this worktree (at 6b0754db) into the session scratchpad, then `env -i PATH=/usr/bin:/bin HOME=<scratch home> make validate </dev/null`. Nothing installed. Output:
+
+```
+Validating workspace...
+
+  venv: not installed (run make setup)
+  pre-commit hook: not installed (run make setup)
+============================================================
+Workspace Validation Results
+============================================================
+❌ Workspace validation FAILED
+   project/ directory does not exist
+     Run: make setup  (will prompt for repo URL or path)
+============================================================
+make: *** [Makefile:126: validate] Error 1
+```
+
+Exit 2. The second machine's report is reproduced. Then, in the scratch clone only, the two `issues.append(...)` lines of `validate_workspace.py` (172-173) were replaced by `pass` and `make validate` re-run: "✅ Workspace validation PASSED!" (plus a stray "project remote: None" line from the remote-origin block), then `user_tier_install.sh --check` printed "agent_workspace user tier: not installed (optional; ...)" and exited 0; `make validate` exit 0. So validate needs only the `project/` block (159-198) removed. `make setup` was not run (it installs a venv over the network); by reading, its only project dependency is `$(STAMP)/project.done` → `setup_project.sh`, which prompts.
+
+### Findings
+
+1. **[Scope]** (must-fix) Split pull request 1 into three. The fresh-clone run shows the second machine is blocked by two things only, validate's `project/` block and `make setup`'s `project.done`; the legacy branches elsewhere (adapter step 3, `wt_legacy_*`, `PJ_ROOT_EFFECTIVE`, `session_root.sh`, `registry_worktree_dir`'s transition dir) only fire when `project/` exists or a name is unregistered, so leaving them one more pull request breaks nothing on a machine without `project/`. Recommended:
+   - **A, "a fresh clone works with no project"** (Part of #295 and #265): `validate_workspace.py` drops 159-198 (keep the `lib/workspace.py` helpers, `sync.py` imports them, until B); Makefile `setup` without `project.done`, the pointer lines, `help` text and header comment (leave the MAIN_ROOT cases for B); delete `setup_project.sh` and its `script_reference.md` row; the registry-slug acceptance in `gh_create_pr.sh` and `gh_create_issue.sh` (finding 2, additive; needed on the second machine as soon as a project is registered there); `make sync` with nothing resolvable syncs the workspace alone (finding 5); AGENTS.md Terminology, Repo ownership, table row and Build & Test (true already: the settings file is read first today); `docs/design.md` setup row and a Sessions-and-roots note; `test_validate_workspace_no_project.sh` and `test_fresh_clone_no_project.sh` (assertions a, b, c, plus `make dashboard` and `make sync` exit 0; d and e move to B). Acceptance: in a scratch clone with a scratch HOME and nothing registered, `make validate`, `make setup </dev/null` (stamps pre-seeded, finding 6), `make dashboard` and `make sync` exit 0 and write no `project/` or `projects/`; after `register_project.sh <demo> --skip-run`, `gh_create_pr.sh` run in the demo checkout passes its repo-safety check. Roughly 10-12 files.
+   - **B, "the `project/` and `projects/` fallbacks go"** (steps 1's registry-path rule, 3, 4, 6, 7, 8 minus the gh_* scripts, plus `pr_status.sh`, the skill/doc sites of finding 4, design Target to Now, `.gitignore` `project`/`projects/` lines). Acceptance: the plan's refusal tests, the fresh-clone assertions d and e, the grep in finding 4 returns only records. Machine steps 1-2 (unregister the two clones, remove `projects/` and the symlink) follow its merge.
+   - **C, "`.sh` and shared-config reading go"** (steps 5 and 9, `register_project.sh`, `registration_verify.sh`, ROS tests, `.gitignore` `project_config.sh` line), Closes #265. Acceptance: the plan's step-5/9 tests, and the install move of finding 3 done before machine step 3. Sequence C after #446's second pull request (both edit `register_project.sh`).
+   B and C can merge into one if the host prefers fewer rounds; A must not wait for either. With A merged, the second machine can drive B and C itself.
+2. **[File targeting]** (must-fix) `gh_create_issue.sh` 160-190 has the same repo-safety check as `gh_create_pr.sh`, and neither the plan nor its file table lists it; `pr_status.sh` 40 (`make pr-triage`) also reads `project/`. This is what a registered single-repo project relies on today: in that project's session, `gh_create_pr.sh` and `gh_create_issue.sh` accept its repository only because `project/` is a symlink to its checkout (run-issue's publish step passes `-R` only for package issues, `run-issue/SKILL.md` 676-685). On a machine without the symlink, or here after machine step 2, PR and issue creation from that project's sessions is refused. Step 8's registered-roots loop must cover both scripts, and must read the registry of the main checkout (resolve it from the git common dir as the Makefile's `WS_ROOT` does): both scripts compute `_WORKSPACE_ROOT` from their own directory, which in a workspace worktree has no `.agent/projects.local`. Test: a registered sandbox root's slug is accepted by both, an unrelated slug refused.
+3. **[Consequences]** (must-fix) Machine step 3 deletes `.agent/project_config.sh`, but on this machine that file's `INSTALL_CMD` (a `cmake --install` line) is the install command of the registered single-repo project: its settings file `.agent/projects.d/<name>` holds only `build` and `test`, so `adapter install` falls through to the shared file today (`single_project/adapter.sh` 37-66, 197-208). After step 5 plus machine step 3, `make install PROJECT=<name>` prints "INSTALL_CMD not set — nothing to install (this is fine for most projects)" and exits 0: a silent loss. Add a machine step before step 3: `project_setting.sh set <name> install=<the command>` (or the owner says install is not wanted). Make the stale-file report for `project_config.sh` name each command key it sets that a registered project's settings file lacks, so the same loss on another machine is told, not silent. "No migration necessary" holds for the clones, not for this one key.
+4. **[File targeting]** (must-fix) Sites the plan does not list: `.claude/skills/review-plan/SKILL.md` 92-123 (calls `wt_legacy_worktree_dirs`; after step 6 its lookup prints "command not found" and its text describes the removed fallback); `.claude/skills/start-task/SKILL.md` 205; `.agent/WORKFORCE_PROTOCOL.md` 27; `.agent/AI_IDENTITY_STRATEGY.md` 91, 117, 251 (describes `configure_git_identity.sh` on `project/`, which step 8 changes); `.agent/knowledge/documentation_verification.md` 82; `.agent/knowledge/review_static_analysis.md` 24 and `.claude/skills/review-code/SKILL.md` 247 (`project/**` path classes). Make the acceptance a grep the implement pass runs: `grep -rn "project/\|project_config\|worktrees/project\|wt_legacy\|wt_transition\|wt_project_base_glob" .claude .agent docs Makefile`, excluding `.agent/work-plans/`, `docs/decisions/`, `docs/fork_parity.md` and digests (records); every remaining hit is either a record or deliberate.
+5. **[Consequences]** (should-fix) Veto the `make sync` refusal. Today it syncs the workspace repo, then `project/` (`single_project/sync.py` 164-172); on a clone with nothing registered it is the way to update the workspace. A refusal there is a new fresh-clone loose end, against the owner's "keep up with the loose ends". With no `PROJECT=` and nothing resolvable: sync the workspace repo and print that no project was synced. Cover it in the fresh-clone test.
+6. **[Principle alignment]** (should-fix) The fresh-clone test runs under `run_script_tests.sh`, which the pre-commit hook runs; a `make setup` that creates a venv and pip-installs from the network does not belong there (slow, flaky offline, and the "skipped part" branch makes the result depend on the network). Always pre-seed `.make/setup-dev.done` and set `CI=1`, so the test checks the Makefile wiring (no prompt, the pointers, no `project/`), never pip. The test clones committed content only; say so in its header. If #444 lands first, re-run `test_script_tests_hook_scope.sh` for its drift rule on the two new suites.
+7. **[Accuracy]** (note) The plan says `project/worktrees/` does not exist on this machine. It does: it is the registered project's own in-tree worktree dir, seen through the `project` symlink (empty; its `git worktree list` shows only the main checkout). Nothing to migrate, so the conclusion holds; the Makefile's `/project/worktrees/` MAIN_ROOT case has no real path to match.
+8. **[Instruction file]** (note) The proposed AGENTS.md wording is true of the code after A (Terminology, Repo ownership, table row) and true today for Build & Test (the settings file is read first; `project_setting.sh set` takes several `key=value` pairs). Line count: the bullet is 3 lines for 2 (+1), the paragraph 4 for 5 (-1), but Build & Test is 4 lines for 3 (+1), not 0: AGENTS.md goes 199 to 200, still within the 200 budget. The plan says "current text on the left of each becomes" but shows only the new text; give the implement pass the replaced ranges: 10-11, 18-22, 28, 157-159.
+9. **[Approach]** (note) `ROS_ROOT_DIR` from the environment reverses current behaviour: `_rc_ros_root` clears it before sourcing the config (`ros2_colcon/adapter.sh` 185-190), in line with #332's "only a config file sets it". Acceptable as the plan proposes (only tests and non-standard installs use it, and no registered project on either machine needs it once the clones go), but the adapter header and `projects.local.example` should say it is the one value read from the environment.
+
+### Open questions (calls, for the host to list for the owner's veto)
+
+- `--type` as a deprecated alias for one release: agree; there are no releases, so tie removal to the roadmap deferral with a `gh-issue` check, and refuse a contradicting value as planned.
+- `ROS_ROOT_DIR` from the process environment: agree, with the header note of finding 9.
+- Removing `register_project.sh`'s adoption copy from `<name>.sh`: agree; the only `.sh` files on either machine belong to the clones being deleted.
+- Stale `.sh` and shared files warn, not fail: agree, with the per-key report of finding 3 for the shared file.
+- `make sync` refuses with no project: veto; sync the workspace alone (finding 5).
+
+### Overlap (point 6 of the brief)
+
+Nothing beyond "merge main in before review", given the split: PR 448 (#437) touches `test_package_issue_loop.sh` (records-gate hunks only, not the `demo.sh` fixture), `script_reference.md` and `docs/design.md`, line-level; #394's branch adds a `.gitignore` hunk away from the `project/` lines; #444 changes the runner and the hook-scope drift test (finding 6); #446's second pull request edits `register_project.sh`, which under the split only C touches, so C goes after it. #429 part 2 rebases onto B (it shares `worktree_create.sh`, `merge_pr.sh`, `dispatch_phase.sh`), not onto A.
+
+### Summary
+
+The plan's content is sound and the refusal rule is right, but pull request 1 is three changes, and only the smallest is what the second machine is waiting for; the fresh-clone run shows A alone clears it. Four sites are missing, and one of them (`gh_create_issue.sh`, with `gh_create_pr.sh`) is what the owner's registered project uses today through the symlink, and the shared-config removal silently drops that project's install command. Revise, then implement A first.
+
+### Recommended Actions
+
+- [ ] Split pull request 1 into A (fresh clone works), B (`project/`/`projects/` fallbacks) and C (`.sh` and shared-config reading), with the acceptance in finding 1; A goes first and alone.
+- [ ] Cover `gh_create_issue.sh` and `pr_status.sh`; make the registered-roots slug check read the main checkout's registry; ship it in A (finding 2).
+- [ ] Add the machine step moving the install command into the registered project's settings file before the shared file is deleted, and the per-key stale-file report (finding 3).
+- [ ] Add the missed skill and doc sites and the grep acceptance (finding 4).
+- [ ] `make sync` with nothing resolvable syncs the workspace alone (finding 5).
+- [ ] Fresh-clone test: pre-seed stamps always, no network; add `make dashboard` and `make sync` (finding 6).
+- [ ] AGENTS.md: correct the net line count to +1 (200) and name the replaced ranges (finding 8).
