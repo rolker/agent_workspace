@@ -369,3 +369,13 @@ Narrow check of round 2's three findings and the fix diff `39b6562e..8d9c33bb`; 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no open finding; both earlier must-fixes are fixed and re-checked; nothing in the review needs the owner before the hosted reviews)
+**After**: publish
+**Decision**: publish
+
+The host read the round 3 Local Review (Pre-Push) entry at f11fb65a: verdict approved, Ship recommended, no open findings. The merge stays the owner's.
