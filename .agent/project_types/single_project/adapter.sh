@@ -3,7 +3,8 @@
 # single_project adapter — one repo cloned or symlinked at $WORKSPACE_ROOT/project.
 #
 # Facade over the pre-adapter workspace scripts (ADR-0011, #210): behavior
-# matches the old build.sh/test.sh/setup_project.sh/sync_project.py flow,
+# matches the old build.sh/test.sh/sync_project.py flow (setup ran via a shim,
+# setup_project.sh, until issue #295 removed it from make setup),
 # except that a registered project's build/test/install command comes first
 # from its settings file .agent/projects.d/<name> (issue #332; see
 # _single_project_resolve_cmd) and a fall-through to the shared
