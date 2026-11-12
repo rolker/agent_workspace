@@ -767,6 +767,27 @@ out="$(run --check)"; rc=$?
     && pass "--check is clean once install has fixed both" \
     || fail "--check after the event cases (rc=$rc out=$out)"
 
+# (s) a PreToolUse or SessionStart value that is not an array: install
+# would have to replace it (and drop what it holds) to add its entry, so it
+# refuses with nothing changed, and --check says so.
+for shape in '.hooks.PreToolUse = {"a": 1}' '.hooks.SessionStart = "not-an-array"' '.hooks = [1]'; do
+    cp "$SETTINGS" "$SANDBOX/shape-clean.json"
+    jq "$shape" "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+    cp "$SETTINGS" "$SANDBOX/shape-before.json"
+    rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+    out="$(run)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"refusing to rewrite"*"nothing changed"*"not an "* ]] \
+        && cmp -s "$SETTINGS" "$SANDBOX/shape-before.json" && [[ "$(n_backups)" -eq 0 ]] \
+        && pass "install refuses ($shape), settings.json unchanged and no backup" \
+        || fail "install over ($shape) (rc=$rc backups=$(n_backups) out=${out:0:300})"
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"not an "*"the installer refuses to rewrite it"* ]] \
+        && pass "--check reports ($shape)" \
+        || fail "--check over ($shape) (rc=$rc out=$out)"
+    cp "$SANDBOX/shape-clean.json" "$SETTINGS"
+done
+rm -f "$SANDBOX/shape-clean.json" "$SANDBOX/shape-before.json"
+
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"

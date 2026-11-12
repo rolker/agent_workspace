@@ -527,6 +527,20 @@ read_settings() {
     fi
 }
 
+# The hook events install adds an entry to must hold an array, or nothing:
+# placing our entry in any other value would replace it, and drop whatever
+# it held. Prints one line per such value; nothing when the shape is fine.
+hook_shape_errors() {  # <settings json>
+    jq -r '
+        if .hooks == null then empty
+        elif (.hooks | type) != "object" then "\"hooks\" is \(.hooks | type), not an object"
+        else .hooks | to_entries[]
+             | select(.key == "PreToolUse" or .key == "SessionStart")
+             | select(.value != null and (.value | type) != "array")
+             | "\"hooks.\(.key)\" is \(.value | type), not an array"
+        end' <<< "$1"
+}
+
 # A timestamped copy beside the original, before any rewrite. Cheap, and the
 # difference between a bad merge being an annoyance and being a data loss.
 BACKUP_KEEP=5
@@ -1317,6 +1331,13 @@ if [[ "$MODE" == "check" ]]; then
         fi
         [[ -z "$elsewhere" ]] || note "hook command $1 is registered under $elsewhere, where it does not belong (re-run the installer: it keeps it under $2 only)"
     }
+    # A hook event install would refuse to write into (hook_shape_errors).
+    shape_errors="$(hook_shape_errors "$settings")" || { echo "ERROR: could not check the hooks in $SETTINGS (jq failed)" >&2; exit 1; }
+    if [[ -n "$shape_errors" ]]; then
+        while IFS= read -r e; do
+            note "settings.json: $e -- the installer refuses to rewrite it; fix it by hand"
+        done <<< "$shape_errors"
+    fi
     while IFS= read -r cmd; do
         check_event_count "$cmd" PreToolUse || exit 1
     done < <(hook_commands)
@@ -1579,6 +1600,17 @@ SESSION_HOOKS_JSON="$(jq -n --arg cmd "$SESSION_HOOK_LINK" '
     }')"
 
 current_settings="$(read_settings)"
+shape_errors="$(hook_shape_errors "$current_settings")" || {
+    echo "ERROR: could not read the hooks in $SETTINGS (jq failed) -- nothing changed" >&2
+    exit 1
+}
+if [[ -n "$shape_errors" ]]; then
+    echo "ERROR: refusing to rewrite $SETTINGS -- nothing changed:" >&2
+    while IFS= read -r e; do
+        echo "  $e; the installer adds its entry to an array there and will not replace what it holds -- fix it by hand, then re-run" >&2
+    done <<< "$shape_errors"
+    exit 1
+fi
 install_cls="$(classify_hooks "$current_settings")" || exit 1
 # Remove the previous generation of our commands, the user's own commands
 # staying (prune, PRUNE_JQ_DEFS): ours, and dead ones. Under --force we are
