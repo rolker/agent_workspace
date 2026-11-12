@@ -312,3 +312,23 @@ Draft for the host to put to the owner, not posted: a comment on issue 269's par
 ### Notes
 - Beyond the two findings' text, the one-statement rule also refuses a symlink inside the issue's own checkout (progress.md linked to another file in its records folder) and the dangling case: without the "at the place its path names" clause such a write exits 0 with the entry left uncommitted, because git commits the unchanged link.
 - `docs/design.md`: the Records sentence states the rule, the `progress_append.sh` gate lines are refreshed (93-94), and a change-log row is added (903 lines).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 12:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a9583ba7b1d7c0446, resume 1 of 3)
+
+**Branch**: feature/issue-437 at `0ea9b4c4`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff over 200 lines across 17 files, enforcement scripts and four skill files; fix round 2 classified on the whole diff)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Round 1's two findings are resolved: the symlink rule is one statement in `records_path --write` on the file itself, and the static detector reads a pathspec without ` -- `. The "at the place its path names" clause is kept: it turns a silent exit-0 write that never reaches a commit into a clear refusal, and the adversarial pass found no false refusal for a worktree reached through a symlinked ancestor, a relative or `..` path, a first entry, or `-C` through a link.
+
+### Findings
+- [ ] (must-fix) The place comparison is textual, so a harmless spelling refuses a valid write in the issue's own checkout (reproduced: `records_path --write .agent/work-plans/issue-437/./progress.md` and `.../issue-437//progress.md` return 1, the plain spelling 0; `review_progress.sh check --progress "$dir/progress.md"` with a trailing slash on `$dir` would exit 4). Normalise `//` and `/./` in the named tail before comparing, keeping real symlink redirection refused, and add both spellings to `test_records_write_gate.sh` — `.agent/scripts/_resolve_work_plans_dir.sh:425`
+- [ ] (suggestion) The place clause runs only when the path names `.agent/work-plans/issue-<N>` (`gn` set): `check --progress progress.md` run inside the records folder, with `progress.md` linked to another file there, passes. Either refuse `--write` on a path that does not name the records folder, or judge the place from the resolved folder; add the case — `.agent/scripts/_resolve_work_plans_dir.sh:424`
+- [ ] (suggestion) The exit-code comment still says "records_dir in _resolve_work_plans_dir.sh names the right one"; the script now calls `records_path --write` — `.agent/scripts/progress_append.sh:39`
