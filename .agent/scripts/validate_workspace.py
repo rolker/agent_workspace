@@ -5,7 +5,7 @@ Validate workspace configuration.
 Checks that:
 1. Registered projects are read from .agent/projects.local (issue #227).
    No registered project is valid: a fresh clone validates (issue #295);
-   verbose mode says so and names register_project.sh
+   verbose mode says so and points at the registration script
 2. Each registry entry's checkout has the shape its project type expects,
    checked by its own type's adapter (`adapter --project <name> validate`
    — a .git at the root for single_project, the manifest's layers and repos
@@ -41,6 +41,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 from workspace import (
     get_workspace_root,
     read_projects_registry,
+    REGISTER_PROJECT_POINTER,
     REGISTRY_PARENT_TYPE,
 )
 
@@ -149,10 +150,7 @@ def validate_workspace(verbose=False):
         issues.append(f"projects.local: {err}")
 
     if not registry_entries and not registry_errors and verbose:
-        print(
-            "  no project registered (register one with "
-            ".agent/scripts/register_project.sh <path>)"
-        )
+        print(f"  no project registered (register one with {REGISTER_PROJECT_POINTER})")
 
     # Validate registry entries: known project type, valid checkout
     for entry in registry_entries:

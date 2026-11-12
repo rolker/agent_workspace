@@ -27,6 +27,7 @@ from workspace import (
     get_project_path,
     is_project_configured,
     read_projects_registry,
+    REGISTER_PROJECT_POINTER,
 )
 
 
@@ -194,7 +195,7 @@ def main():
         else:
             print(
                 "  No project was synced (none registered; register one: "
-                ".agent/scripts/register_project.sh <path>)"
+                f"{REGISTER_PROJECT_POINTER})"
             )
 
     print("\n✅ Sync complete.")

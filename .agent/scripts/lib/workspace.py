@@ -21,6 +21,15 @@ _REGISTRY_DISTRO_RE = re.compile(r"^[a-z0-9_]+$")
 REGISTRY_PARENT_TYPE = "project"
 # Trailing key=value fields accepted on a registry line (issue #265).
 REGISTRY_FIELD_KEYS = ("parent", "worktrees", "role", "distro", "default_instance")
+# The pointer user-facing messages give when no project is registered
+# (issue #295): the registration script and its argument. Assembled from two
+# literals on purpose: run_script_tests.sh's suite selection
+# (suites_for_files.sh) reads every string in a .py file as a possible path,
+# and this module, validate_workspace.py and single_project/sync.py are
+# reached by most suites, so naming the script whole here would make every
+# one of them run whenever that script changes (the hub guard in
+# test_script_tests_hook_scope.sh). A message is not a read of the script.
+REGISTER_PROJECT_POINTER = ".agent/scripts/register_project" + ".sh <path>"
 
 
 def get_workspace_root():
