@@ -470,3 +470,26 @@ Every url and ref in `tests/fixtures/p11/manifest.yaml` was checked against the 
 - `type` has no allow-list (only string type and the character rule). `vcs` uses it to pick a client, and it does not reach a command line.
 - Ref names git itself refuses but the pattern allows are not refused, for example a component ending in `.` (`a./b`) or `//`. They fail at clone or checkout and cannot be read as options.
 - From round 1, still deferred: the `extends` cache's interrupted-clone hit and its `url@ref` key collision.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 11:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `400b2652`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; the whole-branch tier stays Deep for the CI workflow change and untrusted manifest content)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 3), not rising; fix and ship rather than another full round
+
+Scope: the round 2 findings (3 must-fix, 6 suggestions) against the round 2 fix commits `ce586b5b` and `50f51b23` (diff `584ea9e6..59f33bc3`); what main brought in with merge `400b2652` is not reviewed. Cross-model: skipped (round-3 convergence check, per handoff). Static analysis: `pre-commit run --files` on the fix diff's 8 files, exit 0. Governance and plan drift: the fix diff touches no CI, Makefile or plan file; nothing new.
+
+Round 2, as checked (worktree code via `PYTHONPATH`, scratch scripts in the session scratchpad): all nine items are closed as worded. Refused now: `--upload-pack=…` as a url, `-b` and `--orphan=x` as a ref and as a per-distro ref, `https:/u:s3cr3t@…` and `user:s3/cr3t@host:org/…` (no message echoes the secret), the `!https://u:s3cr3t@host/a` tag (fixed text and position only), `layers: &a [core, *a]` and an alias bomb, a 300-character layer (shown as "(too long)"), `core`/`Core` in one manifest and across a base and a leaf, `absent: 'no'`, U+202E in a url, and a repeated key at the top level. `pytest tools/ros-manifest/tests`: 267 passed.
+
+New, in the fix's own `_load_yaml`: it catches `yaml.YAMLError` and `RecursionError` only. A standard tag with a bad value raises a plain Python exception from PyYAML's constructor, which escapes as a traceback that quotes the value. Reproduced through `python -m ros_manifest.cli resolve`, exit 1: `ref: !!float s3cr3t-token` prints `ValueError: could not convert string to float: 's3cr3t-token'`; `!!int 0xs3cr3t` prints `ValueError: invalid literal for int() with base 16: 's3cr3t'`; `!!bool s3cr3t` prints `KeyError: 's3cr3t'`; `!!timestamp s3cr3t` gives `AttributeError`; an unquoted `ref: 2024-13-45` gives `ValueError: month must be in 1..12` instead of the "quote it" message. This is round 2's must-fix 3 again (a YAML error quoting document content), by a route that fix did not cover, and it makes the README's new line "A YAML error is reported by line and column only, never with the document's text" untrue.
+
+Not taken (judged in round 2 or recorded by the fix): `ssh://<token-like-user>@host` is a user name to ssh; ref names git refuses but the pattern allows (`a./b`) fail at clone and cannot be read as options; `type` has no allow-list and does not reach a command line.
+
+### Findings
+- [ ] (must-fix) `_load_yaml` lets non-YAML exceptions from PyYAML's constructor escape (`ValueError`, `KeyError`, `AttributeError`; e.g. `!!float s3cr3t`, `!!int 0xs3cr3t`, `!!bool s3cr3t`, unquoted `2024-13-45`), so the CLI prints a traceback quoting the value. Add a final `except Exception` that raises `ManifestError(f"{source}: invalid YAML")` with no content, and tests for those four inputs that check the message holds neither the value nor a traceback — `tools/ros-manifest/src/ros_manifest/schema.py:213-229`
