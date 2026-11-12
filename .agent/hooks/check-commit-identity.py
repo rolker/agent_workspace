@@ -17,7 +17,9 @@ the emails checked are the author and the committer exactly as git will
 record them (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`: the
 GIT_*_EMAIL variables, `author.email` / `committer.email` / `user.email`
 in any config file and `git -c` values all count). An unset or malformed
-configured email blocks the commit.
+configured email blocks the commit; so does an ident git cannot resolve
+(e.g. `user.useConfigOnly` without `user.name`), reported with git's own
+error rather than as an unset email.
 """
 
 import sys
@@ -39,11 +41,29 @@ def main():
         print()
         return 1
 
+    configured = identity_base.configured_email()
     rejected = []
+    unresolved = []
     for kind, label in (("AUTHOR", "Author email"), ("COMMITTER", "Committer email")):
-        email = identity_base.ident_email(kind)
-        if not identity_base.is_accepted(email, local, domain, identity_base.configured_email()):
+        email, error = identity_base.ident_email(kind)
+        if error:
+            unresolved.append((label, error))
+        elif not identity_base.is_accepted(email, local, domain, configured):
             rejected.append((label, email))
+
+    if unresolved:
+        # git itself cannot build the ident: say what git said, not "not set"
+        # (the email may well be set; e.g. user.useConfigOnly without user.name).
+        print()
+        print("ERROR: git cannot resolve the commit identity, so it cannot be checked.")
+        print()
+        for label, error in unresolved:
+            print(f"  {label}: not resolved -- {error}")
+        print()
+        print('  Fix what git reports (e.g. `git config --global user.name "<name>"`),')
+        print("  then commit again.")
+        print()
+        return 1
     if not rejected:
         return 0
 
@@ -51,7 +71,7 @@ def main():
     print("ERROR: Commit identity is not configured or not recognized!")
     print()
     for label, value in rejected:
-        print(f"  {label}: {value or '(not set)'}")
+        print(f"  {label}: {value or '(empty)'}")
     print()
     print("  Accepted (derived from this checkout's git user.email):")
     print(f"    {local}@{domain}, {local}+*@{domain}")

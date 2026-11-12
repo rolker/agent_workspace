@@ -129,27 +129,35 @@ def effective_email(cwd=None):
 
 
 def ident_email(kind, cwd=None):
-    """The email git will record as `kind` ("AUTHOR" or "COMMITTER"), or "".
+    """(email, error) for the email git will record as `kind` ("AUTHOR" or
+    "COMMITTER").
 
     `git var GIT_<kind>_IDENT` with the full environment, so every source git
     itself uses counts: GIT_<kind>_EMAIL, `<kind>.email` and `user.email` in
-    any config file, and `git -c` / GIT_CONFIG_* injection.
+    any config file, and `git -c` / GIT_CONFIG_* injection. When git cannot
+    resolve the ident (e.g. `user.useConfigOnly` with no `user.name`), email
+    is "" and error names what git said (its `fatal:` line), so a caller
+    never reports a set email as unset.
     """
+    command = f"git var GIT_{kind}_IDENT"
     try:
         result = subprocess.run(
-            ["git", "var", f"GIT_{kind}_IDENT"],
+            command.split(),
             capture_output=True,
             text=True,
             check=False,
             cwd=cwd,
         )
-    except OSError:
-        return ""
+    except OSError as exc:
+        return "", f"`{command}` could not run: {exc}"
     ident = result.stdout.strip()
     start, end = ident.rfind("<"), ident.rfind(">")
-    if result.returncode != 0 or start < 0 or end < start:
-        return ""
-    return ident[start + 1 : end]
+    if result.returncode == 0 and 0 <= start < end:
+        return ident[start + 1 : end], ""
+    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    fatal = [line for line in lines if line.startswith("fatal:")]
+    said = (fatal or lines or [f"exit {result.returncode}, no ident printed"])[-1]
+    return "", f"`{command}` failed: {said}"
 
 
 def split_base(email):

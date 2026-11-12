@@ -131,6 +131,17 @@ for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "
     [ $HOOK_RC -ne 0 ] && pass "rejects $other" || fail "accepted $other"
 done
 
+echo "TEST: an ident git cannot resolve is reported with git's error, not as an unset email"
+sbu="$(mk_repo "someone@example.org")"
+git config --file "$sbu/gitconfig" --unset user.name
+git config --file "$sbu/gitconfig" user.useConfigOnly true
+hook_in "$sbu"
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"git var GIT_AUTHOR_IDENT"*"no name was given"* \
+    && "$HOOK_OUT" == *"git var GIT_COMMITTER_IDENT"*"no name was given"* \
+    && "$HOOK_OUT" == *"user.name"* && "$HOOK_OUT" != *"not set"* && "$HOOK_OUT" != *"$DERIVED_CMD"* ]] \
+    && pass "useConfigOnly without user.name: names git's cause, never says the email is unset" \
+    || fail "unresolved ident (rc=$HOOK_RC: $HOOK_OUT)"
+
 echo "TEST: a configured address with an empty suffix is accepted as configured"
 sbe="$(mk_repo "u+@example.org")"
 hook_in "$sbe"
