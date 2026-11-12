@@ -648,7 +648,7 @@ The README paragraph "No error message prints a value from a manifest" is theref
 The fix pass's note on `_check_name` is not right as stated. It shows `repr()` not only of non-string keys but of any failing string name of 64 characters or fewer, list entries in `layers` included.
 
 ### Findings
-- [ ] (must-fix) Rule 2 is not met: `ManifestError` messages still print document values. The sites:
+- [x] (must-fix) Rule 2 is not met: `ManifestError` messages still print document values. The sites: (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
   - `extends.path` — `extends.py:148`, `:151`, `:158`, `:162`
   - `optional_layers` entries — `schema.py:369`, `:373`
   - every reference list cross-checked in `merge.py:167-181`
@@ -662,11 +662,11 @@ The fix pass's note on `_check_name` is not right as stated. It shows `repr()` n
   - `extends.path` messages name only the declaring manifest.
 
   Extend the marker test's `_VALUE_FIELDS` (`tests/test_untrusted_input.py:747`) to those fields and to keys — `tools/ros-manifest/src/ros_manifest/schema.py`, `merge.py`, `extends.py`
-- [ ] (suggestion) String keys that passed only the character rule are echoed: unknown-key lists, the location path in the character-rule message, `repos declares layer '<key>'`, and package names in `merge.py` and `validate`'s violation lines. This is inside the Checkpoint's rule 2 as worded, but a URL with credentials pasted as a key is printed. Print the count and position, or only names that passed their kind's pattern — `schema.py:260`, `:338`, `:382`, `:392`, `:455`, `:476`, `:501`, `merge.py:87`, `:150`
-- [ ] (suggestion) Ctrl-C prints a `KeyboardInterrupt` traceback (source lines only, no document text). `main()` should print `ERROR: interrupted` and return 130 — `tools/ros-manifest/src/ros_manifest/cli.py:105-117`
-- [ ] (suggestion) A broken pipe on small `validate` output is found only at Python's exit flush and prints `Exception ignored … BrokenPipeError`. Flush stdout inside the `try` — `cli.py:105-117`
-- [ ] (suggestion) The emitter writes with the locale encoding while the read side is now UTF-8. Under `LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0`, the em dash in every header gave `internal error (UnicodeEncodeError)` and left an empty `core.repos`, against the "writes nothing" promise (adversarial reviewer's reproduction). Use `write_text(text, encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/emit.py:139`
-- [ ] (suggestion) The `extends` clone inherits stdin and allows git and ssh prompts, so a base url that asks for credentials prompts on the terminal or hangs. Pass `stdin=subprocess.DEVNULL`, `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND="ssh -o BatchMode=yes"` (not run: no network) — `tools/ros-manifest/src/ros_manifest/extends.py:80-95`
+- [x] (suggestion) String keys that passed only the character rule are echoed: unknown-key lists, the location path in the character-rule message, `repos declares layer '<key>'`, and package names in `merge.py` and `validate`'s violation lines. This is inside the Checkpoint's rule 2 as worded, but a URL with credentials pasted as a key is printed. Print the count and position, or only names that passed their kind's pattern — `schema.py:260`, `:338`, `:382`, `:392`, `:455`, `:476`, `:501`, `merge.py:87`, `:150` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) Ctrl-C prints a `KeyboardInterrupt` traceback (source lines only, no document text). `main()` should print `ERROR: interrupted` and return 130 — `tools/ros-manifest/src/ros_manifest/cli.py:105-117` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) A broken pipe on small `validate` output is found only at Python's exit flush and prints `Exception ignored … BrokenPipeError`. Flush stdout inside the `try` — `cli.py:105-117` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) The emitter writes with the locale encoding while the read side is now UTF-8. Under `LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0`, the em dash in every header gave `internal error (UnicodeEncodeError)` and left an empty `core.repos`, against the "writes nothing" promise (adversarial reviewer's reproduction). Use `write_text(text, encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/emit.py:139` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
+- [x] (suggestion) The `extends` clone inherits stdin and allows git and ssh prompts, so a base url that asks for credentials prompts on the terminal or hangs. Pass `stdin=subprocess.DEVNULL`, `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND="ssh -o BatchMode=yes"` (not run: no network) — `tools/ros-manifest/src/ros_manifest/extends.py:80-95` (deferred: owner 2026-11-12: publish now, carried in follow-up issue #447)
 
 ## Checkpoint
 **Status**: complete
