@@ -340,3 +340,24 @@ Both findings below were checked against the code at the head. The host's publis
 **Decision**: address
 
 The host read the Integrated Review entry at b85e49f5. The fix pass does the two findings as the entry words them: a dead command is the installer's only in an entry marked with its own checkout, and the failed write onto a symlinked settings file gets its test.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a1585eada594caeff, resume 1 of 3)
+
+**PR**: #450 at `404e79ae`
+**Addressed**: Integrated Review at `715ae2ff` (2026-11-12 13:41 -05:00)
+**Commits**: 492c5fa8, 404e79ae
+
+### Actions
+- [x] (suggestion) A dead command is the installer's only in an entry marked with that command's own checkout: a new jq def `attributed($m)` (`marked($m)` and `$cls[.].dir == $m`) replaces `marked($m)` in `remove`. A dead command in an entry marked with another checkout is handled like an unmarked one: `--check` reports it with the `--force` remedy (its two dead-command reports now split on `attributed`), a plain install names it and leaves it, `--force` removes it. Header and PRUNE_JQ_DEFS comments reworded. New test (i3): reported with the `--force` remedy and not the plain-install one, kept and named by a plain install, removed and named by `--force` — `user_tier_install.sh` `attributed`, `remove`, `--check` dead reports (492c5fa8)
+- [x] (test gap) The failed rename onto a symlinked settings.json is tested: an `mv` shim fails only the rename onto the dotfiles file; install and `--uninstall` each exit 1 with "failed to write ... -- nothing changed", the dotfiles file is byte-identical, the link points where it did, no `claude-settings.json.agent-workspace.<pid>` staging file and no `~/.claude/.settings.json.*` temp file is left, and the failed `--uninstall` keeps the root file and the SessionStart link. `write_settings` left nothing behind, so it is unchanged. Install's write-failure message, which said only "failed to write", now says "nothing changed in it" (settings.json; the backup is a copy), so the asserted wording is true of install too — `test_user_tier_install.sh` dotfiles section (404e79ae)
+
+### Notes
+- Verification: `bash .agent/scripts/tests/test_user_tier_install.sh` gives 312 passed, 0 failed (302 before this pass; 305 at 492c5fa8). `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, exit 0, script-tests hook included. Scratch HOME and the stub CLI only; the real `~/.claude` was not touched.
+- Install's failed write still exits after the root file, rules record and link are written (the order round 3 dismissed); its message names only settings.json as unchanged.
+
+### Next step
+`/review-code 450`
