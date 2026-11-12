@@ -361,3 +361,31 @@ The host read the Integrated Review entry at b85e49f5. The fix pass does the two
 
 ### Next step
 `/review-code 450`
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 13:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a06a5823d94870b2d, resume 2 of 3)
+
+**PR**: #450 at `46c7cdfa`
+**Depth**: Deep (reason: fix-round re-check of b85e49f5..46c7cdfa per handoff; whole PR 1883 changed lines across 6 files, enforcement script that edits the user's ~/.claude/settings.json)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Re-check of the two Integrated Review findings, fixed in 492c5fa8 and 404e79ae. Cross-model: skipped (two-commit re-check, per handoff). Specialists: static analysis (shellcheck --severity=warning on both files: clean), governance, Claude adversarial (fresh subagent; no findings; its mutation run was denied and not worked around, so it reasoned the mutation from the code). Tests: `test_user_tier_install.sh` 312 passed, 0 failed. PR comments: two Copilot reviews, both "insufficient remaining quota", no inline comments; no human or conversation comments. CI at the head: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass; Lint (pre-commit) pending. The real `~/.claude` was not touched.
+
+Both findings are closed:
+- **Dead command under another checkout's marker**: `attributed($m)` requires the entry's marker to equal the command's own `<dir>`. This holds for both ways `owner` can return "dead": a literal dead command, and a marked command whose directory is gone, where `owner` already requires the match. The two `--check` reports split on exactly the test `remove` uses, so every dead command gets one message: removed, left in place, or reported. The change only narrows what a plain install removes. Test (i3) fails against the previous code, which removed the command because the entry carried a marker.
+- **Failed rename onto a symlinked settings.json**: the shim fails only `mv "$staged" "$real"`, so the symlink branch is exercised. A `write_settings` returning 0 there would fail the exit-code assertions, and a leftover staging file would fail `no_strays`.
+
+Install's write order, as asked: the checks come first (parseable file, owner, hook target, link not a regular file, hooks shape), then classify, merge, the report lists, the no-op comparison and the backup. Only then do the writes run: the root file, the rules record, the SessionStart link, settings.json, legacy skill-link removal, then the plugin.
+
+So a failed settings.json write (a refused rename, once the backup has succeeded) exits 1 with the root file, the rules record and the link written and settings.json unchanged. That is a half-installed tier only on a first install or a `--force` takeover; on a re-install the first three are rewritten with the values they already held. Acceptable for this pull request, not a finding:
+- the run exits 1 with a message that is true ("nothing changed in it", settings.json);
+- `--check` reports the state as drift (missing hook entries);
+- a re-run converges, and nothing the owner wrote is lost;
+- the reverse order is worse: settings.json would name a SessionStart link that a later failure leaves missing, an error in every session.
+
+### Findings
+- [ ] No issues found. LGTM.
