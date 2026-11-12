@@ -3,15 +3,14 @@
 Validate workspace configuration.
 
 Checks that:
-1. A project checkout is configured — legacy project/ symlink and/or
-   registry entries in .agent/projects.local (issue #227); both shapes
-   may coexist during migration
-2. Configured checkouts have the shape their project type expects: the
-   legacy project/ is a git repo with a remote; each registry entry's
-   checkout is checked by its own type's adapter (`adapter --project <name>
-   validate` — a .git at the root for single_project, the manifest's layers
-   and repos for ros2_colcon). When the registry has parse errors, entries
-   are only checked for a present hosting dir.
+1. Registered projects are read from .agent/projects.local (issue #227).
+   No registered project is valid: a fresh clone validates (issue #295);
+   verbose mode says so and names register_project.sh
+2. Each registry entry's checkout has the shape its project type expects,
+   checked by its own type's adapter (`adapter --project <name> validate`
+   — a .git at the root for single_project, the manifest's layers and repos
+   for ros2_colcon). When the registry has parse errors, entries are only
+   checked for a present hosting dir.
 3. Registry entries are well-formed and name project types that have
    adapters (ADR-0011)
 4. .venv shebangs match the current workspace path
@@ -41,27 +40,9 @@ sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
 from workspace import (
     get_workspace_root,
-    get_project_path,
-    get_project_remote_url,
     read_projects_registry,
     REGISTRY_PARENT_TYPE,
 )
-
-
-def get_git_branch(repo_path):
-    """Get the current branch of a git repository."""
-    try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=str(repo_path),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        branch = result.stdout.strip()
-        return branch if branch else None
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
 
 
 # Bound on one project's `adapter validate`. The verb is local filesystem
@@ -156,7 +137,6 @@ def delegate_shape_check(workspace_root, name):
 def validate_workspace(verbose=False):
     """Validate workspace configuration. Returns True if valid."""
     workspace_root = Path(get_workspace_root())
-    project = get_project_path()
 
     print("Validating workspace...")
     print()
@@ -168,36 +148,11 @@ def validate_workspace(verbose=False):
     for err in registry_errors:
         issues.append(f"projects.local: {err}")
 
-    # Check project/ exists (legacy shape). A registry with entries makes
-    # the legacy symlink optional — both shapes may coexist.
-    if not project.exists():
-        if not registry_entries:
-            issues.append("project/ directory does not exist")
-            issues.append("  Run: make setup  (will prompt for repo URL or path)")
-        elif verbose:
-            print("  legacy project/ not configured (registry projects present)")
-    elif not (project / ".git").exists():
-        # Could be a symlink to a git repo
-        resolved = project.resolve()
-        if not (resolved / ".git").exists():
-            issues.append("project/ exists but is not a git repository")
-            issues.append("  Run: make setup  (will re-configure the project)")
-        else:
-            if verbose:
-                print(f"  project/ is a symlink → {resolved}")
-    else:
-        if verbose:
-            branch = get_git_branch(project)
-            print(f"  project/ is a git repo (branch: {branch or 'detached HEAD'})")
-
-    # Check remote URL (legacy shape only — registry checkouts are validated
-    # per entry below and don't require a remote named 'origin' here)
-    remote_url = get_project_remote_url()
-    if not issues and project.exists():
-        if not remote_url:
-            issues.append("project/ has no remote 'origin' configured")
-        elif verbose:
-            print(f"  project remote: {remote_url}")
+    if not registry_entries and not registry_errors and verbose:
+        print(
+            "  no project registered (register one with "
+            ".agent/scripts/register_project.sh <path>)"
+        )
 
     # Validate registry entries: known project type, valid checkout
     for entry in registry_entries:
@@ -332,8 +287,6 @@ def validate_workspace(verbose=False):
         return False
 
     print("✅ Workspace validation PASSED!")
-    if verbose:
-        print(f"   project remote: {remote_url}")
     print("=" * 60)
     return True
 

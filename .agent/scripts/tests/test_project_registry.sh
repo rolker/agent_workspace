@@ -380,12 +380,29 @@ test_validate_legacy_still_works() {
 }
 
 test_validate_neither_shape() {
-    echo "TEST: validate still fails when neither shape is configured"
+    echo "TEST: validate passes with no project registered and no project/ (fresh clone, issue #295)"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
-    out="$(run_validate "$sb")" || rc=$?
-    assert_eq "exit 1" "1" "$rc"
-    assert_contains "legacy guidance kept" "project/ directory does not exist" "$out"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "passes" "PASSED" "$out"
+    assert_contains "says no project is registered" \
+        "no project registered (register one with .agent/scripts/register_project.sh <path>)" "$out"
+    assert_not_contains "no project/ guidance" "project/ directory does not exist" "$out"
+    assert_not_contains "no make setup prompt" "make setup  (will prompt" "$out"
+    [[ -e "$sb/project" ]] && rc=1 || rc=0
+    assert_eq "no project/ created" "0" "$rc"
+}
+
+test_validate_registered_no_legacy_verbose() {
+    echo "TEST: validate --verbose with one registered project and no project/ passes, no 'no project registered' line"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_registered_project "$sb" demo >/dev/null
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "entry checked" "project 'demo' (single_project)" "$out"
+    assert_not_contains "no 'none registered' line" "no project registered" "$out"
 }
 
 # ---- Per-type checkout-shape delegation (issue #330) ----
@@ -1556,6 +1573,7 @@ test_validate_unknown_type
 test_validate_malformed_registry
 test_validate_legacy_still_works
 test_validate_neither_shape
+test_validate_registered_no_legacy_verbose
 test_validate_ros2_colcon_entry_without_git_passes
 test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry
