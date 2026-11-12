@@ -209,9 +209,18 @@ out="$(run_in "$sb" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.email GIT_CONFIG_VA
 [ "$out" = "someone+codex@example.org" ] && pass "helper derives from the file value under injection" \
     || fail "helper under injection (got: $out)"
 sb="$(mk_repo)"
+INJECTED_TEXT='set only through `git -c` or the environment'
 hook_in "$sb" "GIT_CONFIG_PARAMETERS='user.email'='evil@example.net'" GIT_AUTHOR_EMAIL=evil@example.net
-[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"$UNSET_TEXT"* ]] && pass "an injected value never stands in for an unset base" \
+[[ $HOOK_RC -eq 1 && "$HOOK_OUT" == *"$INJECTED_TEXT"* && "$HOOK_OUT" == *"must come from a config file"* ]] \
+    && pass "git -c only: blocked, saying -c values are ignored for the base" \
     || fail "injected unset base (rc=$HOOK_RC: $HOOK_OUT)"
+out="$(run_in "$sb" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.email GIT_CONFIG_VALUE_0=evil@example.net \
+    -- python3 "$HELPER" agent codex 2>&1)"; rc=$?
+[[ $rc -eq 1 && "$out" == *"$INJECTED_TEXT"* ]] && pass "GIT_CONFIG_COUNT only: the helper says the same" \
+    || fail "helper injected only (rc=$rc, got: $out)"
+out="$(run_in "$sb" -- python3 "$HELPER" base 2>&1)"
+[[ "$out" == *"$UNSET_TEXT"* && "$out" != *"$INJECTED_TEXT"* ]] && pass "truly unset keeps the plain message" \
+    || fail "plain unset (got: $out)"
 
 echo "TEST: an agent-configured clone (local+claude-code@d) normalises to the base"
 sb="$(mk_repo)"

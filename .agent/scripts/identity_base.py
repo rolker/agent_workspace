@@ -41,6 +41,14 @@ UNSET_MESSAGE = (
     "(or without `--global` for this clone only)"
 )
 
+INJECTED_ONLY_MESSAGE = (
+    "git user.email is set only through `git -c` or the environment "
+    "(GIT_CONFIG_PARAMETERS / GIT_CONFIG_COUNT): those values are ignored "
+    "for the identity base, which must come from a config file. Run "
+    "`git config --global user.email <your-address>` "
+    "(or without `--global` for this clone only)"
+)
+
 MALFORMED_MESSAGE = (
     "git user.email {value!r} is not a usable address (expected "
     "<local>@<domain>: exactly one `@`, a non-empty local part and domain, "
@@ -166,8 +174,15 @@ def split_base(email):
 
 
 def configured_base(cwd=None):
-    """(local, domain) of the checkout's configured git email."""
-    return split_base(configured_email(cwd))
+    """(local, domain) of the checkout's configured git email.
+
+    An email present only through `git -c` / GIT_CONFIG_* injection gets
+    INJECTED_ONLY_MESSAGE rather than the plain "not set" one.
+    """
+    email = configured_email(cwd)
+    if not email.strip() and effective_email(cwd).strip():
+        raise IdentityError(INJECTED_ONLY_MESSAGE)
+    return split_base(email)
 
 
 def base_email(cwd=None):
