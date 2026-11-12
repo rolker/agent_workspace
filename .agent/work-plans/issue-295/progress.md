@@ -445,3 +445,30 @@ Intermediate commits used `SKIP=validate-script-tests`. Final run, no SKIP: `/ho
 
 ### Reported, not fixed
 - `docs/design.md:384`, Table 1 `_project_registry.sh` row, cites 485-500 for `registry_derive_type_from_dir`; the function is at 575-600 (header comment from 575, body 585-600) on main and on this branch. This branch's changes there come after line 624, so they did not shift it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 15:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a35cdf54273683d8b, resume 1 of 3)
+
+**Branch**: feature/issue-295 at `94395d86`
+**Base**: main
+**Depth**: Standard (reason: round 3 convergence check per handoff; whole-diff tier Standard: Makefile and docs/design.md are governance files)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Pull request A only ("a fresh clone works with no project"). Narrow convergence check of the round 2 findings against the fix diff `c05c8fd9..94395d86` (425f1c02, e0481904, ba7d2bcf, 7537b7ee, 752be3e1). All four round 2 findings are closed: sync.py reports a malformed main registry instead of "none registered" (new case in (f)); the setup, install, worktree_create.sh and ADR-0007 design rows are true at HEAD (Makefile 100 and 173 checked; the four worktree_create.sh ranges are main's +6); both helpers decide by `--git-dir` against `--git-common-dir`, then the first `git worktree list --porcelain` entry; `test_main_checkout_helpers` runs both on five checkouts, and fails if the old "common dir minus /.git" rule returns (separate-git-dir case). The Claude adversarial pass ran both helpers under `set -euo pipefail` on 14 layouts (spaces, non-ASCII, symlinked parents, bare-backed and separate-git-dir worktrees, inside a pre-commit hook with `GIT_DIR` set): exit 0 and the same answer every time. No cross-model reviewers (round 3, per handoff).
+
+### Findings
+- [ ] (suggestion) Comments still say the registry is "found through git's common dir as make setup … find it", which is no longer how the helpers work, and `make setup` keeps the old rule (`WS_ROOT` = common dir minus `/.git`), so in a `--separate-git-dir` main checkout setup prints "No project is registered" while validate, sync and the dashboard do not. Reword the four comments to name `get_main_checkout_root` / `registry_main_checkout`; aligning `WS_ROOT` is B's (it also decides `STAMP` and `VENV_DIR`). — `.agent/project_types/single_project/sync.py:188`, `.agent/scripts/validate_workspace.py:154`, `.agent/scripts/dashboard.sh:156`, `.agent/scripts/tests/test_fresh_clone_no_project.sh:187`, `Makefile:41`
+- [ ] (suggestion) The fix pass's untested combination behaves as it guessed and gives a false message: in a linked worktree of a `--separate-git-dir` main checkout, git 2.43 lists the git dir (`…/sep.git`) as the first worktree, which is not a checkout, so both helpers return the worktree itself and sync and validate say "none registered" with a registry present in the main checkout. Git does not record that checkout, so it cannot be found from git alone; add the case to `test_main_checkout_helpers` so the fallback is a recorded decision, and consider "no registry found here" over "none registered" when the helper fell back from a linked worktree. Rare layout; not needed for this pull request. — `.agent/scripts/tests/test_project_registry.sh:~414`, `.agent/scripts/_project_registry.sh:658-666`, `.agent/scripts/lib/workspace.py:74-80`
+
+### Notes (not findings)
+- `docs/design.md:384` (`_project_registry.sh` row cites 485-500 for `registry_derive_type_from_dir`, which is at 585 here and on main): not caused by this branch; a note for pull request B, which rewrites that table.
+- Several `worktree_create.sh` ranges in Table 1 did not land on the described code on main either; the +6 shift carried them over faithfully. Also for B.
+- The adversarial pass reports one of its own setup commands was denied and that it then split it into script files; that is a workaround of a denial, surfaced here for the owner. Its sandbox is left at the session scratchpad `r3/` (and a `t1-link` symlink beside it); not removed by this review.
+
+### Verification
+`test_fresh_clone_no_project.sh` 21/0 (includes the new malformed-registry case), `test_project_registry.sh` 307/0 (includes `test_main_checkout_helpers`, 5 cases), run one at a time at `94395d86`. Design citations checked by `sed -n` on the Makefile and grep on `_project_registry.sh` here and on main.
