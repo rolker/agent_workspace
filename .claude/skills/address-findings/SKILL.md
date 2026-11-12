@@ -201,7 +201,9 @@ own) and run the same command again on the final tree before step 5.
 Append one entry through the same persistence call `review-code` step 8
 and `triage-reviews` step 7 use (strict / compatibility switch,
 `--no-progress`, no-issue skip — see `review-code` step 8 for the four
-outcomes; echo the printed line):
+outcomes; compatibility refuses like strict outside issue `<N>`'s
+checkout, and commits after the notice only when `WORKTREE_ISSUE` names
+another issue or `WORK_PLANS_DIR_OVERRIDE` is set; echo the printed line):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"

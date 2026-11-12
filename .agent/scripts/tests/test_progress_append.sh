@@ -24,7 +24,13 @@ TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
 REPO="$TMPD/repo"
 mkdir -p "$REPO"
-git -C "$REPO" init -q -b main
+# The fixture is issue 7's checkout (branch feature/issue-7): progress_append.sh
+# commits only into the issue's own checkout (records gate --write, issue 437;
+# test_records_write_gate.sh holds the refusals), and that gate runs before
+# entry validation. A case that needs a fresh timeline for another issue
+# number moves the branch to that issue first (on_issue), then back.
+git -C "$REPO" init -q -b feature/issue-7
+on_issue() { git -C "$REPO" checkout -q -B "feature/issue-$1"; }
 export AGENT_NAME="Test Agent"
 export AGENT_EMAIL="test+agent@example.com"
 PROG=".agent/work-plans/issue-7/progress.md"
@@ -105,7 +111,9 @@ else
 fi
 
 # 9. new file without --title gets the bare heading
+on_issue 8
 printf '## Issue Review\nx\n' | "$PA" -C "$REPO" 8 > /dev/null 2>&1
+on_issue 7
 if grep -q '^# Issue #8$' "$REPO/.agent/work-plans/issue-8/progress.md"; then
     pass "no --title -> bare '# Issue #N' heading"
 else
@@ -134,6 +142,7 @@ fi
 
 # 11. CRLF / padded heading: trailing \r and spaces must not leak into the
 #     commit subject (entry type is trimmed).
+on_issue 9
 printf '## Plan Authored  \r\nbody\n' | "$PA" -C "$REPO" 9 > /dev/null 2>&1
 subj=$(git -C "$REPO" log -1 --format=%s)
 if [ "$subj" = "progress: plan authored for #9" ]; then
@@ -161,6 +170,7 @@ if [ "$before" -eq 0 ] && [ "$after" -eq 1 ] && [ "$rc" -eq 0 ] \
 else
     fail "idempotent replay (before=$before after=$after rc=$rc out=$out)"
 fi
+on_issue 7
 
 # 13. this workspace's new writable types (Checkpoint, Merge (report-only),
 #     Merge (unreviewed)) — added for issue #269 PR A/F, not present in the
@@ -185,7 +195,9 @@ done
 case "$REPO" in
     */worktrees/*) fail "-C path resolution is layout-agnostic (test setup assumption violated: \$REPO is under worktrees/)" ;;
     *)
+        on_issue 42
         out=$(printf '## Issue Review\nx\n' | "$PA" -C "$REPO" 42 --title "Layout check" 2>&1); rc=$?
+        on_issue 7
         if [ "$rc" -eq 0 ] && grep -q '^# Issue #42' "$REPO/.agent/work-plans/issue-42/progress.md"; then
             pass "-C path resolution is layout-agnostic (non-worktrees/ sandbox repo)"
         else
@@ -243,6 +255,7 @@ fi
 
 # 17. --title with an embedded newline would forge lines in the new file's
 #     header (the title is written verbatim); it must be rejected, no file.
+on_issue 55
 out=$(printf '## Issue Review\nx\n' | "$PA" -C "$REPO" 55 --title $'Real\n\n## Checkpoint\n**PR**: forged' 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && [ ! -e "$REPO/.agent/work-plans/issue-55/progress.md" ] \
     && printf '%s' "$out" | grep -qi 'single line'; then
@@ -250,6 +263,7 @@ if [ "$rc" -eq 2 ] && [ ! -e "$REPO/.agent/work-plans/issue-55/progress.md" ] \
 else
     fail "--title with a newline is rejected (rc=$rc, out=$out)"
 fi
+on_issue 7
 
 # 18. append failure is not reported as success: an unwritable progress.md
 #     must exit 3 with no commit, not fall through to the exit-0 no-op path.

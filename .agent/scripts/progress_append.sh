@@ -27,15 +27,18 @@
 #     author check on agent-convention branches.
 #
 # -C <dir> targets another worktree (the `git -C` pattern the skills use);
-# default is the repo containing the current directory. Scope note: -C is
-# deliberately unbounded — the script can append+commit a progress entry in
-# any git repo on the host (worktrees live outside the workspace root). The
-# blast radius stays tiny because everything else is derived/fixed; keep it
-# that way when modifying this script.
+# default is the repo containing the current directory. Scope note: -C may
+# name any git repo on the host (worktrees live outside the workspace root),
+# but the records gate below commits only into issue <N>'s own checkout
+# (issue 437). The blast radius stays tiny because everything else is
+# derived/fixed; keep it that way when modifying this script.
 #
 # Exit codes: 0 ok, 2 usage/validation error, 3 git failure, 4 refused: the
-# target is inside a package worktree but is not the issue's own checkout
-# (records_dir in _resolve_work_plans_dir.sh names the right one).
+# target checkout is not the issue's own (a main checkout or one on its
+# default branch, another issue's worktree, or inside a package worktree a
+# checkout that is not the issue's, or progress.md reached through a symlink;
+# records_path --write in _resolve_work_plans_dir.sh names the right checkout).
+# The refusal comes before entry validation: a bad entry aimed there exits 4.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -75,15 +78,20 @@ fi
 ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null) \
     || { echo "error: '$DIR' is not inside a git repository" >&2; exit 2; }
 
-# The records gate (records_dir, _resolve_work_plans_dir.sh; issue 429):
-# inside a package worktree (a .worktree-repos manifest encloses the target
-# or <dir>), only the issue's own checkout commits its records: a sibling
-# checkout with the same issue number, or the worktree's top folder (whose
-# toplevel is some other repository), is refused before anything is
-# written. A no-op everywhere else.
+# The records gate (records_path --write on progress.md itself, see
+# _resolve_work_plans_dir.sh), before anything is written. Inside a package
+# worktree (a .worktree-repos manifest encloses the target or <dir>), only
+# the issue's own checkout commits its records: a sibling checkout with the
+# same issue number, or the worktree's top folder, is refused (issue 429).
+# Everywhere, the file, every symlink resolved, must sit at the place it
+# names in issue <N>'s own checkout (<dir>'s, never the current directory's):
+# not on its default branch, on feature/issue-<N>, or for a detached HEAD or
+# another branch name in a folder issue-*-<N> (issue 437). The merge
+# script's record, -C <the PR's worktree> from the root, passes.
 # shellcheck source=_resolve_work_plans_dir.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_resolve_work_plans_dir.sh"
-RECORDS=$(records_dir "$ISSUE" "$DIR") || exit 4
+RECORDS="$ROOT/.agent/work-plans/issue-$ISSUE"
+records_path --write "$RECORDS/progress.md" "$DIR" >/dev/null || exit 4
 
 ENTRY=$(cat)
 # All entry/title validation (heading, writable-type whitelist, one heading
