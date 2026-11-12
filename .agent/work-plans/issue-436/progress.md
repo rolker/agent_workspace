@@ -565,7 +565,7 @@ Not taken from the adversarial review:
 - [x] (suggestion) A base repository whose clone fails with non-UTF-8 stderr gives a `UnicodeDecodeError` traceback, and a decodable failure quotes git's multi-line stderr (the remote's file names) in the `ERROR:` line. Drop `text=True` (or decode with `errors="replace"`) and report fixed text with git's exit status — `tools/ros-manifest/src/ros_manifest/extends.py:64-72`, `:76-85`
 - [x] (suggestion) `resolve --out` at a path that cannot be created prints a `FileNotFoundError` traceback; catch `OSError` around the mkdir/write and print one `ERROR:` line naming `--out` — `tools/ros-manifest/src/ros_manifest/emit.py:137`
 - [x] (suggestion) `its extends cannot be followed (No such file or directory)` is also what a missing `git` and an unwritable `--cache-dir` print (`(Permission denied)`), blaming the manifest; give those their own messages — `tools/ros-manifest/src/ros_manifest/extends.py:173-180`
-- [ ] (suggestion) `load_manifest_file` reads with the locale encoding; under a non-UTF-8 locale the "cannot be read as text" branch differs from the tests. Use `read_text(encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/schema.py:521`
+- [x] (suggestion) `load_manifest_file` reads with the locale encoding; under a non-UTF-8 locale the "cannot be read as text" branch differs from the tests. Use `read_text(encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/schema.py:521`
 
 ## Checkpoint
 **Status**: complete

@@ -488,6 +488,26 @@ def test_a_manifest_that_is_not_text_is_a_message(tmp_path, capsys):
     assert out == f"ERROR: {leaf}: cannot be read as text\n"
 
 
+def test_a_manifest_is_read_as_utf8_whatever_the_locale(tmp_path, monkeypatch):
+    # Round 4: read with the locale's encoding, the "not text" branch differed by machine.
+    from pathlib import Path
+
+    from ros_manifest.schema import load_manifest_file
+
+    seen = {}
+    original = Path.read_text
+
+    def spy(self, *args, **kwargs):
+        seen.update(kwargs)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", spy)
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_bytes("layers: [core]  # é\n".encode("utf-8"))
+    assert load_manifest_file(leaf).layers == ["core"]
+    assert seen == {"encoding": "utf-8"}
+
+
 def test_an_unreadable_manifest_is_a_message(tmp_path, capsys):
     import os
 

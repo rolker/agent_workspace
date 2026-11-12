@@ -532,7 +532,7 @@ def load_manifest_file(path: Path, source: Optional[str] = None) -> Manifest:
     try:
         if not path.is_file():
             raise ManifestError(f"manifest not found: {path}")
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")  # not the locale's: the same on every machine
     # A file that cannot be read or decoded is a message under the same label every other
     # message uses, not a traceback (no permission, a name too long, bytes that are not text).
     except UnicodeDecodeError:
