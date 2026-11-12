@@ -85,7 +85,7 @@ Not verified (cannot be done without a model session):
 - What a second `marketplace add` of the same name from a different path at
   user scope does.
 
-These become the implement pass's step 1, as a live session case with a stop
+These become PR B's step 1, a live session case run by the host or owner with a stop
 condition (below). The stop condition is part of the plan, not a risk to
 accept silently.
 
@@ -93,60 +93,123 @@ accept silently.
 
 Two pull requests, in this order.
 
+**Sequencing (finding 9).** `dispatch_phase.sh next` keys one timeline to one
+pull request: with `--pr merged` it answers "the worktree is gone, nothing
+left to resolve" (header and line 703), and the merge removes the worktree.
+So the loop's scripts cannot carry two merge cycles on one timeline. PR A is
+therefore planned under its **own worktree and timeline for issue 394**
+(branch `feature/issue-394`, `Closes #394`), from `main`, as its own
+`run-issue` pass; it is implementable without any owner answer. PR B (this
+issue, branch `feature/issue-446`, `Closes #446`) is implemented only after A
+is merged and installed, on this branch after merging `main` in. Issue 394
+needs its own plan entry (a short one, taken from the PR A section below)
+when its pass starts; this plan is its source.
+
 **PR A: #394, hook markers and `.gitignore` (small, own issue, merges first).**
 
-1. Identify the installer's own hook entries by their command path, not by
-   `_agent_workspace`. The installer's commands are fixed: the absolute path
-   of `log-tool-use.sh` in the checkout and `SESSION_HOOK_LINK`. `--check`,
-   the re-run, `--force` and `--uninstall` treat an entry whose command is one
-   of those as the installer's, marked or not; foreign-checkout detection
-   (`._agent_workspace` of another path) keeps working where the marker is
-   present and falls back to the command path (`.../.claude/hooks/log-tool-use.sh`
-   outside this checkout) where it is not. The marker may still be written; it
-   is no longer relied on. A re-run of an install over unmarked entries does not
-   add a second copy.
-2. Add `.claude/settings.local.json` to `.gitignore`.
-3. Tests (scratch HOME, stub CLI): install, strip the marker from every hook
-   entry the way the CLI does, then `--check` passes (exit 0) and a second
-   install changes nothing (hook count unchanged, settings file unchanged apart
-   from the backup); `--uninstall` after a strip removes the entries.
+1. Decide "ours" by command path, not by `_agent_workspace`. An entry is the
+   installer's if its command is `SESSION_HOOK_LINK`, or any command under
+   `$WS_ROOT/.claude/hooks/` (this covers `log-tool-use.sh` and the retired
+   hooks of #328, which the retired-hook check at about lines 1095-1115 and
+   its test at `test_user_tier_install.sh:305` only find today when tagged).
+   `--check`, the re-run, `--force` and `--uninstall` use this rule whether or
+   not the marker is present. Another checkout's entry is recognised the way
+   `foreign_skill_link` does: the entry's directory (two levels above
+   `.claude/hooks/`) holds `.agent/user_tier_scripts.txt` and is not
+   `$WS_ROOT`; a same-named hook in an unrelated repository is not caught
+   (finding 6c). A re-run over unmarked entries does not add a second copy.
+2. Idempotent write (finding 6b): the installer stops writing the marker
+   (command-path matching makes it carry nothing the command does not; the
+   foreign-checkout rule above no longer needs it), and skips the write of
+   `settings.json` when the merged result equals the current content under
+   `jq -S` (this also covers the CLI reordering keys). If dropping the marker
+   leaves a reader of `_agent_workspace` in the repo, the implement pass
+   removes that reader too; if one cannot be removed, the marker stays and
+   only the no-op-write skip is added.
+3. Add `.claude/settings.local.json` to `.gitignore`.
+4. Tests (scratch HOME, stub CLI that strips markers and reorders keys on
+   every call): install, CLI call, then `--check` passes (exit 0) and a
+   second install leaves `settings.json` byte-identical (no backup written
+   either); an unmarked retired-hook entry under `$WS_ROOT/.claude/hooks/` is
+   found by `--check` and replaced by install; a same-named hook outside the
+   checkout without `user_tier_scripts.txt` is left alone; one with it is
+   reported as another checkout's; `--uninstall` after a strip removes the
+   entries.
 
 **PR B: user-scope enable and removal of the per-root machinery (this issue,
-branch `feature/issue-446`).** One pull request, commits in this order:
+branch `feature/issue-446`, after A is merged and installed).** One pull
+request, commits in this order:
 
-1. **Spike step and live case.** Add a live case to
-   `tests/live/plugin_acceptance.sh` (opt-in; its sandbox HOME, renamed
-   marketplace as the existing cases do) for the facts the scratch run could
-   not check: a session in the committed-off repository, in a plain
-   subdirectory root of it, in a worktree of it; a session in a repository
-   nested in an ordinary root; a session in an unregistered folder; local
-   `true` plus user `true`. Run it and record the result (versions, each line
-   PASS or FACT) in the plan's "Implementation Notes" and the `## Implementation`
-   progress entry. **Stop condition:** if the committed `false` entry does not
-   keep a workspace session to bare names, or does not cover a root inside the
-   workspace tree, or a nested-repository session does not list the
-   `agent-workspace:` skills, stop and report to the host: the shape of the
-   change (and the `skill_prefix.sh` rule in step 4) depends on it. If only the
-   inside-the-tree root fails, the registry-based rule for roots inside the
-   workspace tree stays in `skill_prefix.sh` (and nothing else changes); that
-   is a documented narrowing, not a stop.
+1. **Live check (waits for the owner's yes; no live session starts before
+   it).** A live session needs auth, which a scratch HOME lacks and a
+   dispatched phase must not borrow from the real `~/.claude`. Plan for the
+   host's recommended answer: once PR A is merged and installed (so the hook
+   markers are no longer at risk), the existing opt-in suite
+   `.agent/scripts/tests/live/plugin_acceptance.sh` (real auth, renamed
+   `aw-accept-<pid>` plugin, cleanup on exit) gains user-scope cases that
+   enable the renamed test plugin at user scope in the real `~/.claude` for
+   the minutes the run takes and then remove it. A trap removes it on any
+   exit; the suite prints, at the start, the one command that removes it by
+   hand if the run is killed. The suite's header promise ("never touches
+   `~/.claude/settings.json`") is rewritten to say exactly this. The run is
+   made by the host or the owner, **not by an implement sub-agent**, before
+   B's implementation starts; its FACT lines go on the timeline and in
+   "Implementation Notes". Cases: a session in the committed-off repository,
+   in a plain subdirectory root of it, in a worktree of it; an in-tree root
+   (the `p11-*` shape: a registered root inside the workspace tree with no
+   `.git` of its own); a repository nested in an ordinary root; an
+   unregistered folder; local `true` plus user `true` (listed once?); and a
+   root whose local entry is `false` under user `true` (finding 3; the
+   migration rule "false stays false" rests on it). **Stop conditions:** if
+   the committed `false` entry does not keep a workspace session to bare
+   names; or does not cover the in-tree root (finding 2: the failure is then
+   a doubled skill list there, and only a per-root `false` written into that
+   root cures it, which brings back a per-root write -- it trades "simplify"
+   against "never doubled", the owner's to weigh; the `skill_prefix.sh`
+   registry fallback is dropped, it would not cure it); or a nested-repository
+   session does not list the `agent-workspace:` skills; or a local `false`
+   does not win over user `true`: stop and report to the host.
+   Alternatives the owner may pick instead of the recommended answer:
+   (i) he runs the live case by hand from a written checklist: the plan gains
+   a checklist file (the same cases, as steps with the expected lines), the
+   suite gains no user-scope cases, and the FACT lines are pasted by him;
+   (ii) a token for a scratch config directory: the suite runs with
+   `CLAUDE_CONFIG_DIR` pointing at a scratch directory and the token, never
+   touching his real `~/.claude`, a dispatched phase could run it, and the
+   trap/print-the-removal-command part is dropped.
 2. **Install, migrate, `--check`, `--uninstall` for user scope** (the new
    shape; about 120 lines added):
    - Install: if `~/.claude/settings.json` already shows
      `enabledPlugins[id] == true` and
-     `extraKnownMarketplaces[name].source.path == WS_PHYS`, make no CLI call.
+     `extraKnownMarketplaces[name].source.path == WS_PHYS`, **and**
+     `plugins/known_marketplaces.json` holds the entry with the same source,
+     make no CLI call (finding 5: a re-run repairs what `--check` reports).
      Otherwise, from a scratch directory outside any repository, run
      `claude plugin marketplace add "$WS_PHYS" --scope user` and
      `claude plugin install "$PLUGIN_ID" --scope user`, then read the settings
      back and fail if they do not show it (the existing read-back habit).
      Another checkout's declaration: the user tier is already singular
      (`installed_elsewhere`), so the same refusal applies; no separate
-     machine-record takeover (`claim_machine_record`, about 60 lines) unless
-     the spike's third unverified fact shows the CLI keeps a stale record
-     that breaks sessions.
+     machine-record takeover (`claim_machine_record`, about 60 lines) (the
+     review re-checked on 2.1.322 that a second user-scope `marketplace add`
+     of the same name from another path repoints both records, so the add is
+     the takeover). Order: user-scope add and install first, then migrate
+     (a local remove with the user declaration present keeps the machine
+     record; the reverse order can drop it).
    - Migrate one legacy root with a single function `migrate_legacy_root
-     <root>`, used by install and uninstall for the registry roots and the
-     workspace checkout. It reads `<root>/.claude/settings.local.json`:
+     <root>`, used by install and uninstall for the registry roots, the
+     workspace checkout, and the roots found in the CLI's own record
+     `~/.claude/plugins/installed_plugins.json` (entries with
+     `"scope":"local"` for this plugin id, `projectPath` = the root), so a
+     root unregistered by hand or moved is still found (finding 4; a
+     `projectPath` that no longer exists gets the one note below). It runs
+     the CLI only where the root is its own git toplevel or in no git
+     repository; from a plain subdirectory the CLI would change the
+     toplevel's file and leave the root's own entry, so every run would find
+     it again. Elsewhere (an in-tree `p11-*` root, a `parent=` instance that
+     is a plain directory of its parent's repository) it prints the entry
+     and the one-line hand removal, and `--check` notes it; never an error.
+     It reads `<root>/.claude/settings.local.json`:
      `enabledPlugins[id] == true` from this checkout, run from the root:
      `claude plugin uninstall "$PLUGIN_ID" --scope local` and
      `claude plugin marketplace remove "$MARKETPLACE_NAME" --scope local`
@@ -189,7 +252,8 @@ branch `feature/issue-446`).** One pull request, commits in this order:
      line and the settings file only. Header text and `--help` follow.
    - `skill_prefix.sh`: the rule becomes: in the workspace checkout's
      repository (checkout, worktrees, and the registry roots inside the
-     workspace tree that step 1 shows are covered), bare; anywhere else,
+     workspace tree, which step 1 must show are covered or the plan stops),
+     bare; anywhere else,
      `agent-workspace:`. No registry read for the common case, no refusal
      for nested repositories or unregistered folders.
    - `session_start_project_layer.sh`: header says what is true in a
@@ -200,11 +264,19 @@ branch `feature/issue-446`).** One pull request, commits in this order:
      installed: run the installer".
    - `session_root.sh`: keeps refusing a package repository nested in a root
      (the root rule is about which root a session works under, not about the
-     plugin). Only the reason text that cites "does not read that root's local
-     settings" is reworded; whether to relax the refusal is a follow-up issue
+     plugin). Only the reason text (lines 149-155, "neither the root's plugin nor its
+     layer reaches the session") is reworded to cite the design's rule that a
+     root is the registered hosting directory, never a nested package
+     repository (finding 8); whether to relax the refusal is a follow-up issue
      opened in this PR, not part of this change.
    - `run-issue` SKILL.md prefix step, `script_reference.md`,
-     `project_integration_audit.sh` where it names the per-root enable.
+     `project_integration_audit.sh` where it names the per-root enable;
+     `.agent/knowledge/principles_review_guide.md` line 53 (the ADR-0018 row:
+     "enabled at local scope per registered root ... the only write into a
+     project checkout is ... `settings.local.json`") rewritten to the
+     user-scope rule; `registration_verify.sh --user-tier` stays as a
+     read-only check after registration (which no longer runs the installer),
+     its plugin expectations following the user-scope shape.
 5. **The committed off entry:** add
    `"enabledPlugins": {"agent-workspace@agent-workspace": false}` to the
    workspace checkout's tracked `.claude/settings.json`. The installer
@@ -226,8 +298,11 @@ branch `feature/issue-446`).** One pull request, commits in this order:
      reference at 252) says the exception was withdrawn on 2026-11-12 and the
      user tier gains the plugin's `~/.claude` entries.
    - `docs/design.md`: "Sessions and roots" plugin bullet (line 248-251),
-     the registry/`--remove` bullet (lines 314-320), the root-rule text that
-     mentions nested repositories (line 207, only if step 1 changes it),
+     the registry/`--remove` bullet (lines 314-320), the root-rule text at
+     lines 205-207 (unconditionally: "sessions do not read the root's local
+     settings" is false after this change; the refusal's remaining reason is
+     the design's "a multi-repo project's root is its registered hosting
+     directory, never a package repository nested in it", around line 200),
      the register row for ADR-0018 (line 744) and C4 (line 767), and a
      history row.
 7. **Tests** (scratch HOME and synthetic sandbox roots, a stub CLI that
@@ -256,7 +331,14 @@ branch `feature/issue-446`).** One pull request, commits in this order:
      about the plugin step are removed;
    - `skill_prefix.sh`: workspace checkout and worktree bare; ordinary
      root, nested repository, unregistered folder: `agent-workspace:`;
-     inside-tree root per step 1's result;
+     inside-tree root bare; `test_user_tier_guard.sh` lines 249-272 (which
+     assert exit 1 from an unregistered repository) are rewritten to the new
+     answer;
+   - migration extras: a legacy entry in a root that is a plain
+     subdirectory of a repository is reported, not migrated, and the next
+     run neither re-migrates it nor calls it drift; a root found only in
+     `installed_plugins.json` is migrated; a re-run with the machine record
+     missing but settings correct calls the CLI and repairs it;
    - `test_session_start_layer.sh`: the header in each of those places;
    - `test_design_anchors.sh` and the ADR/design consistency tests still pass.
 8. **Acceptance (live, opt-in; recorded in the PR):** the issue's four lines,
@@ -268,16 +350,18 @@ branch `feature/issue-446`).** One pull request, commits in this order:
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/user_tier_install.sh` | PR A: match hook entries by command path; PR B: user-scope install, `migrate_legacy_root`, new `--check` and `--uninstall`; delete the per-root functions and `--disable-root` |
+| `.agent/scripts/user_tier_install.sh` | PR A (issue 394 worktree): match hook entries by command path; PR B: user-scope install, `migrate_legacy_root`, new `--check` and `--uninstall`; delete the per-root functions and `--disable-root` |
 | `.agent/scripts/register_project.sh` | Drop `--disable-root` calls, `root_plugin_enabled_here`, `ROOT_PLUGIN_BEFORE`, the plugin rollback step and the installer run in registration; header and `--help` |
 | `.agent/scripts/skill_prefix.sh` | New rule: workspace repository bare, anywhere else `agent-workspace:`; header comment |
-| `.agent/scripts/session_root.sh` | Reword the nested-repository reason only |
+| `.agent/scripts/session_root.sh` | Reword the nested-repository reason only, citing the design's root rule |
+| `.agent/scripts/tests/test_user_tier_guard.sh` | Lines 249-272: `skill_prefix.sh` from an unregistered repository now prints `agent-workspace:` |
+| `.agent/knowledge/principles_review_guide.md` | ADR-0018 row (line 53) |
 | `.claude/hooks/session_start_project_layer.sh` | Header text for each place |
 | `.claude/settings.json` | Committed `enabledPlugins` false entry for the plugin |
-| `.gitignore` | PR A: `.claude/settings.local.json` |
+| `.gitignore` | PR A (issue 394's own worktree): `.claude/settings.local.json` |
 | `.claude/skills/run-issue/SKILL.md`, `.agent/knowledge/script_reference.md`, `.agent/scripts/project_integration_audit.sh` | Wording that names the per-root enable |
 | `.agent/scripts/tests/test_user_tier_install.sh`, `test_register_project.sh`, `test_skill_prefix.sh`, `test_session_start_layer.sh`, `test_session_root.sh`, `test_project_integration_audit.sh` | Remove per-root cases; add the cases above |
-| `.agent/scripts/tests/live/plugin_acceptance.sh` | Retire the per-root cases (E, G, H, J, K; I if the takeover goes); add the step-1 and acceptance cases |
+| `.agent/scripts/tests/live/plugin_acceptance.sh` | Retire the per-root cases (E, G, H, J, K; I if the takeover goes); add the user-scope step-1 and acceptance cases with the exit trap and the printed removal command; header text |
 | `docs/decisions/0018-plugin-based-skill-delivery.md`, `docs/decisions/0016-session-roots-and-the-user-tier.md` | Amend as in step 6 |
 | `docs/design.md` | Sessions and roots, registry bullet, decision register rows 0018 and C4, history |
 
@@ -346,9 +430,19 @@ user scope") and C4, in PR B (ADR-0017).
 
 ## Open Questions
 
-None for the owner. Mechanism choices made from the principles, listed for
-veto:
+One owner answer pending, and it blocks only PR B's step 1: how the live
+sessions are authenticated (the recommended answer and two alternatives are
+in the Approach; "waits for the owner's yes"). PR A does not wait for it.
+Mechanism choices made from the principles, listed for veto:
 
+- The committed `false` entry in the workspace's tracked
+  `.claude/settings.json` (not an installer write). This departs from the
+  #332 decision comment, which says "the installer ... writes the workspace
+  override"; the installer header (lines 100-102) calls the tracked file
+  Ask-First, and an installer editing a tracked file is worse; a committed
+  entry also reaches every clone.
+- PR A under issue 394's own worktree and timeline (the loop's `next` ends a
+  timeline at one merged pull request), PR B after it, with `main` merged in.
 - Two pull requests (PR A #394, PR B this issue), because #394 is a bug fix
   with its own issue and tests that is independently mergeable, a
   precondition for PR B's idempotence line, and leaving it unmerged would make
@@ -362,6 +456,7 @@ veto:
 
 ## Estimated Scope
 
-Two pull requests. PR A: small (one script, one test, `.gitignore`). PR B: large
+Two pull requests on two timelines (A: issue 394's worktree; B: this one,
+after A is merged). PR A: small (one script, one test, `.gitignore`). PR B: large
 in diff but mostly deletion (about 600-800 lines out of three scripts and their
 tests, about 150 in), with the deletion in its own commit.
