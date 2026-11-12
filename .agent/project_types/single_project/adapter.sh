@@ -315,6 +315,8 @@ adapter_repo_pin() {
             branch="$(awk -F'\t' '$1 ~ /^ref: refs\/heads\// && $2 == "HEAD" { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }' <<< "$symref")"
         elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
             why="origin did not answer within $(_adapter_git_limit)s"
+        else
+            why="origin could not be asked (git ls-remote exited $rc)"
         fi
     fi
     if [ -z "$branch" ]; then

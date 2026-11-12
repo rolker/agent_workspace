@@ -641,7 +641,17 @@ test_repo_pin_undetermined_fails() {
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "says why" "cannot determine the default branch" "$out"
+    assert_contains "origin unreachable: says origin could not be asked" \
+        "origin could not be asked (git ls-remote exited" "$out"
+    assert_not_contains "origin unreachable: not 'did not name its HEAD'" "did not name its HEAD" "$out"
     assert_not_contains "no guessed main" "main	branch" "$out"
+    # Origin answers but its HEAD names no branch it has: that wording.
+    git -C "$sb/project" remote set-url origin "$sb/origin.git"
+    git --git-dir="$sb/origin.git" symbolic-ref HEAD refs/heads/nothere
+    rc=0
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "origin names no HEAD: exits 1" "1" "$rc"
+    assert_contains "origin names no HEAD: says so" "origin did not name its HEAD" "$out"
 }
 
 test_repo_pin_hanging_origin_is_bounded() {
