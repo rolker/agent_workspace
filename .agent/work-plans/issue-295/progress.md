@@ -191,3 +191,13 @@ The plan's content is sound and the refusal rule is right, but pull request 1 is
 - [ ] `make sync` with nothing resolvable syncs the workspace alone (finding 5).
 - [ ] Fresh-clone test: pre-seed stamps always, no network; add `make dashboard` and `make sync` (finding 6).
 - [ ] AGENTS.md: correct the net line count to +1 (200) and name the replaced ranges (finding 8).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 12:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work: four must-fix and two should-fix findings, all about how the first pull request is cut and which sites it covers, none a change to what the owner asked for; first host revise on this plan)
+**After**: plan
+**Decision**: revise
+
+The host read the Plan Review entry at 89a00dfb. All nine findings are taken as written. The first pull request is split three ways as the review gives it: A (a fresh clone works with no project) goes first and alone, because the fresh-clone run showed the second machine is blocked by two things only; B (the `project/` and `projects/` fallbacks go) and C (the `.sh` and shared-config reading go, after issue 446's second pull request) follow, B and C as one pull request unless the plan finds a reason to keep them apart. Host decisions on the plan's open questions, listed for the owner's veto: `--type` survives as a deprecated alias, its removal tied to a roadmap deferral; ROS_ROOT_DIR is read from the environment and documented as the one such value; the adoption copy in register_project.sh goes; stale config files warn and name each command key a registered project lacks; `make sync` with no project syncs the workspace alone. The machine steps gain the reviewer's step for the registered single-repository project's install command before the shared config file is deleted. Each of A, B and C is its own pull request on its own timeline step; the revised plan details A fully and B and C enough to plan from.
