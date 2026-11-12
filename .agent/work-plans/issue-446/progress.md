@@ -388,3 +388,13 @@ Neither changes what PR B builds, and the step-6 wording can be carried by the i
 - [ ] PR A, on issue 394's plan: also report and remove any hook command under `.../.claude/hooks/` whose path does not exist on disk, and test it with an unmarked entry (finding 1)
 - [ ] PR B step 6 and the `docs/design.md` edit: use the true reason for the second shape, the root's settings files never reach a session outside git in a subdirectory (finding 2); the implement pass can carry it
 - [ ] PR B step 2: describe the hand removal by `scope` and `projectPath` inside the plugin's array (finding 3); the implement pass can carry it
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 17:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the third plan review's verdict is ready; its two open boxes for pull request B are wording the implement pass carries, and its pull request A box was for issue 394, merged as pull request 450)
+**After**: plan
+**Decision**: proceed
+
+The host read the Plan Review entry at 43014931. Pull request A (issue 394) is merged and main is merged into this branch (dc7ca120). The owner approved the live check as the plan recommends (a temporary aw-accept-<pid> plugin at user scope in the real ~/.claude), recorded by the host session of 2026-11-12. The installer has not been re-run on this machine yet (--check reports each hook registered three times); that run edits the owner's real ~/.claude/settings.json and waits for his yes. It is needed before the live suite is run, not before the suite is written, so the first implement dispatch goes ahead, limited as the plan says to step 1's suite commit and ending with a hand-back. Findings 2 and 3 of the review (the true reason for the second refusal shape; the hand removal described by scope and projectPath) go into the later dispatch for steps 2 to 8.
