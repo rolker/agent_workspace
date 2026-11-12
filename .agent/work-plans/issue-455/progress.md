@@ -319,3 +319,28 @@ Scope: the nine round-1 findings and the fix diff `39af5058..7057833f`. All nine
 - [x] (suggestion) An email set only via `git -c` / `GIT_CONFIG_*` gets "git user.email is not set"; say that `-c` values are ignored for the base and it must come from a config file — `.agent/scripts/identity_base.py:35`
 - [x] (suggestion) `set_git_identity_env.sh` clears eight variables on failure while `detect_agent_identity.sh` keeps the caller's; state the difference (and the clearing) in `--help` or align them — `.agent/scripts/set_git_identity_env.sh:46`
 - [x] (suggestion) `.agent/.identity` via `printf %q` emits `$'...'` for tabs, newlines and non-ASCII under `LC_ALL=C`, which a POSIX sh misreads; write single-quoted values (`'` as `'\''`) or document "bash only"; `AI_IDENTITY_STRATEGY.md` still says to "read" the file, which now shows backslash escapes — `.agent/scripts/detect_agent_identity.sh:206`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8ac6eac32c162da8, resume 1 of 3)
+
+**Branch**: feature/issue-455 at `66847592`
+**Addressed**: Local Review (Pre-Push) at `7057833f` (2026-11-12 18:36 -05:00)
+**Commits**: 356e421e, f5a19d85, 610ba87c, 05f28f52, c2a717c2, 66847592
+
+### Actions
+- [x] (must-fix) Validation refuses only what breaks the structure: not exactly one `@`, an empty local part or domain, whitespace or control characters, angle brackets, commas; apostrophes and non-ASCII accepted, and the message states that rule. Tests: `o'brien@x.ie`, `jürgen@x.de` and `u@bücher.de` end to end (base, agent address, set_git_identity_env.sh, hook for human and agent), plus the malformed list and the message text. AI_IDENTITY_STRATEGY.md states the rule. — `.agent/scripts/identity_base.py` (356e421e)
+- [x] (must-fix) The hook checks author and committer as git will record them (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`, full environment). Tests: `GIT_COMMITTER_EMAIL`, `git -c committer.email=<foreign>`, injected `author.email`, and `committer.email` in config (foreign rejected, accepted agent address passes). Strategy doc and design Rules row updated. — `.agent/hooks/check-commit-identity.py` (f5a19d85)
+- [x] (suggestion) The configured address is accepted verbatim. Tests: configured `u+@example.org` passes for human and agent `u+codex@`; an unconfigured `someone+@` is still rejected. — `.agent/scripts/identity_base.py` (610ba87c)
+- [x] (suggestion) An email given only through `git -c` / `GIT_CONFIG_*` gets its own message: those values are ignored for the base, which must come from a config file. Tests: hook with `GIT_CONFIG_PARAMETERS`, helper with `GIT_CONFIG_COUNT`, and plain unset keeping the plain message. — `.agent/scripts/identity_base.py` (05f28f52)
+- [x] (suggestion) Aligned: `detect_agent_identity.sh` unsets its AGENT_* on failure, like `set_git_identity_env.sh` (and returns rather than exits when sourced without framework_config.sh). Both headers and both `--help` texts state it. Tests: the failed sourced `--export` leaves all four unset; both `--help` outputs checked. — `.agent/scripts/detect_agent_identity.sh`, `.agent/scripts/set_git_identity_env.sh` (c2a717c2)
+- [x] (suggestion) `.agent/.identity` is written POSIX single-quoted (`'` as `'\''`). The strategy doc says to source the file. Test: round trip with `bash` and `sh`, written under `LC_ALL=C.UTF-8` and `LC_ALL=C`, with an apostrophe in the email, and an apostrophe, non-ASCII, tab, newline and command substitutions in the model; nothing runs. — `.agent/scripts/detect_agent_identity.sh` (66847592)
+
+### Notes
+- Two old hook-reject cases were dropped: `someone+x@example.org,` and `<someone@example.org>` as GIT_AUTHOR_EMAIL. Git strips those characters itself before it records the ident, so the commit carries the clean, accepted address. Both values stay covered as malformed configured emails.
+
+### Checks
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, including the `.agent/scripts/tests/` suite hook (Passed).
+- `test_commit_identity.sh`: 92 passed, 0 failed.
