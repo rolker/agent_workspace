@@ -164,3 +164,13 @@ The revision resolves all five earlier findings, and the pivot-commit design is 
 - [ ] Add a post-merge step: update in-flight branches from main before their next commit (say so in the PR body). Make the new hook's failure text name the derived command and the stale-literal cause, and test it.
 - [ ] Add the `docs/design.md` change-log row for #455.
 - [ ] Extend the unset-email test to `--detect` and `detect_agent_identity.sh`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 17:33 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review verdict needs-work; second host revise in a row, so the next answer at this checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+Second plan review: the five earlier findings are resolved. Two new medium findings: (1) the host and the implement phase cannot use the derived identity form from the main checkout's script before the merge, so the plan must say the implement phase starts with the literal form and switches at the pivot commit, and that from then until the merge the host sources the worktree's copy of the script; (2) branches still in flight after the merge run the old hook or hold the old setup line, so the plan needs a post-merge step (update in-flight branches from main before their next commit, also in the pull request body) and new-hook failure text that names the exact derived command and the likely cause, with a test. Two low findings: a docs/design.md change-log row; the unset-email test must also cover set_git_identity_env.sh --detect and detect_agent_identity.sh. Owner, 2026-11-12: "You can update all instruction files if necessary"; "I'm transitioning from using my ccom.unh.edu email address to my unh.edu address, so both are fine."
