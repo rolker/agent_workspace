@@ -216,8 +216,10 @@ _rc_underlay() {
 # after the key or after whitespace, as in YAML ("fix#12" is a ref); a
 # quoted scalar followed by nothing but a comment is emitted unquoted (a
 # "#" inside it is part of the ref). Any other quoting ("main" extra,
-# 'a''b', "x\"y") is emitted raw, quotes left in, so a caller can refuse a
-# value that holds a quote rather than act on part of it.
+# 'a''b', and a double-quoted value holding a backslash escape such as
+# "x\"y" or "v\x31.0", which this parser does not decode) is emitted raw,
+# quotes left in, so a caller can refuse a value that holds a quote rather
+# than act on part of it.
 # With --all, an entry with no version: key is emitted too, as "<name>"
 # alone (no tab): vcstool checks such a repository out at its default branch.
 _rc_repos_entries() {
@@ -247,6 +249,9 @@ _rc_repos_entries() {
             e = 0
             if (q == "\"" || q == "\047") e = index(substr(v, 2), q)
             rest = (e > 0) ? substr(v, e + 2) : ""
+            # A double-quoted scalar with a backslash holds an escape
+            # ("a\" #b", "v\x31.0") this parser does not decode: raw.
+            if (q == "\"" && index(substr(v, 1, e + 1), "\\") > 0) e = 0
             if (e > 0 && (rest ~ /^[ \t]*$/ || rest ~ /^[ \t]+#/)) {
                 # A quoted scalar with nothing after it but a comment: its
                 # content, unquoted.
@@ -1051,11 +1056,12 @@ adapter_repo_pin() {
         echo "ERROR: repo_pin: '$repo' has an empty version: in layer '$hit_layer'" >&2
         return 1
     fi
-    # A quote or carriage return left in the ref means the line was not
-    # read as YAML would read it (an unclosed quote, a stray CR): refuse it
-    # rather than print a ref nobody pinned.
-    if [[ "$ref" == *[\"\'$'\r']* ]]; then
-        echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref: '$ref'" >&2
+    # A quote, backslash or carriage return left in the ref means the line
+    # was not read as YAML would read it (an unclosed quote, an escape the
+    # parser does not decode, a stray CR): refuse it rather than print a
+    # ref nobody pinned.
+    if [[ "$ref" == *[\"\'\\$'\r']* ]]; then
+        echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref (a stray quote, a backslash escape or a carriage return): '$ref'" >&2
         return 1
     fi
     # The same ref pinned in several layers: judge it in the first of them

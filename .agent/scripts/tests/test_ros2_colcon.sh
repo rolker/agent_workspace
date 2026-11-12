@@ -1665,14 +1665,17 @@ test_repo_pin_reads_version_as_yaml() {
         assert_eq "[$pair]: exit 1" "1" "$rc"
         assert_contains "[$pair]: empty version" "has an empty version: in layer 'l1'" "$out"
     done
-    # A quote that does not close the value cleanly is refused, not cut to
-    # a ref nobody pinned.
-    for pair in '"fix' "fix'" 'fi"x' "'stable''next'" '"main" extra' '"x\"y"' '"main"#c'; do
+    # A quote that does not close the value cleanly, or a backslash escape
+    # the parser does not decode ("a\" #b" is YAML's 'a" #b', "v\x31.0"
+    # its 'v1.0'), is refused, not cut to a ref nobody pinned.
+    for pair in '"fix' "fix'" 'fi"x' "'stable''next'" '"main" extra' '"x\"y"' '"main"#c' \
+        '"a\" #b"' '"v\x31.0"' "'a\\b'"; do
         write_pin_repos "$f" "pkg_a=$pair"
         rc=0
         out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
         assert_eq "[$pair]: exit 1" "1" "$rc"
-        assert_contains "[$pair]: says why" "cannot be read as a ref" "$out"
+        assert_contains "[$pair]: says why" \
+            "cannot be read as a ref (a stray quote, a backslash escape or a carriage return)" "$out"
     done
 }
 
@@ -1707,6 +1710,9 @@ test_repos_entries_parser_table() {
         ' "main" extra|"main" extra'
         ' "x\"y"|"x\"y"'
         ' "main"#c|"main"#c'
+        ' "a\" #b"|"a\"'
+        ' "v\x31.0"|"v\x31.0"'
+        " 'a\\b'|a\\b"
     )
     {
         echo "repositories:"
