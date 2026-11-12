@@ -401,6 +401,50 @@ def _cli_validate(tmp_path, text):
     return rc, leaf
 
 
+# Round 4: PyYAML builds a hex integer of any length; turning one past Python's 4300-digit limit
+# into text later (a repr, a key path) raised ValueError as a traceback.
+HUGE_INT = "0x" + "f" * 4000
+
+
+@pytest.mark.parametrize(
+    "body, line, column",
+    [
+        (f"groups:\n  g:\n    default: {HUGE_INT}\n", 4, 14),
+        (
+            f"repos:\n  core:\n    ? {HUGE_INT}\n    : {{url: https://e.com/a.git, ref: main}}\n",
+            4,
+            7,
+        ),
+        (f"packages:\n  ? {HUGE_INT}\n  : {{repo: a}}\n", 3, 5),
+    ],
+)
+def test_an_integer_too_large_is_refused_with_its_position(body, line, column, tmp_path, capsys):
+    rc, leaf = _cli_validate(tmp_path, "layers: [core]\n" + body)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.err == (
+        f"ERROR: {leaf}: invalid YAML at line {line}, column {column}: a number too large\n"
+    )
+
+
+def test_the_integer_bound_is_64_bits():
+    text = "layers: [core]\ngroups:\n  g:\n    default: 0x{}\n"
+    with pytest.raises(ManifestError, match="got int$"):
+        parse_manifest_text(text.format("f" * 16), source="t")
+    with pytest.raises(ManifestError, match="a number too large$"):
+        parse_manifest_text(text.format("1" + "0" * 16), source="t")
+
+
+def test_a_bad_group_default_is_named_by_type_only():
+    for value, got in [(f"'https://u:{SECRET}@h'", "another string"), ("1", "int")]:
+        text = f"layers: [core]\ngroups:\n  g:\n    default: {value}\n"
+        with pytest.raises(ManifestError) as info:
+            parse_manifest_text(text, source="t")
+        assert str(info.value) == (
+            f"t: groups.g: 'default' must be 'include' or 'exclude', got {got}"
+        )
+
+
 # The same class, found while there: values the schema let through that later raised a
 # TypeError (sorting keys of mixed types; a list used as a dict key) and printed a traceback.
 @pytest.mark.parametrize(

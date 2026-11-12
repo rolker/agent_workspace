@@ -209,6 +209,19 @@ class _ManifestLoader(yaml.SafeLoader):
                     continue  # an unhashable key: the base class refuses it
         return super().construct_mapping(node, deep)
 
+    def construct_yaml_int(self, node):
+        # PyYAML builds a hex, octal or binary integer of any length, outside Python's
+        # 4300-digit limit; the first repr() or f-string of it then raises ValueError.
+        value = super().construct_yaml_int(node)
+        if value.bit_length() > _INT_BITS_MAX:
+            raise _RefusedYAML("a number too large", node.start_mark)
+        return value
+
+
+# No manifest field needs a number past 64 bits.
+_INT_BITS_MAX = 64
+_ManifestLoader.add_constructor("tag:yaml.org,2002:int", _ManifestLoader.construct_yaml_int)
+
 
 def _load_yaml(text: str, source: str):
     """Load one document. A failure is reported with fixed text and a position only: PyYAML's
@@ -442,9 +455,9 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
             )
         default = gval.get("default")
         if default not in ("include", "exclude"):
+            got = "another string" if isinstance(default, str) else type(default).__name__
             raise ManifestError(
-                f"{source}: groups.{name}: 'default' must be 'include' or 'exclude',"
-                f" got {default!r}"
+                f"{source}: groups.{name}: 'default' must be 'include' or 'exclude', got {got}"
             )
         group_repos = _require_list_of_str(gval.get("repos", []), f"{source}: groups.{name}.repos")
         groups[name] = GroupEntry(name=name, default=default, repos=group_repos)
