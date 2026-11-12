@@ -1,24 +1,49 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/live/plugin_acceptance.sh
-# Live acceptance for the agent-workspace plugin (ADR-0018, #345), ported
-# from the 2026-09-24 plugin spike. OPT-IN: it starts real headless Claude
-# Code sessions (`claude -p`, auth and a few cents each), so it lives
+# Live acceptance for the agent-workspace plugin (ADR-0018, #345, #446),
+# ported from the 2026-09-24 plugin spike. OPT-IN: it starts real headless
+# Claude Code sessions (`claude -p`, auth and a few cents each), so it lives
 # outside tests/test_*.sh and run_script_tests.sh never collects it.
 #
 #   PLUGIN_ACCEPTANCE=1 bash .agent/scripts/tests/live/plugin_acceptance.sh
-#   (LIVE_MODEL=<alias> picks the session model; default haiku)
+#   PLUGIN_ACCEPTANCE=1 PLUGIN_ACCEPTANCE_CASES=user bash .agent/scripts/tests/live/plugin_acceptance.sh
+#   (PLUGIN_ACCEPTANCE_CASES picks the cases: `per-root`, the default, runs
+#   A to K; `user` runs only the user-scope cases U0 to U8; `all` runs A to
+#   K, then U0 to U8. LIVE_MODEL=<alias> picks the session model; default
+#   haiku)
 #
-# It never touches this checkout, the real registry or ~/.claude/settings.json.
-# It works on a COPY of the checkout whose plugin and marketplace are renamed
+# What it touches. It never touches this checkout or the real registry. It
+# works on a COPY of the checkout whose plugin and marketplace are renamed
 # `aw-accept-<pid>` (per run, so two concurrent runs never share a name, a
-# machine-level record or a plugin cache), so the records the CLI keeps under
-# ~/.claude/plugins/ never gain or lose an `agent-workspace` entry. On exit
-# it removes both records it adds, the copy of the plugin the CLI leaves
-# in ~/.claude/plugins/cache/aw-accept-<pid>/ (which `plugin uninstall` does not
-# delete; Claude Code only marks it orphaned), and the ~/.claude/projects/
-# directory (transcripts, memory) each session leaves for its cwd -- only
-# those named from this run's own sandbox path. Cases, each asserting on
-# what a real session reports:
+# machine-level record or a plugin cache), so the records the CLI keeps
+# under ~/.claude/plugins/ never gain or lose an `agent-workspace` entry,
+# and the real `agent-workspace` entries in ~/.claude/settings.json are
+# never named, read for a decision or written by the suite. Below,
+# ~/.claude is $CLAUDE_CONFIG_DIR when that is set.
+#   - The per-root cases (A to K) never touch ~/.claude/settings.json.
+#   - The user-scope cases (U0 to U8) DO change ~/.claude/settings.json, for
+#     the minutes they take: `claude plugin marketplace add <the copy>
+#     --scope user` and `claude plugin install
+#     aw-accept-<pid>@aw-accept-<pid> --scope user` add
+#     `extraKnownMarketplaces["aw-accept-<pid>"]` and
+#     `enabledPlugins["aw-accept-<pid>@aw-accept-<pid>"] = true` there (the
+#     CLI rewrites the whole file to do it). Meanwhile every Claude Code
+#     session started anywhere on the machine also gets the test plugin's
+#     skills under `aw-accept-<pid>:`. Both entries are removed with
+#     `claude plugin uninstall aw-accept-<pid>@aw-accept-<pid> --scope user`
+#     and `claude plugin marketplace remove aw-accept-<pid> --scope user`,
+#     at the end of the cases and again on exit (EXIT, INT, TERM, HUP) if
+#     they are still there. The two commands are printed at the start, for a
+#     run killed in a way no trap sees. The file is compared under `jq -S`
+#     before and after: empty objects the removal leaves behind are
+#     expected; any other difference is printed as a FACT, not counted as a
+#     failure (the CLI's rewrite races other sessions' writes to the file).
+# On exit it removes both records it adds, the copy of the plugin the CLI
+# leaves in ~/.claude/plugins/cache/aw-accept-<pid>/ (which `plugin
+# uninstall` does not delete; Claude Code only marks it orphaned), and the
+# ~/.claude/projects/ directory (transcripts, memory) each session leaves for
+# its cwd -- only those named from this run's own sandbox path. Cases, each
+# asserting on what a real session reports:
 #   A  collision: in a repo with its own plan-task, bare /plan-task is still
 #      the project's, and /aw-accept-<pid>:<skill> reaches the plugin;
 #   B  a git worktree of that repo, OUTSIDE the project's directory,
@@ -54,8 +79,34 @@
 #   K  a local-scope add from a plain subdirectory of a git repo writes
 #      the repo toplevel's settings (why the installer refuses to run the
 #      CLI from such a directory).
+# User-scope cases (#446 plan, pull request B step 1), run with this run's
+# plugin enabled at user scope:
+#   U0 setup: the copy gets the off entry
+#      `"aw-accept-<pid>@aw-accept-<pid>": false` under `enabledPlugins` in
+#      its .claude/settings.json, committed in the copy (what the plan's step
+#      5 commits for the real plugin, under this run's name), and the plugin
+#      is enabled at user scope from a directory in no git repository;
+#   U1 a session at the committed-off repository's root has the skill bare,
+#      not also under aw-accept-<pid>:;
+#   U2 the same in a plain subdirectory root of it;
+#   U3 the same in a worktree of it, outside its directory;
+#   U4 the same in an in-tree root (the p11 shape: a root inside the copy's
+#      tree, ignored by its git, with no .git of its own);
+#   U5 a session in a repository nested in an ordinary root reaches
+#      /aw-accept-<pid>:<skill>;
+#   U6 the same in an unregistered folder (in no git repository);
+#   U7 local `true` plus user `true`: reaches it, and the session's init
+#      command list holds it once;
+#   U8 a root whose local entry is `false` under user `true` does not reach
+#      it (its own control skill answering first).
+# Each of U1 to U8 prints one FACT line: the bare and the prefixed probe's
+# outcome and the zz-probe entries of the session's init command list. The
+# run then prints one STOP-CHECK line per stop condition of the plan's step
+# 1 (clear, FIRES, or UNDECIDED when a session failed), computed from the
+# same outcomes.
 #
-# Exit: 0 all pass (or not opted in); 1 a case failed; 3 missing dependency.
+# Exit: 0 all pass (or not opted in); 1 a case failed; 2 bad
+# PLUGIN_ACCEPTANCE_CASES; 3 missing dependency.
 
 set -uo pipefail
 
@@ -63,6 +114,12 @@ if [[ "${PLUGIN_ACCEPTANCE:-}" != 1 ]]; then
     echo "plugin_acceptance: opt-in live suite (real claude sessions) -- set PLUGIN_ACCEPTANCE=1 to run"
     exit 0
 fi
+case "${PLUGIN_ACCEPTANCE_CASES:-per-root}" in
+    per-root) RUN_PER_ROOT=1; RUN_USER=0 ;;
+    user)     RUN_PER_ROOT=0; RUN_USER=1 ;;
+    all)      RUN_PER_ROOT=1; RUN_USER=1 ;;
+    *) echo "FATAL: PLUGIN_ACCEPTANCE_CASES must be per-root, user or all (got '${PLUGIN_ACCEPTANCE_CASES}')" >&2; exit 2 ;;
+esac
 for dep in claude jq git; do
     command -v "$dep" >/dev/null 2>&1 || { echo "FATAL: $dep is required" >&2; exit 3; }
 done
@@ -90,6 +147,110 @@ cli_plugin() { claude plugin "$@" </dev/null; }
 KM="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/known_marketplaces.json"
 km_source() {
     jq -r --arg m "$NAME" '.[$m].source.path? // empty' "$KM" 2>/dev/null || true
+}
+
+# ------------------------------------------------- user-scope state ---
+# The real user settings the user-scope cases change, and the run's state
+# about them. USER_ENABLED is set BEFORE the enabling CLI call (as
+# ENABLED_ROOTS is), so an interrupted call is still undone; it is cleared
+# only when the settings read back without this run's entries. USER_TOUCHED
+# stays set, so the plugin cache is removed on exit. REAL_BEFORE is the
+# file's `jq -S` form taken just before the enable.
+REAL_SETTINGS="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/settings.json"
+USER_ENABLED=0
+USER_TOUCHED=0
+REAL_BEFORE=""
+REAL_COMPARED=0
+# The hand removal, for a run killed in a way no trap sees. Printed at the
+# start, before anything is created.
+user_removal_lines() {
+    local env_prefix=""
+    [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] && env_prefix="CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR "
+    echo "    ${env_prefix}claude plugin uninstall $NAME@$NAME --scope user"
+    echo "    ${env_prefix}claude plugin marketplace remove $NAME --scope user"
+}
+if [[ "$RUN_USER" == 1 ]]; then
+    echo "plugin_acceptance: the user-scope cases enable a test plugin, $NAME, at user scope in $REAL_SETTINGS"
+    echo "  for the minutes they take, and remove it at the end and on exit. If this run is killed before"
+    echo "  it can remove it, remove it by hand with:"
+    user_removal_lines
+    echo "  (and its cached copy: rm -rf ${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/$NAME)"
+    echo ""
+fi
+# user_scope_entries: this run's two entries in the real user settings, as
+# one line for a FACT. Names only this run's id and marketplace.
+user_scope_entries() {
+    [[ -e "$REAL_SETTINGS" ]] || { echo "<no settings file>"; return 0; }
+    jq -r --arg id "$NAME@$NAME" --arg m "$NAME" '
+        "enabledPlugins[\($id)]=" + ((.enabledPlugins // {}) | if has($id) then (.[$id] | tostring) else "<none>" end)
+        + " extraKnownMarketplaces[\($m)].source.path=" + ((.extraKnownMarketplaces // {}) | if has($m) then (.[$m].source.path? // "<no path>" | tostring) else "<none>" end)
+    ' "$REAL_SETTINGS" 2>/dev/null || echo "<settings file does not parse>"
+}
+# user_scope_gone: true when the real user settings hold neither entry.
+user_scope_gone() {
+    [[ -e "$REAL_SETTINGS" ]] || return 0
+    jq -e --arg id "$NAME@$NAME" --arg m "$NAME" \
+        '((.enabledPlugins // {}) | has($id) | not) and ((.extraKnownMarketplaces // {}) | has($m) | not)' \
+        "$REAL_SETTINGS" >/dev/null 2>&1
+}
+# neutral_dir: a directory in no git repository to run the user-scope CLI
+# calls from: the sandbox when it is safe and outside git, else /.
+neutral_dir() {
+    if sandbox_safe "${SANDBOX:-}" && ! git -C "$SANDBOX" rev-parse --show-toplevel >/dev/null 2>&1; then
+        printf '%s\n' "$SANDBOX"
+    else
+        printf '/\n'
+    fi
+}
+# user_scope_remove: undo this run's user-scope enable. Clears USER_ENABLED
+# only when the settings read back without this run's entries, so cleanup()
+# tries again otherwise.
+user_scope_remove() {
+    local d
+    d="$(neutral_dir)"
+    (cd "$d" && cli_plugin uninstall "$NAME@$NAME" --scope user >/dev/null 2>&1)
+    (cd "$d" && cli_plugin marketplace remove "$NAME" --scope user >/dev/null 2>&1)
+    user_scope_gone || return 1
+    USER_ENABLED=0
+}
+# real_settings_snapshot <file>: its `jq -S` form, `<absent>` when there is
+# no file; fails when it does not parse.
+real_settings_snapshot() {
+    [[ -e "$1" ]] || { echo "<absent>"; return 0; }
+    jq -S . "$1"
+}
+# settings_pruned <snapshot>: the snapshot with every empty object removed
+# (recursively), so entries the removal leaves as `{}` compare equal.
+settings_pruned() {
+    if [[ "$1" == "<absent>" ]]; then
+        echo '{}'
+        return 0
+    fi
+    jq -S 'def prune: if type == "object" then (with_entries(.value |= prune) | with_entries(select(.value != {}))) elif type == "array" then map(prune) else . end; prune' <<< "$1"
+}
+# real_settings_compare: once per run, after the user-scope removal: the
+# real settings before and after, under `jq -S`. Prints FACT lines and the
+# difference; never counts as a failure.
+real_settings_compare() {
+    [[ "$REAL_COMPARED" == 0 && -n "$REAL_BEFORE" ]] || return 0
+    REAL_COMPARED=1
+    local after pb pa
+    if ! after="$(real_settings_snapshot "$REAL_SETTINGS" 2>/dev/null)"; then
+        echo "  FACT: real settings: $REAL_SETTINGS no longer parses as JSON after the run (it did before)"
+        return 0
+    fi
+    if [[ "$after" == "$REAL_BEFORE" ]]; then
+        echo "  FACT: real settings: $REAL_SETTINGS is identical under jq -S before and after the run"
+        return 0
+    fi
+    pb="$(settings_pruned "$REAL_BEFORE")"
+    pa="$(settings_pruned "$after")"
+    if [[ "$pb" == "$pa" ]]; then
+        echo "  FACT: real settings: $REAL_SETTINGS differs only by empty objects left behind (expected)"
+        return 0
+    fi
+    echo "  FACT: real settings: $REAL_SETTINGS changed beyond empty objects during the run (the CLI's rewrite, or another session's concurrent write); the difference, before -> after, empty objects removed:"
+    diff -u <(printf '%s\n' "$pb") <(printf '%s\n' "$pa") | tail -n +3 | sed 's/^/    /'
 }
 # session_dirs <projects dir> <sandbox>: the Claude Code project directories
 # this run's sessions left. Claude Code names one per session cwd, from the
@@ -143,12 +304,21 @@ new_sandbox() {
     printf '%s\n' "$s"
 }
 cleanup() {
+    # Once in cleanup, a second signal must not cut it short.
+    trap '' INT TERM HUP
     local r
     for r in ${ENABLED_ROOTS[@]+"${ENABLED_ROOTS[@]}"}; do
         [[ -d "$r" ]] || continue
         (cd "$r" && cli_plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
         (cd "$r" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
     done
+    # The user-scope enable, if the cases' own removal did not run or did
+    # not take; then the before/after comparison, if not yet printed.
+    if [[ "$USER_ENABLED" == 1 ]] && ! user_scope_remove; then
+        echo "plugin_acceptance: WARNING: $REAL_SETTINGS still has this run's entries ($(user_scope_entries)) -- remove them with:" >&2
+        user_removal_lines >&2
+    fi
+    real_settings_compare
     # The machine record for this run's name, if the local removes above
     # left it (whether they do is case J's FACT): a best-effort remove at
     # the CLI's default scope, from the sandbox, for this run's name only.
@@ -158,7 +328,7 @@ cleanup() {
     fi
     # The CLI's cached copy of the plugin, which uninstall leaves behind.
     # Only after an enable, and only this run's own `aw-accept-<pid>` name.
-    if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
+    if [[ ${#ENABLED_ROOTS[@]} -gt 0 || "$USER_TOUCHED" == 1 ]]; then
         rm -rf "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/${NAME:?}"
     fi
     if ! sandbox_safe "${SANDBOX:-}"; then
@@ -178,7 +348,12 @@ cleanup() {
 # Created and checked BEFORE the trap is set: with no sandbox there is
 # nothing to clean up, and nothing below may run.
 SANDBOX="$(new_sandbox)" || { echo "FATAL: could not create the sandbox directory (mktemp or cd failed)" >&2; exit 1; }
+# A signal exits, and the exit runs cleanup() once (EXIT is the one trap
+# that cleans up; INT, TERM and HUP only turn the signal into an exit).
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 W="$SANDBOX/ws"       # the workspace copy (marketplace $NAME)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
@@ -238,38 +413,6 @@ git -C "$W" init -q
     && pass "the workspace copy validates as a marketplace" \
     || fail "claude plugin validate failed on the workspace copy"
 
-mkdir -p "$P/.claude/skills/plan-task" "$U"
-cat > "$P/.claude/skills/plan-task/SKILL.md" <<'EOF'
----
-name: plan-task
-description: This project's own planning skill.
----
-
-Reply with exactly the following line, copied character for character, and nothing else:
-
-PROJECT-OWN-PLAN-TASK
-EOF
-git -C "$P" init -q
-git -C "$P" -c user.name=t -c user.email=t@t add . && git -C "$P" -c user.name=t -c user.email=t@t commit -qm init
-git -C "$U" init -q
-mkdir -p "$U/.claude/skills/zz-control"
-cat > "$U/.claude/skills/zz-control/SKILL.md" <<'EOF'
----
-name: zz-control
-description: Control skill for the unrelated repo.
----
-
-Reply with exactly the following line, copied character for character, and nothing else:
-
-UNRELATED-CONTROL
-EOF
-
-enable_in "$P" \
-    || { echo "FATAL: could not enable the $NAME plugin in the sandbox project" >&2; exit 1; }
-jq -e --arg id "$NAME@$NAME" '.enabledPlugins[$id] == true' "$P/.claude/settings.local.json" >/dev/null \
-    && pass "local-scope install writes the project's settings.local.json" \
-    || fail "the project's settings.local.json does not enable $NAME"
-
 # Each case invokes a skill by slash command and looks for its marker:
 # `/plan-task` in the project answers PROJECT-OWN-PLAN-TASK (its own skill),
 # and the probe answers PROBE<<<...>>> under whichever name reached it. An
@@ -302,6 +445,45 @@ probe_said() {  # <probe status>
         *) echo "session failed ($(session_said))" ;;
     esac
 }
+
+# ==================================================== per-root cases ===
+# A to K, as before #446. Skipped with PLUGIN_ACCEPTANCE_CASES=user. Not
+# re-indented: their heredocs write files whose first column matters (a
+# SKILL.md's front matter), and a later dispatch of #446 retires most of
+# them. The block ends at the matching "end of the per-root cases" line.
+if [[ "$RUN_PER_ROOT" == 1 ]]; then
+
+mkdir -p "$P/.claude/skills/plan-task" "$U"
+cat > "$P/.claude/skills/plan-task/SKILL.md" <<'EOF'
+---
+name: plan-task
+description: This project's own planning skill.
+---
+
+Reply with exactly the following line, copied character for character, and nothing else:
+
+PROJECT-OWN-PLAN-TASK
+EOF
+git -C "$P" init -q
+git -C "$P" -c user.name=t -c user.email=t@t add . && git -C "$P" -c user.name=t -c user.email=t@t commit -qm init
+git -C "$U" init -q
+mkdir -p "$U/.claude/skills/zz-control"
+cat > "$U/.claude/skills/zz-control/SKILL.md" <<'EOF'
+---
+name: zz-control
+description: Control skill for the unrelated repo.
+---
+
+Reply with exactly the following line, copied character for character, and nothing else:
+
+UNRELATED-CONTROL
+EOF
+
+enable_in "$P" \
+    || { echo "FATAL: could not enable the $NAME plugin in the sandbox project" >&2; exit 1; }
+jq -e --arg id "$NAME@$NAME" '.enabledPlugins[$id] == true' "$P/.claude/settings.local.json" >/dev/null \
+    && pass "local-scope install writes the project's settings.local.json" \
+    || fail "the project's settings.local.json does not enable $NAME"
 
 # ------------------------------------------------------------ A: collision ---
 session "$P" "/plan-task"
@@ -576,6 +758,278 @@ if [[ "$k_rc" -eq 0 && ! -e "$KR/sub/.claude/settings.local.json" ]] \
     pass "K: a local-scope add from a plain subdirectory of a git repo writes the repo toplevel's settings.local.json"
 else
     fail "K: local scope from $KR/sub (exit $k_rc; toplevel file: $(tr -d '\n ' < "$KR/.claude/settings.local.json" 2>/dev/null || echo '<absent>'); sub file: $([[ -e "$KR/sub/.claude/settings.local.json" ]] && echo present || echo absent))"
+fi
+
+fi
+# ============================================= end of the per-root cases ===
+
+# ================================================== user-scope cases ===
+# #446 plan, pull request B step 1: what sessions see with this run's
+# plugin enabled at user scope in the real ~/.claude (see the header for
+# what that changes and how it is removed). Skipped unless
+# PLUGIN_ACCEPTANCE_CASES is user or all.
+
+# us_session <dir> <prompt>: as session(), with --output-format stream-json
+# (which needs --verbose with -p), so the session's init line also says
+# which slash commands it was given. Sets SESSION_RC. SESSION_OUT is the
+# result text when a result line was found (US_GOT_RESULT=1), else the raw
+# output, so a failure message shows what the CLI said. SESSION_LISTED is
+# the zz-probe entries of the init line's slash_commands, or a <...> note
+# when the CLI printed no init line or no such list. That output shape is
+# the CLI's stream-json init message as documented, not yet observed by
+# this suite: a different shape is reported as such (a FAIL in U7, the one
+# case that needs the list), never guessed. Never call it in $(...).
+SESSION_LISTED=""
+US_GOT_RESULT=0
+us_session() {
+    local raw res
+    raw="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" --tools "" \
+        --output-format stream-json --verbose 2>&1 </dev/null)"
+    SESSION_RC=$?
+    res="$(jq -Rr 'fromjson? | select(type == "object" and .type == "result") | (.result // empty) | tostring' <<< "$raw" 2>/dev/null)"
+    if [[ -n "$res" ]]; then
+        SESSION_OUT="$res"
+        US_GOT_RESULT=1
+    else
+        SESSION_OUT="$raw"
+        US_GOT_RESULT=0
+    fi
+    SESSION_LISTED="$(jq -Rr 'fromjson? | select(type == "object" and .type == "system" and .subtype == "init")
+        | if (.slash_commands | type) == "array"
+          then ([.slash_commands[] | tostring | select(endswith("zz-probe"))] | if length == 0 then "<none>" else join(",") end)
+          else "<init line without slash_commands>" end' <<< "$raw" 2>/dev/null | head -n1)"
+    [[ -n "$SESSION_LISTED" ]] || SESSION_LISTED="<no init line>"
+    return "$SESSION_RC"
+}
+us_probe() {  # <dir> <slash command>: probe()'s three outcomes, through us_session()
+    us_session "$1" "$2"
+    if [[ "$SESSION_RC" -ne 0 || "$US_GOT_RESULT" -ne 1 ]]; then
+        return "$PROBE_SESSION_FAILED"
+    fi
+    [[ "$SESSION_OUT" == *"PROBE<<<"* ]] && return "$PROBE_REACHED"
+    return "$PROBE_NOT_REACHED"
+}
+probe_word() {  # <probe status>: one or two words, for a FACT line
+    case "$1" in
+        "$PROBE_REACHED") echo "reached" ;;
+        "$PROBE_NOT_REACHED") echo "not reached" ;;
+        *) echo "session failed" ;;
+    esac
+}
+# Per case id: the two probe outcomes, what each session said (for a FAIL
+# line), and the init command list's zz-probe entries.
+declare -A U_BARE=() U_PLUG=() U_BARE_SAID=() U_PLUG_SAID=() U_LISTED=()
+# us_case <id> <shape, in words> <dir> [extra FACT text]: the bare and the
+# prefixed probe in <dir>, then the case's one FACT line.
+us_case() {
+    local b p
+    us_probe "$3" "/zz-probe"; b=$?
+    U_BARE_SAID[$1]="$(probe_said "$b")"
+    U_LISTED[$1]="$SESSION_LISTED"
+    us_probe "$3" "/$NAME:zz-probe"; p=$?
+    U_PLUG_SAID[$1]="$(probe_said "$p")"
+    # The first session's list, unless it had none and the second did.
+    [[ "${U_LISTED[$1]}" == "<"* ]] && U_LISTED[$1]="$SESSION_LISTED"
+    U_BARE[$1]=$b
+    U_PLUG[$1]=$p
+    echo "  FACT: $1 $2: bare /zz-probe $(probe_word "$b"); /$NAME:zz-probe $(probe_word "$p"); init command list: ${U_LISTED[$1]}${4:+; $4}"
+}
+# us_expect <id> <wanted bare | -> <wanted prefixed> <what a pass means>
+us_expect() {
+    if [[ ( "$2" == - || "${U_BARE[$1]}" -eq "$2" ) && "${U_PLUG[$1]}" -eq "$3" ]]; then
+        pass "$1: $4"
+    else
+        fail "$1: wanted bare /zz-probe $([[ "$2" == - ]] && echo "either way" || probe_word "$2") and /$NAME:zz-probe $(probe_word "$3"); bare ${U_BARE_SAID[$1]}; prefixed ${U_PLUG_SAID[$1]}"
+    fi
+}
+# us_verdict <got> <wanted> [<got> <wanted> ...]: one stop condition's
+# verdict. FIRES when any session that ran gave other than wanted (a
+# definite answer beats a failed session elsewhere); UNDECIDED when none
+# did but a session failed; clear otherwise.
+us_verdict() {
+    local fires=0 undecided=0
+    while [[ $# -ge 2 ]]; do
+        if [[ "$1" -eq "$PROBE_SESSION_FAILED" ]]; then
+            undecided=1
+        elif [[ "$1" -ne "$2" ]]; then
+            fires=1
+        fi
+        shift 2
+    done
+    if [[ "$fires" == 1 ]]; then echo "FIRES"
+    elif [[ "$undecided" == 1 ]]; then echo "UNDECIDED (a session failed; see the FAIL lines, then re-run)"
+    else echo "clear"
+    fi
+}
+# us_finish: remove the user-scope enable now (not only on exit), say what
+# is left, and compare the real settings before and after.
+us_finish() {
+    local km
+    if user_scope_remove; then
+        pass "U-end: uninstall + marketplace remove at user scope leave neither of this run's entries in $REAL_SETTINGS"
+    else
+        fail "U-end: $REAL_SETTINGS still has this run's entries after the user-scope removal (cleanup tries again on exit)"
+    fi
+    km="$(km_source)"
+    echo "  FACT: U-end after the user-scope uninstall + marketplace remove: $REAL_SETTINGS has $(user_scope_entries); machine record source: ${km:-<none>}"
+    real_settings_compare
+}
+
+user_scope_cases() {
+    local id="$NAME@$NAME" uout urc km n ctl_ok=0 ctl_code
+    local us_wt="$SANDBOX/ws-wt" us_intree="$W/projects/intree" us_root="$SANDBOX/us-root" \
+          us_loose="$SANDBOX/us-loose" us_both="$SANDBOX/us-both" us_off="$SANDBOX/us-off"
+    echo ""
+    echo "plugin_acceptance: user-scope cases ($NAME enabled at user scope in $REAL_SETTINGS until they end)"
+
+    # ------------------------------------------- U0: setup and enable ---
+    # The copy's off entry, committed before the committed-off and worktree
+    # cases: the plan's step 5 commits the real plugin's entry, which would
+    # not cover this run's renamed one, and without it a session at the
+    # copy's root would list the probe twice (a test defect, not a finding).
+    [[ -e "$W/.claude/settings.json" ]] || echo '{}' > "$W/.claude/settings.json"
+    jq --arg id "$id" '.enabledPlugins = ((.enabledPlugins // {}) + {($id): false})' \
+        "$W/.claude/settings.json" > "$W/s.json" && mv "$W/s.json" "$W/.claude/settings.json"
+    # The two lines of the real checkout's .gitignore that bear on these
+    # cases: in-tree roots live under projects/, local settings are never
+    # committed.
+    printf 'projects/\n.claude/settings.local.json\n' > "$W/.gitignore"
+    mkdir -p "$W/subroot"
+    printf 'A plain subdirectory of the workspace copy, a root in case U2.\n' > "$W/subroot/README"
+    git -C "$W" add -A \
+        && git -C "$W" -c user.name=t -c user.email=t@t commit -qm "workspace copy with the off entry"
+    if git -C "$W" show HEAD:.claude/settings.json 2>/dev/null \
+         | jq -e --arg id "$id" '.enabledPlugins[$id] == false' >/dev/null 2>&1; then
+        pass "U0: the copy's committed .claude/settings.json has \"$id\": false under enabledPlugins"
+    else
+        fail "U0: could not commit the off entry in the copy; nothing enabled at user scope, the user-scope cases are not run"
+        return 0
+    fi
+    # The shapes, each made before the enable so the sessions are all that
+    # runs while it is on.
+    git -C "$W" worktree add -q "$us_wt" 2>/dev/null \
+        || fail "U0: could not add a worktree of the copy at $us_wt (U3 will show a failed session)"
+    mkdir -p "$us_intree"
+    { git -C "$W" check-ignore -q projects/intree && [[ ! -e "$us_intree/.git" ]]; } \
+        || fail "U0: $us_intree is not an ignored, .git-less directory of the copy, so U4 is not the in-tree shape"
+    mkdir -p "$us_root/src/pkg"
+    printf 'An ordinary root.\n' > "$us_root/README"
+    git -C "$us_root" init -q
+    git -C "$us_root" -c user.name=t -c user.email=t@t add README \
+        && git -C "$us_root" -c user.name=t -c user.email=t@t commit -qm init
+    git -C "$us_root/src/pkg" init -q
+    mkdir -p "$us_loose"
+    ! git -C "$us_loose" rev-parse --show-toplevel >/dev/null 2>&1 \
+        || fail "U0: $us_loose is inside a git repository, so U6 is not the unregistered-folder shape"
+    mkdir -p "$us_both"
+    git -C "$us_both" init -q
+    # Local `true` first, as on a machine with a legacy per-root enable.
+    enable_in "$us_both" \
+        || fail "U0: could not enable $NAME at local scope in $us_both (U7 then has user scope only)"
+    mkdir -p "$us_off/.claude/skills/zz-control"
+    git -C "$us_off" init -q
+    jq -n --arg id "$id" '{enabledPlugins: {($id): false}}' > "$us_off/.claude/settings.local.json"
+    printf '%s\n' '---' 'name: zz-control' 'description: Control skill for the locally-off root.' '---' '' \
+        'Reply with exactly the following line, copied character for character, and nothing else:' '' \
+        'OFF-ROOT-CONTROL' > "$us_off/.claude/skills/zz-control/SKILL.md"
+
+    # The enable: from a directory in no git repository, after the real
+    # settings' snapshot, and recorded before the CLI runs.
+    if git -C "$SANDBOX" rev-parse --show-toplevel >/dev/null 2>&1; then
+        fail "U0: the sandbox $SANDBOX is inside a git repository; nothing enabled at user scope"
+        return 0
+    fi
+    if ! REAL_BEFORE="$(real_settings_snapshot "$REAL_SETTINGS" 2>/dev/null)"; then
+        REAL_BEFORE=""
+        fail "U0: $REAL_SETTINGS does not parse as JSON; nothing enabled at user scope"
+        return 0
+    fi
+    USER_ENABLED=1
+    USER_TOUCHED=1
+    uout="$(cd "$SANDBOX" && cli_plugin marketplace add "$W" --scope user 2>&1 \
+        && cli_plugin install "$id" --scope user 2>&1)"
+    urc=$?
+    km="$(km_source)"
+    echo "  FACT: U0 user-scope marketplace add + install, run from a directory in no git repository: exit $urc; $REAL_SETTINGS now has $(user_scope_entries); machine record source: ${km:-<none>}"
+    if [[ "$urc" -ne 0 ]] || ! jq -e --arg id "$id" '.enabledPlugins[$id] == true' "$REAL_SETTINGS" >/dev/null 2>&1; then
+        fail "U0: the user-scope enable did not take (exit $urc: $(tr '\n' ' ' <<< "$uout" | cut -c1-300)); the user-scope cases are not run"
+        us_finish
+        return 0
+    fi
+    jq -e --arg m "$NAME" --arg w "$W" '.extraKnownMarketplaces[$m].source.path == $w' "$REAL_SETTINGS" >/dev/null 2>&1 \
+        && pass "U0: user scope enables $id and declares its marketplace from the copy in $REAL_SETTINGS" \
+        || fail "U0: $id is enabled at user scope, but the marketplace declaration does not name the copy ($(user_scope_entries))"
+
+    # --------------------------------------------- U1 to U8: sessions ---
+    us_case U1 "committed-off repository, at its root" "$W"
+    us_expect U1 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
+        "a session at the committed-off repository's root has the skill bare and not under $NAME:"
+    us_case U2 "committed-off repository, in a plain subdirectory root of it" "$W/subroot"
+    us_expect U2 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
+        "a session in a plain subdirectory root of it has the skill bare and not under $NAME:"
+    us_case U3 "committed-off repository, in a worktree of it outside its directory" "$us_wt"
+    us_expect U3 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
+        "a session in a worktree of it has the skill bare and not under $NAME:"
+    us_case U4 "in-tree root (inside the copy's tree, ignored by its git, no .git of its own)" "$us_intree"
+    us_expect U4 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
+        "a session in an in-tree root has the skill bare and not under $NAME:"
+    us_case U5 "repository nested in an ordinary root" "$us_root/src/pkg"
+    us_expect U5 - "$PROBE_REACHED" \
+        "a session in a repository nested in an ordinary root reaches /$NAME:zz-probe"
+    us_case U6 "unregistered folder in no git repository" "$us_loose"
+    us_expect U6 - "$PROBE_REACHED" \
+        "a session in an unregistered folder reaches /$NAME:zz-probe"
+    us_case U7 "local true plus user true" "$us_both"
+    us_expect U7 - "$PROBE_REACHED" \
+        "a session in a root enabled at both local and user scope reaches /$NAME:zz-probe"
+    if [[ "${U_LISTED[U7]}" == "<"* ]]; then
+        n=""
+        fail "U7: could not tell how many times $NAME:zz-probe is listed (${U_LISTED[U7]}): the suite's assumption about the stream-json init line does not hold on this CLI"
+    else
+        n="$(tr ',' '\n' <<< "${U_LISTED[U7]}" | grep -cE "^/?$NAME:zz-probe\$")"
+        [[ "$n" -eq 1 ]] \
+            && pass "U7: local true plus user true lists $NAME:zz-probe once" \
+            || fail "U7: local true plus user true lists $NAME:zz-probe $n times (${U_LISTED[U7]})"
+    fi
+    # A negative is evidence only when the session dispatches slash commands
+    # at all, so the root's own control skill must answer first.
+    us_session "$us_off" "/zz-control"
+    [[ "$SESSION_RC" -eq 0 && "$US_GOT_RESULT" -eq 1 && "$SESSION_OUT" == *"OFF-ROOT-CONTROL"* ]] && ctl_ok=1
+    if [[ "$ctl_ok" == 1 ]]; then
+        us_case U8 "root whose local entry is false under user true" "$us_off" "its own control skill answered"
+        us_expect U8 - "$PROBE_NOT_REACHED" \
+            "a session in a root whose local entry is false has no $NAME: skill under user true"
+        ctl_code="$PROBE_REACHED"
+    else
+        ctl_code="$PROBE_SESSION_FAILED"
+        fail "U8: the locally-off root's control skill did not answer, so a negative there proves nothing ($(session_said))"
+        us_case U8 "root whose local entry is false under user true" "$us_off" "its own control skill did NOT answer"
+    fi
+
+    # ------------------------------------------------------- U-end ---
+    us_finish
+
+    # ----------------------------------------------- stop conditions ---
+    echo "  STOP-CHECK 1 (the committed false entry keeps workspace sessions to bare names: U1 root, U2 plain subdirectory, U3 worktree): $(us_verdict \
+        "${U_BARE[U1]}" "$PROBE_REACHED" "${U_PLUG[U1]}" "$PROBE_NOT_REACHED" \
+        "${U_BARE[U2]}" "$PROBE_REACHED" "${U_PLUG[U2]}" "$PROBE_NOT_REACHED" \
+        "${U_BARE[U3]}" "$PROBE_REACHED" "${U_PLUG[U3]}" "$PROBE_NOT_REACHED")"
+    echo "  STOP-CHECK 2 (the committed false entry covers the in-tree root: U4): $(us_verdict \
+        "${U_BARE[U4]}" "$PROBE_REACHED" "${U_PLUG[U4]}" "$PROBE_NOT_REACHED")"
+    echo "  STOP-CHECK 3 (a session in a repository nested in an ordinary root lists the plugin's skills: U5): $(us_verdict \
+        "${U_PLUG[U5]}" "$PROBE_REACHED")"
+    echo "  STOP-CHECK 4 (a local false wins over user true: U8): $(us_verdict \
+        "$ctl_code" "$PROBE_REACHED" "${U_PLUG[U8]}" "$PROBE_NOT_REACHED")"
+    if [[ -z "$n" ]]; then
+        echo "  CHECK U7 (not a stop condition; the plan's step 2 migration rests on it -- local true plus user true lists the skill once): UNDECIDED (no init command list)"
+    elif [[ "$n" -eq 1 ]]; then
+        echo "  CHECK U7 (not a stop condition; the plan's step 2 migration rests on it -- local true plus user true lists the skill once): yes"
+    else
+        echo "  CHECK U7 (not a stop condition; the plan's step 2 migration rests on it -- local true plus user true lists the skill once): NO, $n times"
+    fi
+}
+if [[ "$RUN_USER" == 1 ]]; then
+    user_scope_cases
 fi
 
 echo ""
