@@ -760,6 +760,45 @@ test_sync_real_implementation_runs() {
     assert_contains "lib import worked and sync ran" "Checking agent_workspace (workspace)" "$out"
 }
 
+# Real chain (sync_project.py -> adapter -> sync.py) in a sandbox
+# workspace that is a git checkout, with no project/ (issue #295).
+make_sync_sandbox() {
+    local sb
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$sb/.agent/scripts/lib/"
+    cp "$REAL_ROOT/.agent/scripts/sync_project.py" "$sb/.agent/scripts/sync_project.py"
+    chmod +x "$sb/.agent/scripts/sync_project.py"
+    git -C "$sb" init --quiet -b main
+    echo "$sb"
+}
+
+test_sync_nothing_registered() {
+    echo "TEST: sync with no project/ and no registry syncs the workspace and says no project was synced"
+    local sb out rc=0
+    sb="$(make_sync_sandbox)"
+    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    assert_eq "exits 0" "0" "$rc"
+    assert_contains "workspace synced" "Checking agent_workspace (workspace)" "$out"
+    assert_contains "no project synced, pointer named" \
+        "No project was synced (none registered; register one: .agent/scripts/register_project.sh <path>)" "$out"
+    assert_not_contains "no make setup pointer" "Run: make setup" "$out"
+    assert_contains "completes" "Sync complete." "$out"
+}
+
+test_sync_registered_none_selected() {
+    echo "TEST: sync with a registered project, none selected and no project/ names the registered ones"
+    local sb out rc=0
+    sb="$(make_sync_sandbox)"
+    make_git_repo "$sb/elsewhere/demo" "file:///nonexistent/demo.git"
+    echo "demo single_project $sb/elsewhere/demo" > "$sb/.agent/projects.local"
+    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    assert_eq "exits 0" "0" "$rc"
+    assert_contains "names the registered project" \
+        "No project was synced (none selected; registered: demo; pass PROJECT=<name>)" "$out"
+    assert_not_contains "does not say none registered" "none registered" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== adapter / validate_adapter / single_project tests ==="
 echo ""
@@ -812,6 +851,8 @@ test_sync_aborts_failed_rebase
 test_setup_delegates
 test_sync_shim_chain
 test_sync_real_implementation_runs
+test_sync_nothing_registered
+test_sync_registered_none_selected
 test_build_shim_chain
 
 echo ""

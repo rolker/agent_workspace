@@ -22,7 +22,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
-from workspace import get_workspace_root, get_project_path, is_project_configured
+from workspace import (
+    get_workspace_root,
+    get_project_path,
+    is_project_configured,
+    read_projects_registry,
+)
 
 
 def run_git_cmd(repo_path, cmd_args, dry_run=False):
@@ -176,8 +181,21 @@ def main():
         print("Checking project...")
         print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:
+        # No project resolved: the workspace alone was synced (issue #295).
+        # Say why, and how to get a project synced.
         print("Checking project...")
-        print("  ⚠️  project/ not configured. Run: make setup")
+        entries, _errors = read_projects_registry(root_dir)
+        names = [e["name"] for e in entries]
+        if names:
+            print(
+                "  ⚠️  No project was synced (none selected; registered: "
+                f"{', '.join(names)}; pass PROJECT=<name>)"
+            )
+        else:
+            print(
+                "  No project was synced (none registered; register one: "
+                ".agent/scripts/register_project.sh <path>)"
+            )
 
     print("\n✅ Sync complete.")
 
