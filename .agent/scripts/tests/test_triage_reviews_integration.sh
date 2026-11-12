@@ -11,7 +11,7 @@
 #     are listed in dropped_entries, never silently lost
 #   - review_progress.sh persist for an `## Integrated Review` entry through
 #     triage-reviews' own call site: strict abort on a mismatched worktree,
-#     compatibility notice + inline commit, matching worktree no-notice,
+#     compatibility mode refused the same way (issue 437), matching worktree no-notice,
 #     degradation (skill worktree / no linked issue) skips without aborting
 #
 # All cases run in mktemp -d sandboxes; host worktree state is cleared first.
@@ -789,12 +789,14 @@ MIS="$TMPD/issue-workspace-99"; mk_repo "$MIS" feature/issue-99
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --strict 2>&1); rc=$?
 [[ "$rc" -eq 4 && "$out" == *worktree_enter.sh* && ! -e "$MIS/.agent/work-plans/issue-7/progress.md" ]] \
     && pass "persist (Integrated Review) strict: mismatched worktree aborts rc 4 with remediation" || fail "persist strict mismatched (rc=$rc out=$out)"
-# compat + mismatched -> notice + inline commit with the entry-type subject
+# compat + mismatched -> refused like strict (issue 437): the checkout is
+# issue 99's, so nothing is written or committed
+head_before=$(git -C "$MIS" rev-parse HEAD)
 out=$(cd "$MIS" && printf '%s\n' "$ENTRY" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --title "Seven" 2>&1); rc=$?
-if [[ "$rc" -eq 0 && "$out" == *"would have aborted"*"PROGRESS_PERSISTENCE_STRICT=0"* ]] \
-    && grep -q '^## Integrated Review$' "$MIS/.agent/work-plans/issue-7/progress.md" \
-    && [[ "$(git -C "$MIS" log -1 --format=%s)" == "progress: integrated review for #7" ]]; then
-    pass "persist (Integrated Review) compat: notice printed, entry committed inline with 'progress: integrated review for #7'"
+if [[ "$rc" -eq 4 && "$out" == *"refusing to write issue #7's records"* && "$out" != *"would have aborted"* ]] \
+    && [[ ! -e "$MIS/.agent/work-plans/issue-7/progress.md" ]] \
+    && [[ "$(git -C "$MIS" rev-parse HEAD)" == "$head_before" ]]; then
+    pass "persist (Integrated Review) compat: mismatched worktree is refused (rc 4) like strict; nothing written"
 else
     fail "persist compat mismatched (rc=$rc out=$out subj=$(git -C "$MIS" log -1 --format=%s))"
 fi

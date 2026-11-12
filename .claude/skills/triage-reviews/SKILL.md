@@ -374,8 +374,11 @@ Echo the one line it prints into the report Summary. In order:
   commits only that file with the agent identity.
 - **Compatibility path** (the default) — what this step did before issue
   #269 PR C: the current worktree's `progress.md`, inline append and
-  commit. The strict refusal is still evaluated; if it would have fired,
-  the line "Progress persistence notice: would have aborted
+  commit, after the same refusal as strict (exit 4) when this checkout is
+  not issue `<N>`'s: a main checkout on its default branch, another
+  issue's worktree (issue 437). The strict refusal is still evaluated; if
+  it would have fired (`WORKTREE_ISSUE` names another issue, or
+  `WORK_PLANS_DIR_OVERRIDE` is set), the line "Progress persistence notice: would have aborted
   (resolve_work_plans_dir: <reason>) — running in compatibility mode
   (PROGRESS_PERSISTENCE_STRICT=0)" is printed first. Copy it into the
   Summary verbatim; PR B2 flips the default once these notices stop.

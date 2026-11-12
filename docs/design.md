@@ -379,8 +379,8 @@ probe, not a description to keep current.
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
-the cwd's git top level, through the records gate, lines 126-128 and 315-325), `progress_append.sh` (lines 75,
-86 and 99-100),
+the cwd's git top level, through the records gate, lines 138-140 and 340-350), `progress_append.sh` (lines 78,
+93-94 and 107-108),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
 *Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
@@ -455,10 +455,15 @@ Status: `decided`
   builds a records path (`round`, `persist`, `sources`, `findings`, `check`, `plan-sha`),
   `dispatch_phase.sh` (`resolve_issue_dir` and `next --progress`) and `merge_pr.sh`'s gate lookup. It
   does not cover a file an agent opens directly, the sit-rep's survey (it reads each listed checkout's
-  `progress.md` with `progress_read.py` directly), `worktree_create.sh --workflow`'s scaffold (#393),
-  or a write from outside any worktree, which commits on that checkout's own branch. Workspace worktrees
-  and single-repository project worktrees write no manifest, so nothing changes for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
-  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 99-100 write
+  `progress.md` with `progress_read.py` directly), or `worktree_create.sh --workflow`'s scaffold (#393).
+  A write that changes a timeline (an entry, its commit, a ticked box) is refused unless the file it
+  writes, every symlink resolved, sits at the place its path names in the issue's own checkout,
+  wherever the command runs; reads are not (issue 437): the gate's `--write`
+  rule, which `progress_append.sh`, `review_progress.sh persist` and `check` state, refuses a main
+  checkout on its default branch and another issue's worktree (header of `_resolve_work_plans_dir.sh`).
+  Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
+  changes nothing for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
+  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
@@ -508,7 +513,7 @@ Three mechanisms would do it, each built by #393:
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    489, 533, 535, 597, 718: the round count, the exit contract, `--check-exit` and `next`, which is
    what a resumed session reads), `merge_pr.sh` (689-710, 822-903: the gate's lookup and its `Merge`
-   entry), `review_progress.sh` (128, 294, 325) and `progress_append.sh` (99). `_resolve_work_plans_dir.sh` is
+   entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
@@ -840,6 +845,8 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-10 | Registry and adapters | `worktree_create.sh` line citations refreshed after review fixes to the named-branch lookup (a branch on origin gets its own upstream settings, not a fetch refspec; a skill branch is not looked up; the project path warns on an existing branch's parent); no statement changes | #323 | 878 |
 | 2026-11-10 | Documentation layers | The roadmap's acceptance case is no longer ADR-0016's (met 2026-11-09): the sentence on what the Direction section says drops "(ADR-0016's)" and keeps "one acceptance case", now project11 on a second machine against ROS 2 Rolling | #432 | 869 |
 | 2026-11-10 | Registry and adapters, Worktrees | An issue in a package repository has a timeline (issue 429, first pull request): the Records bullet no longer says it has none, and says the records are committed in the owning repository's checkout inside the package worktree under the default records setting, that `dispatch_phase.sh` decides that directory in one place and `run-issue` moves the host there with its `where` subcommand, that every records read and write passes one records gate (`records_path`), which refuses a sibling checkout and the worktree's top folder, and what the gate does not cover, and that the merge gate does not read that timeline yet; the cited line numbers of `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory table and sentence, the Records bullet and the Target's mechanism 1. Worktrees is 104 lines, past the 60-line prompt: the bullet names the functions whose headers hold the rule and the guard, and the mechanics stay there, so no detail moves | #429 | 896 |
+| 2026-11-10 | Registry and adapters, Worktrees | A timeline write from outside the issue's checkout is refused (issue 437): the Records bullet no longer lists "a write from outside any worktree, which commits on that checkout's own branch" among what the records gate does not cover, and says that a write that changes a timeline is refused unless its target is the issue's own checkout, wherever the command runs, and that reads are not; the cited line numbers of `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees grows by four lines and stays past the 60-line prompt: the bullet names the gate whose header holds the rule, and the mechanics stay there, so no detail moves | #437 | 901 |
+| 2026-11-12 | Registry and adapters, Worktrees | Review fix (issue 437): the Records bullet states the write rule as one statement, the file a write changes, every symlink resolved, sits at the place its path names in the issue's own checkout, after a file symlink and a records folder linked to a main-checkout folder got past the checkout test; the cited `progress_append.sh` gate lines are refreshed. Worktrees grows by one line and stays past the 60-line prompt: the mechanics stay in the gate's header | #437 | 903 |
 
 ## Glossary
 
