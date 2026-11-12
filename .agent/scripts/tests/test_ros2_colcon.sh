@@ -1657,14 +1657,105 @@ test_repo_pin_reads_version_as_yaml() {
     out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
     assert_eq "CRLF: exit 0" "0" "$rc"
     assert_eq "CRLF: no CR in the ref" "pinned	branch" "$out"
-    # An unclosed quote is refused, not printed as a ref.
-    for pair in '"fix' "fix'" 'fi"x'; do
+    # A comment right after the key is no ref: the value is empty, refused.
+    for pair in ' # TODO pin' '#main'; do
+        write_pin_repos "$f" "pkg_a=$pair"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$pair]: exit 1" "1" "$rc"
+        assert_contains "[$pair]: empty version" "has an empty version: in layer 'l1'" "$out"
+    done
+    # A quote that does not close the value cleanly is refused, not cut to
+    # a ref nobody pinned.
+    for pair in '"fix' "fix'" 'fi"x' "'stable''next'" '"main" extra' '"x\"y"' '"main"#c'; do
         write_pin_repos "$f" "pkg_a=$pair"
         rc=0
         out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
         assert_eq "[$pair]: exit 1" "1" "$rc"
         assert_contains "[$pair]: says why" "cannot be read as a ref" "$out"
     done
+}
+
+# The full input table for the .repos parser that repo_pin, sync and
+# validate share: each "version:" text (after "    version:") and the
+# value _rc_repos_entries emits for it. validate reads only the names, so
+# every row must still emit its name.
+test_repos_entries_parser_table() {
+    echo "TEST: _rc_repos_entries reads each version: form as the table says"
+    local sb f i=0 row input want got
+    sb="$(make_sandbox)"
+    f="$sb/table.repos"
+    local -a rows=(
+        ' pinned|pinned'
+        ' fix#12|fix#12'
+        ' fix # a comment|fix'
+        ' "fix#12"|fix#12'
+        " 'v1.0'|v1.0"
+        ' "fix#12" # pinned for #12|fix#12'
+        "  'v1.0'   |v1.0"
+        '  # TODO pin|'
+        ' #main|'
+        '|'
+        ' ""|'
+        $' dev\r|dev'
+        $' "dev"\r|dev'
+        $' dev # c\r|dev'
+        ' "fix|"fix'
+        " fix'|fix'"
+        ' fi"x|fi"x'
+        " 'stable''next'|'stable''next'"
+        ' "main" extra|"main" extra'
+        ' "x\"y"|"x\"y"'
+        ' "main"#c|"main"#c'
+    )
+    {
+        echo "repositories:"
+        for row in "${rows[@]}"; do
+            i=$((i + 1))
+            printf '  r%d:\n    type: git\n    version:%s\n' "$i" "${row%%|*}"
+        done
+        printf '  noversion:\n    type: git\n'
+    } > "$f"
+    local parsed
+    parsed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2" --all' \
+        _ "$sb" "$f")"
+    i=0
+    for row in "${rows[@]}"; do
+        i=$((i + 1))
+        input="${row%%|*}"
+        want="${row#*|}"
+        got="$(awk -F'\t' -v n="r$i" '$1 == n { print substr($0, length(n) + 2); f = 1 } END { if (!f) print "<missing>" }' <<< "$parsed")"
+        assert_eq "version:${input//$'\r'/\\r} -> [$want]" "$want" "$got"
+    done
+    assert_contains "no version: key: name alone with --all" $'\nnoversion' $'\n'"$parsed"
+}
+
+test_sync_reads_quoted_and_commented_pins() {
+    echo "TEST: sync sees a quoted, commented pin as the branch, and a comment-only pin as none"
+    local sb out rc=0 proj mdir origin src
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    mdir="$proj/configs/manifest"
+    printf 'l1\n' > "$mdir/layers.txt"
+    : > "$mdir/optional_layers.txt"
+    printf 'repositories:\n  pkg_q:\n    type: git\n    version: "fakefox" # pinned\n  pkg_c:\n    type: git\n    version:  # TODO pin\n' \
+        > "$mdir/repos/l1.repos"
+    origin="$sb/origin_q"
+    git -C "$(mkdir -p "$origin" && echo "$origin")" init --quiet -b fakefox
+    (cd "$origin" && echo v1 > f.txt && git add f.txt \
+        && git -c user.name=t -c user.email=t@t commit -qm v1)
+    src="$proj/layers/main/l1_ws/src"
+    mkdir -p "$src"
+    git clone --quiet "$origin" "$src/pkg_q" 2>/dev/null
+    git clone --quiet "$origin" "$src/pkg_c" 2>/dev/null
+    out="$(run_adapter "$sb" sync 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "quoted pin with a comment: on its branch, pulled" "pkg_q: on 'fakefox' — pulling" "$out"
+    assert_contains "comment-only pin: no branch, fetched" "pkg_c: on 'fakefox' (pinned: ) — fetching" "$out"
+    rc=0
+    out="$(run_adapter "$sb" validate 2>&1)" || rc=$?
+    assert_contains "validate sees both repos checked out" "checkout matches the manifest" "$out"
 }
 
 test_repo_pin_deleted_upstream_branch_is_not_a_branch() {
@@ -1921,6 +2012,8 @@ test_repo_pin_kinds_online
 test_repo_pin_branch_before_tag
 test_repo_pin_strips_quotes
 test_repo_pin_reads_version_as_yaml
+test_repos_entries_parser_table
+test_sync_reads_quoted_and_commented_pins
 test_repo_pin_deleted_upstream_branch_is_not_a_branch
 test_repo_pin_offline_uses_local_refs
 test_repo_pin_hanging_origin_is_bounded

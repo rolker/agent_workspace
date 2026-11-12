@@ -212,9 +212,12 @@ _rc_underlay() {
 # Parse a vcstool .repos file: emit "<name>\t<version>" per repository.
 # Format: two-space-indented "name:" entries under "repositories:", with
 # four-space-indented keys (type/url/version). The version is the rest of
-# its line: a CRLF line end is dropped, a quoted scalar is kept whole with
-# its quotes (a "#" inside it is part of the ref), and otherwise a "#"
-# starts a comment only after whitespace, as in YAML ("fix#12" is a ref).
+# its line: a CRLF line end is dropped; a "#" starts a comment only right
+# after the key or after whitespace, as in YAML ("fix#12" is a ref); a
+# quoted scalar followed by nothing but a comment is emitted unquoted (a
+# "#" inside it is part of the ref). Any other quoting ("main" extra,
+# 'a''b', "x\"y") is emitted raw, quotes left in, so a caller can refuse a
+# value that holds a quote rather than act on part of it.
 # With --all, an entry with no version: key is emitted too, as "<name>"
 # alone (no tab): vcstool checks such a repository out at its default branch.
 _rc_repos_entries() {
@@ -236,13 +239,22 @@ _rc_repos_entries() {
             v = $0
             sub(/\r$/, "", v)
             sub(/^    version:/, "", v)
+            # A comment right after the key leaves the value empty
+            # ("version:  # TODO", "version: #main").
+            if (v ~ /^[ \t]*#/) v = ""
             sub(/^[ \t]+/, "", v)
             q = substr(v, 1, 1)
             e = 0
             if (q == "\"" || q == "\047") e = index(substr(v, 2), q)
-            if (e > 0) {
-                v = substr(v, 1, e + 1)
+            rest = (e > 0) ? substr(v, e + 2) : ""
+            if (e > 0 && (rest ~ /^[ \t]*$/ || rest ~ /^[ \t]+#/)) {
+                # A quoted scalar with nothing after it but a comment: its
+                # content, unquoted.
+                v = substr(v, 2, e - 1)
             } else {
+                # Plain, or a quote that does not close the value cleanly
+                # ("main" extra, x"y, an escaped quote): the raw text,
+                # quotes and all, for the caller to refuse.
                 sub(/[ \t]+#.*$/, "", v)
                 sub(/[ \t]+$/, "", v)
             }
@@ -997,10 +1009,6 @@ adapter_repo_pin() {
             name="${entry%%$'\t'*}"
             version="${entry#*$'\t'}"
             [[ "$entry" == *$'\t'* ]] || version="$nov"
-            # YAML quoting around the ref is not part of it.
-            if [[ "$version" =~ ^\"(.*)\"$ ]] || [[ "$version" =~ ^\'(.*)\'$ ]]; then
-                version="${BASH_REMATCH[1]}"
-            fi
             known+=("$name")
             [ "$name" = "$repo" ] && hits+=("$l"$'\t'"$version")
         done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --all)
