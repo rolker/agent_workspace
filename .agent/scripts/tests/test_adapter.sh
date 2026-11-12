@@ -496,7 +496,8 @@ test_repos_unconfigured() {
     sb="$(make_sandbox)"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "points at make setup" "run: make setup" "$out"
+    assert_contains "points at register_project.sh" "register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_not_contains "no make setup pointer" "make setup" "$out"
 }
 
 test_scope_for_pr_ssh() {

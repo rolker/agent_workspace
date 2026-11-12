@@ -696,6 +696,19 @@ else
 fi
 
 echo
+echo "=== --type project with no project/ and nothing registered: points at register_project.sh ==="
+SB4="$SANDBOX/ws4"
+make_ws_repo "$SB4"
+OUT="$(cd "$SB4" && PATH="$SB4/stubbin:$PATH" "$SB4/.agent/scripts/worktree_create.sh" --issue 12 --type project 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"no project is registered in $SB4/.agent/projects.local"* \
+      && "$OUT" == *"Register one: .agent/scripts/register_project.sh <path>"* && "$OUT" != *"make setup"* ]]; then
+    pass "no project: exit $RC, names the registry read and register_project.sh, not make setup"
+else
+    fail "no project: rc=$RC: ${OUT:0:600}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"

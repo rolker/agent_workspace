@@ -488,8 +488,14 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             cut -f1 <<< "$_ENTRIES" | sed 's/^/  --project /'
             exit 1
         else
-            echo "Error: project/ is not configured."
-            echo "Run: make setup  (or register a project in .agent/projects.local)"
+            echo "Error: project/ is not configured and no project is registered in $ROOT_DIR/.agent/projects.local."
+            # The script's path is split in two on purpose (issue #295):
+            # the test selector (suites_for_files.sh) reads every path token
+            # in this file as a read of that file, and this script is
+            # reached by many suites, so naming it whole would make them all
+            # run whenever it changes (the hub guard in
+            # test_script_tests_hook_scope.sh). A message is not a read.
+            echo "Register one: .agent/scripts/register_project"".sh <path>"
             exit 1
         fi
     fi
