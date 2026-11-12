@@ -228,3 +228,22 @@ The plan is ready for implementation. The pivot-commit sequencing works with the
 **Decision**: proceed
 
 Proceed (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-455 at `d4b4edc3`
+
+Implemented in the plan's commit order; C1 and C2 used the literal setup line, C3 and after the derived `--agent claude-code` form from the worktree's script, and the new hook accepted C3.
+
+- `628aaaef` (C1): new `.agent/scripts/identity_base.py` (base = checkout's `git config user.email`, `+suffix` removed; `agent <suffix>`; unset/malformed exits 1 with the `git config --global user.email` fix). `framework_config.sh` holds `FRAMEWORK_SUFFIXES` plus `framework_email` / `agent_email_for_suffix`; `set_git_identity_env.sh` (`--agent <fw> ["<model>"]`), `configure_git_identity.sh` and `detect_agent_identity.sh` derive through it and fail with nothing exported or written. The `copilot-cli` / `gemini-cli` aliases now also carry the table model (they had none).
+- `ff897b1e` (C2): `AI_IDENTITY_STRATEGY.md` gets a "Where the Email Comes From" section and placeholder examples; `docs/design.md` Rules row and Identity section, change-log row for #455 (914 lines); `script_reference.md` rows for the helper, `framework_config.sh`, `configure_git_identity.sh` and the model argument; `docs/roadmap.md` entry reworded; `dispatch_phase.sh` header comment; `test_dispatch_phase.sh` uses an `example.org` fixture.
+- `4ffa4b68` (C3, pivot): hook derives its accepted set via the helper and blocks on an unset/malformed configured email; failure text prints the base, `source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"` and the stale-literal / not-updated-from-main cause. `CLAUDE.md`, `CODEX.md`, run-issue (identity line and `agent_email=` description), onboard-project (3 lines) and `test_skill_paths.sh` switch to `--agent`. New hermetic `test_commit_identity.sh` (39 assertions).
+- `d4b4edc3`: `ROOT_READERS` entry for the new suite in `test_script_tests_hook_scope.sh` (found by the final pre-commit run).
+
+Deviation: `suites_for_files.sh` needed no edit; the new suite maps by derivation for the hook, helper, `framework_config.sh` and the three scripts (checked per file).
+
+Checks: final `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, running all 48 suites (`set_git_identity_env.sh` is a full-run trigger). An earlier run failed once in `test_cross_model_review.sh` (>64 KiB Approach case); the same case also failed once on an export of main and passed on rerun, so it is an intermittent failure not caused by this branch. Acceptance grep for the owner's addresses (excluding tests, work-plans, brand-guidelines) finds none; the inspiration digest keeps three domain-only mentions in a past record, left as the plan says.
+
+Post-merge (for the PR body): update every in-flight branch or worktree from main before its next commit (issue 429's worktree exists today).
