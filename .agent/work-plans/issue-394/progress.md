@@ -185,3 +185,29 @@ Held against plan.md and the Plan Review Actions at 0f57c07a (the review wins wh
 Implement-pass choices, judged: (1) dropping the marker from an entry that loses a command: agreed; must-fix 2 extends the same reasoning to entries that lose nothing. (2) an entry already exactly ours stays in place: agreed; jq `==` ignores key order, and only position is affected. (3) `--uninstall` removes only this checkout's commands: agreed; same scope as the old tag-based uninstall, and dead or foreign commands are install's and `--force`'s to clear.
 
 Dismissed: Gemini and Codex "ADR-0016 lines 207-210 not reworded" (deliberate: ADR-0017 forbids editing an Accepted ADR, Plan Review finding 3); Gemini "`$WS_PHYS` could be empty" (set at startup, line 128); adversarial "a scalar inside an event array fails the merge" (fails safe, writes nothing, and predates this branch).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 13:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-394 at `f0ae3b8a`
+**Addressed**: Local Review (Pre-Push) at `310c978a` (2026-11-12 12:42 -05:00)
+**Commits**: aecbb853, 6130d151, f0ae3b8a
+
+### Actions
+- [x] (must-fix) Look-alike user hooks were classified as paths and removed. `classify_hooks` is now the one function that decides, used by `--check`, install, `--force` and `--uninstall`. It classifies a command only when it is exactly one the installer writes, or when the whole string is a literal absolute path (starts with `/`; no whitespace, quote, `$`, `~`, backslash, glob character or shell operator) of the form `<dir>/.claude/hooks/<name>`, with `<name>` in `INSTALLER_HOOK_NAMES` or `RETIRED_HOOK_NAMES`. "Dead" requires `<dir>` itself to be gone. Anything else is the user's: never reported, removed or rewritten. The jq side no longer matches on string shape (`hookdir` and the prefix lists are gone) — `user_tier_install.sh` `classify_hooks`, `PRUNE_JQ_DEFS` (aecbb853)
+- [x] (must-fix) A marked entry that lost nothing kept its marker. `prune` now drops this checkout's marker from every entry (install, `--uninstall`) and, under `--force`, every marker, whether or not a command was removed. `--check`'s message for the this-checkout case now says that a re-install drops the marker and keeps the command — `PRUNE_JQ_DEFS` `unmark` (6130d151)
+- [x] (suggestion) A swallowed jq error on a non-array event value. Hook entries are read through the type-guarded `hook_entries`/`entry_commands` defs everywhere. A jq failure in classification or in any `--check` query built on it exits 1 with a message, and settings.json stays untouched — `HOOK_ENTRIES_JQ`, `class_query` (aecbb853)
+- [x] (suggestion) "Ours" meant any file under this checkout's `.claude/hooks/`. A command is now ours only when its name is in the written-or-retired lists (or it is exactly a written command) — `classify_hooks` (aecbb853)
+- [x] (suggestion) The backup ran after the root file and the link were written. Install now checks the link's preconditions, classifies, merges and backs up first, and only then writes the root file, the rules record, the link and settings.json — install section (f0ae3b8a)
+
+### Notes
+- Choice listed for veto: a command exactly equal to one the installer writes (the `log-tool-use.sh` path, the SessionStart link) is ours even if the checkout or HOME path holds a character the literal rule rejects. Without that, a checkout path with a space would make every install add a second copy of our hook.
+- Tests changed: fixtures (f), (h) and (j) used `zz-retired-hook.sh` and `x.sh`, names the new rule leaves to the user. They now use `block-bash-tool-mapping.sh` and `log-tool-use.sh`. (j)'s moved checkout now exists without a manifest, so the marker is what attributes its command.
+- Tests added (`test_user_tier_install.sh`, 237 to 255 assertions): (n) seven user forms (quoted variable, interpreter prefix, tilde, relative path, our hook with a trailing argument, an existing project lacking only the file, a hook wired to `session_start_project_layer.sh` in this checkout), run through `--check` from this checkout and from another checkout's cwd, install, `--force` and `--uninstall`; (o) a non-array event value beside a dead hook; (p) both marker cases through `--check`, install and `--force`, plus the `--uninstall` marker case; and a `cp` shim that fails only the backup, after which no root file, rules record or link exists and settings.json is byte-identical. The run() helper gains `RUN_PATH_PREFIX`.
+- Verification: the suite gives 255 passed, 0 failed, and each intermediate commit's state passed too (246, 252). Mutation check: the new test file run against the round-1 script (fee1eeab) gives 14 failures, and each of the seven user forms is removed there individually. shellcheck `--severity=warning` is clean on both files. `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, exit 0, script-tests hook included. Scratch HOME and the stub CLI only; the real `~/.claude` was not touched.
+- Outside these findings, reported and not fixed: `--uninstall` has the same ordering as suggestion 5. It removes the root file, the link and the plugin from every root before `backup_settings`, so a failed backup there exits 1 with those already gone and settings.json unchanged.
+
+### Next step
+`/review-code --branch`
