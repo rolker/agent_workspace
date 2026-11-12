@@ -364,6 +364,60 @@ test_registry_repo_slugs_absent_or_broken() {
     assert_eq "parse error: nothing printed" "END" "$out"
 }
 
+# ---- main-checkout helpers (issue #295) ----
+
+# Physical path of a directory, or the string as given when it is not one.
+phys() {
+    [ -n "$1" ] || { echo "<nothing>"; return 0; }
+    (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"
+}
+
+# Both helpers, run for a checkout <dir>: the shell one is given <dir>, the
+# Python one finds its root from the copy of lib/workspace.py under <dir>.
+# Prints "<shell answer> | <python answer>", both physical paths.
+main_checkout_both() {
+    local dir="$1" sh_out py_out
+    mkdir -p "$dir/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$dir/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/lib/workspace.py" "$dir/.agent/scripts/lib/"
+    sh_out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_main_checkout "$1"' _ "$dir")"
+    py_out="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import workspace; print(workspace.get_main_checkout_root())' "$dir/.agent/scripts/lib")"
+    printf '%s | %s\n' "$(phys "$sh_out")" "$(phys "$py_out")"
+}
+
+test_main_checkout_helpers() {
+    echo "TEST: registry_main_checkout and get_main_checkout_root agree on the main checkout"
+    local base expect
+    base="$(phys "$(mktemp -d -p "$SANDBOX")")"
+
+    # A plain directory nested in a repository that has a registry: the
+    # directory itself, never the enclosing repository.
+    make_git_repo "$base/outer" "https://github.com/owner/outer.git"
+    mkdir -p "$base/outer/.agent" "$base/outer/inner"
+    echo "x single_project" > "$base/outer/.agent/projects.local"
+    expect="$base/outer/inner | $base/outer/inner"
+    assert_eq "nested plain directory: itself" "$expect" "$(main_checkout_both "$base/outer/inner")"
+
+    # A directory outside any repository: itself.
+    mkdir -p "$base/nogit"
+    expect="$base/nogit | $base/nogit"
+    assert_eq "non-git directory: itself" "$expect" "$(main_checkout_both "$base/nogit")"
+
+    # A main checkout and a linked worktree of it: the main checkout both times.
+    make_git_repo "$base/main" "https://github.com/owner/ws.git"
+    seed_commit "$base/main"
+    git -C "$base/main" worktree add --quiet -b wt "$base/wt" 2>/dev/null
+    expect="$base/main | $base/main"
+    assert_eq "main checkout: itself" "$expect" "$(main_checkout_both "$base/main")"
+    assert_eq "linked worktree: the main checkout" "$expect" "$(main_checkout_both "$base/wt")"
+
+    # A main checkout made with `git clone --separate-git-dir` (its common
+    # dir does not end in /.git): itself, not its git dir.
+    git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
+    expect="$base/sepmain | $base/sepmain"
+    assert_eq "separate-git-dir main checkout: itself" "$expect" "$(main_checkout_both "$base/sepmain")"
+}
+
 # ---- sync.py --project-root ----
 
 test_sync_project_root() {
@@ -1639,6 +1693,7 @@ test_registry_malformed_line_fails
 test_registry_repo_slugs
 test_registry_repo_slugs_no_walk_up
 test_registry_repo_slugs_absent_or_broken
+test_main_checkout_helpers
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves
