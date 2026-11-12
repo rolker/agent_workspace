@@ -604,3 +604,66 @@ The host read the round 4 Local Review (Pre-Push) entry at a12e37a1: verdict cha
 ### Notes
 - Left as they are, inside the rule: `_check_name` shows `repr()` of a name that is not a string (an int, date or bool key). It is a key, and with integers bounded it cannot fail. Names and references that passed the character rule (`optional_layers names '…'`, `extends path '…'`, `references undefined …`) stay, as rounds 2 and 4 judged.
 - Process: one run of the marker test before the fix had no `--cache-dir`. It tried a network clone of `https://e.com/b.git` and left an empty `.ros-manifest-cache/` in the worktree. The directory is removed, and the test now uses a local cache and a `file:///nonexistent` base.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 12:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a34531e5de962856c, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `1192f674`
+**Base**: main
+**Depth**: Deep (reason: round 5 convergence check per handoff; the whole-branch tier stays Deep for the CI workflow change and untrusted manifest content)
+**Must-fix**: 1 | **Suggestions**: 5
+**Round**: 5 | **Ship**: continue — round 5: 1 must-fix, not rising (prev 1), but not mechanical: it is a sweep over many sites with a choice of what a message may show
+
+Scope: the round 4 findings and the fix diff `a12e37a1..1192f674` (`cad21252`, `2cff3fec`, `2cb9d09d`, `e8ed6982`, `5aa1d847`, `83fdb648`, `98c45300`), judged against the Checkpoint's two rules. Cross-model: skipped (round-5 convergence check, per handoff). Claude adversarial: ran fresh, briefed to break the two rules (complete). Static analysis: `pre-commit run --files` on the fix diff's files, exit 0. `PYTHONPATH=tools/ros-manifest/src pytest tools/ros-manifest/tests`: 310 passed.
+
+Round 4, as checked:
+- The must-fix is closed. An integer past 64 bits is refused with line and column. This was tried as a value, as a key, through `!!int`, with 5000 digits, as 2^64 and as a sexagesimal key; 2^64−1 is accepted. The groups `default` message names only the type.
+- The four suggestions are closed:
+  - A failed clone prints git's exit status, and git's stderr is never decoded or printed.
+  - A missing `git` (fresh clone or cache hit) and an uncreatable `--cache-dir` have their own lines.
+  - `--out` that cannot be created is one `ERROR:` line.
+  - The manifest is read as UTF-8.
+
+Rule 1, the backstop, holds for every `Exception`. Both entry points reach `main()`: `python -m ros_manifest.cli`, and the `ros-manifest` console script (`pyproject.toml`: `ros_manifest.cli:main`; there is no `__main__.py`). The adversarial reviewer also found:
+- argparse errors echo only the caller's own arguments.
+- stderr is `backslashreplace`, so an `ERROR:` line cannot raise.
+- A stdout encoding error during `validate` ends in the type-name line.
+- `RecursionError` and `MemoryError` are caught.
+
+Outside it are only a Ctrl-C (`KeyboardInterrupt` is not an `Exception`) and a broken pipe found at exit. Neither prints document text; both are suggestions below.
+
+Rule 2 is not met. The marker test covers 8 value-bearing fields. Each of these printed `https://u:s3cr3tMARK@h` (reproduced here, and by the adversarial reviewer):
+- `extends.path`, in four messages (local and git, escape and not found).
+- An `optional_layers` entry (not in `layers`; and a duplicate).
+- The reference lists checked in `merge.py`: `groups.*.repos`, `roles.*.subtract/add/roots`, `packages.*.repo/depend/exec_depend`.
+- A `layers` entry that fails the layer pattern (`_check_name` shows the failing value with `repr`).
+- A `!!binary` key. It is `bytes`, so it skips the character rule entirely, and `_check_name` printed `b'https://u:s3cr3tMARK@h'`.
+
+The README paragraph "No error message prints a value from a manifest" is therefore untrue. String keys that passed only the character rule are also echoed: the unknown-key lists, the location in the character-rule message, `repos declares layer '<key>'`, and package names, which have no pattern and also reach `validate`'s violation lines. The Checkpoint's rule 2 allows "a key name that passed the character rule", so those are a suggestion here, not a must-fix. They are the same leak whenever a secret is pasted as a key.
+
+The fix pass's note on `_check_name` is not right as stated. It shows `repr()` not only of non-string keys but of any failing string name of 64 characters or fewer, list entries in `layers` included.
+
+### Findings
+- [ ] (must-fix) Rule 2 is not met: `ManifestError` messages still print document values. The sites:
+  - `extends.path` — `extends.py:148`, `:151`, `:158`, `:162`
+  - `optional_layers` entries — `schema.py:369`, `:373`
+  - every reference list cross-checked in `merge.py:167-181`
+  - a failing `layers` entry, through `_check_name`'s `repr` — `schema.py:275`
+  - a `!!binary` (bytes) key, which skips the character rule
+
+  One mechanism closes it:
+  - Check every name and every reference against its kind's pattern at parse time (add a `package` kind).
+  - `_check_name` never shows the failing value, only where it is and its type.
+  - Refuse non-`str` keys.
+  - `extends.path` messages name only the declaring manifest.
+
+  Extend the marker test's `_VALUE_FIELDS` (`tests/test_untrusted_input.py:747`) to those fields and to keys — `tools/ros-manifest/src/ros_manifest/schema.py`, `merge.py`, `extends.py`
+- [ ] (suggestion) String keys that passed only the character rule are echoed: unknown-key lists, the location path in the character-rule message, `repos declares layer '<key>'`, and package names in `merge.py` and `validate`'s violation lines. This is inside the Checkpoint's rule 2 as worded, but a URL with credentials pasted as a key is printed. Print the count and position, or only names that passed their kind's pattern — `schema.py:260`, `:338`, `:382`, `:392`, `:455`, `:476`, `:501`, `merge.py:87`, `:150`
+- [ ] (suggestion) Ctrl-C prints a `KeyboardInterrupt` traceback (source lines only, no document text). `main()` should print `ERROR: interrupted` and return 130 — `tools/ros-manifest/src/ros_manifest/cli.py:105-117`
+- [ ] (suggestion) A broken pipe on small `validate` output is found only at Python's exit flush and prints `Exception ignored … BrokenPipeError`. Flush stdout inside the `try` — `cli.py:105-117`
+- [ ] (suggestion) The emitter writes with the locale encoding while the read side is now UTF-8. Under `LC_ALL=C PYTHONCOERCECLOCALE=0 PYTHONUTF8=0`, the em dash in every header gave `internal error (UnicodeEncodeError)` and left an empty `core.repos`, against the "writes nothing" promise (adversarial reviewer's reproduction). Use `write_text(text, encoding="utf-8")` — `tools/ros-manifest/src/ros_manifest/emit.py:139`
+- [ ] (suggestion) The `extends` clone inherits stdin and allows git and ssh prompts, so a base url that asks for credentials prompts on the terminal or hangs. Pass `stdin=subprocess.DEVNULL`, `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND="ssh -o BatchMode=yes"` (not run: no network) — `tools/ros-manifest/src/ros_manifest/extends.py:80-95`
