@@ -851,3 +851,13 @@ Local timeline: round 7's two open findings carry forward; both re-checked again
 - [ ] (suggestion, Local Review (Pre-Push) round 7 @ `868b77ac`, covers c4c73224 via bookkeeping) "nor is a group's `default`" reads as never printed, but a conflicting redeclaration prints it (`merge.py:99-102`); only `include` / `exclude` can reach that message. "nor is a group's `default` that is not `include` or `exclude`" makes it literal — `tools/ros-manifest/README.md:126`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Integrated Review has one open must-fix and one suggestion, both README wording; a review with open findings is sent back for fixes, not merged past)
+**After**: findings
+**Decision**: address
+
+The host read the Integrated Review entry at a36c6346. The fix pass corrects the two README sentences (lines 109-113 and 126) and adds one sentence saying the known gaps of these rules are tracked in issue 447. No code change.
