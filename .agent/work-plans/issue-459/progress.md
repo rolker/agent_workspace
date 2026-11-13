@@ -398,3 +398,47 @@ All 12 rows of the plan's Tests table plus the issue-307-shape-plus-part, the fa
 - [x] (suggestion) Implementer's deviation (an uncorrelated Addressed-less Implementation is a start entry): a failed fix pass written while armed (332 entry 64 shows fixes do get written after a merge answer) that lost both `**Addressed**` and its correlation line becomes the boundary, and `skill_for` retries it as `implement`; low reach (the dispatcher's own rows never dispatch a fix while armed), but count an uncorrelated entry only when it is not `complete`, or state the limit — `.agent/scripts/pr_start.py:49-55`
 - [x] (suggestion) `/orchestrator`'s checkpoint table lets the host answer `proceed` at any `plan` checkpoint; run-issue step 13 restricts what is offered after a merge, which covers a host that follows run-issue, but a one-line pointer there removes the ambiguity (owner's call: the edit was refused as an instruction-file change) — `.claude/skills/orchestrator/SKILL.md:76` (deferred: owner's call, not edited: an /orchestrator instruction-file change needs his word; the host will ask (run-issue step 13 states the post-merge proceed condition))
 - [x] (suggestion) Plan drift, justified: `test_skill_paths.sh`, `test_triage_reviews_integration.sh` and address-findings SKILL.md changed but are not in Files to Change; record it in the PR body — `.agent/work-plans/issue-459/plan.md:115`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-459 at `094c99c8`
+**Addressed**: Local Review (Pre-Push) at `96fedbc0` (2026-11-13 10:36 -05:00)
+**Commits**: `8da9592c` `440c179d` `2ca15937` `b306742a` `ab420cef` `94e94284` `094c99c8`
+
+### Actions
+- [x] (must-fix 1) Start entries told apart by pull-request number. At each arming `merge` answer the merged number is taken as the newest PR-correlated entry's before it; while armed an Addressed-less `**PR**` Implementation is a start only when its number differs. Unknown number → not a start (safe side: a missed boundary over-counts rounds and the rounds checkpoint asks the owner early; a false one would reset the count and silently drop open boxes from `sources`). Tests: review's timeline (handoff bare round 1; `next` address-findings round=1, was checkpoint:rounds round=4; `round` round=2, was 5), 332 entry-64 shape, unknown number, failed #6 Implementation, number re-taken at a second merge — `.agent/scripts/pr_start.py` (`8da9592c`)
+- [x] (must-fix 2) run-issue step 11: a landed merge ends the run, the host does not call `next` again; step 2 says so; step 13: the next part is a fresh `/run-issue <N>` (issue-state check, probe, `checkpoint:plan`). `next --pr none` with no worktree now also says "this run is over ... run /run-issue <N> to start the next part, or nothing if the issue is closed" (small, contained; tested, and `--pr open` keeps the plain error); prose pinned in test_skill_paths — `.claude/skills/run-issue/SKILL.md`, `.agent/scripts/dispatch_phase.sh` (`2ca15937`, `b306742a`)
+- [x] (must-fix 3) Round rule restated as the current pull request's start (newer of a restart and the boundary) in review-code step 2 (PR-mode hand count) and step 6, and review_depth_classification.md; grep of skills, knowledge and design for the old wording finds no other instance (orchestrator's "the restart also starts the rounds over" stays true) — `.claude/skills/review-code/SKILL.md:198,517`, `.agent/knowledge/review_depth_classification.md:171` (`ab420cef`)
+- [x] (suggestion) LGTM placeholder: exact `No issues found. LGTM.` with any annotation after it (7 approved reviews on main annotate it, so a strict equality would list them); `No issues found in x but y breaks` and a misspelt placeholder stay open; test fails on the prefix code — `.agent/scripts/pr_start.py` (`440c179d`)
+- [x] (suggestion) `sources` and a restart, per host decision: `scan()` returns `Scan(round_start, pr_start, armed)`; `next` and `round` read `round_start`, `sources` reads `pr_start` (a restart does not move it). Tests: restart while the PR is open keeps the earlier review's open box; restart inside part 2 keeps part 2's reviews and still cuts part 1's; both fail on the previous code — `review_progress.sh` cmd_sources (`8da9592c`)
+- [x] (suggestion) Deviation tightened: an Implementation with no correlation line is a start only when not `complete`; the lost-`**Addressed**` complete fix pass is no boundary (test) — `.agent/scripts/pr_start.py` (`8da9592c`)
+- [x] (suggestion) `/orchestrator` checkpoint table — `.claude/skills/orchestrator/SKILL.md:76` (deferred: owner's call, not edited per host decision; the host will ask)
+- [x] (suggestion) Plan drift: the three files plus this round's review-code SKILL.md and depth doc added to Files to Change; Approach 1 states the rule as built — `.agent/work-plans/issue-459/plan.md` (`94e94284`, `094c99c8`)
+
+### Start-entry rule (while armed; anything else never disarms)
+| Entry | Merged number | Start? |
+|---|---|---|
+| Plan Authored, any Status | any | yes |
+| Implementation with **Addressed** | any | no |
+| Implementation, **Branch**, any Status | any | yes |
+| Implementation, **PR** #X, X ≠ merged | known | yes (any Status) |
+| Implementation, **PR** #X, X = merged | known | no (fix to the merged PR) |
+| Implementation, **PR**, or PR line without a number | unknown | no (safe side) |
+| Implementation, no correlation, failed/partial/no Status | any | yes |
+| Implementation, no correlation, complete | any | no |
+| Checkpoint restart | - | round start only; clears the arm |
+New tests that fail on the code before this pass: 7 in test_dispatch_phase (checked by restoring the old start predicate), 2 in test_triage_reviews_integration and 1 in test_address_findings (checked against the previous pr_start.py), 1 in test_skill_paths (text absent before).
+
+### Replay on main's real timelines (round-start / pull-request-start moves; `next` vs `review_progress.sh round` on every complete pre-push review)
+- 429: 25, 50 / 25, 50; armed; 9 of 9 agree
+- 332: 67, 81 / 67, 81; armed; 20 of 20 agree
+- 307, 354, 451, 455: none; armed; 3, 2, 1, 3 agree, none disagree
+
+### Verification
+The full `pre-commit run --files $(git diff --name-only main...HEAD)` pass was SKIPPED on the owner's direction ("have agent skip pre-commit and let ci handle it"); a run already started was stopped before its script suite finished. CI's lint job is the check for the remaining suites. Every commit ran the fast hooks (identity, branch, shellcheck, black, flake8, pylint) with `SKIP=validate-script-tests`. Suites run directly on the final tree: test_dispatch_phase 227/0, test_review_code_convergence 38/0, test_address_findings 22/0, test_triage_reviews_integration 66/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_design_anchors 47/0. No `__pycache__` left; one `identity_base` cache written by a commit hook was removed (not from this change).
+
+### Not done
+`/orchestrator` pointer (owner's call). Not rebased on 461 (still open); this pass kept out of the design.md change-log rows.
