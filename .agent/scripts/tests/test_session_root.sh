@@ -95,10 +95,17 @@ root "a directory of the workspace checkout" "$WSC/docs" "$WSC" workspace ""
 root "a workspace worktree directory" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC" workspace ""
 root "a registered root inside the workspace tree is its own root" "$WSC/projects/p11/sub" "$WSC/projects/p11" project p11
 root "a registered git root" "$R/gitroot" "$R/gitroot" project gitroot
-check "a package repo nested in a root is refused, naming the hosting dir to start at" "$R/gitroot/src/pkg" refuse \
-    "lies under the root $R/gitroot, but a session there does not read that root's local settings" --
-check "a subdirectory of a root in no git repository is refused the same way" "$R/other/sub" refuse \
-    "start the session at $R/other or a worktree of it" --
+check "a package repo nested in a root is refused, naming the hosting dir to start at and the design rule" "$R/gitroot/src/pkg" refuse \
+    "lies under the root $R/gitroot, but it is a git repository of its own ($R/gitroot/src/pkg), and a multi-repo project's root is its registered hosting directory, never a package repository nested in it -- start the session at $R/gitroot or a worktree of it" --
+check "a subdirectory of a root in no git repository is refused, saying the root's settings never reach it" "$R/other/sub" refuse \
+    "a session started outside git reads the settings of its own directory, so the root's .claude/settings.json and .claude/settings.local.json (its hooks and permission rules) never reach a session in a subdirectory of the root -- start the session at $R/other" --
+for d in "$R/gitroot/src/pkg" "$R/other/sub"; do
+    err="$(bash "$SR" --dir "$d" 2>&1 >/dev/null)"
+    [[ -n "$err" && "$err" != *plugin* && "$err" != *"local settings"* ]] \
+        && pass "the refusal for ${d#"$R"/} names no plugin and no 'local settings' reason" \
+        || fail "the refusal for ${d#"$R"/} still blames the plugin or local settings: $err"
+done
+
 root "a root in no git repository, at the root itself" "$R/other" "$R/other" project other
 root "a worktree under a root's own worktrees/" "$R/gitroot/worktrees/issue-gitroot-1" "$R/gitroot" project gitroot
 root "a worktree in a root's worktrees= directory inside the workspace tree: that root, not the workspace" \
@@ -130,15 +137,24 @@ out="$(cd "$R/other" && bash "$SR")"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "root=$R/other"* ]] && pass "without --dir, the current directory is used" \
     || fail "default directory (rc=$rc out=$out)"
 
-echo "== the same directories pass here as in skill_prefix.sh =="
+echo "== skill_prefix.sh answers everywhere; a workspace session is bare =="
+# The refusals above are about the root, not the plugin (enabled once at
+# user scope, #446): skill_prefix.sh answers for every directory, those
+# session_root.sh refuses included, and a session whose root is the
+# workspace gets the bare names.
 SPX="$WSC/.agent/scripts/skill_prefix.sh"
 for d in "$WSC" "$WSC/docs" "$WSC/projects/p11/sub" "$R/gitroot" "$R/gitroot/src/deeper" "$R/gitroot/src/pkg" \
          "$R/other" "$R/other/sub" "$R/par/inst1/sub" "$R/unreg" "$WSC/worktrees/project/wtroot/issue-wtroot-1" \
          "$SANDBOX/link-to-real/sub"; do
-    bash "$SR" --dir "$d" >/dev/null 2>&1; a=$?
-    bash "$SPX" --dir "$d" >/dev/null 2>&1; b=$?
-    [[ "$a" -eq "$b" ]] && pass "session_root.sh and skill_prefix.sh agree on ${d#"$SANDBOX"/} (exit $a)" \
-        || fail "session_root.sh exits $a but skill_prefix.sh exits $b for ${d#"$SANDBOX"/}"
+    sr="$(bash "$SR" --dir "$d" 2>/dev/null)"
+    sp="$(bash "$SPX" --dir "$d" 2>/dev/null)"; b=$?
+    if [[ "$b" -ne 0 ]]; then
+        fail "skill_prefix.sh exits $b for ${d#"$SANDBOX"/}"
+    elif [[ "$sr" == *"type=workspace"* && "$sp" != "skill_prefix=" ]]; then
+        fail "a workspace session in ${d#"$SANDBOX"/} is not told bare ($sp)"
+    else
+        pass "skill_prefix.sh answers for ${d#"$SANDBOX"/} ($sp)"
+    fi
 done
 
 echo "== a copy in a worktree of the workspace reads the main checkout's registry =="

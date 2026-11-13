@@ -695,7 +695,7 @@ legacy_skill_links() {
     done
 }
 
-# ---------------------------------------------------- plugin, per root ---
+# ----------------------------------------------------------- the plugin ---
 have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
 
 # Every `claude plugin` call, stdin closed: a CLI version that stops to ask
@@ -712,8 +712,9 @@ is_this_checkout() {  # <path>
 }
 
 # Does the machine-level record name THIS checkout? Anything else -- another
-# checkout, or no entry at all -- leaves this checkout's enabled roots
-# without the plugin: live case J saw an absent record do exactly that.
+# checkout, or no entry at all -- may leave sessions without this
+# checkout's skills: the per-root live suite (claude 2.1.282) saw an absent
+# record leave every enabled root without the plugin.
 machine_record_ours() {
     local src
     src="$(machine_record_source)"

@@ -3,9 +3,12 @@
 # Register a project with this workspace, or remove one (issue #332, D1
 # step 1). The workspace side of onboarding: it writes the registry line
 # and the project's settings file, checks them, runs the project's build
-# and test, and enables the workspace plugin at the project's root. The
-# project side (D1 step 2) is `/agent-workspace:onboard-project`, run in a
-# session started at the project root.
+# and test, and checks that the user tier reaches a session at the
+# project's root. Nothing is enabled per root: the workspace plugin is
+# enabled once, at user scope, by user_tier_install.sh (ADR-0018), so it
+# already reaches the new root. The project side (D1 step 2) is
+# `/agent-workspace:onboard-project`, run in a session started at the
+# project root.
 #
 # Usage:
 #   register_project.sh <path|name> [<type>] [--name N] [--parent P]
@@ -36,14 +39,17 @@
 #                  registration.conf runs it when the directory is missing
 #   --skip-run     do not run the build and test verbs; the status says so
 #   --install-user-tier
-#                  run user_tier_install.sh even when the user tier is not
-#                  installed yet (it then installs it)
+#                  run user_tier_install.sh before the user-tier check (it
+#                  installs or repairs the user tier, the plugin's
+#                  user-scope enable included); without it registration
+#                  never runs the installer
 #   --dry-run      print every step it would take, and write nothing
 #   --remove N     unregister: refused while the root has live worktrees
-#                  or is a parent with instances; disables the plugin in
-#                  the root, then removes the registry line and the settings
-#                  file (printed first, so it can be restored). The project,
-#                  its records and its memory are left alone.
+#                  or is a parent with instances; removes the registry line
+#                  and the settings file (printed first, so it can be
+#                  restored). The project, its records, its memory and the
+#                  user tier (the plugin stays enabled at user scope) are
+#                  left alone.
 #   --keep-settings  with --remove: keep the settings file
 #   --detect P     read-only: print the build and test commands the files
 #                  at P propose, one key=value per line (notes on stderr).
@@ -69,17 +75,19 @@
 #   2. the static gate, registration_verify.sh <name> (read-only).
 #   3. the verbs registration.conf names in run= (build, test), unless
 #      --skip-run.
-#   4. only then the user tier: when ~/.claude/agent-workspace-root names
-#      this checkout (or with --install-user-tier), user_tier_install.sh,
-#      then registration_verify.sh <name> --user-tier. Otherwise a warning
-#      and the next step, not a failure.
+#   4. only then the user tier: with --install-user-tier,
+#      user_tier_install.sh; then, when ~/.claude/agent-workspace-root
+#      names this checkout, registration_verify.sh <name> --user-tier (a
+#      read-only check: the user tier installed and current, and a session
+#      at the root resolving to it). Otherwise a warning and the next step,
+#      not a failure.
 # A failure in 1 to 4 removes the registry line and the settings file (on
 # INT, TERM and HUP too; a settings file that existed before is copied
 # aside first, the run refused when that copy fails, and put back by a
 # rename, or, when the run stops before writing the file, the copy is
-# removed); after the installer ran it first calls
-# user_tier_install.sh --disable-root <name>, unless the plugin was
-# enabled at the root from this checkout before the run (it is then left). A rollback step that fails is
+# removed). Nothing in the project root or in ~/.claude is undone: the
+# run wrote neither, except through an installer run asked for with
+# --install-user-tier, which is kept. A rollback step that fails is
 # named in the output and on NEXT=, never reported as a clean result, and
 # while the registry line is left the status is NOT READY. A signal that
 # arrives while a failure, an interrupt or an unexpected exit is being
@@ -491,8 +499,8 @@ if [ "$MODE" = "remove" ]; then
         final refused "fix the line that names '$NAME', then re-run" 1
     fi
     if ! install_registry "$TMP" "$NAME" absent; then
-        echo "ERROR: could not write the registry without '$NAME' (above). The workspace plugin is already removed from $PROJECT_ROOT; the registry line and the settings file are kept" >&2
-        final refused "remove its line from $REGISTRY by hand (the plugin is already disabled at $PROJECT_ROOT), or re-run register_project.sh --remove $NAME" 1
+        echo "ERROR: could not write the registry without '$NAME' (above); the registry line and the settings file are kept" >&2
+        final refused "remove its line from $REGISTRY by hand, or re-run register_project.sh --remove $NAME" 1
     fi
     echo "removed the registry line: $LINE"
     _remove_status="removed"
@@ -508,7 +516,7 @@ if [ "$MODE" = "remove" ]; then
                 echo "removed the settings file $SETTINGS; its content was:"
                 [ -n "$_content" ] && printf '%s\n' "$_content"
             else
-                echo "ERROR: could not remove the settings file $SETTINGS (above); '$NAME' is unregistered and its plugin disabled, so nothing reads the file now" >&2
+                echo "ERROR: could not remove the settings file $SETTINGS (above); '$NAME' is unregistered, so nothing reads the file now" >&2
                 _remove_status="removed, settings file left"
                 _remove_next="remove $SETTINGS by hand"
                 _remove_rc=1
@@ -843,7 +851,7 @@ ut_note() {
         absent)
             [ -f "$ROOT_FILE" ] && echo "WARNING: $ROOT_FILE is empty or unreadable, so it names no checkout"
             echo "WARNING: the user tier is not installed, so a session started at $PROJECT_ROOT gets no workspace layer or skills: install it with .agent/scripts/user_tier_install.sh (or re-run with --install-user-tier)" ;;
-        elsewhere) echo "WARNING: the user tier is installed for another checkout ($UT_ROOT), so the installer is not run from here: run that checkout's installer, or this one's with --force to take it over" ;;
+        elsewhere) echo "WARNING: the user tier is installed for another checkout ($UT_ROOT), so it is not checked from here: run that checkout's installer, or this one's with --force to take it over" ;;
     esac
 }
 ut_next() {
@@ -879,7 +887,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
     for _v in $RUN_VERBS; do echo "would run: adapter --project $NAME $_v"; done
     [ "$SKIP_RUN" -eq 1 ] && [ -n "$CONF_RUN" ] && echo "would not run: $CONF_RUN (--skip-run)"
     if [ "$RUN_UT" -eq 1 ]; then
-        echo "would run: user_tier_install.sh, then registration_verify.sh $NAME --user-tier"
+        [ "$INSTALL_UT" -eq 1 ] && echo "would run: user_tier_install.sh (--install-user-tier)"
+        echo "would run: registration_verify.sh $NAME --user-tier"
     else
         ut_note
     fi
@@ -996,8 +1005,7 @@ rollback() {
 }
 # What a rollback cut short leaves (an exit inside it): each step it had
 # not finished, under the conditions that step undoes, checked on disk
-# where it can be. The plugin step cannot be checked from here, so an
-# unfinished one is named.
+# where it can be.
 rollback_unfinished() {
     if [[ "$ROLLBACK_DONE" != *" line "* ]] && [ "$LINE_WRITTEN" -eq 1 ] && registry_raw_line "$NAME" >/dev/null; then
         rollback_left "its registry line in $REGISTRY"
@@ -1190,11 +1198,13 @@ done
 # 4. The user tier.
 echo ""
 if [ "$RUN_UT" -eq 1 ]; then
-    echo "== user_tier_install.sh"
-    "$INSTALLER" 8>&- || failed "the user-tier installer failed (above)" "fix the installer failure"
-    echo ""
+    if [ "$INSTALL_UT" -eq 1 ]; then
+        echo "== user_tier_install.sh"
+        "$INSTALLER" 8>&- || failed "the user-tier installer failed (above)" "fix the installer failure"
+        echo ""
+    fi
     echo "== registration_verify.sh $NAME --user-tier"
-    "$VERIFY" "$NAME" --user-tier 8>&- || failed "the user-tier check failed (above)" "fix what registration_verify.sh reports"
+    "$VERIFY" "$NAME" --user-tier 8>&- || failed "the user-tier check failed (above)" "fix what registration_verify.sh reports (a user tier that is out of date is repaired by .agent/scripts/user_tier_install.sh, or by re-running with --install-user-tier)"
 else
     ut_note
 fi

@@ -249,7 +249,9 @@ rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
 # session_root.sh and skill_prefix.sh carry the inert marker although they
 # are executed, not sourced: they only read and print. Hold them to that --
 # no repo-changing call in the source, and from an unregistered repo they
-# exit 1 with their own message, leaving the repo and HOME untouched.
+# leave the repo and HOME untouched: session_root.sh exits 1 with its own
+# message, skill_prefix.sh answers the plugin's names (the plugin is
+# enabled at user scope, so it reaches an unregistered repo too; #446).
 for rel in .agent/scripts/session_root.sh .agent/scripts/skill_prefix.sh; do
     in_manifest=false
     for e in "${ENTRIES[@]}"; do [[ "$e" == "$rel" ]] && in_manifest=true; done
@@ -263,9 +265,18 @@ for rel in .agent/scripts/session_root.sh .agent/scripts/skill_prefix.sh; do
     fi
     home_before="$(find "$FAKE_HOME" | sort)"
     out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" timeout 30 bash "$WSC/$rel" 2>&1); rc=$?
-    if [[ "$rc" -eq 1 && "$out" == *"neither in the workspace checkout"* \
+    if [[ "$rel" == *skill_prefix.sh ]]; then
+        want_ok=false
+        [[ "$rc" -eq 0 && "$out" == "skill_prefix=agent-workspace:" ]] && want_ok=true
+        what="answers agent-workspace:"
+    else
+        want_ok=false
+        [[ "$rc" -eq 1 && "$out" == *"neither in the workspace checkout"* ]] && want_ok=true
+        what="says it is outside every root"
+    fi
+    if [[ "$want_ok" == true \
           && -z "$(git -C "$OUTSIDE" status --porcelain --ignored)" && "$(find "$FAKE_HOME" | sort)" == "$home_before" ]]; then
-        pass "$rel says it is outside every root, changing nothing, from an unregistered repo"
+        pass "$rel $what, changing nothing, from an unregistered repo"
     else
         fail "$rel from an unregistered repo (rc=$rc out=${out:0:200})"
     fi

@@ -37,8 +37,8 @@
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types, skills and user-tier files),
 # sandbox projects built here, HOME redirected to the sandbox, and a stub
-# `claude` that edits settings.local.json the way the real CLI does. No
-# real checkout, registry, ~/.claude or network is touched.
+# `claude` that edits the sandbox user settings the way the real CLI does.
+# No real checkout, registry, ~/.claude or network is touched.
 #
 # Run: bash .agent/scripts/tests/test_project_integration_audit.sh
 
@@ -77,8 +77,15 @@ STUB="$STUB_BIN/claude"
 mkdir -p "$STUB_BIN"
 cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
-f=.claude/settings.local.json
-mkdir -p .claude
+scope=local prev=""
+for a in "$@"; do [[ "$prev" == --scope ]] && scope="$a"; prev="$a"; done
+if [[ "$scope" == user ]]; then
+    f="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+    mkdir -p "$(dirname "$f")"
+else
+    f=.claude/settings.local.json
+    mkdir -p .claude
+fi
 [[ -f "$f" ]] || echo '{}' > "$f"
 case "$1 $2 ${3:-}" in
     "plugin marketplace add")    filter='.extraKnownMarketplaces["agent-workspace"] = {source: {source: "directory", path: $a}}'; arg="$4" ;;
@@ -167,9 +174,9 @@ mkdir -p "$HR/.claude/skills/build"
 printf -- '---\nname: build\n---\nBuild it. Always.\n' > "$HR/.claude/skills/build/SKILL.md"
 register handreg "$HR"
 
-# Install the user tier from the sandbox workspace (enables the plugin in
-# every registered root); re-run after each later registration, as
-# register_project.sh does.
+# Install the user tier from the sandbox workspace (enables the plugin
+# once, at user scope in the sandbox HOME). The later calls after each
+# registration are no-ops for the plugin; they keep the user tier current.
 install_ut() {
     (cd "$SANDBOX" && HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" AGENT_WORKSPACE_CLAUDE_BIN="$STUB" \
         "$WS/.agent/scripts/user_tier_install.sh" >/dev/null 2>&1) \

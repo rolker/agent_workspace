@@ -2,11 +2,12 @@
 # .agent/scripts/tests/test_skill_prefix.sh
 # Tests for .agent/scripts/skill_prefix.sh (ADR-0018 decision 6, #345): the
 # location rule that says whether workspace skills are bare or
-# agent-workspace:-prefixed in a session started in a given directory, and
-# that fails, rather than guesses, where neither holds.
+# agent-workspace:-prefixed in a session started in a given directory:
+# bare in the workspace checkout's repository, the plugin's names anywhere
+# else (the plugin is enabled once, at user scope; #446).
 #
-# Hermetic: runs a COPY of the checkout's .agent/ (a fresh git repository)
-# with a sandboxed registry; no HOME, CLI or network use.
+# Hermetic: runs a COPY of the checkout's .agent/ (a fresh git repository);
+# no HOME, CLI or network use. The registry the copy carries is not read.
 #
 # Run: bash .agent/scripts/tests/test_skill_prefix.sh
 
@@ -73,24 +74,17 @@ expect "a plain directory of a registered git root: prefix" "$R/gitroot/src/deep
 expect "a worktree of a registered git root, outside it: prefix" "$R/gitroot-wt" prefix
 expect "a separate registered repo inside the workspace directory: prefix" "$WSC/project" prefix
 expect "a registered root in no git repository, at the root: prefix" "$R/plain" prefix
-expect "a subdirectory of a no-git root (its own project root): fails, naming the root" "$R/plain/sub" fail \
-    "lies under the registered root plain ($R/plain), but a session there does not read that root's local settings"
-expect "a git repo nested in a registered root (a package repo): fails, naming the root" "$R/gitroot/src/pkg" fail \
-    "lies under the registered root gitroot ($R/gitroot)"
-# Only the plugin half was observed live (case G); the message must not
-# claim the bare skills are out of reach too.
-expect "the nested-repo message claims only what case G observed" "$R/gitroot/src/pkg" fail \
-    "does not reach it (observed, live case G); whether the workspace's bare skills do has not been checked"
-expect "an unregistered directory: fails, saying there is no rule" "$R/other" fail \
-    "is neither in the workspace checkout ($WSC) nor in any registered project root"
+expect "a subdirectory of a no-git root: prefix (the user-scope plugin reaches it)" "$R/plain/sub" prefix
+expect "a git repo nested in a registered root (a package repo): prefix" "$R/gitroot/src/pkg" prefix
+expect "an unregistered directory: prefix" "$R/other" prefix
 expect "a path that is not a directory: fails" "$R/no-such-dir" fail "is not a directory"
 
-# A copy in a worktree of the workspace reads the main checkout's registry
-# (the worktree has none: projects.local is gitignored).
+# A copy in a worktree of the workspace still answers for the workspace's
+# repository.
 mkdir -p "$SANDBOX/ws-wt/.agent" && cp -r "$WSC/.agent/scripts" "$SANDBOX/ws-wt/.agent/"
 out="$(bash "$SANDBOX/ws-wt/.agent/scripts/skill_prefix.sh" --dir "$R/gitroot" 2>&1)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "skill_prefix=agent-workspace:" ]] \
-    && pass "a copy in a worktree of the workspace finds a registered root through the main checkout" \
+    && pass "a copy in a worktree of the workspace answers prefix for a registered root" \
     || fail "worktree copy (rc=$rc out=$out)"
 out="$(bash "$SANDBOX/ws-wt/.agent/scripts/skill_prefix.sh" --dir "$SANDBOX/ws-wt" 2>&1)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "skill_prefix=" ]] \
@@ -109,10 +103,28 @@ bash "$SP" --dir >/dev/null 2>&1; rc=$?
 bash "$SP" --bogus >/dev/null 2>&1; rc=$?
 [[ "$rc" -eq 2 ]] && pass "an unknown option is a usage error (exit 2)" || fail "unknown option exited $rc"
 
-# An empty or missing registry leaves only the workspace rule.
+# The registry is not read: with none, the answers are the same.
 rm -f "$WSC/.agent/projects.local"
 expect "with no registry, the workspace is still bare" "$WSC" bare
-expect "with no registry, a former root fails" "$R/gitroot" fail "nor in any registered project root"
+expect "with no registry, the in-tree directory is still bare" "$WSC/projects/p11" bare
+expect "with no registry, a former root is prefix" "$R/gitroot" prefix
+
+# A checkout in no git repository: its own tree is bare, anywhere else
+# prefix.
+NG="$SANDBOX/ws-nogit"
+mkdir -p "$NG/docs"
+cp -r "$WS_ROOT/.agent" "$NG/.agent"
+expect_ng() { # <label> <dir> <want>
+    local out rc
+    out="$(bash "$NG/.agent/scripts/skill_prefix.sh" --dir "$2" 2>&1)"; rc=$?
+    [[ "$rc" -eq 0 && "$out" == "$3" ]] && pass "$1" || fail "$1 (rc=$rc out=$out)"
+}
+if ! git -C "$NG" rev-parse --show-toplevel >/dev/null 2>&1; then
+    expect_ng "a checkout in no git repository: a directory in it is bare" "$NG/docs" "skill_prefix="
+    expect_ng "a checkout in no git repository: a directory outside it is prefix" "$R/other" "skill_prefix=agent-workspace:"
+else
+    echo "  SKIP: the sandbox is inside a git repository"
+fi
 
 echo ""
 echo "test_skill_prefix: $PASS passed, $FAIL failed"

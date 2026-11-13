@@ -248,25 +248,30 @@ out=$(run_hook "$PROOT")
     || fail "the layer's idiom omits the fallback"
 
 # ------------------------------------ how workspace skills are named ---
-# ADR-0018 (#345): the header tells the model which name to invoke. A root
-# outside the workspace checkout gets the plugin's namespaced names; a root
-# whose git toplevel IS the workspace checkout (the p11-* shape) loads the
-# bare skills by walk-up and must be told so, not sent to agent-workspace:.
+# ADR-0018 (#345, #446): the header tells the model which name to invoke.
+# The plugin is enabled once, at user scope, so a root outside the
+# workspace checkout, and a git repository nested in one, get the plugin's
+# namespaced names; a root inside the workspace checkout's own git tree
+# (the p11-* shape) loads the bare skills by walk-up and also lists the
+# plugin's copy (accepted by the owner, 2026-11-12), and is told so.
 out=$(run_hook "$PROOT")
 [[ "$out" == *"namespaced /agent-workspace:<skill>"* && "$out" == *"invoke"*"the agent-workspace: form"* ]] \
     && pass "a project root outside the workspace is told workspace skills are /agent-workspace:<skill>" \
     || fail "the namespaced-skills note is missing for a project root outside the workspace"
+[[ "$out" == *"user-tier plugin is not installed (run the workspace's"*"user_tier_install.sh), or this project sets it to false"* ]] \
+    && pass "...and what an empty list means: the user-tier plugin not installed, or the project's own opt-out" \
+    || fail "the namespaced note does not say what a missing plugin means (out=$(grep -A8 '^Workspace skills' <<< "$out"))"
+[[ "$out" != *"not enabled for this root"* ]] \
+    && pass "...and no longer speaks of a per-root enable" \
+    || fail "the header still speaks of a per-root enable"
 # The rule is applied to the session's cwd, not the registered root: a git
-# repository nested in the root (a package repo) is its own project root
-# and does not see the root's plugin (live case G), so the header says no
-# rule applies instead of sending the model to agent-workspace: and the
-# installer.
+# repository nested in the root (a package repo) is its own project root,
+# and the user-scope plugin reaches it.
 mkdir -p "$PROOT/src/pkg"
 git -C "$PROOT/src/pkg" init -q
 nested_out=$(run_hook "$PROOT/src/pkg")
-[[ "$nested_out" == *"Workspace skills: no rule says how they are named in this session."*"lies under the registered root demo"*"does not reach it (observed, live case G)"* \
-      && "$nested_out" != *"namespaced /agent-workspace:<skill>"* ]] \
-    && pass "a session in a git repo nested in a root is told no naming rule applies, and why" \
+[[ "$nested_out" == *"namespaced /agent-workspace:<skill>"* && "$nested_out" != *"no rule says"* ]] \
+    && pass "a session in a git repo nested in a root is told the skills are /agent-workspace:<skill>" \
     || fail "nested repo got the wrong skill-naming note (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
 # A worktree in a root's worktrees= directory outside its hosting dir (here
 # under the workspace) is that root's: the hook gives it the project layer,
@@ -282,14 +287,16 @@ wt_out=$(run_hook "$WTD/issue-demo-1")
 mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 rm -rf "${WSC:?}/worktrees"
 
-# The failure path runs skill_prefix.sh once, taking the reason from that
-# same run (it used to run the script a second time for its stderr).
+# The failure path (skill_prefix.sh exits 1 only for a cwd that is not a
+# directory) runs skill_prefix.sh once, taking the reason from that same
+# run (it used to run the script a second time for its stderr). A stand-in
+# that fails with a reason exercises it.
 SPS="$WSC/.agent/scripts/skill_prefix.sh"
 mv "$SPS" "$WSC/.agent/scripts/skill_prefix.real.sh"
-printf '#!/usr/bin/env bash\necho x >> "%s"\nexec bash "$(dirname "$0")/skill_prefix.real.sh" "$@"\n' "$SANDBOX/sp-calls" > "$SPS"
+printf '#!/usr/bin/env bash\necho x >> "%s"\necho "skill_prefix: a stand-in reason" >&2\nexit 1\n' "$SANDBOX/sp-calls" > "$SPS"
 : > "$SANDBOX/sp-calls"
 nested_out=$(run_hook "$PROOT/src/pkg")
-[[ "$(wc -l < "$SANDBOX/sp-calls")" -eq 1 && "$nested_out" == *"lies under the registered root demo"* ]] \
+[[ "$(wc -l < "$SANDBOX/sp-calls")" -eq 1 && "$nested_out" == *"Workspace skills: no rule says how they are named in this session."*"a stand-in reason"* ]] \
     && pass "the hook runs skill_prefix.sh once on its failure path and still prints the reason" \
     || fail "skill_prefix.sh ran $(wc -l < "$SANDBOX/sp-calls") times on the failure path (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
 mv "$WSC/.agent/scripts/skill_prefix.real.sh" "$SPS"
@@ -305,9 +312,22 @@ git -C "$WSC" init -q
 mkdir -p "$WSC/projects/inner"
 printf 'demo single_project %s\ninner single_project %s\n' "$PROOT" "$WSC/projects/inner" > "$WSC/.agent/projects.local"
 out=$(run_hook "$WSC/projects/inner")
-[[ "$out" == *"Project: inner"* && "$out" == *"load under their bare names"* && "$out" != *"/agent-workspace:"* ]] \
-    && pass "a root inside the workspace checkout's own git tree is told the skills are bare" \
-    || fail "a workspace-toplevel root got the wrong skill-naming note (out=$(grep '^Workspace skills' <<< "$out"))"
+[[ "$out" == *"Project: inner"* && "$out" == *"load under their bare names"* \
+   && "$out" == *"also lists each of them as"*"/agent-workspace:<skill> (the user-scope plugin); both names run the same"*"skill. Use the bare name."* \
+   && "$out" != *"namespaced /agent-workspace:<skill>"* ]] \
+    && pass "a root inside the workspace checkout's own git tree is told the skills are bare, and that both names are listed" \
+    || fail "a workspace-toplevel root got the wrong skill-naming note (out=$(grep -A4 '^Workspace skills' <<< "$out"))"
+# A registered root that IS the toplevel of the workspace's repository (a
+# worktree of it) lists each skill once: no doubling line.
+g() { git -c user.name=t -c user.email=t@t "$@"; }
+g -C "$WSC" commit -q --allow-empty -m init
+g -C "$WSC" worktree add -q "$SANDBOX/ws-wt" 2>/dev/null
+printf 'demo single_project %s\nwswt single_project %s\n' "$PROOT" "$SANDBOX/ws-wt" > "$WSC/.agent/projects.local"
+out=$(run_hook "$SANDBOX/ws-wt")
+[[ "$out" == *"Project: wswt"* && "$out" == *"load under their bare names"* && "$out" != *"also lists each of them"* ]] \
+    && pass "a root at the toplevel of a worktree of the workspace is told bare, with no doubling line" \
+    || fail "the worktree-toplevel root got the wrong note (out=$(grep -A4 '^Workspace skills' <<< "$out"))"
+printf 'demo single_project %s\ninner single_project %s\n' "$PROOT" "$WSC/projects/inner" > "$WSC/.agent/projects.local"
 
 # Through a symlinked path the toplevel comparison still holds (pwd -P).
 ln -s "$WSC" "$SANDBOX/ws-link"
