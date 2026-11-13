@@ -462,3 +462,37 @@ FACT lines of the run (aw-accept-884313 shortened to N):
 - STOP-CHECK 1 (U1, U2, U3): FIRES (U2). STOP-CHECK 2 (U4): clear by the suite, counted as doubled by the host. STOP-CHECK 3 (U5): clear. STOP-CHECK 4 (U8): clear. CHECK U7: yes.
 
 In U5 and U6 the bare /zz-probe also "reached" while the list holds only the prefixed name: the bare outcome there is not evidence of a bare skill.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-446 at `b54d0ab3`
+
+Pull request B, plan steps 2 to 7 and the test side of step 8, on the owner's answer "Q1 accept it" (the doubled skill list in workspace-subfolder sessions is accepted). Commits, in order:
+
+- `e16ce585` step 2: `user_tier_install.sh` enables the plugin once at user scope (`marketplace add` / `install --scope user` from a throwaway directory in no git repository, only the call the records show is needed, read back), migrates per-root entries (registry roots, the checkout, and local installs listed in `installed_plugins.json`; CLI only where the root is its own git toplevel and not a linked worktree, or in no git repository; elsewhere a note with the hand removal), new `--check` and `--uninstall`. Tests replaced.
+- `9b40d5f7` step 3: pure deletion of the per-root machinery (installer functions, `--disable-root`, the takeover; `register_project.sh` root-enable rollback and `--remove` plugin step; their tests).
+- `eb4623e8` step 4: say what is true: `register_project.sh` (no installer run unless `--install-user-tier`; read-only `registration_verify.sh --user-tier`; `--remove` leaves the root alone), `skill_prefix.sh` (bare in the workspace repository, `agent-workspace:` elsewhere, no registry, no refusal), the SessionStart hook, `session_root.sh` (each refusal with its true reason, the third plan review's wording for the no-git shape), run-issue and onboard-project SKILL.md, `script_reference.md`, the ADR-0018 review-guide row.
+- `429ab62e` step 5: the committed `"agent-workspace@agent-workspace": false` in `.claude/settings.json`; `--check` reports it missing; a test pins it.
+- `866f291d` step 6: records. ADR-0019 (new), ADR-0008 addendums to ADR-0018 and ADR-0016, `docs/design.md` (plugin, user-tier, registration and root-rule bullets, register rows 0018 and 0019, C4, change log), review-guide rows.
+- `5237f1e5` steps 7 and 8 (test side): the live suite judges every U case from the init command list (probes only when there is none); U2 and U4 and stop checks 1 and 2 expect the accepted doubling; cases E and G to K retired; F's unregistered repo expects `agent-workspace:`. Helper tests for cleanup's user-scope removal and the judging helpers.
+- `b54d0ab3`: wording fix in `docs/design.md` and the ADR-0019 review row (the migration's CLI runs only outside linked worktrees).
+
+What a reader must know:
+
+- The issue's acceptance line "a workspace session lists each skill once, under its bare name" holds at the checkout's root and in its worktrees only. A session started in a subdirectory of the checkout (a plain subdirectory, or an in-tree root with no `.git`) lists each shipped skill under both names; both run the same skill; accepted by the owner on 2026-11-12. ADR-0019, `docs/design.md`, the hook header and the `skill_prefix.sh` header say so.
+- Deviation from the plan, for veto: the plan said to rewrite ADR-0018 decisions 3 and 4 in place. ADR-0001, ADR-0008 and ADR-0017 make accepted ADRs history (superseded, not edited, apart from status and reference addendums), so the decision is recorded as a new ADR-0019, and ADR-0018 and ADR-0016 get addendum notes only. Folding it back into ADR-0018 is a revert of one commit's ADR files.
+- The third plan review's two wordings are carried: the no-git refusal reason, and the `installed_plugins.json` hand removal ("delete the object with `"scope": "local"` and that `projectPath` from the plugin's array").
+- Net lines in the three scripts: `user_tier_install.sh` 1852 to 1612, `register_project.sh` 1244 to 1219, `skill_prefix.sh` 126 to 100 (net 291 fewer; 794 removed, 503 added). The plan's 600-800 estimate was for removal, not net; PR A had grown the installer since the plan's count.
+
+Checks run:
+
+- Suites run directly during the pass, all passing at their last run: `test_user_tier_install.sh` (254), `test_register_project.sh` (197), `test_project_integration_audit.sh` (279), `test_session_root.sh` (71), `test_session_start_layer.sh` (52), `test_user_tier_guard.sh` (64), `test_skill_prefix.sh` (24), `test_plugin_acceptance_helpers.sh` (29), `test_skill_paths.sh` (136), `test_plugin_manifest.sh` (12), `test_design_anchors.sh` (47), `check_design_anchors.sh` (exit 0).
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, at `5237f1e5`: exit 0 (every hook on the branch's 25 files, the script suites they reach included). It ran past the tool's 10-minute foreground limit, so it ran in the background and was waited on to its exit; a first foreground attempt was cut off at 590 s and is not counted. The two docs edited after it (`b54d0ab3`) went through `pre-commit run --files` on those two files with no SKIP: exit 0.
+
+Not done, or not verified:
+
+- The live suite was not run (the host runs it). The changed U-case judging is tested on synthetic lists only.
+- The real `claude` CLI was invoked by mistake during one test run in this pass: the second-checkout case of `test_user_tier_install.sh` ran the installer without the stub (`run2` set no `AGENT_WORKSPACE_CLAUDE_BIN`, and the installer now calls the CLI on every install), so its `--force`, plain and `--uninstall` runs could each call `claude plugin ... --scope user` (marketplace add, install, uninstall, marketplace remove) from a scratch directory, with `HOME` set to the test's sandbox; the `--force` run exited 1. The real `~/.claude` was not read to confirm it is untouched. Fixed: `run2` uses the stub, and the stub is first on `PATH` for the whole suite.
+- The proposed follow-up issue about relaxing the `session_root.sh` refusals is not opened (the owner's); its text is in the hand-back.
