@@ -462,6 +462,16 @@ if [[ -f "$ONB" ]]; then
     has "$ONB" "onboard-project: resolves the project with session_root.sh and sends an unregistered one to register_project.sh" \
         '"$WS_ROOT/.agent/scripts/session_root.sh"' 'register_project.sh <path>' \
         'Onboarding runs in a session started at the project'"'"'s root'
+    # #466 (ADR-0021): an unregistered folder is offered registration from
+    # here, the dry run captured with its stderr notes, the real call's
+    # permission prompt as the yes, and the no-git gap named.
+    has "$ONB" "onboard-project: an unregistered folder is offered registration through register_session_root.sh" \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run 2>&1' \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" 2>&1' \
+        'Do not also ask for a yes in text: the permission prompt for this call, showing the full command, is the yes' \
+        'registration needs a git repository today, a known gap'
+    has "$ONB" "onboard-project: registration is in the write list" \
+        'in a folder that is not registered, its registration: its line in the workspace'"'"'s registry and its settings file'
     has "$ONB" "onboard-project: shows the recorded choices and runs the integration audit" \
         '"$WS_ROOT/.agent/scripts/project_setting.sh" list <settings-name>' \
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text'

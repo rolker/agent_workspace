@@ -1,6 +1,6 @@
 ---
 name: onboard-project
-description: Onboard a registered project from a session at its root. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes. Ends by offering audit-project, which holds the hygiene checklist.
+description: Onboard a project from a session at its root; in a folder that is not registered, it first offers to register it. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes. Ends by offering audit-project, which holds the hygiene checklist.
 session_scope: project
 ---
 
@@ -51,13 +51,14 @@ started in.
 ## Overview
 
 **Lifecycle position**: Utility. Adding a project is two steps (#332 D1):
-**register** from the workspace (`register_project.sh <path>`, in a workspace
-session; it writes the registry line and the project's settings file,
-writes nothing into the project, and enables nothing per root: the
-workspace plugin is enabled once, at user scope, by the user-tier
-installer), then
-**onboard** from the project, here, in a session at the project root with
-the project's own instructions loaded.
+**register**, then **onboard** from the project, here, in a session at the
+project root with the project's own instructions loaded. Registration
+writes the registry line and the project's settings file, writes nothing
+into the project, and enables nothing per root: the workspace plugin is
+enabled once, at user scope, by the user-tier installer. It is done either
+from the workspace (`register_project.sh <path>`, in a workspace session)
+or here: run in a folder that is not registered, step 1 offers to register
+it and then carries on (#466, ADR-0021).
 
 What a project must carry is **nothing** (D3): the registry line and the
 settings file are enough, a project with no footprint is fully usable, and
@@ -70,6 +71,10 @@ says so, and changes nothing without a yes.
 
 **Every write waits for a yes.** The writes this skill can make are:
 
+- in a folder that is not registered, its registration: its line in the
+  workspace's registry and its settings file (through
+  `$WS_ROOT/.agent/scripts/register_session_root.sh`, step 1; the yes is
+  that call's permission prompt);
 - a setting in the project's settings file (through
   `$WS_ROOT/.agent/scripts/project_setting.sh set`);
 - a line in the clone's `.git/info/exclude`;
@@ -84,10 +89,11 @@ bridge) belong to the hygiene checklist, which `audit-project` holds
 
 The settings file `.agent/projects.d/<name>` (at a parent root, the
 chosen instance's) lives in the workspace checkout, outside this session's
-root. It is the one thing a project session
-writes outside its root: per-machine, gitignored workspace configuration that
-the project's onboarding owns, not a tracked change to the workspace
-(`docs/design.md`, Sessions and roots). `project_setting.sh set` refuses to
+root. It and, in a folder not yet registered, that folder's registry
+line are the only things a project session writes outside its root:
+per-machine, gitignored workspace configuration that the project's
+onboarding owns, not a tracked change to the workspace (`docs/design.md`,
+Sessions and roots). `project_setting.sh set` refuses to
 write any other project's file from here (at a parent root, it writes only
 its instances').
 
@@ -104,14 +110,68 @@ It prints `root=`, `type=` and `project=`. Keep `project=` as `<name>` for
 the rest of the run.
 
 - **Exit 1** (this directory is no session's root, or a session here does
-  not read the root's settings): stop and report its message. If the
-  project is not registered, say so: registration comes first, from a
-  workspace session: `$WS_ROOT/.agent/scripts/register_project.sh <path>`,
-  run in the workspace checkout. Its last line `NEXT=` says to start a
-  session at the root and run this skill.
+  not read the root's settings): keep its message and find out whether
+  this folder can be registered from here, with the registration's dry
+  run. Capture `2>&1`: its notes on the build and test commands go to
+  stderr.
+
+  ```bash
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+  "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run 2>&1
+  ```
+
+  The script is not promoted to the user tier, so this call and the real
+  one each ask for permission. That is by design (ADR-0021): registering a
+  folder makes its build command runnable by the workspace scripts, so the
+  owner sees each registration call in full.
+
+  - **It refuses** (exit 1, nothing handed over: the folder is already
+    registered, lies inside or over a registered root or the workspace, is
+    not the top of its git repository, is a linked worktree, or its name is
+    registered): stop and report `session_root.sh`'s message and the
+    refusal, as printed. A folder under a registered root is onboarded
+    from a session started at that root. Registering under another name, or
+    with options this script does not take, is done from a workspace
+    session: `$WS_ROOT/.agent/scripts/register_project.sh <path>`, run in
+    the workspace checkout. Its last line `NEXT=` says to start a session at
+    the root and run this skill.
+  - **`STATUS=dry-run`**: the folder is not registered. Show the output as
+    printed: the registry line, the settings file and the build and test
+    commands it would write, and that the build and test are not run. Say
+    what registration is: one line in the workspace's per-machine registry
+    and the folder's settings file in the workspace checkout, nothing
+    written into the folder. When a `note:` line says no build (or test)
+    command was detected, or several build systems disagree, ask for the
+    command, or `none`, before the real run. Under this skill's
+    `--dry-run`, stop here.
+
+    Then run it:
+
+    ```bash
+    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" 2>&1
+    ```
+
+    adding `--set "build=<command>"` and `--set "test=<command>"` only for
+    the commands the user gave, each as one quoted argument; `build=` and
+    `test=` are the only keys it takes.
+
+    Do not also ask for a yes in text: the permission prompt for this call,
+    showing the full command, is the yes, and a no there stops the run.
+  - **The real run ends `STATUS=registered, <verbs> not run`**: run
+    `session_root.sh` again; it now prints `type=project` and `project=`,
+    and the run carries on with that. Say that the build and test were not
+    run, and that this session started before the folder was registered, so
+    it lacks the workspace layer the `SessionStart` hook gives a session at
+    a registered root; a new session at the root has it.
+  - **The real run ends `STATUS=refused` or `STATUS=NOT READY`**: show it
+    as printed and stop; its `NEXT=` says what to do. A folder in no git
+    repository is refused there ("not a git repository") and rolled back,
+    although its dry run looked clean: registration needs a git repository
+    today, a known gap, so say this folder cannot be registered yet.
 - **`type=workspace`**: stop. Onboarding runs in a session started at the
-  project's root, not in the workspace; register the project first if it
-  is not, then start a session there.
+  project's root, not in the workspace; start a session there and run this
+  skill, which offers to register the folder when it is not registered.
 
 **A parent root** (a root that groups instances, such as one per ROS
 distro) has no settings, adapter or worktrees of its own: they belong to
