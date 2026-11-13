@@ -29,6 +29,9 @@ withdrew it on 2026-11-12 (#446): the plugin is enabled once, at user scope,
 and the user tier gains its entries in `~/.claude/settings.json` and the
 CLI's `~/.claude/plugins/` records.
 
+Decision 5 is superseded by
+[ADR-0021](0021-a-project-session-may-register-its-own-folder.md).
+
 ## Context
 
 Until now, every session started in the workspace checkout. `projects/<name>`
