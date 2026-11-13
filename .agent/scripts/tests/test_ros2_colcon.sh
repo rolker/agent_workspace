@@ -3173,9 +3173,16 @@ test_mr_source_lock() {
     wait "$hpid" 2>/dev/null || true
     # Two syncs at once, made deterministic: the first is held inside the
     # critical section (its resolver waits on a file); the second must
-    # then be waiting in flock (seen by its unique wait value) without
+    # then be waiting in flock (a flock wrapper on its own PATH writes a
+    # file as it starts waiting: no machine-wide process search) without
     # having reached the resolver, and proceeds once the first ends.
-    local p1 p2 r1=0 r2=0 waiting=no
+    local p1 p2 r1=0 r2=0 waiting=no realflock
+    realflock="$(command -v flock)"
+    mkdir -p "$sb/flockbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" -w \"*) touch \"$sb/flock-waiting\" ;; esac" \
+        "exec \"$realflock\" \"\$@\"" > "$sb/flockbin/flock"
+    chmod +x "$sb/flockbin/flock"
     mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
     printf '%s\n' '#!/usr/bin/env bash' \
         "echo START >> \"$sb/order.log\"" \
@@ -3189,11 +3196,13 @@ test_mr_source_lock() {
     run_mr "$sb" sync >"$sb/s1.out" 2>&1 & p1=$!
     for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
     assert_eq "two syncs: the first is inside the critical section" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
-    ROS2_COLCON_LOCK_WAIT=117 run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
+    PATH="$sb/flockbin:$PATH" run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
     for i in $(seq 1 100); do
-        if pgrep -f "flock -x -w 117 9" >/dev/null 2>&1; then waiting=yes; break; fi
+        if [ -e "$sb/flock-waiting" ]; then waiting=yes; break; fi
         sleep 0.1
     done
+    # Its lock request is made; give it time to (wrongly) get past it.
+    sleep 1
     assert_eq "two syncs: the second waits on the lock" "yes" "$waiting"
     assert_eq "two syncs: the second has not reached the resolver" "1" "$(grep -c START "$sb/order.log")"
     assert_eq "two syncs: the second still running" "yes" "$(kill -0 "$p2" 2>/dev/null && echo yes || echo no)"
