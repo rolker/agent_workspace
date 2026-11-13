@@ -614,3 +614,15 @@ Scope: round 2's findings and the diff b208d2da..939d23d0. Cross-model: skipped 
 
 ### Findings
 - [ ] (suggestion) The take-over aborts on any failed `uninstall --scope user` ("nothing was repointed", no hand removal named), and runs it also when the user settings only enable the plugin with no install record; if the real CLI refuses to uninstall what it has not installed, every install exits 1 the same way. Consider running it only when the record lists a user-scope install, or naming the hand removal in that error — `.agent/scripts/user_tier_install.sh:834`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round 3 review at 20ad72bd is approved with no must-fix; the live suite's user-scope cases, re-run by the host on that head, passed 13 of 13)
+**After**: publish
+**Decision**: publish
+
+The host read the Local Review (Pre-Push) entry at 20ad72bd. Its one new suggestion (user_tier_install.sh:834: the take-over stops on a failed user-scope uninstall without naming a hand removal, and runs that uninstall when only the enable exists) is carried forward, not fixed: it needs a take-over between two checkouts on one machine and a CLI refusal that is itself unverified. It is listed for the owner's veto at the merge point.
+
+Live run 2 (Claude Code 2.1.323, model haiku, head 20ad72bd), with the aw-accept name shortened to N: U1 list zz-probe; U2 list zz-probe,N:zz-probe (accepted doubling); U3 list zz-probe (its prefixed probe session failed; the list decides); U4 list zz-probe,N:zz-probe (accepted doubling); U5, U6, U7 list N:zz-probe (U7 once); U8 list <none>, its control skill answered; U-end neither entry left; the real settings identical under jq -S before and after. Stop checks 1 to 4 clear; CHECK U7 yes.
