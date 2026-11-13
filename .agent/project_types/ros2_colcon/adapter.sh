@@ -641,6 +641,16 @@ _rc_source_fetch() {
             echo "ERROR: $clone is a clone of $existing, not of source $url; move it aside (or fix source) and rerun" >&2
             return 1
         fi
+        # A first setup interrupted between the clone (--no-checkout) and
+        # the checkout leaves no index; git status would call every file
+        # deleted, so the clone would read as dirty forever. Nothing was
+        # ever checked out there, so it is taken as just cloned.
+        local gitdir
+        gitdir="$(git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
+        if [ -n "$gitdir" ] && [ ! -e "$gitdir/index" ]; then
+            echo "source: $clone was never checked out (an interrupted first setup); checking it out now"
+            fresh=1
+        fi
     else
         mkdir -p "$(dirname "$clone")" || return 1
         echo "source: cloning $url into $clone"

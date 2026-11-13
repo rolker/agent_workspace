@@ -821,6 +821,12 @@ _project_file_value_error() {
                 echo "source_ref must be a branch, tag or commit: letters, digits, '.', '_', '/' and '-', starting with a letter or digit, with no '..' or '//' and not ending in '/', '.' or '.lock', got '$value'"
                 return 1
             fi
+            # HEAD is not a branch, tag or commit of the source but git's
+            # name for whatever is checked out (origin/HEAD in the clone).
+            if [ "$value" = HEAD ]; then
+                echo "source_ref must be a branch, tag or commit, not HEAD (git's name for what is checked out): name the branch, e.g. source_ref=main"
+                return 1
+            fi
             ;;
         source_path)
             local comp bad=0

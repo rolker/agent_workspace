@@ -1699,6 +1699,7 @@ test_source_keys() {
         $'source=https://e.invalid/m.git\nsource_ref=-x|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=a..b|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=x.lock|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=HEAD|source_ref must be a branch, tag or commit, not HEAD' \
         $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=/etc/m.yaml|source_path must be a relative path' \
         $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a/../../m.yaml|source_path must be a relative path'; do
         printf '%s\n' "${v%%|*}" | write_pfile "$sb" rc

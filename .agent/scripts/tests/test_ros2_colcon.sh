@@ -2709,6 +2709,33 @@ test_mr_stale_leaf_branch() {
     assert_eq "other branch, dirty: not switched" "elsewhere" "$(git -C "$clone" branch --show-current)"
 }
 
+test_mr_interrupted_first_clone_and_head_ref() {
+    echo "TEST: manifest route: a first clone interrupted before its checkout is checked out, not read as dirty; source_ref=HEAD is refused"
+    local sb url out rc gen clone
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    clone="$sb/projects/p11/configs/source-clone"
+    mkdir -p "$(dirname "$clone")"
+    git clone --quiet --no-checkout -- "$url" "$clone"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "half-made clone: setup exit 0" "0" "$rc"
+    assert_contains "half-made clone: said" "was never checked out (an interrupted first setup); checking it out now" "$out"
+    assert_not_contains "half-made clone: not read as dirty" "uncommitted changes" "$out"
+    gen="$(mr_gen "$sb")"
+    assert_contains "half-made clone: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_contains "half-made clone: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_not_contains "then: an ordinary clone" "never checked out" "$out"
+    mr_settings "$sb" "source=$url" "source_ref=HEAD"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "source_ref=HEAD: refused" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
+    assert_contains "source_ref=HEAD: the previous result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+}
+
 test_mr_stale_leaf_commit_and_tag() {
     echo "TEST: manifest route: a commit pin ignores pushes until changed; a moved tag is followed"
     local sb url out rc c1 c2 gen
@@ -3353,6 +3380,7 @@ mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit
 mr_test test_mr_stale_leaf_branch
 mr_test test_mr_stale_leaf_commit_and_tag
+mr_test test_mr_interrupted_first_clone_and_head_ref
 mr_test test_mr_stale_extends_base
 mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
