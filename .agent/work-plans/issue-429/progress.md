@@ -2512,3 +2512,13 @@ Host question on the repeated comment: there is a real input. It is a regression
   - `.agent/scripts/merge_pr.sh:1023-1044`
 - [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. This is the owner's call at the merge checkpoint, carried from round 1.
   - `.agent/work-plans/issue-429/plan.md:192,562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 07:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of 2b's diff, three must-fix, all mechanical; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Fix the three must-fix and suggestions 1 to 3. (1) The restore never deletes or rewrites something it did not snapshot: a progress.md that is a symlink (dangling or not), or anything not a regular file, is left exactly as found; if the record cannot be made safely there, fall back to the pull-request comment with a true reason. (2) The on-branch check applies before the gate READS the owning checkout's timeline too: off the pull request's branch or detached, no timeline is read, the gate gives a reason saying so, and it cannot pass on another branch's entries. (3) docs/design.md citations into merge_pr.sh made true, after all code edits. Suggestion 1: the host's earlier decision to leave repeated comments is withdrawn, since it is a regression from main for package pull requests: when the timeline has no matching record, the duplicate check also looks at the pull request's comments, so a record that falls back to the comment is posted once. Suggestion 2: check_branch_updates.sh with no --base keeps main's behaviour (a warning, exit 0) for a stale origin/HEAD or an unknown default branch; exit 2 is for --base only. Suggestion 3: after a record push that times out, a bounded ls-remote decides: if origin has the record commit, keep it and say it was pushed; undo only if origin does not have it; if origin cannot be asked, say so truthfully and leave a defined state. Suggestion 4 stays the owner's.
