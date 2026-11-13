@@ -2079,3 +2079,11 @@ Repeat triage after the documentation fix 9bc5f3ee and its re-review. The previo
 **Decision**: merge
 
 Merge (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 06:04 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `51766e95`
+
+Revision after 2a merged (pull request 460): 2a marked merged with what review changed; 2b re-checked against main, with cleanup cases (a) to (c) and the pull half of (d) already covered, one case left; acceptance table added. One open question: the pre-push review and the behind-check use the default branch, not the pin.
