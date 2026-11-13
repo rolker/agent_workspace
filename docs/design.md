@@ -382,7 +382,7 @@ probe, not a description to keep current.
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 167, 228-277, 452, 581, 669, 700 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 219, 280-329, 504, 638, 726, 758, 905 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
@@ -484,18 +484,24 @@ Status: `decided`
   1011).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
-  branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` decides it
-  (`pr_base_for` in `_pr_base.sh`) and refuses a pin that is a tag, a commit or unknown, or one the
-  adapter cannot read; an issue whose worktree is no package worktree has none. The owning repository's
-  new `feature/issue-N` starts from origin's copy of that branch, fetched at creation, with no upstream
-  (`worktree_create.sh --base`, the strict start path in `_wt_add_repo`): origin lacking it or not
-  answering stops creation, also with `--allow-unverified-branch`, and the local copy is never used;
-  sibling repositories start from their default branch as before. The `.worktree-repos` header records
-  it as `base=` (every header field is read unanchored, so a reader skips the fields it does not know);
-  a worktree made before the field gets it on resume, once origin confirms the branch. `run-issue`
-  passes it to `gh_create_pr.sh --base`; `merge_pr.sh` reports an owning pull request whose base
-  differs from it (report-only, like every package reason) and, at cleanup, fast-forwards the owning
-  repository's own checkout only when it is clean and on that base, fetching only otherwise.
+  branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
+  `worktree_create.sh` decide it (`pr_base_for` in `_pr_base.sh`) and refuse a pin that is a tag, a
+  commit or unknown (saying whether origin answered), or one the adapter cannot read; an issue whose
+  worktree is no package worktree has none. Creating a package worktree's owning branch always resolves
+  a base, so a package worktree is never started from origin's default branch by omission. The owning
+  repository's new `feature/issue-N` starts from origin's copy of that branch, fetched at creation,
+  with no upstream (the strict start path in `_wt_add_repo`): origin lacking it or not answering stops
+  creation, also with `--allow-unverified-branch`, and the local copy is never used; sibling
+  repositories start from their default branch as before. The `.worktree-repos` header records it as
+  `base=` (every header field is read unanchored, so a reader skips the fields it does not know). A
+  branch this run did not start there (an owning branch that already existed at creation, or a worktree
+  made before the field, on resume) gets `base=` only after `wt_base_foreign_history` finds, in one
+  bounded fetch, no commit beyond origin's base that another origin branch also has; otherwise nothing
+  is recorded and the run refuses, naming the commits' count and branch. `run-issue` passes it to
+  `gh_create_pr.sh --base`; `merge_pr.sh` reports an owning pull request whose base differs from it
+  (report-only, like every package reason) and, at cleanup, fast-forwards the owning repository's own
+  checkout from origin's base by name (never the branch's configured upstream) only when it is clean
+  and on that base, fetching only otherwise.
 
 **Target**
 
@@ -536,7 +542,7 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   533, 579, 581, 643, 889: the round count, the exit contract, `--check-exit` and `next`, which is
+   544, 590, 592, 654, 923: the round count, the exit contract, `--check-exit` and `next`, which is
    what a resumed session reads), `merge_pr.sh` (708-729, 854-935: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
@@ -879,7 +885,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Sessions and roots, Registry and adapters | A fresh clone works with no project (#295, first pull request; part of #265): a Sessions and roots Now bullet says a workspace with no registered project and no `project/` validates, sets up without a prompt, shows its dashboard and syncs, and that the `gh_create_*` repo-safety check accepts every registered root's repository; Table 1's `gh_create_pr.sh` row says registered roots are consulted (lines refreshed); Table 2's `setup` row names the stamps `make setup` depends on now (`git-bug` and `ros-manifest`, no `project`) and the Makefile lines of `setup` and `user-tier-install` are refreshed; Table 1's `worktree_create.sh` line citations are refreshed after this change moved them; the ADR-0007 register row names the setup stamps as they are now. Sessions and roots is 121 lines and Registry and adapters 125, past the 60-line prompt: the bullet names the test and the helper that hold the detail, so no detail moves | #295 | 910 |
 | 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
 | 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
-| 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves | #429 | 936 |
+| 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's first pre-push review: creation always resolves a base (`--base`, else the pin), a branch not started there by this run gets `base=` only after the foreign-history check (`wt_base_foreign_history`), the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
 
 ## Glossary
 

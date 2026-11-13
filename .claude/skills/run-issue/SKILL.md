@@ -137,7 +137,8 @@ script, not here — see "Action tokens" below for where to read it.
 - `--base <branch>` — a package issue only: the base branch of the owning
   repository's pull request, overriding the project's pin of that
   repository. Without it the base is the pin (`adapter repo_pin`, read by
-  `dispatch_phase.sh base` in step 1), never the forge's default branch; a
+  `dispatch_phase.sh base` in step 1, and by `worktree_create.sh` itself
+  when it is given no `--base`), never the forge's default branch; a
   pin that is a tag, a commit or unknown stops step 1 and asks for
   `--base`. Once the worktree records a base, a different `--base` is
   refused.
@@ -217,8 +218,14 @@ a package issue and nothing for any other, decided by the worktree `<ref>`
 resolves to (a bare number can name a package worktree), or, before the
 worktree exists, by `--layer`/`--package-repos`. It reads the project's
 pin (or `--base`), refuses a pin that is not a branch, and, for a worktree
-made before the base was recorded, checks the branch on origin and records
-it in the manifest. Stop on a refusal:
+made before the base was recorded, records it in the manifest only after
+checking, with one bounded fetch, that the owning branch started there: it
+carries no commit beyond origin's `<base>` that another origin branch has
+(a branch started from origin's default branch while the pin is another
+branch is refused, naming the commits' count and branch; recreate the
+worktree, or pass the `--base` it was started from). For an existing
+worktree, `--layer` and `--package-repos` must match its manifest. Stop on a
+refusal:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -234,7 +241,11 @@ Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <ref> --type <type>` (and `--layer`, `--package-repos` when
 given, with `--base <base>` beside them, so the owning branch starts from
 origin's `<base>` and the manifest records it; never `--base` without
-them, which only creation takes). If step 1 there refuses (already in a
+them, which only creation takes). Creation always resolves a base for the
+owning branch (the `--base` given, else the pin; neither giving a branch
+refuses), and an owning branch that already exists locally or on origin
+gets `base=` only after the same check as above, else creation refuses and
+rolls back. If step 1 there refuses (already in a
 worktree), stop and tell the user to exit first.
 
 Then move to the directory the issue's work and records happen in, which

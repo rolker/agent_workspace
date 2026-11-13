@@ -334,7 +334,7 @@ stderr. `<kind>` is `branch`, `tag`, `commit` or `unknown`. YAML quoting around 
 | Case | Behaviour |
 |---|---|
 | kind `branch` | That branch is the base. Checked on origin by the strict path (step 4) before anything is made |
-| kind `tag`, `commit`, `unknown` | Refuse, naming it: "<repo> is pinned at <ref> (<kind>); only a branch can be a base. Pass --base <branch>." |
+| kind `tag`, `commit`, `unknown` | Refuse, naming it: "<repo> is pinned at <ref> (<kind>); only a branch can be a base. Pass --base <branch>." [As built after the first pre-push review: `unknown` says why the kind is not known instead: origin not asked or not answering (the adapter's "unverified" NOTE; retry or `--base`), a name no branch can have, or origin answering with no branch or tag of that name] |
 | `--base <branch>` given | An override only: it must name a branch on origin; if the worktree header already records a different `base=`, refuse |
 | the adapter cannot answer (exit 1) | Refuse with the adapter's message; nothing is guessed from the forge or from `origin/HEAD` |
 
@@ -385,6 +385,12 @@ unchanged.
    locally or on origin (a resume) is checked out as today. Siblings are untouched. When
    `pr_base_for` ran offline ("unverified") and creation then asks origin: **creation wins**; it stops
    with the reason, since a branch started on an unverified base can diverge.
+   [As built after the first pre-push review (host decision, checkpoint of 2026-11-12 22:18): creating
+   the owning branch of a package worktree **always** resolves a base, `--base` or else the pin through
+   `pr_base_for`; neither giving a branch refuses before anything is made, so a package worktree is never
+   started from origin's default branch by omission. An owning branch that already exists (locally or on
+   origin) is not restarted; `base=` is written for it only after `wt_base_foreign_history` (below, step
+   6) finds no foreign history, else creation refuses and rolls back. Siblings get no base.]
    Tests in `test_worktree_create.sh`: (i) a base absent on origin refuses and rolls back; (ii) an
    unreachable origin refuses, also with `--allow-unverified-branch`; (iii) a local `<base>` carrying an
    unpushed commit: the new branch does not contain it, and has no upstream; (iv) siblings unchanged;
@@ -404,7 +410,15 @@ unchanged.
    writes `base=<branch>` into the header's first line (a new helper `wt_set_manifest_base` beside
    `wt_write_manifest`, `_worktree_helpers.sh` 416-422); absent or unknown on origin: it refuses and writes
    nothing. A `--base` given on resume is checked on origin the same way; one that differs from a recorded
-   `base=` is refused as before. **For an issue with no package base** (a workspace issue, a single-repository
+   `base=` is refused as before. [As built after the first pre-push review (host decision): an origin
+   check of the base alone let a branch started from origin's default branch be recorded against the pin.
+   The candidate base is now recorded only after `wt_base_foreign_history` (`_worktree_helpers.sh`): one
+   bounded fetch of every origin branch into a private ref namespace, removed again; a commit in
+   `origin/<base>..feature/issue-N` that another origin branch (not the base, not the issue branch) also
+   has is foreign; any foreign commit refuses, naming the count and the branches, and writes nothing.
+   `--package-repos` given for an existing worktree must equal its manifest's repositories (as a set), and
+   the header's `project=` goes to the adapter only when it is a registered project (a legacy header says
+   `project=project`).] **For an issue with no package base** (a workspace issue, a single-repository
    project issue, any worktree with no `.worktree-repos` manifest or only a lone `.` entry, a bare number)
    `base` prints nothing and exits 0; the handoff has no `base=` line; `/run-issue` calls it for every issue
    and treats empty output as "no base" (it passes no `--base` to publish). [As built, after the plan
@@ -425,7 +439,9 @@ unchanged.
    branch). The generic `git pull --ff-only` for workspace and project pull requests (1742) is untouched.
    [As built, note 2: after a fetch-only cleanup the final banner says "merged and cleaned up; <repo>'s
    checkout was fetched only, not fast-forwarded (<why>)", not "merged, cleaned up, and synced". A detached
-   HEAD is its own reason, "detached HEAD, not the base <y>".]
+   HEAD is its own reason, "detached HEAD, not the base <y>". After the first pre-push review: the pull
+   names origin's base (`pull --ff-only --no-rebase origin <base>`), never the branch's configured
+   upstream, which may be another remote or branch, or missing.]
 8. **Tests and suites.** `test_package_issue_loop.sh`: the sandbox's pkg_a has default branch `main` and
    pin `pinned`; `base` with and without `--base`; tag, commit and unknown refuse (the sandbox's real
    `.repos` pins, rewritten per case; no stub adapter type); the repository name comes from the owning entry and differs from the forge
