@@ -999,6 +999,12 @@ _rc_manifest_prepare() {
 _rc_source_lock() {
     local configs lock wait="${ROS2_COLCON_LOCK_WAIT:-120}"
     _RC_SOURCE_LOCKED=0
+    # Checked first, with or without flock, so a bad value is never taken
+    # for another run holding the lock (flock's usage error).
+    if ! [[ "$wait" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "ERROR: ROS2_COLCON_LOCK_WAIT='$wait' is not a number of seconds (digits, with an optional decimal part, such as 120 or 0.5); unset it for the default, 120" >&2
+        return 1
+    fi
     command -v flock >/dev/null 2>&1 || return 0
     configs="$(_rc_root)/configs"
     mkdir -p "$configs" || return 1

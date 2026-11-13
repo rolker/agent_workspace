@@ -3186,6 +3186,14 @@ test_mr_source_lock() {
     assert_contains "held, first setup: says so" "another setup or sync of project 'p11' holds its lock $sb/projects/p11/configs/.lock.source (waited 1 s); nothing changed" "$out"
     assert_eq "held, first setup: no clone made" "no" "$([ -e "$sb/projects/p11/configs/source-clone" ] && echo yes || echo no)"
     assert_eq "held, first setup: the resolver not run" "no" "$([ -e "$sb/resolver.log" ] && echo yes || echo no)"
+    # A wait that is not a number is said to be one, not taken for a held lock.
+    local badwait
+    for badwait in abc -1 "1 2" 5s; do
+        rc=0; out="$(ROS2_COLCON_LOCK_WAIT="$badwait" run_mr "$sb" setup 2>&1)" || rc=$?
+        assert_eq "ROS2_COLCON_LOCK_WAIT='$badwait': exit 1" "1" "$rc"
+        assert_contains "ROS2_COLCON_LOCK_WAIT='$badwait': named" "ROS2_COLCON_LOCK_WAIT='$badwait' is not a number of seconds" "$out"
+        assert_not_contains "ROS2_COLCON_LOCK_WAIT='$badwait': not a held lock" "holds its lock" "$out"
+    done
     touch "$sb/release"
     wait "$hpid" 2>/dev/null || true
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
