@@ -392,15 +392,20 @@ try:
 except ValueError:
     print("progress record unreadable")')"
     fi
-    # Path 2 is any other work whose newest complete Issue Review has a
-    # Serves line naming a goal (every Issue Review writes one, naming the
-    # README goals it serves). A project worktree's Serves line names the
-    # project's own goals (review-issue), not the workspace README's that
-    # Path 2 is defined by, so it is never Path 2, and in a project
+    # Path 3 is work whose newest complete Issue Review has a Serves line
+    # carrying the README line's opening words, "A safeguard has to earn
+    # its cost" (any case, matched as plain text; review-issue writes them
+    # for work that serves that line). Path 2 is any other work whose
+    # newest complete Issue Review has a Serves line naming a goal (every
+    # Issue Review writes one, naming the README goals it serves). A
+    # project worktree's Serves line names the project's own goals
+    # (review-issue), not the workspace README's that Path 2 and Path 3
+    # are defined by, so it is never Path 2 or Path 3, and in a project
     # session nothing is. Only the newest complete Issue Review counts,
     # so a later "none" outranks an older goal, and a partial or failed one
     # (which may have stopped before its Serves line) changes nothing;
-    # "none" means no path. With no complete Issue Review, or one with no
+    # "none" means no path, even when the line goes on to quote the
+    # phrase. With no complete Issue Review, or one with no
     # Serves line, nothing was said either way: the path is unknown, never
     # "no path". Fenced lines are not headings or fields.
     serves="unreviewed"
@@ -415,11 +420,13 @@ except ValueError:
               if (!seen) print "unreviewed"
               else if (s !~ /[^[:space:]]/) print "unstated"
               else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
+              else if (index(tolower(s), "a safeguard has to earn its cost")) print "path3"
               else print "goal" }' "$f")"
     if [ "$haspaths" != yes ]; then wpath=""
     elif [ -z "$named" ]; then wpath="path unknown (steps not checked)"
     elif [ "$named" = yes ]; then wpath="Path 1"
-    elif [ "$serves" = goal ] && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
+    elif { [ "$serves" = goal ] || [ "$serves" = path3 ]; } && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
+    elif [ "$serves" = path3 ]; then wpath="Path 3"
     elif [ "$serves" = goal ]; then wpath="Path 2"
     elif [ "$serves" = none ]; then wpath="no path"
     elif [ "$serves" = unstated ]; then wpath="path unknown (its issue review has no Serves line)"
@@ -437,10 +444,14 @@ no path word is printed then. Otherwise it is `Path 1` (`named` is
 names the project the worktree belongs to; a bare `(#N)` or `gh-issue N` names an issue of the
 root's own repository, so it matches only a worktree whose `own` is
 `yes`, and another repository's worktree is named only by its
-`<owner/repo>#N` or `adapter --project` check), else `Path 2` (the newest complete Issue Review on its
-timeline has a `**Serves**:` line naming a goal), else `no path` when
-that Serves line is `none` (the review template's word for no goal),
-which is itself worth seeing: work that serves neither. Only the newest
+`<owner/repo>#N` or `adapter --project` check), else `Path 3` (the newest
+complete Issue Review on its timeline has a `**Serves**:` line carrying
+the README line's opening words, "A safeguard has to earn its cost", in
+any case, which review-issue writes for work that serves that line), else
+`Path 2` (that Serves line names a goal), else `no path` when
+that Serves line is `none` (the review template's word for no goal, even
+when the line goes on to quote that phrase),
+which is itself worth seeing: work that serves no goal. Only the newest
 complete Issue Review's Serves line counts, so a re-review that found the
 issue serves nothing outranks an older one that named a goal, and a
 partial or failed Issue Review leaves the older one's Serves in place.
@@ -449,11 +460,12 @@ partial or failed Issue Review leaves the older one's Serves in place.
 "path unknown (no complete issue review)", and with a complete one that
 has no Serves line it is "path unknown (its issue review has no Serves
 line)". It is `path unknown (steps not checked)` when step 1 printed no
-rows. A project worktree is never `Path 2`, and in a project session
-nothing is: review-issue writes a project issue's Serves line from the
-project's own goals, and Path 2 is work that serves a goal in the
-workspace README. With such a goal it reads "no path (serves a project
-goal)", which says what it serves and that no Direction line names it.
+rows. A project worktree is never `Path 2` or `Path 3`, and in a project
+session neither is: review-issue writes a project issue's Serves line
+from the project's own goals, and Path 2 and Path 3 are work that serves
+a goal in the workspace README. With such a goal (or the phrase) it reads
+"no path (serves a project goal)", which says what it serves and that no
+Direction line names it.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -527,7 +539,9 @@ request, in the order `gh pr list` printed them.
 
 The paths themselves, for the report's closing question: each paragraph of
 the root's Direction section that opens with `**Path <n>`, printed as its
-number, its bold name and its first sentence, as written.
+number, its bold name and its first sentence, as written. A sentence ends
+at a period followed by white space or the paragraph's end, or at a period
+and a closing double quotation mark followed by either (a quoted sentence).
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -544,7 +558,7 @@ for l in sys.stdin:
     m = re.match(r"\*\*(Path \d+)[,.:]?\s*(.*?)\.?\*\*\s*(.*)", l.strip())
     if m:
         n += 1
-        first = re.match(r"(.+?\.)(?:\s|$)", m.group(3))
+        first = re.match(r"(.+?\.\x22?)(?:\s|$)", m.group(3))
         print("path\t%s\t%s\t%s" % (m.group(1), m.group(2), first.group(1) if first else m.group(3)))
 if not n:
     print("paths=none (no **Path <n>** paragraph in the Direction section)")'
@@ -1133,7 +1147,7 @@ Rules for the report:
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
-    `no path` or one of its "path unknown (...)" labels; nothing when
+    `Path 3`, `no path` or one of its "path unknown (...)" labels; nothing when
     step 3 printed an empty path (the root's Direction section has no
     Paths paragraph). A branch with only a
     pull request has no timeline here, so no Serves line was read: with
@@ -1143,7 +1157,7 @@ Rules for the report:
     `feature/issue-<N>` head branch, or an issue in step 3's
     `closingIssuesReferences` whose repository is this one (the match
     step 5 makes); with neither, it is path unknown. Never `no path`,
-    which says the work serves neither path.
+    which says the work serves none of the paths.
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".
@@ -1173,9 +1187,9 @@ Rules for the report:
   answers is a separate step the owner asks for.
 - After the report, end with at most one question, the one whose answer
   changes the most. The suggestion proposes an action; the question asks
-  the owner to decide something. By default it is the focus: Path 1, Path
-  2 or both, each named as step 3's last block printed it (its number,
-  name and first sentence). The owner decides the focus when he asks for
+  the owner to decide something. By default it is the focus: one of the
+  paths step 3 printed, or several, each named as step 3's last block
+  printed it (its number, name and first sentence). The owner decides the focus when he asks for
   a sit-rep, and it is never stored. Ask something else only when the
   owner already named the focus in this session, or when step 3 printed
   `paths=none`.
