@@ -634,3 +634,13 @@ Read for this entry: the fix commit 7938e59f, `merge_pr.sh` 748-908 and 1165-132
 **Decision**: merge
 
 Asked: "Merge pull request 468 once CI is green on the combined code, with F1 carried into part 2 and F2 left for issue 462?", with F1 (test_merge_pr_gate.sh:890: no case checks that escaping happens exactly once; triage: carry into part 2 of this issue) and F2 (merge_pr.sh:1197-1297, main's code from pull request 461: other record-step messages print the checkout path, branch names and the fetch error line raw, to the terminal only; triage: belongs with issue 462), and with what changed since his earlier conditional answer: the 26-line fix in merge_pr.sh (the 256-byte cap applies to each value, never to the whole sentence), its new test, and two merges of main. The owner's answer, verbatim: "yes on q1 and open the issue about limits and safeguards". The host merges only when every check on the reviewed head f068ca67 has passed, the pull_request run included, with no relaxing flag, and stops and reports otherwise. F1 and F2 are deferred on that answer.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 13:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pull request 468, part 1, merged; the plan's part 2 is an outline and the owner has cut it down, so the plan is refreshed before anything is implemented; first host revise at this checkpoint since the merge)
+**After**: plan
+**Decision**: revise
+
+The owner's direction for the next part, verbatim (2026-11-13): "Add a small PR to switch it on. I'm not sure we need to record before and after times now. Don't we have enough before times?" So the next pull request only turns the parallel job count on by default; no new before/after measurement runs; the slow-suite work (the issue's P2), the run-time wording in AGENTS.md and the other texts, and the carried test point (a raw-byte owning path in test_merge_pr_gate.sh, deferred from pull request 468) are left for later. Before times in hand: one job 680 to 694 s (2026-11-12), 824 to 1069 s on a loaded machine (2026-11-13), CI's lint job 11 to 13.5 min; parallel 163 to 320 s (2026-11-12).
