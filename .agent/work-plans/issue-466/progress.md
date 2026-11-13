@@ -341,3 +341,39 @@ Ran: test_skill_paths.sh alone, 139 passed 0 failed. Sandbox probe (the test's o
 ### Findings
 - [x] (must-fix) The new text requires one --set build= and one --set test= always, but a ros2_colcon folder (detected from configs/manifest) reads neither key: its dry run lists none and prints no note, any --set for them, even none, is refused, and the skill's refusal rule offers only "another command or stop", so a ROS 2 workspace folder can no longer be registered through onboarding (round 2's text passed --set only for listed or asked keys, and worked). Pass a key only when the first dry run lists it, a kept file has it, or a note: asks for it; with "no settings file (nothing to write)" and no note, the list is empty — `.claude/skills/onboard-project/SKILL.md:146`
 - [x] (suggestion) "Read that file" names no way to read it: the file is in the workspace checkout's .agent/projects.d/, outside the session's root, so the read raises a permission prompt; say so, and that a refused read stops the run, since the yes needs the file's contents — `.claude/skills/onboard-project/SKILL.md:163`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 12:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6d929cc0b708bc13, resume 3 of 3)
+
+**PR**: #469 at `98d2713c`
+**Addressed**: Local Review at `49a2fcea` (2026-11-13 12:13 -05:00)
+**Commits**: 98d2713c
+
+### Actions
+- [x] (must-fix) A key goes on the --set list only when the first dry run lists it, a kept settings file has it, or the folder's type requires it and it has no command (a note: line, or a kept file without it for a type whose registration.conf required_commands names it). A type whose own tool owns the build and test (required_commands=none) keeps the list empty: the second dry run and the real call run with no --set, the yes is still asked on the second dry run's output, and the skill says a --set for either key there is refused and never added; a "not read for project" refusal takes the --set off the list. The success bullet now also names a plain STATUS=registered, which that type ends with (found walking the paragraph through). F1 and F2 kept: the value without the note, the second dry run with the exact list, the yes on it, a kept file shown in full. New tests in test_register_session_root.sh — `.claude/skills/onboard-project/SKILL.md:148` (98d2713c)
+- [x] (suggestion) The kept settings file is read with the Read tool; it is in the workspace checkout's .agent/projects.d/, outside the session's root, so the read asks for permission, and a refused or failed read stops the run, since the yes needs the file's contents — `.claude/skills/onboard-project/SKILL.md:163` (98d2713c)
+
+The ticks are on the Local Review entry's two boxes, made by hand: review_progress.sh findings/check select the Integrated Review (a post-PR Local Review is not a source), whose only open box is F3. F3 (the name rule at register_session_root.sh:171) is left open, unticked and not deferred, for the owner at the merge checkpoint.
+
+### Sandbox walk-through (type ros2_colcon, in test_register_session_root.sh)
+A synthetic git folder holding configs/manifest (layers.txt with one layer, bootstrap.yaml, an empty repos file, the layer's src set up), run step by step as the skill now reads:
+1. First dry run, no --set: exit 0, "would add the registry line: eta  ros2_colcon  <path>", "no settings file (nothing to write)", no note: line, so the list stays empty.
+2. A dry run with --set build=none --set test=none: exit 1, STATUS=refused, "'build' is not read for project 'eta' (type ros2_colcon)".
+3. Second dry run with the empty list: exit 0, STATUS=dry-run.
+4. Real call with no --set: exit 0, a plain STATUS=registered (no "not run" part; this type runs nothing at registration), its registry line written, no settings file.
+5. session_root.sh --dir <folder>: type=project, project=eta.
+Step 4 showed the success bullet only named "STATUS=registered, <verbs> not run"; fixed in the same commit.
+
+### Other sentences changed
+- ADR-0021, Consequences only. Before: "**The build and test are not run** by a registration from a project session; the status says so." After: "**The build and test are not run** by a registration from a project session; the status says so for a type whose registration would run them (a type whose own tool owns the build and test runs neither)."
+- register_session_root.sh header: "(the status says so)" now says so for a type whose registration would run them, and that a type that runs neither ends a plain STATUS=registered.
+- test_skill_paths.sh pins: no --set for a type that reads neither key; the kept file's read asks for permission and a refused read stops.
+
+### Checks
+- test_register_session_root.sh: 66 passed, 0 failed (60 before; 6 new)
+- test_skill_paths.sh: 139 passed, 0 failed
+- check_design_anchors.sh: exit 0
+- No full pre-commit pass and no full suite, on the host's direction: the pull request exists and CI on the push is the check. The commit used SKIP=validate-script-tests; no --no-verify.
