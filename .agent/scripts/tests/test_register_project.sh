@@ -696,6 +696,16 @@ else
     echo "  SKIP: curl is not available (the bootstrap fetch needs it)"
 fi
 
+# ------------------------------------------------ source (#436) ---
+echo "TEST: --set source=... does not choose the type: without the type ros2_colcon it is refused, naming it"
+SRC_DIR="$SANDBOX/colcon/upsilon"
+out="$(reg "$WS" "$SRC_DIR" --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
+check "detected as single_project, refused: exit not 0" [ "$rc" -ne 0 ]
+check "the refusal says why and names the type ros2_colcon" \
+    bash -c '[[ "$1" == *"nothing resolves a source for it"* && "$1" == *"register it as type ros2_colcon"* ]]' _ "$out"
+check "no registry line, no settings file" \
+    bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
+
 # --------------------------------------------------- a missing type ---
 echo "TEST: a type without registration.conf is refused"
 mkdir -p "$WS/.agent/project_types/bare_type"

@@ -6,3 +6,6 @@
 # .agent/scripts/_project_registry.sh; validate_adapter.sh checks every
 # entry is a known key, listed once, with a reason.
 bootstrap_url a single_project checkout is cloned by hand; only a ros2_colcon project fetches its manifest from a bootstrap.yaml
+source a single_project checkout is cloned by hand and nothing resolves a source for it (a source for every type is issue #473); only a ros2_colcon project reads it, as its manifest: register it as type ros2_colcon (register_project.sh <path> ros2_colcon ...)
+source_ref a single_project checkout is cloned by hand and nothing resolves a source for it (a source for every type is issue #473); only a ros2_colcon project reads it, with source: register it as type ros2_colcon (register_project.sh <path> ros2_colcon ...)
+source_path a single_project checkout is cloned by hand and nothing resolves a source for it (a source for every type is issue #473); only a ros2_colcon project reads it, with source: register it as type ros2_colcon (register_project.sh <path> ros2_colcon ...)

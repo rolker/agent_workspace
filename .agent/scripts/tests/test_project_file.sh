@@ -188,7 +188,7 @@ test_grammar_errors() {
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
     assert_eq "unknown key: exit 2" "2" "$rc"
     assert_contains "unknown key named with file:line" "$f:2: unknown key 'buld'" "$out"
-    assert_contains "known keys listed" "known keys: build test install bootstrap_url location location_path tracking instructions" "$out"
+    assert_contains "known keys listed" "known keys: build test install bootstrap_url source source_ref source_path location location_path tracking instructions" "$out"
 
     printf 'build=make\nbuild=make all\n' | write_pfile "$sb" alpha
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
@@ -1671,6 +1671,115 @@ test_bootstrap_url_precedence() {
     assert_eq "environment override first" "https://env.example/b.yaml" "$out"
 }
 
+test_source_keys() {
+    echo "TEST: source, source_ref, source_path (#436): values, the cross-key rules, set/unset judged as the whole file"
+    local sb rc_dir f out rc v
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
+    mkdir -p "$rc_dir"
+    echo "rc ros2_colcon $rc_dir role=dev distro=fakefox" >> "$sb/.agent/projects.local"
+    f="$(pfile "$sb" rc)"
+
+    # Accepted shapes.
+    for v in 'source=/abs/manifest.yaml' \
+        $'source=https://example.invalid/m.git\nsource_ref=main' \
+        $'source=file:///srv/m.git\nsource_ref=v1.2\nsource_path=sub/dir/manifest.yaml' \
+        $'source=http://example.invalid/m\nsource_ref=0123abc' \
+        $'source=https://example.invalid/m.git\nsource_ref=release/2'; do
+        printf '%s\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "accepted: ${v//$'\n'/ }" "0" "$rc"
+    done
+
+    # Refused values, each naming its rule.
+    for v in 'source=relative/m.yaml|source must be an absolute path' \
+        'source=ftp://host/m.git|source must be an absolute path' \
+        'source=/a b/m.yaml|source must be an absolute path' \
+        $'source=https://e.invalid/m.git\nsource_ref=-x|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=a..b|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=x.lock|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=/etc/m.yaml|source_path must be a relative path' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a/../../m.yaml|source_path must be a relative path'; do
+        printf '%s\n' "${v%%|*}" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        v="${v//$'\n'/ }"
+        assert_eq "refused: ${v%%|*}" "2" "$rc"
+        assert_contains "names the rule: ${v##*|}" "${v##*|}" "$out"
+    done
+    printf 'source=https://e.invalid/m.git\nsource_ref=a/.hidden\n' | write_pfile "$sb" rc
+    rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+    assert_eq "refused: a ref component starting with '.'" "2" "$rc"
+    printf 'source=https://e.invalid/m.git\nsource_path=a..b/m.yaml\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+    assert_eq "accepted: '..' inside a path component name" "0" "$rc"
+
+    # Cross-key rules.
+    printf 'source_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source_ref without source: exit 2" "2" "$rc"
+    assert_contains "source_ref without source: says why" "source_ref is only valid with source" "$out"
+    assert_contains "names the three-key unset" "project_setting.sh unset rc source source_ref source_path" "$out"
+    printf 'source_path=m.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source_path without source: exit 2" "2" "$rc"
+    assert_contains "source_path without source: says why" "source_path is only valid with source" "$out"
+    printf 'source=https://e.invalid/m.git\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "URL source without source_ref: exit 2" "2" "$rc"
+    assert_contains "URL source: source_ref required" "so source_ref (the branch, tag or commit to use) is required" "$out"
+    printf 'source=/abs/m.yaml\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "path source with source_ref: exit 2" "2" "$rc"
+    assert_contains "path source: source_ref does not apply" "is a path to a file, so source_ref does not apply" "$out"
+    printf 'source=/abs/m.yaml\nsource_path=m.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "path source with source_path: exit 2" "2" "$rc"
+    assert_contains "path source: source_path does not apply" "is a path to a file, so source_path does not apply" "$out"
+    printf 'source=/abs/m.yaml\nbootstrap_url=https://e.invalid/b.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source beside bootstrap_url: exit 2" "2" "$rc"
+    assert_contains "one source only" "source and bootstrap_url are both set: a project has one source only" "$out"
+
+    # set and unset are judged as the whole resulting file.
+    rm -f "$f"
+    rc=0; out="$(ps_run "$sb" set rc source=https://e.invalid/m.git 2>&1)" || rc=$?
+    assert_eq "set a URL source alone: exit 2" "2" "$rc"
+    assert_eq "set a URL source alone: no file written" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set rc source=https://e.invalid/m.git source_ref=main source_path=m/manifest.yaml >/dev/null 2>&1 || rc=$?
+    assert_eq "set the three together: exit 0" "0" "$rc"
+    assert_eq "the three are stored" $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=m/manifest.yaml' "$(cat "$f")"
+    rc=0; out="$(ps_run "$sb" unset rc source 2>&1)" || rc=$?
+    assert_eq "unset source alone, source_ref left: refused" "2" "$rc"
+    assert_contains "the refusal names the multi-key unset" "remove the three together: .agent/scripts/project_setting.sh unset rc source source_ref source_path" "$out"
+    assert_contains "the file is unchanged" "source=https://e.invalid/m.git" "$(cat "$f")"
+    rc=0; ps_run "$sb" unset rc source source_ref source_path >/dev/null 2>&1 || rc=$?
+    assert_eq "the multi-key unset the message gives works" "0" "$rc"
+    assert_eq "the file is gone (nothing left)" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set rc bootstrap_url=https://e.invalid/b.yaml >/dev/null 2>&1 || rc=$?
+    rc=0; out="$(ps_run "$sb" set rc source=/abs/m.yaml 2>&1)" || rc=$?
+    assert_eq "set source beside a stored bootstrap_url: refused" "2" "$rc"
+    assert_contains "names bootstrap_url and its unset" "unset rc bootstrap_url" "$out"
+    rm -f "$f"
+
+    # single_project refuses the three, saying to register as ros2_colcon.
+    for v in source=/abs/m.yaml source_ref=main source_path=m.yaml; do
+        rc=0; out="$(ps_run "$sb" set alpha "$v" 2>&1)" || rc=$?
+        assert_eq "single_project set ${v%%=*}: exit 1" "1" "$rc"
+        assert_contains "single_project set ${v%%=*}: says why" "nothing resolves a source for it (a source for every type is issue #473)" "$out"
+        assert_contains "single_project set ${v%%=*}: names the type to use" "register it as type ros2_colcon (register_project.sh <path> ros2_colcon" "$out"
+    done
+
+    # The dispatcher hands the keys to the adapter.
+    printf 'source=https://e.invalid/m.git\nsource_ref=v2\nsource_path=x/m.yaml\n' | write_pfile "$sb" rc
+    out="$(bash -c '
+        source "$1/.agent/scripts/_project_registry.sh"
+        e="$(project_file_entries "$1" rc)" || exit 9
+        printf "%s|%s|%s\n" "$(_project_file_value_of "$e" source)" "$(_project_file_value_of "$e" source_ref)" "$(_project_file_value_of "$e" source_path)"' _ "$sb")"
+    assert_eq "the parsed values" "https://e.invalid/m.git|v2|x/m.yaml" "$out"
+    assert_contains "the dispatcher exports ACTIVE_PROJECT_SOURCE*" 'ACTIVE_PROJECT_SOURCE_PATH="$(_project_file_value_of "$_PF_ENTRIES" source_path' "$(cat "$sb/.agent/scripts/adapter")"
+}
+
 test_no_file_is_all_defaults
 test_grammar_comments_blanks_crlf
 test_grammar_errors
@@ -1727,6 +1836,7 @@ test_unused_settings_list_unreadable_or_crlf
 test_env_inherited_commands_ignored
 test_settings_command_gets_no_config_environment
 test_bootstrap_url_precedence
+test_source_keys
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

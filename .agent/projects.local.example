@@ -47,8 +47,11 @@
 # `register_project.sh <name>` adopts a line written by hand. A
 # single_project checkout is the user's own clone. A ros2_colcon instance
 # bootstraps itself: register a path that does not exist yet with
-# `--set bootstrap_url=<url of the project's bootstrap.yaml>`, and
-# registration runs `.agent/scripts/adapter --project <name> setup`.
+# `--set bootstrap_url=<url of the project's bootstrap.yaml>`, or from a
+# manifest in the new format (issue #436) with `ros2_colcon --role <r>
+# --distro <d> --set source=<git URL or absolute path> [--set
+# source_ref=<branch|tag|commit>] [--set source_path=<file in the repo>]`,
+# and registration runs `.agent/scripts/adapter --project <name> setup`.
 #
 # Per-project settings (issue #332) go in .agent/projects.d/<name> (no
 # extension; gitignored, per machine), one key=value per line, written with
@@ -72,6 +75,18 @@
 #   bootstrap_url         ros2_colcon only: http(s):// or file:// URL of the
 #                         project's bootstrap.yaml (refused for
 #                         single_project, which is cloned by hand)
+#   source                ros2_colcon only: the project's manifest in the
+#                         new format, resolved by the ros-manifest resolver
+#                         (make install-ros-manifest): an absolute path to
+#                         the file, or an http(s):// or file:// URL of a git
+#                         repository holding it. Not beside bootstrap_url.
+#   source_ref            with a URL source: the branch, tag or commit
+#   source_path           with a URL source: the file in the repository
+#                         (default manifest.yaml)
+#                         role= and distro= on the registry line are
+#                         required with source. Remove the three keys
+#                         together: project_setting.sh unset <name> source
+#                         source_ref source_path
 #
 # A key the project's type never reads is refused by `set`, and a
 # hand-written one fails `check` and stops the adapter; each type lists
