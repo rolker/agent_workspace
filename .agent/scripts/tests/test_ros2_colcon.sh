@@ -2526,7 +2526,7 @@ test_mr_setup_from_path_source() {
     assert_eq "setup: exit 0" "0" "$rc"
     gen="$(mr_gen "$sb")"
     assert_eq "configs/manifest-resolved is a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
-    assert_contains "the link points at a generated dir" "manifest-resolved." "$(readlink "$gen")"
+    assert_contains "the link points at a generated dir" "manifest-resolved.gen-" "$(readlink "$gen")"
     assert_eq "layers.txt: core and extra" $'core\nextra' "$(grep -v '^#' "$gen/layers.txt")"
     assert_eq "optional_layers.txt: extra" "extra" "$(grep -v '^#' "$gen/optional_layers.txt")"
     assert_contains "per-distro ref honoured (quoted number)" "version: '2.0'" "$(cat "$gen/repos/core.repos")"
@@ -2908,7 +2908,7 @@ test_mr_stale_extends_base() {
     assert_eq "commit as extends.ref: exit 1" "1" "$rc"
     assert_contains "the resolver's clone error passed through" "failed to clone its extends base" "$out"
     assert_contains "the previous result kept" "base_two" "$(cat "$gen/repos/core.repos")"
-    assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 }
 
 test_mr_offline_keeps_previous() {
@@ -3072,7 +3072,7 @@ test_mr_resolver_failures() {
     assert_contains "bad manifest: the resolver's error passed through" "ERROR:" "$out"
     assert_contains "bad manifest: says the previous is kept" "the previously resolved manifest, if any, is kept" "$out"
     assert_eq "bad manifest: link unchanged" "$before" "$(readlink "$gen")"
-    assert_eq "bad manifest: no stray generated dir" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    assert_eq "bad manifest: no stray generated dir" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 
     # A role and distro that select nothing.
     write_mr_manifest "$sb/m/manifest.yaml"
@@ -3160,7 +3160,7 @@ EOF
     assert_eq "interrupted: its directory removed" "no" "$([ -e "$(cat "$sb/resolve.out")" ] && echo yes || echo no)"
     assert_eq "interrupted: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
     assert_eq "interrupted: link unchanged" "$before" "$(readlink "$gen")"
-    assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 }
 
 test_mr_source_lock() {
@@ -3214,7 +3214,7 @@ test_mr_source_lock() {
     wait "$p2" || r2=$?
     assert_eq "two syncs: both exit 0" "0 0" "$r1 $r2"
     assert_contains "two syncs: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
     # No flock on PATH: sync runs unlocked.
     mkdir -p "$sb/isolatedbin"
     for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
@@ -3230,7 +3230,7 @@ test_mr_source_lock() {
 
 test_mr_swap_interrupt_and_sweep() {
     echo "TEST: manifest route: an interrupt just after the link swap keeps the new directory; BSD mv -h swaps; a killed run's leftovers are swept"
-    local sb rc gen realmv cfg live
+    local sb out rc gen realmv cfg live
     sb="$(make_mr_sandbox dev)"
     write_mr_manifest "$sb/m/manifest.yaml" mark_one
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
@@ -3254,7 +3254,7 @@ test_mr_swap_interrupt_and_sweep() {
     # The previous directory is a leftover; the next sync sweeps it.
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "after TERM: sync exit 0" "0" "$rc"
-    assert_eq "after TERM: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    assert_eq "after TERM: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
     # A BSD mv: no -T, but -h renames over the link.
     printf '%s\n' '#!/usr/bin/env bash' \
         'case " $* " in' \
@@ -3269,14 +3269,26 @@ test_mr_swap_interrupt_and_sweep() {
     assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
     assert_contains "BSD mv: the new result is live" "mark_three" "$(cat "$gen/repos/core.repos")"
     # What a SIGKILLed run leaves: a directory, a cache and a link.
-    mkdir -p "$cfg/manifest-resolved.Ab12Cd/repos" "$cfg/manifest-resolved.Ab12Cd.cache/clone"
-    ln -s manifest-resolved.Ab12Cd "$cfg/manifest-resolved.Ab12Cd.link"
+    mkdir -p "$cfg/manifest-resolved.gen-Ab12Cd/repos" "$cfg/manifest-resolved.gen-Ab12Cd.cache/clone"
+    ln -s manifest-resolved.gen-Ab12Cd "$cfg/manifest-resolved.gen-Ab12Cd.link"
     mkdir -p "$cfg/manifest-resolved.notmine-keep"
+    # A directory a person moved aside, with six letters after the dot (the
+    # adapter's own "move it aside" error invites this).
+    mkdir -p "$cfg/manifest-resolved.backup"
+    echo keep > "$cfg/manifest-resolved.backup/notes.txt"
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "leftovers: sync exit 0" "0" "$rc"
-    assert_eq "leftovers: swept" "" "$(cd "$cfg" && ls -d -- manifest-resolved.Ab12Cd* 2>/dev/null || true)"
+    assert_eq "leftovers: swept" "" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-Ab12Cd* 2>/dev/null || true)"
     assert_eq "leftovers: a name the adapter never makes is kept" "yes" "$([ -d "$cfg/manifest-resolved.notmine-keep" ] && echo yes || echo no)"
+    assert_eq "leftovers: a moved-aside manifest-resolved.backup and its file kept" "keep" "$(cat "$cfg/manifest-resolved.backup/notes.txt" 2>/dev/null)"
     assert_contains "leftovers: the live result intact" "mark_three" "$(cat "$gen/repos/core.repos")"
+    # A directory where the link belongs: the error suggests a name the
+    # adapter never removes.
+    rm -f "$gen"
+    mkdir -p "$gen"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "a directory at the link: exit 1" "1" "$rc"
+    assert_contains "a directory at the link: suggests a safe name" "move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes)" "$out"
 }
 
 test_mr_preflight_before_any_fetch() {

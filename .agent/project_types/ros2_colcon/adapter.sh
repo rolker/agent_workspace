@@ -499,8 +499,9 @@ _rc_bootstrap_manifest() {
 # source, cloned by the adapter into configs/source-clone/) or read in place
 # (a path source), resolved for the registry line's role= and distro= by the
 # workspace-installed resolver into a generated directory
-# configs/manifest-resolved.XXXXXX/, and configs/manifest-resolved is a link
-# to the current one. Every other verb reads layers.txt,
+# configs/manifest-resolved.gen-XXXXXX/ (a prefix no one types when moving
+# a directory aside: only such names are ever removed), and
+# configs/manifest-resolved is a link to the current one. Every other verb reads layers.txt,
 # optional_layers.txt and repos/<layer>.repos through _rc_manifest_dir, so
 # they are the same on both routes (ADR-0012's directory contract). A
 # project with no `source` takes the bootstrap route, unchanged.
@@ -828,12 +829,12 @@ _rc_manifest_resolve() {
     link="$configs/manifest-resolved"
     mkdir -p "$configs" || return 1
     if [ -e "$link" ] && [ ! -L "$link" ]; then
-        echo "ERROR: $link is not the link the adapter writes (a directory or file is there); move it aside and rerun" >&2
+        echo "ERROR: $link is not the link the adapter writes (a directory or file is there); move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes) and rerun" >&2
         return 1
     fi
     [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] && _rc_resolve_sweep "$configs"
     _RC_RESOLVE_LINK="$link"
-    tmp="$(mktemp -d "$configs/manifest-resolved.XXXXXX")" || return 1
+    tmp="$(mktemp -d "$configs/manifest-resolved.gen-XXXXXX")" || return 1
     _RC_RESOLVE_TMP="$tmp"
     trap '_rc_resolve_cleanup' EXIT
     trap 'exit 129' HUP
@@ -890,8 +891,8 @@ _rc_manifest_resolve() {
     fi
     _RC_RESOLVE_TMP=""
     trap - EXIT HUP INT TERM
-    if [ -n "$prev" ] && [ "$prev" != "$(basename "$tmp")" ] && [[ "$prev" == manifest-resolved.* ]] \
-        && [[ "$prev" != */* ]] && [ -d "$configs/$prev" ]; then
+    if [ -n "$prev" ] && [ "$prev" != "$(basename "$tmp")" ] \
+        && [[ "$prev" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] && [ -d "$configs/$prev" ]; then
         rm -rf -- "${configs:?}/$prev"
     fi
     [ -n "$prev" ] && [ "$old_layers" != "$new_layers" ] && _RC_LAYERS_CHANGED=1
@@ -912,17 +913,17 @@ _rc_resolve_cleanup() {
     trap - EXIT HUP INT TERM
 }
 
-# Remove configs/manifest-resolved.XXXXXX directories, caches and links
+# Remove configs/manifest-resolved.gen-XXXXXX directories, caches and links
 # the live link does not point at: only a killed run leaves them, so this
 # runs only while the source lock is held (a concurrent run's are never
 # taken for leftovers).
 _rc_resolve_sweep() {
     local configs="$1" live="" e n
     [ -L "$configs/manifest-resolved" ] && live="$(readlink -- "$configs/manifest-resolved")"
-    for e in "$configs"/manifest-resolved.*; do
+    for e in "$configs"/manifest-resolved.gen-*; do
         [ -e "$e" ] || [ -L "$e" ] || continue
         n="$(basename "$e")"
-        [[ "$n" =~ ^manifest-resolved\.[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
         [ -n "$live" ] && [ "$n" = "$live" ] && continue
         rm -rf -- "$e"
     done
