@@ -3307,6 +3307,42 @@ test_mr_swap_interrupt_and_sweep() {
     assert_contains "a directory at the link: suggests a safe name" "move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes)" "$out"
 }
 
+test_mr_lock_fd_not_inherited() {
+    echo "TEST: manifest route: git and the resolver do not inherit the lock's descriptor, and the lock is held while they run"
+    local sb url rc realgit lock
+    if ! command -v flock >/dev/null 2>&1 || [ ! -d /proc/self/fd ]; then
+        echo "  SKIPPED: needs flock and /proc"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    lock="$sb/projects/p11/configs/.lock.source"
+    realgit="$(command -v git)"
+    mkdir -p "$sb/fdbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo \"git \$*\" >> \"$sb/git.log\"" \
+        "[ -e /proc/self/fd/9 ] && echo \"git \$1 \$2 \$3\" >> \"$sb/fd9.log\"" \
+        "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
+    chmod +x "$sb/fdbin/git"
+    # The resolver: says whether it got fd 9 and whether the lock is held.
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "[ -e /proc/self/fd/9 ] && echo resolver >> \"$sb/fd9.log\"" \
+        "flock -n \"$lock\" true && echo NOT_HELD >> \"$sb/held.log\"" \
+        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    assert_contains "the git wrapper saw the fetch" "fetch --quiet --prune --prune-tags" "$(cat "$sb/git.log" 2>/dev/null)"
+    assert_contains "the resolver ran" "RESOLVER_RAN:resolve" "$(cat "$sb/resolver.log" 2>/dev/null)"
+    assert_eq "no git or resolver call got fd 9" "" "$(cat "$sb/fd9.log" 2>/dev/null)"
+    assert_eq "the lock held while the resolver ran" "" "$(cat "$sb/held.log" 2>/dev/null)"
+}
+
 test_mr_preflight_before_any_fetch() {
     echo "TEST: manifest route: missing vcs, role= or distro= is reported before any remote is contacted"
     local sb out rc tool url
@@ -3502,6 +3538,7 @@ mr_test test_mr_interrupt_cleans_up
 mr_test test_mr_swap_interrupt_and_sweep
 mr_test test_mr_preflight_before_any_fetch
 mr_test test_mr_source_lock
+mr_test test_mr_lock_fd_not_inherited
 mr_test test_mr_one_source_only
 
 echo ""

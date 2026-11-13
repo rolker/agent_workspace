@@ -984,7 +984,11 @@ _rc_manifest_prepare() {
     fi
     local rc=0
     _rc_source_lock || return 1
-    { _rc_source_fetch && _rc_manifest_resolve; } || rc=$?
+    # 9>&- keeps the lock's descriptor from git, the resolver and every
+    # other child (a detached one, git's auto gc say, would otherwise hold
+    # the lock after the adapter ends): bash saves fd 9 for the group under
+    # a close-on-exec copy, so this shell still holds the lock.
+    { _rc_source_fetch && _rc_manifest_resolve; } 9>&- || rc=$?
     _rc_source_unlock
     return "$rc"
 }
