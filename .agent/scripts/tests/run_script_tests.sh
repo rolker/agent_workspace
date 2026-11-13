@@ -37,9 +37,12 @@
 # (a background job started without job control has both ignored, and
 # bash cannot trap a signal ignored on entry), stdin from /dev/null.
 # SIGINT (Ctrl-C), SIGTERM or SIGHUP to the runner sends the same signal to
-# every running suite's whole process group, KILL to whatever is left
-# 5 seconds later, and removes the run's directory. Needs bash 5.1
-# (`wait -n -p`); an older bash is refused with a message.
+# every running suite's whole process group, KILL to whatever is left in
+# those groups 5 seconds later (a suite that exits sooner does not cut
+# short the cleanup of a process it started), and removes the run's
+# directory. A process left that ignores the signal waits out the 5
+# seconds: a suite's `cmd &` ignores SIGINT, so Ctrl-C can take that long.
+# Needs bash 5.1 (`wait -n -p`); an older bash is refused with a message.
 #
 # Usage: run_script_tests.sh [options] [tests-dir] [--files <file>...]
 #   Options come first, then the tests directory, then --files, which
@@ -595,16 +598,25 @@ if (( jobs > 1 )); then
     next=0
     finished=0
 
-    # A signal stops every running job's whole process group: the same
-    # signal first, so a suite's own trap can clean up, then, for whatever
-    # is still there 5 seconds later, KILL. The EXIT trap then removes
-    # $RUN_ROOT.
-    on_interrupt() {
-        local sig="$1" code="$2" pids=("${!job_of[@]}") p watchdog
-        trap - INT TERM HUP
-        echo "" >&2
-        echo "run_script_tests: interrupted (SIG$sig); stopping ${#pids[@]} running suite(s)" >&2
+    # now_us: the time in microseconds (EPOCHREALTIME without its point,
+    # whatever the locale's decimal separator).
+    now_us() { printf '%s' "${EPOCHREALTIME//[!0-9]/}"; }
+
+    # stop_suites <sig>: stop every running suite's whole process group.
+    # <sig> first, so a suite's own trap, and those of the processes it
+    # started, can clean up; they have until 5 seconds after <sig> was
+    # sent. KILL goes to whatever is left in those groups then, and not
+    # before: a suite that has exited may leave a child still cleaning up
+    # in its group, and that child is given the same 5 seconds. A watchdog
+    # sends the KILL while the runner waits for a suite that ignores <sig>.
+    stop_suites() {
+        local sig="$1" pids=() p watchdog t_end left
+        for p in "${!job_of[@]}"; do
+            kill -0 -- "-$p" 2>/dev/null && pids+=("$p")
+        done
+        (( ${#pids[@]} )) || return 0
         for p in "${pids[@]}"; do kill -s "$sig" -- "-$p" 2>/dev/null; done
+        t_end=$(( $(now_us) + 5000000 ))
         set -m
         (
             sleep 5
@@ -612,11 +624,30 @@ if (( jobs > 1 )); then
         ) </dev/null >/dev/null 2>&1 &
         watchdog=$!
         set +m
-        [[ ${#pids[@]} -eq 0 ]] || wait "${pids[@]}" 2>/dev/null
+        wait "${pids[@]}" 2>/dev/null
+        # The suites have exited; what they started may still be in their
+        # groups, cleaning up. Wait for it, up to the same deadline.
+        while (( $(now_us) < t_end )); do
+            left=0
+            for p in "${pids[@]}"; do
+                kill -0 -- "-$p" 2>/dev/null && { left=1; break; }
+            done
+            (( left )) || break
+            sleep 0.1
+        done
         kill -s KILL -- "-$watchdog" 2>/dev/null
-        # A process a suite started that outlived the suite is still in
-        # the suite's group; the group cannot be reused while it exists.
+        # The deadline has passed for whatever is still there.
         for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
+    }
+
+    # A signal stops every running suite (stop_suites) with that signal;
+    # the EXIT trap then removes $RUN_ROOT.
+    on_interrupt() {
+        local sig="$1" code="$2"
+        trap - INT TERM HUP
+        echo "" >&2
+        echo "run_script_tests: interrupted (SIG$sig); stopping ${#job_of[@]} running suite(s)" >&2
+        stop_suites "$sig"
         exit "$code"
     }
     trap 'on_interrupt INT 130' INT

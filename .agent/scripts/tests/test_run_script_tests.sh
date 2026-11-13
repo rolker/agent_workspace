@@ -21,7 +21,7 @@
 # and (v) the job pool: the job count and the argument order, hidden and
 # shown output, unmixed failure output, every suite run and the exit code
 # by list order, attribution while suites overlap, trappable SIGINT and
-# SIGQUIT, the interrupt, and --shuffle.
+# SIGQUIT, the interrupt with its 5-second KILL backstop, and --shuffle.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -1411,7 +1411,8 @@ for sig in INT TERM; do
     kill -s "$sig" "$u8_runner"
     wait "$u8_runner"; rc=$?
     # The runner's own bound is 5 seconds before KILL; the suites would
-    # otherwise sleep for 30.
+    # otherwise sleep for 30. At SIGINT the sleeps, started with `&`,
+    # ignore it, so that run takes the 5 seconds.
     u8_secs=$(( $(date +%s) - u8_t0 ))
     u8_alive=""
     for _ in $(seq 1 50); do
@@ -1429,6 +1430,103 @@ for sig in INT TERM; do
     fi
     for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 done
+
+# u8_start <dir> <info-file>: start the runner at -j 2 on <dir> in a group
+# of its own with SIGINT at its default, as above, and wait up to 10
+# seconds for the suite to write <info-file>. Sets u8_runner.
+u8_start() {
+    rm -f "$2"
+    set -m
+    with_default_signals "$RUNNER" -j 2 "$1" > "$TMPD/u8.log" 2>&1 &
+    u8_runner=$!
+    set +m
+    for _ in $(seq 1 100); do
+        [[ -e "$2" ]] && break
+        sleep 0.1
+    done
+}
+# u8_alive_of <pid>...: those of the pids still running, after up to 5
+# seconds for them to go.
+u8_alive_of() {
+    local p alive=""
+    for _ in $(seq 1 50); do
+        alive=""
+        for p in "$@"; do kill -0 "$p" 2>/dev/null && alive+="$p "; done
+        [[ -z "$alive" ]] && break
+        sleep 0.1
+    done
+    printf '%s' "$alive"
+}
+
+# --- Case (u8), the KILL backstop: a suite that ignores SIGTERM, and the
+#     sleep it waits on (which inherits the ignore), are KILLed 5 seconds
+#     after the signal, not before, and the run still ends. ---
+U8B="$TMPD/case_u8b"
+mkdir -p "$U8B"
+write_checkpoint_stub "$U8B"
+make_stub "$U8B" test_deaf.sh "trap '' TERM
+sleep 30 &
+echo \"\$\$ \$! \$TMPDIR\" > '$TMPD/u8b_info.tmp' && mv '$TMPD/u8b_info.tmp' '$TMPD/u8b_info'
+wait"
+u8_start "$U8B" "$TMPD/u8b_info"
+u8_pids=()
+u8_root=""
+if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8b_info" 2>/dev/null; then
+    u8_pids=("$u8_suite" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+u8_t0=$(date +%s)
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_secs=$(( $(date +%s) - u8_t0 ))
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -eq 143 && $u8_secs -ge 4 && $u8_secs -le 10 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (${u8_secs}s), and the run's directory is removed"
+else
+    fail "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), cleanup time: the suite exits on SIGTERM at once; a
+#     process it started takes a second over its own cleanup. That process
+#     is not KILLed when the suite exits: its cleanup finishes, and the run
+#     ends without waiting out the full 5 seconds. ---
+U8C="$TMPD/case_u8c"
+U8C_DONE="$TMPD/u8c_cleaned"
+mkdir -p "$U8C"
+write_checkpoint_stub "$U8C"
+make_stub "$U8C" test_slowclean.sh "trap 'exit 0' TERM
+(
+    trap 'sleep 1; touch \"$U8C_DONE\"; exit 0' TERM
+    sleep 30 &
+    echo \"\$\$ \$BASHPID \$! \$TMPDIR\" > '$TMPD/u8c_info.tmp' && mv '$TMPD/u8c_info.tmp' '$TMPD/u8c_info'
+    wait
+) &
+wait"
+rm -f "$U8C_DONE"
+u8_start "$U8C" "$TMPD/u8c_info"
+u8_pids=()
+u8_root=""
+if read -r u8_suite u8_child u8_sleep u8_tmp < "$TMPD/u8c_info" 2>/dev/null; then
+    u8_pids=("$u8_suite" "$u8_child" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+u8_t0=$(date +%s)
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_secs=$(( $(date +%s) - u8_t0 ))
+# Checked as the runner exits: the cleanup must have finished by then.
+u8_cleaned=no
+[[ -e "$U8C_DONE" ]] && u8_cleaned=yes
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 3 && $u8_cleaned == yes && -z "$u8_alive" && $rc -eq 143 && $u8_secs -le 4 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (${u8_secs}s)"
+else
+    fail "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (rc=$rc, cleaned=$u8_cleaned, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
