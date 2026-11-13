@@ -60,3 +60,13 @@ issue: 459
 - [ ] Fold in the `findings` post-publish `## Local Review` reading and the merged-pull-request stale-box filtering as separate commits (same script, same boundary); split them off only if the plan review finds the PR too large.
 - [ ] Add a multi-pull-request section to `run-issue/SKILL.md` (`Part of #N` in the body, worktree and branch recreated after each merge, only the last pull request says `Closes #N`).
 - [ ] Sequence behind or rebase onto pull request 461 and name the shared regions of `dispatch_phase.sh` and its tests in the plan.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 09:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions are inputs to the plan; none changes the issue's scope by proceeding. The design question, action 1, is held for the owner and put to him at the plan checkpoint, with the plan's concrete proposal in front of him)
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to the plan. For the plan: (2) define the "a pull request ended here" boundary once, shared by dispatch_phase.sh and review_progress.sh, never reading a refused merge as a boundary, with tests for the refused-merge path and a restart-plus-merge timeline; ADR-0013 rules out a new entry type without a superseding ADR, so prefer a boundary derivable from existing entries, and say plainly if none is sound. (3) propose the post-merge route from the timeline and state it as the design question for the owner, with what it changes in docs/design.md#review-loop-and-timeline, how hard it is to undo, and a recommendation. (4) host decision: the findings reading of a post-publish Local Review rides along as its own atomic commit, since the issue names it; the stale-box filtering rides along only if it falls out of the same boundary with no extra mechanism, otherwise it is left out and noted. (5) a multi-pull-request section in run-issue's SKILL.md. (6) expect pull request 461 to merge first: plan against main plus 461's changes to dispatch_phase.sh and its tests.
