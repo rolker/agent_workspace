@@ -2777,7 +2777,7 @@ test_mr_stale_leaf_commit_and_tag() {
     local_c="$(git -C "$clone" rev-parse HEAD)"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "detached local commit, tag: exit 0" "0" "$rc"
-    assert_contains "detached local commit, tag: warned" "has commits on a detached HEAD that are on no branch or tag; resolved what is checked out, not tag 'rel'" "$out"
+    assert_contains "detached local commit, tag: warned" "has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them: each fetch removes the tags the source does not have); resolved what is checked out, not tag 'rel'" "$out"
     assert_eq "detached local commit, tag: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
     assert_contains "detached local commit, tag: resolved" "mark_detached" "$(cat "$gen/repos/core.repos")"
     assert_contains "detached local commit, tag: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
@@ -2792,6 +2792,30 @@ test_mr_stale_leaf_commit_and_tag() {
     assert_not_contains "on a branch: no warning" "WARNING" "$out"
     assert_eq "on a branch: the pin checked out" "$c1" "$(git -C "$clone" rev-parse HEAD)"
     assert_contains "on a branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+    mr_settings "$sb" "source=$url" "source_ref=rel"
+    run_mr "$sb" sync >/dev/null 2>&1
+
+    # From a tag to a branch: commits on the detached HEAD are kept, warned
+    # and recorded local, not orphaned by the switch; a tag made in the
+    # clone does not protect them (the fetch removes it).
+    write_mr_manifest "$clone/manifest.yaml" mark_to_branch
+    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet -am to-branch-local
+    local_c="$(git -C "$clone" rev-parse HEAD)"
+    git -C "$clone" tag mine
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "tag to branch, local commit: exit 0" "0" "$rc"
+    assert_contains "tag to branch, local commit: warned" "has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them" "$out"
+    assert_contains "tag to branch, local commit: names the branch" "not branch 'main'" "$out"
+    assert_eq "tag to branch, local commit: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
+    assert_eq "tag to branch, local commit: not switched" "" "$(git -C "$clone" branch --show-current)"
+    assert_eq "tag to branch, local commit: the clone's own tag removed by the fetch" "" "$(git -C "$clone" tag -l mine)"
+    assert_contains "tag to branch, local commit: resolved" "mark_to_branch" "$(cat "$gen/repos/core.repos")"
+    assert_contains "tag to branch, local commit: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
+    git -C "$clone" branch keep-to-branch "$local_c"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_contains "tag to branch, commit on a branch: switched" "source: switched to main" "$out"
+    assert_contains "tag to branch, commit on a branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
     mr_settings "$sb" "source=$url" "source_ref=rel"
     run_mr "$sb" sync >/dev/null 2>&1
 

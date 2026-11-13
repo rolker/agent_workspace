@@ -604,6 +604,22 @@ _rc_resolver_bin() {
     echo "$main/.venv/bin/ros-manifest"
 }
 
+# Is the clone's HEAD detached at commits on no branch, other than
+# <target> (what is about to be checked out)? A checkout would orphan
+# them. Tags count as holding commits only because the fetch has just made
+# the clone's tags the source's: a tag made in the clone is removed by it.
+_rc_detached_local_commits() {
+    local clone="$1" target="$2" head
+    git -C "$clone" symbolic-ref -q HEAD >/dev/null 2>&1 && return 1
+    head="$(git -C "$clone" rev-parse HEAD 2>/dev/null)" || return 1
+    [ "$head" = "$target" ] && return 1
+    [ -n "$(git -C "$clone" rev-list -n 1 HEAD --not --branches --tags --remotes 2>/dev/null)" ]
+}
+
+_rc_warn_detached_local() {  # <clone> <kind> <ref>
+    echo "WARNING: source: the manifest clone $1 has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them: each fetch removes the tags the source does not have); resolved what is checked out, not $2 '$3' (put them on a branch and push them, or drop them, then run sync)" >&2
+}
+
 # Fetch the leaf manifest (see the header above). Sets _RC_SRC_FILE (the
 # manifest file to resolve), _RC_SRC_COMMIT (the clone's commit; empty for
 # a path source) and _RC_SRC_STATE (clean, or local when what is resolved
@@ -697,6 +713,12 @@ _rc_source_fetch() {
                 return 1
             fi
             echo "source: checked out $ref at $(git -C "$clone" rev-parse --short HEAD)"
+        elif [ "$cur" != "$ref" ] \
+            && _rc_detached_local_commits "$clone" "$(git -C "$clone" rev-parse "origin/$ref")"; then
+            # Switching to the branch would orphan them, as for a tag or
+            # commit below.
+            _rc_warn_detached_local "$clone" branch "$ref"
+            _RC_SRC_STATE=local
         else
             if [ "$cur" != "$ref" ]; then
                 if git -C "$clone" show-ref --verify --quiet "refs/heads/$ref"; then
@@ -726,13 +748,11 @@ _rc_source_fetch() {
         else
             sha="$(git -C "$clone" rev-parse "$ref^{commit}")"
         fi
-        # Commits made on a detached HEAD and on no branch or tag would be
+        # Commits made on a detached HEAD and on no branch would be
         # orphaned by the checkout below: kept and warned, as local
         # commits on a branch are.
-        if [ "$fresh" -eq 0 ] && ! git -C "$clone" symbolic-ref -q HEAD >/dev/null 2>&1 \
-            && [ "$(git -C "$clone" rev-parse HEAD)" != "$sha" ] \
-            && [ -n "$(git -C "$clone" rev-list -n 1 HEAD --not --branches --tags --remotes 2>/dev/null)" ]; then
-            echo "WARNING: source: the manifest clone $clone has commits on a detached HEAD that are on no branch or tag; resolved what is checked out, not $kind '$ref' (put them on a branch and push them, or drop them, then run sync)" >&2
+        if [ "$fresh" -eq 0 ] && _rc_detached_local_commits "$clone" "$sha"; then
+            _rc_warn_detached_local "$clone" "$kind" "$ref"
             _RC_SRC_STATE=local
         elif ! git -C "$clone" checkout --quiet --detach "$sha"; then
             [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
