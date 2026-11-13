@@ -1202,8 +1202,23 @@ _gate_record() {  # <entry type> <one-line why>
 # idempotency check trivially always match (nothing to compare) or never
 # match (the SHA is identical by construction), neither of which is what
 # "same situation" means here. Owner's decision on #284.
+# Which of two **When** values is newer: prints "a", "b", or "doubt" for a
+# tie (the field has minute resolution) or a value that does not parse.
+_gate_newer_when() {  # <when a> <when b>
+    python3 - "$1" "$2" <<'PY' 2>/dev/null || echo doubt
+import sys
+from datetime import datetime
+try:
+    a, b = (datetime.strptime(v.strip(), "%Y-%m-%d %H:%M %z") for v in sys.argv[1:3])
+except ValueError:
+    print("doubt")
+else:
+    print("a" if a > b else "b" if b > a else "doubt")
+PY
+}
 _gate_already_recorded() {  # <entry type> <conditions text>
-    local etype="$1" why="$2" read_json rc=0 latest l_type l_cond l_sha
+    local etype="$1" why="$2" read_json rc=0 latest l_cond
+    local t_type="" t_cond="" t_when="" t_sha="" c_body="" c_type="" c_cond="" c_when="" newer=""
     if [[ -n "$_gate_progress" ]]; then
         read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Merge (report-only)" --type "Merge (unreviewed)" 2>/dev/null) || rc=$?
         [[ $rc -ne 0 ]] && return 1
@@ -1211,22 +1226,57 @@ _gate_already_recorded() {  # <entry type> <conditions text>
             '.entries | map(select(.correlation.kind == "pr" and (.correlation.pr|tostring) == $pr)) | last // empty' \
             <<<"$read_json" 2>/dev/null || echo "")
         if [[ -n "$latest" && "$latest" != "null" ]]; then
-            l_type=$(jq -r '.type' <<<"$latest")
-            l_cond=$(jq -r '.fields.Conditions // ""' <<<"$latest")
-            l_sha=$(jq -r '.correlation.sha // ""' <<<"$latest")
-            if [[ "$l_type" == "$etype" && "$l_cond" == "$why" ]]; then
-                echo "  ℹ️  already recorded at \`${l_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
+            t_type=$(jq -r '.type' <<<"$latest")
+            t_cond=$(jq -r '.fields.Conditions // ""' <<<"$latest")
+            t_when=$(jq -r '.fields.When // ""' <<<"$latest")
+            t_sha=$(jq -r '.correlation.sha // ""' <<<"$latest")
+        fi
+        if [[ "$_GATE_PKG_ROLE" != "owning" ]]; then
+            # A workspace or project PR: the timeline alone, as before.
+            if [[ -n "$t_type" && "$t_type" == "$etype" && "$t_cond" == "$why" ]]; then
+                echo "  ℹ️  already recorded at \`${t_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
                 return 0
             fi
+            return 1
         fi
-        # No match in the timeline. A workspace or project PR stops here, as
-        # before. An owning package PR's record can fall back to the PR
-        # comment while its checkout keeps a timeline (a commit hook that
-        # refuses the record, an undone push), so its comments are read
-        # too: such a record is posted once, not once per run.
-        [[ "$_GATE_PKG_ROLE" == "owning" ]] || return 1
-    fi
-    if [[ -n "$_gate_json" ]]; then
+        # An owning package PR's record can be in either store: its
+        # timeline, or the PR's comments when a record fell back there (a
+        # commit hook that refused it, an undone push). The newest record
+        # across both is the one compared, by the entries' own **When**
+        # (both stores carry the same entry text). A tie (the field has
+        # minute resolution) or a value that does not parse is doubt, and
+        # doubt records again rather than skip.
+        local c_json="${_gate_json:-}"
+        [[ -n "$c_json" ]] || c_json='{}'
+        c_body=$(jq -r '[.comments[]? | .body // ""] | map(select(startswith("## Merge (report-only)") or startswith("## Merge (unreviewed)"))) | last // empty' \
+            <<<"$c_json" 2>/dev/null || echo "")
+        if [[ -n "$c_body" ]]; then
+            c_type=$(head -n1 <<<"$c_body" | sed 's/^## //')
+            c_cond=$(grep -m1 '^\*\*Conditions\*\*: ' <<<"$c_body" | sed 's/^\*\*Conditions\*\*: //')
+            c_when=$(grep -m1 '^\*\*When\*\*: ' <<<"$c_body" | sed 's/^\*\*When\*\*: //')
+        fi
+        if [[ -z "$t_type" && -z "$c_type" ]]; then
+            return 1
+        elif [[ -n "$t_type" && -n "$c_type" ]]; then
+            newer=$(_gate_newer_when "$t_when" "$c_when")
+            if [[ "$newer" == doubt ]]; then
+                echo "  ℹ️  the newest record (timeline \`${t_when:-?}\` against PR comment \`${c_when:-?}\`) cannot be told apart — recording rather than skipping on doubt"
+                return 1
+            fi
+        elif [[ -n "$t_type" ]]; then
+            newer=a
+        else
+            newer=b
+        fi
+        if [[ "$newer" == a && "$t_type" == "$etype" && "$t_cond" == "$why" ]]; then
+            echo "  ℹ️  already recorded at \`${t_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
+            return 0
+        elif [[ "$newer" == b && "$c_type" == "$etype" && "$c_cond" == "$why" ]]; then
+            echo "  ℹ️  already recorded (as a PR comment), same conditions — skipping a duplicate ${etype} entry"
+            return 0
+        fi
+        return 1
+    elif [[ -n "$_gate_json" ]]; then
         latest=$(jq -r --arg h "## ${etype}" \
             '[.comments[]? | .body // ""] | map(select(startswith($h))) | last // empty' \
             <<<"$_gate_json" 2>/dev/null || echo "")

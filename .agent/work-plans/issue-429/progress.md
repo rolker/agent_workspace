@@ -2647,7 +2647,7 @@ The round-2 findings hold, except where noted:
   - Result: A is reset and a comment is posted. The record exists twice, and the next run finds A not containing origin.
   - Fix: test ancestry, not equality. This is a narrow race.
   - `.agent/scripts/merge_pr.sh:1110`
-- [ ] (suggestion) For an owning package PR, the duplicate check's comment fallback can match an older comment that a newer timeline entry superseded.
+- [x] (suggestion) For an owning package PR, the duplicate check's comment fallback can match an older comment that a newer timeline entry superseded.
   - Input:
     - Run 1, conditions X1: the push is refused, so the record becomes a comment.
     - Run 2, conditions X2: committed in the timeline.

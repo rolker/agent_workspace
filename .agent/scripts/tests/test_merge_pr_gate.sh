@@ -812,6 +812,55 @@ for shape in other-branch detached; do
     fi
 done
 
+echo "TEST: an owning PR's duplicate check compares with the newest record across the timeline and the PR's comments"
+# Run 1, conditions X1 (no decision summary): the push is refused, so the
+# record is a PR comment. Run 2, X2 (a summary added): committed in the
+# timeline. Run 3, X1 again. The comment's **When** is then set against the
+# timeline record's: older (the timeline is newest: X2, so run 3 records),
+# equal or unreadable (doubt: run 3 records), newer (the comment is newest
+# and matches X1: run 3 skips).
+for variant in older tie unreadable newer; do
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    F="$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+    hook="$sb/fake_remotes/github.com/owner/pkg_a.git/hooks/pre-receive"
+    printf '#!/bin/sh\nexit 1\n' > "$hook"; chmod +x "$hook"
+    out1="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    rm -f "$hook"
+    pkg_comments_to_fixture "$sb"
+    jq '.comments += [{"body":"## Decision summary\n\n**What changed**: x"}]' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+    out2="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    t_when=$(python3 "$sb/.agent/scripts/progress_read.py" "$A/.agent/work-plans/issue-901/progress.md" --type "Merge (report-only)" | jq -r '.entries[-1].fields.When')
+    case "$variant" in
+        older) c_when=$(python3 -c 'import sys,datetime as d; t=d.datetime.strptime(sys.argv[1],"%Y-%m-%d %H:%M %z")-d.timedelta(hours=1); print(t.strftime("%Y-%m-%d %H:%M ")+t.strftime("%z")[:3]+":"+t.strftime("%z")[3:])' "$t_when") ;;
+        newer) c_when=$(python3 -c 'import sys,datetime as d; t=d.datetime.strptime(sys.argv[1],"%Y-%m-%d %H:%M %z")+d.timedelta(hours=1); print(t.strftime("%Y-%m-%d %H:%M ")+t.strftime("%z")[:3]+":"+t.strftime("%z")[3:])' "$t_when") ;;
+        tie) c_when="$t_when" ;;
+        unreadable) c_when="soon" ;;
+    esac
+    jq --arg w "$c_when" '.comments |= map(select(.body | startswith("## Decision summary") | not)
+        | if (.body | startswith("## Merge")) then .body |= sub("\\*\\*When\\*\\*: [^\n]*"; "**When**: " + $w) else . end)' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+    head2=$(git -C "$A" rev-parse HEAD)
+    out3="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    n_tl=$(pkg_progress "$cont" | grep -c '^## Merge (report-only)$')
+    ok=true
+    [[ "$out1" == *"could not be pushed to origin (undone locally) — Merge (report-only) record posted as a comment"* ]] || ok=false
+    [[ "$out2" == *"entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed"* ]] || ok=false
+    [[ "$(jq -r '.comments[] | select(.body | startswith("## Merge")) | .body' "$F" | grep -m1 '^\*\*When\*\*: ')" == "**When**: $c_when" ]] || ok=false
+    if [[ "$variant" == newer ]]; then
+        [[ "$out3" == *"already recorded (as a PR comment), same conditions"* && "$n_tl" -eq 1 && "$(git -C "$A" rev-parse HEAD)" == "$head2" ]] || ok=false
+    else
+        [[ "$out3" != *"already recorded"* && "$out3" == *"entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed"* && "$n_tl" -eq 2 ]] || ok=false
+        if [[ "$variant" != older ]]; then [[ "$out3" == *"cannot be told apart — recording rather than skipping on doubt"* ]] || ok=false; fi
+    fi
+    if [[ "$ok" == true ]]; then
+        pass "(pkg-18 $variant) X1 as a comment, X2 in the timeline, X1 again with the comment $variant: $( [[ "$variant" == newer ]] && echo 'the newest record matches, skipped' || echo 'recorded')"
+    else
+        fail "(pkg-18 $variant) (c_when=$c_when t_when=$t_when n_tl=$n_tl out1=$(tail_of "$out1" 300) out2=$(tail_of "$out2" 300) out3=$(tail_of "$out3" 600))"
+    fi
+done
+
 echo "TEST: a stale approval in the owning checkout never passes: off the branch, or behind origin's branch"
 # The PR branch: H (code), R1 (approved at H), R2 (changes-requested at H);
 # origin and the PR head are at R2. A holds R1's timeline in four shapes.
