@@ -1286,3 +1286,83 @@ Scope: the three triage findings and the fix diff (d4a7750b, 7127cc81, 942a442c)
   - Floats: accept `^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$` with at most 15 significant digits, an integer part of at most 16 digits, and not `0.0000…`. This rule was checked against PyYAML on 178,646 random floats: 0 accepted values changed under `str()`, and no value of 15 digits or fewer that round-trips was refused.
   - Add these cases to the test.
   — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_type` and the refusal in `adapter_repo_pin`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 3 of 3)
+
+**PR**: #456 at `e361588d`
+**Addressed**: Local Review at `6807c9f4` (2026-11-12 19:00 -05:00)
+**Commits**: e361588d
+
+### Actions
+- [x] (must-fix) False refusal of round-tripping numbers. `_rc_yaml_plain_type` is now `_rc_yaml_plain_reading` and refuses only when YAML's reading changes the text (its comment names that rule).
+  - Kept unquoted: ints matching `^(0|-?[1-9][0-9]*)$`, and floats matching `^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$` with at most 15 significant digits, an integer part of at most 16 digits, and no `0.0000` start.
+  - Still refused: every other int or float, plus bool, null and indicator values.
+  - The error now says what vcstool would check out, e.g. "reads as the number 1.1, so vcstool would check out '1.1', not '1.10'".
+    - The replacement is exact where the shell can compute it: octal, hex, binary, `+`, `_`, a decimal with trailing or leading zeros, `.inf`/`.nan`, bool → `True`/`False`, null → `None`.
+    - Otherwise the message says it cannot confirm str() is the text.
+  - The helper also moved out from between `_rc_pin_kind` and its header comment.
+  - Cross-check, run while developing, against PyYAML 6.0.3 `safe_load` + `str()` on 4,060 values (fixed cases plus random floats, ints and octal-looking strings):
+    - no accepted value changes under `str()`, and no printed checkout differs from PyYAML's;
+    - 44 values were refused although they round-trip, all of them more than 15 significant digits, which the rule refuses on purpose.
+
+  Test `test_repo_pin_refuses_yaml_typed_plain_pins` covers:
+  - refused, each naming the reading and the checkout: `1.10`, `1.50`, `017`, `+5`, `1_000`, `0x1F`, `yes`, `Off`, `~`, `Null`, `.inf`, `1.5e+3`, `0.00001`, `!tag`, `&anchor`, `@x`;
+  - accepted unquoted: `2.0`, `1.0`, `1.5`, `0.3`, `2024`, `0`, `-5`, `1e+5`, a 40-digit all-decimal sha; `2.0` as a real branch gives `2.0	branch`;
+  - quoted `"1.10"` and `'1.10'` accepted, and the l1-quoted/l2-plain refusal unchanged.
+
+  Parser table rows added. ADR-0019 updated. — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_reading`, `adapter_repo_pin`
+
+The finding's box is checked by hand in the `## Local Review` entry: `review_progress.sh findings` takes only an Integrated Review or a Local Review (Pre-Push) as a source.
+
+### Parser input table (`test_repos_entries_parser_table`, both outputs checked)
+Text after `    version:` → value (default output, read by sync), the form `--detail` adds, and the `repo_pin` result:
+
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` pinned` | `pinned` | plain | ref |
+| ` fix#12` | `fix#12` | plain | ref |
+| ` fix # a comment` | `fix` | plain | ref |
+| ` "fix#12"` | `fix#12` | quoted | ref |
+| ` 'v1.0'` | `v1.0` | quoted | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | quoted | ref |
+| `  'v1.0'   ` | `v1.0` | quoted | ref |
+| `  # TODO pin` | empty | plain | refused, empty |
+| ` #main` | empty | plain | refused, empty |
+| (nothing) | empty | plain | refused, empty |
+| ` ""` | empty | quoted | refused, empty |
+| ` dev` + CRLF | `dev` | plain | ref |
+| ` "dev"` + CRLF | `dev` | quoted | ref |
+| ` dev # c` + CRLF | `dev` | plain | ref |
+| ` "fix` | `"fix` | plain | refused, quote |
+| ` fix'` | `fix'` | plain | refused, quote |
+| ` fi"x` | `fi"x` | plain | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | plain | refused, quote |
+| ` "main" extra` | `"main" extra` | plain | refused, quote |
+| ` "x\"y"` | `"x\"y"` | plain | refused, quote |
+| ` "main"#c` | `"main"#c` | plain | refused, quote |
+| ` "a\" #b"` | `"a\"` | plain | refused, quote/backslash |
+| ` "v\x31.0"` | `"v\x31.0"` | plain | refused, quote/backslash |
+| ` 'a\b'` | `a\b` | quoted | refused, backslash |
+| ` 1.10` | `1.10` | plain | refused: the number 1.1, checks out `1.1` |
+| ` "1.10"` | `1.10` | quoted | ref |
+| ` '1.10'` | `1.10` | quoted | ref |
+| ` yes` | `yes` | plain | refused: the bool True, checks out `True` |
+| ` ~` | `~` | plain | refused: null, checks out `None` |
+| ` 0x1F` | `0x1F` | plain | refused: the number 31 |
+| ` .inf` | `.inf` | plain | refused: the float inf |
+| ` !tag` | `!tag` | plain | refused, indicator |
+| ` 2024-01-01` | `2024-01-01` | plain | ref (a date round-trips) |
+| ` 2.0` (new) | `2.0` | plain | ref (str() gives `2.0`) |
+| ` 2024` (new) | `2024` | plain | ref (str() gives `2024`) |
+| ` 1.50` (new) | `1.50` | plain | refused: the number 1.5 |
+| ` 017` (new) | `017` | plain | refused: the number 15 |
+| no `version:` key | (left out) | none (only with `--detail`) | own message |
+
+`adapter_sync` and `adapter_validate` are untouched by this pass; the parser's default output is unchanged.
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
