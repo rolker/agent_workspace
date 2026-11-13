@@ -469,3 +469,22 @@ Checks:
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 19:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a35367fa94fedcbd1, resume 1 of 3)
+
+**PR**: #457 at `51e25fe9`
+**Sources**: 2 (Local Review @ `85e74304` (covers `51e25fe9` via bookkeeping), CI rollup); Copilot skipped (disabled for quota); 0 GitHub reviews, 0 inline comments, 0 conversation comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+CI at `51e25fe9` when checked (runs 43334474239, 43334466891): Validate Documentation passed in both runs. Lint (pre-commit), Validate Adapter Contract and ros-manifest tests had no conclusion yet in either run. No failure seen. This differs from the dispatch note, which reported six checks passed; the fetch at this head showed two.
+
+The prior finding (a `git var` failure reported as "(not set)") is resolved at `f61c1834`, checked against the diff. `ident_email` returns `(email, error)` and carries git's `fatal:` line. The hook reports an unresolved ident as its own error, prints git's text and exits 1, and "(not set)" is gone. A test covers `useConfigOnly` with no `user.name`; the re-review confirmed it fails on the parent commit. The Local Review @ `85e74304` approved with no findings: its single unchecked line, "No issues found. LGTM.", is a placeholder, not a finding. The `sources` helper marks the round-3 pre-push entry (`8a5f68ce`) stale, and this ruling closes its one finding as fixed.
+
+### Findings
+
+### False positives
