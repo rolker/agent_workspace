@@ -6,7 +6,7 @@ https://github.com/rolker/agent_workspace/issues/429
 
 ## Verdict first
 
-**Part 1 is merged (pull request 445, 2026-11-10); its text below is the record of what was done. Part 2 is in "Part 2 (detailed)" below. The verb of part 2 (2a steps 1 and 2, `repo_pin`, ADR-0019) is merged (pull request 456, 2026-11-12); the rest of 2a is next, then 2b (see "Revision of 2026-11-12").**
+**Part 1 is merged (pull request 445, 2026-11-10); its text below is the record of what was done. Part 2 is in "Part 2 (detailed)" below. The verb of part 2 (2a steps 1 and 2, `repo_pin`, ADR-0019) is merged (pull request 456, 2026-11-12), and so is the rest of 2a, the base-branch mechanism (pull request 460, 2026-11-13). What is left is 2b, the last pull request, which closes the issue (see "Revision of 2026-11-13").**
 
 **The small route holds, with five small changes in two pull requests.** The scripts already work from
 the checkout of the package repository that owns the issue: records resolve, entries commit there,
@@ -290,6 +290,45 @@ statement on this timeline's merge checkpoint that no such goal was recorded was
 Part 2 adds no GitHub call, and the table at the end gives, for every place part 2 touches a forge
 notion, whether plain git or the adapter answers and the exit for the rest.
 
+### Revision of 2026-11-13 (2a merged; every 2b step re-checked against main at `03d0bbfa`)
+
+**Merged:** 2a's rest as pull request 460 (2026-11-13). Steps 3 to 8 of 2a below stay as the record; their
+bracketed "As built" notes carry what its review rounds changed. Read the merged code and
+`docs/design.md#worktrees`, not this summary. Against the plan as first written, 460 changed: creating a
+new owning branch always resolves a base (`--base`, else the pin); a branch the workspace did not start
+gets a base only from `--base` after `wt_check_named_base`, never the pin; `--parent-issue` starts from
+the parent's branch and records it; `--branch` with `--layer` is refused; `wt_valid_branch_name`; the
+cleanup pulls `origin <base>` by name and prints "fetched only: <why>" otherwise; the pull-rule tests
+live in `test_merge_pr.sh`. Also already in main from 460: the cross-check (`merge_pr.sh` 846-850, only
+for `feature/issue-N`), `PKG_WT_BASE` read from the header and carried in `_PKG_MATCHES` (530, 543), and
+`PR_BASE_REF` (565-566).
+
+**2b, step by step (files and lines read on main now):**
+
+| Step | Status | Detail |
+|---|---|---|
+| 2b.1 gate reads and records in the owning checkout | **Unchanged in substance; lines moved** | Nothing of it is built: `_gate_wt` is still `$PKG_WT_DIR` (`merge_pr.sh` 708-711); the match loop reads `_m_rel` (494) but the record at 530 holds four fields (`dir project issue base`), so `PKG_OWN_REL` becomes a fifth (`-` when empty), read at 543, added to the `unset` at 548. `_gate_wt` becomes `$PKG_WT_DIR/$PKG_OWN_REL` when `PR_BRANCH` is `feature/issue-${ISSUE_NUM}` (the `records_path` call at 723 is unchanged). `-z "$PKG_WT_DIR"` guards must accept the owning case: `_ci_wt` (736), `_gate_record`'s repo test (880). The "carries no issue timeline" reason (761-762) is split: owning with no `progress.md` says so for A; a sibling gets the new "a sibling repository's pull request: this issue's records are in <A>" reason. Record commit via `progress_append.sh -C` (898) and `git push` (902) then run in A; the comment fallback at 924-925 stays for a sibling and for a refused push. The `test_merge_pr_gate.sh` flip is at 522 |
+| 2b.2 report-only stays | Unchanged | `docs/design.md#merge-gate` (668-686) unchanged in substance |
+| 2b.3 cleanup cases (a) to (d) | **All covered by 460 or existing tests; no case added** | (a) worktree removed, owning branch deleted: `test_merge_pr.sh` 263-292. (b) sibling with unmerged commits and no remote, branch kept and named: same test (pkg_b `wip` commit) and `test_sweep_reports_unmerged_local_branch` 727-751. (c) sibling with an open pull request keeps the worktree: `test_sibling_pr_open_keeps_worktree` 310. (d) the pull half is 460's: `test_own_repo_pulls_only_on_the_base` 469-529 (base pulls; other branch, dirty, detached, no base fetch only, not incomplete, banner), 531, 546. The planned `git branch -d` case is dropped (plan review of 2026-11-13, finding 3): the post-removal sweep (`merge_pr.sh` 1732-1760) is one loop over every manifest entry with no owning/sibling distinction, and `test_sweep_reports_unmerged_local_branch` already asserts "Kept local branch", git's "not fully merged" and the branch still present, so a new case would fail only together with those; the pull request description says so. Step 4 is 1581-1710 now, the sibling `gh pr list -R` check 1612, the kept-worktree message 1707 |
+| 2b.4 fixture name | Unchanged | `test_merge_pr_gate.sh` 430, 434, 511, 514 (read); mechanism comment `merge_pr.sh` 517 (was 512) and `run-issue/SKILL.md` 83. The follow-up issue text stays as drafted; its counts are as of part 1 (460 added `p11` lines to `test_merge_pr.sh`), so recount when it is opened |
+| 2b.5 end-to-end test | **Adjusted (base step added; later-merging pull request)** | Append case 14 to `test_package_issue_loop.sh` (946 lines, cases 1 to 13; case 12 creates with `--base pinned`, case 13 resumes, and a publish check at 820-831 shows `--repo owner/pkg_a --base pinned`). Flow as in the step, with `--base pinned` at creation, `base=pinned` in the header, the stubbed `pr view` returning `baseRefName`: `pinned` (the cross-check silent) and, in a second run, `main` (one reason). Add: `fetch_pr_reviews.sh --pr <M>` from A reads `repos/owner/pkg_a/...` (the review-reading half of the issue). The gate flip at `test_merge_pr_gate.sh` 522 (record lands in A, main tree and container untouched). Re-run `test_package_issue_loop.sh`, `test_merge_pr_gate.sh`, `test_merge_pr.sh`, `test_records_write_gate.sh` (static scan: 2b adds no committer of work-plans paths) |
+| 2b.6 texts | **Adjusted (line numbers; more to drop)** | `run-issue/SKILL.md`: Scope is 954-980 (the "does not guard a write from outside any worktree" sentence at 974-975 is false since issue 437 and goes; the section intro "does not cover" is reworded since the entries now say what is supported); step 11's "Until the merge gate reads ..." sentence is at 873-876. `docs/design.md`: 476-478 ("`merge_pr.sh` does not read that timeline yet ... (lines 871 and 925)"; the code is at 898 and 924 already, off before 2b), the `merge_pr.sh` row at 384 and the mechanism-1 citation at 553 are refreshed after the code edit; Merge gate bullets, Records bullet, change-log row. `script_reference.md` row 38 (`merge_pr.sh`) gains "the gate reads and records the owning pull request in the owning checkout" |
+| 2b.7 the base of the pre-push review and the behind-check (new; plan review of 2026-11-13 finding 1, host decision at the checkpoint, option 1) | **New** | Read: `skill_task_line` in `dispatch_phase.sh` builds the pre-push task line (435, `/review-code --branch --issue $issue`) and the handoff already prints `base=` (531, 565), but `review-code` never reads it and falls to `resolve_default_branch` (SKILL 134-142), which prefers a local default branch name. `review-code` already accepts `--branch <base-ref>` (SKILL 43, 125-151) and passes it to `cross_model_review.sh --branch <base>` (402), but does not say the two must agree. `check_branch_updates.sh` takes only `--strict` as `$1` (compares with the default branch, 38-43, 78), has no test suite, and has two other callers (`worktree_enter.sh` 458, the pre-commit hook `check-branch-updates.py`) that must keep working with no argument. Run-issue step 8 says "merge main into the branch": for a pin that is not the default branch the host would merge the default branch into a branch started from the pin, putting unrelated commits into the package pull request. PR-mode `review-code <M>`, `triage-reviews` and `fetch_pr_reviews.sh` read the pull request through `gh` in A and carry no such assumption. Steps: (i) `dispatch_phase.sh`: for `review-code` with no `--pr` and a recorded package base, emit `/review-code --branch origin/<base> --issue N` (`origin/`: the local `<base>` in A may be absent or stale); no base: unchanged. (ii) `check_branch_updates.sh`: real argument parsing for `[--strict] [--base <branch>]`; with `--base` the branch replaces the default in the on-branch shortcut, the fetch, the counts and the recommendations; no argument: behaves as now. (iii) `run-issue/SKILL.md` step 8: `check_branch_updates.sh --base <base>` for a package issue and \"merge `origin/<base>`\"; `main` for every other issue. (iv) `review-code/SKILL.md` branch mode: one sentence, the `cross_model_review.sh --branch` call takes the same base step 1b resolved. (v) `.agent/knowledge/script_reference.md` row 34. Tests: `test_dispatch_phase.sh` or `test_package_issue_loop.sh` asserts the task line with `origin/pinned` for a package worktree and the unchanged line for a workspace one; `test_package_issue_loop.sh` runs step 8's block (extracted from SKILL.md the way the publish check at 815-831 does) in A with origin `pinned` ahead and `main` further ahead, asserting it reports behind `pinned` by the right count and names `origin/pinned`, and that a bare call still compares with the default. About 5 files and 80 lines |
+
+**Acceptance of the issue, each line and where it is met** (issue 429 as read with `gh issue view 429`):
+
+| Line | Met by |
+|---|---|
+| Needed 1: a session at the project root runs `/run-issue` on a package issue; worktree creation, dispatch, review, publish and merge act on that repository | Creation, dispatch, `where`, publish `-R`, merge `--pr owner/repo#M`: 445. Start point and base: 456, 460. Merge gate and cleanup on the package: 2b.1, 2b.3. Shown together: 2b.5 |
+| Needed 2: one place says where the plan and `progress.md` live; the merge gate finds them | The place: 445 (`issue_checkout_of`, guard, `docs/design.md#worktrees` Records). The gate finding them: 2b.1 |
+| Needed 3: the pull request targets the package repository | `gh_create_pr.sh -R` (445), `--base` (460) |
+| Needed 3: the review reads the package's diff | PR-mode review, triage and review fetching: 445 (they read the pull request through `gh` in A, whose repository `where` checks). Pre-push review and the behind-check, which judged the default branch whatever the pin: 2b.7 |
+| Needed 4: a synthetic multi-repository sandbox in the script tests, no real project | 445 (`test_package_issue_loop.sh` cases 1 to 10), 456, 460 (cases 11 to 13, `test_merge_pr.sh`); the merge half: 2b.5 |
+| Acceptance 1: reaches the merge checkpoint without hand steps | Testable and tested: the scripts and the SKILL blocks, walked step by step for a package issue (steps 1 to 4, 7, 9, 10 and 11 by 445, 460 and 2b.1, 2b.5; step 8 and the pre-push review base by 2b.7). Not testable: the Agent tool's working directory and how a sub-agent reads prose (Estimated Scope, "Not tested") |
+| Acceptance 2: the Scope entries for package worktrees and `--type project` are rewritten | Rewritten in 445 and extended in 460; 2b.6 finishes them (drops the false sentence and the "until the gate reads" text) |
+
+**Decided (plan review of 2026-11-13, host checkpoint "revise"): option 1, as step 2b.7.** Only the pre-push review and the behind-check judged the default branch, and only when the pin is not the default branch; the question text is withdrawn.
+
 ### What I found when reading the merged code (the facts the steps rest on)
 
 - **A package branch is cut from the repository's default branch.** `_wt_add_repo` starts a new branch at
@@ -348,7 +387,7 @@ unchanged.
 
 ### Pull request 2a: the base branch and the verb
 
-**Steps 1 and 2 are merged (pull request 456, 2026-11-12); their text is the record. As built: `repo_pin <repo> [--layer <l>]`, ADR-0019 (a new ADR with a Status note on ADR-0011, not an amendment of its table), review rounds added the `--detail` output of `_rc_repos_entries`, the YAML-typing refusals and the bounded-git helper. Steps 3 to 8 remain, re-checked in "Revision of 2026-11-12" above.**
+**All of 2a is merged: steps 1 and 2 as pull request 456 (2026-11-12), steps 3 to 8 as pull request 460 (2026-11-13). Their text is the record; the bracketed "As built" notes carry what review rounds changed.** Steps 1 and 2 as first recorded: As built: `repo_pin <repo> [--layer <l>]`, ADR-0019 (a new ADR with a Status note on ADR-0011, not an amendment of its table), review rounds added the `--detail` output of `_rc_repos_entries`, the YAML-typing refusals and the bounded-git helper. Steps 3 to 8 remain, re-checked in "Revision of 2026-11-12" above.**
 
 1. **`repo_pin <repo>` as a REQUIRED verb every project type implements.** `adapter`: `REQUIRED_VERBS` gains
    `repo_pin` (13), its header comment and usage. `validate_adapter.sh` then asserts it for every type.
@@ -469,7 +508,7 @@ unchanged.
 
 ### Pull request 2b: the gate, the end-to-end test, the Scope text
 
-Needs nothing from 2a; the end-to-end test's base step is added by whichever of the two merges second.
+2a has merged (460), so 2b is the later-merging pull request and adds the end-to-end test's base step. Re-checked against main on 2026-11-13: see "Revision of 2026-11-13" for each step's status and lines; the steps below are the original text with the adjustments noted there.
 
 1. **The gate reads and records in the owning checkout.** The manifest scan in `merge_pr.sh` already
    matches the entry by branch and slug; keep its relative path (`_m_rel`) as `PKG_OWN_REL` instead of
@@ -587,16 +626,17 @@ fallback to a pull-request comment. Rows with "none today" are the input to the 
 | `.agent/scripts/tests/test_package_issue_loop.sh` (new, `chmod +x`) | Synthetic sandbox cases 1-6 | 1 |
 | `docs/design.md`, `.agent/knowledge/script_reference.md` | Records bullet, script rows, change log | 1 |
 | `.agent/scripts/adapter`, `.agent/scripts/validate_adapter.sh`, both adapters' `adapter.sh`, `docs/decisions/0011-*.md`, `docs/decisions/0019-*.md` | `repo_pin` as the 13th required verb; ADR-0019 (Status note on ADR-0011). **Merged, pull request 456** | 2a (merged) |
-| `.agent/scripts/_pr_base.sh` (new, sourced), `.agent/scripts/dispatch_phase.sh` | `pr_base_for`; `base` subcommand; `base=` in the handoff | 2a |
-| `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` | `--base`; strict start path in `_wt_add_repo`; `base=` header; un-anchored `layer=` reader; `WT_MANIFEST_BASE` | 2a |
-| `.agent/scripts/merge_pr.sh` | Base cross-check reason (`baseRefName`, `base=` in the `_PKG_MATCHES` record); cleanup pull only when clean and on the base | 2a |
-| `.claude/skills/run-issue/SKILL.md`, `.claude/skills/start-task/SKILL.md` | `--base`, step 1 `base`, publish `--base`; start-task's argument note lists `--base` as creation-only | 2a |
-| `.agent/scripts/tests/test_worktree_create.sh`, `test_package_issue_loop.sh`, `test_dispatch_phase.sh`, `test_merge_pr.sh` | Strict path and header cases; `base` before and after creation, resume and publish; no package base; the cleanup pull rule and the cross-check (no new suite file; the verb's cases in `test_adapter.sh` and `test_ros2_colcon.sh` merged in 456) | 2a |
-| `docs/design.md`, `.agent/knowledge/script_reference.md`; `docs/decisions/0012-*.md` (cross-reference addendum only) | `base=` and the start-point rule in `docs/design.md#worktrees`, rows, change log; ADR-0012 addendum | 2a |
+| `.agent/scripts/_pr_base.sh` (new, sourced), `.agent/scripts/dispatch_phase.sh` | `pr_base_for`; `base` subcommand; `base=` in the handoff | 2a (merged, 460) |
+| `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` | `--base`; strict start path in `_wt_add_repo`; `base=` header; un-anchored `layer=` reader; `WT_MANIFEST_BASE` | 2a (merged, 460) |
+| `.agent/scripts/merge_pr.sh` | Base cross-check reason (`baseRefName`, `base=` in the `_PKG_MATCHES` record); cleanup pull only when clean and on the base | 2a (merged, 460) |
+| `.claude/skills/run-issue/SKILL.md`, `.claude/skills/start-task/SKILL.md` | `--base`, step 1 `base`, publish `--base`; start-task's argument note lists `--base` as creation-only | 2a (merged, 460) |
+| `.agent/scripts/tests/test_worktree_create.sh`, `test_package_issue_loop.sh`, `test_dispatch_phase.sh`, `test_merge_pr.sh` | Strict path and header cases; `base` before and after creation, resume and publish; no package base; the cleanup pull rule and the cross-check (no new suite file; the verb's cases in `test_adapter.sh` and `test_ros2_colcon.sh` merged in 456) | 2a (merged, 460) |
+| `docs/design.md`, `.agent/knowledge/script_reference.md`; `docs/decisions/0012-*.md` (cross-reference addendum only) | `base=` and the start-point rule in `docs/design.md#worktrees`, rows, change log; ADR-0012 addendum | 2a (merged, 460) |
 | `.agent/scripts/merge_pr.sh` | Gate reads and records in the owning checkout (`PKG_OWN_REL` carried in the `_PKG_MATCHES` record); sibling reason | 2b |
 | `.agent/scripts/tests/test_merge_pr_gate.sh` | Flip the package expectation; owning and sibling cases; rename the fixture project to `demo`. The cleanup cases (a) to (d) belong in `test_merge_pr.sh`, beside its existing sibling and sweep cases (plan review of 2026-11-12, note 1; check for duplicates first) | 2b |
 | `.agent/scripts/tests/test_package_issue_loop.sh` | End-to-end case from creation to the merge call | 2b |
 | `.claude/skills/run-issue/SKILL.md`, `docs/design.md`, `.agent/knowledge/script_reference.md` | Scope, step 11, Records and Merge gate text, `merge_pr.sh` row, change log | 2b |
+| `.agent/scripts/dispatch_phase.sh`, `.agent/scripts/check_branch_updates.sh`, `.claude/skills/review-code/SKILL.md`, `.claude/skills/run-issue/SKILL.md` step 8, `.agent/knowledge/script_reference.md` rows 34 (and the `dispatch_phase.sh` row), `test_dispatch_phase.sh` or `test_package_issue_loop.sh` | The base of the pre-push review and the behind-check (2b.7) | 2b |
 
 ## Serves
 
@@ -699,17 +739,13 @@ Part 2 (decided from `docs/principles.md` and `docs/design.md`; undo cost in bra
 
 ## Open Questions
 
-None. The "run removes only what it made" rule is found (it concerns undoing a failed creation) and the
+None from the revision of 2026-11-13 (the base of the pre-push review is decided: step 2b.7). The "run removes only what it made" rule is found (it concerns undoing a failed creation) and the
 follow-up issue text is drafted above for the owner to allow. The rows marked "none today" in the
 GitHub-bound table are the owner's discussion, not a question about this plan.
 
 ## Estimated Scope
 
-Four pull requests in all. Two are merged: part 1 (pull request 445; about 17 files) and the verb, the first
-part of 2a (pull request 456; about 5 files). Still to build, one after the other in this worktree (2a first;
-"Revision of 2026-11-12"): **2a, the rest** (about 11 files, 500 lines: the base resolver, the strict start
-path, the header, the cross-check and the cleanup pull rule, run-issue, tests, base texts) and **2b** (about
-8 files, 300 lines: gate, cleanup tests, end-to-end test, Scope and gate texts). Issue 437 has merged.
+Four pull requests in all. Three are merged: part 1 (pull request 445; about 17 files), the verb (456; about 5 files) and 2a's rest (460). Left, and the last, closing the issue: **2b**. 2b is about 12 files and 400 lines: gate, end-to-end test with the base step, Scope and gate texts, and the base of the pre-push review and behind-check (2b.7, about 5 files and 80 lines); no new cleanup case. Issue 437 has merged.
 
 Not tested, and why:
 

@@ -2079,3 +2079,1302 @@ Repeat triage after the documentation fix 9bc5f3ee and its re-review. The previo
 **Decision**: merge
 
 Merge (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 06:04 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `51766e95`
+
+Revision after 2a merged (pull request 460): 2a marked merged with what review changed; 2b re-checked against main, with cleanup cases (a) to (c) and the pull half of (d) already covered, one case left; acceptance table added. One open question: the pre-push review and the behind-check use the default branch, not the pin.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 06:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `51766e95`
+**Branch**: `feature/issue-429`
+
+Scope: the "Revision of 2026-11-13" refresh for pull request 2b only, checked against main at `03d0bbfa` (origin/main is the same commit).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2b is about 8 files; with the base step below about 12 files, still one pull request. Every line citation for 2b.1 checked and correct: `_gate_wt` 708-711, match loop `_m_rel` 494, four-field record 530, read 543, `unset` 548, `records_path` 723, `_ci_wt` 736, reason 761-762, `_gate_record` repo test 880, `progress_append.sh -C` 898, push 902, comment fallback 924-925, cross-check 846-850, `PR_BASE_REF` 565-566, Step 4 at 1581, sibling `gh pr list` 1612 (plan says 1597: the loop starts there), kept message 1707 |
+| Issue alignment | Needs work | Acceptance table is right except row "Needed 3: the review reads the package's diff", which is stated too broadly as "not met" (finding 2). Plan's Serves line, as checked: "Workspace goal `README.md#easy-to-use` ... `README.md#flexibility` ... Design: `docs/design.md#worktrees` (Records) and `docs/design.md#review-loop-and-timeline` (`docs/design.md#merge-gate`)"; all anchors exist (README 60, 88; design 429, 571, 657) |
+| File targeting | Needs work | 2b's files are right for the gate. The base step, if taken, touches files the plan does not list: `dispatch_phase.sh` (the task line, not run-issue), `check_branch_updates.sh`, `review-code/SKILL.md`, `script_reference.md` row 34 (finding 1) |
+| Consequences | Good | Line-citation refresh in `docs/design.md` 476-478 (already stale: says 871/925, code is 898/924), 384, 553 is listed; run-issue step 11 sentence (872-876) and the false Scope sentence (974-975) are listed |
+| Principle alignment | Good | "Test what breaks": the gate flip and end-to-end case pin the change. Finding 3 removes a test that would not fail independently |
+| ADR compliance | Good | ADR-0003 (fixture rename `p11` to `demo`, 2b.4; lines 430, 434, 511, 514 confirmed), ADR-0012/0013/0017 as in the plan; nothing new triggered |
+| ROS conventions | N/A | Workspace plan |
+
+### Verified "already done by 460" claims
+
+- Cross-check at `merge_pr.sh` 846-850, owning branch only: confirmed.
+- `PKG_WT_BASE` read from the header (`_hdr_base`, 512) and carried in `_PKG_MATCHES` (530, 543): confirmed.
+- `PR_BASE_REF` from `baseRefName` in the same `gh pr view` (559, 565-566): confirmed.
+- Cleanup (a) `test_qualified_pr_ref_resolves_package_worktree` 263-292, (b) its pkg_b `wip` commit and `test_sweep_reports_unmerged_local_branch` 727-751, (c) `test_sibling_pr_open_keeps_worktree` 310, (d) pull half `test_own_repo_pulls_only_on_the_base` 469-529, 531, 546: all confirmed.
+- `test_package_issue_loop.sh` is 946 lines, cases 1-13, case 12 creates with `--base pinned`, case 13 resumes, publish check 815-831 asserts `--repo owner/pkg_a --base pinned` from A: confirmed.
+- Gate fixture at `test_merge_pr_gate.sh` 503-526 with the "package worktrees carry no issue timeline" assertion at 522; `AGENT_NAME`/`AGENT_EMAIL` are exported at 35-36, so after the flip the record really can commit in A: confirmed.
+
+### Findings
+
+1. **[Issue alignment / File targeting] (must-fix) Take option 1, but it is not "two call sites in run-issue and a test".** What I read: (a) the pre-push task line is built by `dispatch_phase.sh` `skill_task_line` (435: `/review-code --branch --issue $issue`), not by run-issue; the handoff already prints `base=$pkg_base` (531, 565) but review-code's SKILL never reads a `base=` line, so the sub-agent falls to `resolve_default_branch` (review-code SKILL 134-142), which prefers a *local* default branch name. (b) `review-code` already accepts `--branch <base-ref>` (SKILL 43, 125-151) and passes it to `cross_model_review.sh --branch <base>` (402; that script verifies local `<base>` first, then `origin/<base>`, 848-855), but the SKILL's text does not say the cross-model call must get the same base as step 1b. (c) `check_branch_updates.sh` takes only `--strict` as `$1`, has no test suite, and has two other callers (`worktree_enter.sh` 458, pre-commit hook `check-branch-updates.py`) that must keep working with no argument. (d) run-issue step 8 says "merge main into the branch": for a pin that is not the default branch the host would merge the default branch into a feature branch started from the pin, putting unrelated commits into the package pull request (a silent harm, worse than a wrong review). PR-mode `review-code <M>` (`gh pr diff`), `triage-reviews` and `fetch_pr_reviews.sh` read the pull request through `gh` in A, whose repository `where` checks, so they carry no default-branch assumption. The exact step: **2b.7** (i) `dispatch_phase.sh`: read `pkg_base` before the task line (or rewrite it after) and, for `review-code` with no `--pr` and a package base, emit `/review-code --branch origin/<base> --issue N` (`origin/`: the local `<base>` in A may be absent or stale, the plan's own finding on the parent-branch path); no base: unchanged. (ii) `check_branch_updates.sh`: real argument parsing for `[--strict] [--base <branch>]`; with `--base` it uses that branch in place of the default for the on-branch shortcut, the fetch, the counts and the recommendations; no argument: unchanged. (iii) run-issue step 8: run `check_branch_updates.sh --base <base>` for a package issue, and "merge `origin/<base>`" (main for every other issue). (iv) review-code SKILL step 5e/branch mode: one sentence, the cross-model call takes the same base step 1b resolved. (v) `script_reference.md` row 34. Tests: `test_dispatch_phase.sh` or `test_package_issue_loop.sh` asserts the task line with `origin/pinned` for a package worktree and the unchanged line for a workspace one; `test_package_issue_loop.sh` runs step 8's block (extracted from SKILL.md the way the publish check at 815-831 does) in A with origin `pinned` ahead and `main` further ahead, asserting it reports behind `pinned` by the right count and names `origin/pinned`, and that a bare call still compares with the default. About 5 files and 80 lines more.
+2. **[Issue alignment] (should-fix) Acceptance row "Needed 3: the review reads the package's diff" is stated too broadly.** PR-mode review, triage and review fetching already read the package pull request (445, `where`'s `gh repo view` check); only the pre-push review and the behind-check judge the default branch, and only when the pin is not it. Re-state the row as met by 445 for PR mode and by 2b.7 for branch mode, so the closing pull request does not overclaim or underclaim.
+3. **[Principle alignment] (should-fix) Drop the planned `git branch -d` case; it duplicates existing assertions.** The post-removal sweep (`merge_pr.sh` 1732-1760) is one loop over every manifest entry with no owning/sibling distinction; `test_sweep_reports_unmerged_local_branch` (727-751) already asserts "Kept local branch", git's "not fully merged" and the branch still present for an entry whose remote is gone, and the "fetched only" half is the `other` setup of `test_own_repo_pulls_only_on_the_base`. A new case would fail only together with those. The plan already allows dropping it; do so and say why in the pull request.
+4. **[Issue alignment] (should-fix) Acceptance line 1, "untestable", should name what is testable.** Walking run-issue steps 1-11 for a package issue against the merged scripts: steps 1 (user tier, `base`, start-task, `where`), 2 (`gh pr list` in A), 3-4 (`next`, handoff, `check-exit` on A's timeline), 7 (publish `-R --base`, tested), 9 (`fetch_pr_reviews.sh` in A, 2b.5 adds it), 10 (pushes from A) and 11 (`merge_pr.sh --pr owner/repo#M` from the root; gate and record in A once 2b.1 lands) need no hand. The hand steps found are step 8 (the host has to know not to merge `main`) and the pre-push review base, both closed by finding 1; both are script or SKILL-block behaviour and testable. Only the Agent-tool working directory and how a sub-agent reads prose stay untested. Say so in the table.
+5. **[Consequences] (nit) Line citation.** 2b.3 says the sibling check is at 1597; the `gh pr list -R` call is 1612 (1597 is the loop's comment block). Also `docs/design.md` 476-478 cites 871 and 925, which are already off (898 and 924) before 2b; the refresh will fix both.
+
+### Summary
+
+The 2b refresh is accurate against main: every line and every "done by 460" claim checks out, and the gate change (2b.1) is correctly placed. It needs one added step before implementation: option 1 for the base of the pre-push review and the behind-check, which is the issue's own "the review reads the package's diff" line and the only hand step a real run with a non-default pin would still hit; its real size is about five files (the task line lives in `dispatch_phase.sh`, `check_branch_updates.sh` needs real argument parsing, step 8 says "merge main"), still small.
+
+### Recommended Actions
+
+- [ ] Add 2b.7 as in finding 1 (`dispatch_phase.sh` task line `--branch origin/<base>`, `check_branch_updates.sh --base`, run-issue step 8 text and block, review-code SKILL sentence for the cross-model base, `script_reference.md` row 34) with the tests named there
+- [ ] Restate the acceptance rows for "Needed 3" and "Acceptance 1" per findings 2 and 4
+- [ ] Drop the `git branch -d` cleanup case as a duplicate of `test_sweep_reports_unmerged_local_branch` (finding 3)
+- [ ] Fix the 2b.3 sibling-check citation (finding 5)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work: one missing step; first revise at this checkpoint since the last proceed)
+**After**: plan
+**Decision**: revise
+
+Open question decided: option 1, as the review's step 2b.7 gives it. The issue's own text asks that the review read the package's diff, and run-issue step 8 as written would merge the default branch into a branch started from the pin. So: (i) dispatch_phase.sh emits "/review-code --branch origin/<base> --issue N" for a pre-push review of a package issue with a recorded base, unchanged otherwise; (ii) check_branch_updates.sh takes [--strict] [--base <b>], with no argument behaving as now for its other callers; (iii) run-issue step 8 uses the base for a package issue and merges origin/<base>; (iv) review-code's SKILL says the cross_model_review.sh --branch call takes the base step 1b resolved; (v) script_reference.md; with the two tests the review names. Also: narrow the acceptance row to what is really unmet (only the pre-push review and the behind-check, only when the pin is not the default branch); drop the planned git branch -d case (already asserted); say in acceptance line 1 what is testable; fix the two line citations.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 06:09 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `a68a3d74`
+
+Revision after the plan review (needs-work) and the host's revise: added step 2b.7 (base of the pre-push review and the behind-check), narrowed the two acceptance rows, dropped the git branch -d case, fixed the two line citations, updated the Files table and Estimated Scope.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 06:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `a68a3d74`
+**Branch**: `feature/issue-429`
+
+Scope: convergence review of the revision after the plan review of 06:07 and the host's revise checkpoint of 06:09. Checked against main at `03d0bbfa` (origin/main; the branch adds only plan and progress commits on top).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2b is now about 12 files; 2b.7 adds about 5 files. Still one pull request |
+| Issue alignment | Good | Every checkpoint item is applied: 2b.7 added with (i)-(v) and both tests as decided; "Needed 3" row narrowed to the pre-push review and behind-check only (PR mode met by 445); Acceptance 1 now names what is testable (steps 1-4, 7, 9-11, and 8 plus the pre-push base via 2b.7) and what is not; `git branch -d` case dropped in 2b.3 with the reason; citations fixed (sibling `gh pr list -R` at 1612; design 476-478 noted as already off, 898/924). Open question withdrawn, Open Questions says none. Serves line, as checked: "Workspace goal `README.md#easy-to-use` ... `README.md#light-touch-on-projects` ... `README.md#flexibility` ... Design: `docs/design.md#worktrees` (Records) and `docs/design.md#review-loop-and-timeline` (pull request 2: `docs/design.md#merge-gate`)" (unchanged since the last review, anchors confirmed then) |
+| File targeting | Good | Files table gains the 2b.7 row (`dispatch_phase.sh`, `check_branch_updates.sh`, review-code and run-issue SKILLs, `script_reference.md` rows 34 and 51, a test suite) |
+| Consequences | Good | One nit (finding 1). `docs/design.md` names neither `check_branch_updates.sh` nor the pre-push base, so 2b.7 changes no design section |
+| Principle alignment | Good | "Test what breaks": the task-line assertion and the extracted step-8 block run in A pin both halves; a bare call is asserted unchanged |
+| ADR compliance | Good | Nothing new triggered |
+| ROS conventions | N/A | Workspace plan |
+
+### 2b.7 tested against the code on main
+
+- **Task line and base**: `skill_task_line` builds `/review-code --branch --issue $issue` (`dispatch_phase.sh` 435), called at 516; the recorded base is read only at 531 (`pkg_base` from the header) and printed at 565. So (i) needs the base read before 516 or the task rewritten after 531; the plan's "Read" cites both lines, enough for the implementer.
+- **Round 3**: the convergence suffix is appended to `$task` after `--issue N` (540-552), so the line becomes `/review-code --branch origin/pinned --issue 7 (round 3: ...; no cross-model reviewers)`: well-formed; review-code step 2 keys only on the words "no cross-model reviewers" (SKILL 189-204), and round 3 skips 5e, so the base is used only for the diff.
+- **review-code accepts the form**: usage `--branch [<base-ref>] [--issue <N>]` (SKILL 43); step 1b uses the given value as `$BASE` and diffs `"$BASE"...HEAD` (134-151).
+- **cross_model_review.sh accepts it**: `--branch` takes an optional value (405-412); `git rev-parse --verify origin/pinned` hits at 851, so `BASE_REF=origin/pinned` (the `origin/$BRANCH_BASE` fallback at 853 is not reached). SKILL 402 already shows `--branch <base>`; (iv) adds only the "same base" sentence.
+- **check_branch_updates.sh**: `$1 == --strict` only (27); default from origin/HEAD (38-43); the branch is used in the shortcut (47), fetch (61, 66), counts (73-78) and messages (98-153), the places (ii) lists. Its other callers pass no argument: `worktree_enter.sh` 458-460 and `.agent/hooks/check-branch-updates.py` (`subprocess.run([str(check_script)])`). No test suite exists for it; the plan's test runs it via step 8's block.
+- **Workspace issue unchanged**: (i) only when a base is recorded; (iii) keeps `main` for every other issue. The existing package assertion `task=/review-code --branch --issue 7 (round 3:` (`test_package_issue_loop.sh` 225) uses worktree C, whose `base=` is stripped at 176-180, so it stays valid; `test_dispatch_phase.sh` 458-696 use workspace worktrees and stay valid.
+- **Step 8 block extraction**: `check_branch_updates.sh` appears in one bash block of run-issue SKILL (767; 274 is prose), so the 815-831 extraction pattern works.
+
+### Findings
+
+1. **[Consequences] (nit)** run-issue SKILL line 237 says "Keep the branch after `base=` as `<base>` for the run (step 7 needs it)"; with 2b.7 step 8 needs it too, and the step 8 heading "Merge-from-main" (760) and its echoes at 481 and 843 say "main". Update them with (iii) so the host is not told the base is used only at publish.
+
+### Summary
+
+The revision applies every checkpoint item as decided, and 2b.7's wording matches the code: both review-code and `cross_model_review.sh` accept `--branch origin/<base>`, the round-3 line stays well-formed, the no-argument callers of `check_branch_updates.sh` are named, and workspace issues are unchanged. Nothing confirmed earlier has regressed. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] With 2b.7 (iii), update run-issue SKILL 237 ("step 7 needs it" to steps 7 and 8) and the "merge-from-main" wording at 481, 760 and 843 (finding 1)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict ready; one nit for the implementer)
+**After**: plan
+**Decision**: proceed
+
+Proceed with pull request 2b (steps 2b.1 to 2b.7), the last of the issue. The implementer also applies the review's nit: run-issue SKILL.md's note that the host keeps the base names step 8 as well as step 7, and the step 8 heading and its mentions no longer say "main" where a package issue uses its base.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 06:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `8f65dd0b`
+
+Pull request 2b, steps 2b.1 to 2b.7 of plan.md ("Revision of 2026-11-13"), with the plan review's nit. This is the last pull request of issue 429.
+
+### Commits
+- `a7aeb521` merge_pr: the gate reads and records a package issue in the owning checkout (2b.1, 2b.2, 2b.4 for `test_merge_pr_gate.sh` and the `merge_pr.sh` comment)
+- `9cf3bb78` Pre-push review and behind-check use a package issue's base (2b.7 (i), (ii))
+- `6f32c946` Texts for a package issue's merge gate and base (2b.6; 2b.7 (iii) to (v); the nit; 2b.4 for run-issue SKILL.md)
+- `8f65dd0b` test_package_issue_loop: one package issue end to end, case 14 (2b.5; the 2b.7 tests)
+
+### What changed
+- **2b.1** `merge_pr.sh`: the `_PKG_MATCHES` record has a fifth field, `PKG_OWN_REL`: the matched entry's relative path when its branch is `feature/issue-<N>`, else `-`. It is read back with the other fields and added to the `unset`. `_GATE_PKG_ROLE` is `owning`, `sibling` or empty. For `owning`, `_gate_wt` is `$PKG_WT_DIR/$PKG_OWN_REL`, or the worktree itself for a lone `.` entry. `records_path` is unchanged. The two guards that required an empty `PKG_WT_DIR` (`_ci_wt` and `_gate_record`'s repo test) now exclude only `sibling`. So the ancestry check, the CI target, the idempotency read and the record commit (`progress_append.sh -C`) plus its push all run in A.
+  - The old reason "carries no issue timeline" is split in two:
+    - Owning, no `progress.md`: the existing "no progress.md for issue #N in an open worktree (looked for <A>)".
+    - Sibling: "a sibling repository's pull request: this issue's records are in <A>, and a sibling's gate is not read there", with A taken from `issue_checkout_of`. When the manifest has no single owning entry, it says so instead.
+  - The record comment fallback has its own reasons: one for a sibling, and one for an owning checkout that is no git top folder.
+  - The gate's two fetches and the record push now go through `wt_bounded_git` and run from inside the checkout (`(cd <dir> && wt_bounded_git ...)`). The first attempt, `wt_bounded_git -C <dir>`, broke `test_merge_pr_gate.sh` g17/g17c, whose worktree path holds 0xff/ESC bytes. On this machine `timeout` evidently does not pass such an argument through intact.
+- **2b.2** Report-only stays. Package `WORKTREE_TYPE` is empty, so only the existing workspace enforcement applies. Asserted by pkg-10.
+- **2b.3** No cleanup case added, as the plan says. The `git branch -d` case was dropped because it duplicates `test_sweep_reports_unmerged_local_branch`.
+- **2b.4** `p11` became `demo`:
+  - `test_merge_pr_gate.sh`: the two def-pkg lines. The other two fixture lines were replaced by the new package fixture, which uses `demo`.
+  - The `merge_pr.sh` comment.
+  - run-issue SKILL.md: `p11-jazzy` became `demo-jazzy`.
+- **2b.5** See Tests.
+- **2b.6** Texts:
+  - run-issue SKILL.md: step 11 drops "until the merge gate reads ..." and says what the gate does for a package PR. The Scope intro is reworded. The package entry says what is supported and drops the false sentence about writes from outside any worktree.
+  - `docs/design.md`:
+    - Records bullet (the "does not read that timeline yet" sentence replaced).
+    - Base branch bullet (pre-push base, step 8).
+    - The comment-fallback list in Review loop.
+    - A Merge gate bullet.
+    - Table 1's `merge_pr.sh` row lines (already stale on main) and `dispatch_phase.sh` row lines, mechanism-1 citations for both scripts (`dispatch_phase.sh` shifted by 8).
+    - Change-log row.
+  - `script_reference.md` rows 34, 38 and 51.
+- **2b.7**
+  - `dispatch_phase.sh`: `/review-code --branch origin/<base> --issue N` for review-code, no `--pr` and a recorded base. Otherwise unchanged. The round-3 suffix still follows.
+  - `check_branch_updates.sh [--strict] [--base <b>]`. With no argument it behaves as before.
+  - run-issue step 8.
+  - review-code SKILL.md: one paragraph saying `cross_model_review.sh --branch "$BASE"` takes step 1b's base.
+  - `script_reference.md`.
+- **Nit:** SKILL.md "steps 7 and 8 need it". The step 8 heading is now "Merge the base before the final pre-push review". The never-reuse list and step 10 say "a merge of the base (`main`, or a package issue's `<base>`)".
+
+### Gate inputs and results (each asserted; tests named)
+| Input | Timeline read | Record goes to | Mode | Test |
+|---|---|---|---|---|
+| owning `feature/issue-N`, no `progress.md` in A | none; reason "no progress.md ... (looked for A)" | committed and pushed in A; main tree, container, B untouched; no comment | report-only, merge reached | gate pkg-1 |
+| owning, approved review at head in A + summary | A; gate passes | nothing | - | gate pkg-2 |
+| owning, stale review in A | A; reason "... does not resolve to one commit in A" (ancestry in A) | A | report-only | gate pkg-3 |
+| owning, same conditions again | A (idempotency) | nothing new | - | gate pkg-4 |
+| owning, review then bookkeeping commits, PR base `main` vs recorded `pinned` | A; review covers head via ancestry; exactly one reason (the base) | A, pushed; WS, B, hosted checkouts, other worktrees, pkg_b origin untouched | report-only | loop e2e "owning PR targeting main" |
+| owning, PR base = recorded base | A; gate passes | nothing; merged, worktree removed | - | loop e2e "owning PR on its base" |
+| owning, record push refused by origin | A | commit undone in A (clean), record as PR comment | report-only | gate pkg-11 |
+| sibling `feature/<repo>-issue-N`, A has an approved review | none (A's review not used); sibling reason names A | comment on the sibling's PR (`-R owner/pkg_b`); A and its origin untouched | report-only | gate pkg-5, loop e2e sibling |
+| sibling, manifest has no owning entry | none; "no single checkout on feature/issue-N" | comment on the sibling's PR | report-only | gate pkg-6 |
+| same owning branch in two projects, no `--project` | - | refused exit 2, nothing merged (unchanged) | - | gate pkg-7 |
+| `--project demo2` / `--project demo` | that project's A only | that project's A only | report-only | gate pkg-8, pkg-9 |
+| owning, `--enforce` | A | A | report-only (package) | gate pkg-10 |
+| workspace PR (every existing case) | unchanged | unchanged | enforce | gate suite, 131/0 |
+
+Not covered by a test: an owning manifest entry `.` (a legacy single-repository manifest) maps to the worktree itself, which `issue_checkout_of` already treats the same way. The owning checkout missing from disk falls through to "no progress.md ... (looked for A)" plus a comment saying it is no git checkout's top folder (code path, no test).
+
+### Tests (new and flipped; each fails on main's scripts)
+- `test_merge_pr_gate.sh` pkg-1 to pkg-11 replace the old package case, whose assertion "carries no issue timeline" is flipped. Run against main's `merge_pr.sh`, 10 of the 11 fail. pkg-7 passes on main: that ambiguity refusal is existing behaviour, kept as a neighbour.
+- `test_package_issue_loop.sh` case 14, run against main's `merge_pr.sh`, `dispatch_phase.sh`, `check_branch_updates.sh` and run-issue SKILL.md: 12 fail.
+  - Task line `origin/pinned` (also with a prefix and at round 3).
+  - The step-8 block takes `[--base <base>]`; behind `pinned` by 2; the refusals; up to date after `git merge origin/pinned`.
+  - The sibling case, the base-mismatch case, and the merge on the base.
+  - The `--strict` check was strengthened to count against `pinned` after it first passed on main.
+- Unchanged on purpose: line 225 (a package worktree with no recorded base keeps the bare `--branch`) and the `test_dispatch_phase.sh` workspace lines.
+- No wall-clock tuning. No processes left behind: the merges are stubbed, and fetches are local.
+
+### Acceptance (issue 429 "What is needed" and Acceptance, plan's table)
+- **Needed 1** (`/run-issue` on a package issue from the project root; creation, dispatch, review, publish and merge act on that repository):
+  - Pull requests 445, 456 and 460 covered creation, dispatch, `where`, publish `-R --base` and `merge --pr owner/repo#M`.
+  - This PR: the merge gate and record in A (2b.1). The cleanup is pinned by existing tests (2b.3). The whole run in one case: loop case 14.
+- **Needed 2** (one place says where the records live; the merge gate finds them there): `issue_checkout_of` and the records gate since 445. The gate now reads and records there: gate pkg-1 to pkg-4, loop e2e.
+- **Needed 3** (the pull request targets the package repository): `gh_create_pr.sh -R` (445) and `--base` (460). Asserted again in loop case 12 and e2e publish.
+- **Needed 3** (the review reads the package's diff):
+  - PR-mode review, triage and `fetch_pr_reviews.sh` read the package's pull request through `gh` in A (445). e2e asserts the `repos/owner/pkg_a/...` reads from A.
+  - Pre-push review: `origin/<base>` task line (2b.7 (i)). The cross-model call takes the same base (2b.7 (iv)).
+  - Behind-check and merge of the base: 2b.7 (ii) and (iii), loop case 14.
+- **Needed 4** (a synthetic multi-repository sandbox, no real project): `test_package_issue_loop.sh` (the `demo` project, pkg_a and pkg_b with stubbed `gh` and ssh) and the gate fixtures, renamed to `demo`. The follow-up issue for the other suites' real-name fixtures stays drafted in plan.md, not opened.
+- **Acceptance 1** (reaches the merge checkpoint without hand steps):
+  - Every script step and SKILL block that a package issue goes through is walked in tests: steps 1 to 4, 7, 8 (the step-8 block extracted from SKILL.md), 9, 10 and 11.
+  - Not testable: the Agent tool's working directory and how a sub-agent reads prose (plan, Estimated Scope).
+- **Acceptance 2** (the "out of scope" entries for package worktrees and `--type project` are rewritten to say what is supported):
+  - The package entry now opens "One owning repository per issue (supported); more than one is not", says what is supported and drops the false sentence. The section intro is reworded.
+  - The `--type project` entry was rewritten in 445 and is unchanged.
+
+### Deviations from the plan
+- **2b.1** The plan says `PKG_OWN_REL` is the matched `_m_rel`. Built: the matched entry's `_m_rel` only when that entry is on `feature/issue-<N>`, else `-`.
+  - Why: a sibling's own relative path would not name A.
+  - The sibling reason finds A through `issue_checkout_of` instead of parsing the manifest again.
+  - The planned reason text is used as written, plus a second text for a manifest without an owning entry.
+- **Bounding calls to origin.** The gate's fetch, the CI-target fetch and the record push are now bounded for workspace pull requests too. The plan did not list this. The behaviour changes only on a hang.
+  - `check_branch_updates.sh` bounds its own fetches the same way, through a local helper with the same shape as `wt_bounded_git`. It sources no helper.
+  - Left unbounded and untouched: other origin calls in `merge_pr.sh`, among them the Step 1 roadmap push (never run for a package) and existing Step 4/5 calls.
+- **`check_branch_updates.sh` arguments.** An unknown argument now exits 2. Before, it was ignored. No caller passes one.
+- **2b.4 split across two commits.** The fixture rename landed in the same commit as the gate change, because the renamed fixture block is the one the commit rewrites. There is no separate rename commit.
+
+### Checks
+- Suites run directly, final tree:
+  - `test_merge_pr_gate.sh` 131/0
+  - `test_package_issue_loop.sh` 214/0
+  - `test_merge_pr.sh` 150/0
+  - `test_dispatch_phase.sh` 148/0
+  - `test_records_write_gate.sh` 68/0
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`: identity sourced, no SKIP, rc 0.
+  - Every hook passed, or was skipped for having no files.
+  - That includes `validate-script-tests` (the suites the changed files reach), `check-design-anchors` and `shellcheck`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 06:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `43a724a8`
+**Base**: main
+**Depth**: Deep (reason: enforcement script `merge_pr.sh` (the merge gate) changed; 11 files, +973 -131)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Round note: `review_progress.sh round` counts this as round 10, because the pre-push reviews of this issue's three earlier pull requests (445, 456, 460, all merged) are on the same timeline (issue 459). The host corrected it to round 1: the code on this branch beyond main (`git diff main...HEAD`, pull request 2b) had never been reviewed. So this was a cold, full-depth read of the whole diff, with the cross-model reviewers. The verdict script was given `--round 1`.
+
+Specialists:
+- Static analysis: shellcheck through pre-commit passed on the 5 changed scripts.
+- Governance and plan drift: done by the lead.
+- Claude adversarial: a fresh subagent.
+- Cross-model: gemini (agy) and codex both ran and completed. Copilot was skipped (disabled for quota).
+
+Suites run on HEAD, all passing: test_merge_pr_gate 131/0, test_package_issue_loop 214/0, test_merge_pr 150/0 and test_dispatch_phase, rc 0. The adversarial specialist ran HEAD's tests against main's scripts: 10 gate failures and 13 loop failures, so the new tests catch the old behaviour.
+
+Verdicts on workspace pull requests are unchanged except on a hang. `_GATE_PKG_ROLE` is empty there, so the three `!= sibling` guards act exactly as the old `-z PKG_WT_DIR` checks did. A timed-out fetch leaves only local `rev-parse` to decide, and that yields "not present locally" or "does not resolve", never a pass. A timed-out push takes the undo path.
+
+### Findings
+- [x] (must-fix) `check_branch_updates.sh --base <b>` fetches without a refspec. In a `--single-branch` or narrowed clone, `origin/<b>` is never created or refreshed, so the script reports "up-to-date" (exit 0, even with `--strict`) while the branch is behind. Reproduced: a single-branch clone of main, origin's `pinned` 1 ahead, result "up-to-date with pinned", rc=0. Fix: fetch `+refs/heads/<b>:refs/remotes/origin/<b>` (as `_worktree_helpers.sh:671` does), treat a missing `origin/<b>` after the fetch as a warning rather than 0 behind, and add a regression test. Found by codex and the Claude adversarial specialist. — `.agent/scripts/check_branch_updates.sh:113-128`
+- [x] (must-fix) The record commit in the owning checkout leaves that checkout dirty when the package repository's own hook refuses the commit (pre-commit, or commitlint rejecting `progress: merge (report-only) for #N`). `progress_append.sh` exits 3 with the entry appended and staged. `merge_pr.sh` only posts the PR comment and does not undo the append, unlike the push-refused path. Result: the record exists twice, a later run's idempotency read sees the uncommitted entry, and cleanup finds a dirty tree. This exposure is new with this PR. Fix: restore progress.md to HEAD (or remove it if new) on refusal; add a test with a failing hook in pkg_a. — `.agent/scripts/merge_pr.sh:932,960-961`
+- [x] (suggestion) The owning checkout is not checked to be on the PR branch. If A is on `feature/issue-N-old`, the write guard accepts it and the commit lands there. `push origin feature/issue-N` then says "Everything up-to-date" and the script reports the record as pushed when it is not. Require `branch --show-current == PR_BRANCH`, or push `HEAD:$PR_BRANCH`. — `.agent/scripts/merge_pr.sh:728-737,942`
+- [x] (suggestion) For the owning role, `_ci_wt` takes `rev-parse --show-toplevel` with no "path is the top" check. An owning folder that exists but is no longer a checkout resolves to an enclosing repository, which then supplies the fetch and the CI-target SHA. Apply `_gate_record`'s equality check here too. Found by gemini and the Claude adversarial specialist. — `.agent/scripts/merge_pr.sh:764-774`
+- [x] (suggestion) The gate's CI-target fetch in the owning checkout has the same no-refspec gap as the first must-fix. In a single-branch package clone, `origin/feature/issue-N` (made at creation) is not refreshed, so `HEAD_NOW` can be a stale SHA and becomes the CI target. Use the explicit refspec. — `.agent/scripts/merge_pr.sh:1086`
+- [x] (suggestion) The new bounded calls have no test. Add one gate case with a hanging origin (expect a refusal reason, never a pass) and one record push that times out (expect the commit undone and a comment). — `.agent/scripts/tests/test_merge_pr_gate.sh`
+- [x] (suggestion) The behaviour change of `wt_bounded_git` for workspace pull requests is not documented. Through `timeout` with `GIT_TERMINAL_PROMPT=0`, an SSH passphrase or host-key prompt with no agent now waits out the limit and fails, where `git -C ... fetch` used to prompt. The gate then refuses unless the review is at the head, which is the safe direction. Add one line to `docs/design.md` (Merge gate) or `script_reference.md`. — `docs/design.md`
+- [x] (suggestion) This PR closes issue 429, but the two follow-up issues drafted in plan.md have not been filed: compatibility-mode persistence, and the real-name fixtures in six other suites. That is an owner call: file them, or allow them to be filed, before the merge so nothing is lost. — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call (host checkpoint 2026-11-13 06:51): raised at the merge checkpoint; no issue opened by the loop)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first review of 2b's diff, two must-fix, both mechanical; the round limit is reached only because the counter carries the merged pull requests' reviews, issue 459; first host address for this pull request, the owner's merge of pull request 460 having come between)
+**After**: rounds
+**Decision**: address
+
+Fix both must-fix and suggestions 1 to 5 as the review states them: an explicit refspec for the --base fetch in check_branch_updates.sh and for the CI-target fetch; the owning checkout's progress.md restored when a hook refuses the record commit; the record is committed and pushed only when the owning checkout is on the pull request's branch (check first; refuse to record there and fall back to the pull-request comment otherwise, with a true reason); the owning path must be its repository's top folder; tests for a hanging origin at the gate and a record push that times out, with a blocking fixture and a generous ceiling, no wall-clock tuning; one line documenting that an SSH passphrase prompt now fails at the time limit. Suggestion 6 (two follow-up issues drafted in plan.md, not filed) is the owner's call and is raised to him at the merge checkpoint; nothing is opened by the loop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 07:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `df029cd7`
+**Addressed**: Local Review (Pre-Push) at `43a724a8` (2026-11-13 06:50 -05:00), as the host's Checkpoint of 06:51 decided
+**Commits**: `2fae2ba3`, `367e8414`, `7388b8dd`, `855f2efe`, `df029cd7`
+
+### Actions
+- [x] (must-fix 1) `check_branch_updates.sh` fetches `+refs/heads/<b>:refs/remotes/origin/<b>`, with or without `--base`. After a fetch that reports success, a missing `origin/<b>` exits 2; it never counts as 0 behind. On a failed fetch, `ls-remote --exit-code` tells the cases apart. Exit 2 means origin answered and has no such branch: "origin has no branch '<b>'; nothing to compare with", exit 2. Any other failure is "Could not fetch '<b>' from origin; not compared", exit 0. A timeout is "origin did not answer within Ns; not compared with <b>", exit 0. Also fixed: an empty default-branch name when origin is unreachable and has no `origin/HEAD` (it falls back to `main`). Tests in `test_package_issue_loop.sh` case 14: a single-branch clone of main with origin's pinned 3 ahead reports behind by 3 and `--strict` exits 1; a missing base exits 2, also with `--strict`; an unreachable origin exits 0; a hanging origin (ssh shim, `CHECK_BRANCH_UPDATES_TIMEOUT=1`, killed, none left). All four fail on `43a724a8`'s script. `script_reference.md` row 34 updated — `2fae2ba3`
+- [x] (must-fix 2) Before the record, `_gate_record` snapshots `progress.md`: its working copy, its index entry and the folders that did not exist (`_gate_rec_snapshot`). On any `progress_append.sh` failure with HEAD unmoved, `_gate_rec_restore` puts all three back and checks that `git status` for the path matches what it was. It then falls back to the comment with a literal reason. Exit 3 gives "the timeline commit in <A> was refused (progress_append.sh exit 3: a git failure such as a commit hook), and the entry was taken back out". Other exits give "progress_append.sh refused the timeline entry (exit N)". An undone push uses the same restore. Tests pkg-12 absent and present: a failing `pre-commit` hook in pkg_a's repository. After each of two runs, A has the same HEAD, a clean tree and the same `progress.md` (no `.agent` left when it was absent), and origin is untouched. Each run posts one comment, so the count is 1 and then 2. The second run prints no "already recorded" and behaves as the first. Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 1) The record is committed only when `symbolic-ref --short HEAD` in the checkout equals the PR branch. Otherwise it goes to the comment: "the checkout <A> is on <b>, not <PR branch>, so the record is not committed there", or "... has a detached HEAD, not <PR branch> ...". "and pushed" is never printed. The check applies to every PR; a workspace or project `_gate_wt` comes from `find_worktree_for_branch`, so it holds there by construction. Tests pkg-13 other-branch and detached: no commit, origin unchanged, one comment. Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 2) `_GATE_OWN_PROBLEM` (owning role only) says either "the owning checkout <A> does not exist" or "... is not a git checkout's top folder" (`rev-parse --show-toplevel` unequal after `pwd -P`). When it is set, no timeline is read (the gate reason is "<problem>, so no timeline is read for issue #N"), `_ci_wt` stays empty, and the record goes on the PR with that reason. Tests pkg-14:
+  - no-checkout: A's `.git` is removed inside an enclosing repository at `l1_ws` that is on `feature/issue-901` and has pkg_a's origin. A keeps an approved review at the head. The gate does not pass, the enclosing repository's refs and HEAD are unchanged, and no CI-target line is printed.
+  - missing.
+  Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 3) The gate's ancestry fetch and the CI-target fetch name `+refs/heads/<PR branch>:refs/remotes/origin/<PR branch>`. Test pkg-15: A's fetch refspec is narrowed to main, and origin's head moves from another clone. Afterwards `origin/feature/issue-901` in A is the PR head and the stale SHA is never printed as the CI target. It fails on `43a724a8` — `367e8414`
+- [x] (suggestion 4) `test_merge_pr_gate.sh` hang-1, hang-1 control and hang-2 use an ssh origin whose shim records its pid and `exec sleep 300`, with `WT_FETCH_TIMEOUT=2`, a 120 s ceiling and no wall-clock tuning. After each run every shim pid is killed and checked gone; `ps` showed no `sleep 300` left after the suites.
+  - hang-1: the review is at R in A, and origin's head is R plus a `progress.md` commit that A lacks. The gate refuses ("head ... is not present locally") and never prints a pass. The timed-out record push is undone (A has the same HEAD, a clean tree and the same `progress.md`) and a comment is posted (6 s).
+  - hang-1 control: the same fixture with origin answering passes the gate ("covers head").
+  - hang-2: only `pushurl` is silent, and the push takes the undo path, with one comment (2 s).
+  These pass on `43a724a8` because the bounding was built there. On main the unbounded calls would block for the shim's 300 s and break the 120 s ceiling. That is reasoning: they were not run against main — `855f2efe`
+- [x] (suggestion 5) `docs/design.md` Merge gate:
+  - A bullet: the gate's calls to origin (its fetch, the CI-target fetch, the record push) are limited by `WT_FETCH_TIMEOUT` with no terminal prompt, so an SSH passphrase or host-key prompt with no agent fails at the limit. The gate then judges from the commits already present locally: a head that is not there is a reason, never a pass.
+  - A bullet on when the record is committed in a checkout.
+  - The Review loop's comment-fallback list gains the new cases.
+  - A change-log row (968 lines).
+  - `script_reference.md` row 38 says the same.
+  `df029cd7`
+- [x] (suggestion 6) Two follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call per the host checkpoint of 06:51; raised at the merge checkpoint; no issue opened)
+
+### Record inputs and results (owning package PR unless named; each asserted)
+| Checkout | Before the record | What happens | Result | Test |
+|---|---|---|---|---|
+| owning, on branch | `progress.md` absent | commit and push succeed | committed and pushed in A, no comment | pkg-1 |
+| owning, on branch | absent | push refused by origin | commit undone, `.agent` removed, A clean; one comment | pkg-11 |
+| owning, on branch | present | push refused by origin | commit undone, `progress.md` as it was; one comment | pkg-11b (passes on `43a724a8` too: a neighbour) |
+| owning, on branch | present | push times out | undone, as it was; one comment | hang-2 |
+| owning, on branch | absent | gate fetch, CI fetch and push all time out | gate reason, never a pass; push undone; one comment | hang-1 |
+| owning, on branch | absent | hook refuses the commit | entry taken back out, A clean, no `.agent`; one comment per run; run 2 the same as run 1 | pkg-12 absent |
+| owning, on branch | present | hook refuses the commit | `progress.md` as it was; one comment per run; run 2 the same as run 1 | pkg-12 present |
+| owning, other branch | present | no commit attempted | "is on feature/issue-901-old, not feature/issue-901"; one comment; origin untouched | pkg-13 other-branch |
+| owning, detached | present | no commit attempted | "has a detached HEAD"; one comment | pkg-13 detached |
+| owning, not a top folder (inside an enclosing repository on the PR branch) | approved review in A | no read, no `_ci_wt`, no commit | gate reason, no pass; enclosing repository untouched; one comment | pkg-14 no-checkout |
+| owning, missing | - | the same | "does not exist"; one comment | pkg-14 missing |
+| owning, narrowed refspec | - | CI-target fetch | `origin/<PR branch>` refreshed, stale SHA never the target | pkg-15 |
+| sibling | - | unchanged | comment on the sibling's PR | pkg-5, pkg-6 |
+| workspace PR (every existing case) | - | unchanged | verdicts unchanged; hang behaviour as in the design bullet | gate suite 142/0 |
+
+`check_branch_updates.sh` inputs: on the base; behind; up to date; single-branch clone; base missing on origin (exit 2); origin unreachable (exit 0, warning); origin silent (exit 0, warning); bad arguments (exit 2). Tests: loop case 14.
+
+### Observations, not changed
+- When A has a timeline, the duplicate check reads only A's `progress.md` (the existing #284 design), so a record that keeps going to the comment (a hook that always refuses, or A off the branch) posts one comment per run. The host's decision said "a second run behaves as a first", and that is what was built and tested. Checking the PR's comments as well would stop the repeats; that is the host's call.
+- The gate still reads A's timeline when A is on another branch or detached. Suggestion 1 is about the record. A review there passes only if its SHA covers the PR head through the ancestry check.
+
+### Commit layout
+Must-fix 2 and suggestions 1 and 2 share `_gate_record`'s body (the fallback reason for the owning problem lives in the same branch as the restore), so they are one commit, `7388b8dd`. Suggestion 3 (`367e8414`) and the hang tests (`855f2efe`) are separate.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 142/0 (131 before, plus pkg-11b, pkg-12 ×2, pkg-13 ×2, pkg-14 ×2, pkg-15, hang-1, hang-1 control, hang-2).
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 218/0 (214 plus 4).
+- Against `43a724a8`'s scripts: the gate suite gave 135/7 (pkg-12 ×2, pkg-13 ×2, pkg-14 ×2 and pkg-15 fail) and the loop suite 214/4 (the four new checks fail).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+- Removed the reviewer's `cbu.P6au/`, `cbu.sh`, `hang.sh` and `mainco.MClj/` from the session scratchpad.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 07:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2d17b3b2`
+**Base**: main
+**Depth**: Deep (reason: enforcement script `merge_pr.sh` changed; the whole-diff tier, kept for the fix round)
+**Must-fix**: 3 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted
+
+Round note: this is round 2 of this diff. The host corrected the counter, which still includes PRs 445, 456 and 460 (issue 459); the verdict script was given `--round 2`.
+
+Scope: the round-1 findings and the fix commits `2fae2ba3`, `367e8414`, `7388b8dd`, `855f2efe` and `df029cd7`.
+
+Who reviewed:
+- A fresh Claude adversarial sub-review.
+- Cross-model reviews by gemini (agy) and codex. Both completed: round 2 is below round 3, so the cross-model rule still applies.
+- Copilot was skipped (disabled for quota).
+
+Suites run by the sub-review on HEAD: test_merge_pr_gate 142/0 and test_package_issue_loop 218/0. No `sleep 300` process was left afterwards.
+
+Round-1 findings, verified:
+- Must-fix 1 and 2 are resolved, apart from the symlink case below.
+- Suggestions 1 to 5 are done.
+- The workspace gate's verdicts and record behaviour match main:
+  - The enforcing refusal exits before recording.
+  - Report-only and `--force-unreviewed` record.
+  - The on-branch check holds by construction (`find_worktree_for_branch`).
+- The restore keeps other staged, unstaged and untracked changes byte-identical. The sub-review checked status, diff and diff --cached. That is better than main, which wiped existing `progress.md` edits on a refused push.
+- The hang tests: 1-2 s limits against 60-120 s ceilings, shims reaped. Without the bound they would fail on the 300 s shim.
+
+Host question on the repeated comment: there is a real input. It is a regression from main for package PRs, so it is listed below as a suggestion.
+
+### Findings
+- [x] (must-fix) The restore deletes a `progress.md` symlink that was there before.
+  - Input: the checkout on the PR branch has `.agent/work-plans/issue-N/progress.md` as a dangling symlink (tracked or not), and the record path runs. The snapshot's `-f` is false, so no copy is taken. `progress_append.sh` refuses with exit 4, writing nothing. `_gate_rec_restore` then runs `rm -f` on the user's symlink.
+  - Reproduced by the sub-review: status went from clean to ` D`.
+  - Fix: snapshot with `-e || -L` and `cp -P`, or restore nothing after a refusal that wrote nothing (exit 2/4). Add a test.
+  - Found by both codex and the Claude adversarial sub-review.
+  - `.agent/scripts/merge_pr.sh:918-944`
+- [x] (must-fix) The gate reads the owning checkout's timeline while that checkout is detached or on another branch, and a stale timeline there passes the gate.
+  - Input: the PR branch is H (code), then R1 (progress: Local Review approved at H), then R2 (progress: Local Review changes-requested at H), and the head is R2. A is detached at R1, or on a local branch at R1.
+  - The gate reads "approved at H" from A's file. The ancestry check finds only `progress.md` changed between H and R2.
+  - Result: "✅ Review gate: approved review at head", and no record, although the PR branch's timeline says changes requested.
+  - Package PRs are report-only, so this is a false pass and a missing record, not a blocked merge. Workspace PRs are unaffected, because their worktree is found by branch.
+  - Fix: run the same on-branch check before the read, and give a gate reason when it fails ("the owning checkout is on X / detached, not <PR branch>; its timeline is not read").
+  - `.agent/scripts/merge_pr.sh:767-776`
+- [x] (must-fix) The `docs/design.md` line citations into `merge_pr.sh` are stale after the fix commits.
+  - Examples: the sibling reason is now at 812, cited as 789-796. The sibling comment is at 1080, cited as 964-965. `_gate_record` starts at 959, cited as 889-977. Also stale: the main-tree guard 926, the report-only lines 1040/1053, and Table 1's row.
+  - The anchors hook does not check line numbers.
+  - Found by gemini.
+  - `docs/design.md:384,478-488,559`
+- [x] (suggestion) Repeated runs post one more identical PR comment each time, a regression from main for package PRs.
+  - Input: the owning checkout is off-branch or detached, or a pkg_a commit hook always refuses. Each `merge_pr.sh` retry with the same conditions posts another identical `## Merge (report-only)` comment. pkg-12 asserts 1 and then 2.
+  - Why: `_gate_already_recorded` reads only A's `progress.md` whenever `_gate_progress` is set. On main, a package PR's duplicate check read the PR's comments, so it posted once.
+  - Fix: when the timeline holds no match, also check the PR's comments.
+  - `.agent/scripts/merge_pr.sh:1116-1145`
+- [x] (suggestion) With no argument, `check_branch_updates.sh` now prints a red error and exits 2 where main warned and exited 0.
+  - Input: a stale `origin/HEAD` after origin renamed master to main, or an empty origin, where `remote show` yields the name "(unknown)". Every commit (pre-commit hook) and every `worktree_enter.sh` then prints "✗ Error: origin has no branch ...". Nothing is blocked, because both callers ignore the exit code.
+  - Fix: keep exit 2 only with `--base`; otherwise warn with exit 0, and treat "(unknown)" as no name.
+  - `.agent/scripts/check_branch_updates.sh:141-145`
+- [x] (suggestion) A push that times out after origin applied it is still undone locally.
+  - Input: the server updates the branch, then stalls past `WT_FETCH_TIMEOUT`. The local commit is reset and a comment is posted. A is then one commit behind origin, and the record exists twice. It surfaces loudly: the host's next push is non-fast-forward.
+  - Fix: after a failed push, compare a bounded `ls-remote origin refs/heads/<PR branch>` with `rec_sha` and treat equality as pushed.
+  - Found by codex.
+  - `.agent/scripts/merge_pr.sh:1023-1044`
+- [x] (suggestion) The two follow-up issues drafted in plan.md are still not filed. This is the owner's call at the merge checkpoint, carried from round 1. (deferred: the owner's call (host checkpoint 2026-11-13 07:23): raised at the merge checkpoint; no issue opened)
+  - `.agent/work-plans/issue-429/plan.md:192,562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 07:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of 2b's diff, three must-fix, all mechanical; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Fix the three must-fix and suggestions 1 to 3. (1) The restore never deletes or rewrites something it did not snapshot: a progress.md that is a symlink (dangling or not), or anything not a regular file, is left exactly as found; if the record cannot be made safely there, fall back to the pull-request comment with a true reason. (2) The on-branch check applies before the gate READS the owning checkout's timeline too: off the pull request's branch or detached, no timeline is read, the gate gives a reason saying so, and it cannot pass on another branch's entries. (3) docs/design.md citations into merge_pr.sh made true, after all code edits. Suggestion 1: the host's earlier decision to leave repeated comments is withdrawn, since it is a regression from main for package pull requests: when the timeline has no matching record, the duplicate check also looks at the pull request's comments, so a record that falls back to the comment is posted once. Suggestion 2: check_branch_updates.sh with no --base keeps main's behaviour (a warning, exit 0) for a stale origin/HEAD or an unknown default branch; exit 2 is for --base only. Suggestion 3: after a record push that times out, a bounded ls-remote decides: if origin has the record commit, keep it and say it was pushed; undo only if origin does not have it; if origin cannot be asked, say so truthfully and leave a defined state. Suggestion 4 stays the owner's.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 07:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `24f9b8eb`
+**Addressed**: Local Review (Pre-Push) at `2d17b3b2` (2026-11-13 07:22 -05:00), as the host's Checkpoint of 07:23 decided
+**Commits**: `957a7c4e`, `2241a5fd`, `24f9b8eb`
+
+### Actions
+- [x] (must-fix 1) `_gate_rec_unsafe` runs before anything is written. If `progress.md`, or `.agent`, `.agent/work-plans` or the issue folder, is a symlink (dangling or not) or the wrong kind of file, the path is not written, snapshotted or restored. The record goes on the PR with "<path> in <A> is a symlink / is not a regular file / is not a folder, so the record is not written there (left as found)". This applies to every PR; on main such a path reached `progress_append.sh` exit 4 and also went to a comment. The restore now runs only after exit 3, and it removes only a regular, non-symlink file the record created. Exit 2 and 4 touch nothing. Test pkg-17 covers a dangling symlink, a symlink to a real file and a directory: `git status --porcelain=v1 -uall | od -c` is byte-identical before and after, the link target, target content and directory content are unchanged, and there is one comment. All three fail on `df029cd7` — `2241a5fd`
+- [x] (must-fix 2) `_GATE_OWN_NOREAD` (owning role, sound checkout) is decided before the read:
+  - A detached HEAD gives "has a detached HEAD, not B".
+  - Another branch gives "is on X, not B".
+  - Otherwise a bounded fetch by explicit refspec runs. A failed or timed-out fetch gives "origin's B could not be fetched in the owning checkout A (<why>), so it is not known to be current". No origin/B after the fetch gives "wrote no origin/B". If origin/B is not an ancestor of HEAD, the reason is "does not contain origin's B at <y> (local <x>)".
+  The gate reason is "<that>; its timeline is not read for issue #N". `_ci_wt` stays (the repository still answers ancestry and the CI target). The record goes on the PR with "<that>; the record is not committed there". Test pkg-16 uses the review's input: H, then R1 approved at H, then R2 changes-requested, with origin and head at R2. In the detached, other-branch and behind cases there is no "approved review at head" and no "covers head", and the reason is exact. The control case (A, origin and head all at R1) passes. All three fail on `df029cd7`. Before this fix, the behind case passed on the stale approval: the ancestry fetch found only `progress.md` changed between H and R2. — `2241a5fd`
+- [x] (must-fix 3) Done last, after every code edit, and checked line by line against the final `merge_pr.sh`:
+  - Table 1 row: `243-287, 391-436, 608, 741, 818 and 1056, 1251 and 1264, 2053-2073`.
+  - Records bullet: 535-558, 719-743, new 744-793 (the owning checks), 839-846 and 1166-1167, 287, 608, 741, 818, 1056, 1251, 1264.
+  - Mechanism 1: `719-807, 1019-1181`.
+  The Merge gate bullet, the comment-fallback list, `script_reference.md` row 38 and a change-log row (979 lines) describe the new rules — `24f9b8eb`
+- [x] (suggestion 1) When the timeline holds no matching record and the role is `owning`, `_gate_already_recorded` also reads the PR's comments. Workspace and project PRs stop after the timeline, as on main. pkg-12 (absent, present) and pkg-13 (other-branch, detached) post one comment across two runs, with the comment copied into the stub fixture as GitHub would show it; run 2 prints "already recorded (as a PR comment)". pkg-12 present and pkg-13 fail on `df029cd7`. pkg-12 absent passes there, because with no timeline the comment path already existed — `2241a5fd`
+- [x] (suggestion 2) With no `--base`, `check_branch_updates.sh` warns and exits 0 in three cases:
+  - origin has no such branch: "origin has no branch 'master' (the default branch origin/HEAD names here; run 'git remote set-head origin --auto' if it is stale); not compared";
+  - origin names no default branch: "origin does not name its default branch; not compared";
+  - origin/<b> is missing after a successful fetch.
+  Main printed "Warning: Could not fetch from remote", rc 0, for both no-argument cases (run by hand against `main`'s script in a scratch sandbox). Exit 2 stays for `--base` only. Loop case 14 tests both no-argument cases; both fail on `df029cd7` with rc 2 — `957a7c4e`
+- [x] (suggestion 3) After a push that timed out (124 or 137), a bounded `ls-remote origin refs/heads/<B>` decides:
+  - Its sha equals the record commit: kept, "recorded ... and pushed (the push timed out after Ns; origin has the record commit)", no comment.
+  - rc 0 with another sha: undone, "the timeline commit was not pushed: the push timed out after Ns and origin does not have it (undone locally)", comment.
+  - rc non-zero: the defined state is that the commit stays in A (counted as this run's), with no comment and a warning naming its sha. The next run reads A, which contains origin's branch and is one ahead, finds the record ("already recorded at"), adds none and posts nothing. The branch's next push publishes it.
+  A push refused outright is undone as before. Tests use a shim that serves the ssh origin from the local bare repository:
+  - hang-2: a silent pushurl; ls-remote answers without the commit, so the commit is undone.
+  - hang-3: origin applies the push, then stalls; the commit is kept, origin holds it, no comment.
+  - hang-4: the push stalls and origin is silent afterwards; the commit is kept in A, origin is unchanged, no comment. The next run, with origin answering, prints "already recorded at" and leaves HEAD unchanged: one record in A, zero comments.
+  hang-2 to hang-4 fail on `df029cd7` — `2241a5fd`
+- [x] (suggestion 4) Follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call per the host checkpoint of 07:23; no issue opened)
+
+### Record and read inputs and results (owning package PR unless named; NEW = this pass)
+| Checkout state | Before | Event | Result | Test |
+|---|---|---|---|---|
+| on branch, current | absent | commit and push succeed | committed and pushed in A, no comment | pkg-1 |
+| on branch, current | absent / present | push refused by origin | undone, as it was; one comment | pkg-11 / pkg-11b |
+| on branch, current | present | push times out, origin answers without it | undone; "was not pushed: ... does not have it"; one comment | hang-2 (NEW text) |
+| on branch, current | present | push times out after origin took it | kept, "and pushed (... origin has the record commit)", no comment | hang-3 NEW |
+| on branch, current | present | push times out, origin cannot be asked | kept in A, warning, no comment; next run: "already recorded", nothing added | hang-4 NEW |
+| on branch, current | absent / present | hook refuses the commit | taken back out, A clean; one comment across two runs | pkg-12 (NEW: one across two) |
+| on branch | `progress.md` a dangling symlink / a symlink to a file / a directory | record attempted | left as found, status byte-identical; one comment | pkg-17 NEW |
+| other branch / detached | present | gate reads | not read, reason; no commit; one comment across two runs | pkg-13 (NEW: not read; one across two) |
+| detached at R1 / local branch at R1, PR at R2 | R1 approved, R2 changes-requested | gate reads | not read, no pass | pkg-16 NEW |
+| on branch at R1, origin at R2 (behind) | same | gate reads | "does not contain origin's ... at R2 (local R1)", no pass | pkg-16 behind NEW |
+| on branch, origin at R1 (current) | R1 approved | gate reads | passes | pkg-16 control NEW |
+| on branch, origin silent at the gate's fetch | approved | gate reads | "could not be fetched ... (timed out after 2s)", no pass, no commit, comment | hang-1 (NEW reason); control passes |
+| on branch, narrowed refspec, origin ahead | - | gate and CI target | origin ref refreshed; not read (behind); stale SHA never the CI target | pkg-15 (NEW reason) |
+| two projects on one origin | - | `--project` | each reads its own checkout once origin holds its branch | pkg-8, pkg-9 (fixture now pushes per run) |
+| not a top folder / missing | - | - | no read, no `_ci_wt`, comment | pkg-14 |
+| sibling | - | - | comment on the sibling's PR | pkg-5, pkg-6 |
+| workspace PR (every existing case) | - | - | verdicts and record unchanged except on a hang; the duplicate check reads only the timeline, as on main | gate suite |
+
+### Observations
+- One commit, `2241a5fd`, holds must-fix 1 and 2 and suggestions 1 and 3. They share `_gate_record`'s body and the gate's read guards, and the reworked tests (pkg-15, hang-1) depend on more than one of them.
+- Exposure kept on purpose: a workspace PR whose `progress.md` is a symlink now gets the reason "is a symlink, so the record is not written there". Before, the record went to a comment with "progress_append.sh refused (exit 4)". Same destination, truer reason.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 151/0.
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 220/0.
+  - No `sleep 300` process was left.
+- Against `df029cd7`'s `merge_pr.sh`: the gate suite gave 137/14. These failed: pkg-12 present, pkg-13 ×2, pkg-16 ×3, pkg-17 ×3, pkg-15, hang-1 to hang-4.
+- Against `df029cd7`'s `check_branch_updates.sh`: the loop suite gave 218/2.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 07:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `8eb34cd0`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Round note: this is round 3 of this diff. The host corrected the counter, which still carries PRs 445, 456 and 460 (issue 459).
+
+Scope: the round-2 findings and the fixes in `957a7c4e`, `2241a5fd` and `24f9b8eb`.
+- Cross-model: skipped (round-3 convergence check, per handoff).
+- Claude adversarial: a fresh sub-review ran.
+
+Suites run by the sub-review on HEAD, all passing:
+- test_merge_pr_gate: 151 passed, 0 failed.
+- test_merge_pr: 150 passed, 0 failed.
+- test_package_issue_loop: 220 passed, 0 failed.
+
+No `sleep 300` process was left afterwards.
+
+The round-2 findings hold, except where noted:
+
+- **Symlink restore.** `_gate_rec_unsafe` leaves a symlinked or non-regular `progress.md`, or a symlinked parent folder, exactly as found. The restore runs only after exit 3 and removes only what the record created.
+  - Workspace PRs differ from main in wording only, plus two improvements: exit 3 now restores the staged entry, and an undone push keeps pre-existing edits.
+- **Off-branch read.** `_GATE_OWN_NOREAD` is set only for owning package PRs, and pkg-16 gives no pass.
+  - The sub-review diffed this against main. For workspace PRs, the read, the verdict, `_ci_wt` and the duplicate check are unchanged. That includes worktrees behind origin, ahead of it, or holding unpushed bookkeeping commits.
+- **design.md citations.** All checked against the final file.
+- **Repeated comments.** One comment across runs. The comment matcher is the same as main's package-PR matcher: heading prefix plus an exact `**Conditions**` line. It is no looser.
+- **check_branch_updates.sh with no argument.** Run side by side with main: up to date, behind, offline, stale `origin/HEAD`, "(unknown)" and no origin all give exit codes identical to main's. Only the warning text differs.
+- **Timed-out push.** Origin has the commit: kept. Origin answers without it: undone, with a comment. Origin cannot be asked: see the must-fix.
+
+### Findings
+- [x] (must-fix) A record push that times out while origin cannot be asked is never published, and the PR still merges.
+  - Input (observed by the sub-review on the hang-4 fixture): run 1 has `HANG_MODE=silent`. The commit is kept in A, with no comment.
+  - Run 2 has origin answering. It prints "already recorded at ..., same conditions" and calls `gh pr merge`. Origin's branch does not have the record commit, and no comment exists.
+  - The same happens in one run when git-over-ssh hangs but gh's HTTPS API works, for a workspace PR under `--report-only` or `--force-unreviewed` (from reading the code; not run): the PR merges with its record only in a local, unpushed commit.
+  - "The next push of B publishes it" never happens, because nothing pushes after the merge.
+  - Fix: let this outcome take the undo-and-comment path, accepting a possible duplicate, and update the design.md Merge gate bullet (line 708) and script_reference row 38 to match.
+  - `.agent/scripts/merge_pr.sh:1116-1121`
+- [x] (suggestion) A timed-out push is undone even when origin has the record commit, if the host pushed on top of it before ls-remote ran.
+  - Input: the push lands, the host pushes on top, and ls-remote then shows another sha that has the record commit as an ancestor.
+  - Result: A is reset and a comment is posted. The record exists twice, and the next run finds A not containing origin.
+  - Fix: test ancestry, not equality. This is a narrow race.
+  - `.agent/scripts/merge_pr.sh:1110`
+- [x] (suggestion) For an owning package PR, the duplicate check's comment fallback can match an older comment that a newer timeline entry superseded.
+  - Input:
+    - Run 1, conditions X1: the push is refused, so the record becomes a comment.
+    - Run 2, conditions X2: committed in the timeline.
+    - Run 3, conditions X1 again: the timeline's latest record is X2, so the check falls back to the comments.
+  - Result: "already recorded (as a PR comment)" is printed and no record is made, although the latest record says X2.
+  - Fix: compare against the newest record across both stores.
+  - `.agent/scripts/merge_pr.sh:1222-1239`
+- [x] (suggestion) The two follow-up issues drafted in plan.md are still not filed. That is the owner's call at the merge checkpoint, carried over from round 1. (deferred: the owner's call; the owner's checkpoint of 08:07 decided only the three fixes; no issue opened)
+  - `.agent/work-plans/issue-429/plan.md:192,562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Fix all three (Recommended)
+
+The three, as put to him: F1 (must-fix) a record push that times out with origin then unreachable is never published and the pull request still merges: route that outcome to the undo-and-comment path, accepting a possible duplicate, and update docs/design.md's Merge gate bullet and script_reference.md row 38; F2 the after-timeout check tests ancestry, not equality, so a push made on top is recognised as containing the record; F3 the duplicate check compares against the newest record across both stores (the timeline and the pull request's comments), so a superseded comment is not matched. Then a narrow check of that fix only, then publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 08:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `7aa3bc6d`
+**Addressed**: Local Review (Pre-Push) at `8eb34cd0` (2026-11-13 07:58 -05:00), as the owner's Checkpoint of 08:07 decided ("Fix all three")
+**Commits**: `2d4950c4`, `7bd51a18`, `7aa3bc6d`
+
+### Actions
+- [x] (must-fix, F1) After a push that timed out (124 or 137), a bounded fetch of the branch by explicit refspec decides. When origin's branch contains the record commit, it is kept and reported as pushed. In every other case the commit is undone and `progress.md` is put back, and the record is posted as a PR comment:
+  - origin answers without the commit: "the timeline commit was not pushed: the push timed out after Ns and origin's B does not contain it (undone locally)";
+  - origin cannot be asked: "... was not known to be pushed: the push timed out after Ns and origin could not be asked afterwards (<why>) (undone locally); if origin took it, this comment is a second copy";
+  - the fetch wrote no origin/B: the same, with that reason.
+  So no outcome leaves the record only in a local commit. If the comment post fails too, the existing path is kept unchanged: "⚠️ <type> record could not be written anywhere (<why>; PR comment failed)" on stderr, and the script goes on to the merge.
+  - The code is shared, so workspace PRs under `--report-only` and `--force-unreviewed` get the same behaviour. Their verdicts are unchanged; only the hang outcome differs.
+  - Tests:
+    - hang-4 rewritten: the commit is undone, origin is unchanged, and one comment is posted with the message above. On the next run, with origin answering and the comment shown on the PR, it prints "already recorded (as a PR comment)" and never "already recorded at" (no timeline record is claimed); HEAD is unchanged and there is still one comment.
+    - hang-ws `--report-only` and `--force-unreviewed`: a workspace sandbox with an ssh origin served by the shim. The worktree commit is undone, the worktree's `progress.md` is as it was, origin is unchanged, and there is one comment of the right type.
+    - All three fail on `8eb34cd0`.
+  - The Merge gate bullet, the comment-fallback list and `script_reference.md` row 38 are updated — `7bd51a18`, `7aa3bc6d`
+- [x] (suggestion, F2) "Has the record" now means `merge-base --is-ancestor <record> origin/<B>` after the fetch, not equality with the tip. Test hang-3 applied-ontop: the shim applies the push, then puts another commit on top in the bare repository, then stalls. The commit is kept and reported as pushed ("origin's feature/issue-901 contains the record commit"), with no comment. It fails on `8eb34cd0`, which undid it. hang-3 applied (tip equal) still passes — `7bd51a18`
+- [x] (suggestion, F3) For an owning package PR, the newest record is taken across the owning timeline (its newest Merge entry for this PR) and the PR's comments (the newest comment headed `## Merge (report-only)` or `## Merge (unreviewed)`), then compared on type and `**Conditions**`.
+  - "Newest" is decided by each entry's own `**When**` field. Both stores carry the same entry text, and the comment's `**When**` is written when the record is made. GitHub's comment time is not used.
+  - The time is parsed as `%Y-%m-%d %H:%M %z`. A tie, which is possible because the field has minute resolution, or a value that does not parse, counts as doubt. On doubt the script prints "cannot be told apart — recording rather than skipping on doubt" and records.
+  - If only one store has a record, that record is the one compared.
+  - Workspace and project PRs are unchanged: the timeline alone, or with no timeline the comments, as on main.
+  - Test pkg-18 runs the review's X1, X2, X1 sequence (X1 as a comment after a refused push, X2 committed in the timeline, then X1 again). The comment's `**When**` is then set against the timeline's:
+    - older: the third run records;
+    - tie: it records, with the doubt note;
+    - unreadable: it records, with the doubt note;
+    - newer: it skips, "already recorded (as a PR comment)".
+  - older, tie and unreadable fail on `8eb34cd0`; newer passes there too (a neighbour) — `2d4950c4`
+- [x] (suggestion) The follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call; the owner's checkpoint of 08:07 decided only the three fixes; no issue opened)
+- Citations into `merge_pr.sh` in `docs/design.md` were refreshed last, after all code edits, and checked line by line:
+  - Table 1 row: `818 and 1056, 1309 and 1322, 2111-2131`.
+  - Records bullet: `1174-1175`, `1309`/`1322`.
+  - Mechanism 1: `719-807, 1019-1189`.
+  - Unchanged: 243-287, 391-436, 535-558, 608, 719-743, 741, 744-793, 839-846.
+  - A change-log row was added (983 lines).
+
+### Record inputs and results: changed rows (CHANGED / NEW = this pass); every other row as in the previous entry
+| Checkout state | Before | Event | Result | Test |
+|---|---|---|---|---|
+| owning on branch, current | present | push times out, origin answers, branch lacks the commit | undone; "was not pushed: ... does not contain it"; one comment | hang-2 (CHANGED text) |
+| owning on branch, current | present | push times out after origin took it (tip = record) | kept, "and pushed (... contains the record commit)", no comment | hang-3 applied (CHANGED text) |
+| owning on branch, current | present | push times out, origin took it, another commit on top | kept, reported pushed, no comment | hang-3 applied-ontop NEW |
+| owning on branch, current | present | push times out, origin cannot be asked | undone, record posted as a comment ("a second copy if origin took it"); next run: "already recorded (as a PR comment)", no timeline claim, nothing added | hang-4 CHANGED |
+| workspace PR worktree, `--report-only` / `--force-unreviewed` | present | push times out, origin cannot be asked | undone, one comment of the right type, origin unchanged | hang-ws NEW |
+| owning, X1 comment then X2 timeline | present | X1 again; comment older / tie / unreadable / newer | records / records (doubt) / records (doubt) / skips | pkg-18 NEW |
+| any | - | comment post also fails | "record could not be written anywhere (...; PR comment failed)", merge goes on (unchanged from main) | not tested (the stub's `pr comment` always succeeds) |
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 158/0.
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 220/0.
+  - No `sleep 300` process was left.
+- Against `8eb34cd0`'s `merge_pr.sh` the gate suite gave 149/9. These failed:
+  - pkg-18 older, tie and unreadable;
+  - hang-2 (text);
+  - hang-3 applied (text) and applied-ontop;
+  - hang-4;
+  - hang-ws ×2.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`. The run outlasted the tool's 600 s foreground limit, was moved to the background, and was waited for to its exit (rc 0) before this entry.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 08:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 3 of 3)
+
+**Branch**: feature/issue-429 at `f98c44eb`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings
+
+Round note: this is round 4 of this diff. The counter reads 13 because it still includes PRs 445, 456 and 460 (issue 459); the host corrected it.
+
+Scope:
+- The round-3 must-fix and its two suggestions.
+- The fixes in `2d4950c4`, `7bd51a18` and `7aa3bc6d`.
+
+Reviewers:
+- Cross-model: skipped (round-4 convergence check, per handoff).
+- Claude adversarial: a fresh narrow sub-review ran.
+
+Tests, run by the sub-review on HEAD:
+- test_merge_pr_gate: 158/0. This covers hang-1 to hang-4 (hang-4 with its second run), both hang-ws cases (`--report-only`, `--force-unreviewed`) and pkg-18 (older, tie, unreadable, newer).
+- test_merge_pr: 150/0.
+- test_package_issue_loop: 220/0.
+- No `sleep 300` process was left behind.
+
+Checked:
+- **F1 (a timed-out record push).** Every outcome puts the record on origin or on the PR before the merge:
+  - Origin's tip is the record, or contains it: kept.
+  - Origin's branch lacks it, the fetch fails or times out, or the fetch writes no ref: undone and posted as a comment.
+  - The worst case is two copies, never a lost record.
+  - The "PR comment failed" path is word for word main's. Its message "could not be written anywhere" is true, because every route into it has undone the commit or never made one.
+- **F2.** The record is accepted when it is an ancestor of origin's tip, so the record pushed under a later commit is kept (hang-3 on-top).
+- **F3.** `_gate_newer_when`:
+  - It parses the `-05:00` form the script writes and compares instants.
+  - A tie, an empty value or an unreadable value is doubt, and doubt records.
+  - A skip happens only when the newest record matches on both type and conditions.
+  - The duplicate check for workspace and project PRs is logically identical to main's.
+- **Workspace gate verdicts.** Unchanged from main except on a hang. Every new condition is empty or false outside package PRs.
+- **design.md.** Every `docs/design.md` citation into `merge_pr.sh` matches the final file.
+
+Outside scope, not counted (already on main, worked out from the code, not run): when no timeline is read for an owning PR, the comment-only duplicate check takes the last comment of the same entry type, not the newest of either type.
+- Input: the comments are `## Merge (unreviewed)` with conditions A, then `## Merge (report-only)` with conditions A, and a `--force-unreviewed` run whose conditions are A.
+- Result: the run skips although the newest record is the report-only one.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 4 of this diff, no findings in scope)
+**After**: publish
+**Decision**: publish
+
+Round 4 approved with no must-fix and no suggestions. One older behaviour already on main was noted outside scope (the comments-only duplicate check takes the last comment of the same entry type); it goes into the pull request body as a known gap.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 08:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `7836be6`
+**Sources**: 6 (Local Review (Pre-Push) rounds 1-4 of this diff @ `43a724a`, `2d17b3b`, `8eb34cd`, `f98c44e` (round 4 covers `7836be6` via bookkeeping); GitHub reviews: none (Copilot skipped, disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: the four pre-push reviews after the `## Checkpoint` with `After: plan`, `Decision: proceed`. The helper's five stale entries (`a6c2d2f`, `3ab6be9`, `8d563c2`, `0144179`, `7b85fe7`) belong to the merged PRs 445, 456 and 460 and are out of scope; not re-triaged.
+
+Rounds 1-3 of this diff: every finding is ticked. Round 1: 2 must-fix and 5 suggestions fixed; round 2: 3 must-fix and 3 suggestions fixed; round 3: 1 must-fix and 2 suggestions fixed, each confirmed by round 4 (test_merge_pr_gate 158/0, test_merge_pr 150/0, test_package_issue_loop 220/0, run by the round-4 sub-review). The follow-up-issue suggestion carried through rounds 1-3 is ticked as deferred to the owner (no issue opened). Round 4 approved; its only box, "No issues found. LGTM.", is a placeholder, not a finding.
+
+CI at triage: of 8 check runs on `7836be6`, both Validate Documentation runs succeeded; Lint (pre-commit), Validate Adapter Contract and ros-manifest tests (two runs each) had not concluded. Not waited for.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) round 4 @ `f98c44e`, out-of-scope note; pre-existing on main) When no timeline is read for the PR (`_gate_progress` empty: a sibling or off-branch owning checkout, no worktree), the comments-only duplicate check selects the last comment whose heading is the same entry type (`startswith("## " + etype)`), not the newest record of either type. Input: comments `## Merge (unreviewed)` with conditions A, then `## Merge (report-only)` with conditions A; a `--force-unreviewed` run with conditions A skips its record although the newest record is the report-only one, so the bypass is not recorded as the latest state. Same code on main (`merge_pr.sh` 976-986 there); this diff does not widen its reach (it narrows it: owning package PRs now read the timeline when on-branch). Recommendation: fix in this PR, since it is a few lines: select the last comment starting with either `## Merge (report-only)` or `## Merge (unreviewed)` (as the owning branch already does at line 1259), skip only when its type equals `etype` and its Conditions match; add one gate test mirroring pkg-18's comment-only case. If the owner keeps scope, track it as a follow-up issue in the workspace repo (not opened here). — `.agent/scripts/merge_pr.sh:1287-1297`
+
+### False positives
+- None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid and recommends fixing it in this pull request; a few lines, with a test)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 461, as triage states it: in the comments-only duplicate check (no timeline read), take the last comment that starts with either "## Merge (report-only)" or "## Merge (unreviewed)", and skip only when that comment's type equals the requested type and its conditions match; one gate test. Nothing else changes; the timeline path and the owning-package path are untouched.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 08:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 3 of 3)
+
+**PR**: #461 at `2f5a8392`
+**Addressed**: Integrated Review at `7836be6` (2026-11-13 08:37 -05:00), as the host's Checkpoint of 08:38 decided
+**Commits**: `2f5a8392`
+
+### Actions
+- [x] (suggestion) When no timeline is read, the comments-only duplicate check now takes the last comment that starts with `## Merge (report-only)` or `## Merge (unreviewed)`. It skips only when that comment's heading type equals the requested type and its `**Conditions**` match. Before, it took the last comment of the requested type only. The timeline path, the owning-package path and every verdict are unchanged.
+  - `docs/design.md`: one sentence in the Merge gate bullet and a change-log row (986 lines). The citations that moved by 7 lines were refreshed: Table 1's `1316 and 1329, 2118-2138` and the Records bullet's `1316 and 1329`. Every other citation sits before line 1288 and did not move.
+  - `script_reference.md` row 38 gets the same clause.
+  - No text in the repository states the "Known gap" premise, so nothing else was removed; the pull request body is the host's.
+  - `.agent/scripts/merge_pr.sh:1287-1304` — `2f5a8392`
+
+### Test rows (`test_merge_pr_gate.sh` dedup-c; a workspace PR with no worktree, so the comments are the store; conditions A are taken from a calibration run)
+| Comments on the PR (oldest first) | Run | Result | Fails on `7836be6`'s script |
+|---|---|---|---|
+| unreviewed A, report-only A | `--force-unreviewed`, A | records | yes |
+| report-only A, unreviewed A | `--report-only`, A | records | yes |
+| unreviewed A | `--force-unreviewed`, A | skips | no (neighbour) |
+| unreviewed with other conditions | `--force-unreviewed`, A | records | no (neighbour) |
+| report-only A | `--force-unreviewed`, A | records | no (neighbour) |
+| no record comment | `--force-unreviewed` | records | no (neighbour) |
+| unreviewed A, then a comment quoting a report-only heading mid-body | `--force-unreviewed`, A | skips (the quote is not a record) | no (neighbour) |
+
+`tail_of` moved to the top of the test file: the new test runs before the place where it was defined.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 165/0. Against the previous `merge_pr.sh` it gave 163/2: the two sequence rows.
+  - `test_merge_pr.sh` 150/0.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. It was waited for to its exit. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 09:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #461 at `208ab98`
+**Depth**: Standard (reason: fix-round re-review of the triage finding at `7836be6`, scoped by the handoff to commit `2f5a8392`; whole-diff tier keeps cross-model)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Scope: the one finding of the Integrated Review at `7836be6` and its fix `2f5a8392` (the comments-only branch of `_gate_already_recorded`, `merge_pr.sh:1287-1304`; test `dedup-c`; one sentence each in `docs/design.md` and `script_reference.md`; `tail_of` moved). Read the whole function with its three stores.
+
+Verified: `git show 2f5a8392` changes only the `elif [[ -n "$_gate_json" ]]` branch; the workspace/project timeline path (1242-1249) and the owning-package path (1250-1286) are byte-identical, and the callers (1309-1333) are untouched, so the gate's verdict is unchanged (the check only decides whether a record is written). All seven dedup-c rows pass and assert both the posted count and the skip message; run against `2f5a8392^`'s `merge_pr.sh` with the new test, rows 1 and 2 fail (posted=0) and the other five pass, as the Implementation table says. Records are recognised by `startswith` on the body; `_gate_record` posts bodies that begin with `## <type>`; a heading quoted mid-body is not selected. `gh pr view --json comments` (gh 2.104.0) paginates every comment (`shared.preloadPrComments`), oldest first, so `last` is the newest. `tail_of` is identical, moved above its first use (line 530); its other uses (811-1146) are unchanged. design.md citations (1316, 1329, 2118-2138) and the 986-line count match the file. shellcheck --severity=warning clean on both shell files. Suites: test_merge_pr_gate 165 passed, 0 failed; test_merge_pr 150 passed, 0 failed.
+
+Outside reviewers: gemini (agy) complete, no issues; codex complete, two findings on the owning-checkout timeline path (`merge_pr.sh:788`, `:1087`), outside this commit's scope and not verified here; Copilot skipped (disabled for quota).
+
+### Findings
+- [ ] (suggestion) Comments-only branch: the `**Conditions**` value is not stripped of trailing whitespace/CR as the heading now is; a record comment edited into CRLF (`"## Merge (unreviewed)\r\n**Conditions**: A\r\n"`) gives `l_cond=$'A\r'` and a duplicate record is written (fail-safe; line unchanged by this commit; reproduced) — `.agent/scripts/merge_pr.sh:1299`
+- [ ] (suggestion) A comment starting with a record heading plus extra text (`"## Merge (unreviewed) — why we forced\n..."`) after a real unreviewed-A record is selected as newest, fails the exact type check, and a duplicate is written (fail-safe; the pre-fix code also wrote one) — `.agent/scripts/merge_pr.sh:1294-1298`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 09:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adba5a9f2a1e35af5, resume 1 of 3)
+
+**PR**: #461 at `5d296c5`
+**Sources**: 4 (Local Review @ `208ab98` (covers `5d296c5` via bookkeeping), with codex's two out-of-scope items carried by it; GitHub reviews: none, Copilot skipped (disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: entries newer than the Integrated Review at `7836be6`. Its one finding (comments-only duplicate check) is fixed in `2f5a8392`; the Local Review at `208ab98` verified it (test_merge_pr_gate 165/0, test_merge_pr 150/0, run by that review). The stale entries `a6c2d2f`, `3ab6be9`, `8d563c2`, `0144179`, `7b85fe7` (PRs 445, 456, 460) are out of scope; `f98c44e`'s open box is the "No issues found" placeholder.
+
+CI at triage, on `5d296c5` (8 runs): Validate Adapter Contract, Validate Documentation and ros-manifest tests succeeded (both runs each); Lint (pre-commit) had not concluded in either run. Not waited for.
+
+Sandbox runs for the codex items: the gate suite's own fixtures (`make_sandbox`, `make_pkg_container`, `run_merge`, `run_pkg_merge` from `test_merge_pr_gate.sh`), `--report-only` with a stale review so the record path runs; once with this branch's scripts, once with main's (`git archive main .agent/scripts`) for the workspace path.
+
+### Findings
+- [x] (must-fix, codex via Local Review @ `208ab98`, verified here) The record push publishes the checkout's unpushed commits to the PR branch, and the merge then takes them.
+  - Code: the read guard (`merge_pr.sh:788`) requires the owning checkout to contain origin's PR branch, not to equal it. `_gate_record` commits on top of the local HEAD and runs `push origin $PR_BRANCH` (`:1094`), which pushes every local commit.
+  - Input (sandbox, owning package PR): a local commit "WIP: unpushed developer commit" adding `wip_code.txt` in pkg_a, not pushed. Result: "Merge (report-only) entry recorded ... and pushed"; origin's `feature/issue-901` went from the reviewed tip to the record commit with the WIP commit under it. Step 2 then targets CI at the new head, and `gh pr merge` (`:1874`, no head match) merges it.
+  - Effect: code nobody reviewed merges, and the record names the earlier head (`**PR**: #N at <HEAD_REVIEWED>`). It happens on every path that records: all package PRs the gate would refuse (always report-only) and `--force-unreviewed`.
+  - Main, workspace PR, same input (a worktree with an unpushed commit): identical. Main's `_gate_record` also pushes `origin $PR_BRANCH` from the worktree (main `merge_pr.sh:902`); the sandbox showed the WIP commit on origin. So main sets the precedent, but this PR adds the owning checkout, which is the manifest's entry and can be a developer's working clone, where unpushed work is much more likely than in a loop worktree.
+  - Recommendation: fix in this PR, in the shared `_gate_record`, for both paths. Commit the record only when the checkout's HEAD equals origin's PR branch after a bounded fetch with the explicit refspec. Owning PRs already have that fetch at `:781`; workspace and project PRs need the same fetch. Otherwise, fall back to the PR comment with the reason "the checkout has N commits not on origin's <branch>; committing the record there would publish them". Add one test each (owning, workspace) asserting origin unchanged, the checkout unchanged and one PR comment.
+  - `.agent/scripts/merge_pr.sh:788,1084-1100`
+- [x] (must-fix, codex via Local Review @ `208ab98`, verified here) The record commit sweeps in uncommitted edits to `progress.md` and pushes them.
+  - Code: `progress_append.sh` appends to the file and runs `git add -- <file>` (`progress_append.sh:139`), then `git commit -- <file>`, which commits only that path but the whole file, including edits already present in the working tree. `_gate_rec_snapshot` records `_GS_STATUS` (`:983`) but nothing checks it before the append.
+  - Input (sandbox, owning package PR and workspace PR): a line "DEV-UNCOMMITTED-NOTE" appended to `progress.md`, uncommitted. Result in both: the commit "progress: merge (report-only) for #N" contains the note, it is pushed, and the checkout is clean afterwards.
+  - Main, workspace PR, same input: identical (sandbox); main uses the same `progress_append.sh`.
+  - Effect: someone's unsaved timeline text, perhaps half-written, is published under the merge record's commit. It counts as bookkeeping, so no CI runs on it.
+  - Recommendation: fix in this PR, for both paths. When `_GS_STATUS` is non-empty (progress.md modified, staged or untracked-new), do not commit there; post the record as a PR comment with the reason "progress.md in <checkout> has uncommitted changes; the record is not committed there", leaving the file as found. Add a test for each path.
+  - `.agent/scripts/merge_pr.sh:1086-1087`, `.agent/scripts/progress_append.sh:139`
+- [x] (suggestion, Local Review @ `208ab98`) The comments-only duplicate check does not strip trailing whitespace or CR from the `**Conditions**` value, though it strips the heading. A record comment edited into CRLF gives `l_cond=$'A\r'`, and a duplicate record is written (reproduced by the review). Fail-safe: a second record, never a skipped one. Recommendation: fix here, since an address round is needed for the must-fixes anyway. Strip `\r` and trailing blanks from the value the same way as the heading. The owning branch's `c_cond` (`:1263`) needs the same strip. Add one dedup-c row. — `.agent/scripts/merge_pr.sh:1299`
+- [x] (suggestion, Local Review @ `208ab98`) A comment whose first line starts with a record heading plus extra text (`## Merge (unreviewed) — why we forced`) is selected as the newest record by `startswith`, fails the exact type check, and a duplicate is written. Fail-safe, and the pre-fix code also wrote one. Recommendation: fix here alongside the must-fixes. Select only bodies whose trimmed first line equals one of the two headings exactly, in both the comments-only branch and the owning branch (`:1259`). Add one dedup-c row. — `.agent/scripts/merge_pr.sh:1294-1298`
+
+### False positives
+- None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 09:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage verified both Codex items in a sandbox and classified all four open items fix-here)
+**After**: findings
+**Decision**: address
+
+Fix all four in pull request 461, with this scope decision by the host. Items (a) and (b) are also true of the workspace path on main (the record push publishes unpushed commits in the worktree; the record commit takes uncommitted progress.md edits with it). This pull request fixes them for the OWNING PACKAGE checkout, the path it adds, where the checkout can be a developer's own clone: the record is committed there only when the checkout's HEAD equals origin's pull-request branch (after the bounded fetch the read guard already makes) and progress.md has no uncommitted change; otherwise the record goes on the pull request as a comment with a true reason, and the checkout is left as found. The gate's READ guard for the owning checkout becomes the same equality (a checkout ahead of origin with unpushed commits is not read: its timeline may hold entries origin does not have). The workspace path keeps main's behaviour unchanged in this pull request, so the enforcing gate is not altered beyond what was reviewed; the same two points on the workspace path are raised to the owner as a follow-up. Items 3 and 4 (trim the Conditions value; match only a first line that is exactly one of the two headings) are fixed in both the comments-only and the owning checks.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 09:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `40ca3578`
+**Addressed**: Integrated Review at `5d296c5` (2026-11-13 09:12 -05:00), scope set by the Checkpoint after it
+**Commits**: cf1a2850, a2bdab0f, b65e66d2, 40ca3578 (docs), dcfa8054 (boxes)
+
+### Actions
+- [x] (a) Unpushed commits published by the record push. The owning checkout's read guard now requires HEAD to EQUAL origin's PR branch after its bounded fetch; ahead gets the reason "the owning checkout <A> has N commit(s) not on origin's <branch> at <origin7> (local <head7>)", the gate does not pass on it, and `_gate_record` (which already sends any unread owning checkout to the comment path) posts one comment with "...; the record is not committed there". Checkout and origin left as found. Package PRs skip Step 1, so nothing moves A between the guard and the record. Tests pkg-19 wip (the triage's input: origin's branch does not gain the WIP commit, no "and pushed", one comment across two runs, WIP still local) and pkg-19 approval (an unpushed approved review is not read and does not pass). — `merge_pr.sh:788-799` (cf1a2850)
+- [x] (b) Uncommitted progress.md swept into the record commit. Owning checkout only: new `_gate_rec_dirty` reads `git status --porcelain` for progress.md; untracked / staged / unstaged / both (including a deletion) means no commit there, one comment "<rel> in <A> <is untracked|has staged changes|has unstaged changes|has staged and unstaged changes>, so the record is not committed there (left as found)". Test pkg-20 (5 shapes): the note never reaches origin, status and file byte-identical, HEAD unchanged, one comment. — `merge_pr.sh:984-1002, 1114-1118` (a2bdab0f)
+- [x] Item 3: `**Conditions**` and `**When**` values from comments are trimmed of trailing blanks and CR (`_gate_rec_field`), in the comments-only check (`l_cond`) and the owning check (`c_cond`, `c_when`; `c_type` trimmed too). Tests: dedup-c "CRLF line ends" and "trailing blanks" rows; pkg-21 crlf. — `merge_pr.sh:1260-1275` (b65e66d2)
+- [x] Item 4: a comment is a record only when its first line, trailing blanks/CR trimmed, is exactly `## Merge (report-only)` or `## Merge (unreviewed)` (`_GATE_REC_COMMENT_JQ`, used by both checks; leading blanks are not trimmed, since an indented heading is not one). Tests: dedup-c "real record, then heading plus text" (skips) and "heading plus text alone" (records); pkg-21 heading-plus-text. (b65e66d2)
+- [x] Docs, after all code edits: Records bullet, Review loop comment-fallback list and Merge gate bullet in `docs/design.md`, `script_reference.md` row 38 state the new conditions (on the branch, HEAD equal to origin's copy, progress.md with no uncommitted change and a regular file; exact-heading matching with trimmed values); every `merge_pr.sh` citation refreshed by a line map from `f78c25e3`; change-log row added (993 lines). (40ca3578)
+
+### Input table (owning checkout; NEW = behaviour changed in this pass)
+| Input | Read? | Record | Test |
+|---|---|---|---|
+| equal to origin, progress.md clean | yes | committed and pushed in A | pkg-3, pkg-4; e2e "owning PR targeting main" in test_package_issue_loop |
+| equal to origin, progress.md absent | n/a | created, committed and pushed | pkg-1 |
+| ahead (unpushed commits) — NEW | no, reason "has N commit(s) not on origin's" | PR comment; A and origin unchanged | pkg-19 wip, approval |
+| behind | no ("does not contain origin's") | PR comment | pkg-16 behind, pkg-15 |
+| diverged | no (same reason, true) | PR comment, nothing pushed | pkg-19 diverged (new test, behaviour unchanged) |
+| detached / other branch | no | PR comment | pkg-13, pkg-16 |
+| progress.md unstaged edit — NEW | yes (working copy) | PR comment, file left byte-identical | pkg-20 unstaged |
+| progress.md staged edit — NEW | yes | PR comment | pkg-20 staged |
+| progress.md staged and unstaged — NEW | yes | PR comment | pkg-20 staged-and-unstaged |
+| progress.md untracked new file — NEW | yes | PR comment | pkg-20 untracked |
+| progress.md deleted in the working tree — NEW | no file | PR comment | pkg-20 deleted |
+| progress.md symlink / folder | no change | PR comment | pkg-17 |
+| comment record in CRLF / trailing blanks, same conditions — NEW | — | skipped as duplicate | dedup-c, pkg-21 crlf |
+| real record then "heading plus text" comment — NEW | — | skipped as duplicate | dedup-c, pkg-21 |
+| "heading plus text" comment alone | — | records (not a record) | dedup-c |
+
+Before-fix check: the new tests were run against the scripts at `f78c25e3`: 12 fail there (dedup-c CRLF, trailing blanks, heading plus text after a record; pkg-19 wip and approval; pkg-20 all five; pkg-21 both); pkg-19 diverged and the "heading plus text alone" row pass on both, as neighbour coverage.
+
+Workspace path: unchanged for (a) and (b), per the Checkpoint. `_gate_rec_dirty` runs only for `_GATE_PKG_ROLE == owning`, and the equality guard only inside the owning block. The workspace gate tests in `test_merge_pr_gate.sh` (enforce/report-only/force rows, no-worktree comment fallback, hang-ws) pass unchanged; items 3 and 4 change the comments-only duplicate check, which a workspace PR with no worktree also uses, as the Checkpoint decided.
+
+Open for the host (not changed, outside the decided scope): the owning checkout's timeline is still READ from the working copy when progress.md has uncommitted changes, so an uncommitted approval there would count for the gate verdict (package PRs are report-only, so it changes only the record's Conditions). The workspace path reads the working copy the same way on main.
+
+Tests: `test_merge_pr_gate.sh` 179 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed. `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0, every hook Passed or Skipped (no files), including `validate-script-tests` (the hook prints no per-suite counts).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 09:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad893fc5d06bb04f1, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #461 at `7ef2a6a`
+**Depth**: Standard (reason: fix-round re-review of the four triage items at `5d296c5`, fix commits cf1a2850, a2bdab0f, b65e66d2, 40ca3578; whole-diff tier keeps cross-model)
+**Must-fix**: 2 | **Suggestions**: 1
+
+Verified by running: the three suites (test_merge_pr_gate 179 passed, 0 failed; test_merge_pr 150 passed, 0 failed; test_package_issue_loop 220 passed, 0 failed). The input table's rows pass as named: pkg-19 wip/approval/diverged, pkg-20 all five dirty shapes, pkg-21 crlf/heading-plus-text, dedup-c (11 rows), pkg-1/3/4 (equal and clean: committed and pushed in A), and the e2e "owning PR targeting main ... recorded in A and pushed". In the refused cases those tests assert origin's branch tip unchanged and the note/WIP commit absent from origin. The diff confines the equality guard to the owning read block and `_gate_rec_dirty` to `_GATE_PKG_ROLE == owning`; the workspace path changes only through the shared comment filter. For the comments-only check, items 3 and 4 turn a wrongly repeated record into a skip (CRLF, trailing blanks, a heading-plus-text comment after a real record) and leave the other rows as they were; the one reverse case is finding 2. Shared filter: an empty comment list, `{}`, null comments, CRLF, a leading blank line (not a record) and leading spaces (not a record) behave as intended. Comments by other authors that start with the exact heading still count as records, as before. shellcheck --severity=warning clean on both shell files.
+
+The uncommitted-approval question: a defect this PR should fix (finding 1). This PR's own rule is that an owning timeline holding entries origin does not have is not read; an uncommitted edit is the same case as the unpushed commit it now refuses.
+
+Outside reviewers: gemini (agy) complete, one suggestion (stale citations, finding 3, verified); codex complete, one must-fix (uncommitted timeline read, the same as finding 1); Copilot skipped (disabled for quota). Claude adversarial subagent: findings 1 and 2 were given to it as known; it raised a progress.md marked `--assume-unchanged`. `_gate_rec_dirty` then sees it clean, `progress_append.sh` commits nothing, and `_gate_record` reports "recorded ... and pushed" with the existing head in `_RUN_COMMITTED_SHAS`. That is not counted here: it needs a manual index flag, the same append path predates this round and the workspace path has it on main, and only its git steps were checked, not a full run. Noted for the host.
+
+### Findings
+- [ ] (must-fix) The owning timeline is read from the working copy when progress.md has uncommitted changes. Input (sandbox from the gate suite's fixtures): owning checkout equal to origin with a committed stale review, `$APPROVED_AT_HEAD` appended uncommitted, PR with a decision summary. Result: "Review gate: approved review at head `abc1234`", no record written, the file left ` M`. The same approval in an unpushed commit is not read (pkg-19 approval). Fix: when `_gate_rec_dirty` reports anything, set `_GATE_OWN_NOREAD` in the read guard (the function is defined at :987, after the guard at :790, so move it up), and add a pkg-20-style row for an uncommitted approval — `.agent/scripts/merge_pr.sh:790-801`
+- [ ] (must-fix) An empty or null comment body makes `_GATE_REC_COMMENT_JQ` fail (`"" | split("\n")` is `[]`, so `[0]` is null, and `sub` on null errors), and stderr is discarded. The whole comment store then reads as "no record". Input (owning PR, sandbox): the timeline has `Merge (unreviewed)` X, the comments have a newer `Merge (report-only)` X plus `{"body":""}`, and `--force-unreviewed` runs with X. Result: "already recorded at `abc1234` ... skipping"; with the scripts at `f78c25e3`, and with the empty comment left out, it records. In the comments-only path the same input writes a duplicate. This needs GitHub to return a blank body, which its API normally refuses (unverified), but `.body // ""` shows null was expected. Fix: `((.body // "") + "\n" | split("\n")[0] | sub(...))` or `(split("\n")[0] // "")`, plus a dedup-c row with an empty-body comment — `.agent/scripts/merge_pr.sh:1267-1270`
+- [ ] (suggestion) In `docs/design.md`, the Records/registry bullet still cites `merge_pr.sh` "lines 818 and 1056" and "lines 1316 and 1329". The code is now at 829 and 1087 (main-tree guards) and 1365 and 1378 (report-only project gate), as Table 1 already says (gemini, verified) — `docs/design.md:490-492`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 1 of 3)
+
+**PR**: #461 at `7fa4efcf`
+**Addressed**: Local Review at `7ef2a6a` (2026-11-13 09:36 -05:00), post-PR re-review; its boxes are left as written, because `review_progress.sh findings` selects only an Integrated Review or a pre-push Local Review as a source
+**Commits**: 45eb2e1d, 04fda41d, 7fa4efcf (docs)
+
+### Actions
+- [x] (must-fix 1) Uncommitted approval passed the gate. `_gate_rec_dirty` moves above the owning read guard. When the checkout equals origin but the function reports anything, the guard sets `_GATE_OWN_NOREAD` to its text: untracked, staged, unstaged, both, deleted, or a new case (below). The gate gives "<rel> in <A> <what>; its timeline is not read for issue #N", does not pass, and the record goes on the PR with "<rel> in <A> <what>; the record is not committed there". The record-time check that fed the same function could no longer be reached and is removed. A symlink or non-file `progress.md` stays `_gate_rec_unsafe`'s case, so pkg-17 keeps its reason. Workspace path untouched. — `merge_pr.sh:762-840` (45eb2e1d)
+  - Tests: pkg-20 read uncommitted-approval (the review's input: no "approved" line, not read, file left ` M`); pkg-20 read unrelated-note (committed approval plus an unrelated uncommitted line: not read, by the same rule); pkg-20 read clean (read, passes). pkg-20's seven record shapes now also assert the read reason.
+- [x] (must-fix 2) An empty or null body broke the record filter. The filter now uses `(split("\n")[0] // "")`, so an empty or null body is simply not a record. Both checks go through the new `_gate_rec_comment`. Any other jq failure (a comment that is not an object; a non-string body) prints "the PR's comments could not be read for the duplicate check (jq exit N) — recording rather than skipping" on stderr, and the record is written. — `merge_pr.sh:1266-1296, 1336, 1370` (04fda41d)
+  - Tests: dedup-c "report-only A, then an empty-body comment" (skips) and "...a null-body comment" (skips); dedup-c "...a comment that is a number" (records), plus "(dedup-c unreadable) the failed read is said".
+  - Tests: pkg-22 empty / null / number (the review's owning input: timeline Merge (unreviewed) X, a newer report-only X comment beside the odd one; `--force-unreviewed` with X records; number also says the read failed).
+- [x] (suggestion) Every `merge_pr.sh` citation in `docs/design.md` was re-derived from the final file by content, after all code edits:
+  - Table 1: 865 and 1103 (main-tree guards), 1388 and 1401 (report-only project gate), 2190-2210 (project sync).
+  - Records bullet: 744-840, 886-893 and 1221-1222, and the stale 818/1056 and 1316/1329 there, now 865 and 1103 and 1388 and 1401.
+  - Mechanism 1: 719-854 and 1066-1236.
+  - Prose: the Records bullet, the comment-fallback list, the Merge gate bullet and `script_reference.md` row 38 now name the new read condition and the empty-body and unreadable-comment rules. A change-log row was added (999 lines). (7fa4efcf)
+- [x] (checked, fixed as a guard with a test) assume-unchanged. Reproduced on the owning path before this fix, in a sandbox built from the gate suite's fixtures: with `progress.md` marked `--assume-unchanged` and edited, the run printed "Merge (report-only) entry recorded in <A>/... and pushed". HEAD and origin had not moved, the entry stayed appended in the working copy, and git status showed nothing.
+  - Cause: git status hides the file and `git add` takes no change. `progress_append.sh` then finds nothing staged and exits 0 through its "already committed" no-op.
+  - Fix: `_gate_rec_dirty` now reads `git ls-files -v`. A lowercase tag (assume-unchanged) or `S` (skip-worktree) means "<rel> in <A> is marked assume-unchanged or skip-worktree in the index, so its changes are not known". The owning timeline is then not read and the record goes on the PR.
+  - Tests: pkg-20 assume-unchanged and pkg-20 skip-worktree.
+  - Not changed: the workspace path keeps main's behaviour here; it was not tested in this pass, and the reviewer reports main has it.
+  - Same no-op, also unchanged: a record whose text is byte-identical to the committed tail (same minute, same conditions) also takes the no-op and is reported "recorded ... and pushed". The entry is then already in the committed file. I first saw this as a timing-dependent pkg-22 failure, so pkg-22 asserts the duplicate check's outcome, not HEAD movement. No wall-clock tuning.
+
+### Input table (owning checkout; NEW = rows added in this pass)
+| Input | Timeline read? | Record | Test |
+|---|---|---|---|
+| equal to origin, progress.md clean | yes | committed and pushed | pkg-1, pkg-3, pkg-4; pkg-20 read clean (passes); e2e "owning PR targeting main" |
+| ahead / behind / diverged / detached / other branch | no | PR comment | pkg-19, pkg-16, pkg-15, pkg-13 |
+| progress.md unstaged / staged / both / untracked / deleted | no — NEW (it was read before) | PR comment, file byte-identical | pkg-20 (now asserts the read reason) |
+| uncommitted approval on a committed stale review — NEW | no; the gate does not pass | PR comment | pkg-20 read uncommitted-approval |
+| committed approval and an unrelated uncommitted line — NEW | no (same rule) | PR comment | pkg-20 read unrelated-note |
+| progress.md assume-unchanged, edited — NEW | no | PR comment (was a false "recorded and pushed") | pkg-20 assume-unchanged |
+| progress.md skip-worktree, edited — NEW | no | PR comment | pkg-20 skip-worktree |
+| progress.md symlink / folder | unchanged | PR comment, `_gate_rec_unsafe`'s reason | pkg-17 |
+| record comment beside an empty-body comment — NEW | n/a | duplicate skipped (comments-only); records when the newest record differs (owning) | dedup-c empty, pkg-22 empty |
+| record comment beside a null-body comment — NEW | n/a | same as empty | dedup-c null, pkg-22 null |
+| a comment that is not an object — NEW | n/a | said on stderr, record written | dedup-c number, pkg-22 number |
+| CRLF / trailing blanks / heading plus text | n/a | as in the previous entry | dedup-c, pkg-21 |
+
+Before-fix check: the suite with the new tests was run against the scripts at `0274d429`. 15 tests fail there:
+- dedup-c empty and null, and dedup-c unreadable.
+- All seven pkg-20 shapes. The five older shapes fail on their new read-reason assertion; assume-unchanged and skip-worktree are new behaviour.
+- pkg-20 read uncommitted-approval and unrelated-note.
+- pkg-22 empty, null and number.
+
+pkg-20 read clean and dedup-c number's "records" row pass on both.
+
+Workspace path: unchanged. The read-guard change sits inside the owning block. The only change the workspace path sees is the shared comment filter: empty and null bodies are now not records, and an unreadable store records with a message. The workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with their assertions unchanged, so the workspace gate's verdicts are unchanged.
+
+Tests: `test_merge_pr_gate.sh` 191 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the end-to-end owning case still records and pushes in A when it equals origin). `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0; `run_script_tests: all 37 suites passed in 621s (scoped run, 37 of 48)`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 10:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad893fc5d06bb04f1, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #461 at `b36bbf8`
+**Depth**: Standard (reason: fix-round re-review of the three findings at `7ef2a6a`, fix commits 45eb2e1d, 04fda41d, 7fa4efcf; whole-diff tier keeps cross-model)
+**Must-fix**: 2 | **Suggestions**: 0
+
+Verified by running:
+- **Suites:** test_merge_pr_gate 191 passed, 0 failed; test_merge_pr 150 passed, 0 failed; test_package_issue_loop 220 passed, 0 failed.
+- **The three previous findings are fixed.**
+  - pkg-20 read: an uncommitted approval is not read and does not pass; an unrelated uncommitted note is not read; a clean committed approval is read and passes.
+  - pkg-22: an empty, null or number comment beside a newer report-only X comment records rather than skips. The number case also prints "could not be read".
+  - dedup-c: empty-body and null-body comments are not records, and the earlier record is still found and skipped.
+  - design.md: every `merge_pr.sh` citation checked against the final file (Table 1; lines 744-840, 886-893, 1221-1222, 865, 1103, 1388, 1401; 719-854, 1066-1236; 2190-2210). The file is 999 lines.
+- **Neighbours:** pkg-20 passes all seven dirty shapes, including assume-unchanged and skip-worktree. The e2e "owning PR targeting main ... recorded in A and pushed" passes.
+- **The removed record-time check:** `_gate_record` commits in the owning checkout only when `_GATE_OWN_NOREAD` is empty (:1093). Between the guard and the record only read-only steps run (Step 1 runs earlier, at :595, and package PRs skip the roadmap), so nothing in the gate can make `progress.md` dirty in between.
+- **"Records rather than skips":** the duplicate check runs once per run, so a run posts at most one comment. An unreadable store posts one comment on each later run; nothing loops.
+- **Workspace path:** `_gate_rec_dirty` and the equality guard sit only in the owning block. The comments-only check differs from main only by the shared filter (empty or null bodies are not records) and a stderr line on a jq failure; a jq failure still records, as on main.
+- **Lint:** shellcheck --severity=warning is clean on both shell files.
+
+The byte-identical record question: the message is true enough, not a defect.
+- **Input:** within one minute, run 1 `--force-unreviewed` X commits and pushes `Merge (unreviewed)` X to the timeline; run 2 `--report-only` X has its push refused and posts a report-only X comment; run 3 `--force-unreviewed` X ties on `**When**`, finds it doubtful and records.
+- **Result:** `progress_append.sh` finds the identical tail and commits nothing, and the gate prints "recorded ... and pushed". That entry, with the same text, is committed and on origin. `_RUN_COMMITTED_SHAS` gains run 1's record commit, which changes only `progress.md`, so the CI hold steps past a bookkeeping commit.
+- gemini rated it must-fix; not taken, for the reasons above.
+
+Outside reviewers:
+- gemini (agy): complete, 2 must-fix. The symlink item is finding 2 (verified). The identical-record item is answered above.
+- codex: complete, 2 must-fix, the same as findings 1 and 2.
+- Copilot: skipped (disabled for quota).
+- Claude adversarial subagent: finding 1.
+
+### Findings
+- [ ] (must-fix) An untracked `progress.md` that git ignores is reported clean by `_gate_rec_dirty`: `ls-files -v` prints nothing, and `status --untracked-files=all` omits ignored files. The timeline is then read.
+  - **Input** (sandbox from the gate suite's fixtures): owning checkout equal to origin, no committed `progress.md`, `.agent/work-plans/` in the checkout's `info/exclude`, a local `progress.md` holding `$APPROVED_AT_HEAD`, and a PR with a decision summary.
+  - **Result:** "Review gate: approved review at head `abc1234`", and no record. A package repository whose `.gitignore` lists `.agent/` hits this on every run.
+  - **Fix:** when the path exists and `git ls-files --error-unmatch -- <rel>` fails, report it as untracked; add a pkg-20 read row for an excluded file. — `.agent/scripts/merge_pr.sh:767-790`
+- [ ] (must-fix) The early `return 0` for a symlink leaves the read side unguarded: `_gate_rec_unsafe` is consulted only when recording.
+  - **Input:** owning checkout equal to origin, `progress.md` an untracked symlink to an untracked `local.md` in the same folder that holds `$APPROVED_AT_HEAD`.
+  - **Result:** "Review gate: approved review at head `abc1234`", and no record. Before this round's early return, git status would have reported `??`.
+  - **Fix:** in the read guard, set `_GATE_OWN_NOREAD` from `_gate_rec_unsafe` (a symlink or a non-file is not read either), or drop the early return. Add a read row. — `.agent/scripts/merge_pr.sh:770-772, 830-836`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 2 of 3)
+
+**PR**: #461 at `1e54eaed`
+**Addressed**: Local Review at `b36bbf8` (2026-11-13 10:08 -05:00), post-PR re-review, two must-fix, both closed by the owner's rule change; its boxes are left as written (`review_progress.sh findings` takes only an Integrated Review or a pre-push Local Review as a source)
+**Commits**: 76b5f5f7 (code and tests), 1e54eaed (docs)
+
+Owner's decision, put to him as: "Change the rule once: for a package issue the gate reads progress.md from the commit that equals origin's branch, not from the working copy. Every working-copy case then stops mattering." His answer: "Read the committed copy (Recommended)".
+
+### Actions
+- [x] READ (owning package PR only; `merge_pr.sh:762-858`). The guard is unchanged up to equality: top folder, on the PR branch, HEAD equals origin's copy after the bounded fetch. When those hold, `_GATE_OWN_SHA` is that commit.
+  - The gate takes `git ls-tree` of `.agent/work-plans/issue-N/progress.md` at that SHA. A regular blob (100644/100755) is written by `git cat-file blob` into a private `mktemp -d` folder, removed on EXIT (with HUP/INT/TERM traps that exit, so EXIT runs).
+  - Both readers of the owning timeline read that file: the review check (`progress_read.py` for Local/Integrated Review) and the duplicate check (`progress_read.py` for the Merge entries, plus the PR comments). There is no other reader: `review_progress.sh` is not called by the gate, and the ancestry check reads git history in `_ci_wt`, not the file.
+  - A path absent from the commit gives no timeline, reason "no progress.md for issue #N committed at origin's <branch> (<sha7>) in <A>". A non-regular blob gives a refusal naming the mode.
+  - The location rule is now `issue_checkout_guard` on the checkout itself, the check inside `records_path`, instead of `records_path` on the working-copy path, which would resolve working-copy symlinks.
+  - Reasons name the timeline as "<A>/<rel> at <sha7>". The workspace and project branch still reads its worktree's working copy through `records_path`, unchanged.
+- [x] REMOVED from the read side: `_gate_rec_dirty` and its `_GATE_OWN_NOREAD` use (untracked / staged / unstaged / deleted / assume-unchanged / skip-worktree "not read" reasons). `_gate_rec_unsafe` was never on the read side and stays record-only. No "its timeline is not read" reason remains except the checkout-level ones (detached, other branch, fetch failed, no origin ref, behind/diverged, ahead).
+- [x] RECORD (owning only; `_gate_rec_not_committed`, called from `_gate_record` after `_gate_rec_unsafe`). Rule, stated once in the code comment: "the record is committed only when the working copy's progress.md is the committed one". That means HEAD still at the SHA; tracked; a regular file; the index blob equal to the committed blob; the working file's `hash-object` equal to the index; no lowercase or `S` `ls-files -v` tag; or absent from both the commit and the working copy, with no index entry (create). Anything else gives a comment "<rel> in <A> <is untracked / is ignored and untracked / is staged but not committed / has staged changes / has unstaged changes / has staged and unstaged changes / is marked assume-unchanged or skip-worktree ...> (not committed at <sha7> where it is not), so the record is not committed there (left as found)". Symlinks and non-folders on the way keep `_gate_rec_unsafe`'s reason.
+- [x] Duplicate check (owning): reads the committed copy plus the PR comments, as before.
+- [x] Texts, last:
+  - `docs/design.md`: Records bullet, records-gate sentence, the comment-fallback list and both Merge gate bullets.
+  - `script_reference.md` rows 13 and 38, and `run-issue/SKILL.md` (two places).
+  - Each states the one rule: reads the committed timeline at origin's branch head; records only when the working copy's file is the committed one.
+  - All `merge_pr.sh` citations re-derived from the final file: Table 1 at 869 and 1170, 1460 and 1473, 2262-2282; Records bullet at 744-805, 806-858, 890-897 and 1293-1294, 869 and 1170, 1460 and 1473; mechanism 1 at 719-858 and 1133-1308.
+  - Change-log row added (1003 lines).
+
+### Test expectations, pkg-13 to pkg-22 and hang-*
+- pkg-1: reason text changed to "no progress.md for issue #901 committed at origin's feature/issue-901 (<sha>) in A" (it now means none committed); still recorded and pushed in A.
+- pkg-13, pkg-14, pkg-15, pkg-16 (incl. control), pkg-19: unchanged. Checkout-level, not read before the commit question arises; the pkg-16 control now reads the commit at R1.
+- pkg-17 (symlink / dangling / folder, nothing committed): unchanged expectation (record reason from `_gate_rec_unsafe`); the read now reports none committed.
+- pkg-18, pkg-21, pkg-22: unchanged; their timeline is the committed one (the record commits are pushed, so HEAD equals origin).
+- pkg-20 (record shapes): CHANGED. They asserted "not read" plus "; the record is not committed there". Now they assert the commit is read (stale review, or "none committed" for untracked shapes), no "not read" reason, and the record reason ", so the record is not committed there (left as found)". The untracked reason gains "(not committed at <sha7>)". NEW shape: ignored-untracked.
+- pkg-20 read: CHANGED and extended.
+  - uncommitted-approval now reads the committed stale review, not "not read".
+  - NEW: ignored-approval and symlink-approval (the re-review's two inputs) do not pass.
+  - unrelated-note now PASSES: the commit holds the approval, and no record is needed.
+  - NEW: edited-changes-requested, deleted and symlink-replaced pass from the commit with nothing recorded.
+  - Each run also asserts that the private temporary folder (TMPDIR pointed at an empty folder) is left empty. With the cleanup disabled, 6 rows fail, so the assertion is real.
+- hang-1 to hang-4, hang-ws: unchanged; they pass.
+- e2e (`test_package_issue_loop.sh`): "owning PR targeting main ... recorded in A and pushed" and "owning PR on its base: the gate passes on A's timeline" both pass.
+
+Before-fix check: the suite with these tests was run against the scripts at `e9f72dfc`. 16 tests fail there: pkg-1, all eight pkg-20 record shapes, and seven of the eight pkg-20 read shapes (all but clean).
+
+### Input table (owning checkout equal to origin unless stated; CHANGED / NEW marked)
+| Working copy / commit | What the gate reads | Verdict | Record | Test |
+|---|---|---|---|---|
+| clean, committed approval | committed approval | passes | none | pkg-2, pkg-20 read clean |
+| clean, committed stale review | committed stale | refuses (report-only) | committed and pushed in A | pkg-3, pkg-4, e2e |
+| nothing committed, nothing in the working copy | none committed — CHANGED text | refuses | created, committed and pushed | pkg-1 |
+| committed approval; working copy noted / edited to changes-requested / deleted / symlink-replaced — CHANGED/NEW | committed approval | passes | none | pkg-20 read |
+| committed stale; approval appended uncommitted — CHANGED | committed stale | refuses | PR comment, "has unstaged changes" | pkg-20 read uncommitted-approval |
+| nothing committed; ignored file with an approval — NEW | none committed | refuses | PR comment, "is ignored and untracked" | pkg-20 read ignored-approval |
+| nothing committed; untracked symlink to a local approval — NEW | none committed | refuses | PR comment, "is a symlink" | pkg-20 read symlink-approval |
+| committed stale; unstaged / staged / both / deleted / assume-unchanged / skip-worktree — CHANGED | committed stale | refuses | PR comment with that reason, file byte-identical | pkg-20 |
+| nothing committed; untracked / ignored-untracked (NEW) | none committed | refuses | PR comment, "is (ignored and) untracked (not committed at <sha7>)" | pkg-20 |
+| symlink / dangling / folder progress.md | none committed | refuses | PR comment, `_gate_rec_unsafe` reason | pkg-17 |
+| ahead / behind / diverged / detached / other branch | not read (checkout-level) | refuses | PR comment | pkg-19, pkg-16, pkg-15, pkg-13 |
+| origin silent at the fetch | not read | refuses | PR comment | hang-1 |
+
+Workspace path: unchanged. The committed-copy read and `_gate_rec_not_committed` run only when `_GATE_PKG_ROLE` is owning. The workspace branch keeps `records_path` plus a working-copy read, and the workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with unchanged assertions, so verdicts and record behaviour are as on main, apart from what earlier rounds of this PR changed in the shared comment filter.
+
+Tests: `test_merge_pr_gate.sh` 197 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed. `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0, "run_script_tests: all 37 suites passed in 626s (scoped run, 37 of 48)".
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 10:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad893fc5d06bb04f1, resume 3 of 3)
+**Verdict**: approved
+
+**PR**: #461 at `5be968e`
+**Depth**: Standard (reason: fix-round re-review of the two findings at `b36bbf8` and the owner's rule change, commits 76b5f5f7, 1e54eaed; whole-diff tier keeps cross-model)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified by running:
+- **Suites:** test_merge_pr_gate 197 passed, 0 failed; test_merge_pr 150 passed, 0 failed; test_package_issue_loop 220 passed, 0 failed.
+- **Both earlier findings are fixed.**
+  - pkg-20 read: ignored-approval and symlink-approval read the commit, do not pass, and leave the file as found.
+  - With a committed approval, the gate passes whatever the working copy holds: clean, unrelated-note, edited-changes-requested, deleted, symlink-replaced.
+  - The new test file run against `e9f72dfc`'s `merge_pr.sh` fails 16 rows. Among them are ignored-approval and symlink-approval (the two inputs), the other read rows, and the record rows. Some of those fail on the changed reason text, and the new rows test something on both counts.
+- **No working-copy reader is left.** The owning timeline is read only through `_gate_progress`, at :914 (the review check) and :1378 (the duplicate check), which is now the extracted blob. Every other use of the path writes (snapshot, record) or names a path (CI bookkeeping, `git diff`). `progress_read.py` does not depend on the file's path.
+- **Blob extraction:** `cat-file blob` reads raw, so no filters or EOL conversion apply. A symlink (120000) or submodule (160000) tree entry is a refusal with its mode. For a directory, `ls-tree` without `-d` lists its child, and `cat-file` then fails: still a refusal, with the reason "could not be read" (gemini). A failed read is a refusal, never a pass. A blob missing in a partial clone is fetched lazily from origin, which the gate's bounded fetch reached moments before.
+- **Temp folder:** none left after a normal exit, which was checked under a dedicated TMPDIR. Signals were checked by reading the traps (EXIT cleanup, exit 129/130/143); the run's TERM attempt did not show it either way. No other trap exists in the script or its sourced helpers. A failing `mktemp -d` aborts the run under `set -e`, like the script's other `mktemp` calls: never a pass.
+- **Window between the guard and the record:** `_gate_rec_not_committed` re-checks that HEAD equals `_GATE_OWN_SHA`.
+- **Record rule:** the input-table rows behave as stated (pkg-1/3/4/19/20/21/22), and the e2e "owning PR targeting main ... recorded in A and pushed" passes.
+- **Workspace path:** it reads the worktree file exactly as on main, through the `!= owning` branch, and only the reason label variable is new. Nothing in it reads a blob.
+- **Texts:** design.md, script_reference.md and run-issue SKILL.md state the one rule (the committed copy at origin's head; the record is committed only when the working copy is the committed one). Each design.md citation was checked against the final file (Table 1; 719-743, 744-805, 806-858, 890-897, 1293-1294, 869, 1170, 1460, 1473, 1133-1308). The file is 1003 lines.
+- **Lint:** shellcheck --severity=warning is clean.
+
+Outside reviewers:
+- gemini (agy): complete.
+  - It again rated the byte-identical same-minute record must-fix. My earlier answer stands: the code is unchanged in this round and the entry is committed.
+  - The workspace path not reading comments is the workspace path as on main, outside this PR's decided scope.
+  - `ls-tree` without `-d` changes only a reason's text.
+  - An ignored `.agent/` with no file present gives a refused record whose reason reads "a git failure such as a commit hook". The record still goes on the PR.
+- codex: complete.
+  - The mode change is the suggestion below.
+  - The push-failure `reset --soft` when another process commits during the push is in code this round did not change; out of scope.
+- Copilot: skipped (disabled for quota).
+- Claude adversarial subagent: a CRLF blob with `core.autocrlf=true` is reported "has unstaged changes" when git status is clean. The record goes on the PR with a wrong reason, which fails safe. It is folded into the suggestion.
+
+### Findings
+- [ ] (suggestion) `_gate_rec_not_committed` compares blob IDs only. It decides by content (`hash-object`) where git status also compares mode and applies its EOL rule.
+  - **Input A:** owning checkout equal to origin, committed `progress.md`, `chmod +x progress.md` uncommitted. Result: the record commit takes the mode change and pushes it (origin mode 100755).
+  - **Input B:** a staged `update-index --chmod=+x` only. Result: the commit puts 100644 back, so the staged change is lost, not left as found.
+  - **Input C** (subagent): a CRLF blob with `core.autocrlf=true`. Result: reported as changed though status is clean, so the record goes to a comment.
+  - No review state or text is affected; the gate's read is the blob.
+  - **Fix:** decide staged with `git diff --cached --quiet <sha> -- <rel>` and unstaged with `git diff --quiet -- <rel>`, and add a chmod row. — `.agent/scripts/merge_pr.sh:1035-1086`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 10:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adba5a9f2a1e35af5, resume 2 of 3)
+
+**PR**: #461 at `979a076`
+**Sources**: 4 (Local Review @ `7ef2a6a`, @ `b36bbf8`, @ `5be968e` (covers `979a076` via bookkeeping), with their gemini, codex and Claude adversarial sub-reviews; GitHub reviews: none, Copilot skipped (disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: entries after the Integrated Review at `5d296c5`. Stale boxes of PRs 445, 456 and 460 stay out of scope. The PR-mode Local Review boxes cannot be ticked by `review_progress.sh findings` (issue 459 fixes that); they are accounted for here from the Implementation entries' Actions.
+
+CI at triage, on `979a076` (8 runs): Validate Documentation and ros-manifest tests succeeded (both runs each); Lint (pre-commit) and Validate Adapter Contract had not concluded in either run. Not waited for.
+
+Accounted for since the Integrated Review at `5d296c5`:
+- That entry's four items. Its boxes are left as written.
+  - (a), unpushed commits published: fixed for the owning checkout in `cf1a2850` (the read and the record need HEAD equal to origin's branch).
+  - (b), uncommitted `progress.md` swept in: fixed in `a2bdab0f`, then replaced by the owner's committed-copy rule in `76b5f5f7` (`_gate_rec_not_committed`).
+  - The workspace path keeps main's behaviour for (a) and (b), by the host's Checkpoint of 09:09. Issue 462 (open) tracks it.
+  - Items 3 and 4 (trimmed values, exact heading): fixed in `b65e66d2`.
+  - The Local Review at `7ef2a6a` verified all four (pkg-19, pkg-20, pkg-21, dedup-c).
+- Local Review at `7ef2a6a`:
+  - Must-fix 1, an uncommitted approval read: fixed in `45eb2e1d`, superseded by `76b5f5f7`, which reads the committed copy.
+  - Must-fix 2, an empty or null body breaking the filter: fixed in `04fda41d` (dedup-c and pkg-22 rows).
+  - The citations suggestion: fixed in `7fa4efcf`.
+  - The Local Review at `b36bbf8` verified all three.
+- Local Review at `b36bbf8`: both must-fix findings, an ignored untracked file and an untracked symlink, are closed by the owner's rule in `76b5f5f7`. The gate reads the blob at origin's head, so no working-copy file is read. pkg-20 read rows ignored-approval and symlink-approval cover them; the Local Review at `5be968e` verified this (test_merge_pr_gate 197/0, test_merge_pr 150/0, test_package_issue_loop 220/0, run by that review).
+
+Set-aside items (raised by sub-reviewers, set aside by the lead reviewer), checked against the code:
+- **A same-minute, byte-identical record is reported "recorded ... and pushed".** Needs nothing. `progress_append.sh` commits nothing because the identical entry is already committed. For an owning checkout, HEAD equals origin's branch, so that entry is on origin and the message is true in substance.
+- **The push-failure rollback can undo another process's commit.** `merge_pr.sh:1257-1258` runs `reset --soft HEAD~1` when `rec_sha != head_before`, without checking that HEAD is still `rec_sha`. If another process commits in the same checkout during the push, that commit is the one taken off the branch: its changes stay staged, and the reason posted says progress.md was not left as it was. Main does the same unconditionally (main `merge_pr.sh:910`). Belongs on issue 462: it is the record-time handling of the shared `_gate_record`, workspace path included. The fix is one guard, HEAD == rec_sha before the reset.
+- **A partial clone fetches a missing blob with no time limit of its own.** Put it in the PR body as a known gap. This PR wrote the committed-copy read (`merge_pr.sh:826,838`: `ls-tree`, `cat-file blob`). In a partial clone whose sparse checkout leaves `.agent/` out, the blob is not local, and git fetches it lazily outside `wt_bounded_git`. That contradicts the script's "bounded like every call to origin". The failure is a hang, never a pass, and it needs both partial clone and a sparse checkout. A checked-out blob is otherwise local, since HEAD equals origin.
+- **A directory at the path gets a less specific reason.** Needs nothing. It is still a refusal ("could not be read"), never a pass, and only the text differs.
+- **An ignored `.agent/` with no file gives a hook-flavoured reason.** Put it in the PR body as a known gap. `git add` refuses the ignored path, `progress_append.sh` exits 3, and the reason reads "a git failure such as a commit hook". The record goes on the PR and the checkout is restored, so it fails safe. A package repository whose `.gitignore` lists `.agent/` will hit this on every recording run, so the reason should be named. A later fix is a `check-ignore` before the append.
+
+### Findings
+- [ ] (suggestion, Local Review @ `5be968e`, from codex and the Claude adversarial sub-review) `_gate_rec_not_committed` compares blob contents only (`hash-object` against the index and the commit), not file mode, and not with git's EOL rule.
+  - Input A, an uncommitted `chmod +x progress.md`: the mode change is committed and pushed with the record.
+  - Input B, a staged `--chmod=+x`: the staged change is lost, because the commit restores 100644.
+  - Input C, a CRLF blob with `core.autocrlf=true`: reported as changed, so the record goes to a comment (safe side).
+  - Classification: valid, low impact. It touches only the mode bit of a bookkeeping file in a package's owning checkout. No review state or text changes, and the gate's read is the committed blob.
+  - Recommendation: defer, with a reason. Issue 462 will rework this record-time check for the workspace path, where the same "commit only when the working copy is the committed one" rule is needed. Doing it once there, shared by both paths, with `git diff --cached --quiet <sha> -- <rel>` and `git diff --quiet -- <rel>` (which compare mode and apply EOL rules) avoids a tenth review round for a mode bit.
+  - Tracking: the host adds this input to issue 462 and lists it in the PR body's known gaps. Not done here: no comment posted, no issue opened.
+  - `.agent/scripts/merge_pr.sh:1035-1086`
+
+### False positives
+- None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (main moved while CI ran: pull request 458 for issue 446 merged and pull request 461 now conflicts in three text files, so the branch must take main and be re-reviewed anyway; the one open suggestion is fixed in the same pass, not deferred)
+**After**: findings
+**Decision**: address
+
+CI was green on 79b79c9a, but GitHub reports the pull request as conflicting with main (docs/design.md, .claude/skills/run-issue/SKILL.md, .agent/knowledge/script_reference.md) after pull request 458 merged. This pass: merge origin/main into the branch and resolve the three conflicts keeping both sides' content; then fix the open suggestion (the record step compares mode as well as content: decide "staged" with git diff --cached --quiet <sha> -- <rel> and "unstaged" with git diff --quiet -- <rel>, with a chmod test row). Triage had recommended deferring that suggestion to issue 462; since a fix pass and a re-review are needed for the merge in any case, it is fixed here.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 3 of 3)
+
+**PR**: #461 at `dead77be`
+**Addressed**: Integrated Review at `979a076` (2026-11-13 10:52 -05:00), its one suggestion, fixed here rather than deferred by the host's Checkpoint of 11:09
+**Commits**: 0c76ff3e (merge of origin/main), de98769d (fix), dead77be (docs)
+
+The branch took main: `GIT_EDITOR=true git merge --no-edit origin/main` brought in pull request 458 (issue 446, ADR-0020). The merge commit is `0c76ff3e`.
+
+### Actions
+- [x] Merge of main. Three text conflicts, each resolved keeping both sides:
+  - `.agent/knowledge/script_reference.md`: this branch's `dispatch_phase.sh` row, which adds the package pre-push review's diff against its base, plus main's `skill_prefix.sh` and `session_root.sh` rows. Main did not touch the `dispatch_phase.sh` row and this branch did not touch the other two.
+  - `.claude/skills/run-issue/SKILL.md`, the skill-prefix paragraph: main's rewritten paragraph (the plugin enabled once at user scope; a checkout subdirectory lists both names). Rewritten sentence: main's two mentions of the real root name `p11-jazzy` become this branch's synthetic `demo-jazzy`, which this branch had already introduced in that same sentence (commit 6f32c946) so that the mechanism text names no real project. Nothing else changed.
+  - `docs/design.md` change log: #446's 2026-11-12 row is placed before this branch's 2026-11-13 rows (date order). Each row keeps the line count of its own side's file at that time.
+  - A merge row states the merged file's count (1022, true at the merge). The citation row after it states the final count (1023, the file's length now).
+  - Main's other design.md changes (Sessions and roots, the registration bullet, the decision register, C4) merged cleanly and touch no sentence this branch wrote, so no sentence was rewritten there.
+- [x] Scripts changed on both sides: none. Only the three text files above were changed by both pull request 458 and this branch, so no script region needed a sense check. `.agent/scripts/check_design_anchors.sh`: exit 0.
+- [x] Suggestion (mode and git's line-ending rules), `_gate_rec_not_committed` in `merge_pr.sh` (de98769d).
+  - "Staged" is now `git diff --cached --quiet <sha> -- <rel>` (the index against the commit). "Unstaged" is `git diff --quiet -- <rel>` (the working tree against the index). Both compare mode as well as content and apply git's own line-ending rules.
+  - `--no-ext-diff --no-textconv` keep diff drivers out. An exit other than 0 or 1 is reported as a reason ("could not compare ... (exit N)"), never treated as "the same".
+  - Kept: HEAD still at the commit; a regular file in the commit; tracked (the not-committed branch); no assume-unchanged or skip-worktree flag; `_gate_rec_unsafe` first (symlinks and non-folders on the way). The `hash-object` comparison is gone.
+  - The one-rule comment now says "a tracked regular file that git itself sees as unchanged in content and mode, in the index and in the working tree".
+  - Test pkg-23 has three shapes. All three fail on the scripts at `0c76ff3e` and pass now:
+    - chmod-unstaged: comment "has unstaged changes"; file mode, index, HEAD and origin's 100644 all left as found.
+    - chmod-staged: comment "has staged and unstaged changes", which is git's own `MM`; the index stays at 100755 and origin at 100644.
+    - crlf-autocrlf: a committed CRLF blob with `core.autocrlf=true`, `git status` clean as a precondition; the record is committed and pushed, with no comment.
+- [x] Texts last (dead77be).
+  - `docs/design.md` citations into `merge_pr.sh`, re-derived by content from the final file: Table 1 at 869 and 1176 (main-tree guards), 1466 and 1479 (report-only project gate), 2268-2288 (project sync); Records bullet at 890-897 and 1299-1300 and the same guard and gate lines; mechanism 1 at 719-858 and 1139-1314. Unchanged: 744-805 and 806-858.
+  - `dispatch_phase.sh` citations (Table 1: 216, 277-326, 501, 643, 731, 763, 902; mechanism 1: 549, 595, 597, 659, 920) were checked against the file and are unchanged; neither main nor this pass touched it.
+  - The Records and Merge gate wording ("the record is committed only when the working copy's `progress.md` is the committed one") still holds and is unchanged. `script_reference.md` row 38 now says "unchanged in content and mode by `git diff` against the commit and the index".
+  - A change-log row was added; the file is 1023 lines.
+
+### Input table (owning checkout equal to origin; NEW rows from this pass)
+| Working copy / commit | Gate reads | Record | Test |
+|---|---|---|---|
+| clean, committed timeline | the commit | committed and pushed in A | pkg-3, pkg-4, e2e |
+| uncommitted `chmod +x` — NEW | the commit | PR comment "has unstaged changes"; mode, index, origin left as found | pkg-23 chmod-unstaged |
+| staged `--chmod=+x` — NEW | the commit | PR comment "has staged and unstaged changes"; index stays 100755 | pkg-23 chmod-staged |
+| committed CRLF blob, `core.autocrlf=true`, status clean — NEW | the commit | committed and pushed (was a comment) | pkg-23 crlf-autocrlf |
+| unstaged / staged / both / untracked / ignored / deleted / assume-unchanged / skip-worktree | the commit | PR comment with that reason | pkg-20 |
+| other rows | as in the previous entry | | pkg-1 to pkg-22, hang-* |
+
+Workspace path: unchanged. `_gate_rec_not_committed` runs only for an owning package PR, and the workspace gate rows pass with unchanged assertions.
+
+Tests, run directly: `test_merge_pr_gate.sh` 200 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the e2e owning case still commits and pushes in A); `test_dispatch_phase.sh` 148 passed, 0 failed; `test_skill_paths.sh` 136 passed, 0 failed; `test_design_anchors.sh` 47 passed, 0 failed. No script was changed on both sides, so no further suite applies. The full `pre-commit run --files ...` pass was skipped on the owner's direction (2026-11-13). Every commit, the merge and this entry included, ran the other hooks with `SKIP=validate-script-tests`; CI on the pull request is the check for the rest.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 11:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #461 at `2019f5aa`
+**Depth**: Standard (reason: fix round after the merge of main; scope narrowed by handoff to the merge resolution at 0c76ff3e and the mode-aware record check de98769d / dead77be). Cross-model: skipped per handoff ("no cross-model reviewers"): the diff is a merge resolution in three text files plus one small check
+**Must-fix**: 0 | **Suggestions**: 0
+
+Checked: `git merge-tree --write-tree 28e62e45 2809fcef` conflicts in exactly `docs/design.md`, `.claude/skills/run-issue/SKILL.md`, `.agent/knowledge/script_reference.md`, which are also the only files both sides changed, and 0c76ff3e differs from that tree only in their conflict regions. Every line either side added survives except the intended ones (branch's `dispatch_phase.sh` row kept, main's `skill_prefix.sh` / `session_root.sh` rows taken; main's run-issue paragraph taken with `p11-jazzy` -> `demo-jazzy` twice, and no `p11` left in the file). design.md: change-log counts 928 (#446's branch at its row), 959-1003 (this branch), 1022 = `wc -l` at 0c76ff3e, 1023 = `wc -l` at HEAD; 20 register rows with 0020; `check_design_anchors.sh` exit 0; every `merge_pr.sh` and `dispatch_phase.sh` line citation read against the files and true. Mode fix: pkg-23's three shapes fail on 0c76ff3e's `merge_pr.sh` (197 passed, 3 failed) and pass at HEAD; a probe of `_gate_rec_not_committed` gave a stated reason for a corrupt index (`git diff --cached` exit 128), a deleted, an unreadable and a `rm --cached` file, and a textconv + `diff.external` config that hides an edit; clean gives nothing; create case covered by pkg-1. Workspace gate path untouched by the fix (owning role only, line 1203). Suites: test_merge_pr_gate 200/0, test_merge_pr 150/0, test_package_issue_loop 220/0, test_dispatch_phase 148/0, test_skill_paths 136/0, test_design_anchors 47/0, test_skill_prefix 25/0, test_session_root 71/0; shellcheck (warning) clean on the two changed scripts. Full pre-commit not run (owner's direction; CI is the check).
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `72cf2c6`
+**Sources**: 2 (Local Review @ `2019f5a` (covers `72cf2c6` via bookkeeping: only this issue's `progress.md` changed since); GitHub reviews: none, Copilot skipped (disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: entries after the Integrated Review at `979a076`. Stale boxes of PRs 445, 456 and 460 stay out of scope. The PR-mode Local Review boxes cannot be ticked by `review_progress.sh findings` (issue 459 fixes that); they are accounted for here from the Implementation entry's Actions.
+
+CI at triage, on `72cf2c6` (two runs, 8 check-runs): Validate Documentation and ros-manifest tests (#267 prototype) passed in both runs; Lint (pre-commit) and Validate Adapter Contract had not concluded in either run (pending). Not waited for. The fix agents skipped the full local pre-commit pass on the owner's direction (2026-11-13), so the Lint (pre-commit) result on this head is still unknown.
+
+Accounted for:
+- The Integrated Review at `979a076`, its one open suggestion (record step compared blob contents only, not mode, not git's line-ending rule): fixed in `de98769d`, not deferred, by the host's Checkpoint of 11:09. `_gate_rec_not_committed` now decides with `git diff --cached --quiet --no-ext-diff --no-textconv <sha> -- <rel>` and `git diff --quiet --no-ext-diff --no-textconv -- <rel>` (`merge_pr.sh:1072,1078`); an exit other than 0 or 1 is a stated reason. Test pkg-23 (chmod-unstaged, chmod-staged, crlf-autocrlf) fails on `0c76ff3e` and passes now; the Local Review at `2019f5a` verified this (test_merge_pr_gate 200/0). Its box in that entry is left as written.
+- That entry's five set-aside items: same-minute identical record and directory-at-path need nothing; the rollback without a HEAD check (still `merge_pr.sh:1263-1264`) belongs on issue 462; the partial-clone fetch and the ignored `.agent/` reason are listed as known gaps in the PR body. All still accurate against the code at this head.
+- The merge of main (`0c76ff3e`): three conflicts, each verified by the Local Review at `2019f5a` (merge-tree comparison, design.md counts, `check_design_anchors.sh` exit 0).
+- Local Review at `2019f5a`: approved, 0 must-fix, 0 suggestions. Its "No issues found" box is not an action item.
+
+PR body against the code at `72cf2c6` (for the host; this triage does not edit the body):
+- Known gap 1, "The record step compares file contents only ... To be fixed with #462": no longer true; fixed in `de98769d`. Remove it.
+- Review paragraph, "Gemini and Codex ran ... on every pull-request round": no longer true; the fifth PR-mode round (`2019f5a`) ran without cross-model reviewers, per handoff.
+- Tests paragraph, "`test_merge_pr_gate.sh` 197 passed": stale; the last review ran it at 200/0 on `2019f5a` (test_merge_pr 150/0, test_package_issue_loop 220/0 unchanged).
+- The Decision summary still holds; its record bullet ("only when the working copy's `progress.md` is the committed one") is now checked in content and mode, which the sentence still describes truly. The other four known gaps still hold.
+
+### Findings
+- None open.
+
+### False positives
+- None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge, note on 462 (Recommended)
+
+He was shown: the gate reads the committed progress.md at origin's branch head in the owning checkout; it reads only a checkout that is the top folder, on the branch and equal to origin; the record is committed there only when the working copy's file is the committed one in content and mode, otherwise a comment; package pull requests stay report-only and the workspace gate is as on main except time-limited calls; the base is used by the pre-push review and the behind-check; the known gaps in the pull request body. The note on issue 462 is the rollback-guard point triage assigned to it.

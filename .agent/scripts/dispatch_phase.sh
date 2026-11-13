@@ -535,6 +535,14 @@ cmd_handoff() {
     # The recorded base only: the handoff asks no adapter and no origin.
     # run-issue step 1 (`base`) has recorded it before any phase runs.
     [[ -n "$pkg_wt" ]] && pkg_base=$(head -n1 "$pkg_wt/.worktree-repos" | sed -n 's/.* base=\([^ ]*\).*/\1/p')
+    # A pre-push review of a package issue diffs against the recorded base,
+    # not whatever review-code would take for the default branch (issue 429
+    # part 2): the owning branch started from the base, which need not be
+    # the default branch. `origin/`: the local <base> branch in the owning
+    # checkout may be absent or stale. No recorded base: unchanged.
+    if [[ "$skill" == "review-code" && -z "$pr" && -n "$pkg_base" ]]; then
+        task="/${skill_prefix}review-code --branch origin/$pkg_base --issue $issue"
+    fi
 
     # A pre-push review at round 3 or later is a narrow convergence check
     # with no cross-model reviewers: the owner's standing exception to the
