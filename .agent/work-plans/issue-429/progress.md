@@ -2933,3 +2933,46 @@ Sandbox runs for the codex items: the gate suite's own fixtures (`make_sandbox`,
 **Decision**: address
 
 Fix all four in pull request 461, with this scope decision by the host. Items (a) and (b) are also true of the workspace path on main (the record push publishes unpushed commits in the worktree; the record commit takes uncommitted progress.md edits with it). This pull request fixes them for the OWNING PACKAGE checkout, the path it adds, where the checkout can be a developer's own clone: the record is committed there only when the checkout's HEAD equals origin's pull-request branch (after the bounded fetch the read guard already makes) and progress.md has no uncommitted change; otherwise the record goes on the pull request as a comment with a true reason, and the checkout is left as found. The gate's READ guard for the owning checkout becomes the same equality (a checkout ahead of origin with unpushed commits is not read: its timeline may hold entries origin does not have). The workspace path keeps main's behaviour unchanged in this pull request, so the enforcing gate is not altered beyond what was reviewed; the same two points on the workspace path are raised to the owner as a follow-up. Items 3 and 4 (trim the Conditions value; match only a first line that is exactly one of the two headings) are fixed in both the comments-only and the owning checks.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 09:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `40ca3578`
+**Addressed**: Integrated Review at `5d296c5` (2026-11-13 09:12 -05:00), scope set by the Checkpoint after it
+**Commits**: cf1a2850, a2bdab0f, b65e66d2, 40ca3578 (docs), dcfa8054 (boxes)
+
+### Actions
+- [x] (a) Unpushed commits published by the record push. The owning checkout's read guard now requires HEAD to EQUAL origin's PR branch after its bounded fetch; ahead gets the reason "the owning checkout <A> has N commit(s) not on origin's <branch> at <origin7> (local <head7>)", the gate does not pass on it, and `_gate_record` (which already sends any unread owning checkout to the comment path) posts one comment with "...; the record is not committed there". Checkout and origin left as found. Package PRs skip Step 1, so nothing moves A between the guard and the record. Tests pkg-19 wip (the triage's input: origin's branch does not gain the WIP commit, no "and pushed", one comment across two runs, WIP still local) and pkg-19 approval (an unpushed approved review is not read and does not pass). — `merge_pr.sh:788-799` (cf1a2850)
+- [x] (b) Uncommitted progress.md swept into the record commit. Owning checkout only: new `_gate_rec_dirty` reads `git status --porcelain` for progress.md; untracked / staged / unstaged / both (including a deletion) means no commit there, one comment "<rel> in <A> <is untracked|has staged changes|has unstaged changes|has staged and unstaged changes>, so the record is not committed there (left as found)". Test pkg-20 (5 shapes): the note never reaches origin, status and file byte-identical, HEAD unchanged, one comment. — `merge_pr.sh:984-1002, 1114-1118` (a2bdab0f)
+- [x] Item 3: `**Conditions**` and `**When**` values from comments are trimmed of trailing blanks and CR (`_gate_rec_field`), in the comments-only check (`l_cond`) and the owning check (`c_cond`, `c_when`; `c_type` trimmed too). Tests: dedup-c "CRLF line ends" and "trailing blanks" rows; pkg-21 crlf. — `merge_pr.sh:1260-1275` (b65e66d2)
+- [x] Item 4: a comment is a record only when its first line, trailing blanks/CR trimmed, is exactly `## Merge (report-only)` or `## Merge (unreviewed)` (`_GATE_REC_COMMENT_JQ`, used by both checks; leading blanks are not trimmed, since an indented heading is not one). Tests: dedup-c "real record, then heading plus text" (skips) and "heading plus text alone" (records); pkg-21 heading-plus-text. (b65e66d2)
+- [x] Docs, after all code edits: Records bullet, Review loop comment-fallback list and Merge gate bullet in `docs/design.md`, `script_reference.md` row 38 state the new conditions (on the branch, HEAD equal to origin's copy, progress.md with no uncommitted change and a regular file; exact-heading matching with trimmed values); every `merge_pr.sh` citation refreshed by a line map from `f78c25e3`; change-log row added (993 lines). (40ca3578)
+
+### Input table (owning checkout; NEW = behaviour changed in this pass)
+| Input | Read? | Record | Test |
+|---|---|---|---|
+| equal to origin, progress.md clean | yes | committed and pushed in A | pkg-3, pkg-4; e2e "owning PR targeting main" in test_package_issue_loop |
+| equal to origin, progress.md absent | n/a | created, committed and pushed | pkg-1 |
+| ahead (unpushed commits) — NEW | no, reason "has N commit(s) not on origin's" | PR comment; A and origin unchanged | pkg-19 wip, approval |
+| behind | no ("does not contain origin's") | PR comment | pkg-16 behind, pkg-15 |
+| diverged | no (same reason, true) | PR comment, nothing pushed | pkg-19 diverged (new test, behaviour unchanged) |
+| detached / other branch | no | PR comment | pkg-13, pkg-16 |
+| progress.md unstaged edit — NEW | yes (working copy) | PR comment, file left byte-identical | pkg-20 unstaged |
+| progress.md staged edit — NEW | yes | PR comment | pkg-20 staged |
+| progress.md staged and unstaged — NEW | yes | PR comment | pkg-20 staged-and-unstaged |
+| progress.md untracked new file — NEW | yes | PR comment | pkg-20 untracked |
+| progress.md deleted in the working tree — NEW | no file | PR comment | pkg-20 deleted |
+| progress.md symlink / folder | no change | PR comment | pkg-17 |
+| comment record in CRLF / trailing blanks, same conditions — NEW | — | skipped as duplicate | dedup-c, pkg-21 crlf |
+| real record then "heading plus text" comment — NEW | — | skipped as duplicate | dedup-c, pkg-21 |
+| "heading plus text" comment alone | — | records (not a record) | dedup-c |
+
+Before-fix check: the new tests were run against the scripts at `f78c25e3`: 12 fail there (dedup-c CRLF, trailing blanks, heading plus text after a record; pkg-19 wip and approval; pkg-20 all five; pkg-21 both); pkg-19 diverged and the "heading plus text alone" row pass on both, as neighbour coverage.
+
+Workspace path: unchanged for (a) and (b), per the Checkpoint. `_gate_rec_dirty` runs only for `_GATE_PKG_ROLE == owning`, and the equality guard only inside the owning block. The workspace gate tests in `test_merge_pr_gate.sh` (enforce/report-only/force rows, no-worktree comment fallback, hang-ws) pass unchanged; items 3 and 4 change the comments-only duplicate check, which a workspace PR with no worktree also uses, as the Checkpoint decided.
+
+Open for the host (not changed, outside the decided scope): the owning checkout's timeline is still READ from the working copy when progress.md has uncommitted changes, so an uncommitted approval there would count for the gate verdict (package PRs are report-only, so it changes only the record's Conditions). The workspace path reads the working copy the same way on main.
+
+Tests: `test_merge_pr_gate.sh` 179 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed. `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0, every hook Passed or Skipped (no files), including `validate-script-tests` (the hook prints no per-suite counts).
