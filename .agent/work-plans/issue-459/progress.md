@@ -639,3 +639,21 @@ The branch took main: merge commit `91967144` merges main at `8161b57d` (pull re
 - **Suites** (run directly): test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0, test_package_issue_loop 220/0, test_merge_pr_gate 200/0 (passed/failed).
 - The full `pre-commit run --files` pass was skipped on the owner's direction (2026-11-13); commits carried `SKIP=validate-script-tests`, and the merge commit's own hooks passed. CI on the pull request checks the rest.
 - Noticed, not touched: before this merge the branch's own `design.md` already carried `dispatch_phase.sh` citations its script changes had moved (Table 1 `216, 277-326, 501, 635, ...` against actual `222, 283-332, 507, ...`); the merge refresh above corrects them, and no test checks those numbers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 11:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #467 at `41b1ea7a`
+**Depth**: Standard (reason: fix round scoped to the merge of main at 91967144; whole-diff tier unchanged); no cross-model reviewers per handoff: the merge's only hand-resolved file is `docs/design.md`
+**Must-fix**: 0 | **Suggestions**: 0
+
+Merge: an automatic re-merge of b3fc6b97 and 8161b57d (`git merge-tree`) conflicts only in `docs/design.md`; 91967144 differs from it only there: the change-log conflict (all 64 rows of the branch and 73 of main present, each side in order, plus the merge row; final count 1038 = `wc -l`) and the `dispatch_phase.sh` citations (Table 1: 222, 283-332, 507, 649, 737, 769, 908; mechanism 1: 555, 601, 603, 665, 940), each checked against the merged script. `check_design_anchors.sh` passes.
+Merged regions: `cmd_handoff` puts the `origin/<base>` task line first and the per-pull-request round-3 words after it; a constructed combined case (package issue owner/pkg_a#17 with base `pinned`, merged as #31, second part's first pre-push review) gives `task=/review-code --branch origin/pinned --issue 17` with no convergence words, `next` gives checkpoint:plan then review-code, `round` gives 1, and its round 3 gives `origin/pinned` plus the round-3 words. run-issue steps 2, 8, 11, 13 and Scope read consistently.
+Comparison (`next --progress` on every prefix, both scripts, main's extracted to scratch): 7 timelines, 338 prefixes x 4 PR states = 1352 pairs, 72 differences, all intended: 15 at `--pr none` after a merge answer or Merge record (main merge 12, merge-refused 2, unexpected 1; branch checkpoint:plan), 57 next-part round counts from 1 (429 and 332, none/open/draft). `pr_start` on 429: boundaries 25, 50, 71. `next` and `review_progress.sh round` agree on all 45 complete pre-push reviews.
+Suites: test_dispatch_phase 233, test_review_code_convergence 38, test_address_findings 24, test_triage_reviews_integration 69, test_skill_paths 143, test_records_write_gate 68, test_commit_identity 94, test_design_anchors 47, test_package_issue_loop 220, test_merge_pr_gate 200; all passed, 0 failed. Full pre-commit pass not run (owner's direction; CI is the check).
+
+### Findings
+- [ ] No issues found. LGTM.
