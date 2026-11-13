@@ -11,13 +11,13 @@ plugin too. Records one scoped exception to ADR-0016 decision 2.
 Decisions 3 and 4, decision 6's paragraph on how `run-issue` decides the
 prefix (`skill_prefix.sh`), and the rejected alternative "Enable the plugin
 at user scope", are superseded by
-[ADR-0019](0019-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446):
+[ADR-0020](0020-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446):
 the plugin is enabled once, at user scope, nothing is written into a
 project checkout (the exception to ADR-0016 decision 2 is withdrawn), a
 session started in a subdirectory of the workspace checkout lists each
 shipped skill under both names, accepted by the owner that day, and
 `skill_prefix.sh` answers from the location alone and refuses nothing
-(ADR-0019 decision 6). The rest of decision 6 (the root rule,
+(ADR-0020 decision 6). The rest of decision 6 (the root rule,
 `session_root.sh`, `--skill-prefix`, the `SessionStart` header) stands.
 
 Before 2026-11-09 this ADR was Provisional. The promotion condition was
@@ -404,7 +404,7 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
   a new ADR and ADR-0016 gets only a Status/References pointer
 - [ADR-0014](0014-in-process-phase-handoff.md) — `dispatch_phase.sh`, which
   gains `--skill-prefix`
-- [ADR-0019](0019-plugin-enabled-once-at-user-scope.md) — supersedes
+- [ADR-0020](0020-plugin-enabled-once-at-user-scope.md) — supersedes
   decisions 3 and 4 and the user-scope alternative (2026-11-12, #446)
 - Issue #345 (this change), #351 (hooks into the plugin), #317 (the
   acceptance run), #335 (zero-footprint design doc; this is its packaging

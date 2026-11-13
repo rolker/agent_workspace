@@ -252,6 +252,22 @@ package repos, and issue are all explicit:
 - Branch names: the repo that owns the issue gets `feature/issue-<N>`; every
   other named repo gets `feature/<repo>-issue-<N>` (e.g.
   `feature/sonar_driver-issue-111` in `sonar_msgs`).
+- Base branch (issue 429): a new owning-repo branch always starts from a
+  base, `--base <branch>` or else the project's pin of that repo
+  (`adapter repo_pin`), as origin has it; a pin that is no branch, or an
+  origin that lacks the base or does not answer, stops creation before
+  anything is made. It is never started from origin's default branch by
+  omission, and `--branch` is refused for a package worktree. With
+  `--parent-issue` the pin is not read: the branch starts from the parent's
+  branch, which `base=` records when found. The manifest header records the
+  base as `base=`. An owning branch that already exists (locally or on
+  origin) needs `--base` naming the branch it started from; it is recorded
+  once origin has it and the branch shares history with it, and otherwise
+  creation refuses and rolls back. The exception is `--parent-issue`
+  (where `--base` is refused): an existing owning branch is accepted, no
+  `base=` is recorded (a note says so), and `dispatch_phase.sh base --base
+  <branch>` records one later. Sibling repos start from their default
+  branch.
 - Directory: `<project root>/worktrees/issue-<project>-<owner>-<repo>-<N>/`
   (under the instance's own worktree dir, issue #265) — cosmetic only. Every
   script that needs project/issue/layer reads the `.worktree-repos` manifest

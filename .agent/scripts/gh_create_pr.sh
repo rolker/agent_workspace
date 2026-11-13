@@ -36,7 +36,7 @@
 #     (b) body already contains `**Authored-By**:` (case-sensitive)
 #   - AGENT_NAME and AGENT_MODEL env vars MUST be set when signature is
 #     to be added; missing vars hard-fail with instructions. Set via:
-#     source .agent/scripts/set_git_identity_env.sh "Name" "email" "<model>"
+#     source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 #   - A --body-file (or the --body-stdin drain) is read once into a
 #     temporary copy (under TMPDIR, removed on exit), which is what gets
 #     signed and what gh reads: a pipe, FIFO or process substitution is
@@ -216,7 +216,7 @@ if needs_signature; then
         echo "❌ Error: AGENT_NAME and/or AGENT_MODEL are unset; cannot sign PR." >&2
         echo "" >&2
         echo "   Set them via:" >&2
-        echo "     source .agent/scripts/set_git_identity_env.sh \"Name\" \"email\" \"<model>\"" >&2
+        echo "     source .agent/scripts/set_git_identity_env.sh --agent <framework> \"<model-id>\"" >&2
         echo "" >&2
         echo "   Or pass --no-signature to skip signing (rare; revert PRs only)." >&2
         exit 2

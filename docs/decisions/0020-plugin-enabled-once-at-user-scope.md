@@ -1,4 +1,4 @@
-# ADR-0019: The agent-workspace Plugin Is Enabled Once, at User Scope
+# ADR-0020: The agent-workspace Plugin Is Enabled Once, at User Scope
 
 ## Status
 

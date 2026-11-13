@@ -75,6 +75,23 @@ assert_not_contains() {
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
+# git@github.com:<owner>/<repo>.git is served from the fake_remotes/github.com
+# folder of the per-test sandbox git runs in (found upward from git's own
+# working directory); outside one, it fails as an unreachable host does.
+# No test reaches the network.
+cat > "$SANDBOX/fakessh" <<'SSH_EOF'
+#!/usr/bin/env bash
+d="$PWD"
+while [ "$d" != / ] && [ ! -d "$d/fake_remotes/github.com" ]; do d="$(dirname "$d")"; done
+if [ ! -d "$d/fake_remotes/github.com" ]; then
+    echo "ssh: Could not resolve hostname github.com: Name or service not known" >&2
+    exit 255
+fi
+cd "$d/fake_remotes/github.com" && eval "exec ${@: -1}"
+SSH_EOF
+chmod +x "$SANDBOX/fakessh"
+export GIT_SSH_COMMAND="$SANDBOX/fakessh"
+
 # Base sandbox: dispatcher + registry lib + both adapter types.
 make_sandbox() {
     local sb
@@ -216,6 +233,7 @@ make_worktree_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_resolve_default_branch.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_pr_base.sh" "$sb/.agent/scripts/"
     mkdir -p "$sb/stubbin"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/gh"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
@@ -226,24 +244,36 @@ make_worktree_sandbox() {
     echo "$sb"
 }
 
-# A real (committed, no origin fetch needed since it's all local) git repo
-# for a package under a layer's src/, standing in for a real package
-# checkout post-`adapter setup`.
+# A real (committed) git repo for a package under a layer's src/, standing
+# in for a real package checkout post-`adapter setup`. Its origin is
+# git@github.com:owner/<name>.git, which the adapter reads as owner/<name>,
+# served offline by the GIT_SSH_COMMAND stub below from the sandbox's
+# fake_remotes/github.com/owner/<name>.git: a package worktree's owning
+# branch starts from its base as origin has it (issue 429), and the base is
+# the manifest's pin, fakefox, which origin holds as a branch beside main.
 make_committed_pkg_repo() {
     local proj="$1" layer="$2" name="$3"
     local dir="$proj/layers/main/${layer}_ws/src/$name"
-    mkdir -p "$dir"
+    local bare
+    bare="$(dirname "$(dirname "$proj")")/fake_remotes/github.com/owner/${name}.git"
+    mkdir -p "$dir" "$(dirname "$bare")"
     git -C "$dir" init --quiet
     echo "$name" > "$dir/README.md"
     git -C "$dir" add README.md
     git -C "$dir" -c user.name=t -c user.email=t@t commit --quiet -m init
-    git -C "$dir" remote add origin "git@github.com:owner/${name}.git"
     git -C "$dir" branch -m main 2>/dev/null || true
+    git init --quiet --bare -b main "$bare"
+    git -C "$dir" remote add origin "git@github.com:owner/${name}.git"
+    git -C "$dir" push --quiet origin main main:fakefox
+    git -C "$dir" fetch --quiet origin
+    git -C "$dir" remote set-head origin main >/dev/null
 }
 
-# The fixtures' origins cannot be reached, so origin cannot say whether it
-# has a branch: --allow-unverified-branch starts it anyway (#323); these
-# tests are about the manifest and layout, not the branch lookup.
+# These tests are about the manifest and layout, not the branch lookup.
+# make_committed_pkg_repo's origins answer (the GIT_SSH_COMMAND stub), so
+# there the lookup decides as it would online; --allow-unverified-branch
+# (#323) is kept for an origin that cannot be reached, which then starts a
+# sibling's branch anyway. It never applies to a base (issue 429).
 run_worktree_create() {
     local sb="$1"
     shift
@@ -302,6 +332,15 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
     assert_eq "build.sh is syntactically valid bash" "0" "$(bash -n "$wt/build.sh" >/dev/null 2>&1; echo $?)"
     assert_eq "test.sh is syntactically valid bash" "0" "$(bash -n "$wt/test.sh" >/dev/null 2>&1; echo $?)"
     assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
+    # No --base: the base is the manifest's pin of pkg_a, fakefox, a branch
+    # on origin (issue 429), never origin's default branch by omission.
+    assert_eq "no --base: the header records the pin as base=" \
+        "# project=p11 issue=owner/pkg_a#111 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+    assert_contains "the banner names the base and where it came from" \
+        "Base:       fakefox (from the project's pin of pkg_a;" "$out"
+    assert_eq "the owning branch starts at origin's fakefox" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" rev-parse refs/remotes/origin/fakefox)" \
+        "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD)"
     assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
         "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"
     assert_contains "enter banner uses the qualified issue and --project" \
@@ -310,6 +349,196 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "worktree_remove.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
     assert_not_contains "banner never prints the bare number for a package worktree" \
         "--issue 111 --type project" "$out"
+}
+
+test_worktree_create_package_base_from_pin_or_refused() {
+    echo "TEST: a package worktree without --base takes the pin; a pin that is no branch refuses before anything is made (issue 429)"
+    local sb out rc=0 proj wt a
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    # A tag pin: origin answers, so the kind is known, and it is no branch.
+    git -C "$a" tag v9
+    git -C "$a" push --quiet origin v9
+    write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-120"
+    assert_eq "a tag pin, no --base: exits 1" "1" "$rc"
+    assert_contains "the pin's own refusal" "pkg_a is pinned at v9 (tag); only a branch can be a base" "$out"
+    assert_contains "creation says it needs a base and asks for --base" \
+        "is not started from origin's default branch by omission; pass --base <branch>. Nothing was made." "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "no owning branch made" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/issue-120 && echo true || echo false)"
+    assert_eq "no sibling branch made" "false" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-120 && echo true || echo false)"
+    # The same with --base: the override is the base.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a --base main 2>&1)" || rc=$?
+    assert_eq "with --base main: exit 0" "0" "$rc"
+    assert_eq "with --base main: base=main recorded" \
+        "# project=p11 issue=owner/pkg_a#120 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+    assert_contains "the banner says the base came from --base" "Base:       main (from --base;" "$out"
+    # A worktree with no owning entry (only a sibling) has no base to resolve.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#121 --type project --project p11 \
+        --layer l1 --package-repos pkg_b 2>&1)" || rc=$?
+    assert_eq "siblings only: exit 0 with the tag pin (no owning branch to start)" "0" "$rc"
+    assert_eq "siblings only: no base= in the header" \
+        "# project=p11 issue=owner/pkg_a#121 layer=l1" \
+        "$(head -n1 "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-121/.worktree-repos")"
+}
+
+test_worktree_create_package_existing_branch_needs_named_base() {
+    echo "TEST: an owning branch that already exists gets base= only from a named --base, checked (issue 429)"
+    local sb out rc=0 proj a b wt hosted_main
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    b="$proj/layers/main/l1_ws/src/pkg_b"
+    # origin's main moves one commit past the pin fakefox.
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "main only"
+    git -C "$a" push --quiet origin main
+    hosted_main="$(git -C "$a" rev-parse main)"
+
+    # A local branch started from fakefox, with work of its own, no --base:
+    # the pin is not taken for it. Refused, the sibling added first (pkg_b,
+    # listed first) rolled back, the existing branch kept.
+    git -C "$a" branch feature/issue-130 origin/fakefox
+    git -C "$a" checkout --quiet feature/issue-130
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "own work"
+    git -C "$a" checkout --quiet main
+    local own130; own130="$(git -C "$a" rev-parse feature/issue-130)"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-130"
+    assert_eq "existing branch, no --base: exits 1" "1" "$rc"
+    assert_contains "says why: it already existed, the pin is not taken, name the base" \
+        "'feature/issue-130' already existed (locally or on origin), so this workspace cannot know which branch it started from, and does not take the pin (fakefox) for it." "$out"
+    assert_contains "and how to go on" "Pass --base naming the branch it was started from, or start 'feature/issue-130' anew" "$out"
+    assert_contains "the sibling added first is rolled back" "rolling back 2 already-created worktree(s)" "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "the sibling's new branch is removed" "false" \
+        "$(git -C "$b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-130 && echo true || echo false)"
+    assert_eq "the sibling's worktree is removed" "1" "$(git -C "$b" worktree list --porcelain | grep -c '^worktree ')"
+    assert_eq "the existing owning branch is kept as it was" "$own130" "$(git -C "$a" rev-parse feature/issue-130)"
+    # ... with the --base it was started from: recorded.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a --base fakefox 2>&1)" || rc=$?
+    assert_eq "with --base fakefox: exit 0" "0" "$rc"
+    assert_eq "with --base fakefox: recorded" \
+        "# project=p11 issue=owner/pkg_a#130 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+
+    # Started from main, named main: recorded (where it started is the
+    # owner's word; the check is that origin has it and history is shared).
+    git -C "$a" branch feature/issue-131 main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#131 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base main 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-131"
+    assert_eq "existing branch from main, --base main: exit 0" "0" "$rc"
+    assert_eq "existing branch from main, --base main: recorded" \
+        "# project=p11 issue=owner/pkg_a#131 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+    assert_eq "the branch is not moved" "$hosted_main" "$(git -C "$a" rev-parse feature/issue-131)"
+
+    # A named base origin lacks: refused, rolled back.
+    git -C "$a" branch feature/issue-133 main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#133 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base nosuch 2>&1)" || rc=$?
+    assert_eq "existing branch, --base origin lacks: exits 1" "1" "$rc"
+    assert_contains "says so" "'feature/issue-133' already existed, and --base nosuch cannot be its base: origin has no branch 'nosuch'." "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-133" ] && echo true || echo false)"
+
+    # An orphan owning branch: no history in common with the named base.
+    git -C "$a" checkout --quiet --orphan feature/issue-134
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "orphan"
+    git -C "$a" checkout --quiet main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#134 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
+    assert_eq "orphan existing branch: exits 1" "1" "$rc"
+    assert_contains "says there is no history in common" "'feature/issue-134' has no commit in common with origin's 'fakefox'" "$out"
+
+    # A branch on origin only: checked out from origin, then the same rule.
+    git -C "$a" push --quiet origin origin/fakefox:refs/heads/feature/issue-132
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "branch on origin only, no --base: exits 1" "1" "$rc"
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-132"
+    assert_eq "branch on origin only, --base fakefox: exit 0" "0" "$rc"
+    assert_eq "branch on origin only, --base fakefox: recorded" \
+        "# project=p11 issue=owner/pkg_a#132 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+}
+
+test_worktree_create_package_parent_issue_starts_from_parent() {
+    echo "TEST: --parent-issue on a package worktree: the pin is not read; the branch starts from the parent's, which base= records (issue 429)"
+    local sb out rc=0 proj a wt parent_tip
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    # The parent's branch on origin, one commit past main; the pin is a tag,
+    # which would refuse if it were read.
+    git -C "$a" checkout --quiet -b feature/issue-10
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "parent work"
+    git -C "$a" push --quiet origin feature/issue-10
+    git -C "$a" checkout --quiet main
+    git -C "$a" branch --quiet -D feature/issue-10
+    parent_tip="$(git -C "$a" rev-parse refs/remotes/origin/feature/issue-10)"
+    git -C "$a" tag v9
+    git -C "$a" push --quiet origin v9
+    write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#12 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --parent-issue 10 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-12"
+    assert_eq "exit 0 (the tag pin is not read)" "0" "$rc"
+    assert_eq "the branch starts at the parent's tip" "$parent_tip" "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD)"
+    assert_contains "the banner names the parent" "Parent:     #10 (feature/issue-10)" "$out"
+    assert_contains "the banner names the parent's branch as the base" "Base:       feature/issue-10 (the parent's branch:" "$out"
+    assert_not_contains "no pin-sourced base in the banner" "from the project's pin" "$out"
+    assert_eq "base= records the parent's branch" \
+        "# project=p11 issue=owner/pkg_a#12 layer=l1 base=feature/issue-10" "$(head -n1 "$wt/.worktree-repos")"
+    # --base with --parent-issue stays refused.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#13 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --parent-issue 10 --base main 2>&1)" || rc=$?
+    assert_eq "--base with --parent-issue: exits 1" "1" "$rc"
+    assert_contains "says so" "--base cannot be used with --parent-issue" "$out"
+}
+
+test_worktree_create_package_refuses_branch_and_empty_base() {
+    echo "TEST: --branch and an empty or invalid --base are refused for a package worktree, before anything is made (issue 429)"
+    local sb out rc=0 proj a
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --branch foo 2>&1)" || rc=$?
+    assert_eq "--branch with --layer: exits 1" "1" "$rc"
+    assert_contains "says why" "--branch is not valid for a package worktree (--layer): the adapter names each repository's branch" "$out"
+    assert_eq "no branch foo made" "false" "$(git -C "$a" show-ref --verify --quiet refs/heads/foo && echo true || echo false)"
+    assert_eq "no feature/issue-140 made" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/issue-140 && echo true || echo false)"
+    local v
+    for v in "" "-foo" "HEAD"; do
+        rc=0
+        out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+            --layer l1 --package-repos pkg_a --base "$v" 2>&1)" || rc=$?
+        assert_eq "--base '$v': exits 1" "1" "$rc"
+        if [ -z "$v" ]; then
+            assert_contains "--base '': refused, not ignored" "Error: --base requires a branch name" "$out"
+        else
+            assert_contains "--base '$v': refused" "Error: --base '$v' is not a valid branch name" "$out"
+        fi
+    done
+    assert_eq "nothing made" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-140" ] && echo true || echo false)"
 }
 
 test_worktree_create_package_hook_preflight_checks_package_repos() {
@@ -668,8 +897,8 @@ test_validator_accepts_ros2_colcon() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "ros2_colcon complete" "ros2_colcon: all 12 verbs implemented" "$out"
-    assert_contains "single_project still complete" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "ros2_colcon complete" "ros2_colcon: all 13 verbs implemented" "$out"
+    assert_contains "single_project still complete" "single_project: all 13 verbs implemented" "$out"
 }
 
 # ---- Distro resolution ----
@@ -1543,12 +1772,557 @@ test_cwd_discovery_resolves_colcon_project() {
     assert_eq "resolved from deep inside a layer" "$proj" "$out"
 }
 
+# ---- repo_pin (ADR-0019) ----
+
+# Write a .repos file from name=version pairs; the version is written as
+# given, so a test can quote it.
+write_pin_repos() {  # <file> <name=version>...
+    local file="$1" pair
+    shift
+    {
+        echo "repositories:"
+        for pair in "$@"; do
+            echo "  ${pair%%=*}:"
+            echo "    type: git"
+            echo "    url: file:///nonexistent/${pair%%=*}.git"
+            echo "    version: ${pair#*=}"
+        done
+    } > "$file"
+}
+
+# A committed package checkout under <layer>/src/<name> whose origin is a
+# local bare repo holding main, a branch "pinned" and a tag "v1.0". Prints
+# the full sha of main's commit.
+make_pin_pkg() {  # <sb> <proj> <layer> <name>
+    local sb="$1" proj="$2" layer="$3" name="$4" dir
+    dir="$proj/layers/main/${layer}_ws/src/$name"
+    make_committed_pkg_repo "$proj" "$layer" "$name"
+    git init --quiet --bare -b main "$sb/${name}_origin.git"
+    git -C "$dir" remote set-url origin "$sb/${name}_origin.git"
+    git -C "$dir" branch --quiet pinned
+    git -C "$dir" tag v1.0
+    git -C "$dir" push --quiet origin main pinned v1.0
+    git -C "$dir" fetch --quiet origin
+    git -C "$dir" rev-parse HEAD
+}
+
+test_repo_pin_kinds_online() {
+    echo "TEST: repo_pin prints the pinned ref and its kind, judged by origin"
+    local sb out rc proj sha
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    sha="$(make_pin_pkg "$sb" "$proj" l1 pkg_a)"
+    local kind ref pair
+    # An uppercase sha is a commit too: git reads object names in either case.
+    for pair in "pinned=branch" "v1.0=tag" "$sha=commit" "${sha^^}=commit" "nowhere=unknown"; do
+        ref="${pair%%=*}"
+        kind="${pair#*=}"
+        write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=$ref" "pkg_b=fakefox"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "$kind: exit 0" "0" "$rc"
+        assert_eq "$kind: ref and kind" "$ref	$kind" "$out"
+    done
+}
+
+test_repo_pin_branch_before_tag() {
+    echo "TEST: repo_pin calls a ref that is both a branch and a tag on origin a branch"
+    local sb out proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" tag pinned main
+    git -C "$dir" push --quiet origin refs/tags/pinned
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "branch wins" "pinned	branch" "$out"
+}
+
+test_repo_pin_strips_quotes() {
+    echo "TEST: repo_pin strips YAML quoting around the ref"
+    local sb out proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    make_pin_pkg "$sb" "$proj" l1 pkg_b >/dev/null
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" 'pkg_a="pinned"' "pkg_b='v1.0'"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "double quotes stripped" "pinned	branch" "$out"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "single quotes stripped" "v1.0	tag" "$out"
+}
+
+test_repo_pin_reads_version_as_yaml() {
+    echo "TEST: repo_pin keeps a '#' inside a ref, drops a comment and a CRLF, refuses a stray quote"
+    local sb out rc proj dir f
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    # Both "fix" and "fix#12" are branches on origin: cutting at the "#"
+    # would answer with the wrong, existing branch.
+    git -C "$dir" branch --quiet fix
+    git -C "$dir" branch --quiet 'fix#12'
+    git -C "$dir" push --quiet origin fix 'fix#12'
+    f="$proj/configs/manifest/repos/l1.repos"
+    local pair want
+    for pair in 'fix#12|fix#12	branch' '"fix#12"|fix#12	branch' \
+        '"fix#12" # pinned for #12|fix#12	branch' 'fix # a comment|fix	branch'; do
+        write_pin_repos "$f" "pkg_a=${pair%%|*}"
+        want="${pair#*|}"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[${pair%%|*}]: exit 0" "0" "$rc"
+        assert_eq "[${pair%%|*}]: ref and kind" "$want" "$out"
+    done
+    # A CRLF file: the CR is a line end, not part of the ref.
+    printf 'repositories:\r\n  pkg_a:\r\n    type: git\r\n    version: pinned\r\n' > "$f"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "CRLF: exit 0" "0" "$rc"
+    assert_eq "CRLF: no CR in the ref" "pinned	branch" "$out"
+    # A comment right after the key is no ref: the value is empty, refused.
+    for pair in ' # TODO pin' '#main'; do
+        write_pin_repos "$f" "pkg_a=$pair"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$pair]: exit 1" "1" "$rc"
+        assert_contains "[$pair]: empty version" "has an empty version: in layer 'l1'" "$out"
+    done
+    # A quote that does not close the value cleanly, or a backslash escape
+    # the parser does not decode ("a\" #b" is YAML's 'a" #b', "v\x31.0"
+    # its 'v1.0'), is refused, not cut to a ref nobody pinned.
+    for pair in '"fix' "fix'" 'fi"x' "'stable''next'" '"main" extra' '"x\"y"' '"main"#c' \
+        '"a\" #b"' '"v\x31.0"' "'a\\b'"; do
+        write_pin_repos "$f" "pkg_a=$pair"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$pair]: exit 1" "1" "$rc"
+        assert_contains "[$pair]: says why" \
+            "cannot be read as a ref (a stray quote, a backslash escape or a carriage return)" "$out"
+    done
+}
+
+test_repo_pin_refuses_yaml_typed_plain_pins() {
+    echo "TEST: repo_pin refuses an unquoted pin only when YAML's reading changes the text"
+    local sb out rc proj dir f row val what got
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" tag 1.10
+    git -C "$dir" branch --quiet 2.0
+    git -C "$dir" branch --quiet True
+    git -C "$dir" push --quiet origin refs/tags/1.10 2.0 True
+    f="$proj/configs/manifest/repos/l1.repos"
+    # value|what YAML reads it as|what vcstool (str() of it) checks out;
+    # an empty "checks out" means the shell cannot work it out exactly.
+    local -a refused=(
+        '1.10|the number 1.1|1.1'
+        '1.50|the number 1.5|1.5'
+        '017|the number 15|15'
+        '+5|the number 5|5'
+        '1_000|the number 1000|1000'
+        '0x1F|the number 31|31'
+        'yes|the bool True|True'
+        'true|the bool True|True'
+        'TRUE|the bool True|True'
+        'Off|the bool False|False'
+        'false|the bool False|False'
+        'FALSE|the bool False|False'
+        '~|null|None'
+        'Null|null|None'
+        '.inf|the float inf|inf'
+        '1.5e+3|a float|'
+        '0.00001|a float|'
+        "!tag|YAML syntax, not text ('!' starts it)|"
+        "&anchor|YAML syntax, not text ('&' starts it)|"
+        "@x|YAML syntax, not text ('@' starts it)|"
+    )
+    for row in "${refused[@]}"; do
+        val="${row%%|*}"
+        what="${row#*|}"
+        got="${what#*|}"
+        what="${what%|*}"
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$val]: exit 1" "1" "$rc"
+        assert_contains "[$val]: says what YAML reads" "unquoted, which YAML reads as $what," "$out"
+        if [ -n "$got" ]; then
+            assert_contains "[$val]: says what vcstool checks out" \
+                "so vcstool would check out '$got', not '$val'" "$out"
+        fi
+        assert_contains "[$val]: asks for quotes" "quote it: version: \"$val\"" "$out"
+    done
+    # str() gives these back as written, so vcstool checks out the text:
+    # accepted unquoted. 1e+5 has no dot, so PyYAML keeps it a string;
+    # True and False are bools whose str() is the same text.
+    local -a kept=(2.0 1.0 1.5 0.3 2024 0 -5 1e+5 True False
+        1234567890123456789012345678901234567890)
+    for val in "${kept[@]}"; do
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$val]: exit 0" "0" "$rc"
+        assert_eq "[$val]: the ref as written" "$val" "${out%%$'\t'*}"
+    done
+    write_pin_repos "$f" "pkg_a=2.0"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "an unquoted release branch 2.0 is that branch" "2.0	branch" "$out"
+    write_pin_repos "$f" "pkg_a=True"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "an unquoted branch True is that branch" "True	branch" "$out"
+    for val in '"1.10"' "'1.10'"; do
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$val]: exit 0" "0" "$rc"
+        assert_eq "[$val]: the tag as written" "1.10	tag" "$out"
+    done
+    # The same ref, quoted in one layer and plain in another: the plain
+    # one is still read as 1.1 there, so it is refused, naming that layer.
+    write_pin_repos "$f" 'pkg_a="1.10"'
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=1.10"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "plain in l2 only: exit 1" "1" "$rc"
+    assert_contains "plain in l2 only: names l2" "in layer 'l2' unquoted" "$out"
+}
+
+# The full input table for the .repos parser that repo_pin, sync and
+# validate share: each "version:" text (after "    version:"), the value
+# _rc_repos_entries emits for it, and the form --detail adds (quoted or
+# plain; repo_pin refuses a plain value YAML types as a non-string). sync
+# reads the plain "<name>\t<value>" output, which must not change for any
+# row (an unquoted 1.10 stays "1.10" there); validate reads only the
+# names, so every row must still emit its name.
+test_repos_entries_parser_table() {
+    echo "TEST: _rc_repos_entries reads each version: form as the table says"
+    local sb f i=0 row input want form got
+    sb="$(make_sandbox)"
+    f="$sb/table.repos"
+    local -a rows=(
+        ' pinned|pinned|plain'
+        ' fix#12|fix#12|plain'
+        ' fix # a comment|fix|plain'
+        ' "fix#12"|fix#12|quoted'
+        " 'v1.0'|v1.0|quoted"
+        ' "fix#12" # pinned for #12|fix#12|quoted'
+        "  'v1.0'   |v1.0|quoted"
+        '  # TODO pin||plain'
+        ' #main||plain'
+        '||plain'
+        ' ""||quoted'
+        $' dev\r|dev|plain'
+        $' "dev"\r|dev|quoted'
+        $' dev # c\r|dev|plain'
+        ' "fix|"fix|plain'
+        " fix'|fix'|plain"
+        ' fi"x|fi"x|plain'
+        " 'stable''next'|'stable''next'|plain"
+        ' "main" extra|"main" extra|plain'
+        ' "x\"y"|"x\"y"|plain'
+        ' "main"#c|"main"#c|plain'
+        ' "a\" #b"|"a\"|plain'
+        ' "v\x31.0"|"v\x31.0"|plain'
+        " 'a\\b'|a\\b|quoted"
+        ' 1.10|1.10|plain'
+        ' "1.10"|1.10|quoted'
+        " '1.10'|1.10|quoted"
+        ' yes|yes|plain'
+        ' True|True|plain'
+        ' false|false|plain'
+        ' ~|~|plain'
+        ' 0x1F|0x1F|plain'
+        ' .inf|.inf|plain'
+        ' !tag|!tag|plain'
+        ' 2024-01-01|2024-01-01|plain'
+        ' 2.0|2.0|plain'
+        ' 2024|2024|plain'
+        ' 1.50|1.50|plain'
+        ' 017|017|plain'
+    )
+    {
+        echo "repositories:"
+        for row in "${rows[@]}"; do
+            i=$((i + 1))
+            printf '  r%d:\n    type: git\n    version:%s\n' "$i" "${row%%|*}"
+        done
+        printf '  noversion:\n    type: git\n'
+    } > "$f"
+    local parsed detailed
+    parsed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2"' \
+        _ "$sb" "$f")"
+    detailed="$(bash -c 'source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_repos_entries "$2" --detail' \
+        _ "$sb" "$f")"
+    i=0
+    for row in "${rows[@]}"; do
+        i=$((i + 1))
+        input="${row%%|*}"
+        want="${row#*|}"
+        form="${want#*|}"
+        want="${want%|*}"
+        got="$(awk -F'\t' -v n="r$i" '$1 == n { print; f = 1 } END { if (!f) print "<missing>" }' <<< "$parsed")"
+        assert_eq "version:${input//$'\r'/\\r} -> [$want]" "r$i	$want" "$got"
+        got="$(awk -F'\t' -v n="r$i" '$1 == n { print; f = 1 } END { if (!f) print "<missing>" }' <<< "$detailed")"
+        assert_eq "version:${input//$'\r'/\\r} --detail -> [$want] $form" "r$i	$want	$form" "$got"
+    done
+    assert_not_contains "no version: key: left out without --detail" "noversion" "$parsed"
+    assert_contains "no version: key: form none with --detail" $'\nnoversion\t\tnone' $'\n'"$detailed"
+}
+
+test_sync_reads_quoted_and_commented_pins() {
+    echo "TEST: sync sees a quoted, commented pin as the branch, and a comment-only pin as none"
+    local sb out rc=0 proj mdir origin src
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    mdir="$proj/configs/manifest"
+    printf 'l1\n' > "$mdir/layers.txt"
+    : > "$mdir/optional_layers.txt"
+    printf 'repositories:\n  pkg_q:\n    type: git\n    version: "fakefox" # pinned\n  pkg_c:\n    type: git\n    version:  # TODO pin\n' \
+        > "$mdir/repos/l1.repos"
+    origin="$sb/origin_q"
+    git -C "$(mkdir -p "$origin" && echo "$origin")" init --quiet -b fakefox
+    (cd "$origin" && echo v1 > f.txt && git add f.txt \
+        && git -c user.name=t -c user.email=t@t commit -qm v1)
+    src="$proj/layers/main/l1_ws/src"
+    mkdir -p "$src"
+    git clone --quiet "$origin" "$src/pkg_q" 2>/dev/null
+    git clone --quiet "$origin" "$src/pkg_c" 2>/dev/null
+    out="$(run_adapter "$sb" sync 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "quoted pin with a comment: on its branch, pulled" "pkg_q: on 'fakefox' — pulling" "$out"
+    assert_contains "comment-only pin: no branch, fetched" "pkg_c: on 'fakefox' (pinned: ) — fetching" "$out"
+    rc=0
+    out="$(run_adapter "$sb" validate 2>&1)" || rc=$?
+    assert_contains "validate sees both repos checked out" "checkout matches the manifest" "$out"
+
+    # A detached checkout has no branch: an empty pin (comment-only, or
+    # "") must not match it. Sync fetches, so origin's new commit arrives.
+    local pin new
+    for pin in '  # TODO pin' ' ""'; do
+        rm -rf "$src/pkg_d"
+        git clone --quiet "$origin" "$src/pkg_d" 2>/dev/null
+        git -C "$src/pkg_d" checkout --quiet --detach
+        (cd "$origin" && echo "$pin" >> f.txt \
+            && git -c user.name=t -c user.email=t@t commit -qam more)
+        new="$(git -C "$origin" rev-parse HEAD)"
+        printf 'repositories:\n  pkg_d:\n    type: git\n    version:%s\n' "$pin" > "$mdir/repos/l1.repos"
+        rc=0
+        out="$(run_adapter "$sb" sync 2>&1)" || rc=$?
+        assert_eq "detached, pin [$pin]: exit 0" "0" "$rc"
+        assert_contains "detached, pin [$pin]: fetched" "pkg_d: on 'detached' (pinned: ) — fetching" "$out"
+        assert_not_contains "detached, pin [$pin]: not pulled" "pull failed" "$out"
+        assert_eq "detached, pin [$pin]: origin's new commit fetched" "$new" \
+            "$(git -C "$src/pkg_d" rev-parse refs/remotes/origin/fakefox)"
+    done
+}
+
+test_repo_pin_deleted_upstream_branch_is_not_a_branch() {
+    echo "TEST: repo_pin does not call a branch deleted on origin a branch, though a stale remote ref is left"
+    local sb out err proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git --git-dir="$sb/pkg_a_origin.git" branch --quiet -D pinned
+    # Not pruned: refs/remotes/origin/pinned is still there.
+    git -C "$dir" show-ref --verify --quiet refs/remotes/origin/pinned
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    err="$sb/err"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    assert_eq "unknown, not branch" "pinned	unknown" "$out"
+    assert_not_contains "online: no unverified note" "unverified" "$(< "$err")"
+}
+
+test_repo_pin_offline_uses_local_refs() {
+    echo "TEST: repo_pin falls back to local refs when origin cannot be reached, and says so"
+    local sb out err proj dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    git -C "$dir" remote set-url origin "$sb/gone.git"
+    err="$sb/err"
+    local pair ref kind
+    for pair in "pinned=branch" "v1.0=tag" "nowhere=unknown"; do
+        ref="${pair%%=*}"
+        kind="${pair#*=}"
+        write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=$ref"
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+        assert_eq "offline $kind" "$ref	$kind" "$out"
+        assert_contains "offline $kind: says unverified" "could not be reached" "$(< "$err")"
+    done
+    # A local branch of that name is not origin's: not enough offline either.
+    git -C "$dir" branch --quiet localonly
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=localonly"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "a local-only branch is unknown" "localonly	unknown" "$out"
+}
+
+test_repo_pin_hanging_origin_is_bounded() {
+    echo "TEST: repo_pin bounds its origin query and falls back to local refs when origin hangs"
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIP: no timeout command"
+        return 0
+    fi
+    local sb out err proj dir shim pidfile started elapsed
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    dir="$proj/layers/main/l1_ws/src/pkg_a"
+    # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt
+    # or a stalled host would. Only WT_FETCH_TIMEOUT can end it; the
+    # ceiling below is far above the 2s limit and far below the block.
+    shim="$sb/hang-ssh"
+    pidfile="$sb/hang-ssh.pid"
+    printf '#!/usr/bin/env bash\necho $$ > "%s"\nexec sleep 300\n' "$pidfile" > "$shim"
+    chmod +x "$shim"
+    git -C "$dir" remote set-url origin "ssh://git@example.invalid/pkg_a.git"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    err="$sb/err"
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$shim" WT_FETCH_TIMEOUT=2 run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    elapsed=$((SECONDS - started))
+    local reached=no
+    if [ -s "$pidfile" ]; then
+        reached=yes
+        kill "$(< "$pidfile")" 2>/dev/null || true
+    fi
+    assert_eq "the hanging ssh was reached" "yes" "$reached"
+    assert_eq "local answer: branch" "pinned	branch" "$out"
+    assert_contains "names the timeout" "did not answer within 2s" "$(< "$err")"
+    assert_contains "says unverified" "(unverified)" "$(< "$err")"
+    assert_eq "ended by WT_FETCH_TIMEOUT, not by the block (${elapsed}s < 60s)" "yes" \
+        "$([ "$elapsed" -lt 60 ] && echo yes || echo no)"
+}
+
+test_repo_pin_not_cloned() {
+    echo "TEST: repo_pin for a repo not cloned yet: unknown (or commit for a full sha), unverified"
+    local sb out err proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    err="$sb/err"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned" \
+        "pkg_b=0123456789abcdef0123456789abcdef01234567"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>"$err")" || true
+    assert_eq "unknown" "pinned	unknown" "$out"
+    assert_contains "says not cloned" "not a cloned repository" "$(< "$err")"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "full sha is a commit" "0123456789abcdef0123456789abcdef01234567	commit" "$out"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" \
+        "pkg_b=0123456789ABCDEF0123456789ABCDEF01234567"
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>/dev/null)" || true
+    assert_eq "uppercase full sha is a commit" "0123456789ABCDEF0123456789ABCDEF01234567	commit" "$out"
+}
+
+test_repo_pin_not_found() {
+    echo "TEST: repo_pin names the known repos when the name is not pinned"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_colcon_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" repo_pin pkg_ghost 2>&1)" || rc=$?
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "names the known repos" \
+        "no repository 'pkg_ghost' pinned in the manifest (known: pkg_a pkg_b pkg_c pkg_priv)" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin 2>&1)" || rc=$?
+    assert_eq "no name exits 1" "1" "$rc"
+    assert_contains "names the usage" "repo_pin requires a repository name" "$out"
+}
+
+test_repo_pin_entry_without_version() {
+    echo "TEST: repo_pin names an entry with no version: key, rather than calling it not pinned"
+    local sb out rc proj f
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    f="$proj/configs/manifest/repos/l1.repos"
+    printf 'repositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n  pkg_b:\n    type: git\n    version: main\n' > "$f"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "no version: exit 1" "1" "$rc"
+    assert_contains "no version: its own message" "'pkg_a' has no version: key in layer 'l1'" "$out"
+    assert_not_contains "no version: not 'not pinned'" "no repository 'pkg_a'" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_ghost 2>&1)" || rc=$?
+    assert_eq "unknown name: exit 1" "1" "$rc"
+    assert_contains "the versionless entry is a known repo" "known: pkg_a pkg_b" "$out"
+    # Pinned in one layer, unpinned in another: the refs differ.
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=main"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "pinned in one layer only: exit 1" "1" "$rc"
+    assert_contains "names both" "l1 (no version:), l2 (main); pass --layer <l>" "$out"
+}
+
+test_repo_pin_two_layers() {
+    echo "TEST: repo_pin for a repo pinned in two layers: same ref answers, different refs need --layer"
+    local sb out rc proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=pinned" "pkg_c=fakefox"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "same ref: exit 0" "0" "$rc"
+    assert_eq "same ref: one answer" "pinned	branch" "$out"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_a=v1.0" "pkg_c=fakefox"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+    assert_eq "different refs: exit 1" "1" "$rc"
+    assert_contains "names both layers and refs" "l1 (pinned), l2 (v1.0); pass --layer <l>" "$out"
+    out="$(run_adapter "$sb" repo_pin pkg_a --layer l1 2>/dev/null)" || true
+    assert_eq "--layer l1 answers" "pinned	branch" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_c --layer l1 2>&1)" || rc=$?
+    assert_eq "not in that layer: exit 1" "1" "$rc"
+    assert_contains "names the layer" "no repository 'pkg_c' pinned in layer 'l1' of the manifest" "$out"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_a --layer nolayer 2>&1)" || rc=$?
+    assert_eq "unknown layer: exit 1" "1" "$rc"
+    assert_contains "names the bad layer" "layer 'nolayer' is not defined" "$out"
+    # The same ref in two layers, cloned only in the later one: the kind is
+    # judged where it is cloned, as --layer l2 would judge it.
+    make_pin_pkg "$sb" "$proj" l2 pkg_b >/dev/null
+    [ ! -e "$proj/layers/main/l1_ws/src/pkg_b" ] || rm -rf "$proj/layers/main/l1_ws/src/pkg_b"
+    write_pin_repos "$proj/configs/manifest/repos/l1.repos" "pkg_a=pinned" "pkg_b=pinned"
+    write_pin_repos "$proj/configs/manifest/repos/l2.repos" "pkg_b=pinned"
+    local err="$sb/err"
+    rc=0
+    out="$(run_adapter "$sb" repo_pin pkg_b 2>"$err")" || rc=$?
+    assert_eq "cloned in l2 only: exit 0" "0" "$rc"
+    assert_eq "cloned in l2 only: judged there" "pinned	branch" "$out"
+    assert_not_contains "cloned in l2 only: verified" "unverified" "$(< "$err")"
+    out="$(run_adapter "$sb" repo_pin pkg_b --layer l2 2>/dev/null)" || true
+    assert_eq "--layer l2 agrees" "pinned	branch" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
 
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
+test_worktree_create_package_base_from_pin_or_refused
+test_worktree_create_package_existing_branch_needs_named_base
+test_worktree_create_package_parent_issue_starts_from_parent
+test_worktree_create_package_refuses_branch_and_empty_base
 test_worktree_create_package_hook_preflight_checks_package_repos
 test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_create_lookup_unknown_first_repo
@@ -1606,6 +2380,20 @@ test_validate_flags_missing_repo
 test_validate_flags_unsetup_layer
 test_install_noop_by_default
 test_cwd_discovery_resolves_colcon_project
+test_repo_pin_kinds_online
+test_repo_pin_branch_before_tag
+test_repo_pin_strips_quotes
+test_repo_pin_reads_version_as_yaml
+test_repos_entries_parser_table
+test_repo_pin_refuses_yaml_typed_plain_pins
+test_sync_reads_quoted_and_commented_pins
+test_repo_pin_deleted_upstream_branch_is_not_a_branch
+test_repo_pin_offline_uses_local_refs
+test_repo_pin_hanging_origin_is_bounded
+test_repo_pin_not_cloned
+test_repo_pin_not_found
+test_repo_pin_entry_without_version
+test_repo_pin_two_layers
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

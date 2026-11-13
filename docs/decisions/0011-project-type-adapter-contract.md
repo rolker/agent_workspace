@@ -6,7 +6,8 @@ Accepted. Supersedes
 [ADR-0003](0003-workspace-infrastructure-is-project-agnostic.md).
 Amended by [ADR-0012](0012-worktree-composition-is-an-adapter-concern.md):
 +2 verbs (`worktree_repos`, `worktree_env`) — the contract below is now 12
-verbs, not 10.
+verbs, not 10. Amended by [ADR-0019](0019-repo-pin-verb.md): +1 verb
+(`repo_pin`) — now 13.
 
 ## Context
 
@@ -97,6 +98,8 @@ steps add `multi_repo` and `ros2_colcon` types.
 
 - [ADR-0012](0012-worktree-composition-is-an-adapter-concern.md) — amends
   this ADR (+2 verbs, worktree composition)
+- [ADR-0019](0019-repo-pin-verb.md) — amends this ADR (+1 verb, the
+  ref a repository is pinned at)
 - [ADR-0003](0003-workspace-infrastructure-is-project-agnostic.md) —
   superseded by this ADR
 - [ADR-0004](0004-enforcement-hierarchy-for-agent-compliance.md),

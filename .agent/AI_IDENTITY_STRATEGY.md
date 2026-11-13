@@ -13,9 +13,52 @@ Currently, AI agents operate using the user's personal GitHub credentials (PAT).
 
 Each agent has a complete identity consisting of:
 1. **Framework Name** - e.g., "Codex CLI Agent", "Copilot CLI Agent", "Gemini CLI Agent"
-2. **Email Address** - e.g., "roland+codex@rolker.net"
+2. **Email Address** - `<local>+<framework>@<domain>`, e.g. `<you>+codex@<domain>` (derived, see below)
 3. **Model Name** - e.g., "gpt-5.4", "GPT-4o", "Gemini 2.0 Flash"
 4. **Framework ID** - e.g., "codex", "copilot", "gemini", "antigravity"
+
+### Where the Email Comes From
+
+No email address is stored in the workspace. The scripts derive it from the
+checkout's configured git email:
+
+- **Base**: `git config user.email` as resolved in the checkout (a clone-level
+  value wins over the global one; `--global` is never forced), with any
+  `+suffix` removed from the local part. A clone configured by
+  `configure_git_identity.sh` (which writes `<local>+<framework>@<domain>`)
+  therefore keeps the same base.
+- **Agent email**: `<local>+<framework-suffix>@<domain>`. The suffixes are the
+  `FRAMEWORK_SUFFIXES` table in `.agent/scripts/framework_config.sh`; the
+  derivation is `.agent/scripts/identity_base.py`, shared by the scripts and the
+  commit-identity hook.
+- **Accepted by the hook**: the base itself, `<local>+<anything>@<domain>`, or
+  the configured address verbatim (a configured `u+@x.org` is accepted as is).
+- **Unset or malformed email** (a fresh machine): every entry point prints
+  "git user.email is not set ..." with the `git config --global user.email
+  <your-address>` fix and fails without exporting or writing anything; a
+  malformed one gets its own message that shows the value.
+- **What counts as malformed**: only what breaks the structure of an address
+  or a `Name <email>` ident: not exactly one `@`, an empty local part or
+  domain, whitespace or control characters, angle brackets or commas.
+  Apostrophes and non-ASCII characters (`o'brien@x.ie`, `jürgen@bücher.de`)
+  are accepted; values are quoted wherever they are written.
+- **Where it is resolved**: in the current directory when the script runs.
+  Source `set_git_identity_env.sh` in the checkout you commit in: a clone with
+  its own `user.email` gives a different base than the workspace, and an
+  identity sourced elsewhere and then used with `git -C <other>` carries the
+  other checkout's base (the hook in `<other>` then rejects it).
+  `configure_git_identity.sh` derives per repository it writes to.
+- **Not from the environment**: the base is read from git's config files
+  only; `git -c user.email=...` and `GIT_CONFIG_PARAMETERS` /
+  `GIT_CONFIG_COUNT` injection never change it. The hook checks the author
+  and the committer exactly as git will record them (`git var
+  GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`), so `-c` values,
+  `author.email` / `committer.email` and `GIT_*_EMAIL` all count there.
+- **A failed re-source** of `set_git_identity_env.sh` unsets the `GIT_*` and
+  `AGENT_*` variables it owns, so no stale identity is left behind; a failed
+  sourced `detect_agent_identity.sh` unsets its `AGENT_*` variables the same way.
+
+Different machines may use different addresses; each derives its own.
 
 ### Identity Source of Truth
 
@@ -31,23 +74,27 @@ Agent identity is determined from these sources (in order of preference):
    - Can export variables or write to file
 
 3. **`.agent/.identity` file** (if it exists) - Runtime-generated configuration file
-   - Contains all identity components
+   - Contains all identity components as shell-quoted assignments
+     (`AGENT_MODEL='...'`, an embedded `'` written as `'\''`): source it
+     (`. .agent/.identity`, bash or any POSIX sh) to get the values; the raw
+     text shows the quoting
    - **Note**: This is a git-ignored runtime file that may become stale if model/config changes during session
    - Template is at `.agent/.identity.template`
 
 **How to determine your identity:**
 1. **Use environment variables** (recommended) - Set by `set_git_identity_env.sh --detect`
-2. **Read from** `.agent/.identity` file if it exists (check with `[ -f .agent/.identity ]`)
+2. **Source** the `.agent/.identity` file if it exists: `[ -f .agent/.identity ] && . .agent/.identity`
 3. **Ask the user** if auto-detection fails
 4. **Use fallback** values if necessary: "AI Agent" / "Unknown Model"
 5. **Configure git** with your identity before making any commits
 
-**Example identities:**
-- Antigravity Agent: `Antigravity Agent` / `roland+antigravity@ccom.unh.edu` / `Gemini 2.5 Pro`
-- Codex CLI: `Codex CLI Agent` / `roland+codex@rolker.net` / `gpt-5.4`
-- GitHub Copilot CLI: `Copilot CLI Agent` / `roland+copilot-cli@ccom.unh.edu` / `GPT-4o`
-- Gemini CLI: `Gemini CLI Agent` / `roland+gemini-cli@ccom.unh.edu` / `Gemini 2.0 Flash`
-- Other agents: Follow the pattern `<Platform> Agent` / `roland+<platform>@ccom.unh.edu` / `<Model Name>`
+**Example identities** (with a configured git email of `<you>@<domain>`):
+- Antigravity Agent: `Antigravity Agent` / `<you>+antigravity@<domain>` / `Gemini 2.5 Pro`
+- Claude Code: `Claude Code Agent` / `<you>+claude-code@<domain>` / `<model-id>`
+- Codex CLI: `Codex CLI Agent` / `<you>+codex@<domain>` / `gpt-5.4`
+- GitHub Copilot CLI: `Copilot CLI Agent` / `<you>+copilot-cli@<domain>` / `GPT-4o`
+- Gemini CLI: `Gemini CLI Agent` / `<you>+gemini-cli@<domain>` / `Gemini 2.0 Flash`
+- Other agents: Follow the pattern `<Platform> Agent` / `<you>+<platform>@<domain>` / `<Model Name>`
 
 ### Configuration Methods: Ephemeral vs. Persistent
 
@@ -60,12 +107,12 @@ Agent identity is determined from these sources (in order of preference):
 # Auto-detect (recommended)
 source .agent/scripts/set_git_identity_env.sh --detect
 
-# Or specify framework
+# Or specify framework (optionally with your actual model)
 source .agent/scripts/set_git_identity_env.sh --agent codex
-source .agent/scripts/set_git_identity_env.sh --agent copilot
+source .agent/scripts/set_git_identity_env.sh --agent claude-code "<your-model-id>"
 
 # Or manual (not recommended)
-source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "roland+codex@rolker.net" "gpt-5.4"
+source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "<you>+codex@<domain>" "gpt-5.4"
 ```
 
 **Benefits**:
@@ -83,7 +130,7 @@ source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "roland+codex@ro
 
 **Method**: Run the configuration script:
 ```bash
-./.agent/scripts/configure_git_identity.sh "Antigravity Agent" "roland+antigravity@ccom.unh.edu"
+./.agent/scripts/configure_git_identity.sh --agent antigravity
 ```
 
 **Benefits**:
@@ -171,7 +218,7 @@ The signature must include both:
 
 **How to determine your model:**
 1. **Use environment variables** (recommended) - Check `$AGENT_MODEL` set by `set_git_identity_env.sh`
-2. **Read from `.agent/.identity` file** (if exists) - Check file exists first: `[ -f .agent/.identity ] && source .agent/.identity`
+2. **Source the `.agent/.identity` file** (if exists) - Check file exists first: `[ -f .agent/.identity ] && . .agent/.identity`
 3. **Auto-detect** - Run `.agent/scripts/detect_agent_identity.sh --export`
 4. **Fallback** - Use "Unknown Model" if detection fails
 
@@ -216,10 +263,10 @@ We distinguish the **content** author from the **setup** author.
 **Agent Responsibilities:**
 1.  **Determine your complete identity** when first starting work in this workspace:
     - **Framework name**: e.g., "Codex CLI Agent", "Copilot CLI Agent", "Antigravity Agent"
-    - **Email format**: `roland+<platform>@ccom.unh.edu`
+    - **Email format**: `<local>+<platform>@<domain>`, derived from the checkout's `git config user.email`
     - **Model name**: Your actual runtime model (e.g., "GPT-4o", "Gemini 2.5 Pro")
     - **Auto-detect** using: `source .agent/scripts/set_git_identity_env.sh --detect`
-    - **Or read from**: `.agent/.identity` file
+    - **Or source**: the `.agent/.identity` file (`. .agent/.identity`)
     - **Ask the user** if auto-detection fails
 2.  **Choose the appropriate configuration method**:
     - **Host-based agents (Codex CLI, Copilot CLI, Gemini CLI)**: Use ephemeral identity (environment variables)

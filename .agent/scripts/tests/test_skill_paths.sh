@@ -489,7 +489,7 @@ if [[ -f "$ONB" ]]; then
     has "$ONB" "onboard-project: github=unknown asks for the repository and remote before any issue, push or pull request" \
         'With `github=unknown`, ask which repository on github.com and which remote it is before any issue, push or pull request'
     has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
-        'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1' \
+        'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" || exit 1' \
         "printf '\\n---\\n**Authored-By**: \`%s\`\\n**Model**: \`%s\`\\n' \"\$AGENT_NAME\" \"\$AGENT_MODEL\""
     has "$ONB" "onboard-project: offers only when instructions=tracked; audit-project always" \
         '### 5. Offers — only when `instructions=tracked`' \

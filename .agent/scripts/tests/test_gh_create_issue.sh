@@ -195,8 +195,9 @@ printf 'Plain\n' > "$PLAINF"
 for args in "--body|B" "--body=B" "-b|B" "--body-file|$PLAINF" "--body-file=$PLAINF" "-F|$PLAINF"; do
     IFS='|' read -r -a argv <<<"$args"
     run --title T "${argv[@]}"
-    if [[ "$RC" -eq 2 ]] && ! gh_called && [[ "$OUT" == *set_git_identity_env.sh* ]]; then
-        pass "identity unset + ${argv[*]}: exit 2 naming set_git_identity_env.sh, gh not called"
+    if [[ "$RC" -eq 2 ]] && ! gh_called \
+        && [[ "$OUT" == *'set_git_identity_env.sh --agent <framework> "<model-id>"'* && "$OUT" != *'"email"'* ]]; then
+        pass "identity unset + ${argv[*]}: exit 2 naming set_git_identity_env.sh --agent <framework>, gh not called"
     else
         fail "identity unset + ${argv[*]}: rc=$RC gh_called=$(gh_called && echo yes || echo no)"
     fi

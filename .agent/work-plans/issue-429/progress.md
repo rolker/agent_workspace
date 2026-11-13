@@ -701,3 +701,1381 @@ None open.
 The merge dialog for pull request 445 (part 1 of 2) showed what the change does, what is left for part 2, what only a real run can test, the review record and CI (all 8 checks pass). The owner first asked two things: "the goal is to make this work with project11, but we are implementing it so it works with other similar projects right? Nothing here is specific to project11? Also, I have been trying to ween off of depending on github, but I see a lot of github related parts here. Are we just solidifying our dependence on github?" The host answered from the diff: the scripts and skill text name no project, and one test fixture uses "p11" as its made-up project's name in two lines; the guard is plain git; the change adds one `gh repo view` check before work starts on a package issue, which stops when `gh` cannot answer, and identifies an issue as `owner/repo#N`; the loop as a whole is already bound to GitHub and no recorded goal says to depend on it less. Asked "Merge pull request 445 as it is, with the p11 fixture name renamed in part 2?", the owner answered: "Q1 yes". On recording "depend less on GitHub" as a goal: "Q2, we need to discuss this".
 
 Carried to part 2: rename the fixture's made-up project so no test names a project.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 14:46 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `156efb94`
+
+Revision for part 2 after part 1 merged (pull request 445). Part 2 is cut as 2a (base branch: a base given by hand until repo_pin from issue 436 exists, the base also decides the branch start point and is recorded in the manifest header, forwarded to publish) and 2b (the gate reads and records in the owning checkout with pull request identity as repository plus number, report-only kept, cleanup pinned by tests, the end-to-end test, texts, fixture rename). Eleven decisions listed for the owner's veto; issue 437 merges before 2b.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 14:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `156efb94`
+**Branch**: `feature/issue-429`
+**Serves**: Workspace goal `README.md#easy-to-use`; touches `README.md#light-touch-on-projects`; design `docs/design.md#worktrees` (Records), `docs/design.md#review-loop-and-timeline`, `docs/design.md#merge-gate`. Checked: the sections exist. Part 2 also falls under `README.md#flexibility`, which the line does not cite (finding 3).
+
+Scope of this review: "Part 2 (detailed)" only; part 1's text is the record of merged work. Read against the merged code at `3486edba`: `worktree_create.sh`, `_worktree_helpers.sh` (`_wt_add_repo`, `wt_add_new_branch`, `wt_lookup_for_new_branch`, `wt_read_manifest`), `merge_pr.sh` (package scan, gate, `_gate_record`, `_gate_already_recorded`, Step 4), `progress_read.py`, `review_progress.sh`, `dispatch_phase.sh`, the `adapter` dispatcher, the `ros2_colcon` adapter; issue 436's plan (worktree `issue-workspace-436`) and issue 437's branch diff (worktree `issue-workspace-437`).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2a (about 8 files) and 2b (about 11 files) are each one reviewable change. 2b is lighter without step 7 (finding 2) |
+| Issue alignment | Good | Closes the rest of the issue: base, gate on the owning timeline, end-to-end test, texts. Serves line copied above |
+| File targeting | Needs work | 2a's texts are listed under 2b (finding 6); `wt_read_manifest`'s header parser needs a change the plan does not list (finding 5) |
+| Consequences | Needs work | Base text, script rows and ADR-0012 header text trail 2a into 2b; `script_reference.md` is also shared with issue 437 (textual) |
+| Principle alignment | Needs work | Table below. The plan's own self-check uses names that are not headings ("Enforcement over documentation", "Only what's needed / small steps") and lists five of sixteen |
+| Flexibility goal (`README.md#flexibility`) | Needs work | Row below |
+| ADR compliance | Good with one note | 0011: the pin read only through `adapter repo_pin`; 0012: header field additive once the layer parser is fixed; 0013: amendment is additive and every reader keeps working on bare `#M` (checked), but see finding 2; 0017: see finding 6 |
+| ROS conventions | N/A | Workspace scripts; no ROS interfaces |
+
+#### Principle alignment (every heading of `docs/principles.md`)
+
+| Principle | Applies? | Assessment |
+|---|---|---|
+| Leave a trail; start limits strict | Applies | Good: package gate records move onto the owning timeline; a run with no base refuses rather than guesses |
+| Enforce what matters, as simply as possible | Applies | Partly: the start point is the real enforcement and the merge cross-check reports a wrong target; but the stated mechanism does not enforce origin's base (finding 1), and step 7 guards a case no flow produces (finding 2) |
+| Keep one current design | Applies | Needs work: 2a changes the worktree picture (branch start, `base=` header) but its design and ADR-0012 text are in 2b (finding 6) |
+| A change includes its consequences | Applies | Needs work: same as above, plus `script_reference.md` rows for `base`, `_pr_base.sh`, `--base` |
+| Only what's needed | Applies | Needs work: step 7 and the verb-absent stopgap both build things no current flow needs (findings 2, 4) |
+| Small steps; step back when they stop converging | Applies | Good: two pull requests; can run in parallel with one move (finding 7) |
+| Test what breaks | Applies | Needs work: missing cases for a local `<base>` with an unpushed commit, `--allow-unverified-branch` with an unknown base, and the layer field after `base=` (findings 1, 5) |
+| Put each thing at the level it applies to | Applies | Good: `_pr_base.sh` names no type; the pin comes from the adapter. One gap: how the repository name is found before the worktree exists (finding 8) |
+| Use the main tool fully; keep the work tool-neutral | Applies | Needs work: its rule "for each part that depends on one tool, say how the work continues without it" is the one principle serving Flexibility; the GitHub-bound rows give no way to continue (finding 3) |
+| Ask about what matters, and show how much | Applies | Partly: the veto list says what each changes and its undo cost; veto 5 contradicts the table (finding 4); the GitHub question is left "for the owner's discussion" although the goal is recorded (finding 3) |
+| Verify before claiming | Applies | Needs work: "older readers ignore it" is false for `layer=` (finding 5); "the rule is not in the tree" is false (finding 9) |
+| Look for prior art before building | Applies | Partly: reusing the parent-branch path is right, but its semantics (local branch first, default fallback) were not carried over correctly (finding 1) |
+| Leave in a project only what it chose to carry | Applies | Good: gate records join the timeline in the package repository that decision 1 (part 1, owner's veto) already put there; `base=` lives in the workspace manifest |
+| Name the rule before bending it | Applies | Good: the tests-name-no-project rule is named and the partial rename is put to veto 8 |
+| Give the user what they need now | Applies | Good: decisions are in plain words with undo cost; the Flexibility table is a usable start for the owner's question |
+| Know whether it works | Applies | Good: step 8's base cross-check at merge is the check that the base mechanism worked |
+
+#### Flexibility goal row
+
+`README.md#flexibility`: "preference should go to open source and open standards to minimize vendor lock-in. Have an exit strategy for anything that depends on a vendor's closed product or infrastructure." The plan says "no goal is recorded"; this one is.
+
+- **No new `gh` call: verified.** Step 8 adds `baseRefName` to the existing `_head_json` `gh pr view` (merge_pr.sh:545); publish adds `--base` to the existing `gh pr create` through `gh_create_pr.sh` pass-through; `_pr_base.sh` and `dispatch_phase.sh base` use git and the adapter; cleanup's `gh pr list` is unchanged.
+- **Records move off the pull request: verified for the owning pull request only.** `_gate_record` (merge_pr.sh:848) skips the timeline whenever `PKG_WT_DIR` is set and falls back to `gh pr comment`; step 6 lifts that for the owning checkout. Sibling pull requests' records, and the push-refused and no-identity fallbacks, still go to `gh pr comment`, and `_gate_already_recorded` still reads the comment store for them. The table's "Gate record location" row should say so.
+- **Table incomplete:** missing rows: the sibling record path (`gh pr comment`, stays), the comment-store duplicate check (stays), and the owning-checkout match in step 6 (a new use of `extract_gh_slug`, which parses GitHub remotes only; the manifest scan at merge_pr.sh:488-499 already matched that entry by branch and slug, so reusing the match needs no second parse).
+- **Deepened:** step 7 writes the GitHub-derived `owner/repo` into ADR-0013's record vocabulary (finding 2).
+- **No exit stated** for any "No"/"Stays" row. After part 2 the gate's decision for a package pull request is already a git record; the exit can be one line per row (publish = push the branch; merge = `git merge` into the base and push, with the gate read from the timeline; reviews from local reviewers), or an issue that owns it.
+
+### Findings
+
+1. **[Approach — must-fix] The stated start-point mechanism does not give origin's base.** Step 3 passes the base as `_wt_add_repo`'s parent and promises "starts at `origin/<base>`; a missing or unreachable base is an error, never a silent fall back". The merged parent path (`_worktree_helpers.sh:787-806`) does three other things: (a) a local `refs/heads/<base>` is used as is, with no fetch, so in a vcs-imported checkout that sits on the pinned branch, any local or stale commits there go into the new branch and the pull request; (b) a base absent on origin prints a WARNING and starts from the default branch (`_wt_default_start_point`), the wrong branch; (c) with `--allow-unverified-branch`, an unknown base is treated as absent and also starts from the default. The parent add also omits `--no-track`, so the new branch tracks `origin/<base>`. Resolution: a separate base path, owning entry only: fetch `refs/heads/<base>` with `wt_fetch_named_branch`; present → `wt_add_new_branch ... origin/<base> --no-track`; absent or unknown → error, whatever `--allow-unverified-branch` says, with the rollback the manifest loop already does. Never the local `<base>`. Tests: a local `<base>` carrying an unpushed commit (the new branch must not contain it); `--allow-unverified-branch` with an unreachable origin (must refuse). `pr_base_for`'s offline "unverified" acceptance and the creation's "unknown → stop" then disagree: say which wins in the message.
+2. **[Flexibility / Only what's needed — must-fix] Step 7 adds a GitHub-derived identity to the record format for a case no flow produces, with no exit.** On today's flows (and after part 2) only the owning pull request's records land in A's timeline: siblings go to comments (step 6), sibling repositories are not committed to (part 1's Scope), and review entries in A are written bare `#M`. Step 7 says so itself ("only guards the case where two repositories' entries meet"). It still amends ADR-0013 and writes `owner/repo` from `extract_gh_slug`, a GitHub-only parser, into every package merge record. Resolution: drop step 7 (and the ADR-0013 amendment and its tests); bare `#M` already means "the timeline's own repository". If kept, key on a forge-neutral name (the manifest entry's directory name) and state the exit. For the record: adding `repo` is additive and every reader keeps working on bare `#M` (checked: `review_progress.sh` round/sources/findings use `kind`/`sha`/`branch`; `dispatch_phase.sh` check-exit and `next` use `sha`/`branch`; the gate uses `sha` and `.pr`; `sitrep` does not read correlations; `progress_read.py`'s `re.search` already matches `owner/repo#M at`).
+3. **[Flexibility] The goal is recorded, and the plan should be judged against it, not leave it to discussion.** Cite `README.md#flexibility` in Serves and in the self-check through "Use the main tool fully; keep the work tool-neutral"; complete the table (rows above) and give one exit line per GitHub-bound row.
+4. **[Approach] Drop the verb-absent stopgap; order issue 436's pull request (c) first.** Issue 436's plan lists (c), `repo_pin` as a required verb, as depending on nothing for the verb itself and runnable in parallel with (b). The acceptance case on a fresh machine needs 436's manifest route anyway, so (c) will be in by then; the stopgap serves only a window with no real package runs, and costs a verb-detection branch, a refusal message and stub-adapter tests that are deleted later. An "optional verb" would be a new concept in ADR-0011 (every type implements every verb), so not smaller. Make 2a's `base` call `adapter repo_pin` and merge after (c); keep `--base` as an override only. As written, the table refuses every package run without `--base`, while veto 5 says the owner types it only "for a project whose pin differs from the default": one of them is wrong.
+5. **[Verify before claiming] `base=` after `layer=` empties `WT_MANIFEST_LAYER`.** `wt_read_manifest` (`_worktree_helpers.sh:444`) reads `layer` with an end-anchored `sed 's/.* layer=\([^ ]*\)$/\1/p'`; on `# project=demo issue=owner/pkg_a#7 layer=l1 base=pinned` it prints nothing (run here). Nothing reads `WT_MANIFEST_LAYER` today, so it is latent, but the claim "readers use sed on named fields, so older readers ignore it" is false for this one. Remove the anchor in 2a and add the case to `test_worktree_create.sh`. The other header readers (`issue=`, `project=`) are not anchored.
+6. **[Keep one current design / Consequences] 2a's texts belong in 2a.** 2a introduces the base start point, the `base=` header, `dispatch_phase.sh base`, `_pr_base.sh` and `worktree_create.sh --base`, but the `docs/design.md#worktrees` sentence, ADR-0012's manifest paragraph and the three `script_reference.md` rows are in step 13 (2b). Since "each is merged on its own", main would carry 2a with a stale design. Move them into 2a.
+7. **[Small steps] 2a and 2b can be developed in parallel.** Only step 8 (base cross-check) and the end-to-end test's `--base` step need 2a. Move step 8 into 2a (it is about the base, and is silent without `base=`); then 2b needs nothing from 2a, and the end-to-end test's base step is added by whichever of the two merges second.
+8. **[Put each thing at the level it applies to] Say how `base` names the repository before the worktree exists.** `repo_pin <name>` takes the directory name, which can differ from the GitHub repository name in `owner/repo#N`. Take it from the owning entry of `adapter worktree_repos --issue <ref> --layer --package-repos` (the entry on `feature/issue-N`, basename of its path), not from the issue reference.
+9. **[Verify before claiming] "A run removes only what it made" is in the merged tree.** `worktree_create.sh:70-75` (`undo_new_branch_checkout`: "Only what this run made is undone") and `_worktree_helpers.sh` (`wt_add_new_branch`: "a failure undoes only what this run made"; `_wt_add_repo`'s `made_branch`). It concerns undoing a failed creation, not merge-time cleanup. Step 10 changes no code, so nothing rests on the misreading, but it should not cite that rule for cleanup. The cleanup sweep (merge_pr.sh:1664-1690) safe-deletes every manifest entry's local branch whose remote is gone, whichever run made it. Close the open question. Add one pinned case: the owning repository's own checkout on a branch other than the base, where `git branch -d` keeps the merged branch as "not fully merged".
+10. **[Consequences] Issue 437 overlap: claims verified, one file missing.** 437's branch does not touch `merge_pr.sh`; its `progress_append.sh` write rule (`records_dir --write`) accepts A on `feature/issue-N`, so `_gate_record`'s `-C A` passes; `test_package_issue_loop.sh` is shared (437 changes one assertion block). `.agent/knowledge/script_reference.md` is also shared (437 step 8 adds rows), and 2a edits `test_package_issue_loop.sh` too, so 2a is not free of 437 either: textual only.
+11. **[Name the rule] Fixture rename: leaving the six other suites to a follow-up is right**, since that rename is unrelated to part 2's behaviour (168 lines counted: `test_ros2_colcon.sh` 71, `test_project_registry.sh` 47, `test_merge_pr.sh` 40, `test_session_root.sh` 6, `test_skill_prefix.sh` 3, `test_session_start_layer.sh` 1; comments at `skill_prefix.sh:14`, `user_tier_install.sh:1208`). The follow-up is mechanical and depends on nothing: file it now so it can run beside 2a and 2b. `run-issue/SKILL.md:83` (`p11-jazzy`) is in the files part 2 touches and is covered by step 11.
+
+### Summary
+
+The two-pull-request cut and the gate-on-the-owning-timeline approach are sound, and the claim of no new `gh` call holds. Two things must change before implementation: the start point must come from origin's base by its own strict path (as written, the parent path can start a package branch from a stale local base or from the default branch), and step 7 should be dropped (it adds a GitHub-derived identity to the record format for a case no flow produces). Beyond those: the Flexibility table needs completing with exits, the stopgap can be replaced by ordering issue 436's (c) first, and 2a's texts move into 2a.
+
+### Recommended Actions
+
+- [ ] (must-fix) Step 3: a strict base path for the owning entry (fetch origin's base, `--no-track`, absent or unknown is an error even with `--allow-unverified-branch`, never the local `<base>`), with the two tests in finding 1
+- [ ] (must-fix) Drop step 7 and the ADR-0013 amendment, or key on a forge-neutral name and state the exit
+- [ ] (suggestion) Cite `README.md#flexibility`; complete the GitHub-bound table (sibling comment records, comment-store duplicate check, step 6's slug match) with one exit line per row
+- [ ] (suggestion) Replace the verb-absent stopgap by merging 2a after issue 436 (c); `--base` as override only; fix veto 5's contradiction
+- [ ] (suggestion) Un-anchor the `layer=` parser in `wt_read_manifest` and test it
+- [ ] (suggestion) Move the base texts (design, ADR-0012, script rows) and step 8 into 2a
+- [ ] (suggestion) Name the repository for `repo_pin` from `adapter worktree_repos`' owning entry
+- [ ] (suggestion) Step 6: reuse the manifest scan's matched entry instead of a second `extract_gh_slug` parse
+- [ ] (suggestion) Step 10: cite the creation rule correctly, close the open question, add the "own checkout not on the base" case
+- [ ] (suggestion) File the fixture-rename follow-up now
+- [ ] (suggestion) Rebuild the Principles Self-Check from the sixteen headings of `docs/principles.md`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 14:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review of part 2 found two must-fixes and a better order, all mechanism; first host revise on the part 2 plan)
+**After**: plan
+**Decision**: revise
+
+Correction to this timeline's merge checkpoint of 2026-11-10: the host wrote there that no recorded goal says to depend less on GitHub. That was wrong. The README's Workspace goals, Flexibility, say: "When practical, preference should go to open source and open standards to minimize vendor lock-in. Have an exit strategy for anything that depends on a vendor's closed product or infrastructure." The plan repeated the host's error and must be corrected too.
+
+Host read the Plan Review (needs-work, 2 must-fix, suggestions) and directs:
+- Must-fix 1: the branch's start point gets its own strict path: fetch origin's base, start the new branch from it with no tracking, refuse when the base is absent or unknown on origin, never use a local copy of the base branch; test both refusals and that unpushed local commits on the base do not enter.
+- Must-fix 2: drop the qualified pull-request identity in records (plan step 7). No flow writes two repositories' pull requests onto one timeline, and a bare `#M` keeps every reader working.
+- The base comes from the adapter now, not by hand: pull request 2a itself adds the `repo_pin` verb as a required verb every project type implements (the ROS type answers from the `.repos` file it already reads; a single-repository type answers with its default branch), with ADR-0011's verb list updated, and uses it. Issue 436's own pull request for that verb is then dropped there; the host records that on issue 436's timeline. `--base` stays only as an override, and a pinned tag, commit or unknown kind refuses and names it.
+- The Flexibility goal: complete the table of what stays GitHub-bound (the sibling-record comment, the push-failure fallback, the second slug parse, which reuses the manifest scan's match instead), and for every row state the exit: how the work would continue without GitHub. Where no exit exists today, say so plainly; those rows go to the owner's discussion.
+- Take every suggestion: un-anchor the manifest header's `layer=` parser before adding `base=`, with a test; move the base texts into 2a so 2a and 2b can be built in parallel; name the repository for `repo_pin` from the adapter's own entry; close the cleanup question (the rule the planner could not find covers undoing a failed creation, not merge cleanup) and add the test for a package checkout not on the base branch; list `script_reference.md` among the files shared with issue 437; rebuild the self-check from the sixteen headings of docs/principles.md. The rename of the made-up project name in the other six suites is drafted as a follow-up issue for the owner to allow.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-10 14:57 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `5609626c`
+
+Revision of part 2 after the plan review and the host's revise checkpoint. The start point gets its own strict path (fetch origin's base, no tracking, refuse when absent or unknown even with the unverified-branch flag, never the local copy). Pull request 2a adds repo_pin as a required verb (ADR-0011 amended) and carries all base texts; 2b is the gate on the owning timeline, cleanup tests, end-to-end test and Scope text; the two are built in parallel. The qualified pull-request identity is dropped. The Flexibility goal is cited, and the GitHub-bound table is completed with an exit column. The self-check uses the sixteen principle headings; the fixture-rename follow-up issue is drafted, not opened.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-10 14:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent a3124c0f507720522, resume 1 of 3)
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `5609626c`
+**Branch**: `feature/issue-429`
+**Serves**: `README.md#easy-to-use`, `README.md#light-touch-on-projects`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline`, `docs/design.md#merge-gate`. Checked: Flexibility is now cited with the README's words, and the withdrawn "no goal recorded" statement is corrected on the timeline and in the plan.
+
+Second review, narrow: whether the first review's findings (entry of 2026-11-10 14:53, plan `156efb94`) are resolved as worded, and whether the revision introduced anything wrong. Checked against `3486edba` code: `adapter`, `validate_adapter.sh`, both adapters, `_worktree_helpers.sh`, `merge_pr.sh`, `.github/workflows/validate.yml`, `.pre-commit-config.yaml`, the adapter test suites, ADR-0008, ADR-0011, ADR-0012, `principles_review_guide.md`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | 2a at about 16 files carries a contract change (a 13th required verb) alongside the base mechanism; cut the verb out as its own pull request first (finding 1) |
+| Issue alignment | Good | Unchanged from the first review; all of part 2 is covered |
+| File targeting | Needs work | Verb-count text and assertions not listed (finding 3) |
+| Consequences | Needs work | Same as above, plus the ADR route (finding 2) |
+| Principle alignment | Good | Self-check now has all sixteen headings of `docs/principles.md`, each with a consideration; I agree with each, except that "Keep one current design" depends on finding 3 |
+| Flexibility goal (`README.md#flexibility`) | Good | Table complete; no new `gh` call; no exit claimed is false; two wordings to fix (finding 5) |
+| ADR compliance | Needs work | ADR-0011 edit route conflicts with ADR-0008 (finding 2); ADR-0013 now untouched (good) |
+| ROS conventions | N/A | Workspace scripts |
+
+### First review's findings, as resolved
+
+- Must-fix 1 (strict start path): **resolved as worded.** 2a step 4: fetch origin's base, `origin/<base> --no-track`, refuse on absent or unknown whatever `--allow-unverified-branch` says, never the local `<base>`, owning entry only, rollback by the manifest loop; a resumed branch is checked out as today; "creation wins" over an offline `pr_base_for`. Tests (i) to (vi) include both refusals, the unpushed local commit and "no upstream". The chain fits the merged code: the branch's own lookup in `_wt_add_repo` stops first on "unknown" without the flag, and with the flag the base lookup then refuses.
+- Must-fix 2 (qualified identity): **resolved**: step 7 dropped, ADR-0013 unchanged, decision 7 records it.
+- Flexibility: **resolved**: goal cited; rows added for the sibling comment, the push-refused and no-identity fallbacks, the comment-store duplicate check; the second slug parse is replaced by reusing the scan's `_m_rel` (2b step 1); every row has an exit or "none today" with what one would take.
+- `--base` by hand: **resolved**: `repo_pin` built in 2a, `--base` only an override; veto 5's contradiction is gone.
+- Suggestions: **all taken**: `layer=` un-anchored with a test (step 5); base texts and the cross-check moved into 2a, so 2b needs nothing from 2a; repository name from `adapter worktree_repos`' owning entry; cleanup rule found and cited correctly, case (d) added; `script_reference.md` listed as shared with 437; follow-up issue drafted, not opened.
+
+### Findings
+
+1. **[Scope] Cut the verb out of 2a as its own pull request first.** Steps 1-2 are a change to the adapter contract (ADR-0011, `REQUIRED_VERBS`, both adapters, `validate_adapter.sh`, the verb tests, the design's verb text, plus the new ADR of finding 2): reviewed by different criteria from the base mechanism, depending on nothing, and touching the files a CI job (`validate-adapter-contract`) guards. With it inside, 2a is about 16 files and two subjects. The rest of 2a (strict start, header, `_pr_base.sh`, dispatcher, cross-check, run-issue) can be built in parallel against the sandbox's stub adapter type and merge after the verb. So: **two pull requests, the verb first.**
+2. **[ADR compliance] Do not edit ADR-0011's verb table; record the verb in a new ADR.** The plan says "ADR-0011 amended in 2a (Status paragraph: now 13 verbs, as ADR-0012 amended it to 12; the verb table gains the row)". The precedent is the other way round: ADR-0012 is a new ADR that decided its two verbs; ADR-0011 got only a Status-line cross-reference ("Amended by ADR-0012: +2 verbs") and its verb table still has the original 10 rows (`docs/decisions/0011-*.md` 36-47). ADR-0008 permits only Status-line and References addendums; adding a verb row rewords the Decision section, which "still requires a new/superseding ADR". `principles_review_guide.md:64` says the same ("or a new ADR per ADR-0008 if the verb count changes"). So: a short new ADR for `repo_pin` (contract, the four kinds, who answers what) and a one-line Status addendum in ADR-0011. Issue 436's plan (c) repeated the same misreading; nothing there to fix now, since the verb moves here.
+3. **[Consequences] Verb-count text and assertions.** Four assertions check the literal "all 12 verbs implemented": `test_adapter.sh:204`, `:218`, `test_ros2_colcon.sh:671`, `:672`. Step 8 lists those suites under "unchanged ... (existing cases)". They must change to 13, and `test_adapter.sh` runs in the `validate-adapter-contract` CI job, so leaving them would fail CI. Text that says "12-verb": `docs/design.md:341` and `.agent/knowledge/principles_review_guide.md:46`; neither is in the files table. Stub types in `test_adapter.sh` (`fake_type`) and `test_project_registry.sh` (`other_type`, `probe`) are already incomplete and are only dispatched, never validated, so they are unaffected (the dispatcher checks the verb name, not that the type defines it).
+4. **[Approach] Name the answer when one repository appears in more than one layer's `.repos`.** `repo_pin <repo>` reads "the `.repos` files of its manifest directory", which are per layer (`adapter_sync` loops layer by layer). An overlay can pin the same name in two layers at different refs. Either take the layer (the caller has `--layer`) or exit 1 naming both; do not take the first match silently. One test.
+5. **[Flexibility] Two exits are worded wrongly; none is false in substance.** (a) Owner/repo row: "would take a forge-neutral repository key ... in the scan, `worktree_repos` ownership and `gh_create_pr.sh`'s safety check". `worktree_repos` ownership already goes through `adapter_scope_for_pr`, which parses any host's URL or scp form (`ros2_colcon/adapter.sh` 868-896). Only the scan (`extract_gh_slug`, GitHub-only, `_issue_helpers.sh:22`) and `gh_create_pr.sh` would change. (b) Base cross-check row: "the push names the base". A push of the feature branch names no base. Under the merge exit, the `git merge` target is read from the header's `base=`, so there is nothing to cross-check. The other exits hold: the `**Branch**` correlation is accepted by `progress_read.py`; `git merge` plus `git push` is a real path for the merge; the field-mode bullet exists at `run-issue/SKILL.md:910`; and the sibling, fallback, CI and decision-summary rows say "none today" with a plausible route.
+6. **[Small] 2b step 1, implementer note.** The scan `break`s with `_m_rel` set, but the matches are collected as `dir<TAB>project<TAB>issue` and `_m_rel` is `unset` afterwards; carry the relative path as a fourth field of `_PKG_MATCHES` so `PKG_OWN_REL` comes from the one chosen match.
+
+### Project types and CI (asked)
+
+Types in the tree: `ros2_colcon` and `single_project` (`.agent/project_types/`), the only ones `validate_adapter.sh` iterates. The plan names both answers: ROS from `_rc_repos_entries` with the kind from git; single-repository the default branch from `origin/HEAD` (`ls-remote --symref` fallback), kind `branch`, exit 1 for another name. `validate_adapter.sh` checks only `declare -F adapter_<verb>` for every `REQUIRED_VERBS` entry, so with both functions defined the pre-commit hook and the `validate-adapter-contract` job pass. That job also runs `test_adapter.sh` and the registry tests: they pass once finding 3's assertions move to 13.
+
+### Summary
+
+The revision resolves both must-fixes, the Flexibility findings and the `--base` question as worded, and takes every suggestion. Nothing introduced would start or target the wrong branch, break a type or a timeline, or claim a false exit. 2a is ready to implement as two pull requests: the verb first (with a new ADR rather than an edit to ADR-0011's table, and the 12-to-13 text and assertions), then the base mechanism, built in parallel and merged after it.
+
+### Recommended Actions
+
+- [ ] (suggestion) Split 2a: `repo_pin` verb pull request first, base mechanism second (built in parallel)
+- [ ] (suggestion) A new short ADR for `repo_pin`; ADR-0011 gets a Status-line addendum only
+- [ ] (suggestion) Update the four "all 12 verbs" assertions and the "12-verb" text in `docs/design.md:341` and `principles_review_guide.md:46`
+- [ ] (suggestion) `repo_pin` for a name pinned in two layers: take the layer or refuse naming both, with a test
+- [ ] (suggestion) Reword the owner/repo and base cross-check exits as in finding 5
+- [ ] (suggestion) Carry `_m_rel` in `_PKG_MATCHES` for `PKG_OWN_REL`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-10 15:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review of part 2: ready, no must-fix)
+**After**: plan
+**Decision**: proceed
+
+Host read the second Plan Review (ready). Carried to the implementer: `repo_pin` is recorded in a new short ADR, with only a one-line Status note on ADR-0011 (ADR-0008 forbids editing its verb table); the four "all 12 verbs implemented" assertions and the two "12-verb" texts become 13; `repo_pin` takes the layer, or refuses naming both, when a repository is pinned in two layers; two exits in the GitHub table are reworded as the review says; `_m_rel` is carried in `_PKG_MATCHES` for 2b. Order: the verb with its ADR is its own pull request first; the base mechanism follows it; 2b in parallel.
+
+NOT dispatched: the owner's stop time (15:00 on 2026-11-10) was reached, and no phase starts after it. The loop resumes here: the next step is the implement pass for the verb's pull request.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 17:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `bfe6ebba`
+**Commits**: afd01eac, bfe6ebba
+
+Scope of this pass: the verb's pull request only, the first of part 2's pull requests, as the plan checkpoint of 2026-11-10 15:00 ordered ("the verb with its ADR is its own pull request first; the base mechanism follows it; 2b in parallel"). The base mechanism (2a steps 3 to 8) and 2b are later pull requests and are not on this branch.
+
+- `afd01eac` `repo_pin <repo> [--layer <l>]` is the 13th entry of `REQUIRED_VERBS` (`.agent/scripts/adapter`, header and usage). It prints `<ref><TAB><kind>`, kind `branch`, `tag`, `commit` or `unknown`.
+  - `ros2_colcon`: the `version:` of the repo in `repos/<layer>.repos` (through `_rc_repos_entries`), quotes stripped. On origin, `refs/heads/<ref>` is a branch, then `refs/tags/<ref>` a tag. A 40- or 64-hex ref is a commit, else unknown. When origin cannot be asked, or the repo is not cloned, the local refs decide and stderr says "unverified". A repo pinned in two layers at different refs refuses, naming each layer and ref, unless `--layer` is given.
+  - `single_project`: only the name `adapter repos` prints. It answers `origin/HEAD`, else `ls-remote --symref origin HEAD`, kind `branch`. It exits 1 when neither answers, and refuses `--layer`.
+  - Tests: `test_adapter.sh` gets 6 cases, among them the validator on a type that lacks only `repo_pin`. `test_ros2_colcon.sh` gets 8 cases: all four kinds online, branch before tag, a branch deleted upstream with a stale remote ref (unknown), offline fallback including a local-only branch, not cloned, quoted refs, not found, and two layers. The four "all 12 verbs implemented" assertions now say 13.
+- `bfe6ebba` New `docs/decisions/0019-repo-pin-verb.md`. ADR-0011 gets only a Status-line and References addendum (ADR-0008). Other texts:
+  - `docs/design.md`: the contract bullet says 13 verbs and what the verb does; Table 2 gets the row (tally 5 real); the decision register gets the 0019 row, and ADR-0011's row says 13; a change-log row (917 lines).
+  - `principles_review_guide.md`: "13-verb", and a 0019 row.
+  - `script_reference.md`: the `adapter` row.
+
+### Adaptations from the plan
+- Drift check against the tree after the merge from main: `REQUIRED_VERBS` still had 12 entries. `_rc_repos_entries`, `adapter_worktree_repos`'s owning rule and the four assertions were where the reviews cited them, and the "12-verb" texts were at `docs/design.md:347` (the review said 341) and `principles_review_guide.md:46`. No mechanical drift changed a step.
+- Kind lookup: the plan's separate `ls-remote --heads` and `--tags` calls are replaced by one `ls-remote origin refs/heads/<ref> refs/tags/<ref>` call. Its output is compared exactly, because ls-remote patterns match on the tail. A ref that `git check-ref-format` rejects is never sent to origin.
+- "Unverified" is a NOTE on stderr. The stdout line stays the plan's two fields.
+- Not cloned: a 40- or 64-hex ref is still `commit`, since that needs no repository. Any other ref is `unknown`.
+- Two layers: the same ref in several layers is one answer. Only different refs refuse. The checkpoint's wording ("takes the layer, or refuses naming both") does not cover equal refs.
+- Not in the plan's file list, added as consequences: Table 2 of the design (the dated verb probe), the review guide's 0019 row (its "An ADR" consequence row), and the decision-register row, which `check_design_anchors.sh` requires for every ADR file.
+- Issue 436 is untouched. The plan's note that whichever of the two quote-strippers lands second drops the duplicate still stands.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP, on the final tree: rc 0.
+  - Hooks: adapter contract, design anchors, shellcheck, and the script-suite hook. The hook selects 40 suites (`suites_for_files.sh` over the in-scope files; the adapters reach most suites), and every one passed.
+  - Run on their own while building: test_adapter 139/0, test_ros2_colcon 254/0.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 17:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `391a2d03`
+**Base**: main
+**Depth**: Deep (reason: extends the ADR-0011 adapter contract that every project type implements, adds ADR-0019 and design/governance text; 10 files, about 545 lines outside the timeline)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue (round 1: 2 must-fix; the first round always gets a re-review after fixes)
+
+Round correction by the host: `review_progress.sh round` counts this as round 4, because part 1 (merged as PR 445) had three pre-push reviews on this branch's timeline. The diff under review (`main...HEAD`: the `repo_pin` verb, its tests, ADR-0019 and the design and knowledge text) had never been reviewed. So it was treated as round 1: a cold read of the whole diff at full depth, with the cross-model reviewers dispatched. The round-3 "narrow convergence check" rule was not applied.
+
+Specialists:
+- Static: shellcheck `--severity=warning` on the 5 changed shell files, rc 0. test_ros2_colcon 254/0, test_adapter 139/0. `validate_adapter.sh`: 13/13 for both types.
+- Governance: ADR-0008 followed (new ADR, Status and References addendum only on ADR-0011). ADR-0011 and ADR-0017 followed (the design bullet, Table 2, the register and the change log were all updated).
+- Plan drift: the five adaptations were judged acceptable:
+  - one exact-compared `ls-remote` call;
+  - "unverified" reported on stderr;
+  - an uncloned full sha reported as `commit`;
+  - equal refs in two layers accepted, different refs refused;
+  - three extra files, which are consequences the anchors check requires.
+- Claude adversarial subagent: ran.
+- Cross-model:
+  - gemini (agy): complete, 2 suggestions.
+  - codex: complete, 1 must-fix (`#` truncation).
+  - Copilot: skipped (disabled for quota).
+
+### Findings
+- [x] (must-fix) The `_rc_repos_entries` parser cuts the version at any `#`, so `version: fix#12` reads as `fix`, and `"fix#12"` reads as `"fix` with the quote left in; the verb then exits 0 with the wrong ref (a silent wrong base when a branch `fix` exists). Strip only a whitespace-preceded `#` comment, refuse a ref left holding `"`, `'` or `\r` (CRLF files give `dev\r`), and add tests (codex and Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:225`
+- [x] (must-fix) The origin queries in `repo_pin` have no time limit: `GIT_TERMINAL_PROMPT=0` does not stop SSH prompts or a stalled host. A reproduction with a 15s ssh stub took 30s. The worktree creation path that ADR-0019 names as a caller bounds every origin call with `wt_bounded_git` (#323), so bound these the same way; a timeout should fall to the unverified local answer — `.agent/project_types/ros2_colcon/adapter.sh:891`, `.agent/project_types/single_project/adapter.sh:311`
+- [x] (suggestion) When the same ref is pinned in several layers, the kind is judged in the first layer's checkout even if only a later layer has it cloned. The result is `unknown (unverified)` for a valid branch, where `--layer l2` gives `branch`. Use the first hit layer whose checkout exists, and extend `test_repo_pin_two_layers` (gemini and Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:977`
+- [x] (suggestion) An entry with no `version:` key (vcstool uses the default branch) is reported as "no repository ... pinned (known: ...)" and left out of the known list. Give it its own message. Slash keys and flow-style entries are dropped the same way; that comes from the existing parser (Claude adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:215-229`
+- [x] (suggestion) An uppercase 40-hex sha is reported as `unknown`, although git accepts it. Match case-insensitively, or say "lowercase" in ADR-0019 (gemini) — `.agent/project_types/ros2_colcon/adapter.sh:878`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 17:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round limit was reached only because the counter carries part 1's three reviews; this was the first review of the verb's diff and it found two must-fix defects; first host address at this checkpoint)
+**After**: rounds
+**Decision**: address
+
+The round counter says 4 because part 1 (pull request 445) had three pre-push reviews on this timeline. The diff under review (the repo_pin verb and ADR-0019) had never been reviewed, so the review ran as a full first round with outside reviewers. It found two must-fix defects (a version value cut at any "#"; origin calls with no time limit) and three suggestions. Fix all five, then re-review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `97fa1bd5`
+**Addressed**: Local Review (Pre-Push) at `391a2d03` (2026-11-12 17:57 -05:00)
+**Commits**: 72d89cb1, e416c3ce, 3fd6d185, 37075936, 97fa1bd5
+
+### Actions
+- [x] (must-fix) `version:` read as YAML: `_rc_repos_entries` keeps a quoted scalar whole, starts a comment only at a whitespace-preceded `#`, drops a CRLF line end (name lines too); `repo_pin` refuses a ref still holding `"`, `'` or CR. Test `test_repo_pin_reads_version_as_yaml` (`fix#12` with a branch `fix` also on origin, quoted with trailing comment, `fix # comment`, CRLF file, three stray-quote refusals) — `.agent/project_types/ros2_colcon/adapter.sh:211`
+- [x] (must-fix) Origin queries bounded: the dispatcher gains `_adapter_bounded_git` / `_adapter_git_limit` (same `WT_FETCH_TIMEOUT` knob and `timeout -k 5` as `wt_bounded_git`, #323); `ros2_colcon` falls to the unverified local answer naming the limit, `single_project` names the timeout in its error. Tests `test_repo_pin_hanging_origin_is_bounded` in both `test_ros2_colcon.sh` and `test_adapter.sh` (blocking ssh shim, 2s limit, 60s ceiling); ADR-0019 says so — `.agent/scripts/adapter`, `.agent/project_types/ros2_colcon/adapter.sh:_rc_pin_kind`, `.agent/project_types/single_project/adapter.sh:adapter_repo_pin`
+- [x] (suggestion) Multi-layer same-ref pin judged in the first hit layer whose checkout is cloned; `test_repo_pin_two_layers` extended (cloned only in l2: `branch`, verified, agrees with `--layer l2`) — `.agent/project_types/ros2_colcon/adapter.sh:adapter_repo_pin`
+- [x] (suggestion) Entry with no `version:` key: `_rc_repos_entries --all` emits it; `repo_pin` lists it as known, gives it its own message, and reports it as a differing ref against a layer that pins one. Test `test_repo_pin_entry_without_version`; ADR-0019 says so. Slash keys and flow-style entries are still dropped by the parser (unchanged, as the finding noted) — `.agent/project_types/ros2_colcon/adapter.sh:211`
+- [x] (suggestion) Uppercase 40/64-hex sha matched case-insensitively; tests in `test_repo_pin_kinds_online` (online) and `test_repo_pin_not_cloned` (uncloned); ADR-0019 says "either case" — `.agent/project_types/ros2_colcon/adapter.sh:_rc_pin_kind`
+
+### Checks
+- Pre-commit over `main...HEAD` with no SKIP (main checkout venv): all hooks passed, including `validate-script-tests`. A first run failed only `check-commit-identity` because the identity was not sourced in that shell; re-run with it sourced passed.
+- A revert-and-rerun check that the two-layer test fails on the old code was denied by the permission classifier; not done.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a590f22537565001a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `45ad3988`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification is unchanged; the change extends the ADR-0011 adapter contract and adds ADR-0019. Fix-round rule: no lower than the whole diff)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended (round 2: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round)
+
+Round note: the dispatcher labels this round 5, and `review_progress.sh round` counts part 1's reviews (PR 445). The host made the same correction as at round 1: this is round 2 of this diff. Scope: the five round-1 findings and the fix diff `9a62100a..45ad3988` (72d89cb1, e416c3ce, 3fd6d185, 37075936, 97fa1bd5). Specialists run: a fresh Claude adversarial sub-review, and cross-model gemini (agy) and codex, both complete. Copilot was skipped (disabled for quota).
+
+Round-1 findings, all five addressed:
+- `#` inside a ref: fixed, but the fix brought in a new must-fix (below).
+- Bounded origin queries: fixed.
+- First cloned layer: fixed.
+- No-`version:` message: fixed.
+- Uppercase sha: fixed.
+
+Host's questions:
+- **Two-layer test:** it pins the fix. `pkg_b` is pinned in l1 and l2 at the same ref, and the test removes l1's checkout. The old code judged the first hit layer (l1), so it would print "not a cloned repository (unverified)" and `pinned<TAB>unknown`. The test asserts `pinned<TAB>branch` with no "unverified", so it fails on the old code. This rests on reading the code; a revert-and-run was not done.
+- **Hanging-origin tests:** not timing-fragile. There is a 2s limit against a 60s ceiling, the shim blocks for 300s, and `ssh://…example.invalid` does no DNS lookup under `GIT_SSH_COMMAND`. Measured runs: 2s in each suite; test_ros2_colcon took 20s in all, test_adapter 4.6s.
+- **Leftover processes:** none. `pgrep 'sleep 300'` was empty after the runs. This machine's uutils `timeout` 0.10.0 kills the whole process group: verified with a `sleep 30` child that did not survive. The tests also kill the shim's pid from the pidfile.
+- **Other parser callers:** `adapter_sync:608` and `adapter_validate:650` use it without `--all`. Their output is unchanged except for CRLF (now stripped, an improvement) and the leading-comment regression below.
+- **Codex's "sync regression" on quoted versions:** dismissed as not a regression. Main's `$2` parse already kept the quotes of `"pinned"`, checked with `git show main:…adapter.sh`. The planned issue-436 parser change is where quote stripping for sync belongs.
+
+Checks run:
+- test_ros2_colcon: 289 passed, 0 failed.
+- test_adapter: 143 passed, 0 failed.
+- shellcheck `--severity=warning` on the 5 shell files: rc 0.
+- `validate_adapter.sh`: 13/13 verbs for both types.
+
+### Findings
+- [x] (must-fix) Regression: leading whitespace is stripped before the comment check, so `version:  # TODO pin` and `version: #main` are emitted as the refs `# TODO pin` / `#main`, and `repo_pin` exits 0 with kind unknown. The old parser gave an empty value, which was refused. `adapter_sync` gets the comment as the pin too. Fix: check for the comment before trimming, or treat a leading `#` as a comment. Add both to `test_repo_pin_reads_version_as_yaml`. Found by Claude adversarial; reproduced with the parser's awk — `.agent/project_types/ros2_colcon/adapter.sh:240-247`
+- [x] (must-fix) A quoted scalar is cut at the next matching quote and the rest of the line is not checked. `'stable''next'` reads as `stable`, `"main" extra` as `main`, and `"x\"y"` as `x\`. Each is printed as a clean ref nobody pinned, and the stray-quote guard never fires. Fix: keep the quoted cut only when nothing follows it except optional whitespace and a ` #` comment; otherwise emit the raw value so the quote guard refuses it. Add tests. Found by codex (must-fix), gemini and Claude adversarial (suggestion); reproduced — `.agent/project_types/ros2_colcon/adapter.sh:237-244`
+- [x] (suggestion) In `single_project`, when `ls-remote` fails for a reason other than the timeout (rc 128: origin missing or unreachable), the error still says "origin did not name its HEAD". It should say origin could not be asked (gemini) — `.agent/project_types/single_project/adapter.sh:308-321`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second review of the verb's diff found two must-fix defects in the fix itself; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Round 2 of this diff (the counter says 5 because it carries part 1's reviews). Two must-fix, both in the new version parser: a comment directly after "version:" is read as the ref; a quoted value is cut at the closing quote with the rest of the line unchecked. One suggestion: single_project's error text when ls-remote fails for a reason other than the timeout. Fix all three, then a narrow convergence review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `f30044c0`
+**Addressed**: Local Review (Pre-Push) at `45ad3988` (2026-11-12 18:26 -05:00)
+**Commits**: ff1297ef, 25407246, f30044c0
+
+### Actions
+- [x] (must-fix) A comment right after the key (`version:  # TODO pin`, `version: #main`) now leaves the value empty, before any trimming; `repo_pin` refuses it as "has an empty version:". Tests: `test_repo_pin_reads_version_as_yaml` (both forms), `test_repos_entries_parser_table` — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`
+- [x] (must-fix) A quoted value is unquoted only when nothing but whitespace and a ` #` comment follows its closing quote; otherwise the raw text (quotes included) is emitted and `repo_pin`'s quote guard refuses it. The parser now unquotes for every caller (so `adapter_sync` compares a quoted pin to the branch correctly) and `repo_pin` dropped its own strip. Fixed with finding 1 in one commit (ff1297ef): same lines. Tests: `test_repo_pin_reads_version_as_yaml` (`'stable''next'`, `"main" extra`, `"x\"y"`, `"main"#c` refused), `test_repos_entries_parser_table`, `test_sync_reads_quoted_and_commented_pins` (sync pulls `"fakefox" # pinned`, fetches the comment-only pin as `pinned: `; validate sees both repos). ADR-0019 states the rules (25407246) — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`
+- [x] (suggestion) `single_project`: an `ls-remote` failure other than the timeout now says "origin could not be asked (git ls-remote exited <rc>)"; "origin did not name its HEAD" stays for an origin that answers without a branch HEAD. Test: `test_repo_pin_undetermined_fails` (unreachable origin; origin whose HEAD names a missing branch) — `.agent/project_types/single_project/adapter.sh:adapter_repo_pin`
+
+### Parser input table (`test_repos_entries_parser_table`)
+Text after `    version:` → value emitted (`repo_pin` outcome):
+
+| Input | Emitted | repo_pin |
+|-------|---------|----------|
+| ` pinned` | `pinned` | ref |
+| ` fix#12` | `fix#12` | ref |
+| ` fix # a comment` | `fix` | ref |
+| ` "fix#12"` | `fix#12` | ref |
+| ` 'v1.0'` | `v1.0` | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | ref |
+| `  'v1.0'   ` | `v1.0` | ref |
+| `  # TODO pin` (comment only) | empty | refused, empty |
+| ` #main` | empty | refused, empty |
+| (nothing) | empty | refused, empty |
+| ` ""` | empty | refused, empty |
+| ` dev` + CRLF | `dev` | ref |
+| ` "dev"` + CRLF | `dev` | ref |
+| ` dev # c` + CRLF | `dev` | ref |
+| ` "fix` | `"fix` | refused, quote |
+| ` fix'` | `fix'` | refused, quote |
+| ` fi"x` | `fi"x` | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | refused, quote |
+| ` "main" extra` | `"main" extra` | refused, quote |
+| ` "x\"y"` | `"x\"y"` | refused, quote |
+| ` "main"#c` | `"main"#c` | refused, quote |
+| no `version:` key | name alone (with `--all`) | own message |
+
+`adapter_validate` reads only names, and every row emits its name; `adapter_sync` gets the emitted value (checked end to end for the quoted+comment and comment-only rows).
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a590f22537565001a, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `3ab6be9d`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; the whole diff extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 3 | **Ship**: recommended (no must-fix findings; the remaining suggestions can be applied or tracked)
+
+**Round note:** the dispatcher says round 6, and its counter carries part 1's reviews. This is round 3 of this diff. Per the round-3 convergence rule:
+- Scope: the round-2 findings and the fix diff `6444f844..3ab6be9d` (ff1297ef, 25407246, f30044c0).
+- Cross-model: skipped (round-3 convergence check, per handoff).
+- A fresh Claude adversarial sub-review ran.
+
+**Round-2 findings, all three addressed:**
+- A comment after the key is now an empty value, which is refused.
+- A quoted value counts only when nothing but a comment follows its closing quote; otherwise it is emitted raw and the quote guard refuses it.
+- `single_project` says "origin could not be asked (git ls-remote exited N)".
+
+**The parser table:** all 21 rows plus the no-`version:` row were run through the real `_rc_repos_entries` (`test_repos_entries_parser_table` sources the adapter). Every row emits what the Implementation table says.
+
+**Callers:**
+- `adapter_sync` changes only as claimed: main's `$2` parse kept `"fakefox"`, so a quoted pin never matched its branch; it now pulls. Comment-only pins were already empty on main.
+- `adapter_validate` reads names only, so it is unchanged.
+
+**Rounds 1-2:** nothing regressed (CRLF, `#` inside a ref, `--all`, uppercase sha, bounded `ls-remote`, first cloned layer).
+
+**Checks:**
+- test_ros2_colcon: 327 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck at warning severity: rc 0.
+- `validate_adapter.sh`: 13/13 verbs for both types.
+- No leftover `sleep 300` processes.
+
+### Findings
+- [ ] (suggestion) In `adapter_sync`, an empty pinned version on a detached checkout equals the empty `git branch --show-current`. Sync then takes the pull path, which fails ("pull failed (continuing)"), and skips the fetch. This diff widens the case from a literal empty `version:` to comment-only and `""` pins, and it does no harm beyond the skipped fetch. Fix: take the pull path only when `$branch` is non-empty (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:607`
+- [ ] (suggestion) A double-quoted value with backslash escapes is not decoded: `"a\" #b"` gives `a\`, and `"v\x31.0"` gives `v\x31.0`, both with exit 0. Each still contains a backslash, which git forbids in a ref, so the kind is `unknown`, which callers refuse; no wrong base results. Add `\\` to the guard's character class so the error message is right (Claude adversarial; this predates the diff) — `.agent/project_types/ros2_colcon/adapter.sh:1048`
+- [ ] (suggestion) YAML typing of plain scalars is ignored. vcstool checks out `str(value)`, so `version: 1.10` is `1.1` to vcstool, while repo_pin answers `1.10<TAB>tag` (and `null`, `yes` or `!!str x` similarly). Refuse plain values that YAML types as a number, null or bool, or that start with `!`, `>`, `|`, `&` or `*`, or track it in a follow-up issue. This predates the diff and was not introduced in this round (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:236-262`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3 of this diff, no must-fix; three suggestions go to triage)
+**After**: publish
+**Decision**: publish
+
+The convergence review approved the verb's diff with three suggestions (sync's pull path on an empty pin with a detached checkout; backslash in the quote guard; YAML typing of unquoted values), two of which predate this change. Publish; triage decides them.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #456 at `d0eb4a84`
+**Sources**: 2 (Local Review (Pre-Push) @ `3ab6be9` (covers d0eb4a84 via bookkeeping), CI rollup). Copilot review skipped (disabled for quota); no GitHub reviews or conversation comments. Earlier pre-push entries of this diff (`391a2d03`, `45ad3988`) have no open findings; the stale `a6c2d2f` entry belongs to part 1 / PR #445 and is out of scope.
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit) x2 and one Validate Adapter Contract still running; ros-manifest tests, Validate Documentation, the other Validate Adapter Contract pass)
+
+All three suggestions were re-read against the code and reproduced; each is a fix in this pull request.
+
+### Findings
+- [x] (should-fix, Local Review @ `3ab6be9`) `adapter_sync`: an empty pin on a detached checkout equals the empty `git branch --show-current`, so sync takes the pull path, which fails with a misleading "pull failed", and the fetch is skipped (stale checkout). Widened by this diff: comment-only and `""` pins now parse empty. Fix: take the pull path only when `[ -n "$branch" ] && [ "$branch" = "$version" ]`; add a test with a detached checkout and an empty or comment-only pin that asserts the fetch runs — `.agent/project_types/ros2_colcon/adapter.sh:607-608`
+- [x] (should-fix, Local Review @ `3ab6be9`) A double-quoted value with a backslash escape is decoded wrongly by the parser. Reproduced: `"a\" #b"` gives `a\` (YAML: `a" #b`), and `"v\x31.0"` gives `v\x31.0` (YAML: `v1.0`), both exit 0. Callers refuse both as kind `unknown`, so no wrong base results, but the error message is wrong. This diff also contradicts its own parser comment ("an escaped quote" is emitted raw). Correction to the review: the quoted-scalar decoding and the quote guard are both new in this diff, so it does not predate it. Fix: in `_rc_repos_entries`, send a double-quoted value whose content holds `\` down the raw branch; add `\\` to the repo_pin guard's character class (line 1055); add both cases to `test_repos_entries_parser_table` and the repo_pin refusal tests — `.agent/project_types/ros2_colcon/adapter.sh:246-260,1055`
+- [x] (should-fix, Local Review @ `3ab6be9`) YAML typing of plain scalars is ignored. Verified: vcstool `import_.py:173` passes `str(repo['version'])` from `yaml.safe_load`, so `version: 1.10` checks out `1.1` while repo_pin answers `1.10`. That is a silent wrong base when both tags exist, and a wrong error otherwise. The parser's `$2` predates the diff, but repo_pin, the new consumer that turns it into a base, is new here. Fix: in repo_pin, refuse a plain (unquoted) value that PyYAML's implicit resolvers type as bool, null, int or float (`yes/no/on/off/true/false`, `~/null`, decimal/octal/hex/sexagesimal ints, floats incl. `.inf`/`.nan`), or that starts with a YAML indicator (`! & * | > % @` or a backtick), with a message to quote it. A quoted value stays accepted. Add table tests. If the host wants to keep scope, the alternative is a follow-up issue opened before merge, not an unrecorded deferral — `.agent/project_types/ros2_colcon/adapter.sh:236-262,1048-1058`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 18:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified all three open findings valid and should-fix in this pull request; one is a silent wrong base)
+**After**: findings
+**Decision**: address
+
+Fix all three in pull request 456: sync's pull path on an empty pin with a detached checkout; a backslash inside a double-quoted value; repo_pin refusing an unquoted value that YAML types as bool, null or number, or that starts with a YAML indicator, asking for it to be quoted.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 18:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 2 of 3)
+
+**PR**: #456 at `942a442c`
+**Addressed**: Integrated Review at `d0eb4a84` (2026-11-12 18:43 -05:00)
+**Commits**: d4a7750b, 7127cc81, 942a442c
+
+### Actions
+- [x] (should-fix) `adapter_sync` pulls only when `[ -n "$branch" ] && [ "$branch" = "$version" ]`, so a detached checkout with an empty pin is fetched rather than sent down the pull path. Test: `test_sync_reads_quoted_and_commented_pins` extended (detached checkout, pins `  # TODO pin` and `""`: the "fetching" line, no "pull failed", and origin's new commit is in `origin/fakefox`) — `.agent/project_types/ros2_colcon/adapter.sh:adapter_sync`
+- [x] (should-fix) A double-quoted value holding a backslash is emitted raw; the `repo_pin` guard also refuses `\`, and its message names "a stray quote, a backslash escape or a carriage return". Tests: parser table rows, and `test_repo_pin_reads_version_as_yaml` refusals for `"a\" #b"`, `"v\x31.0"`, `'a\b'` — `.agent/project_types/ros2_colcon/adapter.sh:_rc_repos_entries`, `adapter_repo_pin`
+- [x] (should-fix) `repo_pin` refuses an unquoted value that PyYAML `safe_load` (YAML 1.1) types as a bool, null, int or float, or that starts with an indicator character (`! & * | > % @` backtick `[ ] { } ,`). The message asks for quotes, e.g. `quote it: version: "1.10"`. Every layer pinning the repo is checked, so a ref that is quoted in l1 but plain in l2 is refused, naming l2. `_rc_yaml_plain_type` is an explicit pattern list whose comment names the forms. A dev-time comparison against PyYAML 6.0.3 on 70 samples agreed on every value. The differences were only the documented ones: indicators, which PyYAML rejects or reads as a non-string, and a date alone, which round-trips. Timestamps with a time part are not covered: they hold a `:`, which no git ref can. To tell quoted from plain, `_rc_repos_entries --all` became `--detail`, which adds a `quoted`/`plain`/`none` field; the default output that sync and validate read is unchanged, so sync still compares an unquoted `1.10` as `1.10`. Tests: `test_repo_pin_refuses_yaml_typed_plain_pins` (14 values, quoted `"1.10"` and `'1.10'` accepted as `1.10 tag`, mixed layers), parser table. ADR-0019 updated — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_type`, `adapter_repo_pin`
+
+### Parser input table (`test_repos_entries_parser_table`, both outputs checked)
+Text after `    version:` → value (default output, read by sync), the form `--detail` adds, and the `repo_pin` result:
+
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` pinned` | `pinned` | plain | ref |
+| ` fix#12` | `fix#12` | plain | ref |
+| ` fix # a comment` | `fix` | plain | ref |
+| ` "fix#12"` | `fix#12` | quoted | ref |
+| ` 'v1.0'` | `v1.0` | quoted | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | quoted | ref |
+| `  'v1.0'   ` | `v1.0` | quoted | ref |
+| `  # TODO pin` | empty | plain | refused, empty |
+| ` #main` | empty | plain | refused, empty |
+| (nothing) | empty | plain | refused, empty |
+| ` ""` | empty | quoted | refused, empty |
+| ` dev` + CRLF | `dev` | plain | ref |
+| ` "dev"` + CRLF | `dev` | quoted | ref |
+| ` dev # c` + CRLF | `dev` | plain | ref |
+| ` "fix` | `"fix` | plain | refused, quote |
+| ` fix'` | `fix'` | plain | refused, quote |
+| ` fi"x` | `fi"x` | plain | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | plain | refused, quote |
+| ` "main" extra` | `"main" extra` | plain | refused, quote |
+| ` "x\"y"` | `"x\"y"` | plain | refused, quote |
+| ` "main"#c` | `"main"#c` | plain | refused, quote |
+| ` "a\" #b"` (new) | `"a\"` | plain | refused, quote/backslash |
+| ` "v\x31.0"` (new) | `"v\x31.0"` | plain | refused, quote/backslash |
+| ` 'a\b'` (new) | `a\b` | quoted | refused, backslash |
+| ` 1.10` (new) | `1.10` | plain | refused, a float |
+| ` "1.10"` (new) | `1.10` | quoted | ref |
+| ` '1.10'` (new) | `1.10` | quoted | ref |
+| ` yes` (new) | `yes` | plain | refused, a bool |
+| ` ~` (new) | `~` | plain | refused, null |
+| ` 0x1F` (new) | `0x1F` | plain | refused, an int |
+| ` .inf` (new) | `.inf` | plain | refused, a float |
+| ` !tag` (new) | `!tag` | plain | refused, indicator |
+| ` 2024-01-01` (new) | `2024-01-01` | plain | ref (a date round-trips) |
+| no `version:` key | (left out) | none (only with `--detail`) | own message |
+
+`adapter_validate` reads only names, and every row emits its name. `adapter_sync` reads the default value column, which this pass leaves unchanged for every earlier row; its own handling of an unquoted numeric-looking pin is unchanged.
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a590f22537565001a, resume 3 of 3)
+
+**PR**: #456 at `6807c9f4`
+**Depth**: Deep (reason: fix-round re-review. The whole-diff tier is unchanged: the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the three triage findings and the fix diff (d4a7750b, 7127cc81, 942a442c), as the handoff set. Cross-model reviewers were not dispatched, per the host's handoff. Static analysis, governance and plan drift were done inline.
+
+**Checks:**
+- test_ros2_colcon: 433 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck at warning severity: rc 0.
+
+**`_rc_yaml_plain_type` against PyYAML:** 70 plain values were run through both `yaml.safe_load('v: <x>')` followed by `str()`, which is vcstool's own path (`import_.py:78,173`), and through a copy of the function.
+- **Bool/null:** the PyYAML forms are matched. `y`, `Y`, `n`, `oN` and `nUll` stay strings and are correctly accepted; `Yes`, `ON`, `On`, `yes` and the three `null` spellings are refused.
+- **Ints:** `017`, `0x1F`, `0b101`, `1:30`, `1_000` and `+5` are refused.
+- **Floats:** `.inf`, `-.inf`, `+.INF`, the NaN forms, `.5`, `1.`, `1.50`, `01.5`, `1_0.5`, `1.5e+3` and `1.10` are refused.
+- **Strings kept:** `1e3`, `1e5`, `1.5e3`, `0o17`, `018` and `0123456789` are strings in PyYAML and are accepted.
+- **Indicators:** values starting with an indicator character are refused (`!`, `@`, `%` and `,` probed; PyYAML errors on all of them).
+- **Real ref names accepted:** `main`, `rolling`, `v1.10`, `1.10.x`, `release/1.2`, `0.3.1`, `deadbeef`, `1e5abcd` and `2024-01-01`.
+- **Misses:** none that matter. `=` and `<<` make PyYAML itself fail on the manifest.
+
+**Shas:**
+- A leading-zero sha prefix of octal digits only (`0123456`) is octal 42798 to vcstool, so refusing it with "quote it" is right.
+- An exponent-looking sha (`1e5abcd`, `12e4567`) is a string and is accepted.
+- An all-digit sha without a leading zero (a 7-digit prefix is all digits about 4% of the time) is refused as an int, although `str()` gives it back unchanged. For a sha the outcome barely differs, because a commit or unknown kind is refused as a base anyway; only the message is wrong.
+
+**`--all` renamed to `--detail`:** no caller or test is left on `--all`. `adapter_sync` (633) and `adapter_validate` (675) call with no flag, and `repo_pin` (1070) uses `--detail`.
+
+**Sync pull condition:** `[ -n "$branch" ] && [ "$branch" = "$version" ]`.
+- A branch checkout whose pin is the same branch still pulls (`test_sync_*`: "pkg_a: on 'fakefox' — pulling", and the quoted+comment case).
+- A different branch still fetches (`on 'feature/x' (pinned: fakefox) — fetching`, line 1478).
+- A detached checkout fetches for every pin, empty or not, as before for a non-empty pin.
+
+**Backslash:** a double-quoted value holding `\` is passed raw, and the guard now includes `\`. That holds.
+
+### Findings
+- [x] (must-fix) False refusal: every plain value YAML types as an int or float is refused, including those whose `str()` is the text itself. vcstool checks those out exactly as written, yet the error claims "vcstool would not check out '<ref>'". Affected forms:
+  - floats `2.0`, `1.0`, `1.5`, `0.3`;
+  - ints `2024`, `0`, `-5`;
+  - an all-digit sha or sha prefix (verified against PyYAML).
+  A project pinned at a release branch such as `2.0` cannot be used without editing its manifest. Fix: refuse only when `str()` changes the text.
+  - Ints: accept `^(0|-?[1-9][0-9]*)$`.
+  - Floats: accept `^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$` with at most 15 significant digits, an integer part of at most 16 digits, and not `0.0000…`. This rule was checked against PyYAML on 178,646 random floats: 0 accepted values changed under `str()`, and no value of 15 digits or fewer that round-trips was refused.
+  - Add these cases to the test.
+  — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_type` and the refusal in `adapter_repo_pin`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a67905ba1b4cca62a, resume 3 of 3)
+
+**PR**: #456 at `e361588d`
+**Addressed**: Local Review at `6807c9f4` (2026-11-12 19:00 -05:00)
+**Commits**: e361588d
+
+### Actions
+- [x] (must-fix) False refusal of round-tripping numbers. `_rc_yaml_plain_type` is now `_rc_yaml_plain_reading` and refuses only when YAML's reading changes the text (its comment names that rule).
+  - Kept unquoted: ints matching `^(0|-?[1-9][0-9]*)$`, and floats matching `^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$` with at most 15 significant digits, an integer part of at most 16 digits, and no `0.0000` start.
+  - Still refused: every other int or float, plus bool, null and indicator values.
+  - The error now says what vcstool would check out, e.g. "reads as the number 1.1, so vcstool would check out '1.1', not '1.10'".
+    - The replacement is exact where the shell can compute it: octal, hex, binary, `+`, `_`, a decimal with trailing or leading zeros, `.inf`/`.nan`, bool → `True`/`False`, null → `None`.
+    - Otherwise the message says it cannot confirm str() is the text.
+  - The helper also moved out from between `_rc_pin_kind` and its header comment.
+  - Cross-check, run while developing, against PyYAML 6.0.3 `safe_load` + `str()` on 4,060 values (fixed cases plus random floats, ints and octal-looking strings):
+    - no accepted value changes under `str()`, and no printed checkout differs from PyYAML's;
+    - 44 values were refused although they round-trip, all of them more than 15 significant digits, which the rule refuses on purpose.
+
+  Test `test_repo_pin_refuses_yaml_typed_plain_pins` covers:
+  - refused, each naming the reading and the checkout: `1.10`, `1.50`, `017`, `+5`, `1_000`, `0x1F`, `yes`, `Off`, `~`, `Null`, `.inf`, `1.5e+3`, `0.00001`, `!tag`, `&anchor`, `@x`;
+  - accepted unquoted: `2.0`, `1.0`, `1.5`, `0.3`, `2024`, `0`, `-5`, `1e+5`, a 40-digit all-decimal sha; `2.0` as a real branch gives `2.0	branch`;
+  - quoted `"1.10"` and `'1.10'` accepted, and the l1-quoted/l2-plain refusal unchanged.
+
+  Parser table rows added. ADR-0019 updated. — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_reading`, `adapter_repo_pin`
+
+The finding's box is checked by hand in the `## Local Review` entry: `review_progress.sh findings` takes only an Integrated Review or a Local Review (Pre-Push) as a source.
+
+### Parser input table (`test_repos_entries_parser_table`, both outputs checked)
+Text after `    version:` → value (default output, read by sync), the form `--detail` adds, and the `repo_pin` result:
+
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` pinned` | `pinned` | plain | ref |
+| ` fix#12` | `fix#12` | plain | ref |
+| ` fix # a comment` | `fix` | plain | ref |
+| ` "fix#12"` | `fix#12` | quoted | ref |
+| ` 'v1.0'` | `v1.0` | quoted | ref |
+| ` "fix#12" # pinned for #12` | `fix#12` | quoted | ref |
+| `  'v1.0'   ` | `v1.0` | quoted | ref |
+| `  # TODO pin` | empty | plain | refused, empty |
+| ` #main` | empty | plain | refused, empty |
+| (nothing) | empty | plain | refused, empty |
+| ` ""` | empty | quoted | refused, empty |
+| ` dev` + CRLF | `dev` | plain | ref |
+| ` "dev"` + CRLF | `dev` | quoted | ref |
+| ` dev # c` + CRLF | `dev` | plain | ref |
+| ` "fix` | `"fix` | plain | refused, quote |
+| ` fix'` | `fix'` | plain | refused, quote |
+| ` fi"x` | `fi"x` | plain | refused, quote |
+| ` 'stable''next'` | `'stable''next'` | plain | refused, quote |
+| ` "main" extra` | `"main" extra` | plain | refused, quote |
+| ` "x\"y"` | `"x\"y"` | plain | refused, quote |
+| ` "main"#c` | `"main"#c` | plain | refused, quote |
+| ` "a\" #b"` | `"a\"` | plain | refused, quote/backslash |
+| ` "v\x31.0"` | `"v\x31.0"` | plain | refused, quote/backslash |
+| ` 'a\b'` | `a\b` | quoted | refused, backslash |
+| ` 1.10` | `1.10` | plain | refused: the number 1.1, checks out `1.1` |
+| ` "1.10"` | `1.10` | quoted | ref |
+| ` '1.10'` | `1.10` | quoted | ref |
+| ` yes` | `yes` | plain | refused: the bool True, checks out `True` |
+| ` ~` | `~` | plain | refused: null, checks out `None` |
+| ` 0x1F` | `0x1F` | plain | refused: the number 31 |
+| ` .inf` | `.inf` | plain | refused: the float inf |
+| ` !tag` | `!tag` | plain | refused, indicator |
+| ` 2024-01-01` | `2024-01-01` | plain | ref (a date round-trips) |
+| ` 2.0` (new) | `2.0` | plain | ref (str() gives `2.0`) |
+| ` 2024` (new) | `2024` | plain | ref (str() gives `2024`) |
+| ` 1.50` (new) | `1.50` | plain | refused: the number 1.5 |
+| ` 017` (new) | `017` | plain | refused: the number 15 |
+| no `version:` key | (left out) | none (only with `--detail`) | own message |
+
+`adapter_sync` and `adapter_validate` are untouched by this pass; the parser's default output is unchanged.
+
+### Checks
+- Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #456 at `33cbccd7`
+**Depth**: Deep (reason: fix-round re-review; the whole-diff tier is unchanged, the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the one finding of the Local Review at `6807c9f4` and its fix, e361588d (`_rc_yaml_plain_reading`, its caller `adapter_repo_pin`, `test_repo_pin_refuses_yaml_typed_plain_pins`, the parser table rows, ADR-0019). The handoff said no cross-model reviewers, so none were dispatched. Governance and plan drift were checked inline.
+
+**Checks:**
+- test_ros2_colcon: 479 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck was not run because it is not installed on this machine.
+
+**`_rc_yaml_plain_reading` against PyYAML 6.0.3 (system python3):** 459,445 plain values were run through `yaml.safe_load('v: <x>')` + `str()` and through the extracted function. The values covered random strings over `0-9._-+eExXbBoO:abf` up to 6 characters, random decimals with up to 17 integer digits and up to 8 fraction digits (with signs and leading zeros), and named cases.
+- **Accepted values `str()` changes:** only `2024-01-01T00:00:00Z`. It holds a `:` that no git ref can hold, and the helper's comment says so.
+- **Accepted values PyYAML cannot load:** values ending in `:`, `-`, `?`, `=` and `<<`. vcstool fails on the manifest for these, so nothing is silently checked out. The earlier review already noted `=` and `<<`.
+- **"would check out X" claims:** none differs from PyYAML's `str()`, with one exception, `True`/`False`, covered by the finding below.
+- **False refusals, apart from floats of more than 15 significant digits (refused by design):**
+  - `._<digits>`: PyYAML 6's resolver is `\.[0-9][0-9_]*`, not `\.[0-9_]+`. A ref component cannot start with `.`, so no real ref is affected.
+  - `True` and `False`: the finding below.
+- **Common refs accepted:** `main`, `rolling`, `humble`, `v1.10`, `1.10.x`, `3.0.0`, `1.0.0`, `2.0`, `10.0`, `0.1`, `2024`, `0123456` (refused as octal, correctly), `1234567`.
+
+### Findings
+- [x] (must-fix) `version: True` and `version: False` (unquoted) are refused, though PyYAML gives the bool `True`/`False` and `str()` turns it back into the same text, so vcstool checks out the ref as written. That breaks the stated rule. Run through the real verb, with a branch `True` on origin, the error says something false: `... which YAML reads as the bool True, so vcstool would check out 'True', not 'True'; quote it`. ADR-0019 line 52 also lists "a bool" among the values whose reading changes the text. Fix: accept exactly `True` and `False`, or exclude them from the bool branch, and add both to the test's kept list and the ADR wording. Other spellings (`true`, `TRUE`, `yes`, ...) stay refused. — `.agent/project_types/ros2_colcon/adapter.sh:949-952`, `docs/decisions/0019-repo-pin-verb.md:52`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #456 at `8fc482b9`
+**Addressed**: Local Review at `33cbccd7` (2026-11-12 19:28 -05:00)
+**Commits**: 556ead1b (merge of main), 8fc482b9
+
+The branch took main first: merge commit `556ead1b` brings in issue 455's identity change. Its one conflict was the `docs/design.md` change log, where main and this branch each added a 2026-11-12 row. Both rows are kept, main's first and then this branch's, matching the table's merge order. This branch's row, now the last, gives the merged file's length (921 lines, was 917). `check_design_anchors.sh` passed.
+
+### Actions
+- [x] (must-fix) Unquoted `True` and `False` were falsely refused, and the error contradicted itself ("would check out 'True', not 'True'"). Both are now taken out of the bool branch of `_rc_yaml_plain_reading`. Every other bool spelling stays refused (`true`, `TRUE`, `yes`, `On`, `false`, `FALSE`, `Off`, ...). The helper's comment says why. — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_reading`
+  - Test `test_repo_pin_refuses_yaml_typed_plain_pins` changes:
+    - `True` and `False` are in the accepted list.
+    - A real branch `True` on origin gives `True	branch`.
+    - `true`, `TRUE`, `false` and `FALSE` are added to the refused list, each naming the bool and the checkout `True`/`False`.
+  - Parser table (`test_repos_entries_parser_table`) gains ` True` → `True` plain and ` false` → `false` plain.
+  - ADR-0019 no longer lists every bool among the values whose reading changes the text. It now says a bool other than `True` or `False` is refused, and lists `True` and `False` among the values accepted unquoted. — `docs/decisions/0019-repo-pin-verb.md:52-61`
+
+The finding's box was ticked by hand in the `## Local Review` entry, because `review_progress.sh findings` does not read a post-publish Local Review.
+
+Not changed: the `^\.[0-9_]+` float pattern. PyYAML 6 uses `\.[0-9][0-9_]*`. Aligning them is not a one-character change, which is what the handoff allowed. The difference only refuses `._<digits>`-style values, and no git ref can start with `.`.
+
+### Parser input table additions (repo_pin column)
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` True` (new) | `True` | plain | ref (str() gives `True`) |
+| ` false` (new) | `false` | plain | refused: the bool False, checks out `False` |
+
+### Checks
+- PyYAML 6.0.3 cross-check (system python3, `safe_load` + `str()`) on 58,758 plain values: every bool spelling in every case, random strings over digits, `._-+eExXbBoO:abfTrueFalsNn~`, and random decimals.
+  - No accepted value changes under `str()`.
+  - Every "would check out X" claim matches PyYAML's `str()`.
+  - The bool branch now refuses all 16 other spellings and accepts only `True` and `False`, the only two it was wrongly refusing.
+  - Null: `~`, `null`, `Null` and `NULL` become `None` and stay refused. `None` itself is a string and is accepted.
+  - The remaining false refusals:
+    - 515 floats, all with more than 15 significant digits (refused by design);
+    - `._0`, `._7` and `.__` (the pattern difference above).
+- `test_ros2_colcon.sh`: 504 passed, 0 failed.
+- Pre-commit over `main...HEAD` (local `main` = origin/main `38119e32`), no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`, `check-design-anchors`, `shellcheck` and the adapter contract check.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a8f506ccaa4d38400, resume 1 of 3)
+
+**PR**: #456 at `8d563c2d`
+**Depth**: Deep (reason: fix-round re-review; the whole-diff tier is unchanged, the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the `True`/`False` finding of the Local Review at `33cbccd7`, its fix 8fc482b9, and the merge of main at 556ead1b. Cross-model reviewers were not dispatched, per the handoff.
+
+**Checks:**
+- test_ros2_colcon: 504 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- test_commit_identity, which came in with the merge: 93 passed, 0 failed.
+- `check_design_anchors.sh`: rc 0.
+
+**The fix against PyYAML 6.0.3:** the 459,456 values from last round were re-run through the re-extracted function, plus every case variant of each bool word.
+- `True` and `False` are now accepted.
+- All 16 other PyYAML bool spellings are refused, and each message names the right `str()` (`True` or `False`). The spellings are `yes Yes YES true TRUE on On ON` and `no No NO false FALSE off Off OFF`.
+- Mixed case such as `tRUE` and `yES` is a string in PyYAML and is accepted.
+- No "would check out X" claim differs from PyYAML.
+- The only accepted value `str()` changes is `2024-01-01T00:00:00Z`, which no git ref can hold.
+- The only false refusals left are the `._0`-style values (left as is, per the handoff) and floats of more than 15 significant digits (refused by design).
+
+**ADR-0019:** the wording now says "a bool other than `True` or `False`" and lists `True` and `False` among the values accepted unquoted. This matches the code.
+
+**Merge 556ead1b:**
+- It was checked against an automatic re-merge of its parents (`git merge-tree 61fa5323 38119e32`). The only difference is the conflict in `docs/design.md`'s change-log table: the #455 row (914) is kept, and the #429 row follows it.
+- The #429 row's line count changed from 917 to 921. That matches `wc -l` at 556ead1b and at HEAD (921). Main's own count at 38119e32 was 914, so main's row is still true.
+- Nothing else was hand-edited.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 20:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a106241f8d2e28d79, resume 1 of 3)
+
+**PR**: #456 at `4430a0ec`
+**Sources**: 2 (Local Review @ `8d563c2` (covers 4430a0ec via bookkeeping), verdict approved, 0 must-fix, 0 suggestions; CI rollup). Copilot review skipped (disabled for quota); no GitHub reviews or conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending (Validate Documentation passes in both runs; Validate Adapter Contract, ros-manifest tests and Lint (pre-commit) still running in both runs 43341955028 and 43341948474; no failures)
+
+Accounting of every earlier finding box on this diff:
+- Integrated Review at `d0eb4a84`: all three findings ticked, fixed in d4a7750b, 7127cc81 and 942a442c (Implementation at `942a442c`).
+- Local Review (Pre-Push) at `3ab6be9`: its three open boxes are the same three suggestions that Integrated Review ruled on. The `sources` helper lists them as stale, because code changed since, and they are closed by that ruling and its fixes.
+- Local Review at `6807c9f4`: the must-fix false refusal of round-tripping numbers was fixed in e361588d. The box was ticked by hand, because `review_progress.sh findings` does not read a post-publish Local Review.
+- Local Review at `33cbccd7`: the must-fix false refusal of unquoted `True`/`False` was fixed in 8fc482b9. The box was ticked by hand, for the same reason.
+- Local Review at `8d563c2d`: approved. Its only box is the "No issues found. LGTM." placeholder, not a finding (see False positives).
+- Local Review (Pre-Push) at `a6c2d2f`: part 1 / PR #445, out of scope.
+
+Deliberately left unchanged, recorded by the last two rounds:
+- The float pattern refuses `._<digits>` values. No git ref can start with `.`.
+- Floats of more than 15 significant digits are refused by design.
+- Neither is an open finding.
+
+### Findings
+
+### False positives
+- (Local Review @ `8d563c2`) "No issues found. LGTM." appears as an unchecked box. It is the approved review's empty-findings placeholder, not a defect, so there is nothing to act on.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:31 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:37 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+
+Revision after the verb merged (pull request 456). The plan marks it merged and re-checks 2a steps 3 to 8 and 2b steps 1 to 6 against main with files and lines. Order for this worktree: 2a next, then 2b. Adjustments: `repo_pin` takes `--layer` and its refusals and stderr note are passed through; the merge cross-check applies to the owning pull request only; the 2a tests use real `.repos` pins instead of a stub adapter type; 2b's Scope rewrite also drops a sentence issue 437 made false. One small open question (the merge cleanup's `git pull --ff-only`). No premise is gone; no issue opened.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+**Branch**: `feature/issue-429`
+
+Scope of this review: the "Revision of 2026-11-12" refresh (remaining 2a steps 3-8, 2b steps 1-6, the order 2a then 2b) against main at `b151b741` (= `origin/main` now). Merged parts (445, 456) and design settled by the 2026-11-10 review are not reopened. Owner direction read on the issue (comment of 2026-11-10): a package pull request takes its base from the manifest pin, not GitHub's default branch.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2a rest about 11 files / 450 lines, 2b about 8 / 300; built in order in one worktree. The reasons for 2a first (riskier mechanism settles first; the end-to-end case written once with the base step; the Scope text written once) hold. |
+| Issue alignment | Good | Base comes only from `repo_pin` (or an explicit `--base`), never `origin/HEAD` or the forge: matches the owner's comment. Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). |
+| File targeting | Good | Every cited line re-checked and correct: `adapter` 26/71/114-130; ros2_colcon `adapter.sh` 744-834 (`worktree_repos` prints `<layer>_ws/src/<pkg>`), 1082 (`adapter_repo_pin`); `dispatch_phase.sh` 35-38, 306, 316, 514, 660; `_resolve_work_plans_dir.sh` 152; `_worktree_helpers.sh` 416-422, 430-451 (end-anchored `layer=` at 444, still the only `layer=` reader, `WT_MANIFEST_LAYER` read nowhere else), 550, 723, 752-834; `worktree_create.sh` 256, 399-410, 770-784, 804, 814, 846, 1017-1020, mktemp at 1097/1138 vs `run_script_tests.sh` 348 citing 1091,1132; `merge_pr.sh` 485-523, 497, 504-506, 535, 545, 675, 689-704, 717, 1548-1660, 1565-1572, 1580, 1625; `progress_append.sh` 94; run-issue SKILL.md 4, 83, 671-690, 826-829, 908-932 (927-928 sentence present); `docs/design.md` 476-478 ("lines 839 and 893"); `test_package_issue_loop.sh` 682 lines, cases 1-10 from 166, `.repos` pins `main` at 100; `test_merge_pr_gate.sh` 522. Finding 3 on where two new values are stored. |
+| Consequences | Needs work | ADR route for the `base=` header field (finding 1); stale ADR-0011 wording left in live sections (finding 2). |
+| Principle alignment | Good | Strict start path ("start limits strict"), tests named per refusal, prior art (parent path read and rejected; `wt_fetch_named_branch`/`wt_add_new_branch` reused), one rule for the cross-check scope. |
+| ADR compliance | Needs work | ADR-0008 as applied by 456/ADR-0019: step 5 still says "ADR-0012's manifest paragraph ... change in 2a" (finding 1). ADR-0011/0012/0019 otherwise respected: `_pr_base.sh` names no type and calls the verb. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked per kind and answer of `repo_pin` (code at ros2_colcon `adapter.sh` 1025-1185): `branch` -> the base, and creation's strict path then fetches `origin/<base>` (`wt_fetch_named_branch`) and refuses absent/unknown even with `--allow-unverified-branch` (the `else` arm of `_wt_add_repo` is reached in that mode too, since `wt_lookup_for_new_branch` returns 1 there, so the base path still runs and still refuses offline: consistent). `tag`, `commit`, `unknown` -> refuse naming it, `--base` offered. Exit 1 (no `version:`, YAML-retyped value, stray quote/backslash/CR, unknown repo, ambiguous layers, unknown layer) -> printed verbatim, exit 2; `--layer` always passed, so the ambiguity refusal cannot arise for a package issue. Offline `NOTE ... (unverified)` -> passed through, creation decides ("creation wins"). The repository name rule is sound: `--package-repos` names are the `src/` directory names, and the `.repos` parser (`_rc_repos_entries`, key pattern `[A-Za-z0-9_.-]+`) has no nested keys, so the last path component equals the pin's key. Cross-check scope (owning `feature/issue-N` only) is right: `base=` describes the owning entry only.
+
+### Findings
+
+1. **[ADR compliance]** (should-fix) Step 5 and the Files table say ADR-0012's manifest paragraph changes in 2a. ADR-0012 line 65 lists the header as (`project`, `issue`, `layer`); adding `base` and "the base decides the start point" is decision text, which ADR-0008 (as 456 applied it: ADR-0019 says adding to a decision's text "is a new ADR") forbids editing in place. Resolution: decide the route in the plan: record the header field and start-point rule in `docs/design.md#worktrees` (plus a cross-reference addendum in ADR-0012, ADR-0008's permitted form), or a new ADR if the owner wants it as a decision. ADR-0019 already states the start point comes from the pin (its Consequences), so a design-doc entry plus addendum is probably enough.
+2. **[Consequences]** (minor) Live (non-record) sections still say ADR-0011 is amended: Principles "Keep one current design" (557), ADR table 0011/0012 row (577), Consequences row "repo_pin is a required verb" (592), Decision 5 (608). Also step 8's "a stub adapter type in the sandbox reports each kind" and Estimated Scope's "2a about 16 files, 600 lines" contradict the revision table. Resolution: mark those as superseded or update them to ADR-0019 / real `.repos` pins / 11 files.
+3. **[File targeting]** (minor) `merge_pr.sh` scan: the plan saves `PKG_OWN_REL` (2b.1) and reads `base=` (2a.7) "at the match / beside the other header fields", but matches are collected in `_PKG_MATCHES` (tab tuples, 521) and filtered by `--project` after the match; a scalar set at the match can be overwritten by a later manifest. Resolution: carry both as extra fields of the `_PKG_MATCHES` tuple and read them at line 530 with `PKG_WT_DIR`.
+4. **[Issue alignment]** (minor) A part-1 worktree with no `base=` asks `dispatch_phase.sh base` on resume, but nothing writes `base=` into its header, so the merge cross-check stays silent for it and a `--base` override given then is never checked on origin (the strict path runs only for a new branch). Resolution: either have `base` write the header field when the worktree exists and has none (after a `git ls-remote --heads` check), or state the gap in the plan as accepted.
+5. **[Issue alignment]** (minor) What `dispatch_phase.sh base` prints/returns for a workspace or single-repository issue is unstated ("unchanged" only). Resolution: one line (e.g. prints nothing, exit 0; or run-issue calls it only for a qualified ref) and a case in `test_dispatch_phase.sh`.
+
+Open question (merge cleanup `git pull --ff-only` at `merge_pr.sh` 1625, on whatever branch the owning checkout is on): recommendation **change**, not keep. Today, on a branch other than the base with an upstream it fast-forwards an unrelated branch and prints "synced" (a misleading success); on a branch with no upstream, a detached HEAD (vcstool on a tag/commit pin) or a dirty tree it marks the cleanup incomplete for a non-problem. `adapter_sync` (ros2_colcon `adapter.sh` 599-630) already pulls only when clean and on the pinned branch and fetches otherwise; one rule for both is "Keep one current design". After 2a, `baseRefName` is already in `_head_json`, so the change is a few lines: pull `--ff-only` only when the checkout is clean and on `baseRefName`; otherwise `git fetch` and say "on <x>, not the base <y>: fetched only", without marking the cleanup incomplete; an empty `baseRefName` fetches only. Place it in 2a with step 7 (it needs `baseRefName`) and rewrite 2b.3(d) to pin the new behaviour. The host decides.
+
+### Summary
+
+The refresh is accurate: every "what changed" claim and line citation checked out against main, the base comes only from the manifest pin through `repo_pin` with every kind, refusal and the offline note handled, and the cross-check scope is right. One rule conflict (editing ADR-0012's decision text, which 456 itself avoided for ADR-0011) and a few stale or unstated points need small plan edits before 2a starts; no redesign.
+
+### Recommended Actions
+
+- [ ] Choose the ADR route for `base=` and the start point (design doc + ADR-0012 addendum, or a new ADR); update step 5, the Files table and the ADR table (finding 1)
+- [ ] Update or mark superseded the stale ADR-0011 / stub-adapter / 16-file statements (finding 2)
+- [ ] Carry `PKG_OWN_REL` and the header `base=` in the `_PKG_MATCHES` tuple (finding 3)
+- [ ] Decide `base=` back-fill for part-1 worktrees or state the gap (finding 4)
+- [ ] State `dispatch_phase.sh base` behaviour for non-package issues, with a test (finding 5)
+- [ ] Host: decide the cleanup-pull question (recommended: pull only on `baseRefName`, fetch otherwise; in 2a)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work, small text edits only; first revise at this checkpoint since the last proceed)
+**After**: plan
+**Decision**: revise
+
+Revise the plan for the review's five findings, with these host decisions: (1) the base= field and the start-point rule are recorded in docs/design.md#worktrees with a cross-reference addendum in ADR-0012, not by editing ADR-0012's decision text and not as a new ADR; (2) remove the stale "ADR-0011 amended", stub-adapter and size statements; (3) PKG_OWN_REL and the header's base= travel inside the _PKG_MATCHES record; (4) a worktree with no base= gets the field written on resume, and a --base given on resume is checked on origin; (5) say what dispatch_phase.sh base prints for a workspace or single-repository issue, with a test. Open question decided: change the merge cleanup's pull. Pull --ff-only only when the owning checkout is clean and on the pull request's base branch; otherwise fetch and print "fetched only" without marking the cleanup incomplete; an empty base also means fetch only. It goes in 2a next to the cross-check step, and 2b's cleanup test pins the new behaviour.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:43 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+
+Revision for the plan review (needs-work) and the host's checkpoint. The header field and start-point rule are recorded in the design (Worktrees) with an ADR-0012 cross-reference addendum only; stale ADR-0011, stub-adapter and size statements are corrected; the owning-checkout path and the header base travel in the `_PKG_MATCHES` record; a worktree with no base gets it written on resume after an origin check; `dispatch_phase.sh base` prints nothing for an issue with no package base, with a test; and the cleanup pull runs only when the owning checkout is clean and on the pull request's base (otherwise fetch only), in 2a, pinned by 2b's case (d).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+**Branch**: `feature/issue-429`
+
+Convergence review of the revision for the previous Plan Review (needs-work) and the host's checkpoint (revise, six decisions). Code on the branch equals main at `b151b741`. Merged parts (445, 456) and earlier-settled design not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: 2a's rest, then 2b, in this worktree. |
+| Issue alignment | Good | Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). Base still comes only from the pin or `--base` (owner comment of 2026-11-10). Finding 3. |
+| File targeting | Needs work | Pull-rule test is placed in the wrong suite and an existing assertion it breaks is not listed (finding 1). |
+| Consequences | Good | Decision 1 route reflected in step 5, Files, ADR and Consequences tables. Banner (finding 2). |
+| Principle alignment | Good | Strict resume write-back (refuse, write nothing) fits "start limits strict". |
+| ADR compliance | Good | ADR-0012 decision text and its line-65 header list untouched; addendum only (ADR-0008); no new ADR. |
+| ROS conventions | N/A | Workspace plan. |
+
+Decisions applied, each checked in plan.md: (1) step 5 (395-398), Files row 560, ADR row 613, Consequences row 629: applied. (2) Stale text: "ADR-0011 amended" survives only in the record heading of step 2 with its bracketed correction (366); "stub adapter" only negated (262, 424); sizes say 11 files / 500 lines with the 16/600 figure explained (217, 244, 675): applied. (3) `_PKG_MATCHES` carries `PKG_OWN_REL` and `base=` (2a.7 row 261, 2b.1 439-445): applied; the `-` placeholder is sound: the record is built once (`merge_pr.sh` 521) and read only at 527 (ambiguity message) and 533 (`PKG_WT_DIR`/`PKG_WT_PROJECT`/`PKG_WT_ISSUE`), no reader outside `merge_pr.sh` (grep of `.agent`), a tab `IFS` is whitespace so empty fields do collapse (today's `_hdr_project`/`_hdr_issue` already could), and `-` cannot be a real branch, project or relative path. Mapping back at both reads covers every reader. (4) Step 6 (401-407): `wt_set_manifest_base` beside `wt_write_manifest` (`_worktree_helpers.sh` 416-422), origin check via `wt_bounded_git` (exists, 476), refuse and write nothing when absent or unknown, differing `--base` refused; consistent with step 3's "header first" rule and with step 5's un-anchored `layer=` reader (an appended ` base=` would otherwise blank `WT_MANIFEST_LAYER`, 444). Consequence accepted by the decision: an offline resume of a part-1 worktree stops at step 1. (5) Step 6 (407-410) and step 8 (427-428): applied, but see finding 3. (6) Step 7 (413-421): pull only when clean and on `baseRefName`, else fetch with "fetched only: <why>", not incomplete; failed pull or fetch still incomplete; empty base fetch only; 1742 untouched; matches `merge_pr.sh` 1624-1631 and `_OWN_ORIGIN` (1569) as the owning repository's own checkout. Note: `adapter_sync` (ros2_colcon `adapter.sh` 614-617) skips a dirty checkout outright rather than fetching, so "the rule adapter_sync already follows" is approximate; fetching a dirty checkout is harmless.
+
+Nothing the previous review confirmed has regressed: the revision table's citations (`merge_pr.sh` 485-535, 545, 1548-1660; `_worktree_helpers.sh` 416-451) re-read and still correct.
+
+### Findings
+
+1. **[File targeting]** (should-fix) The pull-rule case does not belong in `test_merge_pr_gate.sh`: that suite tests the gate, and its stub stops a run at the merge by default (`GH_MERGE_EXIT=1`, line 181). The package cleanup (Step 4) is tested in `test_merge_pr.sh` (sibling, sweep, banner and sync cases, 295-611), and its `write_pr_view_fixture` (139-144) writes no `baseRefName`. After 2a's rule every package case there has an empty base and fetches only, so `test_own_repo_sync_failure_is_reported` (394-421; asserts "Could not fast-forward owner/pkg_a" and "cleanup incomplete") fails. Resolution: put the pull-rule case in `test_merge_pr.sh` beside that test; give `write_pr_view_fixture` a `baseRefName` (default `main`, the sandbox origin's branch) so the existing case keeps pinning a failed pull; add `test_merge_pr.sh` to 2a's Files row and step 8. Likewise 2b.3's cleanup cases (a)-(d), listed under `test_merge_pr_gate.sh` (Files row 562), fit `test_merge_pr.sh`, where (b)/(c)-like cases already exist (`test_sibling_pr_open_keeps_worktree` 295, `test_sweep_reports_unmerged_local_branch` 524); check before adding duplicates.
+2. **[Consequences]** (minor) After a fetch-only cleanup the final banner still prints "merged, cleaned up, and synced" (`merge_pr.sh` 1759), the misleading success the rule set out to remove. Resolution: one line in step 7: the banner says the checkout was fetched only (or the step accepts it explicitly); the case in finding 1 asserts it.
+3. **[Issue alignment]** (minor) Step 6 lists "a bare number" among the no-base cases, but `resolve_issue_dir` (`dispatch_phase.sh` 306) maps a unique bare number to a package worktree's owning checkout; `base` would then print nothing and the handoff would drop `base=` for a package issue. Resolution: decide "no base" by the resolved worktree (no manifest, or a lone `.` entry) and pre-creation mode (no `--layer`), not by the form of the ref.
+4. **[File targeting]** (nit) Files row 559 (2a tests) still lists `test_adapter.sh` and `test_ros2_colcon.sh` as edited ("Verb" cases merged in 456) and omits `test_dispatch_phase.sh`; step 8 names `test_dispatch_phase.sh` both as gaining a case and as unchanged (427, 431). Resolution: fix the row and the list when 2a starts.
+
+### Summary
+
+All six checkpoint decisions are in the plan as decided and agree with each other and with main; the `-` placeholder, the resume write-back and the pull rule are sound. The pull-rule test is aimed at the wrong suite and misses an existing assertion it breaks; that and three smaller points are edits to make as 2a starts, not a reason for another plan round.
+
+### Recommended Actions
+
+- [ ] Move the pull-rule case to `test_merge_pr.sh`; add `baseRefName` to `write_pr_view_fixture`; list the suite in 2a (finding 1)
+- [ ] State the final banner after a fetch-only cleanup (finding 2)
+- [ ] Key "no package base" on the resolved worktree, not on a bare number (finding 3)
+- [ ] Correct the 2a tests row and step 8's suite list (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict ready; its four notes are text edits the review says to make as 2a starts)
+**After**: plan
+**Decision**: proceed
+
+Proceed with 2a's remaining steps (the base-branch mechanism), then 2b as its own pull request. The implementer applies the review's four notes: the pull-rule test goes in test_merge_pr.sh with a baseRefName in write_pr_view_fixture (not test_merge_pr_gate.sh); the final banner says what happened after a fetch-only cleanup; "no base" is decided by the worktree a ref resolves to, not by how the ref is written; the Files table and step 8 are corrected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `08db856f`
+
+Pull request 2a's remaining steps (3 to 8): the base branch of a package pull request. 2b (the gate, the end-to-end test, the Scope text) is not started.
+
+**Commits**: 796ad13a (strict start path, `--base`, header field), 9ade367e (`dispatch_phase.sh base`, `_pr_base.sh`, handoff `base=`, run-issue and start-task text), fb92b220 (`merge_pr.sh` cross-check and cleanup pull rule), 0bdf1abe (design, ADR-0012 addendum, script reference), 1ff0ac0c (plan corrections), 08db856f (Table 1 mode count)
+
+### What changed
+- `_worktree_helpers.sh`: `_wt_add_repo` takes a fifth argument, the base. A new owning branch starts from `origin/<base>` fetched now, `--no-track`. If origin lacks the base or does not answer, it stops having made nothing, also with `--allow-unverified-branch`. The local `<base>` is never used. `wt_write_manifest` writes ` base=<b>` when given. `wt_read_manifest` reads `layer=` unanchored and sets `WT_MANIFEST_BASE`. New `wt_set_manifest_base` replaces the header line in one rename, and refuses a different recorded base.
+- `worktree_create.sh --base <branch>`: only with `--layer`. It is refused with `--parent-issue`, for an invalid name, and when no entry is on `feature/issue-N`. It is passed to the owning entry only. The draft-PR message points at publish. `run_script_tests.sh` re-cites the two `/tmp` mktemp lines (now 1148 and 1189).
+- `_pr_base.sh` (new, sourced) `pr_base_for`, in order: the recorded `base=`; then `--base`; then `adapter repo_pin <repo> --layer <l>` when its kind is `branch`. A tag, commit or unknown pin refuses with "<repo> is pinned at <ref> (<kind>); only a branch can be a base. Pass --base <branch>.". An adapter exit 1 shows the adapter's message, then "none is guessed", exit 2. The NOTE "unverified" passes through.
+- `dispatch_phase.sh base`: decided by the resolved worktree.
+  - A package worktree: the recorded base. With none recorded, the pin or `--base`, checked with `wt_bounded_git ls-remote` in the owning checkout, then written; absent or no answer refuses and writes nothing.
+  - Any other worktree: nothing, exit 0; `--base`/`--layer` refused.
+  - No worktree yet: the owning entry from `adapter worktree_repos` gives the directory name.
+  - The handoff prints `base=` after `package_worktree=` when recorded.
+- `merge_pr.sh`:
+  - `_PKG_MATCHES` carries `base=` as a fourth field, `-` for empty, mapped back at both reads.
+  - `_head_json` adds `baseRefName`.
+  - For `feature/issue-N` only, a differing or unreadable base is a gate reason.
+  - Step 4 pulls the owning checkout only when it is clean and on the PR's base. Otherwise it fetches (bounded) and prints "fetched only: <why>", not incomplete; the banner says the checkout was fetched only.
+- `run-issue/SKILL.md`: usage `--base`; step 1 runs `base` before `/start-task` and passes `--base` with `--layer`/`--package-repos`; publish passes `-R <owner/repo> --base <base>`. `start-task/SKILL.md`: `--base` in the creation-only list.
+- Docs: `docs/design.md#worktrees` Base branch bullet; change-log row; refreshed `merge_pr.sh` and `dispatch_phase.sh` citations in the Records bullet and mechanism 1; Table 1's mode count. ADR-0012 cross-reference addendum (Status and References), decision text unchanged. Script reference rows.
+
+### The four plan-review notes
+1. The cleanup pull-rule test is in `test_merge_pr.sh` (`test_own_repo_pulls_only_on_the_base`). `write_pr_view_fixture` defaults `baseRefName` to `main`. `test_own_repo_sync_failure_is_reported` now also asserts a pull was attempted (not fetch-only), so it still pins a failed pull on the base. Nothing was added to `test_merge_pr_gate.sh`.
+2. The banner after a fetch-only cleanup: "merged and cleaned up; <repo>'s checkout was fetched only, not fast-forwarded (<why>)". It is asserted for all four fetch-only setups.
+3. "No base" is keyed on the resolved worktree. A bare `11` resolving to the package worktree prints `base=pinned` (tested).
+4. The plan's Files table and step 8 are corrected in 1ff0ac0c, with steps 6 and 7 annotated as built.
+
+### Deviations from the plan
+- `start-task/SKILL.md` edited: its creation-only flag list would otherwise send `--base` to `worktree_enter.sh` without saying so.
+- The `merge_pr.sh` and `dispatch_phase.sh` line citations in `docs/design.md`'s Records bullet and mechanism 1 were refreshed here, not left to 2b, because this change moved them. The mechanism-1 `dispatch_phase.sh` numbers were already off by 3 on main.
+- `dispatch_phase.sh base` refuses a qualified ref with no worktree and no `--layer`/`--package-repos` (exit 2) rather than printing nothing. The plan was silent on that case, and "nothing" would be a silent wrong answer for a package issue.
+- A recorded base whose `baseRefName` cannot be read is a gate reason, not silence.
+- The resume origin check passes git's message to `wt_fetch_why` with a "git ls-remote exited N" fallback, so the wording is true for ls-remote.
+
+### Checks
+- Suites run directly:
+  - `test_worktree_create.sh` 71/0
+  - `test_package_issue_loop.sh` 180/0
+  - `test_dispatch_phase.sh` 148/0
+  - `test_merge_pr.sh` 131/0
+  - `test_merge_pr_gate.sh` 121/0 (unchanged suite)
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, identity sourced: every hook passed, rc 0, including `validate-script-tests`, shellcheck and check-design-anchors. The branch touches `.agent/scripts/_*.sh` helpers and `run_script_tests.sh`, both full-run triggers, so that hook ran every suite. Its per-suite output is hidden by pre-commit on a pass.
+- Each new behaviour has a test that fails on the old code. Examples: the base start point (old code starts from origin/main), the `base` subcommand, `base=` in the handoff, fetch-only and its banner, the cross-check reason.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `69b6072a`
+**Base**: main
+**Depth**: Deep (reason: 17 files, +1414/-95; new and changed worktree/merge scripts and run-issue/start-task skills, cross-layer: creation, dispatch, merge)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Round correction by the host: `review_progress.sh round` counts 7 because the pre-push reviews of this issue's merged pull requests 445 and 456 share this timeline (tracked as issue 459). The code beyond main (`git diff main...HEAD`) had never been reviewed, so this is round 1 of a new change: full Deep depth, cold read of the whole diff, cross-model reviewers run, verdict script given `--round 1`.
+
+Specialists: static analysis (pre-commit shellcheck on the 9 changed .sh files: pass); governance and plan drift (lead); Claude adversarial (fresh subagent); cross-model gemini (via agy) and codex, both completed; Copilot skipped (disabled for quota). Suites run: test_worktree_create 71/0, test_package_issue_loop 180/0, test_dispatch_phase 148/0, test_merge_pr 131/0; no sleep or wall-clock tuning in the new cases, no leftover processes.
+
+Implementation deviations judged: start-task SKILL.md edit, citation refresh, qualified-ref refusal with no worktree, unreadable baseRefName as a gate reason, wt_fetch_why fallback: all accepted. The stated gap (`base` ignores `--package-repos` for an existing worktree) is suggestion 5.
+
+### Findings
+- [x] (must-fix) Resume write-back records the pin as `base=` without checking the owning branch started there: a worktree made without `--base` (every part-1 worktree, or `/start-task --layer l1 --package-repos pkg_a` directly) starts `feature/issue-N` at origin's default branch; `base` then writes `base=<pin>` after only an `ls-remote`, publish targets the pin and carries default-only commits, and the merge cross-check agrees. Check ancestry against origin/<base> before recording (or refuse), and decide whether a package worktree may be created without `--base` — `.agent/scripts/dispatch_phase.sh:789-807`
+- [x] (must-fix) Cleanup `pull --ff-only` follows the checkout's configured upstream, not origin's `$PR_BASE_REF`: a base branch tracking another remote/branch is moved to unrelated history while the line says "<base> fast-forwarded"; one with no upstream fails and marks the cleanup incomplete. Pull `origin "$PR_BASE_REF"` explicitly; test both upstream setups (codex, adversarial) — `.agent/scripts/merge_pr.sh:1678`
+- [x] (suggestion) A legacy `project/` worktree's header says `project=project` (`${PROJECT_NAME:-project}`); resume passes `--project project` to the adapter, which refuses "not registered", and step 1 stops. Pass the header's project only when it is registered — `.agent/scripts/dispatch_phase.sh:786`
+- [x] (suggestion) The failed-fetch branch of the cleanup ("Could not fetch origin ... so no pull was due", incomplete) has no test; add one with a dead origin and a checkout off the base — `.agent/scripts/tests/test_merge_pr.sh`
+- [x] (suggestion) A pin of kind `unknown` (offline with no remote-tracking ref, so repo_pin's NOTE says unverified) is refused as "pinned at <ref> (unknown); only a branch can be a base": the cause may be an unanswered origin, not a non-branch; word it as "kind could not be established" and suggest retrying online — `.agent/scripts/_pr_base.sh:109-111`
+- [x] (suggestion) `base` for an existing package worktree ignores `--package-repos` without a message, and the header comment does not say so (the implementer's stated gap): compare it with the manifest and refuse a mismatch, or say it is ignored — `.agent/scripts/dispatch_phase.sh:26-55`
+- [x] (suggestion) docs/design.md Table 1 `dispatch_phase.sh` row was edited but its line citations (167, 228-277, 452, 581, 669, 700) are stale (`resolve_worktree` is now at 269; they were already off on main) — `docs/design.md`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 22:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first review of the base mechanism's diff, two must-fix; the round limit is reached only because the counter carries the merged pull requests' reviews, issue 459; first host address for this pull request, the owner's merge of pull request 456 having come between)
+**After**: rounds
+**Decision**: address
+
+Fix all seven findings. Host decisions on finding 1 (a resumed worktree recorded the pin as base= without checking the branch started there): (a) nothing is recorded silently. On resume with no base=, the candidate base (an explicit --base, else the pin) is recorded only after a check that the owning branch carries no foreign history against origin/<base>: every commit in origin/<base>..HEAD that is also reachable from another branch on origin (other than the issue branch itself) is foreign; if any exists, refuse, name the count and the branch they come from, and say how to proceed (recreate the worktree, or pass the --base it was really started from). (b) Creating the owning repository's branch in a package worktree always resolves a base: an explicit --base, else the manifest pin through pr_base_for; if neither gives a branch, creation refuses and asks for --base. A package worktree is no longer started from origin's default branch by omission. This follows the owner's direction of 2026-11-10 (the base comes from the manifest pin, not GitHub's default branch). Finding 2: pull origin <base> explicitly. Finding 6: refuse a --package-repos that does not match the existing manifest. The other findings as the review states them.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `c7a73165`
+**Addressed**: Local Review (Pre-Push) at `69b6072a` (2026-11-12 22:17 -05:00)
+**Commits**: d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d, c7a73165
+
+### Actions
+- [x] (must-fix 1) Resume no longer records an unchecked base; creation always resolves a base — `.agent/scripts/dispatch_phase.sh` (cmd_base), `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` (`wt_base_foreign_history`, `WT_ADD_STARTED_FROM_BASE`). (a) The candidate base (`--base`, else the pin) is written only when no commit in `origin/<base>..feature/issue-N` is also on another origin branch (base and the issue branch excluded). One bounded fetch goes into a private ref namespace, removed again; the checkout's remote-tracking refs are untouched. A refusal names the count and the branches (most commits first, ties closest first), says "Recreate the worktree, or pass the --base it was started from", and writes nothing. (b) A package worktree with an owning entry always resolves a base before anything is made (`--base`, else `pr_base_for`); no branch means refuse and ask for `--base`. An owning branch that already exists (locally or on origin) gets `base=` only after the same check, else creation refuses and rolls back with the branch kept. Siblings get no base. Every creation path goes through `worktree_create.sh`: direct, `/start-task`, run-issue step 1.
+- [x] (must-fix 2) Cleanup pulls `origin <base>` by name: `pull --ff-only --no-rebase origin "$PR_BASE_REF"` — `.agent/scripts/merge_pr.sh:1678-1680`; test `test_own_repo_pull_takes_origin_base_not_upstream` (upstream origin/pinned, origin/main, none). On the old code it fails 5 assertions: "other" is moved to main's history, "none" is marked incomplete.
+- [x] (suggestion 3) Legacy `project=project` header: the header's project is passed to the adapter only when `registry_lookup` finds it — `.agent/scripts/dispatch_phase.sh` cmd_base. Test: owner/pkg_a#14 with a `project=project` header reaches the adapter's answer, not "not registered".
+- [x] (suggestion 4) Failed-fetch test: `test_own_repo_failed_fetch_marks_cleanup_incomplete` (origin's bare moved away, URL kept, checkout on `other`) — `.agent/scripts/tests/test_merge_pr.sh`
+- [x] (suggestion 5) An unknown pin now gives one of three true messages: origin not asked or not answering (the adapter's "(unverified)" NOTE; retry or `--base`), a name no branch can have, or origin asked with no branch or tag of that name — `.agent/scripts/_pr_base.sh`. Tests for all three are in case 11 of `test_package_issue_loop.sh`.
+- [x] (suggestion 6) For an existing package worktree, `--package-repos` must equal the manifest's repositories as a set (order free); a mismatch is refused naming both. Header comment and exit codes updated — `.agent/scripts/dispatch_phase.sh`. Tests: `pkg_b,pkg_a` gives the recorded base; `pkg_a` is refused.
+- [x] (suggestion 7) Table 1's `dispatch_phase.sh` row now cites 219, 280-329, 504, 638, 726, 758, 905. Mechanism 1's citations are refreshed to 544, 590, 592, 654, 923 (this pass moved them) — `docs/design.md`
+
+### Finding 1: inputs and results
+`wt_base_foreign_history <checkout> <branch> <base>` (unit cases in `test_worktree_create.sh`). Origin has: main = M0 M1; rel = M0 R1; old = M0; ahead = M0 M1 A1; dev2 = M0 M1 D2.
+
+| Branch | Base | Result |
+|---|---|---|
+| no own commits, from rel | rel | 0, none |
+| from rel plus own commits | rel | 0, none |
+| from origin main (the reported case) | rel | 1: 1 commit, from main (named first) |
+| base is an ancestor of main: from main plus own | old | 1: 1 commit, from main |
+| main is an ancestor of the base: from main plus own | ahead | 0 (only its own commit) |
+| issue branch pushed to origin, from rel | rel | 0 (its pushed copy is not "another") |
+| issue branch pushed to origin, from main | rel | 1 (main's commit; the branch itself not named) |
+| two origin branches carry it | rel | 1: 2 commits, "dev2 (2), main (1), ..." |
+| base not on origin | nosuch | 2: "origin has no branch 'nosuch'", nothing written |
+| no local branch | rel | 3 |
+| origin unreachable / fetch fails | rel | 3, git's line; nothing written |
+| every case | | no `refs/wt-base-check/` refs left, remote-tracking refs unchanged |
+
+End to end:
+- Resume (`test_package_issue_loop.sh` case 13): C (from main before `pinned` moved on; main is an ancestor of pinned) records `pinned`. C14 (from main after main moved past pinned) is refused with "1 commit(s) ... origin's main (1)", header unchanged; with `--base main` (its own commit pushed) `base=main` is recorded. A `--base` origin lacks, a tag pin and a dead origin (bounded, git's "Network is unreachable") each refuse and write nothing.
+- Creation (`test_ros2_colcon.sh`):
+  - No `--base` gives base=fakefox (the pin), and the branch is at origin/fakefox.
+  - A tag pin with no `--base` refuses before anything is made (no directory, no owning or sibling branch); with `--base main` it records main.
+  - Siblings only: no base, created.
+  - Existing local branch from the pin, with own work: recorded.
+  - Existing local branch from main (main past the pin): refused, rolled back, branch kept at its commit, no check refs left; with `--base main`: recorded.
+  - Branch on origin only, from the pin: recorded.
+
+### Existing tests changed, and why
+- `test_ros2_colcon.sh`: package repositories' origins were unreachable `git@github.com:owner/<pkg>` URLs. Creation now needs a base origin confirms, so they are served offline by a `GIT_SSH_COMMAND` stub from the per-test `fake_remotes/github.com/` (it fails as an unreachable host outside one). origin holds the pin `fakefox` as a branch, and the sandbox copies `_pr_base.sh`. The tests state a base through the pin; none asserts a refusal, since each is about layout or rollback.
+- `test_package_issue_loop.sh`:
+  - Setup now asserts `base=main` on C and C2 and none on C9. It then strips `base=` from C so C stands in for a pre-field worktree, which keeps the "no base= line" handoff check and case 13 meaningful.
+  - The `unknown` expectation is the new message.
+  - Case 13's dead-origin check passes `--base pinned` and expects the new "could not check whether ... started from origin's 'pinned'" message.
+- `test_worktree_create.sh`, `test_merge_pr.sh`: only additions.
+- `run_script_tests.sh` re-cites `worktree_create.sh:1215,1256`.
+
+### Checks
+- Suites run directly on the final code: `test_ros2_colcon.sh` 531/0, `test_package_issue_loop.sh` 188/0, `test_worktree_create.sh` 84/0, `test_merge_pr.sh` 150/0. `test_dispatch_phase.sh` 148/0 (run after the last `dispatch_phase.sh` code edit).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. This includes `validate-script-tests`: a shared helper changed, so every suite ran. shellcheck and check-design-anchors passed too.
+- Tests that fail on the old code:
+  - finding 2: shown, 5 failures with the old pull line.
+  - finding 1: the reported-case refusal and the creation base= checks (the old code recorded `pinned` and created with no base).
+  - finding 3: the old code passes `--project project` and gets "not registered".
+  - finding 5: the old message is "(unknown)".
+  - finding 6: the old code ignored the list.
+- Finding 4's test pins existing behaviour.
+
+### Notes
+- The fetch for the check pulls every origin branch's objects once, on resume or creation over an existing branch only.
+- A commit of the issue's own that someone also pushed to another origin branch counts as foreign (conservative: the run refuses and names that branch).
+- Table 1's other rows (`worktree_create.sh`, `merge_pr.sh`) cite lines that were already stale before this pass (the table calls itself a dated probe). Only the `dispatch_phase.sh` row was in scope and is now true.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2d814db9`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification, unchanged from round 1: worktree/dispatch/merge scripts and skills, cross-layer)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round 2 of this diff (the dispatcher counts higher because the merged pull requests 445 and 456 share the timeline, issue 459; the verdict script was given `--round 2`). Scope: round 1's seven findings and the fix diff d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d. Round-2 rule: Deep on the whole diff, so cross-model ran (gemini via agy, codex: both completed); Copilot skipped (disabled for quota); fresh Claude adversarial sub-review ran.
+
+Round 1 findings: 1 (resume records unchecked base) fixed by the foreign-history check and creation always resolving a base, but see must-fix 1 and 2 below; 2 (explicit `pull --ff-only --no-rebase origin <base>`) fixed and tested; 3 (legacy `project=project`), 4 (failed-fetch test), 5 (three true `unknown` messages), 6 (`--package-repos` set compared) and 7 (Table 1 citations) fixed as stated.
+
+Suites run: test_ros2_colcon 531/0, test_worktree_create 84/0, test_package_issue_loop 188/0, test_dispatch_phase 148/0, test_merge_pr 150/0; no `refs/wt-base-check/` refs left in this checkout. The GIT_SSH_COMMAND stub in test_ros2_colcon serves only the sandbox's fake_remotes and fails as unreachable elsewhere; the layout and rollback tests still assert what they did. The comment at test_ros2_colcon.sh:272 still says the fixture origins cannot be reached.
+
+### Findings
+- [x] (must-fix) A package worktree with `--parent-issue` and no `--base` now starts from the pin, not the parent: `worktree_create.sh --issue owner/pkg_a#12 --type project --layer l1 --package-repos pkg_a --parent-issue 10` resolves BASE_BRANCH from the pin (the `--base`/`--parent-issue` guard at :354 runs before it), `_wt_add_repo` takes the base path ahead of the parent path, the banner still says "Parent: #10", and base=<pin> is recorded. Before this pass the branch started from feature/issue-10. Refuse the combination or skip pin resolution with a parent (codex, adversarial) — `.agent/scripts/worktree_create.sh:738`
+- [x] (must-fix) `wt_base_foreign_history` counts the issue's own commits as foreign when another origin branch also has them: feature/issue-7 from origin/rel plus one own commit, its tip also pushed as feature/issue-12 (a sub-issue branch stacked on it with --parent-issue, or a backup) gives rc=1 "1 commit(s) ... origin's feature/issue-12 (1): it did not start from 'rel'", false, and both resume and creation over the existing branch refuse. This is the host's rule as written, so it needs a decision: e.g. count only commits that another branch has AND that are not descended from the branch's fork point with the base, or word the refusal as "also on <branch>" and offer a way through (adversarial, gemini) — `.agent/scripts/_worktree_helpers.sh:519-536`
+- [x] (suggestion) A branch with no history in common with the base passes: an orphan feature/issue-N makes every merge-base empty, every origin branch is skipped, rc=0, and base= is recorded although no pull request can be opened. Require `merge-base <tip> <ns>/<base>` to be non-empty (codex) — `.agent/scripts/_worktree_helpers.sh:529`
+- [x] (suggestion) The check's fetch updates the checkout's remote-tracking refs (git's opportunistic update for a command-line refspec), contrary to its header: verified, a clone with no refs/remotes/origin/dev gets one after `fetch origin "+refs/heads/*:refs/wt-base-check/x/*"`. Add `--refmap=`; the "remote-tracking refs are unchanged" test passes on the current code because its clone's refs were already current (adversarial) — `.agent/scripts/_worktree_helpers.sh:507`, `.agent/scripts/tests/test_worktree_create.sh:816` (deferred: falls away: wt_base_foreign_history and its all-branch fetch are removed (host decision); wt_check_named_base fetches only origin/<base> by its own refspec)
+- [x] (suggestion) No INT/TERM handling: a Ctrl-C during the merge-base loop of `dispatch_phase.sh base` leaves `refs/wt-base-check/<pid>-<rand>/*` refs that pin objects and show in `--all`; sweep stale ones at the start or trap (adversarial) — `.agent/scripts/_worktree_helpers.sh:500-562` (deferred: falls away: the private refs/wt-base-check refs are no longer made (check removed, host decision))
+- [x] (suggestion) `--branch <name>` with `--layer` is not refused, and the owning entry is found by `BRANCH_NAME`: `--branch foo --layer l1 --package-repos pkg_a` finds no owning entry, resolves no base, and feature/issue-N starts from origin's default branch with no base= (adversarial) — `.agent/scripts/worktree_create.sh:735`
+- [x] (suggestion) `dispatch_phase.sh base --base ""` is ignored (the pin is used) and `pr_base_for`/`cmd_base` validate with `check-ref-format refs/heads/<b>`, which accepts `-foo` and `HEAD`; use `git check-ref-format --branch` and refuse an empty value, as worktree_create.sh does (gemini) — `.agent/scripts/dispatch_phase.sh:752`, `.agent/scripts/_pr_base.sh:68`
+- [x] (suggestion) Test gaps: no case for the foreign-history refusal after sibling worktrees were added (rollback of siblings); case 13's dead-origin resume now passes `--base pinned`, so reading the pin while origin is down and then reaching the check is no longer exercised (adversarial) — `.agent/scripts/tests/test_ros2_colcon.sh`, `.agent/scripts/tests/test_package_issue_loop.sh`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 22:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of the base mechanism's diff, two must-fix, both from the host's own round-1 decision; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+The host withdraws its round-1 decision (a): the foreign-history check (wt_base_foreign_history) is removed, with its fetch of every origin branch and its private refs. It guessed where a branch started and was wrong both ways (the issue's own commits on a stacked or backup branch read as foreign; an orphan branch passed). Replacement, simpler: a worktree with no base= recorded never has one recorded from the pin. On resume, and on creation over an owning branch that already exists, the base must be named with --base; it is recorded after two checks only: the branch exists on origin (bounded), and the issue branch has a common ancestor with origin/<base>. Without --base the run refuses and says so truthfully: the worktree or branch predates base recording, or already existed, so the workspace cannot know where it started; pass --base naming the branch it was started from, or recreate it. Decision (b) stands: creating a NEW owning branch always resolves a base (--base, else the pin; refuse if neither is a branch). Must-fix 1: with --parent-issue the pin is not read; the branch starts from the parent's branch as before this change, and what base= records then follows what the existing sub-issue flow targets (the parent's branch), stated in the entry. Suggestions 6, 7, 8 and the stale comment are fixed as the review states; 3 becomes the common-ancestor check above; 4 and 5 fall away with the removed check (confirm no caller or text still refers to it).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `8e62ad61`
+**Addressed**: Local Review (Pre-Push) at `2d814db9` (2026-11-12 22:50 -05:00), under the host's Checkpoint of 2026-11-12 22:51
+**Commits**: a0363b19, e10b5348, 77939677, 8e62ad61
+
+### Actions
+- [x] Withdrawn check removed (host decision). `wt_base_foreign_history` is gone, along with its fetch of every origin branch, the private `refs/wt-base-check/` refs, its tests and every text about it. Nothing outside this progress timeline still names it (grep for `wt_base_foreign_history`, `WT_FOREIGN` and `wt-base-check`). This also retires must-fix 2 — `.agent/scripts/_worktree_helpers.sh`
+- [x] Replacement rule: a base is named and checked. A worktree with no recorded `base=`, or an owning branch that already existed at creation, never gets the pin.
+  - The base must be named with `--base`. It is recorded after `wt_check_named_base`: origin has the branch (`wt_fetch_named_branch`, bounded), and the issue branch has a common ancestor with `origin/<base>` (suggestion 3).
+  - Without `--base`, the run refuses and writes nothing. The message says the worktree predates base recording, or the branch already existed, so the workspace cannot know where it started; it asks for `--base` naming that branch, or a recreate.
+  - With origin down, the run refuses and writes nothing, giving the whole fetch reason.
+  - Code: `dispatch_phase.sh` cmd_base, `worktree_create.sh` manifest write, `_worktree_helpers.sh` `wt_check_named_base`.
+- [x] (must-fix 1) `--parent-issue` on a package worktree. The pin is not read, and a new branch starts from the parent's branch as before this change. `base=` records the parent's branch when it is found, which is the existing sub-issue flow's own notion (`check_existing_branch_parent` → `PARENT_BRANCH_FOUND`): a sub-issue's draft PR targets the parent's branch when it is found locally or on origin. The banner's new `Base:` line names the parent's branch. Test: `test_worktree_create_package_parent_issue_starts_from_parent`, where the pin is a tag that would refuse if read. It checks that the branch is at the parent's tip, that both banner lines and `base=feature/issue-10` agree, and that `--base` with `--parent-issue` is still refused — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 4) deferred: falls away with the removed check. `wt_check_named_base` fetches only `origin/<base>`, by its own refspec.
+- [x] (suggestion 5) deferred: falls away; no private refs are made any more.
+- [x] (suggestion 6) `--branch` with `--layer` is refused, and I chose refusal over resolving a base. `--branch` renames the issue's branch in the one repository a worktree is of, but in a package worktree the adapter names every repository's branch. A custom name therefore matches no entry, and no base could be tied to it. Test: `test_worktree_create_package_refuses_branch_and_empty_base` — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 7) `--base` validation is the same in `pr_base_for`, `cmd_base` and `worktree_create.sh`: `check-ref-format --branch` plus `refs/heads/<b>` (`wt_valid_branch_name`). An empty value is refused, not ignored; `-foo`, `HEAD`, `a..b` and `@{-1}` are refused. Tested in all three paths — `.agent/scripts/_pr_base.sh`, `dispatch_phase.sh`, `worktree_create.sh`
+- [x] (suggestion 8) Two test gaps closed:
+  - (i) An existing owning branch without `--base`, listed after a sibling: refused, "rolling back 2", the sibling's worktree and branch removed, the existing branch kept (`test_ros2_colcon.sh`).
+  - (ii) The pin read while origin is down: `base` prints `base=pinned` with the "(unverified)" note, then creation with origin down refuses with nothing made in either repository (`test_package_issue_loop.sh` case 12).
+- [x] The comment at `test_ros2_colcon.sh:272` now says the fixture origins answer.
+
+### Resume: inputs and results (`dispatch_phase.sh base`, the worktree exists)
+| header `base=` | `--base` | origin | result |
+|---|---|---|---|
+| X | none, or X | – | `base=X` |
+| X | Y ≠ X | – | refused (records X) |
+| none | none | – | refused: "records no base: it was made before base recording ... cannot know which branch ... started from, and does not take the pin". The pin is not read; nothing written |
+| none | `""`, `-foo`, `HEAD` | – | refused: not a valid branch name |
+| none | B, which origin lacks | answers | refused: "origin has no branch 'B'"; nothing written |
+| none | B | down | refused: "could not check --base B ... (whole fetch reason)"; nothing written |
+| none | B; orphan issue branch | answers | refused: "has no commit in common with origin's 'B'"; nothing written |
+| none | B, on origin, history shared | answers | `base=B` recorded, entries unchanged (also under a `project=project` header) |
+
+### Creation: inputs and results (`worktree_create.sh`, owning branch)
+| owning branch | `--base` | `--parent-issue` | result |
+|---|---|---|---|
+| new | B | no | starts at `origin/B`, `base=B`; refused with nothing made if origin lacks B or is down |
+| new | none; pin a branch P | no | starts at `origin/P`, `base=P` |
+| new | none; pin a tag, commit or unknown | no | refused before anything is made |
+| new | none | yes | pin not read; starts from the parent's branch; `base=<parent>` when found. If the parent is not found it starts from the default branch with the pre-existing WARNING (unchanged sub-issue behaviour) and gets no `base=`, with a note |
+| any | B | yes | refused |
+| exists (local or origin) | none | no | refused: "already existed ... cannot know ... does not take the pin"; rolled back, siblings too; the branch kept |
+| exists | B, origin has it, history shared | no | `base=B` |
+| exists | B, which origin lacks; or an orphan branch | no | refused, rolled back |
+| exists | B, origin down | no | refused (retry), rolled back |
+| exists | none | yes | checked out; no `base=` (a note); a later `base --base` records it |
+| `--branch` with `--layer` | – | – | refused, nothing made |
+| no owning entry (siblings only) | none | no | no base, as before |
+
+`run-issue` step 1 now passes `--base` to creation only when the owner gave it, never the pin `base` printed; otherwise creation would turn the pin into a "named" base for an existing branch.
+
+### Tests removed or changed
+- **Removed** (the check is withdrawn):
+  - the `wt_base_foreign_history` edge table in `test_worktree_create.sh`;
+  - `test_worktree_create_package_existing_branch_checked_before_base_recorded` in `test_ros2_colcon.sh`;
+  - case 13's foreign refusal and its no-leftover-refs check in `test_package_issue_loop.sh`.
+- **Replaced by:**
+  - the `wt_check_named_base` and `wt_valid_branch_name` input table (`test_worktree_create.sh`);
+  - `test_worktree_create_package_existing_branch_needs_named_base`, `..._parent_issue_starts_from_parent` and `..._refuses_branch_and_empty_base` (`test_ros2_colcon.sh`);
+  - case 13 rewritten to the resume table above (`test_package_issue_loop.sh`).
+- **Changed:** case 13's "origin has the pinned branch: recorded" check now passes `--base pinned`, because recording without a named base is exactly what the new rule forbids. The legacy `project=project` check now records a named `--base`: no adapter call remains on the resume path, so I removed the header-project code that round 1 added.
+
+### Checks
+- Suites run directly on the final code, all with 0 failures: `test_worktree_create.sh` rc 0, `test_ros2_colcon.sh` 558/0, `test_package_issue_loop.sh` 194/0, `test_dispatch_phase.sh` 148/0, `test_merge_pr.sh` 150/0.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran every suite because a shared helper changed.
+- Each of these fails on round 2's code:
+  - the resume refusal without `--base`, which round 2 recorded from the pin;
+  - the parent case, where round 2 read the tag pin and refused;
+  - the `--branch` refusal;
+  - the empty and `-foo` `--base` values;
+  - the existing-branch refusal without `--base`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 23:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `0144179c`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 3 of this diff. The dispatcher counts higher because merged pull requests 445 and 456 share this timeline (issue 459); the verdict script was given `--round 3`.
+
+Scope: round 2's eight findings and the fix diff a0363b19, e10b5348, 77939677.
+
+Cross-model: skipped (round-3 convergence check, per handoff). A fresh Claude adversarial sub-review ran every row of the Implementation entry's resume and creation tables in sandboxes.
+
+Round 2's findings:
+- Must-fix 1 (`--parent-issue` overridden by the pin): fixed. The pin is not read; the branch starts from the parent's branch; `base=` records the parent's branch when it is found.
+- Must-fix 2 (the issue's own commits counted as foreign): fell away. The host withdrew the history check, and nothing outside `.agent/work-plans` still refers to `wt_base_foreign_history`, `wt-base-check` or `WT_FOREIGN` (grep).
+- Suggestion 3 (orphan branch passes): now refused with rc 4, "no commit in common".
+- Suggestions 4 and 5 (the history check's fetch and refs): fell away with the check.
+- Suggestion 6 (`--branch` with `--layer`): refused before anything is made.
+- Suggestion 7 (`--base` values): `''`, `-foo`, `HEAD`, `a..b` and `@{-1}` are refused through `wt_valid_branch_name`.
+- Suggestion 8 (test gaps): sibling rollback is tested. The pin read with origin down is case 12. The stale test comment is fixed.
+
+Checked by running:
+- Every table row gives the stated result, and each refusal message is true for its input. This covers an existing branch without `--base`, origin down, and a base origin lacks.
+- Rollback: a sibling added first, then a refusal. Both repositories are back to `main`, no aggregate directory is left, and the pre-existing branch is kept.
+- Two rows start from the default branch: "parent not found" and "exists, none, yes". The first is main's own parent-not-found WARNING path, unchanged. The second checks out the existing branch. In both, the printed Note is true.
+- The only thing left behind is a fetched `refs/remotes/origin/<base>` for a base origin has.
+- run-issue step 1 and the scripts agree: `--base` goes to creation only when the owner gave it.
+
+No regressions:
+- `merge_pr.sh` is unchanged since round 2, so the cleanup pull still names origin's base.
+- The unknown-pin messages are unchanged.
+- The `--package-repos` comparison is unchanged.
+- Table 1's `dispatch_phase.sh` row cites 216 and 277-326, which is where `derive_project_name` and `resolve_worktree` are.
+
+Suites run: test_ros2_colcon 558/0, test_worktree_create 79/0, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] (suggestion) The rule "an owning branch that already exists needs `--base`, else creation refuses" is stated without its `--parent-issue` exception. Input: an existing local `feature/issue-201` with `--layer l1 --package-repos pkg_a --parent-issue 10`. Result: exit 0, a Note, no `base=`. `--base` cannot be given there either, since it is refused with `--parent-issue`. Add the exception: the existing branch is accepted, no base is recorded, and `dispatch_phase.sh base --base` records one later — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3 of this diff, no must-fix; one documentation suggestion goes to triage)
+**After**: publish
+**Decision**: publish
+
+Round 3 approved after running every row of the two input tables against the real scripts. One suggestion stays open for triage: the rule "an existing owning branch needs --base" is written without its --parent-issue exception in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #460 at `4c248c51`
+**Sources**: 4 (Local Review (Pre-Push) @ `69b6072a` round 1, @ `2d814db9` round 2, @ `0144179c` round 3 (covers 4c248c51 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: the three pre-push reviews after the Checkpoint of 2026-11-12 21:45 (After: plan, Decision: proceed). Rounds 1 (7 findings) and 2 (8 findings) are all ticked, each with its fix or its host decision recorded. The helper also lists stale open boxes in entries at `a6c2d2f`, `3ab6be9` and `8d563c2`: those belong to the merged pull requests 445 and 456 and are out of scope here, not re-triaged. CI at triage time: Validate Documentation passed in both runs, one ros-manifest run passed; Lint (pre-commit), Validate Adapter Contract and the other ros-manifest run had no conclusion yet.
+
+### Findings
+- [x] (should-fix, documentation defect, Local Review (Pre-Push) @ `0144179c` covers head via bookkeeping) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" is written without its `--parent-issue` exception. Verified in code: `worktree_create.sh:955-969` accepts an existing owning branch under `--parent-issue`, records no `base=`, prints a Note, and exits 0; `--base` is refused with `--parent-issue`, so the rule as written cannot be followed there. Under the Quality Standard, documentation that states a rule the code does not follow is a defect, not a nit. Fix in this pull request: add the exception (existing branch accepted, no base recorded, `dispatch_phase.sh base --base` records one later) to all three places — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid, a documentation defect to fix in this pull request)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 460: state the --parent-issue exception to "an existing owning branch needs --base" in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text: the existing branch is accepted, no base is recorded, and dispatch_phase.sh base --base records one later.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 2 of 3)
+
+**PR**: #460 at `9bc5f3ee`
+**Addressed**: Integrated Review at `4c248c51` (2026-11-12 23:18 -05:00)
+**Commits**: 9bc5f3ee
+
+### Actions
+- [x] (should-fix, documentation defect) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" now carries its `--parent-issue` exception everywhere it was stated without it. The exception matches `worktree_create.sh`'s manifest write: with `--parent-issue`, where `--base` is refused, an existing owning branch is accepted, no `base=` is recorded, a Note says so, and `dispatch_phase.sh base --base <branch>` records one later. This is text only; no behaviour changed. Places:
+  - `docs/design.md#worktrees` (Base branch bullet)
+  - `.claude/skills/start-task/SKILL.md:175`
+  - `.agent/scripts/worktree_create.sh`: the `--base` usage text, and the manifest-write comment, which stated the rule the same way
+  - `.agent/WORKTREE_GUIDE.md` (Base branch bullet)
+  - `.agent/knowledge/script_reference.md` (`worktree_create.sh` row)
+  - `.agent/work-plans/issue-429/plan.md` (Part 2 step 4)
+
+### Places left as they are
+- `.claude/skills/run-issue/SKILL.md` (lines 144 and 247) states the rule without the exception, and I left it: run-issue never passes `--parent-issue`, so in its flow the rule holds as written.
+- The ADR-0012 addendum also stays. It says only that for a branch the workspace did not start "only a base the owner names is recorded", which is still true when nothing is recorded.
+- No test asserts the usage text: a grep of `.agent/scripts/tests/` found none.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran the suites the branch's changed files reach.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 23:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 3 of 3)
+
+**PR**: #460 at `7b85fe7d`
+**Depth**: Deep (reason: whole-diff classification; fix round scoped by the handoff to the one documentation suggestion and the text-only fix 9bc5f3ee)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Fix-round re-review of the round-3 suggestion (the `--parent-issue` exception to the existing-branch rule). Cross-model: skipped per handoff (text and usage text only, no behaviour).
+
+- **The exception, in each of the six places changed** (`docs/design.md#worktrees`, start-task SKILL.md, `WORKTREE_GUIDE.md`, `script_reference.md`, `worktree_create.sh`'s `--base` usage text and its manifest-write comment): each says an existing owning branch is accepted, no `base=` is recorded, a note says so, and `dispatch_phase.sh base --base <branch>` records one later. That matches `worktree_create.sh`'s manifest write, the `elif [ -n "$PARENT_BRANCH" ]` branch with its Note, and the refusal of `--base` with `--parent-issue`.
+- **No behaviour changed:** inside `worktree_create.sh`, the diff of 9bc5f3ee touches only `echo` lines of `show_usage` and a comment block; `bash -n` passes.
+- **Places left as they are:**
+  - run-issue SKILL.md never passes `--parent-issue` (0 occurrences), so its rule needs no exception.
+  - The ADR-0012 addendum still holds ("for a branch the workspace did not start only a base the owner names is recorded": the exception records nothing). It defers the detail to design.md.
+- **Suites rerun at 7b85fe7d:** test_ros2_colcon 558/0, test_worktree_create 0 failed, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a30219fdb6d71d1ef, resume 1 of 3)
+
+**PR**: #460 at `89ea6ef7`
+**Sources**: 2 (Local Review @ `7b85fe7d` (covers 89ea6ef7 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Repeat triage after the documentation fix 9bc5f3ee and its re-review. The previous Integrated Review's one finding (the `--parent-issue` exception to "an existing owning branch needs `--base`") is fixed: `docs/design.md:505-507`, `.claude/skills/start-task/SKILL.md:175` and the `--base` usage text at `.agent/scripts/worktree_create.sh:205-211` now state that the existing branch is accepted, no `base=` is recorded, and `dispatch_phase.sh base --base` records one later. That matches the Note path at `worktree_create.sh:973`. The same text was also corrected in WORKTREE_GUIDE.md, script_reference.md and plan.md. The Local Review at `7b85fe7d` approved with no findings; its only box is the "No issues found" placeholder, not an action item. The helper now lists the round-3 pre-push entry at `0144179c` as stale with one open box: that is the same finding, ruled on in the previous Integrated Review and fixed in 9bc5f3ee. The stale open boxes at `a6c2d2f`, `3ab6be9` and `8d563c2` belong to the merged pull requests 445 and 456 and remain out of scope. CI at triage time: Validate Documentation passed in both runs; Lint (pre-commit), Validate Adapter Contract and both ros-manifest runs had no conclusion yet, and none had failed.
+
+### Findings
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended)

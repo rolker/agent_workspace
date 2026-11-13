@@ -157,7 +157,7 @@ only.
 | Rule | Principle or ADR | Enforced by | The check |
 |---|---|---|---|
 | No commit to `main` | Leave a trail; start limits strict | `hook` | `no-commit-to-branch` (`.pre-commit-config.yaml`), local only. GitHub also refuses a direct push: the repository ruleset `require_pr` is active on `main` (`gh api repos/rolker/agent_workspace/rules/branches/main`, 2026-10-09) |
-| Commits carry an agent or owner identity | Leave a trail; start limits strict | `hook` | `.agent/hooks/check-commit-identity.py` fails a commit whose author email matches none of its accepted patterns, local only |
+| Commits carry an agent or owner identity | Leave a trail; start limits strict | `hook` | `.agent/hooks/check-commit-identity.py` fails a commit whose author or committer email, as git will record it (`git var`), is neither the checkout's configured git email (`<local>@<domain>` from the config files, `git -c` ignored, any `+suffix` removed) nor `<local>+<anything>@<domain>`, and fails when that git email is unset; local only |
 | Hooks are not skipped (no `--no-verify`) | Enforce what matters, as simply as possible | `CI` | The Lint job runs `make lint`, which runs every hook on all files; the four local-state hooks above are skipped there. A local `--no-verify` is not detected |
 | Issue number matches the branch | Leave a trail; start limits strict | `nothing` | `.agent/hooks/verify-issue-branch.py` prints the issue's title and state and always returns 0 (its docstring: "Informational only") |
 | A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
@@ -187,7 +187,7 @@ hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is A
 #423): a `/run-issue` run started from a project root passed through the merge checkpoint, the
 acceptance test named in #317. [ADR-0018](decisions/0018-plugin-based-skill-delivery.md), which
 supersedes ADR-0016 decision 3 for skills, is Accepted too (2026-11-09, #425): its promotion condition
-was the same run. [ADR-0019](decisions/0019-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446)
+was the same run. [ADR-0020](decisions/0020-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446)
 supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope.
 [Open questions](#open-questions) OQ-2 records where that run was tracked and who ran it.
 
@@ -209,7 +209,7 @@ supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope
   in no git repository (a session started outside git reads the settings of its own directory, so the
   root's `.claude/settings.json` and `.claude/settings.local.json`, its hooks and permission rules,
   never reach a session in a subdirectory of the root). Neither refusal is about the plugin, which
-  reaches both (ADR-0018 decision 6, ADR-0019).
+  reaches both (ADR-0018 decision 6, ADR-0020).
 - One exception to working only under the root (#332): a project session writes its own project's
   settings file `.agent/projects.d/<name>` in the workspace checkout, through `project_setting.sh set`,
   which calls `registry_require_root` and, from a project root, refuses any other project's file. That
@@ -269,7 +269,7 @@ supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope
   else a session names the skills `/agent-workspace:<skill>`; `skill_prefix.sh` says which for a
   directory (bare in the workspace's repository, the prefix elsewhere), and the `SessionStart` header
   states it. The old `~/.claude/skills/` symlinks are removed by install and reported by `--check`
-  (ADR-0018, ADR-0019).
+  (ADR-0018, ADR-0020).
 - The `SessionStart` hook (`.claude/hooks/session_start_project_layer.sh`) gives a session under a
   registered root the workspace layer, rendered from nine pinned `AGENTS.md` headings, and the project
   layer, built from the registry entry and the project's own agent guide. Outside every registered root
@@ -334,7 +334,7 @@ Status: `decided`
   `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
   and only then, when the user tier is installed from this checkout, the read-only
   `registration_verify.sh --user-tier`; the user-tier installer runs only with `--install-user-tier`,
-  and nothing is enabled per root (the plugin is at user scope, ADR-0019). A failure removes the line
+  and nothing is enabled per root (the plugin is at user scope, ADR-0020). A failure removes the line
   and the file; a settings file changed during the run is kept, and a cleanup step that fails is
   reported, never a clean result; a hosting directory `setup` created is kept and reported. A line
   written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
@@ -360,8 +360,12 @@ Status: `decided`
   when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
   whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
   unset. The adapters say on stderr when a registered project falls through to the shared file.
-- Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
-  type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
+- Behaviour that differs per project shape sits behind a 13-verb adapter contract, one `adapter.sh` per
+  type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12 and by
+  ADR-0019 to 13). The 13th, `repo_pin <repo> [--layer <l>]`, prints the ref the project pins a
+  repository at and its kind (`branch`, `tag`, `commit` or `unknown`, judged by origin, from local refs
+  and marked unverified when origin cannot be asked): `ros2_colcon` reads the `.repos` files, and
+  `single_project` answers its default branch from `origin/HEAD` (#429).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
   every type implements every verb, in pre-commit and in CI. Beside the contract, each type has a
   `registration.conf` (#332): the commands a project of the type must have of its own, whether
@@ -394,7 +398,7 @@ probe, not a description to keep current.
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all four modes (`where` too) | 167, 228-277, 452, 581, 669, 700 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 635, 723, 755, 894 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
@@ -405,7 +409,7 @@ the cwd's git top level, through the records gate, lines 138-140 and 340-350), `
 93-94 and 107-108),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
-*Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
+*Table 2: the 13 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
 needs logic of its own; "thin wrapper" means a script or target that already exists does the work;
 "no-op" means the `adapter` header allows doing nothing.
 
@@ -423,8 +427,9 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 | `scope_for_pr` | real, small | Origin URL to `owner/repo`; `single_project`'s verb already does this generically |
 | `worktree_repos` | real, trivial | One line `<root>`, `.`, `feature/issue-<N>`; `worktree_create.sh` does not call it for the workspace today |
 | `worktree_env` | no-op | No per-worktree environment |
+| `repo_pin` | real, small | Its default branch; `single_project`'s verb already reads it from `origin/HEAD` generically (#429, 2026-11-12) |
 
-Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; that is the #295 decision.
+Tally: 3 no-op, 5 thin wrapper, 5 real. No conclusion is drawn from it here; that is the #295 decision.
 
 **Target**
 
@@ -485,14 +490,41 @@ Status: `decided`
   checkout on its default branch and another issue's worktree (header of `_resolve_work_plans_dir.sh`).
   Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
   changes nothing for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
-  package pull request on the pull request (lines 839 and 893). `progress_append.sh` lines 107-108 write
+  package pull request on the pull request (lines 871 and 925). `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 577 and
-  694), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 721 and 858). The gate is still report-only for project pull requests (lines 966 and
-  979).
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 596 and
+  713), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 740 and 890). The gate is still report-only for project pull requests (lines 998 and
+  1011).
+- **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
+  branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
+  branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
+  `worktree_create.sh` decide it (`pr_base_for` in `_pr_base.sh`) and refuse a pin that is a tag, a
+  commit or unknown (saying whether origin answered), or one the adapter cannot read; an issue whose
+  worktree is no package worktree has none. Creating a package worktree's new owning branch always
+  resolves a base, so it is never started from origin's default branch by omission (`--branch` is
+  refused for a package worktree, since the adapter names its branches); with `--parent-issue` the pin is
+  not read, the branch starts from the parent's branch as a sub-issue's always has, and `base=` records
+  the parent's branch when it is found, the branch a sub-issue's draft pull request targets. The owning
+  repository's new `feature/issue-N` starts from origin's copy of that branch, fetched at creation,
+  with no upstream (the strict start path in `_wt_add_repo`): origin lacking it or not answering stops
+  creation, also with `--allow-unverified-branch`, and the local copy is never used; sibling
+  repositories start from their default branch as before. The `.worktree-repos` header records it as
+  `base=` (every header field is read unanchored, so a reader skips the fields it does not know). For a
+  branch this workspace did not start (an owning branch that already existed at creation, or a worktree
+  made before the field, on resume) where it started cannot be known, so the pin is never recorded for
+  it: the owner names the base with `--base`, and it is recorded after two checks
+  (`wt_check_named_base`): origin has the branch (bounded), and the issue branch shares history with
+  it. Without `--base`, or when a check fails or origin does not answer, nothing is recorded and the run
+  refuses, saying which. The one exception is creation with `--parent-issue` (where `--base` is refused):
+  an owning branch that already exists is accepted, no `base=` is recorded and a note says so, and
+  `dispatch_phase.sh base --base <branch>` records one later. `run-issue` passes it to
+  `gh_create_pr.sh --base`; `merge_pr.sh` reports an owning pull request whose base differs from it
+  (report-only, like every package reason) and, at cleanup, fast-forwards the owning repository's own
+  checkout from origin's base by name (never the branch's configured upstream) only when it is clean
+  and on that base, fetching only otherwise.
 
 **Target**
 
@@ -533,8 +565,8 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   489, 533, 535, 597, 718: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (689-710, 822-903: the gate's lookup and its `Merge`
+   541, 587, 589, 651, 912: the round count, the exit contract, `--check-exit` and `next`, which is
+   what a resumed session reads), `merge_pr.sh` (708-729, 854-935: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -676,7 +708,10 @@ Status: `decided`
 Status: `decided`
 
 - An agent signs its work with a framework identity: a name, an email of the form
-  `roland+<framework>@<domain>`, a model name and a framework key. The table of frameworks is
+  `<local>+<framework>@<domain>`, a model name and a framework key. No address is stored: `<local>@<domain>`
+  is the checkout's configured `git config user.email` (a clone value wins over the global one) with any
+  `+suffix` removed, derived by `.agent/scripts/identity_base.py` for the scripts and the hook alike, and
+  an unset or malformed git email fails with the fix. The table of frameworks and suffixes is
   `.agent/scripts/framework_config.sh`; the strategy and the reasons are in
   [`.agent/AI_IDENTITY_STRATEGY.md`](../.agent/AI_IDENTITY_STRATEGY.md). The identity is on the commit
   and, through `AGENT_NAME` and `AGENT_MODEL`, in the signature on GitHub text.
@@ -685,7 +720,7 @@ Status: `decided`
   and leaves `.git/config` alone, so the owner commits as himself afterwards. Shell state does not
   carry between tool calls, so it is sourced in the same call as the command that needs it.
 - Three things refuse to run without an identity or with a wrong one: the `check-commit-identity` hook
-  (accepted emails are the agent pattern and the owner's two addresses), `dispatch_phase.sh` (exit 2
+  (accepted emails are derived from the configured git email: the base or `<local>+<anything>@<domain>`), `dispatch_phase.sh` (exit 2
   when `AGENT_NAME` or `AGENT_EMAIL` is unset, with no fallback to the owner's git config) and
   `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` and `gh_create_issue.sh` exit 2
   for an unsigned body ([Rules](#rules)).
@@ -761,15 +796,16 @@ no section of this file carries that ADR.
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 12 | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 13 (ADR-0019) | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
-| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, not `~/.claude/skills/` symlinks. Decisions 3 and 4 (enabled at local scope per registered root; the exception to ADR-0016 decision 2) and decision 6's paragraph on how `run-issue` decides the prefix (`skill_prefix.sh` refusing and `run-issue` stopping) are superseded by ADR-0019 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
-| [0019](decisions/0019-plugin-enabled-once-at-user-scope.md) | The plugin is enabled once, at user scope; nothing is written into a project checkout; the workspace checkout's tracked settings set it to false, and a session in a subdirectory of the checkout lists each shipped skill under both names (accepted, 2026-11-12) | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
+| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, not `~/.claude/skills/` symlinks. Decisions 3 and 4 (enabled at local scope per registered root; the exception to ADR-0016 decision 2) and decision 6's paragraph on how `run-issue` decides the prefix (`skill_prefix.sh` refusing and `run-issue` stopping) are superseded by ADR-0020 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
+| [0019](decisions/0019-repo-pin-verb.md) | The `repo_pin` adapter verb: the ref a repository is pinned at and whether it is a branch, tag, commit or unknown, so a base never comes from the forge's default branch | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-11-12 |
+| [0020](decisions/0020-plugin-enabled-once-at-user-scope.md) | The plugin is enabled once, at user scope; nothing is written into a project checkout; the workspace checkout's tracked settings set it to false, and a session in a subdirectory of the checkout lists each shipped skill under both names (accepted, 2026-11-12) | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -871,7 +907,10 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-10 | Registry and adapters, Worktrees | A timeline write from outside the issue's checkout is refused (issue 437): the Records bullet no longer lists "a write from outside any worktree, which commits on that checkout's own branch" among what the records gate does not cover, and says that a write that changes a timeline is refused unless its target is the issue's own checkout, wherever the command runs, and that reads are not; the cited line numbers of `review_progress.sh` and `progress_append.sh` are refreshed in the Registry inventory sentence, the Records bullet and the Target's mechanism 1. Worktrees grows by four lines and stays past the 60-line prompt: the bullet names the gate whose header holds the rule, and the mechanics stay there, so no detail moves | #437 | 901 |
 | 2026-11-12 | Registry and adapters, Worktrees | Review fix (issue 437): the Records bullet states the write rule as one statement, the file a write changes, every symlink resolved, sits at the place its path names in the issue's own checkout, after a file symlink and a records folder linked to a main-checkout folder got past the checkout test; the cited `progress_append.sh` gate lines are refreshed. Worktrees grows by one line and stays past the 60-line prompt: the mechanics stay in the gate's header | #437 | 903 |
 | 2026-11-12 | Sessions and roots, Registry and adapters | A fresh clone works with no project (#295, first pull request; part of #265): a Sessions and roots Now bullet says a workspace with no registered project and no `project/` validates, sets up without a prompt, shows its dashboard and syncs, and that the `gh_create_*` repo-safety check accepts every registered root's repository; Table 1's `gh_create_pr.sh` row says registered roots are consulted (lines refreshed); Table 2's `setup` row names the stamps `make setup` depends on now (`git-bug` and `ros-manifest`, no `project`) and the Makefile lines of `setup` and `user-tier-install` are refreshed; Table 1's `worktree_create.sh` line citations are refreshed after this change moved them; the ADR-0007 register row names the setup stamps as they are now. Sessions and roots is 121 lines and Registry and adapters 125, past the 60-line prompt: the bullet names the test and the helper that hold the detail, so no detail moves | #295 | 910 |
-| 2026-11-12 | Sessions and roots, Registry and adapters, Decision register, Open questions | The plugin is enabled once, at user scope (#446, ADR-0019, superseding ADR-0018 decisions 3 and 4): the plugin bullet says the installer enables it with `--scope user`, writes nothing into a project checkout and migrates the per-root entries, that the checkout's tracked `.claude/settings.json` sets it to false so a session at the checkout's root or in a worktree lists each skill once, bare, and that a session in a subdirectory of the checkout lists each shipped skill under both names, accepted by the owner on 2026-11-12; the user-tier bullet lists the plugin; the registration bullets say registration runs only the read-only user-tier check (the installer only with `--install-user-tier`) and `--remove` leaves the root alone; the root-rule text gives each `session_root.sh` refusal its own reason, no longer "sessions do not read the root's local settings", and no longer says `skill_prefix.sh` refuses them; register row 0018 notes the supersession (decisions 3 and 4, and decision 6's paragraph on how `run-issue` decides the prefix) and row 0019 is added, making 19 rows; C4 no longer says unregistering removes a plugin enable. Sessions and roots is 137 lines, past the 60-line prompt, and grows by 15: the bullets name the scripts and the ADR that hold the mechanics, so no detail moves | #446 | 928 |
+| 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
+| 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
+| 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's pre-push reviews: creation of a new owning branch always resolves a base (`--base`, else the pin; with `--parent-issue` the parent's branch), a branch this workspace did not start gets `base=` only from a named `--base` that origin has and that shares history with it, the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
+| 2026-11-12 | Sessions and roots, Registry and adapters, Decision register, Open questions | The plugin is enabled once, at user scope (#446, ADR-0020, superseding ADR-0018 decisions 3 and 4): the plugin bullet says the installer enables it with `--scope user`, writes nothing into a project checkout and migrates the per-root entries, that the checkout's tracked `.claude/settings.json` sets it to false so a session at the checkout's root or in a worktree lists each skill once, bare, and that a session in a subdirectory of the checkout lists each shipped skill under both names, accepted by the owner on 2026-11-12; the user-tier bullet lists the plugin; the registration bullets say registration runs only the read-only user-tier check (the installer only with `--install-user-tier`) and `--remove` leaves the root alone; the root-rule text gives each `session_root.sh` refusal its own reason, no longer "sessions do not read the root's local settings", and no longer says `skill_prefix.sh` refuses them; register row 0018 notes the supersession (decisions 3 and 4, and decision 6's paragraph on how `run-issue` decides the prefix) and row 0020 is added, making 20 rows; C4 no longer says unregistering removes a plugin enable. Sessions and roots is 137 lines, past the 60-line prompt, and grows by 15: the bullets name the scripts and the ADR that hold the mechanics, so no detail moves | #446 | 928 |
 
 ## Glossary
 
