@@ -477,3 +477,20 @@ Mechanism: the ordinary tail of a signal-handling change, not a wrong design; th
 **Decision**: address
 
 Read: the Integrated Review at 0713d270 and its report. Finding: run_script_tests.sh:552, the "still running at exit" line is printed before the three new trap lines are installed. Triage's note on the mechanism: the ordinary tail of a signal-handling change, the window shrinking each round; if another point turns up, the cure is one handler installed once for the whole parallel section and its cleanup, which belongs to part 2 of the issue.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a1af62f56eaa99a72, resume 1 of 3)
+
+**PR**: #468 at `33b83ab7`
+**Addressed**: Integrated Review at `5d9de7ef` (2026-11-13 11:50 -05:00)
+**Commits**: 33b83ab7
+
+### Actions
+- [x] The "still running at exit" line was printed before cleanup_run's INT/TERM/HUP traps were installed; the echo now follows the three `trap` lines, so a signal sent on seeing the line always finds them set. No other edit, no new test — `.agent/scripts/tests/run_script_tests.sh:552`
+
+### Checks
+- Full pre-commit pass and the full script suite skipped on the owner's direction (2026-11-13: one local run before a pull request, already made at 3880add0); CI on the push is the check. The commit used `SKIP=validate-script-tests`; every other hook ran and passed (shellcheck included).
+- `test_run_script_tests.sh` three times in a row on the final tree (loaded machine): 163 passed, 0 failed in 50 s; 163/0 in 45 s; 163/0 in 46 s. The end-of-run-stop case ended the run 48–49 ms after SIGTERM and 2 ms after SIGINT. No run directory of these runs left; the one new /tmp/run-script-tests.* seen afterwards belongs to another session's live `run_script_tests.sh --files` run (test_cross_model_review.sh content), not to these.
