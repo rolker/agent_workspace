@@ -299,3 +299,26 @@ Fix plan for 1 and 2, in `.claude/skills/onboard-project/SKILL.md`, `STATUS=dry-
 **Decision**: address
 
 Read: the Integrated Review at 0c82bb99 and its report. The fix pass works F1 and F2 only and leaves F3's box open.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 12:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6d929cc0b708bc13, resume 2 of 3)
+
+**PR**: #469 at `08ea7ad6`
+**Addressed**: Integrated Review at `53c1635` (2026-11-13 12:07 -05:00)
+**Commits**: 08ea7ad6
+
+### Actions
+- [x] F1: the --set values are the command alone (the text after build= / test= and before the dry run's parenthesised note, which is never part of the value). Once the list is complete (detected, from a kept file, or the user's own), the skill runs register_session_root.sh --dry-run again with exactly those arguments, shows that output and asks the yes on it; a refusal there is shown and a new command asked (or the run stops), and no yes is asked on a refused list. The real call takes the same arguments and no others — `.claude/skills/onboard-project/SKILL.md:139` (08ea7ad6)
+- [x] F2: on "settings file kept as it is: <path>", the skill reads that file and shows its full contents with the question, saying every key in it takes effect, and passes its build= and test= as --set; a missing one is asked for. The claim is reworded: the question shows everything written (registry line, build and test, a kept file in full); the permission prompt shows build and test only, since the script takes no other key, so a kept file's other keys are shown only in the question — `.claude/skills/onboard-project/SKILL.md:150` (08ea7ad6)
+- [ ] F3 left open, on the host's direction: the owner decides it at the merge checkpoint (box not ticked, not deferred) — `.agent/scripts/register_session_root.sh:171`
+
+Other sentences changed: register_session_root.sh's header (Usage), which said a key with no --set is detected at the run and that with --set "the permission prompt then shows what is written"; it now says a key comes from detection or a kept settings file, the --set arguments are the ones the second dry run checked, and the prompt shows the build and test commands while a kept file's other keys appear only in the skill's question. test_skill_paths.sh's pinned phrases follow the new text (the two new call lines, the note rule, the refused-list rule, the yes on the second dry run, the kept file shown in full). Checked and unchanged, still true: ADR-0021 (no sentence changed), docs/design.md's onboarding bullet and its change-log row, script_reference.md's row.
+
+### Checks
+- test_skill_paths.sh: 139 passed, 0 failed
+- test_register_session_root.sh: 60 passed, 0 failed
+- check_design_anchors.sh: exit 0
+- No full pre-commit pass and no full suite, on the host's direction: the pull request exists and CI on the push is the check. The commit used SKIP=validate-script-tests; no --no-verify.
