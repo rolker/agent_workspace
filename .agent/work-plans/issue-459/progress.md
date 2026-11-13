@@ -561,3 +561,22 @@ The branch took main: merge commit `6ecbcbd0` merges main at `2809fcef` (pull re
 - **Suites** (run directly): test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0 (passed/failed). `suites_for_files.sh` maps the three shared files to ALL, the full suite, which was not run.
 - **Hooks**: the full pre-commit pass was skipped on the owner's direction (2026-11-13); every commit used `SKIP=validate-script-tests`.
 - **Noticed, not touched**: main's #446 change-log row states 928 lines, but main's own `docs/design.md` was 967 lines after pull request 458 (the row's count predates #446's later merge of main and was not refreshed). Left as main has it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 11:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-459 at `68cfc4e3`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Scope: round 2's three must-fix and three suggestions, fix commits 4971bb6c 6f1cd32d d9390180 6efbf2c6 7d31e57a, the host's a437af53, and the merge of main at 6ecbcbd0. Cross-model: skipped (round-3 convergence check, per handoff).
+
+Checked: must-fix 2: the review's timeline gives Scan(4, 4) (legacy `**PR**: #11 — 1 review(s), 1 valid` part-2 Integrated Review, fix on #11 no start), a later Plan Authored moves both to 11; a part with no number of its own leaves the merged number unknown (no start); a `**PR**: #10` line inside a Checkpoint is not read (Checkpoints `continue` before the number read); `progress_read.py` unchanged. Must-fix 3: merge, restart, Plan Authored → Scan(6, 6); hand merge, restart, Plan Authored → Scan(5, 0) (documented, remedy a merge checkpoint); restart inside an open PR → Scan(4, 0); run-issue step 13 says a restart is no remedy. LGTM placeholder: 13 inputs through `progress_read.py` (10 or 0|10 kept, `·` separator and absent line kept, non-approved kept, prefixed box kept); dropping issue 335's annotated placeholder is right: its held item (suggestion 6) is an open box on the round-2 entry, which `sources` still lists. "The round start" defined in all four files. Hook: the old hook writes `__pycache__` in a sandbox copy, the new one does not; none in the worktree after the suites. Orchestrator `plan` cell matches run-issue step 13's two conditions. Merge: `git merge-tree` of 8c9e5531 and 2809fcef differs from 6ecbcbd0 only in design.md's change-log conflict, both rows present, 981 = `wc -l`; the three files both sides changed touch separate regions. Replays: 429 25/50, 332 67/81, 307/354/451/455 none, 446 none (one PR; merge answer at entry 22 with nothing after: armed, correct); `next` = `round` on all 41 pre-push reviews of the seven timelines. Main's test_dispatch_phase lines all present (4 differing lines are file-copy lists gaining pr_start.py and a header comment). Suites: test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0. Full pre-commit not run (host runs it, owner direction 2026-11-13).
+
+### Findings
+- [ ] No issues found. LGTM.
