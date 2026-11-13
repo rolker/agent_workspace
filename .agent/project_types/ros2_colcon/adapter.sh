@@ -76,12 +76,74 @@ _rc_root() {
 # The manifest directory every verb reads: configs/manifest on the
 # bootstrap route, the link configs/manifest-resolved to the generated
 # directory on the manifest route (issue #436; a configs/manifest left
-# from an earlier bootstrap is then ignored).
+# from an earlier bootstrap is then ignored). On the manifest route, once
+# _rc_pin_manifest_dir has run (_rc_require_manifest runs it), it is the
+# generated directory the link pointed at then, so a run reads one result
+# throughout even when another run swaps the link meanwhile.
 _rc_manifest_dir() {
     if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
-        echo "$(_rc_root)/configs/manifest-resolved"
+        if [ -n "${_RC_MDIR_PIN:-}" ]; then
+            echo "$_RC_MDIR_PIN"
+        else
+            echo "$(_rc_root)/configs/manifest-resolved"
+        fi
     else
         echo "$(_rc_root)/configs/manifest"
+    fi
+}
+
+# Pin this run to the generated directory configs/manifest-resolved points
+# at (manifest route; sets _RC_MDIR_PIN). With flock, a shared lock on that
+# directory, held on fd 8 until the run ends, keeps it from being removed
+# while this run reads it: a run that replaces the link removes the
+# previous directory only when it can take an exclusive lock on it at
+# once, and otherwise leaves it to the sweep. A directory removed between
+# reading the link and taking the lock is noticed (no layers.txt) and the
+# link read again. A link the adapter did not write (to another name) is
+# read through, unpinned. fd 8 is inherited by children (colcon, git): one
+# that outlives the run only delays the sweep of that directory.
+_rc_pin_manifest_dir() {
+    local configs link target i
+    [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
+    configs="$(_rc_root)/configs"
+    link="$configs/manifest-resolved"
+    for i in 1 2 3 4 5; do
+        _rc_unpin_manifest_dir
+        [ -L "$link" ] || return 0
+        target="$(readlink -- "$link" 2>/dev/null)" || return 0
+        [[ "$target" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] || return 0
+        if command -v flock >/dev/null 2>&1; then
+            { exec 8<"$configs/$target"; } 2>/dev/null || continue
+            flock -s 8 9>&- || { exec 8<&-; return 0; }
+            _RC_MDIR_FD=1
+        fi
+        if [ -f "$configs/$target/layers.txt" ]; then
+            _RC_MDIR_PIN="$configs/$target"
+            return 0
+        fi
+    done
+    _rc_unpin_manifest_dir
+}
+
+_rc_unpin_manifest_dir() {
+    if [ "${_RC_MDIR_FD:-0}" -eq 1 ]; then
+        exec 8<&-
+        _RC_MDIR_FD=0
+    fi
+    _RC_MDIR_PIN=""
+}
+
+# Remove a generated directory no run is reading: with flock, only when an
+# exclusive lock on it is free at once (a reader's shared lock keeps it,
+# for a later sweep); without flock, at once (unprotected, see
+# "Concurrency" in the manifest-route header).
+_rc_remove_generated() {
+    local dir="$1"
+    [ -d "$dir" ] || return 0
+    if command -v flock >/dev/null 2>&1; then
+        flock -x -n "$dir" rm -rf -- "$dir" 9>&- 2>/dev/null || true
+    else
+        rm -rf -- "$dir"
     fi
 }
 
@@ -90,6 +152,7 @@ _rc_manifest_dir() {
 # the layer loops run zero times and report success.
 _rc_require_manifest() {
     local mdir
+    _rc_pin_manifest_dir
     mdir="$(_rc_manifest_dir)"
     if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && { [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; }; then
         echo "ERROR: no resolved manifest at $mdir (project '${ACTIVE_PROJECT_NAME:-?}' sets source, so the manifest is resolved from it)" >&2
@@ -526,7 +589,12 @@ _rc_bootstrap_manifest() {
 # project_file_set gives in _project_registry.sh). Without flock (macOS by
 # default) the fetch and resolve run unlocked, as project_file_set's
 # write does, and leftovers of killed runs are not swept (they could be a
-# concurrent run's).
+# concurrent run's). Every verb reads one generated directory throughout
+# (_rc_pin_manifest_dir), holding a shared flock on it, and a directory a
+# run still reads is never removed under it: the run that replaced it
+# leaves it, and a later sweep removes it once no run reads it. Without
+# flock nothing guards a reader: a sync can remove the directory another
+# run is reading.
 
 # "manifest" when the settings file sets source, else "bootstrap".
 _rc_route() {
@@ -903,7 +971,7 @@ _rc_manifest_resolve() {
     trap - EXIT HUP INT TERM
     if [ -n "$prev" ] && [ "$prev" != "$(basename "$tmp")" ] \
         && [[ "$prev" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] && [ -d "$configs/$prev" ]; then
-        rm -rf -- "${configs:?}/$prev"
+        _rc_remove_generated "${configs:?}/$prev"
     fi
     [ -n "$prev" ] && [ "$old_layers" != "$new_layers" ] && _RC_LAYERS_CHANGED=1
     echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
@@ -948,9 +1016,11 @@ _rc_mv_link_form() {
 }
 
 # Remove configs/manifest-resolved.gen-XXXXXX directories, caches and links
-# the live link does not point at: only a killed run leaves them, so this
-# runs only while the source lock is held (a concurrent run's are never
-# taken for leftovers).
+# the live link does not point at: a killed run leaves them, and so does a
+# swap whose previous directory a run was still reading (removed here once
+# no run reads it, _rc_remove_generated). This runs only while the source
+# lock is held, so a concurrent run's new directory is never taken for a
+# leftover.
 _rc_resolve_sweep() {
     local configs="$1" live="" e n
     [ -L "$configs/manifest-resolved" ] && live="$(readlink -- "$configs/manifest-resolved")"
@@ -959,7 +1029,11 @@ _rc_resolve_sweep() {
         n="$(basename "$e")"
         [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
         [ -n "$live" ] && [ "$n" = "$live" ] && continue
-        rm -rf -- "$e"
+        if [ -d "$e" ] && [ ! -L "$e" ] && [[ "$n" != *.cache ]]; then
+            _rc_remove_generated "$e"
+        else
+            rm -rf -- "$e"
+        fi
     done
     for e in "$configs"/.mv-probe.*; do
         [ -d "$e" ] && [[ "$(basename "$e")" =~ ^\.mv-probe\.[A-Za-z0-9]{6}$ ]] && rm -rf -- "$e"

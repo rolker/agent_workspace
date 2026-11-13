@@ -3341,6 +3341,54 @@ test_mr_swap_interrupt_and_sweep() {
     assert_contains "a directory at the link: suggests a safe name" "move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes)" "$out"
 }
 
+test_mr_reader_pinned_to_one_result() {
+    echo "TEST: manifest route: a run reads one generated directory throughout; a sync meanwhile never removes it under the run; a later sweep does"
+    local sb out rc gen cfg pa dir_a dir_b
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIPPED: flock not installed"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    # A vcs that holds the first import (layer core) until released.
+    mkdir -p "$sb/waitbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "if [ -e \"$sb/vhold\" ] && mkdir \"$sb/vheld.d\" 2>/dev/null; then" \
+        "    touch \"$sb/vready\"" \
+        "    while [ ! -e \"$sb/vgo\" ]; do sleep 0.1; done" \
+        'fi' \
+        "exec \"$sb/bin/vcs\" \"\$@\"" > "$sb/waitbin/vcs"
+    chmod +x "$sb/waitbin/vcs"
+    touch "$sb/vhold"
+    (cd "$sb" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >"$sb/a.out" 2>&1) & pa=$!
+    for i in $(seq 1 100); do [ -e "$sb/vready" ] && break; sleep 0.1; done
+    assert_eq "setup A: held in its first import" "yes" "$([ -e "$sb/vready" ] && echo yes || echo no)"
+    dir_a="$(readlink "$gen")"
+    # Meanwhile the manifest changes (pkg_c, layer extra, v1 -> v2) and a sync swaps the link.
+    sed -i 's/ref: v1/ref: v2/' "$sb/m/manifest.yaml"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sync B: exit 0" "0" "$rc"
+    dir_b="$(readlink "$gen")"
+    assert_eq "sync B: the link swapped" "yes" "$([ "$dir_a" != "$dir_b" ] && echo yes || echo no)"
+    assert_contains "sync B: the new result has v2" "version: v2" "$(cat "$gen/repos/extra.repos")"
+    assert_eq "sync B: A's directory kept while A reads it" "yes" "$([ -f "$cfg/$dir_a/layers.txt" ] && echo yes || echo no)"
+    touch "$sb/vgo"
+    rc=0; wait "$pa" || rc=$?
+    assert_eq "setup A: exit 0" "0" "$rc"
+    assert_contains "setup A: layer extra imported from its own result (v1)" "version: v1" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
+    assert_not_contains "setup A: not from the newer result (v2)" "version: v2" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
+    # Once A has ended, the next sync sweeps A's directory.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sync C: exit 0" "0" "$rc"
+    assert_eq "sync C: A's directory swept" "no" "$([ -e "$cfg/$dir_a" ] && echo yes || echo no)"
+    assert_eq "sync C: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_contains "sync C: the live result intact" "version: v2" "$(cat "$gen/repos/extra.repos")"
+}
+
 test_mr_lock_fd_not_inherited() {
     echo "TEST: manifest route: git and the resolver do not inherit the lock's descriptor, and the lock is held while they run"
     local sb url rc realgit lock
@@ -3573,6 +3621,7 @@ mr_test test_mr_swap_interrupt_and_sweep
 mr_test test_mr_preflight_before_any_fetch
 mr_test test_mr_source_lock
 mr_test test_mr_lock_fd_not_inherited
+mr_test test_mr_reader_pinned_to_one_result
 mr_test test_mr_one_source_only
 
 echo ""
