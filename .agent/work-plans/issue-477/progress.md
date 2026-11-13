@@ -75,3 +75,61 @@ Read: the Issue Review at ab84c2ad and its report. The owner's words that starte
 **Plan**: `.agent/work-plans/issue-477/plan.md` at `160b7adf`
 
 Part 1 is two text edits (roadmap: "Three paths", one clause in Path 2, the approved Path 3 paragraph; README: one bullet after the first Quality bullet), verified safe against test_skill_paths.sh and the sit-rep; part 2 outlines the review's seven later PRs with who decides. Open: design.md line 105 says "the two paths".
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 14:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #477 — Path 3, less waiting for the same care: the roadmap path, the README goal line, and what sits under it
+**Plan**: `.agent/work-plans/issue-477/plan.md` at `160b7adf`
+**Branch**: `feature/issue-477`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Part 1 is two files, text only, with a stop condition. Part 2 is an outline matching the Issue Review's ranked list. |
+| Issue alignment | Good | Both approved texts are carried character for character (checked against the issue body's "The texts he approved"). Serves: README "Quality of the work" (economical, never at the cost of quality) and the new line; `docs/design.md#review-loop-and-timeline` (anchor exists, line 622). |
+| File targeting | Good | `docs/roadmap.md` and `README.md` only. Read the whole `## Direction` section: the intro, the Format paragraph, both tables and the deferral wording count no paths; "When he asks for a sit-rep, he decides which to focus on" reads correctly with three. |
+| Consequences | Good | `docs/design.md` line 105 ("names the two paths") is left out on purpose (host decision, below). The sit-rep gaps are disclosed, and two more are named in notes 1 and 2. |
+| Principle alignment | Good | Docs-only change; the plan names the two suites to run and their baseline counts. Path 2's clause is the smallest wording that resolves the overlap. Path 2's quoted words are untouched. |
+| ADR compliance | Good | ADR-0013 entries in place. Neither file is an instruction file. |
+| ROS conventions | N/A | Workspace plan |
+
+### Scratch run of the sit-rep's step 3 paths block
+
+On a scratch copy of the roadmap with the three edits applied, the block printed:
+
+```
+path	Path 1	project11 on a second machine	In the owner's words (2026-11-10): "I also want to move project11 to this workspace".
+path	Path 2	the workspace reflects the goals	Implementing the missing pieces to make this workspace reflect the goals we set.
+path	Path 3	less waiting for the same care	<the whole paragraph>
+```
+
+Path 3 is listed. Its "first sentence" is the whole paragraph, because the first-sentence pattern needs a period followed by a space and both quotes end `."`. The output is long but not wrong.
+
+### Findings
+
+No must-fix. Notes for the implementer, applied without a re-plan:
+
+1. **[Consequences]** The sit-rep's closing-question rule (`.claude/skills/sitrep/SKILL.md`, report rules: "By default it is the focus: Path 1, Path 2 or both") is hard-wired to two paths. With a third paragraph, the question may still offer "Path 1, Path 2 or both". The paths block lists all three, so the owner can still answer "Path 3". Also, `no path` is glossed "serves neither path". Add both to the PR description's sit-rep sentence, and to part 2 item 6's scope (`test_sitrep_checks.sh` line 1260 greps that rule's text, so the fix goes with its test).
+2. **[Consequences]** Once Path 2 says "other than Path 3 work", the sit-rep's "Path 2" mark on Path 3 work goes against the roadmap's definition. That makes it wrong, not merely incomplete. The PR description should say "wrong until item 6", not just that the mark "reads Path 2". Every Path 3 pull request merged before item 6 will show as Path 2. The host may want to move item 6 earlier in part 2. That is a host ordering call, not a blocker.
+3. **[Principle alignment]** `.agent/knowledge/host_standing_rules.md` line 41 says Paths text is "listed for his veto with the quote". The ", other than Path 3 work" clause is a host edit that the owner did not approve by name, so the PR description lists it for his veto.
+4. **[File targeting]** `test_skill_paths.sh` lines 7 and 815 have comments that say "two Paths paragraphs". The test still passes (it checks only Path 1 and Path 2 with no table row between them). Leave the comments for item 6. The stop condition holds.
+5. **[Scope]** The approved Path 3 text goes in verbatim. Wrap it at the file's width only, as the plan says. Do not change the `."` endings to fix the sit-rep's first-sentence output.
+
+### Host decision recorded: `docs/design.md` line 105
+
+Accepted, with the host's reason. The design document's change-log rows collided with main three times on 2026-11-13, and another machine's session is editing that file for issue 436. The fix belongs in the later pull request that changes the design document anyway (part 2 item 2 or 6). I see no concrete harm in the gap. Nothing reads that sentence mechanically: `sitrep_checks.sh` reads only the roadmap's tables, and the sit-rep reads the roadmap's paragraphs. The cost is a design reader seeing "two" for a while.
+
+### Summary
+
+The plan is ready. Both approved texts are exact, the three roadmap edits sit in the right places, and the only checked tests that read the Paths text (`test_skill_paths.sh` line 815 and the generic Paths-listing test) still pass. The sit-rep gaps are disclosure items for the PR description and item 6. None is a blocker.
+
+### Recommended Actions
+
+- [ ] In the PR description, say the sit-rep's Path 2 mark on Path 3 work is wrong until part 2 item 6, and that its closing question is worded for two paths.
+- [ ] List the ", other than Path 3 work" clause for the owner's veto.
+- [ ] Run `test_skill_paths.sh` and `test_sitrep_checks.sh` separately and expect the baseline counts (146 and 210 passed).
