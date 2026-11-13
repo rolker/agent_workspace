@@ -606,3 +606,21 @@ Ran: `test_merge_pr_gate.sh` 201 passed, 0 failed, 152 s (pkg-13 long-path and h
 ### Findings
 - [ ] (suggestion) No case pins exactly-once escaping in the owning checkout's sentences: every fixture path is printable ASCII, on which `_bk_display` is the identity, so re-wrapping the sentence at :906/:908 would not be caught; a raw-byte owning path, as g17 does for the workspace root, would — `.agent/scripts/tests/test_merge_pr_gate.sh:890`
 - [ ] (suggestion) Follow-up, outside this pull request (main's code from pull request 461): the other `why_comment` / `after_why` texts interpolate `_gate_wt`, `PR_BRANCH`, `cur_branch` and `wt_fetch_why` raw; they reach only the terminal (:1316/:1318), not the PR comment — `.agent/scripts/merge_pr.sh:1197-1297`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 13:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #468 at `4911f4a`
+**Sources**: 3 (Local Review @ `f068ca6` (covers 4911f4a via bookkeeping), GitHub: 0 reviews and 0 comments, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (on 4911f4a and on f068ca6: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass; Lint (pre-commit), the job that runs the script suites, still in progress at 13:20, so the combined tree's suites 17 to 48 have no result yet)
+
+Read for this entry: the fix commit 7938e59f, `merge_pr.sh` 748-908 and 1165-1320, `_bk_display` (`_bookkeeping.sh:40`), `wt_fetch_why` (`_worktree_helpers.sh:593`), case pkg-13 and cases g17-g17c. The fix is right as it stands: every value in `_GATE_OWN_PROBLEM` / `_GATE_OWN_NOREAD` goes through `_bk_display` once (760-805); the gate reasons (906, 908) and the terminal line (1308, 1310) use the sentences without a second wrap. Neither suggestion is must-fix; neither needs a new issue.
+
+### Findings
+- [ ] (suggestion, Local Review @ `f068ca6`) Valid. No case puts raw bytes in the owning checkout's path, so nothing proves those sentences are escaped exactly once. How it would go wrong: a later edit drops the per-value `_bk_display` (raw control bytes reach the terminal and the gate's record) or wraps the sentence again (`\377` shown as `\\377`; a long sentence is cut again, which pkg-13 does catch). Likelihood low: today's code is right, and only a future edit to these lines brings it back; the gap predates this pull request (pull request 461's code had no such case either). Recommendation: carry into part 2 of this issue, which rebuilds `test_merge_pr_gate.sh`'s fixtures anyway (plan line 81), so the case costs no extra round here — a raw-byte owning path, as `raw_root_sandbox` does for the workspace root — `.agent/scripts/tests/test_merge_pr_gate.sh:890`
+- [ ] (suggestion, Local Review @ `f068ca6`) Valid, outside this pull request (main's code from pull request 461). The record step's other reasons (`merge_pr.sh` 1197, 1200, 1255, 1258, 1261, 1286, 1290, 1297, and the lines at 1229/1251) put `_gate_wt`, `PR_BRANCH`, `cur_branch` and the fetch's first stderr line in raw. How it would go wrong: odd bytes printed raw to the operator's own terminal only, never to the pull request comment (the comment body is the entry alone, 1313). Likelihood low: git refuses control characters in branch names, so it takes a checkout path with control bytes in it, or a fetch error line carrying them. Recommendation: no fix here and not part 2 (which does not touch `merge_pr.sh`); no new issue: it belongs with issue 462 (the record step publishing unpushed commits and uncommitted edits), which edits the same function and is owned by the other machine's session, already told — `.agent/scripts/merge_pr.sh:1197-1297`
+
+### False positives
