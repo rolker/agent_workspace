@@ -68,12 +68,19 @@ recorded after a merge answer clears the arm, so a part started after it
 moves the round start (the restart) but not the pull-request start.
 """
 
+import re
 from collections import namedtuple
 
 ARM_AFTERS = ("merge", "findings")
 DISARM_AFTERS = ("merge", "findings", "merge-refused")
 
 Scan = namedtuple("Scan", "round_start pr_start armed")
+
+# The box review-code writes on an approved review (its SKILL.md report
+# template), with any annotation after it ("No issues found. LGTM. Suite
+# 48/48."). Exactly that text, not a prefix of it: "No issues found in x
+# but y breaks" is a finding.
+_LGTM = re.compile(r"No issues found\. LGTM\.(\s|$)")
 
 
 def _norm(value):
@@ -164,6 +171,4 @@ def is_lgtm_placeholder(entry, finding):
     """The ``- [ ] No issues found. LGTM.`` box review-code leaves unchecked
     on an approved review: not an open finding."""
     verdict = _norm((entry.get("fields") or {}).get("Verdict"))
-    return verdict == "approved" and (finding.get("text") or "").strip().startswith(
-        "No issues found"
-    )
+    return verdict == "approved" and bool(_LGTM.match((finding.get("text") or "").strip()))

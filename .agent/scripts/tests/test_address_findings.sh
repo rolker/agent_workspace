@@ -218,6 +218,16 @@ for t in "Local Review|**PR**: #70 at \`aaaaaaa\`" "Local Review (Pre-Push)|**Br
         && pass "findings: the same box on a changes-requested $ty stays open (only an approved review's placeholder is filtered)" \
         || fail "findings: changes-requested $ty box (out=$out)"
 done
+# The placeholder is the exact text, with any annotation after it (real
+# approved reviews annotate it); a box that only starts with "No issues
+# found" is a finding even on an approved review.
+cp "$TMPD/with_ir.md" "$TMPD/lgtm.md"
+printf '\n## Local Review (Pre-Push)\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n**Branch**: feature/issue-7 at `aaaaaaa`\n\n### Findings\n- [ ] No issues found. LGTM. Suite 48/48.\n- [ ] No issues found in x but y breaks — `y.sh:2`\n- [ ] No issues found.LGTM.\n' >> "$TMPD/lgtm.md"
+out=$("$RP" findings --progress "$TMPD/lgtm.md")
+[[ "$(printf '%s' "$out" | jq -c '[.open[].index]')" == "[1,2]" ]] \
+    && pass "findings: an annotated placeholder is not open; 'No issues found in x but y breaks' and a misspelt placeholder stay open on an approved review" \
+    || fail "findings: placeholder is the exact text (out=$out)"
+rm -f "$TMPD/lgtm.md"
 
 git -C "$REPO" add -A && git -C "$REPO" -c user.name=t -c user.email=t@t commit -q -m "fix: findings"
 ENTRY_FILE="$TMPD/impl_entry.md"
