@@ -602,8 +602,9 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   `merge` writes one only when the gate finds a gap and does not refuse it (a relaxing flag, or a project
   pull request); a gate that passes records nothing (`merge_pr.sh`, Step 1.5; `run-issue/SKILL.md` step
   11). When no worktree on the pull request's branch can commit and push that entry (none open, a
-  sibling repository's pull request in a package worktree, the main tree, no agent identity, the commit
-  or push refused), it is posted as a
+  sibling repository's pull request in a package worktree, the main tree, an owning checkout that is not
+  its repository's top folder or not on that branch, no agent identity, the commit or push refused or
+  timed out), it is posted as a
   comment on the pull request instead (`_gate_record` in `merge_pr.sh`). The directory sits in the
   repository that owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records).
   Entries have a fixed vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an
@@ -690,6 +691,13 @@ Status: `decided`
   request reads none, and its record goes on that pull request ([Worktrees](#worktrees), Records). `--force-unreviewed` bypasses both conditions
   with a banner and a `## Merge (unreviewed)` entry. A merge that does not end merged after one of
   those entries goes to the `merge-refused` checkpoint.
+- The gate's calls to origin (its fetch, the CI-target fetch, the record push) are time-limited
+  (`wt_bounded_git`: `WT_FETCH_TIMEOUT`, default 60 s, no terminal prompt), so an SSH passphrase or
+  host-key prompt with no agent fails at the limit instead of prompting. The gate then judges from the
+  commits already present locally: a head that is not there is a reason, never a pass.
+- The record is committed and pushed only from a checkout that is its repository's top folder and has
+  the pull request's branch checked out; otherwise it goes on the pull request with the reason. When a
+  hook refuses the commit or the push fails or times out, `progress.md` is first put back as it was.
 - The gate is local only. A Merge click on GitHub bypasses it, and the server-side complement, a required
   status check, is not built; building it changes CI and branch protection, which is Ask First
   (`merge_pr.sh`, Step 1.5 comment; [Rules](#rules)).
@@ -903,6 +911,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
 | 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's pre-push reviews: creation of a new owning branch always resolves a base (`--base`, else the pin; with `--parent-issue` the parent's branch), a branch this workspace did not start gets `base=` only from a named `--base` that origin has and that shares history with it, the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
 | 2026-11-13 | Worktrees, Review loop and timeline, Merge gate, Registry and adapters | The merge gate reads and records a package issue in its owning checkout (issue 429, part 2, last pull request): the Records bullet no longer says `merge_pr.sh` does not read that timeline, and says the owning repository's pull request is gated and recorded there while a sibling repository's reads none and records on its own pull request; the Base branch bullet adds that the pre-push review diffs against `origin/<base>` and `run-issue` step 8 checks and merges that base (`check_branch_updates.sh --base`); the Review loop's comment-fallback list and a Merge gate bullet say the same; Table 1's `merge_pr.sh` and `dispatch_phase.sh` line numbers, the Records bullet's and the Target's mechanism 1 citations are refreshed. Worktrees grows by six lines and stays past the 60-line prompt: the bullets name the variables and lines that hold the rule, so no detail moves | #429 | 959 |
+| 2026-11-13 | Merge gate, Review loop and timeline | Review fix (issue 429): two Merge gate bullets and the Review loop's comment-fallback list say the gate's calls to origin are time-limited, so an SSH prompt with no agent fails at the limit, and when the record is committed in a checkout and when it goes on the pull request with `progress.md` put back | #429 | 968 |
 
 ## Glossary
 
