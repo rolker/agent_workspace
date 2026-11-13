@@ -1975,3 +1975,20 @@ Suites run: test_ros2_colcon 558/0, test_worktree_create 79/0, test_package_issu
 **Decision**: publish
 
 Round 3 approved after running every row of the two input tables against the real scripts. One suggestion stays open for triage: the rule "an existing owning branch needs --base" is written without its --parent-issue exception in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #460 at `4c248c51`
+**Sources**: 4 (Local Review (Pre-Push) @ `69b6072a` round 1, @ `2d814db9` round 2, @ `0144179c` round 3 (covers 4c248c51 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: the three pre-push reviews after the Checkpoint of 2026-11-12 21:45 (After: plan, Decision: proceed). Rounds 1 (7 findings) and 2 (8 findings) are all ticked, each with its fix or its host decision recorded. The helper also lists stale open boxes in entries at `a6c2d2f`, `3ab6be9` and `8d563c2`: those belong to the merged pull requests 445 and 456 and are out of scope here, not re-triaged. CI at triage time: Validate Documentation passed in both runs, one ros-manifest run passed; Lint (pre-commit), Validate Adapter Contract and the other ros-manifest run had no conclusion yet.
+
+### Findings
+- [ ] (should-fix, documentation defect, Local Review (Pre-Push) @ `0144179c` covers head via bookkeeping) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" is written without its `--parent-issue` exception. Verified in code: `worktree_create.sh:955-969` accepts an existing owning branch under `--parent-issue`, records no `base=`, prints a Note, and exits 0; `--base` is refused with `--parent-issue`, so the rule as written cannot be followed there. Under the Quality Standard, documentation that states a rule the code does not follow is a defect, not a nit. Fix in this pull request: add the exception (existing branch accepted, no base recorded, `dispatch_phase.sh base --base` records one later) to all three places — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+### False positives
