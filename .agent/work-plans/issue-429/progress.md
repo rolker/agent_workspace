@@ -2052,3 +2052,20 @@ Fix-round re-review of the round-3 suggestion (the `--parent-issue` exception to
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a30219fdb6d71d1ef, resume 1 of 3)
+
+**PR**: #460 at `89ea6ef7`
+**Sources**: 2 (Local Review @ `7b85fe7d` (covers 89ea6ef7 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Repeat triage after the documentation fix 9bc5f3ee and its re-review. The previous Integrated Review's one finding (the `--parent-issue` exception to "an existing owning branch needs `--base`") is fixed: `docs/design.md:505-507`, `.claude/skills/start-task/SKILL.md:175` and the `--base` usage text at `.agent/scripts/worktree_create.sh:205-211` now state that the existing branch is accepted, no `base=` is recorded, and `dispatch_phase.sh base --base` records one later. That matches the Note path at `worktree_create.sh:973`. The same text was also corrected in WORKTREE_GUIDE.md, script_reference.md and plan.md. The Local Review at `7b85fe7d` approved with no findings; its only box is the "No issues found" placeholder, not an action item. The helper now lists the round-3 pre-push entry at `0144179c` as stale with one open box: that is the same finding, ruled on in the previous Integrated Review and fixed in 9bc5f3ee. The stale open boxes at `a6c2d2f`, `3ab6be9` and `8d563c2` belong to the merged pull requests 445 and 456 and remain out of scope. CI at triage time: Validate Documentation passed in both runs; Lint (pre-commit), Validate Adapter Contract and both ros-manifest runs had no conclusion yet, and none had failed.
+
+### Findings
+
+### False positives
