@@ -2763,6 +2763,11 @@ test_mr_clone_follows_remote() {
     assert_eq "deleted tag: pruned from the clone" "" "$(git -C "$clone" tag -l t)"
     assert_eq "deleted tag: the clone's checkout unchanged" "$head_before" "$(git -C "$clone" rev-parse HEAD)"
     assert_contains "deleted tag: the previous result kept" "mark_y" "$(cat "$gen/repos/core.repos")"
+    # The pruned tag is not taken for a tag deleted in the clone.
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "after the deleted tag: sync exit 0" "0" "$rc"
+    assert_not_contains "after the deleted tag: not refused" "not as the adapter left it" "$out"
     # source_ref=HEAD is refused by the settings file's rules.
     mr_settings "$sb" "source=$url" "source_ref=HEAD"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
@@ -2792,7 +2797,7 @@ test_mr_clone_with_insteadof_rule() {
 test_mr_clone_refused_when_modified() {
     echo "TEST: manifest route: a clone in any state but as the adapter left it is refused, byte for byte untouched, the live result unchanged"
     local state sb clone gen before_link before_repos before_hash out rc expect
-    for state in uncommitted untracked ignored assume_unchanged skip_worktree head_moved local_branch origin no_index no_record not_git; do
+    for state in uncommitted untracked ignored assume_unchanged skip_worktree local_tag head_moved local_branch origin no_index no_record not_git; do
         sb="$(make_mr_url_project)"
         clone="$sb/projects/p11/configs/source-clone"
         gen="$(mr_gen "$sb")"
@@ -2818,6 +2823,9 @@ test_mr_clone_refused_when_modified() {
                 git -C "$clone" update-index --skip-worktree manifest.yaml
                 write_mr_manifest "$clone/manifest.yaml" mark_hidden
                 expect="it has files marked assume-unchanged or skip-worktree, which hide edits (manifest.yaml" ;;
+            local_tag)
+                git -C "$clone" tag mine
+                expect="its tags differ from those the adapter fetched: a tag made, moved or deleted in the clone (refs/tags/mine" ;;
             head_moved)
                 expect="$(git -C "$clone" rev-parse HEAD | cut -c1-12)"
                 git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach HEAD~1

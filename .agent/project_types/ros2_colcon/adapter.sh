@@ -588,7 +588,9 @@ _rc_bootstrap_manifest() {
 # (owner's rule, 2026-11-13): the adapter leaves it detached at the
 # fetched commit and records that commit in .git/ros2-colcon-adapter-commit.
 # When it is untouched (a git clone of source, an index, HEAD detached at
-# the recorded commit, no uncommitted change, untracked or ignored file),
+# the recorded commit, the tags the adapter recorded after its last fetch
+# and no others, no assume-unchanged or skip-worktree file, no uncommitted
+# change, untracked or ignored file),
 # setup and sync fetch and move it to the ref's commit, a rewritten branch
 # or moved tag included. In any other state they refuse and change
 # nothing, and say how to recover (remove the clone) and how to work on a
@@ -704,6 +706,17 @@ _rc_resolver_bin() {
 # The file under the clone's .git/ where the adapter records the commit it
 # left the clone at (detached), written after each successful checkout.
 _RC_CLONE_MARK=ros2-colcon-adapter-commit
+# The file under .git/ where the adapter records the clone's tags (name and
+# object, sorted) right after each successful fetch. Before the next fetch
+# the clone's tags must equal it: a tag made, moved or deleted in the clone
+# is a modified clone (the fetch's --prune-tags would delete a tag made
+# there, and the work it holds). Tags the fetch brings, moves or prunes
+# are recorded again, so a deleted or moved remote tag is still followed.
+_RC_CLONE_TAGS=ros2-colcon-adapter-tags
+
+_rc_clone_tag_list() {  # <clone>
+    _rc_nofd git -C "$1" for-each-ref --format='%(refname) %(objectname)' refs/tags 2>/dev/null | LC_ALL=C sort
+}
 
 # Why the existing clone at <clone> is not as the adapter left it, printed
 # as one phrase; nothing when it is untouched: a git clone rooted there,
@@ -733,6 +746,11 @@ _rc_clone_modified() {
     mark="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
     if [ -z "$mark" ]; then
         echo "it has no record of the commit the adapter left it at ($gitdir/$_RC_CLONE_MARK)"
+        return 0
+    fi
+    st="$(_rc_clone_tag_list "$clone" | LC_ALL=C comm -3 - <(LC_ALL=C sort "$gitdir/$_RC_CLONE_TAGS" 2>/dev/null) | awk '{ print $1 }' | head -n 3)"
+    if [ -n "$st" ]; then
+        echo "its tags differ from those the adapter fetched: a tag made, moved or deleted in the clone ($(printf '%s' "$st" | tr '\n' ' '))"
         return 0
     fi
     if branch="$(_rc_nofd git -C "$clone" symbolic-ref -q --short HEAD 2>/dev/null)"; then
@@ -814,6 +832,12 @@ _rc_source_fetch() {
         echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the clone's checkout and the previously resolved manifest, if any, are as they were" >&2
         return 1
     fi
+    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir)"
+    if ! _rc_clone_tag_list "$clone" > "$gitdir/$_RC_CLONE_TAGS"; then
+        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        echo "ERROR: cannot record the clone's tags in $gitdir/$_RC_CLONE_TAGS" >&2
+        return 1
+    fi
     if _rc_nofd git -C "$clone" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
         kind=branch
         sha="$(_rc_nofd git -C "$clone" rev-parse "refs/remotes/origin/$ref^{commit}")"
@@ -829,7 +853,6 @@ _rc_source_fetch() {
         echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters); the clone's checkout and the resolved manifest are as they were" >&2
         return 1
     fi
-    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir)"
     old="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
     if ! _rc_nofd git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
         [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
