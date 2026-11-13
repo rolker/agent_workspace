@@ -427,11 +427,11 @@ fi
 # from anywhere else: the records gate judges the gate's timeline by its own
 # worktree, not by the directory the merge was started in (issue 429 round 2).
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
-pkgwt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-901"
+pkgwt="$sb/worktrees/project/demo/issue-demo-owner-pkg_a-901"
 mkdir -p "$pkgwt/l1_ws/src"
 git init --quiet -b feature/issue-901 "$pkgwt/l1_ws/src/pkg_a"
 git -C "$pkgwt/l1_ws/src/pkg_a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-printf '# project=p11 issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n' "$pkgwt" > "$pkgwt/.worktree-repos"
+printf '# project=demo issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n' "$pkgwt" > "$pkgwt/.worktree-repos"
 rc=0; out="$(cd "$pkgwt/l1_ws/src/pkg_a" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
     GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
     "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --no-wait --no-roadmap-update 2>&1)" || rc=$?
@@ -497,33 +497,215 @@ else
     fail "PR comment fallback (out=${out:0:300})"
 fi
 
-# ================================================= package worktree (nested container) =====
-echo "TEST: a package-worktree PR (container nested inside the workspace checkout) never commits a record into the main tree"
+# ================================================= package worktree (issue 429 part 2) =====
+# A package worktree: a container (no repository) nested inside the workspace
+# checkout, holding the owning checkout A (pkg_a on feature/issue-901, the
+# issue's timeline) and a sibling B (pkg_b on feature/pkg_b-issue-901). Each
+# repository's "origin" is a local bare repository under a github-shaped path,
+# so extract_gh_slug gives owner/pkg_a and owner/pkg_b.
+# Usage: make_pkg_container <sb> <project> <progress-body|""> [base]
+# Prints the container path. A second call for another project in the same
+# sandbox makes its own clones (git refuses one branch in two worktrees of a
+# repository), with the same remotes.
+make_pkg_container() {
+    local sb="$1" proj="$2" body="$3" base="${4:-}" r cont hdr
+    mkdir -p "$sb/fake_remotes/github.com/owner" "$sb/origins_$proj"
+    for r in pkg_a pkg_b; do
+        if [[ ! -d "$sb/fake_remotes/github.com/owner/$r.git" ]]; then
+            git init --bare --quiet "$sb/fake_remotes/github.com/owner/$r.git"
+            git -C "$sb/fake_remotes/github.com/owner/$r.git" symbolic-ref HEAD refs/heads/main
+        fi
+        git init --quiet -b main "$sb/origins_$proj/$r"
+        git -C "$sb/origins_$proj/$r" remote add origin "$sb/fake_remotes/github.com/owner/$r.git"
+        if git -C "$sb/origins_$proj/$r" fetch --quiet origin main 2>/dev/null; then
+            git -C "$sb/origins_$proj/$r" reset --quiet --hard origin/main
+        else
+            git -C "$sb/origins_$proj/$r" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+            git -C "$sb/origins_$proj/$r" push --quiet -u origin main
+        fi
+    done
+    cont="$sb/worktrees/project/$proj/issue-$proj-owner-pkg_a-901"
+    mkdir -p "$cont/l1_ws/src"
+    git -C "$sb/origins_$proj/pkg_a" worktree add --quiet -B feature/issue-901 "$cont/l1_ws/src/pkg_a" main >/dev/null 2>&1
+    git -C "$sb/origins_$proj/pkg_b" worktree add --quiet -B feature/pkg_b-issue-901 "$cont/l1_ws/src/pkg_b" main >/dev/null 2>&1
+    hdr="# project=$proj issue=owner/pkg_a#901 layer=l1"
+    [[ -n "$base" ]] && hdr="$hdr base=$base"
+    printf '%s\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n%s\tl1_ws/src/pkg_b\tfeature/pkg_b-issue-901\n' \
+        "$hdr" "$sb/origins_$proj/pkg_a" "$sb/origins_$proj/pkg_b" > "$cont/.worktree-repos"
+    if [[ -n "$body" ]]; then
+        mkdir -p "$cont/l1_ws/src/pkg_a/.agent/work-plans/issue-901"
+        printf -- '---\nissue: 901\n---\n\n# Issue #901\n\n%s\n' "$body" > "$cont/l1_ws/src/pkg_a/.agent/work-plans/issue-901/progress.md"
+        git -C "$cont/l1_ws/src/pkg_a" add -A
+        git -C "$cont/l1_ws/src/pkg_a" -c user.name=t -c user.email=t@t commit --quiet -m "progress"
+    fi
+    git -C "$cont/l1_ws/src/pkg_a" push --quiet -f origin feature/issue-901 2>/dev/null
+    git -C "$cont/l1_ws/src/pkg_b" push --quiet -f origin feature/pkg_b-issue-901 2>/dev/null
+    echo "$cont"
+}
+# Usage: pkg_pr_fixture <sb> <repo> <branch> <with_summary|""> [baseRefName]
+pkg_pr_fixture() {
+    local comments='[]' base=""
+    [[ "$4" == with_summary ]] && comments='[{"body":"## Decision summary\n\n**What changed**: x\n\n**Recommendation**: merge"}]'
+    [[ -n "${5:-}" ]] && base=",\"baseRefName\":\"$5\""
+    printf '{"state":"OPEN","headRefName":"%s","title":"Pkg PR","headRefOid":"%s","comments":%s,"body":""%s}\n' \
+        "$3" "$HEAD_SHA" "$comments" "$base" > "$1/gh_fixtures/pr_view_owner_${2}_901.json"
+}
+run_pkg_merge() {  # <sb> <owner/repo#N> [args...]
+    local sb="$1" ref="$2"; shift 2
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
+        GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
+        "$sb/.agent/scripts/merge_pr.sh" --pr "$ref" --no-wait --no-roadmap-update "$@" 2>&1)
+}
+pkg_progress() { cat "$1/l1_ws/src/pkg_a/.agent/work-plans/issue-901/progress.md" 2>/dev/null; }
+
+echo "TEST: an owning package PR with no timeline: the record lands in the owning checkout, nowhere else"
 sb="$(make_sandbox "" "")"
-# a package repo with a github-shaped remote so extract_gh_slug -> owner/pkg_a
-mkdir -p "$sb/fake_remotes/github.com/owner" "$sb/origins"
-git init --bare --quiet "$sb/fake_remotes/github.com/owner/pkg_a.git"; git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" symbolic-ref HEAD refs/heads/main
-git -C "$sb/origins" init --quiet -b main pkg_a >/dev/null 2>&1 || { mkdir -p "$sb/origins/pkg_a"; git -C "$sb/origins/pkg_a" init --quiet -b main; }
-git -C "$sb/origins/pkg_a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-git -C "$sb/origins/pkg_a" remote add origin "$sb/fake_remotes/github.com/owner/pkg_a.git"
-git -C "$sb/origins/pkg_a" push --quiet -u origin main
-# the container: under the sandbox's own worktrees/project/, NOT a repo itself
-cont="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-901"
-mkdir -p "$cont/l1_ws/src"
-git -C "$sb/origins/pkg_a" worktree add --quiet -b feature/issue-901 "$cont/l1_ws/src/pkg_a" >/dev/null 2>&1
-printf '# project=p11 issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n' "$sb/origins/pkg_a" > "$cont/.worktree-repos"
-printf '{"state":"OPEN","headRefName":"feature/issue-901","title":"Pkg PR","headRefOid":"%s","comments":[],"body":""}\n' "$HEAD_SHA" > "$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+cont="$(make_pkg_container "$sb" demo "")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
 root_before=$(git -C "$sb" rev-parse HEAD); status_before=$(git -C "$sb" status --porcelain)
-out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
-    GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
-    "$sb/.agent/scripts/merge_pr.sh" --pr owner/pkg_a#901 --no-wait --no-roadmap-update 2>&1)" || true
+b_before=$(git -C "$cont/l1_ws/src/pkg_b" rev-parse HEAD)
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
 if [[ "$(git -C "$sb" rev-parse HEAD)" == "$root_before" ]] && [[ "$(git -C "$sb" status --porcelain | grep -v 'gh_calls.log\|comments_posted')" == "$(grep -v 'gh_calls.log\|comments_posted' <<< "$status_before")" ]] \
     && [[ ! -e "$sb/.agent/work-plans" ]] && [[ ! -e "$cont/.agent" ]] \
-    && [[ "$out" == *"package worktrees carry no issue timeline"*"posted as a comment"* ]] \
-    && grep -q '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md"; then
-    pass "package PR: main tree untouched, container untouched, record posted as a PR comment"
+    && [[ "$(git -C "$cont/l1_ws/src/pkg_b" rev-parse HEAD)" == "$b_before" ]] && [[ ! -e "$cont/l1_ws/src/pkg_b/.agent" ]] \
+    && [[ "$out" == *"report-only: gate enforcement applies to workspace PRs only"* ]] \
+    && [[ "$out" == *"no progress.md for issue #901 in an open worktree (looked for $A)"* ]] \
+    && [[ "$out" == *"Merge (report-only) entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed"* ]] \
+    && pkg_progress "$cont" | grep -q '^## Merge (report-only)$' \
+    && [[ "$(git -C "$A" rev-parse HEAD)" == "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" ]] \
+    && git -C "$A" log -1 --format=%s | grep -qi '^progress: merge (report-only) for #901' \
+    && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]] && merged_called "$sb"; then
+    pass "(pkg-1) owning PR, no progress.md: report-only, record committed and pushed in A; main tree, container and B untouched; no PR comment"
 else
-    fail "package PR nested container (out=${out:0:400})"
+    fail "(pkg-1) owning PR, no progress.md (out=${out:0:600})"
+fi
+
+echo "TEST: an owning package PR reads its review in the owning checkout"
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "$APPROVED_AT_HEAD")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+a_before=$(git -C "$A" rev-parse HEAD)
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$out" == *"Review gate: approved review at head \`abc1234\`"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && ! pkg_progress "$cont" | grep -q '^## Merge' \
+    && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
+    pass "(pkg-2) owning PR with an approved review at the head in A: the gate passes, nothing recorded"
+else
+    fail "(pkg-2) owning PR approved in A (out=${out:0:600})"
+fi
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "$STALE")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$out" == *"latest Local Review entry is at \`0000000\`, not the PR head \`abc1234\` (review coverage could not be confirmed: \`0000000\` does not resolve to one commit in $A)"* ]] \
+    && pkg_progress "$cont" | grep -q '^## Merge (report-only)$' && merged_called "$sb"; then
+    pass "(pkg-3) owning PR with a stale review: the ancestry check runs in A, the record lands in A"
+else
+    fail "(pkg-3) owning PR stale in A (out=${out:0:600})"
+fi
+# A second run in the same situation records nothing new (idempotency reads A).
+a_before=$(git -C "$A" rev-parse HEAD)
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$out" == *"already recorded at"*"same conditions"* ]] && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] \
+    && [[ "$(pkg_progress "$cont" | grep -c '^## Merge (report-only)$')" -eq 1 ]]; then
+    pass "(pkg-4) a repeat run with the same conditions finds the record in A and adds none"
+else
+    fail "(pkg-4) repeat run (out=${out:0:600})"
+fi
+
+echo "TEST: a sibling repository's PR never reads or records in the owning checkout's timeline"
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "$APPROVED_AT_HEAD")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_b feature/pkg_b-issue-901 with_summary
+a_before=$(git -C "$A" rev-parse HEAD); a_remote_before=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
+b_before=$(git -C "$cont/l1_ws/src/pkg_b" rev-parse HEAD)
+out="$(run_pkg_merge "$sb" owner/pkg_b#901)" || true
+if [[ "$out" == *"a sibling repository's pull request: this issue's records are in $A, and a sibling's gate is not read there"* ]] \
+    && [[ "$out" != *"approved review at head"* ]] \
+    && [[ "$out" == *"a sibling repository's pull request records on its own PR, not in the owning checkout's timeline — Merge (report-only) record posted as a comment on owner/pkg_b#901"* ]] \
+    && grep -q '^pr comment 901 -R owner/pkg_b ' "$sb/gh_calls.log" \
+    && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && ! pkg_progress "$cont" | grep -q '^## Merge' \
+    && [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$a_remote_before" ]] \
+    && [[ "$(git -C "$cont/l1_ws/src/pkg_b" rev-parse HEAD)" == "$b_before" ]] && [[ ! -e "$cont/.agent" ]]; then
+    pass "(pkg-5) sibling PR: A's approved review not used, A and its origin untouched, record posted on the sibling's PR"
+else
+    fail "(pkg-5) sibling PR (out=${out:0:600})"
+fi
+# A sibling in a worktree whose manifest has no owning entry says so.
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "")"
+sed -i '/\tfeature\/issue-901$/d' "$cont/.worktree-repos"
+pkg_pr_fixture "$sb" pkg_b feature/pkg_b-issue-901 with_summary
+out="$(run_pkg_merge "$sb" owner/pkg_b#901)" || true
+if [[ "$out" == *"a sibling repository's pull request: package worktree $cont has no single checkout on feature/issue-901, so no timeline is read for it"* ]] \
+    && grep -q '^pr comment 901 -R owner/pkg_b ' "$sb/gh_calls.log"; then
+    pass "(pkg-6) sibling PR, no owning entry in the manifest: the reason says so, record on the sibling's PR"
+else
+    fail "(pkg-6) sibling PR, no owning entry (out=${out:0:600})"
+fi
+
+echo "TEST: --project picks the worktree, and the owning checkout read is that worktree's"
+sb="$(make_sandbox "" "")"
+# demo is made last, so its owning branch is the one on the shared origin
+# and its record push in (pkg-9) is a fast-forward.
+cont2="$(make_pkg_container "$sb" demo2 "$APPROVED_AT_HEAD")"
+cont1="$(make_pkg_container "$sb" demo "$STALE")"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+c1_before=$(git -C "$cont1/l1_ws/src/pkg_a" rev-parse HEAD); c2_before=$(git -C "$cont2/l1_ws/src/pkg_a" rev-parse HEAD)
+rc=0; out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || rc=$?
+if [[ "$rc" -eq 2 ]] && [[ "$out" == *"worktreed under more than one project"* ]] && ! merged_called "$sb"; then
+    pass "(pkg-7) the same owning branch in two projects without --project: refused, nothing merged"
+else
+    fail "(pkg-7) ambiguous (rc=$rc out=${out:0:400})"
+fi
+out="$(run_pkg_merge "$sb" owner/pkg_a#901 --project demo2)" || true
+if [[ "$out" == *"Review gate: approved review at head"* ]] \
+    && [[ "$(git -C "$cont1/l1_ws/src/pkg_a" rev-parse HEAD)" == "$c1_before" ]] && [[ "$(git -C "$cont2/l1_ws/src/pkg_a" rev-parse HEAD)" == "$c2_before" ]]; then
+    pass "(pkg-8) --project demo2: the gate reads demo2's owning checkout (approved), demo's stale one untouched"
+else
+    fail "(pkg-8) --project demo2 (out=${out:0:600})"
+fi
+: > "$sb/gh_calls.log"
+out="$(run_pkg_merge "$sb" owner/pkg_a#901 --project demo)" || true
+if [[ "$out" == *"does not resolve to one commit in $cont1/l1_ws/src/pkg_a"* ]] \
+    && pkg_progress "$cont1" | grep -q '^## Merge (report-only)$' \
+    && [[ "$(git -C "$cont2/l1_ws/src/pkg_a" rev-parse HEAD)" == "$c2_before" ]]; then
+    pass "(pkg-9) --project demo: the gate reads and records in demo's owning checkout only"
+else
+    fail "(pkg-9) --project demo (out=${out:0:600})"
+fi
+
+echo "TEST: an owning package PR with --enforce stays report-only"
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "$STALE")"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+rc=0; out="$(run_pkg_merge "$sb" owner/pkg_a#901 --enforce)" || rc=$?
+if [[ "$out" == *"report-only: gate enforcement applies to workspace PRs only"* ]] && merged_called "$sb" \
+    && pkg_progress "$cont" | grep -q '^## Merge (report-only)$'; then
+    pass "(pkg-10) --enforce on a package PR: report-only, the merge is reached, the record lands in A"
+else
+    fail "(pkg-10) enforce on package (rc=$rc out=${out:0:600})"
+fi
+
+echo "TEST: an owning package PR whose record push is refused falls back to a PR comment, A left as it was"
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+a_before=$(git -C "$A" rev-parse HEAD)
+printf '#!/bin/sh\necho "refused by hook" >&2\nexit 1\n' > "$sb/fake_remotes/github.com/owner/pkg_a.git/hooks/pre-receive"
+chmod +x "$sb/fake_remotes/github.com/owner/pkg_a.git/hooks/pre-receive"
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$out" == *"the timeline commit could not be pushed to origin (undone locally)"*"posted as a comment on owner/pkg_a#901"* ]] \
+    && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+    && grep -q '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md"; then
+    pass "(pkg-11) owning PR, push refused: the commit in A is undone, the record goes on the PR"
+else
+    fail "(pkg-11) push refused (out=${out:0:600} status=$(git -C "$A" status --porcelain))"
 fi
 
 # ================================================= main tree on the PR branch =====

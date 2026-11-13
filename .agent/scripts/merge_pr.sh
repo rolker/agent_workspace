@@ -476,6 +476,12 @@ PKG_WT_ISSUE=""
 # started from and its pull request should target. Empty for a worktree
 # that records none.
 PKG_WT_BASE=""
+# The owning checkout's path relative to the worktree (issue 429 part 2):
+# the matched entry's own relative path when the PR's branch is the owning
+# repository's feature/issue-<N>, else empty (a sibling repository's PR).
+# Carried inside the _PKG_MATCHES record, like the base, so a later manifest
+# or the --project filter cannot leave it describing another worktree.
+PKG_OWN_REL=""
 declare -a _PKG_MATCHES=()
 if [[ -n "$PR_REPO_SLUG" ]]; then
     declare -a _PKG_MANIFESTS=()
@@ -514,7 +520,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             # than one ros2_colcon instance (each has its own checkout), and
             # glob order must not silently pick one. The manifest header
             # stores the RESOLVED instance name (worktree_create resolves a
-            # parent such as p11 to p11-rolling before writing it), so the
+            # parent such as demo to demo-rolling before writing it), so the
             # selector is resolved the same way before comparing; the raw
             # --project value stays for user-facing messages.
             if [[ -n "$PROJECT_ARG" ]]; then
@@ -523,29 +529,35 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
                     continue
                 fi
             fi
+            # The owning entry is the one on feature/issue-<N> (the adapter's
+            # branch rule, the same one issue_checkout_of applies); a sibling
+            # repository's entry (feature/<repo>-issue-<N>) records none.
+            _own_rel=""
+            [[ "$_m_branch" == "feature/issue-${ISSUE_NUM}" ]] && _own_rel="$_m_rel"
             # One tab-separated record per match, read back below with a
             # tab IFS, which collapses empty fields: an empty value is
-            # written as "-" (no project, issue or branch is named "-") and
-            # mapped back on read, so a later field never shifts left.
-            _PKG_MATCHES+=("$_wtdir"$'\t'"${_hdr_project:--}"$'\t'"${_hdr_issue:--}"$'\t'"${_hdr_base:--}")
+            # written as "-" (no project, issue, branch or path is named
+            # "-") and mapped back on read, so a later field never shifts left.
+            _PKG_MATCHES+=("$_wtdir"$'\t'"${_hdr_project:--}"$'\t'"${_hdr_issue:--}"$'\t'"${_hdr_base:--}"$'\t'"${_own_rel:--}")
         fi
     done
     if [[ "${#_PKG_MATCHES[@]}" -gt 1 ]]; then
         echo "ERROR: $PR_REPO_SLUG branch '$PR_BRANCH' is worktreed under more than one project:" >&2
         for _pm in "${_PKG_MATCHES[@]}"; do
-            IFS=$'\t' read -r _pm_dir _pm_project _pm_issue _pm_base <<< "$_pm"
+            IFS=$'\t' read -r _pm_dir _pm_project _pm_issue _pm_base _pm_own <<< "$_pm"
             [[ "$_pm_project" == "-" ]] && _pm_project=""
             echo "  --project $_pm_project   ($_pm_dir)" >&2
         done
         echo "  Pass --project <name> to say which one this merge cleans up. Nothing was merged." >&2
         exit 2
     elif [[ "${#_PKG_MATCHES[@]}" -eq 1 ]]; then
-        IFS=$'\t' read -r PKG_WT_DIR PKG_WT_PROJECT PKG_WT_ISSUE PKG_WT_BASE <<< "${_PKG_MATCHES[0]}"
+        IFS=$'\t' read -r PKG_WT_DIR PKG_WT_PROJECT PKG_WT_ISSUE PKG_WT_BASE PKG_OWN_REL <<< "${_PKG_MATCHES[0]}"
         [[ "$PKG_WT_PROJECT" == "-" ]] && PKG_WT_PROJECT=""
         [[ "$PKG_WT_ISSUE" == "-" ]] && PKG_WT_ISSUE=""
         [[ "$PKG_WT_BASE" == "-" ]] && PKG_WT_BASE=""
+        [[ "$PKG_OWN_REL" == "-" ]] && PKG_OWN_REL=""
     fi
-    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header _hdr_project _hdr_issue _hdr_base _pm _pm_dir _pm_project _pm_issue _pm_base
+    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header _hdr_project _hdr_issue _hdr_base _own_rel _pm _pm_dir _pm_project _pm_issue _pm_base _pm_own
 fi
 IS_PACKAGE_PR=false
 [[ -n "$PKG_WT_DIR" ]] && IS_PACKAGE_PR=true
@@ -705,9 +717,25 @@ _gate_json="$_head_json"
 _gate_head="$HEAD_REVIEWED"
 _gate_head_short="${_gate_head:0:7}"
 # Which worktree holds the issue's timeline (same resolution Step 1 uses).
+# A package PR (issue 429 part 2): the owning repository's PR reads and
+# records in the owning checkout (A), the manifest entry it matched; a
+# sibling repository's PR keeps the container, which is no checkout, so it
+# reads no timeline and its record goes on its own PR. _GATE_PKG_ROLE is
+# "owning", "sibling" or empty (not a package PR).
 _gate_wt=""
+_GATE_PKG_ROLE=""
 if [[ -n "$PKG_WT_DIR" ]]; then
-    _gate_wt="$PKG_WT_DIR"
+    if [[ -n "$PKG_OWN_REL" ]]; then
+        _GATE_PKG_ROLE="owning"
+        if [[ "$PKG_OWN_REL" == "." ]]; then
+            _gate_wt="$PKG_WT_DIR"
+        else
+            _gate_wt="$PKG_WT_DIR/$PKG_OWN_REL"
+        fi
+    else
+        _GATE_PKG_ROLE="sibling"
+        _gate_wt="$PKG_WT_DIR"
+    fi
 else
     _gate_wt_repo="$ROOT_DIR"
     [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_ROOT_EFFECTIVE"
@@ -733,7 +761,7 @@ fi
 # branch checked out (AGENTS.md forbids feature commits there). Empty means
 # "no local history to verify against".
 _ci_wt=""
-if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" ]]; then
     _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
     if [[ -n "$_ci_wt_top" ]]; then
         _ci_is_main=false
@@ -758,8 +786,15 @@ _gate_review=""
 if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
 elif [[ -z "$_gate_progress" ]]; then
-    if [[ -n "$PKG_WT_DIR" ]]; then
-        _gate_reasons+=("package worktree $(_bk_display "$PKG_WT_DIR") carries no issue timeline (no progress.md for issue #$(_bk_display "$ISSUE_NUM"))")
+    if [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
+        # A sibling's gate is not read in the owning checkout: that timeline
+        # is the owning PR's. Name where the issue's records are, when the
+        # manifest has an owning entry (the one place: issue_checkout_of).
+        if _gate_own_dir=$(issue_checkout_of "$PKG_WT_DIR" "$ISSUE_NUM" 2>/dev/null); then
+            _gate_reasons+=("a sibling repository's pull request: this issue's records are in $(_bk_display "$_gate_own_dir"), and a sibling's gate is not read there")
+        else
+            _gate_reasons+=("a sibling repository's pull request: package worktree $(_bk_display "$PKG_WT_DIR") has no single checkout on feature/issue-$(_bk_display "$ISSUE_NUM"), so no timeline is read for it")
+        fi
     elif [[ -n "$_gate_refusal" ]]; then
         _gate_reasons+=("the records gate refused the timeline in $(_bk_display "$_gate_wt"): $(_bk_display "$_gate_refusal")")
     else
@@ -796,7 +831,7 @@ else
             if [[ -z "$_ci_wt" ]]; then
                 _gate_stale_why="no local worktree to verify ancestry"
             else
-                git -C "$_ci_wt" fetch --quiet origin "$PR_BRANCH" 2>/dev/null || true
+                (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin "$PR_BRANCH") 2>/dev/null || true
                 _gate_r_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_r_sha}^{commit}" 2>/dev/null || echo "")
                 _gate_h_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_head}^{commit}" 2>/dev/null || echo "")
                 if [[ -z "$_gate_r_full" ]]; then
@@ -868,16 +903,17 @@ _gate_record() {  # <entry type> <one-line why>
 **Scope**: ${WORKTREE_TYPE:-package}
 **Conditions**: ${why}"
     # Timeline path: only when the resolved worktree is itself a git repo
-    # (a package worktree is a container of sibling repos, not a repo — it
-    # has no issue timeline, so it always takes the PR-comment path) and an
-    # agent identity is set (progress_append.sh refuses to commit without).
+    # (a package worktree's container is not a repo; the owning PR's
+    # _gate_wt is its owning checkout, which is; a sibling PR keeps the
+    # container and always takes the PR-comment path) and an agent identity
+    # is set (progress_append.sh refuses to commit without).
     local why_comment="no open worktree for the PR's repo" wt_top=""
     # "Is a repo" must mean the directory IS a repo root, not that some
     # ancestor is one: `git rev-parse --show-toplevel` walks up, and a
     # package worktree container lives under the workspace checkout, so the
     # naive check would resolve to the live main tree and commit there
-    # (round-2 review). Package worktrees never take this path at all.
-    if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+    # (round-2 review). A sibling package PR never takes this path at all.
+    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" ]]; then
         wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
@@ -899,7 +935,11 @@ _gate_record() {  # <entry type> <one-line why>
             local rec_sha
             rec_sha=$(git -C "$_gate_wt" rev-parse HEAD 2>/dev/null || echo "")
             [[ -n "$rec_sha" ]] && _RUN_COMMITTED_SHAS+=("$rec_sha")
-            if git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
+            # Bounded like every call to origin: a timeout is a refused push.
+            # Run from the checkout rather than through -C: the path then
+            # never passes through timeout's argv, which may not carry a
+            # non-UTF-8 path intact.
+            if (cd "$_gate_wt" && wt_bounded_git push -q origin "$PR_BRANCH") 2>/dev/null; then
                 _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
                 echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
                 return 0
@@ -921,8 +961,10 @@ _gate_record() {  # <entry type> <one-line why>
         else
             why_comment="progress_append.sh refused the timeline entry"
         fi
-    elif [[ -n "$PKG_WT_DIR" ]]; then
-        why_comment="package worktrees carry no issue timeline"
+    elif [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
+        why_comment="a sibling repository's pull request records on its own PR, not in the owning checkout's timeline"
+    elif [[ "$_GATE_PKG_ROLE" == "owning" && "$why_comment" == "no open worktree for the PR's repo" ]]; then
+        why_comment="the owning checkout $_gate_wt is not a git checkout's top folder"
     fi
     body_file=$(mktemp)
     printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$entry" "${AGENT_NAME:-merge_pr.sh}" "${AGENT_MODEL:-unknown}" > "$body_file"
@@ -1041,7 +1083,7 @@ CI_TARGET_SHA=""
 # alongside the gate above, since both use it.)
 
 HEAD_NOW=""
-if [[ -n "$_ci_wt" ]] && git -C "$_ci_wt" fetch --quiet origin "$PR_BRANCH" 2>/dev/null; then
+if [[ -n "$_ci_wt" ]] && (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin "$PR_BRANCH") 2>/dev/null; then
     HEAD_NOW=$(git -C "$_ci_wt" rev-parse "origin/$PR_BRANCH" 2>/dev/null || echo "")
 fi
 if [[ -z "$HEAD_NOW" ]]; then
