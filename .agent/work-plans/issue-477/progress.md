@@ -242,3 +242,13 @@ The revision is ready. The phrase is a sound marker, sounder than a path-number 
 - [ ] Match the phrase with `index()` in the awk (note 2).
 - [ ] Add the `none` plus phrase case (note 3).
 - [ ] Run only the two touched suites in the implement pass; the host makes the full run (note 4).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review's verdict is ready with no must-fix; it walked the precedence chain, ran the paths block with the new pattern on a scratch roadmap, and judged matching on the README line's opening words sounder than a path-number token; its five notes are each a bounded instruction for the implement pass)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at ddae18ee and its report. The implement handoff carries the five notes, and the first review's notes 3 and 4.
