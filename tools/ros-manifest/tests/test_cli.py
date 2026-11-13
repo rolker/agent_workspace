@@ -1,3 +1,6 @@
+import pytest
+
+from ros_manifest import cli
 from ros_manifest.cli import main
 
 
@@ -68,3 +71,35 @@ def test_cli_manifest_error_reported(tmp_path, capsys):
     )
     assert rc == 1
     assert "ERROR" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", ["resolve", "validate"])
+@pytest.mark.parametrize("error", [ValueError, KeyError, TypeError, OSError, RuntimeError])
+def test_cli_any_other_exception_is_one_fixed_line(command, error, tmp_path, capsys, monkeypatch):
+    # The backstop: a route the loader does not turn into a ManifestError prints the exception's
+    # type only, never its text (which can quote manifest content) and never a traceback.
+    marker = "M4RK3R-s3cr3t"
+
+    def boom(*_args, **_kwargs):
+        raise error(f"value {marker}")
+
+    monkeypatch.setattr(cli, "resolve_chain", boom)
+    argv = [command, "--manifest", str(tmp_path / "m.yaml"), "--role", "dev", "--distro", "jazzy"]
+    if command == "resolve":
+        argv += ["--out", str(tmp_path / "o")]
+    rc = main(argv)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.err == f"ERROR: internal error ({error.__name__})\n"
+    assert marker not in captured.out
+
+
+def test_cli_resolve_out_that_cannot_be_created_is_one_line(fixtures_dir, tmp_path, capsys):
+    # Round 4: a FileNotFoundError traceback from the emitter.
+    (tmp_path / "a-file").write_text("")
+    out = tmp_path / "a-file" / "out"
+    manifest = fixtures_dir / "p11" / "manifest.yaml"
+    argv = ["resolve", "--manifest", str(manifest), "--role", "dev", "--distro", "jazzy"]
+    rc = main(argv + ["--out", str(out), "--cache-dir", str(tmp_path / "cache")])
+    assert rc == 1
+    assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"

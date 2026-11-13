@@ -217,6 +217,16 @@ echo "=== Hard fail when env vars unset (workspace policy) ==="
 unset AGENT_NAME AGENT_MODEL
 assert_exit_code "unset AGENT_NAME hard-fails" 2 \
     --title "T" --body "B"
+# The hint names the derived form, not a literal name/email (#455).
+reset_capture
+hint_out="$(run_wrapper --title "T" --body "B" 2>&1)"
+if [[ "$hint_out" == *'set_git_identity_env.sh --agent <framework> "<model-id>"'* && "$hint_out" != *'"email"'* ]]; then
+    echo "  PASS: unset hint names --agent <framework> \"<model-id>\""
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL: unset hint (got: $hint_out)"
+    FAIL=$((FAIL + 1))
+fi
 # But --no-signature should still allow pass-through
 assert_calls_gh "unset + --no-signature still calls gh" \
     --title "T" --body "B" --no-signature
@@ -541,6 +551,106 @@ unset AGENT_NAME AGENT_MODEL
 assert_exit_code "identity unset + --fill → exit 2" 2 --title "T" --fill
 export AGENT_NAME="Test Agent"
 export AGENT_MODEL="test-model"
+
+pass295() { echo "  PASS [#295]:       $1"; PASS=$((PASS + 1)); }
+fail295() { echo "  FAIL [#295]:       $1"; FAIL=$((FAIL + 1)); }
+echo
+echo "=== Registered project repositories are accepted (issue #295) ==="
+# A sandbox main checkout (its own copy of the scripts, its own registry)
+# run the way a project session runs it: cwd in a registered project's own
+# checkout, no project/ symlink. Remotes are github.com URLs that are
+# never contacted (`gh` is shimmed; only `gh pr create` is reached).
+R295="$SANDBOX/r295"
+WS295="$R295/ws"
+mkdir -p "$WS295/.agent/scripts"
+cp "$SCRIPT_DIR/../gh_create_pr.sh" "$SCRIPT_DIR/../_project_registry.sh" \
+    "$SCRIPT_DIR/../_gh_create_args.sh" "$WS295/.agent/scripts/"
+git -C "$WS295" init -q -b main
+git -C "$WS295" remote add origin https://github.com/ws-owner/ws.git
+DEMO295="$R295/demo"
+git init -q -b main "$DEMO295"
+git -C "$DEMO295" remote add origin git@github.com:demo-owner/demo.git
+# A scratch clone nested inside the registered root: the guard accepts its
+# cwd (under a registered root) but its slug is no registered root's.
+git init -q -b main "$DEMO295/scratch"
+git -C "$DEMO295/scratch" remote add origin https://github.com/stray-owner/stray.git
+UNREL295="$R295/unrelated"
+git init -q -b main "$UNREL295"
+git -C "$UNREL295" remote add origin https://github.com/demo-owner/demo.git
+run295() {  # <cwd>: run the sandbox copy there; sets OUT295 and RC295
+    rm -f "$ARGV_LOG"
+    OUT295=$(cd "$1" && env -u WORKTREE_ISSUE TMPDIR="$R295" \
+        bash "$WS295/.agent/scripts/gh_create_pr.sh" --title t --body b --no-signature 2>&1)
+    RC295=$?
+}
+
+# Nothing registered: the demo checkout is refused by the guard.
+run295 "$DEMO295"
+if [[ "$RC295" -eq 1 && "$OUT295" == *"refusing to run"* && ! -f "$ARGV_LOG" ]]; then
+    pass295 "nothing registered: the demo checkout is refused by the guard"
+else
+    fail295 "nothing registered: rc=$RC295 out=${OUT295:0:300}"
+fi
+
+echo "demo single_project $DEMO295" > "$WS295/.agent/projects.local"
+run295 "$DEMO295"
+if [[ "$RC295" -eq 0 && -f "$ARGV_LOG" ]]; then
+    pass295 "registered root: its repository is accepted (gh pr create reached)"
+else
+    fail295 "registered root: rc=$RC295 out=${OUT295:0:300}"
+fi
+
+run295 "$DEMO295/scratch"
+if [[ "$RC295" -eq 2 && ! -f "$ARGV_LOG" && "$OUT295" == *"gh would target 'stray-owner/stray'"* \
+      && "$OUT295" == *"Project repo:   demo-owner/demo"* ]]; then
+    pass295 "registered root, other slug: refused by the safety check, accepted slugs listed"
+else
+    fail295 "registered root, other slug: rc=$RC295 out=${OUT295:0:300}"
+fi
+
+run295 "$UNREL295"
+if [[ "$RC295" -eq 1 && "$OUT295" == *"refusing to run"* && ! -f "$ARGV_LOG" ]]; then
+    pass295 "unrelated checkout (same slug, not registered): refused by the guard"
+else
+    fail295 "unrelated checkout: rc=$RC295 out=${OUT295:0:300}"
+fi
+
+# A registry with a parse error: registry_repo_slugs prints nothing and
+# returns 0 under set -e, so a run from the workspace checkout itself
+# (the guard does not read the registry there) still completes.
+echo "bad name with spaces=" > "$WS295/.agent/projects.local"
+run295 "$WS295"
+if [[ "$RC295" -eq 0 && -f "$ARGV_LOG" ]]; then
+    pass295 "registry parse error: a workspace run is not broken by the slug lookup"
+else
+    fail295 "registry parse error: rc=$RC295 out=${OUT295:0:300}"
+fi
+
+# The first machine's shape: a legacy project/ checkout and registered roots
+# that are clones of the same repository (ssh and https origins). The
+# accepted set holds that slug once, and each place is accepted.
+git init -q -b main "$WS295/project"
+git -C "$WS295/project" remote add origin git@github.com:demo-owner/demo.git
+DEMO295B="$R295/demo-b"
+git init -q -b main "$DEMO295B"
+git -C "$DEMO295B" remote add origin https://github.com/demo-owner/demo.git
+printf 'demo single_project %s\ndemo-b single_project %s\n' "$DEMO295" "$DEMO295B" \
+    > "$WS295/.agent/projects.local"
+run295 "$DEMO295/scratch"
+LISTED295="$(grep -F 'Project repo:' <<< "$OUT295")"
+if [[ "$RC295" -eq 2 && ! -f "$ARGV_LOG" && "$LISTED295" == "   Project repo:   demo-owner/demo" ]]; then
+    pass295 "legacy project/ plus registered roots, one slug: listed once in the refusal"
+else
+    fail295 "legacy project/ plus registered roots: rc=$RC295 listed=[$LISTED295] out=${OUT295:0:300}"
+fi
+for CWD295 in "$WS295/project" "$DEMO295" "$DEMO295B"; do
+    run295 "$CWD295"
+    if [[ "$RC295" -eq 0 && -f "$ARGV_LOG" ]]; then
+        pass295 "legacy project/ plus registered roots: ${CWD295#"$R295"/} accepted"
+    else
+        fail295 "legacy project/ plus registered roots, ${CWD295#"$R295"/}: rc=$RC295 out=${OUT295:0:300}"
+    fi
+done
 
 echo
 echo "=== Temp files ==="

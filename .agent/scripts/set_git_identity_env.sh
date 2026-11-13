@@ -4,15 +4,32 @@
 # Also exports agent model identity for signatures
 #
 # USAGE FOR HOST-BASED AGENTS (Codex CLI, Copilot CLI, Gemini CLI):
-#   source .agent/scripts/set_git_identity_env.sh "<Agent Name>" "<email>" ["<model>"]
-#   source .agent/scripts/set_git_identity_env.sh --agent <framework>
+#   source .agent/scripts/set_git_identity_env.sh --agent <framework> ["<model>"]
 #   source .agent/scripts/set_git_identity_env.sh --detect
+#   source .agent/scripts/set_git_identity_env.sh "<Agent Name>" "<email>" ["<model>"]
 #
 # Examples:
-#   source .agent/scripts/set_git_identity_env.sh "Copilot CLI Agent" "roland+copilot-cli@ccom.unh.edu" "Claude Sonnet 4.5"
-#   source .agent/scripts/set_git_identity_env.sh "Copilot CLI Agent" "roland+copilot-cli@ccom.unh.edu"
+#   source .agent/scripts/set_git_identity_env.sh --agent claude-code "<your-model-id>"
 #   source .agent/scripts/set_git_identity_env.sh --agent copilot
 #   source .agent/scripts/set_git_identity_env.sh --detect
+#   source .agent/scripts/set_git_identity_env.sh "Copilot CLI Agent" "<you>+copilot-cli@<domain>" "Claude Sonnet 4.5"
+#
+# --agent and --detect derive the email from this checkout's git user.email
+# (<local>@<domain>, clone value over global, any +suffix removed) as
+# <local>+<framework-suffix>@<domain>; see framework_config.sh and
+# identity_base.py. An unset or malformed git email fails with a message.
+#
+# On ANY failure (unset or malformed git email, unknown framework, bad
+# arguments) the script unsets what it owns -- GIT_AUTHOR_NAME,
+# GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, AGENT_NAME,
+# AGENT_EMAIL, AGENT_MODEL, AGENT_FRAMEWORK -- and returns 1, so a failed
+# re-source never leaves the previous session's identity (or a mix of old
+# and new values) in the shell. Re-source successfully before committing.
+# detect_agent_identity.sh behaves the same way for the AGENT_* variables.
+#
+# Source it in the checkout you commit in: the email derives from the git
+# user.email resolved in the current directory, not in the repository a
+# later `git -C <other>` commit targets.
 #
 # This sets identity ONLY for the current shell session without modifying .git/config.
 # The user's .git/config remains unchanged, allowing them to commit as themselves afterward.
@@ -25,6 +42,13 @@
 # variables; it performs no repo-affecting action, so it needs no
 # registry_require_root guard (#265 PR 3, ADR-0016).
 
+# Unset every variable this script exports; called before each failure
+# return so a failed re-source leaves no stale or mixed identity.
+_sgi_clear_identity() {
+    unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL \
+        AGENT_NAME AGENT_EMAIL AGENT_MODEL AGENT_FRAMEWORK
+}
+
 # Load framework identity lookup table from shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_CONFIG="${SCRIPT_DIR}/framework_config.sh"
@@ -34,31 +58,33 @@ if [ -f "${FRAMEWORK_CONFIG}" ]; then
     source "${FRAMEWORK_CONFIG}"
 else
     echo "❌ ERROR: Framework configuration not found at ${FRAMEWORK_CONFIG}."
-    echo "This script expects FRAMEWORK_NAMES and FRAMEWORK_EMAILS to be defined in a shared config."
+    echo "This script expects FRAMEWORK_NAMES and FRAMEWORK_SUFFIXES to be defined in a shared config."
+    _sgi_clear_identity
     return 1
 fi
 
 # Add aliases for backward compatibility
 FRAMEWORK_NAMES["copilot-cli"]="${FRAMEWORK_NAMES[copilot]}"
-FRAMEWORK_EMAILS["copilot-cli"]="${FRAMEWORK_EMAILS[copilot]}"
+FRAMEWORK_SUFFIXES["copilot-cli"]="${FRAMEWORK_SUFFIXES[copilot]}"
+FRAMEWORK_MODELS["copilot-cli"]="${FRAMEWORK_MODELS[copilot]}"
 FRAMEWORK_NAMES["gemini-cli"]="${FRAMEWORK_NAMES[gemini]}"
-FRAMEWORK_EMAILS["gemini-cli"]="${FRAMEWORK_EMAILS[gemini]}"
+FRAMEWORK_SUFFIXES["gemini-cli"]="${FRAMEWORK_SUFFIXES[gemini]}"
+FRAMEWORK_MODELS["gemini-cli"]="${FRAMEWORK_MODELS[gemini]}"
 
 # Check if script is being sourced (not executed)
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo "❌ ERROR: This script must be sourced, not executed directly."
     echo ""
     echo "Correct usage:"
-    echo "  source $0 \"<Agent Name>\" \"<email>\" [\"<model>\"]"
-    echo "  source $0 --agent <framework>"
+    echo "  source $0 --agent <framework> [\"<model>\"]"
     echo "  source $0 --detect"
+    echo "  source $0 \"<Agent Name>\" \"<email>\" [\"<model>\"]"
     echo ""
     echo "Examples:"
-    echo "  source $0 \"Codex CLI Agent\" \"roland+codex@rolker.net\" \"gpt-5.4\""
-    echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\""
-    echo "  source $0 --agent codex"
+    echo "  source $0 --agent codex \"gpt-5.4\""
     echo "  source $0 --agent copilot"
     echo "  source $0 --detect"
+    echo "  source $0 \"Codex CLI Agent\" \"<you>+codex@<domain>\" \"gpt-5.4\""
     exit 1
 fi
 
@@ -66,20 +92,28 @@ show_usage() {
     echo "Usage: source $0 [OPTIONS] [\"<Agent Name>\" \"<email>\" [\"<model>\"]]"
     echo ""
     echo "Options:"
-    echo "  --agent <framework>    Use predefined identity for framework"
-    echo "                         Supported: codex, copilot, gemini, antigravity, claude"
+    echo "  --agent <framework> [\"<model>\"]"
+    echo "                         Use predefined identity for framework (model defaults to the table's)"
+    echo "                         Supported: codex, copilot, gemini, antigravity, claude, claude-code"
     echo "  --detect              Auto-detect framework from environment"
     echo ""
+    echo "--agent and --detect derive the email from this checkout's git user.email:"
+    echo "  <local>+<framework>@<domain>, where <local>@<domain> is \`git config user.email\`"
+    echo "  with any +suffix removed (a clone-level value wins over the global one)."
+    echo ""
     echo "Examples:"
-    echo "  source $0 \"Codex CLI Agent\" \"roland+codex@rolker.net\" \"gpt-5.4\""
-    echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\""
+    echo "  source $0 --agent claude-code \"<your-model-id>\""
     echo "  source $0 --agent codex"
-    echo "  source $0 --agent copilot"
     echo "  source $0 --detect"
+    echo "  source $0 \"Codex CLI Agent\" \"<you>+codex@<domain>\" \"gpt-5.4\""
     echo ""
     echo "This sets git identity ONLY for the current shell session using environment variables."
     echo "It does NOT modify .git/config, so the user's identity remains unchanged."
     echo "Also exports AGENT_NAME, AGENT_EMAIL, AGENT_MODEL, and AGENT_FRAMEWORK for use in signatures."
+    echo ""
+    echo "On any failure it unsets GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME,"
+    echo "GIT_COMMITTER_EMAIL, AGENT_NAME, AGENT_EMAIL, AGENT_MODEL and AGENT_FRAMEWORK, so"
+    echo "no previous identity is left behind (detect_agent_identity.sh unsets its AGENT_* the same way)."
 }
 
 # Auto-detect framework
@@ -96,6 +130,7 @@ detect_framework() {
 # Parse arguments
 if [ $# -eq 0 ]; then
     show_usage
+    _sgi_clear_identity
     return 1
 fi
 
@@ -105,23 +140,33 @@ if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
 fi
 
 if [ "$1" == "--agent" ]; then
-    if [ $# -ne 2 ]; then
-        echo "Error: --agent requires framework name"
+    if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+        echo "Error: --agent requires framework name (and optionally a model)"
         show_usage
+        _sgi_clear_identity
         return 1
     fi
 
     FRAMEWORK="${2,,}"  # Convert to lowercase
-    AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK]}"
-    AGENT_EMAIL="${FRAMEWORK_EMAILS[$FRAMEWORK]}"
-    AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK]}"
-    AGENT_FRAMEWORK="$FRAMEWORK"
-
-    if [ -z "$AGENT_NAME" ]; then
+    # An empty key is not a valid array subscript: test it first.
+    if [ -z "$FRAMEWORK" ] || [ -z "${FRAMEWORK_NAMES[$FRAMEWORK]:-}" ]; then
         echo "Error: Unknown framework '$2'"
         echo "Supported frameworks: ${!FRAMEWORK_NAMES[*]}"
+        _sgi_clear_identity
         return 1
     fi
+    # Derive the email before assigning anything: a failure exports nothing.
+    if ! _SGI_EMAIL="$(framework_email "$FRAMEWORK")"; then
+        unset _SGI_EMAIL
+        _sgi_clear_identity
+        return 1
+    fi
+
+    AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK]}"
+    AGENT_EMAIL="$_SGI_EMAIL"
+    AGENT_MODEL="${3:-${FRAMEWORK_MODELS[$FRAMEWORK]}}"
+    AGENT_FRAMEWORK="$FRAMEWORK"
+    unset _SGI_EMAIL
 
 elif [ "$1" == "--detect" ]; then
     DETECTED=$(detect_framework)
@@ -129,18 +174,33 @@ elif [ "$1" == "--detect" ]; then
     if [ "$DETECTED" == "unknown" ]; then
         echo "Error: Could not auto-detect framework"
         echo "Please use --agent <framework> or provide name/email manually"
+        _sgi_clear_identity
         return 1
     fi
 
     # Normalize framework name for lookup (remove -cli suffix from end only)
     FRAMEWORK_KEY="${DETECTED%-cli}"
     FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"
+    echo "Detected framework: $DETECTED"
+
+    if [ -z "$FRAMEWORK_KEY" ] || [ -z "${FRAMEWORK_NAMES[$FRAMEWORK_KEY]:-}" ]; then
+        echo "Error: no predefined identity for detected framework '$DETECTED'"
+        echo "Please use --agent <framework> or provide name/email manually"
+        _sgi_clear_identity
+        return 1
+    fi
+    # Derive the email before assigning anything: a failure exports nothing.
+    if ! _SGI_EMAIL="$(framework_email "$FRAMEWORK_KEY")"; then
+        unset _SGI_EMAIL
+        _sgi_clear_identity
+        return 1
+    fi
 
     AGENT_NAME="${FRAMEWORK_NAMES[$FRAMEWORK_KEY]}"
-    AGENT_EMAIL="${FRAMEWORK_EMAILS[$FRAMEWORK_KEY]}"
+    AGENT_EMAIL="$_SGI_EMAIL"
     AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]}"
     AGENT_FRAMEWORK="$DETECTED"
-    echo "Detected framework: $DETECTED"
+    unset _SGI_EMAIL
 
 elif [ $# -eq 2 ]; then
     # Manual name and email — detect framework for model
@@ -150,7 +210,8 @@ elif [ $# -eq 2 ]; then
     if [ "$DETECTED" != "unknown" ]; then
         FRAMEWORK_KEY="${DETECTED%-cli}"
         FRAMEWORK_KEY="${FRAMEWORK_KEY,,}"
-        AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]:-Unknown Model}"
+        AGENT_MODEL="Unknown Model"
+        [ -n "$FRAMEWORK_KEY" ] && AGENT_MODEL="${FRAMEWORK_MODELS[$FRAMEWORK_KEY]:-Unknown Model}"
         AGENT_FRAMEWORK="$DETECTED"
     else
         AGENT_MODEL="Unknown Model"
@@ -165,6 +226,7 @@ elif [ $# -eq 3 ]; then
 else
     echo "Error: Invalid arguments"
     show_usage
+    _sgi_clear_identity
     return 1
 fi
 

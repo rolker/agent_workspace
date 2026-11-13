@@ -201,7 +201,7 @@ test_validator_passes_complete_adapters() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "reports single_project complete" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "reports single_project complete" "single_project: all 13 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_verbs() {
@@ -215,7 +215,7 @@ test_validator_flags_missing_verbs() {
     assert_eq "exit 1" "1" "$rc"
     assert_contains "flags partial_type" "partial_type: missing verbs" "$out"
     assert_contains "lists a missing verb" "adapter_scope_for_pr" "$out"
-    assert_contains "complete type still passes" "single_project: all 12 verbs implemented" "$out"
+    assert_contains "complete type still passes" "single_project: all 13 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_adapter_file() {
@@ -496,7 +496,8 @@ test_repos_unconfigured() {
     sb="$(make_sandbox)"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "points at make setup" "run: make setup" "$out"
+    assert_contains "points at register_project.sh" "register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_not_contains "no make setup pointer" "make setup" "$out"
 }
 
 test_scope_for_pr_ssh() {
@@ -587,6 +588,145 @@ test_worktree_repos_requires_issue() {
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains the requirement" "requires --issue" "$out"
+}
+
+# ---- repo_pin (ADR-0019, single_project) ----
+
+# project/ as a committed repo on branch trunk whose origin is a local bare
+# repo with HEAD at trunk. Leaves origin/HEAD unset locally.
+make_pin_project() {  # <sb>
+    local sb="$1"
+    git init --quiet --bare -b trunk "$sb/origin.git"
+    mkdir -p "$sb/project"
+    git -C "$sb/project" init --quiet -b trunk
+    git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    git -C "$sb/project" remote add origin "$sb/origin.git"
+    git -C "$sb/project" push --quiet origin trunk
+    git -C "$sb/project" fetch --quiet origin
+}
+
+test_repo_pin_from_origin_head() {
+    echo "TEST: single_project repo_pin prints the default branch recorded as origin/HEAD"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" branch --quiet stable
+    git -C "$sb/project" push --quiet origin stable
+    git -C "$sb/project" fetch --quiet origin
+    # Recorded locally as stable: the local record answers, not the remote.
+    git -C "$sb/project" remote set-head origin stable >/dev/null
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "origin/HEAD's branch, kind branch" "stable	branch" "$out"
+}
+
+test_repo_pin_asks_origin_without_origin_head() {
+    echo "TEST: single_project repo_pin asks origin for HEAD when origin/HEAD is not recorded"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "origin's HEAD, kind branch" "trunk	branch" "$out"
+}
+
+test_repo_pin_undetermined_fails() {
+    echo "TEST: single_project repo_pin fails when neither origin/HEAD nor origin answers"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    git -C "$sb/project" remote set-url origin "$sb/no-such-origin.git"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "says why" "cannot determine the default branch" "$out"
+    assert_contains "origin unreachable: says origin could not be asked" \
+        "origin could not be asked (git ls-remote exited" "$out"
+    assert_not_contains "origin unreachable: not 'did not name its HEAD'" "did not name its HEAD" "$out"
+    assert_not_contains "no guessed main" "main	branch" "$out"
+    # Origin answers but its HEAD names no branch it has: that wording.
+    git -C "$sb/project" remote set-url origin "$sb/origin.git"
+    git --git-dir="$sb/origin.git" symbolic-ref HEAD refs/heads/nothere
+    rc=0
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    assert_eq "origin names no HEAD: exits 1" "1" "$rc"
+    assert_contains "origin names no HEAD: says so" "origin did not name its HEAD" "$out"
+}
+
+test_repo_pin_hanging_origin_is_bounded() {
+    echo "TEST: single_project repo_pin bounds its origin query and names the timeout"
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIP: no timeout command"
+        return 0
+    fi
+    local sb out rc=0 shim pidfile started elapsed reached=no
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt
+    # or a stalled host would. Only WT_FETCH_TIMEOUT can end it; the
+    # ceiling below is far above the 2s limit and far below the block.
+    shim="$sb/hang-ssh"
+    pidfile="$sb/hang-ssh.pid"
+    printf '#!/usr/bin/env bash\necho $$ > "%s"\nexec sleep 300\n' "$pidfile" > "$shim"
+    chmod +x "$shim"
+    git -C "$sb/project" remote set-url origin "ssh://git@example.invalid/project.git"
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$shim" WT_FETCH_TIMEOUT=2 \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    elapsed=$((SECONDS - started))
+    if [ -s "$pidfile" ]; then
+        reached=yes
+        kill "$(< "$pidfile")" 2>/dev/null || true
+    fi
+    assert_eq "the hanging ssh was reached" "yes" "$reached"
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "names the timeout" "origin did not answer within 2s" "$out"
+    assert_eq "ended by WT_FETCH_TIMEOUT, not by the block (${elapsed}s < 60s)" "yes" \
+        "$([ "$elapsed" -lt 60 ] && echo yes || echo no)"
+}
+
+test_repo_pin_other_name_fails() {
+    echo "TEST: single_project repo_pin refuses a name other than the one repos prints"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin other_repo 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the known repo" "no repository 'other_repo' in this project (known: project)" "$out"
+}
+
+test_repo_pin_rejects_layer_and_requires_name() {
+    echo "TEST: single_project repo_pin rejects --layer and needs a name"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_pin_project "$sb"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project --layer l1 2>&1)" || rc=$?
+    assert_eq "--layer exits nonzero" "1" "$rc"
+    assert_contains "no layers" "does not support --layer" "$out"
+    rc=0
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin 2>&1)" || rc=$?
+    assert_eq "no name exits nonzero" "1" "$rc"
+    assert_contains "names the usage" "repo_pin requires a repository name" "$out"
+}
+
+test_validator_flags_missing_repo_pin() {
+    echo "TEST: validator flags a type that implements every verb but repo_pin"
+    local sb out rc=0 v
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/project_types/no_pin_type"
+    cp "$sb/.agent/project_types/single_project/unused_settings" \
+        "$sb/.agent/project_types/single_project/registration.conf" \
+        "$sb/.agent/project_types/no_pin_type/"
+    for v in setup sync validate build test install env project_root repos scope_for_pr worktree_repos worktree_env; do
+        echo "adapter_${v}() { :; }"
+    done > "$sb/.agent/project_types/no_pin_type/adapter.sh"
+    out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "flags no_pin_type" "no_pin_type: missing verbs" "$out"
+    assert_contains "names repo_pin" "adapter_repo_pin" "$out"
+    assert_not_contains "no other verb missing" "adapter_worktree_env" "$out"
 }
 
 test_worktree_env_emits_nothing() {
@@ -760,6 +900,45 @@ test_sync_real_implementation_runs() {
     assert_contains "lib import worked and sync ran" "Checking agent_workspace (workspace)" "$out"
 }
 
+# Real chain (sync_project.py -> adapter -> sync.py) in a sandbox
+# workspace that is a git checkout, with no project/ (issue #295).
+make_sync_sandbox() {
+    local sb
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$sb/.agent/scripts/lib/"
+    cp "$REAL_ROOT/.agent/scripts/sync_project.py" "$sb/.agent/scripts/sync_project.py"
+    chmod +x "$sb/.agent/scripts/sync_project.py"
+    git -C "$sb" init --quiet -b main
+    echo "$sb"
+}
+
+test_sync_nothing_registered() {
+    echo "TEST: sync with no project/ and no registry syncs the workspace and says no project was synced"
+    local sb out rc=0
+    sb="$(make_sync_sandbox)"
+    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    assert_eq "exits 0" "0" "$rc"
+    assert_contains "workspace synced" "Checking agent_workspace (workspace)" "$out"
+    assert_contains "no project synced, pointer named" \
+        "No project was synced (none registered; register one: .agent/scripts/register_project.sh <path>)" "$out"
+    assert_not_contains "no make setup pointer" "Run: make setup" "$out"
+    assert_contains "completes" "Sync complete." "$out"
+}
+
+test_sync_registered_none_selected() {
+    echo "TEST: sync with a registered project, none selected and no project/ names the registered ones"
+    local sb out rc=0
+    sb="$(make_sync_sandbox)"
+    make_git_repo "$sb/elsewhere/demo" "file:///nonexistent/demo.git"
+    echo "demo single_project $sb/elsewhere/demo" > "$sb/.agent/projects.local"
+    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    assert_eq "exits 0" "0" "$rc"
+    assert_contains "names the registered project" \
+        "No project was synced (none selected; registered: demo; pass PROJECT=<name>)" "$out"
+    assert_not_contains "does not say none registered" "none registered" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== adapter / validate_adapter / single_project tests ==="
 echo ""
@@ -803,6 +982,13 @@ test_worktree_repos_accepts_qualified_issue
 test_worktree_repos_rejects_layer_flags
 test_worktree_repos_requires_issue
 test_worktree_env_emits_nothing
+test_repo_pin_from_origin_head
+test_repo_pin_asks_origin_without_origin_head
+test_repo_pin_undetermined_fails
+test_repo_pin_hanging_origin_is_bounded
+test_repo_pin_other_name_fails
+test_repo_pin_rejects_layer_and_requires_name
+test_validator_flags_missing_repo_pin
 test_setup_aborts_failed_rebase
 test_setup_replaces_broken_symlink
 test_setup_replaces_valid_symlink_to_nonrepo
@@ -812,6 +998,8 @@ test_sync_aborts_failed_rebase
 test_setup_delegates
 test_sync_shim_chain
 test_sync_real_implementation_runs
+test_sync_nothing_registered
+test_sync_registered_none_selected
 test_build_shim_chain
 
 echo ""

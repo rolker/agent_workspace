@@ -21,6 +21,15 @@ _REGISTRY_DISTRO_RE = re.compile(r"^[a-z0-9_]+$")
 REGISTRY_PARENT_TYPE = "project"
 # Trailing key=value fields accepted on a registry line (issue #265).
 REGISTRY_FIELD_KEYS = ("parent", "worktrees", "role", "distro", "default_instance")
+# The pointer user-facing messages give when no project is registered
+# (issue #295): the registration script and its argument. Assembled from two
+# literals on purpose: run_script_tests.sh's suite selection
+# (suites_for_files.sh) reads every string in a .py file as a possible path,
+# and this module, validate_workspace.py and single_project/sync.py are
+# reached by most suites, so naming the script whole here would make every
+# one of them run whenever that script changes (the hub guard in
+# test_script_tests_hook_scope.sh). A message is not a read of the script.
+REGISTER_PROJECT_POINTER = ".agent/scripts/register_project" + ".sh <path>"
 
 
 def get_workspace_root():
@@ -31,6 +40,71 @@ def get_workspace_root():
     agent_dir = scripts_dir.parent
     workspace_root = agent_dir.parent
     return str(workspace_root)
+
+
+def get_main_checkout_root():
+    """
+    Return the main checkout of the workspace repository (issue #295).
+
+    The main checkout holds the gitignored per-machine registry
+    (.agent/projects.local) that a linked worktree does not have. Used for
+    the "is a project registered?" messages. The rule, mirrored by
+    registry_main_checkout in _project_registry.sh:
+
+    - the workspace root is not the top level of its own repository (not a
+      git checkout, or a plain directory inside another repository, which
+      must not borrow that repository's registry): the workspace root;
+    - git's --git-dir equals its --git-common-dir (a main checkout, also
+      one made with `git clone --separate-git-dir`): the workspace root;
+    - otherwise (a linked worktree): the first worktree that
+      `git worktree list --porcelain` names, which is the main checkout,
+      when that is a directory that is the top level of a checkout sharing
+      this common dir; else the workspace root.
+
+    Any git failure gives the workspace root.
+    """
+    root = get_workspace_root()
+    try:
+        if not _is_own_toplevel(root):
+            return root
+        common = _git_common_dir(root)
+        git_dir = _git_out(root, "rev-parse", "--path-format=absolute", "--git-dir")
+        if _canonical(git_dir) == _canonical(common):
+            return root
+        first = _git_out(root, "worktree", "list", "--porcelain").splitlines()
+        main = first[0][len("worktree ") :] if first and first[0].startswith("worktree ") else ""
+        if (
+            main
+            and _is_own_toplevel(main)
+            and _canonical(_git_common_dir(main)) == _canonical(common)
+        ):
+            return main
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    return root
+
+
+def _git_out(where, *args):
+    """stdout of `git -C <where> <args>`, stripped; raises on failure."""
+    result = subprocess.run(
+        ["git", "-C", str(where), *args], capture_output=True, text=True, check=True
+    )
+    return result.stdout.strip()
+
+
+def _git_common_dir(where):
+    """git's common dir for the checkout at <where>, as an absolute path."""
+    return _git_out(where, "rev-parse", "--path-format=absolute", "--git-common-dir")
+
+
+def _is_own_toplevel(path):
+    """True when <path> is a directory that is the top level of its own
+    repository (not a plain directory inside another one); raises on a git
+    failure."""
+    if not Path(path).is_dir():
+        return False
+    top = _git_out(path, "rev-parse", "--show-toplevel")
+    return bool(top) and _canonical(top) == _canonical(path)
 
 
 def get_project_path():

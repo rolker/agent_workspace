@@ -145,3 +145,28 @@ layers: [core]
 """
     with pytest.raises(ManifestError, match="must also set 'ref'"):
         parse_manifest_text(text, source="t")
+
+
+def test_optional_layers_parsed():
+    m = parse_manifest_text("layers: [core, site]\noptional_layers: [site]\n", source="t")
+    assert m.optional_layers == ["site"]
+
+
+def test_optional_layers_default_empty():
+    m = parse_manifest_text("layers: [core]\n", source="t")
+    assert m.optional_layers == []
+
+
+def test_optional_layer_not_in_own_layers_is_error():
+    with pytest.raises(ManifestError, match="optional_layers names 'site'"):
+        parse_manifest_text("layers: [core]\noptional_layers: [site]\n", source="t")
+
+
+def test_optional_layers_duplicates_is_error():
+    with pytest.raises(ManifestError, match="optional_layers contains duplicates"):
+        parse_manifest_text("layers: [core]\noptional_layers: [core, core]\n", source="t")
+
+
+def test_optional_layers_must_be_list_of_str():
+    with pytest.raises(ManifestError, match="optional_layers must be a list of strings"):
+        parse_manifest_text("layers: [core]\noptional_layers: core\n", source="t")

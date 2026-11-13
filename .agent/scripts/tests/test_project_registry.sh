@@ -301,6 +301,123 @@ test_build_falls_back_to_workspace_config() {
         "STUB_sharedbuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
 }
 
+# ---- registry_repo_slugs (issue #295) ----
+
+test_registry_repo_slugs() {
+    echo "TEST: registry_repo_slugs prints each registered root's github.com origin slug"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    make_git_repo "$sb/projects/beta" "https://github.com/owner/beta"
+    make_git_repo "$sb/projects/gamma" "file:///nonexistent/gamma.git"
+    mkdir -p "$sb/projects/grp" "$sb/projects/nogit"
+    make_git_repo "$sb/projects/grp/one" "https://github.com/owner/one.git"
+    cat > "$sb/.agent/projects.local" <<EOF
+alpha single_project
+beta single_project
+gamma single_project
+nogit single_project
+grp project $sb/projects/grp
+grp-one single_project $sb/projects/grp/one parent=grp
+EOF
+    out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "slugs (ssh and https, .git stripped; non-GitHub, non-git and parent skipped)" \
+        "owner/alpha
+owner/beta
+owner/one" "$out"
+}
+
+test_registry_repo_slugs_no_walk_up() {
+    echo "TEST: registry_repo_slugs skips a root that is a plain directory inside another repository"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    # The workspace sandbox is itself a repository with a GitHub origin, as a
+    # real workspace checkout is; a registered root under it that is not a
+    # checkout of its own must not borrow that origin.
+    make_git_repo "$sb" "https://github.com/owner/workspace.git"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    mkdir -p "$sb/projects/plain" "$sb/projects/plainsub/inner"
+    cat > "$sb/.agent/projects.local" <<EOF
+alpha single_project
+plain single_project
+plainsub single_project $sb/projects/plainsub/inner
+EOF
+    out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "only the root that is its own checkout prints a slug" "owner/alpha" "$out"
+    assert_not_contains "the enclosing repository's slug is not accepted" "owner/workspace" "$out"
+}
+
+test_registry_repo_slugs_absent_or_broken() {
+    echo "TEST: registry_repo_slugs prints nothing and returns 0 with no registry or a parse error"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "no registry: exit 0" "0" "$rc"
+    assert_eq "no registry: nothing printed" "END" "$out"
+    make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
+    printf 'alpha single_project\nbad name with spaces=\n' > "$sb/.agent/projects.local"
+    rc=0
+    out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "parse error: exit 0 under set -e" "0" "$rc"
+    assert_eq "parse error: nothing printed" "END" "$out"
+}
+
+# ---- main-checkout helpers (issue #295) ----
+
+# Physical path of a directory, or the string as given when it is not one.
+phys() {
+    [ -n "$1" ] || { echo "<nothing>"; return 0; }
+    (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"
+}
+
+# Both helpers, run for a checkout <dir>: the shell one is given <dir>, the
+# Python one finds its root from the copy of lib/workspace.py under <dir>.
+# Prints "<shell answer> | <python answer>", both physical paths.
+main_checkout_both() {
+    local dir="$1" sh_out py_out
+    mkdir -p "$dir/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$dir/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/lib/workspace.py" "$dir/.agent/scripts/lib/"
+    sh_out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_main_checkout "$1"' _ "$dir")"
+    py_out="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import workspace; print(workspace.get_main_checkout_root())' "$dir/.agent/scripts/lib")"
+    printf '%s | %s\n' "$(phys "$sh_out")" "$(phys "$py_out")"
+}
+
+test_main_checkout_helpers() {
+    echo "TEST: registry_main_checkout and get_main_checkout_root agree on the main checkout"
+    local base expect
+    base="$(phys "$(mktemp -d -p "$SANDBOX")")"
+
+    # A plain directory nested in a repository that has a registry: the
+    # directory itself, never the enclosing repository.
+    make_git_repo "$base/outer" "https://github.com/owner/outer.git"
+    mkdir -p "$base/outer/.agent" "$base/outer/inner"
+    echo "x single_project" > "$base/outer/.agent/projects.local"
+    expect="$base/outer/inner | $base/outer/inner"
+    assert_eq "nested plain directory: itself" "$expect" "$(main_checkout_both "$base/outer/inner")"
+
+    # A directory outside any repository: itself.
+    mkdir -p "$base/nogit"
+    expect="$base/nogit | $base/nogit"
+    assert_eq "non-git directory: itself" "$expect" "$(main_checkout_both "$base/nogit")"
+
+    # A main checkout and a linked worktree of it: the main checkout both times.
+    make_git_repo "$base/main" "https://github.com/owner/ws.git"
+    seed_commit "$base/main"
+    git -C "$base/main" worktree add --quiet -b wt "$base/wt" 2>/dev/null
+    expect="$base/main | $base/main"
+    assert_eq "main checkout: itself" "$expect" "$(main_checkout_both "$base/main")"
+    assert_eq "linked worktree: the main checkout" "$expect" "$(main_checkout_both "$base/wt")"
+
+    # A main checkout made with `git clone --separate-git-dir` (its common
+    # dir does not end in /.git): itself, not its git dir.
+    git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
+    expect="$base/sepmain | $base/sepmain"
+    assert_eq "separate-git-dir main checkout: itself" "$expect" "$(main_checkout_both "$base/sepmain")"
+}
+
 # ---- sync.py --project-root ----
 
 test_sync_project_root() {
@@ -380,12 +497,49 @@ test_validate_legacy_still_works() {
 }
 
 test_validate_neither_shape() {
-    echo "TEST: validate still fails when neither shape is configured"
+    echo "TEST: validate passes with no project registered and no project/ (fresh clone, issue #295)"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
-    out="$(run_validate "$sb")" || rc=$?
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "passes" "PASSED" "$out"
+    assert_contains "says no project is registered" \
+        "no project registered (register one with .agent/scripts/register_project.sh <path>)" "$out"
+    assert_not_contains "no project/ guidance" "project/ directory does not exist" "$out"
+    assert_not_contains "no make setup prompt" "make setup  (will prompt" "$out"
+    [[ -e "$sb/project" ]] && rc=1 || rc=0
+    assert_eq "no project/ created" "0" "$rc"
+}
+
+test_validate_registered_no_legacy_verbose() {
+    echo "TEST: validate --verbose with one registered project and no project/ passes, no 'no project registered' line"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_registered_project "$sb" demo >/dev/null
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "entry checked" "project 'demo' (single_project)" "$out"
+    assert_not_contains "no 'none registered' line" "no project registered" "$out"
+}
+
+test_validate_entry_path_missing_no_legacy() {
+    echo "TEST: validate --verbose with no project/ still reports a registry line whose path is missing (issue #295)"
+    local sb out rc=0 ghost
+    sb="$(make_validate_sandbox)"
+    # A line with no path field (its default projects/<name> is absent) and
+    # a line naming a path that does not exist: both stay reported as before
+    # the project/ block went, and neither reads as "nothing registered".
+    ghost="$sb/elsewhere/phantom"
+    printf 'ghost single_project\nphantom single_project %s\n' "$ghost" > "$sb/.agent/projects.local"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "legacy guidance kept" "project/ directory does not exist" "$out"
+    assert_contains "the line without a path is reported at its default" \
+        "project 'ghost': hosting dir does not exist: $sb/projects/ghost" "$out"
+    assert_contains "the line with a missing path is reported at that path" \
+        "project 'phantom': hosting dir does not exist: $ghost" "$out"
+    assert_not_contains "not told that nothing is registered" "no project registered" "$out"
+    [[ -e "$sb/project" || -e "$sb/projects" || -e "$ghost" ]] && rc=1 || rc=0
+    assert_eq "nothing created" "0" "$rc"
 }
 
 # ---- Per-type checkout-shape delegation (issue #330) ----
@@ -1536,6 +1690,10 @@ echo ""
 
 test_registry_absent_is_legacy
 test_registry_malformed_line_fails
+test_registry_repo_slugs
+test_registry_repo_slugs_no_walk_up
+test_registry_repo_slugs_absent_or_broken
+test_main_checkout_helpers
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves
@@ -1556,6 +1714,8 @@ test_validate_unknown_type
 test_validate_malformed_registry
 test_validate_legacy_still_works
 test_validate_neither_shape
+test_validate_registered_no_legacy_verbose
+test_validate_entry_path_missing_no_legacy
 test_validate_ros2_colcon_entry_without_git_passes
 test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry
