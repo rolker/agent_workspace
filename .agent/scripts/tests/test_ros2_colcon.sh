@@ -3362,7 +3362,7 @@ test_mr_pin_fd_not_inherited() {
             "exec \"$sb/bin/$tool\" \"\$@\"" > "$sb/fdbin/$tool"
     done
     printf '%s\n' '#!/usr/bin/env bash' \
-        "echo git >> \"$sb/ran.log\"" \
+        "echo \"git \$*\" >> \"$sb/ran.log\"" \
         "[ -e /proc/self/fd/8 ] && echo \"git \$*\" >> \"$sb/fd8.log\"" \
         "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
     chmod +x "$sb/fdbin/"*
@@ -3376,6 +3376,11 @@ test_mr_pin_fd_not_inherited() {
     rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
         "$sb/.agent/scripts/adapter" --project p11 build >/dev/null 2>&1) || rc=$?
     assert_eq "build: exit 0" "0" "$rc"
+    # repo_pin asks origin through _adapter_bounded_git.
+    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" remote add origin "file://$sb/nonexistent.git"
+    (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" \
+        "$sb/.agent/scripts/adapter" --project p11 repo_pin pkg_a >/dev/null 2>&1) || true
+    assert_contains "repo_pin asked origin" "ls-remote origin" "$(cat "$sb/ran.log")"
     assert_contains "vcs ran" "vcs" "$(cat "$sb/ran.log")"
     assert_contains "colcon ran" "colcon" "$(cat "$sb/ran.log")"
     assert_contains "git ran" "git" "$(cat "$sb/ran.log")"

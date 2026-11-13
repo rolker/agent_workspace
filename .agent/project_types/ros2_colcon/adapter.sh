@@ -1812,7 +1812,7 @@ _rc_pin_kind() {
     # Either case: git reads an object name case-insensitively.
     [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] && is_hex=true
     # A ref git cannot name as a branch or tag is never asked about.
-    if ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
+    if ! _rc_nofd git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
         if [ "$is_hex" = true ]; then echo commit; else echo unknown; fi
         return 0
     fi
@@ -1828,7 +1828,7 @@ _rc_pin_kind() {
         # Bounded (#323): a prompt or a stalled host must not hang the
         # caller; a timeout falls to the local answer below.
         rc=0
-        out="$(_adapter_bounded_git -C "$dir" ls-remote origin \
+        out="$(_rc_nofd _adapter_bounded_git -C "$dir" ls-remote origin \
             "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)" || rc=$?
         if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
             why="did not answer within $(_adapter_git_limit)s"
