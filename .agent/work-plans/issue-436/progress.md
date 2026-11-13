@@ -1350,3 +1350,19 @@ Round-4 findings checked against the code: all eight are fixed as described (d55
 - [ ] (suggestion) `_rc_pin_kind` runs `_adapter_bounded_git` without `_rc_nofd`, so git and its descendants (an ssh ControlMaster, a credential helper) inherit the reader pin on fd 8 and can keep a generated directory from removal after the adapter ends (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:1929`
 - [ ] (suggestion) Tests exercise only a tag added in the clone (the fixture remote has no tags); add a deleted and a moved tag (both refused correctly by hand); a moved tag's name is printed twice in the message (add `uniq`) — `.agent/scripts/tests/test_ros2_colcon.sh:2841`
 - [ ] (suggestion) A clone made before the tag record existed is refused as "tag made" when the remote has tags; affects only clones made earlier on this unmerged branch, so at most a line in the PR body — `.agent/project_types/ros2_colcon/adapter.sh:751`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 18:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"Go with your recommendation"
+
+Q1 as put to him: how should this go on, after round 5 (Local Review (Pre-Push) at `a272df7f`) again found 2 must-fix, level with round 4, with the reviewer's verdict "fix and publish"? Shown to him by their text: F1 `adapter.sh:861`, after a fetch that updates some refs and then fails, or a run killed between the fetch and writing the tag record, the next run refuses an untouched clone and blames the user for "a tag made, moved or deleted in the clone"; F2 `adapter.sh:861`, local git state in the clone that changes what fetch or checkout see is never checked: a narrowed fetch refspec or a `refs/replace/*` entry makes a touched clone read as untouched, and the result is resolved silently. The six open suggestions were named.
+
+The host's recommendation, which he chose, as worded to him: "Drop the kept clone (Recommended)": each setup and sync fetches the source fresh into a temporary directory and removes it afterwards; the untouched-clone checks, records and refusals are deleted. One more fix pass and a review; slower syncs on a large manifest repository. Undone by restoring the removed commits. The host said its reading differs from the reviewer's: rounds 4 and 5 each found new ways a kept clone can be altered without the check noticing, that list has no natural end, and the host's own advice at the previous checkpoint (refuse a modified clone) led there; since editing in the clone was withdrawn, the adapter has no need to keep a clone.
+
+He first asked "What about if the manifest is part of one of the project repos?" and was told: the adapter must fetch the manifest's repository on its own before any layer checkout exists, in either design; with a kept clone the project holds two lasting copies of that repository (`configs/source-clone/` and the package checkout), with a temporary fetch only the package checkout he works in; he edits the manifest there, tries it with the path form, and after the merge sets `source` back to the URL; the resolved result follows the remote ref unless the path form is used; the cost is that setup downloads that repository twice and every sync does a shallow fetch of it, not measured for his repository. The other answers offered were: fix F1, F2 and the six, then publish; publish as it is; stop.
