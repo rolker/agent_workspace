@@ -705,3 +705,16 @@ The plan does exactly what the owner asked, as one small pull request. The flip 
 ### Recommended Actions
 
 - [ ] Implement as planned, applying notes 1 to 8 in the pull request text and the tests.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 13:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready with no must-fix; it checked the switch against the merged code, ran the runner under a terminal at two jobs, and searched all 49 suites for clashes; its eight notes are each a bounded instruction for the implement pass)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at d624d289 and its report. The implement handoff carries the eight notes. The plan stays inside the owner's direction ("Add a small PR to switch it on."); the pull request says "Part of #444".
+
+### Decisions made (owner may veto)
+- The pass makes two shuffled parallel full runs as the check that the suites are independent, and the host makes the one full pre-commit pass before publishing, which is the first run of the parallel default through pre-commit itself: three local full runs for this pull request, where the owner's rule is one, because turning parallel on is the change — undoing it: drop the two shuffled runs and rely on the host's pass and CI.
