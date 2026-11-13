@@ -53,3 +53,17 @@ issue: 477
   6. Sit-rep marks Path 3 (a Serves line naming the new README line): `.claude/skills/sitrep/SKILL.md` step 3 plus `test_sitrep_checks.sh`. Saves no wait; orientation only. Low value, do last. H.
   7. (c) Limit on fix-and-re-review cycles after publishing: stop after two rounds unless data loss or security is at stake, then the owner. Saves the long tail (rounds 3 to 6 found only shrinking points). Changes a decision right and the loop's rules. O; it is his own 2026-11-12 proposal, so one yes/no with his words quoted.
   - Already homed: test timing is #465 and #444; limits and safeguards that cover for something else are #472; the offline merge path stays undecided and unfiled by his choice.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's goal and the first pull request the owner fixed: his two approved texts into docs/roadmap.md and README.md, two files, no mechanism change; its ranked list of later pull requests is advice for after this one, and marks which are the owner's to decide)
+**After**: issue-actions
+**Decision**: proceed
+
+Read: the Issue Review at ab84c2ad and its report. The owner's words that started the drive (2026-11-13): "start working on path 3. act as orchestrator and open an issue if it hasn't happened, then oversee it. Keep in mind the lessons about what waists time and modify the skills as needed to be efficient".
+
+### Decisions made (owner may veto)
+- The first pull request is the two approved texts only, plus "Two paths" becoming three and one clause in Path 2's "any other work" so the paths do not overlap; work serving the new README line reads "Path 2" in the sit-rep's per-issue mark until a later pull request teaches it Path 3 — undoing it: add the sit-rep change to this pull request.
+- Later pull requests in the review's order, the host's first: records pushed once with the merge; a CI failure at the merge checkpoint fixed and re-run, not asked; review_progress.sh reading a pull-request-mode review. The owner's, each asked by name at its own merge: dropping the change log's line-count column in docs/design.md; a stop after two fix rounds after publishing.
