@@ -3095,13 +3095,19 @@ test_mr_one_source_only() {
     assert_contains "legacy MANIFEST_BOOTSTRAP_URL: names the file" "MANIFEST_BOOTSTRAP_URL=https://example.invalid/legacy.yaml in $sb/.agent/projects.d/p11.sh (the legacy per-project config): remove that line" "$out"
     sed -i '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
 
-    mkdir -p "$sb/projects/p11/configs"
+    # A good setup first, so validate reaches the single-source check.
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "one source: setup exit 0" "0" "$rc"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "one source: validate exit 0" "0" "$rc"
     echo "https://example.invalid/b.yaml" > "$sb/projects/p11/configs/project_bootstrap.url"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "project_bootstrap.url: exit 1" "1" "$rc"
     assert_contains "project_bootstrap.url: names the file and its path" "the file $sb/projects/p11/configs/project_bootstrap.url (in the project's root; it may be tracked in the project's own repository): remove it" "$out"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "validate also refuses it" "1" "$rc"
+    assert_eq "validate also refuses it: exit 1" "1" "$rc"
+    assert_contains "validate also refuses it: the single-source check" "❌ ERROR: project 'p11' sets source=$sb/m/manifest.yaml (the manifest route), and another bootstrap source was found" "$out"
+    assert_contains "validate also refuses it: names the file" "the file $sb/projects/p11/configs/project_bootstrap.url" "$out"
     rm -f "$sb/projects/p11/configs/project_bootstrap.url"
 
     mr_settings "$sb" "source=$sb/m/manifest.yaml" "bootstrap_url=https://example.invalid/b.yaml"
