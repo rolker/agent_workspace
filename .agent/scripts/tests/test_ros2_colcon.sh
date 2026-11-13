@@ -3075,6 +3075,24 @@ test_mr_sync_names_a_new_layer() {
     assert_not_contains "after setup: no notice" "not checked out yet" "$out"
 }
 
+test_mr_path_source_edited_during_resolve() {
+    echo "TEST: manifest route: a path source edited while the resolver runs is reported by validate"
+    local sb out rc
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "\"$sb/.venv/bin/ros-manifest.real\" \"\$@\"; rc=\$?" \
+        "echo '# edited during the resolve' >> \"$sb/m/manifest.yaml\"" \
+        'exit $rc' > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "validate: the edit is seen" "has changed (modification time or size) since it was resolved" "$out"
+}
+
 test_mr_validate_link_missing_and_path_changed() {
     echo "TEST: manifest route: validate fails with no resolved manifest; warns when a path source changed"
     local sb out rc
@@ -3796,6 +3814,7 @@ mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
 mr_test test_mr_sync_names_a_new_layer
 mr_test test_mr_validate_link_missing_and_path_changed
+mr_test test_mr_path_source_edited_during_resolve
 mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up

@@ -955,6 +955,10 @@ _rc_manifest_resolve() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+    # The path source's stamp is taken before the resolve, so an edit made
+    # while it runs shows in validate as a changed file.
+    local stamp=""
+    _rc_source_is_url || stamp="$(_rc_file_stamp "$_RC_SRC_FILE")"
     err="$(_rc_nofd "$bin" resolve --manifest "$_RC_SRC_FILE" --role "$role" --distro "$distro" \
         --out "$tmp" --layout manifest-dir --cache-dir "$tmp.cache" 2>&1 >/dev/null)" || rc=$?
     rm -rf -- "$tmp.cache"
@@ -984,7 +988,7 @@ _rc_manifest_resolve() {
         echo "role=$role"
         echo "distro=$distro"
         if ! _rc_source_is_url; then
-            echo "file-stamp=$(_rc_file_stamp "$_RC_SRC_FILE")"
+            echo "file-stamp=$stamp"
         fi
     } > "$tmp/.resolved-from" || { _rc_resolve_cleanup; return 1; }
     prev=""
