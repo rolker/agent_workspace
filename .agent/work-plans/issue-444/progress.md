@@ -447,3 +447,23 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 163 passed
 
 ### Findings
 - [ ] (suggestion) The "still running at exit" line is printed before the new traps are installed, so a signal in the few microseconds between them takes the default action and leaves /tmp/run-script-tests.* behind; the new test signals as soon as it sees that line, so a runner descheduled right after the write would fail the test (a rare flake). Move the echo after the three `trap` lines — `.agent/scripts/tests/run_script_tests.sh:552`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6a6f8f253de032f0, resume 1 of 3)
+
+**PR**: #468 at `5d9de7ef`
+**Sources**: 2 (Local Review @ `c327c009` (covers 5d9de7ef via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub: 0 reviews, 0 inline comments, 0 conversation comments (Copilot's automatic review is off). CI at 5d9de7ef: Validate Documentation and ros-manifest tests pass; Lint (pre-commit) and Validate Adapter Contract still running. The Integrated Review at bb125a16 is closed: S1 and S2 fixed in 6b4da8f2 and 0f6b78d8 (read at :552-561 and in the Implementation entry); the round-3 pre-push entry is stale. One open suggestion remains, from the pull-request-mode Local Review.
+
+Mechanism: the ordinary tail of a signal-handling change, not a wrong design; the windows found have shrunk each round (a 5 s stop, then a stale id, now microseconds). All of them sit where the traps are reset and re-installed (:728, :801, :558), so if another one turns up, the cure is one handler installed once for the whole parallel section and the cleanup, deciding by `stop_underway`.
+
+### Findings
+- [ ] (suggestion, Local Review @ c327c009) Valid. cleanup_run prints "still running at exit" (:552) before installing its INT/TERM/HUP traps (:558-560); a signal between them takes the default action inside the EXIT trap, so stop_suites never starts: no watchdog, the left process runs on until it ends by itself, and /tmp/run-script-tests.* is left behind. For a person the window is three builtins, microseconds; it matters only to something that reacts to the line. The new (u8) test does: it polls the log every 0.1 s and signals right after seeing the line. To fail, the runner must be descheduled in those microseconds for longer than the test takes to wake, run two greps and send the signal (a few ms at best, up to about 100 ms). On an idle machine that does not happen; on a heavily loaded one (load 14 to 20 seen today) it is roughly one run in thousands or rarer, and a failure costs a rerun of the suite. Fix: move the echo after the three `trap` lines; no new test needed — `.agent/scripts/tests/run_script_tests.sh:552`
+
+### False positives
