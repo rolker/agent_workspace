@@ -343,19 +343,7 @@ not diagnose superpowers".
 
 ## Pending Review (2026-11-13 round)
 
-- `superpowers-2` `session-diagnosis-skill` (deferred earlier) —
-  `diagnosing-superpowers` is now released on main: transcript forensics
-  with `path:line` evidence, scrubbed bundle, drafted issue. The
-  deferral condition is met (2026-11-13)
-- `superpowers-3` `brainstorm-builder-check` — a fresh subagent reads a
-  design as the implementer and lists what it would still need to ask,
-  plus the "ask only when the answer changes what gets built" rule;
-  possible input to `/plan-task` and `/review-issue` (2026-11-13)
-- `superpowers-4` `plans-record-decisions-not-code` — `writing-plans` now
-  has plans carry signatures, assertions and spec values rather than
-  code, with a plan-length-versus-spec-length self-review; reported
-  large time and token savings. Possible input to `/plan-task`
-  (2026-11-13)
+(none pending from this round)
 
 ## Roadmapped (2026-11-13 decisions)
 
@@ -367,6 +355,18 @@ not diagnose superpowers".
   review-code 37,180; audit-project 24,489; onboard-project 24,446;
   triage-reviews 23,702. Owner's note: "this is part of a bigger effort to
   streamline instructions". Added to docs/roadmap.md (2026-11-13)
+
+## Deferred (2026-11-13 decisions)
+
+- `superpowers-2` `session-diagnosis-skill` — `diagnosing-superpowers` is now
+  released upstream (the earlier deferral condition is met); no
+  session-forensics need today (2026-11-13)
+- `superpowers-3` `brainstorm-builder-check` — a fresh subagent reads a design
+  as the implementer and lists what it would still need to ask. Plan review
+  already catches most defects; no shown need (2026-11-13)
+- `superpowers-4` `plans-record-decisions-not-code` — plans carry signatures,
+  assertions and spec values rather than code. Check first whether this
+  workspace's plans have the problem; not checked (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 

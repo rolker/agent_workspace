@@ -197,17 +197,9 @@ per-worktree file. **No change to the #172 path.**
 
 ## Pending Review
 
-(2026-09-14 items are decided below. New this round:)
+(2026-09-14 items are decided below.)
 
-- **diffx-2.** `file-and-diff-scope-comments` — issue #46's addition to the
-  comment contract: a `scope` of line / file / diff, exported as
-  `<comment scope="file">` inside the `<file>` block and `<comment
-  scope="diff">` outside all `<file>` blocks; and issue #44's `status`
-  round-tripping through export/import. Extends the deferred
-  `line-anchored-comment-contract` (no consumer today); only a proposal in an
-  issue, not shipped code. Relevant if that contract is ever adopted, since a
-  whole-change finding such as "missing migration" has no line anchor.
-  (2026-11-13)
+(none pending from this round)
 
 ## Decided (2026-11-13)
 
@@ -217,6 +209,13 @@ per-worktree file. **No change to the #172 path.**
   maintainer replies on the 8 new issues. Owner said yes: registry entry
   removed and listed in the registry's "Archived 2026-11-13" block; this
   digest kept as the record (2026-11-13)
+
+## Deferred (2026-11-13 decisions)
+
+- **diffx-2.** `file-and-diff-scope-comments` — scope of line / file / diff
+  for comments (issues #46, #44). Proposals in issues only, no maintainer
+  reply; the source was archived 2026-11-13, so this will not resurface unless
+  tracking resumes (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 

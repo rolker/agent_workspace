@@ -174,16 +174,7 @@ is native capabilities that make hand-rolled workspace tooling redundant.
 
 ## Pending Review
 
-- `cc-1` `sandbox-worktree-commit-rule` — v2.1.323 sandbox: `git worktree
-  add/move/remove` read-only and no commits in a worktree the session was
-  not started in or given. Matters if the sandbox is ever turned on for
-  sessions that create worktrees and `cd` into them (it is off in this
-  host's user settings); the worktree scripts and `/start-task` `cd`
-  pattern are the affected case (2026-11-13)
-- `cc-4` `mods-and-plugin-engines` — mods (TypeScript hooks plugins),
-  `claude plugin validate/test`, and `engines["claude-code"]` in
-  `plugin.json`; bears on the plugin-packaging format question left open
-  above and on whether shell hooks should stay shell (2026-11-13)
+(none pending from this round)
 
 Carried over from 2026-09-22 (still pending):
 
@@ -228,6 +219,19 @@ Carried over from 2026-09-22 (still pending):
   the installed CLI was not checked, and the Claude-specific setup content
   in `CLAUDE.md` would stay either way (2026-11-13)
 
-## Deferred
+## Deferred (2026-11-13 decisions)
 
-(none yet)
+- `cc-1` `sandbox-worktree-commit-rule` — the sandbox is off on this machine.
+  Note for when it resurfaces: with the sandbox on, `git worktree
+  add/move/remove` and commits in a worktree the session was not started in
+  or given fail read-only, which is this workspace's
+  create-worktree-then-enter flow; the sandbox favours starting the session
+  inside the worktree (agrees with the session-root rule). The owner said it
+  "might be relevant" given earlier container-sandbox work, then deferred: "I
+  think the roadmap is busy enough". Original finding: v2.1.323 sandbox,
+  worktree scripts and `/start-task` `cd` pattern are the affected case
+  (2026-11-13)
+- `cc-4` `mods-and-plugin-engines` — mods (TypeScript hooks plugins),
+  `claude plugin validate/test`, and `engines["claude-code"]` in
+  `plugin.json`; bears on the open plugin-packaging question, so weigh it
+  there (2026-11-13)

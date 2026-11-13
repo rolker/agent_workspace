@@ -462,16 +462,16 @@ new to pull back; their next check of us will see #226/#232/#236/#238.
 
 ## Pending Review (2026-11-13 round)
 
-- **fork-1.** `registry-status-after-cutover` — upstream `main` has not moved
-  since 2026-09-25 (0 commits in this round, compare `identical`), and the
-  fork is being absorbed (#262 cutover; parity audit #253 closed
-  2026-11-10). This tracker only sees `origin`, so it cannot see the fork's
-  local work. Question for the owner, not a finding: keep the entry until the
-  cutover, or retire it now and treat `docs/fork_parity.md` as the record.
-  (2026-11-13)
+(none pending from this round)
 
 (No upstream items to triage: nothing changed. Earlier items remain decided
 below and in the 2026-09-29 "Decisions" section.)
+
+## Deferred (2026-11-13 decisions)
+
+- **fork-1.** `registry-status-after-cutover` — keep the registry entry until
+  the cutover; nothing new upstream since 2026-09-29. Revisit at cutover
+  (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 

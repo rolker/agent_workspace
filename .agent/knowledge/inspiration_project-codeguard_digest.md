@@ -256,22 +256,9 @@ issues closed in the previous 60 days; v1.4.0 (2026-06-29); last push
 
 ## Pending Review
 
-(2026-09-14 items are decided below. New this round, 2026-11-13:)
+(2026-09-14 items are decided below.)
 
-- **codeguard-1.** `rule-files-frozen-skill-2.0-direction` — upstream says
-  v1.5.0 is the last rule-file release and 2.0 is a portable skill, with 1.x
-  on security-fix-only. Bears on two decided items: the roadmapped
-  `manifest-carried-rule-packs` (built on the per-host rule-file update
-  workflow, which is now in maintenance) and the deferred
-  `single-source-multi-host-emission` (the multi-host converter is the 1.x
-  design; 2.0 may drop it). Relevant to this workspace as a re-check of those
-  two entries once 2.0's shape is visible. (2026-11-13)
-- **codeguard-5.** `behaviour-change-is-a-major-version` — issue #139's
-  proposal that changes to activation, selection or required steps are major
-  releases even if installs keep working, because an agent-facing skill can
-  change workflow without breaking. Possible input to how this workspace
-  versions or announces changes to its own skills; discussion only, no
-  decision upstream yet. (2026-11-13)
+(none pending from this round)
 
 ## Decided (2026-11-13)
 
@@ -298,6 +285,17 @@ Skipped:
   unmerged, mostly Python tooling this workspace does not have; overlaps the
   roadmapped `skill-source-schema-and-version-gate` only in spirit
   (2026-11-13)
+
+## Deferred (2026-11-13 decisions)
+
+- **codeguard-1.** `rule-files-frozen-skill-2.0-direction` — v1.5.0 is the
+  last rule-file release; 2.0 is a portable skill. Re-check the two earlier
+  decisions it affects (`manifest-carried-rule-packs`,
+  `single-source-multi-host-emission`) once the 2.0 shape is visible
+  (2026-11-13)
+- **codeguard-5.** `behaviour-change-is-a-major-version` — issue #139's
+  proposal that changes to activation, selection or required steps are major
+  releases. Discussion only; no upstream decision (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 

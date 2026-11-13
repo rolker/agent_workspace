@@ -206,12 +206,7 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check (ids are stable for triage):
 
-- `harness-2` `operator-attention-queue-and-stop-conditions` — open issues
-  #2170 (attention queue with actionable human-intervention reasons) and
-  #2171 (supervised recurring loops with explicit mandates and stop
-  conditions) are design discussions of the same problem this workspace's
-  checkpoint dialogs and `/run-issue` stop rules address. Worth reading the
-  issue text for the vocabulary; nothing shipped yet. (2026-11-13)
+(none pending from this round)
 
 Carried from 2026-09-22, still undecided (the Starlark, cross-review and
 sandbox-tier items were not changed by the commits read; the submission
@@ -260,3 +255,6 @@ item is sharpened by `harness-1`):
   covered by the roadmapped `gstack-2` (progress entries record their
   commit); the rest is a comparison with a database-backed design the
   workspace does not follow (2026-11-13)
+- `harness-2` `operator-attention-queue-and-stop-conditions` — design
+  discussion upstream only (issues #2170, #2171); nothing shipped
+  (2026-11-13)

@@ -213,11 +213,7 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check:
 
-- `worktrunk-3` `hook-semantics-lessons` — v0.81.0 hook changes (foreground
-  hooks can prompt; context passed by template args not stdin JSON) and open
-  issue #4143 (recovery after a failed `pre-start` reports success on an
-  unusable worktree) are concrete failure modes for any lifecycle-hook design.
-  Refines the existing `worktree-lifecycle-hooks` item below. (2026-11-13)
+(none pending from this round)
 
 Carried from 2026-09-22, still undecided:
 
@@ -270,3 +266,6 @@ Carried from 2026-09-22, still undecided:
   machine's disk is ext4 (no reflinks, so a plain copy), and copied build
   output may break for build systems that record absolute paths; revisit
   when a slow first build in a project worktree hurts (2026-11-13)
+- `worktrunk-3` `hook-semantics-lessons` — v0.81.0 hook changes and open issue
+  #4143 as failure modes for a lifecycle-hook design. Belongs with the
+  existing undecided `worktree-lifecycle-hooks` item (2026-11-13)

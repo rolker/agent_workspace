@@ -427,17 +427,7 @@ CI, but not a tracked item).
 
 ## Pending Review (2026-11-13 round)
 
-- `gstack-4` `lane-wait-and-spend-rules` — warm-wait check-ins to keep the
-  prompt cache, parallel reads capped at 4k characters per call, and a
-  spend threshold that triggers a written handoff for a rotate/continue
-  decision. May matter for run-issue waits and long background phases
-  (2026-11-13)
-- `gstack-6` `per-model-skill-loadouts` — render a smaller skill for a
-  named model, full for unknown ones, with a mismatch warning. May matter
-  next to the roadmapped context-budget ratchet; low urgency (2026-11-13)
-- `gstack-7` `modernize-aging-pr-skill` — range-diff-proven rebase of an
-  old PR and an explicit modernize/rework/close verdict, never closing on
-  its own. May matter for stale draft PRs and branches (2026-11-13)
+(none pending from this round)
 
 ## Roadmapped (2026-11-13 decisions)
 
@@ -463,6 +453,17 @@ CI, but not a tracked item).
   `merge_pr.sh` already captures the reviewed head and targets CI at it;
   only the final `gh pr merge --merge` call is not pinned with
   `--match-head-commit` (2026-11-13)
+- `gstack-4` `lane-wait-and-spend-rules` — warm-wait check-ins to keep the
+  prompt cache, parallel reads capped at 4k characters per call, and a
+  spend threshold that triggers a written handoff. No recorded spend or wait
+  problem it would fix (2026-11-13)
+- `gstack-6` `per-model-skill-loadouts` — render a smaller skill for a named
+  model, full for unknown ones, with a mismatch warning. Overlaps the
+  roadmapped context-budget item and the effort to streamline instructions
+  (2026-11-13)
+- `gstack-7` `modernize-aging-pr-skill` — range-diff-proven rebase of an old
+  PR and an explicit modernize/rework/close verdict, never closing on its
+  own. No aging pull requests here today (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 

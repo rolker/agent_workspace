@@ -234,12 +234,7 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check:
 
-- `ccswarm-3` `read-only-enforced-not-requested` — read-only stages are
-  enforced by the provider's own sandbox flag, passed explicitly so explicit
-  tool lists cannot widen it, and a fallback to a provider that cannot
-  enforce read-only fails instead of degrading silently. Same principle as
-  the earlier `fail-fast-unsupported-provider-pattern` item; relevant to how
-  reviewer sub-agents are kept read-only in this workspace. (2026-11-13)
+(none pending from this round)
 
 Carried from 2026-09-22, still undecided (`quorum-gate-for-plan-review` is
 partly sharpened by `ccswarm-1`; its note that Sangha "bypasses gates" is
@@ -288,4 +283,5 @@ no longer true):
 
 ## Deferred
 
-(none)
+- `ccswarm-3` `read-only-enforced-not-requested` — repeats the earlier
+  undecided `fail-fast-unsupported-provider-pattern` item (2026-11-13)

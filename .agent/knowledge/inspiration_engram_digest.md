@@ -212,12 +212,17 @@ linked git worktree — a worktree gotcha worth knowing).
 
 ## Pending Review (2026-11-13 round)
 
-- `engram-1` `topic-pubsub-streams` — bounded, project-local pub/sub
-  streams (topic/subtopic, lossy checkpoint + tail, DB-assigned
-  timestamps, topics-are-not-memory rule, one-line index in inject) for
-  concurrent sessions sharing findings. May matter to this workspace
-  because several agent sessions run in parallel and have no channel
-  beyond the issue timeline (2026-11-13)
+(none pending from this round)
+
+## Deferred (2026-11-13 decisions)
+
+- `engram-1` `topic-pubsub-streams` — experimental upstream. Note for when it
+  resurfaces: it is the shared-notice-board model (topics with a purpose and a
+  "retire when" statement, a one-line index in context, bounded compaction,
+  "topics are not memory"), the counterpart to the direct session-to-session
+  messaging the owner is experimenting with; input for the orchestrator
+  design. The owner asked whether it was relevant, then deferred: "I think the
+  roadmap is busy enough" (2026-11-13)
 
 ## Skipped (2026-11-13 decisions)
 
