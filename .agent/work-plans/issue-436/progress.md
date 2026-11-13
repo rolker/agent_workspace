@@ -1100,3 +1100,31 @@ Deviations: the register hint says "register it as type ros2_colcon" (the type i
 - [x] (suggestion) Interrupt after `mv -T` but before `_RC_RESOLVE_TMP=""` deletes the live target (dangling link); BSD fallback has a no-link window; SIGKILL leftovers never swept — `.agent/project_types/ros2_colcon/adapter.sh:798`
 - [x] (suggestion) `source_path` may be a symlink in the hostile repo pointing outside the clone; `[ -f ]` follows it; check realpath stays under the clone — `.agent/project_types/ros2_colcon/adapter.sh:722`
 - [x] (suggestion) Confusing errors: a half-made `--no-checkout` clone reads as dirty forever; `source_ref=HEAD` passes the registry and fails at `checkout -B HEAD` — `.agent/scripts/_project_registry.sh:813`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 16:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-436 at `7e9df8aa`
+**Addressed**: Local Review (Pre-Push) at `408fa819` (2026-11-13 15:41 -05:00)
+**Commits**: e4441c04, aa598101, 059a18bb, b4bc1dfd, efee9fbf, 6535a04e, 57cd541f, 97836cbf, 1681926a, 37aa3e3e, 7e9df8aa
+
+### Actions
+- [x] (must-fix) Deleted remote tag still resolved: one fetch `--prune --prune-tags --force`; test `deleted tag:` in test_mr_stale_leaf_commit_and_tag (fails without the fix, checked) — e4441c04 — `.agent/project_types/ros2_colcon/adapter.sh:648`
+- [x] (must-fix) Detached-HEAD local commits orphaned for a tag/commit ref: kept, warned, `source-state=local`, checked out again once on a branch; tests `detached local commit, tag/commit pin:` and `on a branch:` — aa598101 — `.agent/project_types/ros2_colcon/adapter.sh:710`
+- [x] (suggestion) sync's run-setup notice now counts the repositories of a layer with no `src/`; new test test_mr_sync_names_a_new_layer — 059a18bb — `.agent/project_types/ros2_colcon/adapter.sh:1097`
+- [x] (suggestion) validate warns on a clone edited after sync (state clean) and on a missing clone, and skips the source-state checks once `source` itself changed; new test test_mr_validate_source_state_warnings — b4bc1dfd — `.agent/project_types/ros2_colcon/adapter.sh:895`
+- [x] (suggestion) "validate also refuses it" now runs after a good setup (asserted exit 0 first) and asserts on validate's single-source message — efee9fbf — `.agent/scripts/tests/test_ros2_colcon.sh:3011`
+- [x] (suggestion) flock on `configs/.lock.source` around fetch and resolve (`ROS2_COLCON_LOCK_WAIT`, default 120 s, then refuses with nothing changed; unlocked without flock, as `project_file_set` is); new test test_mr_source_lock (held lock refuses a first setup and a sync with nothing changed, two concurrent syncs both succeed leaving one generated dir, a PATH without flock runs unlocked) — 6535a04e — `.agent/project_types/ros2_colcon/adapter.sh:638`
+- [x] (suggestion) Swap windows: the cleanup keeps the directory the live link points at; BSD `mv -fh` before the remove-then-rename fallback; leftovers of killed runs swept while the lock is held; new test test_mr_swap_interrupt_and_sweep (TERM right after `mv -T`, a stub BSD mv, planted leftovers; 5 of its assertions fail without the fix, checked) — 57cd541f — `.agent/project_types/ros2_colcon/adapter.sh:798`
+- [x] (suggestion) No symbolic link along `source_path` is followed (each component checked; stricter than a realpath-under-clone check: a link inside the repository is refused too); tests `symlink source_path evil.yaml / evildir/secret.yaml` — 97836cbf — `.agent/project_types/ros2_colcon/adapter.sh:722`
+- [x] (suggestion) A clone with no index (interrupted `--no-checkout` first clone) is checked out as fresh; the registry refuses `source_ref=HEAD`; new test test_mr_interrupted_first_clone_and_head_ref and a test_project_file.sh refused-value row — 1681926a — `.agent/scripts/_project_registry.sh:813`
+- [x] (cosmetic) `unused_settings` names the ros2_colcon type once; test asserts the doubled phrase is gone — 37aa3e3e
+- [x] docs/design.md Registry and adapters: one sentence for the source lock, change-log row — 7e9df8aa
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 795 passed, 0 failed, 0 skipped (was 720 before this pass).
+- `bash .agent/scripts/tests/test_project_file.sh`: 542 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit hides which suites it ran on a pass).
+- Not verified: the BSD `mv -h` path on a real BSD/macOS host (tested only with a stub mv on Linux); the no-flock fallback only with flock absent from PATH on Linux.
