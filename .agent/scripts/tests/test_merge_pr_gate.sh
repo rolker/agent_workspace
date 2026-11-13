@@ -843,6 +843,98 @@ else
     fail "(pkg-15) narrowed clone CI target (stale=${stale:0:7} new=${newhead:0:7} now=$(git -C "$A" rev-parse --short origin/feature/issue-901) out=${out:0:700})"
 fi
 
+echo "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT"
+# An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt with
+# no agent, or a stalled host, would. Only WT_FETCH_TIMEOUT (2s) can end
+# it; the ceiling below is far above the limit and far below the block.
+hang_shim() {  # <sb>: writes $sb/hang-ssh, which records its pid and blocks
+    printf '#!/usr/bin/env bash\necho $$ >> "%s"\nexec sleep 300\n' "$1/hang-ssh.pids" > "$1/hang-ssh"
+    chmod +x "$1/hang-ssh"
+}
+hang_reap() {  # <sb>: kills every blocked shim; prints "reached" and the pids still alive
+    local p left=""
+    [[ -s "$1/hang-ssh.pids" ]] || { echo "not-reached"; return; }
+    while read -r p; do kill "$p" 2>/dev/null || true; done < "$1/hang-ssh.pids"
+    sleep 0.2
+    while read -r p; do kill -0 "$p" 2>/dev/null && left="$left $p"; done < "$1/hang-ssh.pids"
+    echo "reached$left"
+}
+if command -v timeout >/dev/null 2>&1; then
+    # A review at R in A; origin's head is R plus a progress.md commit A has
+    # not fetched. With origin answering, the review covers the head and the
+    # gate passes (the control run below); with origin silent, the head is
+    # not present locally, and the gate must not pass.
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "")"
+    A="$cont/l1_ws/src/pkg_a"
+    r=$(git -C "$A" rev-parse --short HEAD)
+    mkdir -p "$A/.agent/work-plans/issue-901"
+    printf -- '---\nissue: 901\n---\n\n# Issue #901\n\n%s\n' "${APPROVED_AT_HEAD/abc1234/$r}" > "$A/.agent/work-plans/issue-901/progress.md"
+    git -C "$A" add -A && git -C "$A" -c user.name=t -c user.email=t@t commit -q -m "progress: review"
+    git -C "$A" push -q origin feature/issue-901
+    git clone -q --branch feature/issue-901 "$sb/fake_remotes/github.com/owner/pkg_a.git" "$sb/other_a"
+    echo "bookkeeping" >> "$sb/other_a/.agent/work-plans/issue-901/progress.md"
+    git -C "$sb/other_a" -c user.name=t -c user.email=t@t commit -q -am "progress: checkpoint"
+    git -C "$sb/other_a" push -q origin feature/issue-901
+    newhead=$(git -C "$sb/other_a" rev-parse HEAD)
+    printf '{"state":"OPEN","headRefName":"feature/issue-901","title":"Pkg PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x"}],"body":""}\n' "$newhead" \
+        > "$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+    hang_shim "$sb"
+    git -C "$A" remote set-url origin "ssh://git@github.com/owner/pkg_a.git"
+    a_before=$(git -C "$A" rev-parse HEAD); p_before=$(pkg_progress "$cont")
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$sb/hang-ssh" WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    elapsed=$((SECONDS - started))
+    reap="$(hang_reap "$sb")"
+    if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
+        && [[ "$out" == *"would have refused — latest Local Review entry is at \`$r\`, not the PR head \`${newhead:0:7}\` (review coverage could not be confirmed: head \`${newhead:0:7}\` is not present locally)"* ]] \
+        && [[ "$out" != *"approved review at head"* ]] \
+        && [[ "$out" == *"the timeline commit could not be pushed to origin (undone locally) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] \
+        && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+        && [[ "$(pkg_progress "$cont")" == "$p_before" ]]; then
+        pass "(hang-1) origin silent at the gate's fetch: ended by the limit (${elapsed}s), a refusal reason not a pass; the timed-out record push is undone, the record on the PR; no shim left"
+    else
+        fail "(hang-1) origin silent (reap=$reap elapsed=${elapsed}s out=${out:0:900})"
+    fi
+    # Control: the same fixture with origin answering passes the gate.
+    git -C "$A" remote set-url origin "$sb/fake_remotes/github.com/owner/pkg_a.git"
+    : > "$sb/gh_fixtures/comments_posted.md"
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    if [[ "$out" == *"review at \`$r\` covers head \`${newhead:0:7}\`"* ]] && [[ "$out" == *"Review gate: approved review at head"* ]] \
+        && [[ "$out" != *"would have refused"* ]]; then
+        pass "(hang-1 control) the same fixture with origin answering: the gate passes, so the hang alone made the difference"
+    else
+        fail "(hang-1 control) (out=${out:0:700})"
+    fi
+
+    # Only the push is silent (pushurl): the fetches answer, the record's
+    # push times out and takes the undo path.
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    hang_shim "$sb"
+    git -C "$A" config remote.origin.pushurl "ssh://git@github.com/owner/pkg_a.git"
+    a_before=$(git -C "$A" rev-parse HEAD); p_before=$(pkg_progress "$cont")
+    a_remote_before=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
+    started=$SECONDS
+    out="$(GIT_SSH_COMMAND="$sb/hang-ssh" WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    elapsed=$((SECONDS - started))
+    reap="$(hang_reap "$sb")"
+    if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
+        && [[ "$out" == *"the timeline commit could not be pushed to origin (undone locally) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] \
+        && [[ "$out" != *"and pushed"* ]] \
+        && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+        && [[ "$(pkg_progress "$cont")" == "$p_before" ]] \
+        && [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$a_remote_before" ]] \
+        && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]]; then
+        pass "(hang-2) the record push times out (${elapsed}s): the commit is undone, progress.md as it was, one PR comment; no shim left"
+    else
+        fail "(hang-2) push times out (reap=$reap elapsed=${elapsed}s out=${out:0:700})"
+    fi
+else
+    echo "  SKIP: no timeout command (hang-1, hang-2)"
+fi
 
 # ================================================= main tree on the PR branch =====
 echo "TEST: the main tree checked out on the PR branch never receives the record commit"
