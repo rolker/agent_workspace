@@ -553,3 +553,31 @@ The owner's answer, verbatim: "merge 468 if ci is gree". He had been told: revie
 **Decision**: address
 
 CI failed, so the earlier conditional answer ("merge 468 if ci is gree") did not merge. Shown to the owner: the push runs (the branch alone) pass; the pull_request runs (the branch combined with main) have failed six times in a row since pull request 461 merged at 2026-11-13 16:43Z, every time at the same case of test_merge_pr_gate.sh: "FAIL: (hang-1) origin silent (reap=reached elapsed=4s ..." / "elapsed=5s", in "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT", then "run_script_tests: FAILED at test_merge_pr_gate.sh (suite 16 of 48)". Main's own CI passes that test at 8161b57d. Asked: "Send pull request 468 (parallel test suites) back to find and fix its CI failure against main?" The owner's answer, verbatim: "yes to both".
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 13:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #468 at `7938e59f`
+**Addressed**: Checkpoint (After: merge, Decision: address) at 2026-11-13 12:29 -05:00 — the CI failure of the pull_request runs (branch merged with main): test_merge_pr_gate.sh case hang-1
+**Commits**: e5c228b3 (merge of origin/main, no conflicts), 7938e59f (the fix and its test)
+
+### Cause
+Not a signal, process group or stdin difference: the hang-1 run ended on time (reap=reached, 4-5 s). Its reason sentence was cut short. merge_pr.sh passed the owning checkout's whole reason sentence (_GATE_OWN_NOREAD / _GATE_OWN_PROBLEM, with the checkout's path inside) through _bk_display, whose 256-byte cap then cut the sentence to "so it is not...(+20 bytes)". The test looks for "so it is not known to be current". This branch's per-suite TMPDIR (/tmp/run-script-tests.X/tmp/test_merge_pr_gate.sh/...) is 26 bytes longer than main's per-run one, enough to push the sentence over the cap; on main the sentence was about 6 bytes under it. Reproduced without the runner: test_merge_pr_gate.sh on its own with a long TMPDIR (the session scratchpad) fails 9 cases this way (pkg-13 x2, pkg-16 x3, pkg-19 x3, hang-1). Reproduced through the runner at one job: the same hang-1 failure as CI. The defect is in merge_pr.sh from pull request 461. The test is right to expect the whole sentence, and the runner needs no change.
+
+### Actions
+- [x] Each value in the owning checkout's reason goes through _bk_display as the sentence is built, and the gate reasons quote the sentence unchanged, so the cap applies to a path, never to the sentence — `.agent/scripts/merge_pr.sh:751-806, :906-908`
+- [x] New case (pkg-13 long-path): the checkout's path is padded to about 240 bytes, under the cap, while its reason sentence goes over it (310 bytes). It fails without the fix at the normal short TMPDIR, so it does not depend on where the suite runs — `.agent/scripts/tests/test_merge_pr_gate.sh` (after the pkg-13 block)
+
+### Runs
+- Unfixed, test_merge_pr_gate.sh alone, long TMPDIR: 9 failed (191 passed), 137 s
+- Unfixed plus the new case, alone, short TMPDIR: only pkg-13 long-path failed (200 passed), 167 s
+- Unfixed, through the runner at 1 job (`--files` the test file, which scoped to 35 suites; stopped at suite 9): hang-1 failed as in CI, and pkg-13 long-path also failed, 400 s
+- Fixed, through the runner at 1 job (a scratch tests dir holding test_merge_pr_gate.sh and the required test_checkpoint_269.sh), 3 in a row: 201 passed, 0 failed each, 170 s / 225 s / 329 s
+- Fixed, test_merge_pr_gate.sh alone with the long TMPDIR: 201 passed, 0 failed, 220 s
+- Fixed, test_run_script_tests.sh alone, 3 in a row: 163 passed, 0 failed each, 51 s / 50 s / 51 s
+
+Commits used SKIP=validate-script-tests under the owner's test rule of 2026-11-13; the full suite and the full pre-commit pass were not run. CI on the push is the full check. Nothing was pushed.
+
+Left as it is: _gate_refusal (merge_pr.sh, the "records gate refused" reason) still caps a whole message from another script. In most cases it is that script's single error line, a value. Its two built-in sentences hold only a short relative path.
