@@ -1437,3 +1437,40 @@ Not changed: the `^\.[0-9_]+` float pattern. PyYAML 6 uses `\.[0-9][0-9_]*`. Ali
     - `._0`, `._7` and `.__` (the pattern difference above).
 - `test_ros2_colcon.sh`: 504 passed, 0 failed.
 - Pre-commit over `main...HEAD` (local `main` = origin/main `38119e32`), no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`, `check-design-anchors`, `shellcheck` and the adapter contract check.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a8f506ccaa4d38400, resume 1 of 3)
+
+**PR**: #456 at `8d563c2d`
+**Depth**: Deep (reason: fix-round re-review; the whole-diff tier is unchanged, the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the `True`/`False` finding of the Local Review at `33cbccd7`, its fix 8fc482b9, and the merge of main at 556ead1b. Cross-model reviewers were not dispatched, per the handoff.
+
+**Checks:**
+- test_ros2_colcon: 504 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- test_commit_identity, which came in with the merge: 93 passed, 0 failed.
+- `check_design_anchors.sh`: rc 0.
+
+**The fix against PyYAML 6.0.3:** the 459,456 values from last round were re-run through the re-extracted function, plus every case variant of each bool word.
+- `True` and `False` are now accepted.
+- All 16 other PyYAML bool spellings are refused, and each message names the right `str()` (`True` or `False`). The spellings are `yes Yes YES true TRUE on On ON` and `no No NO false FALSE off Off OFF`.
+- Mixed case such as `tRUE` and `yES` is a string in PyYAML and is accepted.
+- No "would check out X" claim differs from PyYAML.
+- The only accepted value `str()` changes is `2024-01-01T00:00:00Z`, which no git ref can hold.
+- The only false refusals left are the `._0`-style values (left as is, per the handoff) and floats of more than 15 significant digits (refused by design).
+
+**ADR-0019:** the wording now says "a bool other than `True` or `False`" and lists `True` and `False` among the values accepted unquoted. This matches the code.
+
+**Merge 556ead1b:**
+- It was checked against an automatic re-merge of its parents (`git merge-tree 61fa5323 38119e32`). The only difference is the conflict in `docs/design.md`'s change-log table: the #455 row (914) is kept, and the #429 row follows it.
+- The #429 row's line count changed from 917 to 921. That matches `wc -l` at 556ead1b and at HEAD (921). Main's own count at 38119e32 was 914, so main's row is still true.
+- Nothing else was hand-edited.
+
+### Findings
+- [ ] No issues found. LGTM.
