@@ -2203,3 +2203,13 @@ The revision applies every checkpoint item as decided, and 2b.7's wording matche
 ### Recommended Actions
 
 - [ ] With 2b.7 (iii), update run-issue SKILL 237 ("step 7 needs it" to steps 7 and 8) and the "merge-from-main" wording at 481, 760 and 843 (finding 1)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict ready; one nit for the implementer)
+**After**: plan
+**Decision**: proceed
+
+Proceed with pull request 2b (steps 2b.1 to 2b.7), the last of the issue. The implementer also applies the review's nit: run-issue SKILL.md's note that the host keeps the base names step 8 as well as step 7, and the step 8 heading and its mentions no longer say "main" where a package issue uses its base.
