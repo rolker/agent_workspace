@@ -1770,6 +1770,25 @@ out="$(STUB_LOCAL_NOOP=1 run)"; rc=$?
     && pass "a local remove that leaves the entry is an error naming the hand removal" \
     || fail "local no-op (rc=$rc out=${out:0:500})"
 run >/dev/null
+# A local true the CLI did not write (no marketplace declaration, no local
+# install in its record) that the CLI leaves: a note naming the hand
+# removal, not an error on every install; --uninstall still cannot report
+# a clean removal.
+jq --arg id "$PID" '.enabledPlugins[$id] = true' "$ROOTS/a/$SLJ" > "$tmp" && mv "$tmp" "$ROOTS/a/$SLJ"
+n0="$(n_log)"
+out="$(STUB_LOCAL_NOOP=1 run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"NOTE: $ROOTS/a/$SLJ (registered root a) enables the agent-workspace plugin with no marketplace declaration"*"did not remove it -- remove it by hand: delete \"$PID\" from enabledPlugins"* \
+   && "$out" != *"ERROR"* ]] && has_entry "$ROOTS/a" \
+    && grep -qxF "$ROOTS/a|plugin uninstall $PID --scope local" <(log_since "$n0") \
+    && pass "a hand-written local true the CLI does not remove is a note with the hand removal, and install exits 0" \
+    || fail "hand-written local true (rc=$rc out=${out:0:600} calls: $(log_since "$n0"))"
+out="$(STUB_LOCAL_NOOP=1 run --uninstall)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"ERROR: $ROOTS/a/$SLJ (registered root a) enables the agent-workspace plugin with no marketplace declaration"* ]] \
+    && has_entry "$ROOTS/a" \
+    && pass "...and --uninstall, which leaves it, exits 1 naming it" \
+    || fail "...--uninstall over a hand-written local true (rc=$rc out=${out:0:600})"
+jq --arg id "$PID" 'del(.enabledPlugins[$id]) | if .enabledPlugins == {} then del(.enabledPlugins) else . end' "$ROOTS/a/$SLJ" > "$tmp" && mv "$tmp" "$ROOTS/a/$SLJ"
+run >/dev/null
 
 # The workspace checkout's own legacy enable: --check calls it drift (it
 # overrides the tracked false entry, doubling every skill at the

@@ -928,15 +928,36 @@ hand_removal() {  # <settings.local.json>
     echo "delete \"$PLUGIN_ID\" from enabledPlugins and \"$MARKETPLACE_NAME\" from extraKnownMarketplaces in $1"
 }
 
+# The CLI's record of installs ($INSTALLED_PLUGINS): absent, ok, or
+# unparseable (the file exists and is not JSON).
+installed_plugins_state() {
+    [[ -f "$INSTALLED_PLUGINS" ]] || { echo absent; return 0; }
+    if jq empty "$INSTALLED_PLUGINS" >/dev/null 2>&1; then echo ok; else echo unparseable; fi
+}
+
+# Does the CLI's record list a local-scope install of the plugin in <root>
+# (by its path as given or its physical path)? 1 when it does not, or when
+# the record is absent or cannot be read.
+local_install_recorded() {  # <root>
+    local phys
+    [[ "$(installed_plugins_state)" == ok ]] || return 1
+    phys="$(cd "$1" 2>/dev/null && pwd -P)" || phys="$1"
+    jq -e --arg id "$PLUGIN_ID" --arg a "$1" --arg b "$phys" '
+        [(.plugins? // {})[$id]? // [] | if type == "array" then .[] else empty end
+         | objects | select(.scope? == "local" and (.projectPath? == $a or .projectPath? == $b))]
+        | length > 0' "$INSTALLED_PLUGINS" >/dev/null 2>&1
+}
+
 # Move one place's legacy entry to user scope (install), or remove it
 # (--uninstall: <strict> = strict). Prints what it did or why it left the
-# entry. Returns 1 when the CLI ran and the entry is still there, and, when
-# strict, also when the entry is left for any other reason (no CLI, a root
-# the CLI is not run in): --uninstall must not report a clean removal while
+# entry. Returns 1 when the CLI ran and the entry is still there (except an
+# entry the CLI did not write, which is a note), and, when strict, also
+# when the entry is left for any other reason (no CLI, a root the CLI is
+# not run in): --uninstall must not report a clean removal while
 # a root still enables the plugin. Sets LEGACY_CLI_RAN=1 when it ran the CLI.
 LEGACY_CLI_RAN=0
 migrate_legacy_root() {  # <kind> <label> <root> [strict]
-    local kind="$1" label="$2" root="$3" strict="${4:-}" f why rc=0
+    local kind="$1" label="$2" root="$3" strict="${4:-}" f why rc=0 hand_written
     f="$root/.claude/settings.local.json"
     [[ "$strict" == strict ]] && rc=1
     if [[ ! -d "$root" ]]; then
@@ -964,6 +985,19 @@ migrate_legacy_root() {  # <kind> <label> <root> [strict]
         legacy_say "$strict" "$f ($label) holds a per-root $PLUGIN_NAME entry from this checkout; the claude CLI is not on PATH -- remove it by hand: $(hand_removal "$f")"
         return "$rc"
     fi
+    # A local true with no marketplace declaration beside it and no
+    # local-scope install in the CLI's readable record was not left by the
+    # CLI (written by hand, or by an edit outside it). Whether the real
+    # CLI's `uninstall --scope local` removes such an entry is not verified
+    # (no live case covers it), so it is tried, and when the entry is still
+    # there afterwards it is a note naming the removal by hand, not an
+    # error that would fail every install. Judged before the CLI runs: its
+    # uninstall changes the record.
+    hand_written=false
+    if [[ -z "$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path? // empty' "$f" 2>/dev/null)" ]] \
+        && [[ "$(installed_plugins_state)" != unparseable ]] && ! local_install_recorded "$root"; then
+        hand_written=true
+    fi
     LEGACY_CLI_RAN=1
     (cd "$root" && claude_plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
     (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
@@ -976,6 +1010,10 @@ migrate_legacy_root() {  # <kind> <label> <root> [strict]
             fi
             return 0 ;;
     esac
+    if [[ "$hand_written" == true ]]; then
+        legacy_say "$strict" "$f ($label) enables the $PLUGIN_NAME plugin with no marketplace declaration, and the claude CLI's record lists no local install there (written by hand?); the claude CLI ran in $root and did not remove it -- remove it by hand: $(hand_removal "$f")"
+        return "$rc"
+    fi
     echo "  ERROR: the claude CLI ran in $root, but $f still holds a per-root $PLUGIN_NAME entry from this checkout -- remove it by hand: $(hand_removal "$f")" >&2
     return 1
 }
