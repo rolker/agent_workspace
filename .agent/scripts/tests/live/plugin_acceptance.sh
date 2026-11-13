@@ -8,9 +8,9 @@
 #   PLUGIN_ACCEPTANCE=1 bash .agent/scripts/tests/live/plugin_acceptance.sh
 #   PLUGIN_ACCEPTANCE=1 PLUGIN_ACCEPTANCE_CASES=user bash .agent/scripts/tests/live/plugin_acceptance.sh
 #   (PLUGIN_ACCEPTANCE_CASES picks the cases: `per-root`, the default, runs
-#   A to K; `user` runs only the user-scope cases U0 to U8; `all` runs A to
-#   K, then U0 to U8. LIVE_MODEL=<alias> picks the session model; default
-#   haiku)
+#   A to D and F; `user` runs only the user-scope cases U0 to U8; `all` runs
+#   A to D and F, then U0 to U8. LIVE_MODEL=<alias> picks the session model;
+#   default haiku)
 #
 # What it touches. It never touches this checkout or the real registry. It
 # works on a COPY of the checkout whose plugin and marketplace are renamed
@@ -20,7 +20,7 @@
 # and the real `agent-workspace` entries in ~/.claude/settings.json are
 # never named, read for a decision or written by the suite. Below,
 # ~/.claude is $CLAUDE_CONFIG_DIR when that is set.
-#   - The per-root cases (A to K) never touch ~/.claude/settings.json.
+#   - The per-root cases (A to D, F) never touch ~/.claude/settings.json.
 #   - The user-scope cases (U0 to U8) DO change ~/.claude/settings.json, for
 #     the minutes they take: `claude plugin marketplace add <the copy>
 #     --scope user` and `claude plugin install
@@ -53,32 +53,15 @@
 #      answering first, so the session is known to work);
 #   D  a session at the workspace root has the skills bare, not also
 #      under aw-accept-<pid>: (never doubled);
-#   E  p11 shape: a registered root inside the workspace's git tree is
-#      skipped by the installer (sandbox HOME; the CLI is a stub that fails
-#      loudly if called) and its session has them bare, once;
 #   F  run-issue's prefix step: sessions at the workspace root and at a
 #      project root run the real skill_prefix.sh through the Bash tool and
 #      report bare and agent-workspace: respectively; an unregistered repo
-#      makes the script fail rather than guess;
-#   G  parent= instances: which shapes see the plugin enabled at their
-#      parent (a worktree or plain directory of a git-repo parent) and which
-#      do not (a plain-directory parent's instance, a separate repo nested
-#      in the parent), and that the installer's verdicts match;
-#   H  a second root: the same marketplace added and installed from another
-#      project root (the per-root path the installer and #332 take) works
-#      there and leaves the first root working;
-#   I  the installer's machine-level takeover: a `marketplace add` of a
-#      second copy of the source, run from a scratch directory outside any
-#      project and git repository, repoints the CLI's machine record, and
-#      the record survives the scratch directory's removal and a later CLI
-#      run; it is then taken back the same way;
-#   J  removing the plugin from one root (uninstall + local `marketplace
-#      remove`): what it does to the machine record and to another root is
-#      printed as FACT lines, and re-taking a dropped record the way the
-#      installer's step 6c does must restore the other root;
-#   K  a local-scope add from a plain subdirectory of a git repo writes
-#      the repo toplevel's settings (why the installer refuses to run the
-#      CLI from such a directory).
+#      gets agent-workspace: too (the plugin is at user scope; #446).
+#   (Cases E and G to K, retired by #446, tested the per-root enable the
+#   installer no longer does: the p11-shape skip, parent= instance shapes,
+#   a second root, the machine-record takeover, removal from one root, and
+#   local scope from a subdirectory. The user-scope cases below replace
+#   them.)
 # User-scope cases (#446 plan, pull request B step 1), run with this run's
 # plugin enabled at user scope:
 #   U0 setup: the copy gets the off entry
@@ -86,24 +69,31 @@
 #      its .claude/settings.json, committed in the copy (what the plan's step
 #      5 commits for the real plugin, under this run's name), and the plugin
 #      is enabled at user scope from a directory in no git repository;
-#   U1 a session at the committed-off repository's root has the skill bare,
-#      not also under aw-accept-<pid>:;
-#   U2 the same in a plain subdirectory root of it;
-#   U3 the same in a worktree of it, outside its directory;
-#   U4 the same in an in-tree root (the p11 shape: a root inside the copy's
-#      tree, ignored by its git, with no .git of its own);
-#   U5 a session in a repository nested in an ordinary root reaches
+#   U1 a session at the committed-off repository's root lists the skill
+#      bare, not also under aw-accept-<pid>:;
+#   U2 a session in a plain subdirectory root of it lists it under both
+#      names (accepted by the owner, 2026-11-12: both run the same skill);
+#   U3 a session in a worktree of it, outside its directory, lists it once,
+#      bare, as U1;
+#   U4 a session in an in-tree root (the p11 shape: a root inside the
+#      copy's tree, ignored by its git, with no .git of its own) lists both
+#      names, as U2;
+#   U5 a session in a repository nested in an ordinary root lists
 #      /aw-accept-<pid>:<skill>;
 #   U6 the same in an unregistered folder (in no git repository);
-#   U7 local `true` plus user `true`: reaches it, and the session's init
-#      command list holds it once;
-#   U8 a root whose local entry is `false` under user `true` does not reach
+#   U7 local `true` plus user `true`: lists it, once;
+#   U8 a root whose local entry is `false` under user `true` does not list
 #      it (its own control skill answering first).
 # Each of U1 to U8 prints one FACT line: the bare and the prefixed probe's
-# outcome and the zz-probe entries of the session's init command list. The
-# run then prints one STOP-CHECK line per stop condition of the plan's step
-# 1 (clear, FIRES, or UNDECIDED when a session failed), computed from the
-# same outcomes.
+# outcome and the zz-probe entries of the session's init command list (the
+# slash commands the session was given). Each case is judged from that
+# list; the probes decide only when the CLI printed no list. (The
+# 2026-11-12 run showed a probe's outcome to be weaker evidence: a
+# prefixed call "not reached" in U4 with both names listed, and a bare call
+# "reached" in U5 and U6 with only the prefixed name listed.) The run then
+# prints one STOP-CHECK line per stop condition of the plan's step 1, as
+# amended by the owner's acceptance of the doubling (clear, FIRES, or
+# UNDECIDED when a session failed), computed the same way.
 #
 # Exit: 0 all pass (or not opted in); 1 a case failed; 2 bad
 # PLUGIN_ACCEPTANCE_CASES; 3 missing dependency.
@@ -273,10 +263,11 @@ session_dirs() {
     done
 }
 # sandbox_install [args]: the workspace copy's installer against the sandbox
-# HOME, its CLI a stub that only fails. CLAUDE_CONFIG_DIR is dropped: the
-# installer reads the CLI's records under it when set, so an inherited one
-# would point the copy at the owner's real records (a real `agent-workspace`
-# entry reads as foreign, and the takeover calls the failing stub).
+# HOME, its CLI a stub that only fails (made in the setup below). The suite
+# runs it only to regenerate the copy's plugin manifest, which calls no CLI.
+# CLAUDE_CONFIG_DIR is dropped: the installer reads the CLI's records under
+# it when set, so an inherited one would point the copy at the owner's real
+# records.
 sandbox_install() {
     env -u CLAUDE_CONFIG_DIR HOME="$SANDBOX/home" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/bin/claude" \
         bash "$W/.agent/scripts/user_tier_install.sh" "$@"
@@ -321,9 +312,10 @@ cleanup() {
         user_removal_lines >&2
     fi
     real_settings_compare
-    # The machine record for this run's name, if the local removes above
-    # left it (whether they do is case J's FACT): a best-effort remove at
-    # the CLI's default scope, from the sandbox, for this run's name only.
+    # The machine record for this run's name, if the removes above left it
+    # (a local remove dropped it in the 2026-10 per-root runs; whether every
+    # remove does is not established): a best-effort remove at the CLI's
+    # default scope, from the sandbox, for this run's name only.
     if [[ -n "$(km_source)" ]]; then
         (cd "${SANDBOX:-/nonexistent}" 2>/dev/null && cli_plugin marketplace remove "$NAME" >/dev/null 2>&1)
         [[ -n "$(km_source)" ]] && echo "plugin_acceptance: WARNING: $KM still has a $NAME entry -- remove it with: claude plugin marketplace remove $NAME" >&2
@@ -359,9 +351,6 @@ trap 'exit 129' HUP
 W="$SANDBOX/ws"       # the workspace copy (marketplace $NAME)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
-FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
-FAMG="$SANDBOX/famg"  # a parent= root that is itself a git repo
-P2="$SANDBOX/proj2"   # a second project root, enabled after the first
 
 
 # enable_in <root>: the installer's two CLI calls, run from <root>.
@@ -408,6 +397,9 @@ PROBE<<<${CLAUDE_PLUGIN_ROOT}>>>
 EOF
 jq --arg n "$NAME" '.name = $n' "$W/.claude-plugin/plugin.json" > "$W/p.json" \
     && mv "$W/p.json" "$W/.claude-plugin/plugin.json"
+mkdir -p "$SANDBOX/home" "$SANDBOX/bin"
+printf '#!/bin/sh\necho "claude stub called: $*" >&2\nexit 1\n' > "$SANDBOX/bin/claude"
+chmod +x "$SANDBOX/bin/claude"
 sandbox_install --generate-plugin-manifest >/dev/null \
     || { echo "FATAL: could not regenerate the copy's manifest" >&2; exit 1; }
 git -C "$W" init -q
@@ -449,10 +441,10 @@ probe_said() {  # <probe status>
 }
 
 # ==================================================== per-root cases ===
-# A to K, as before #446. Skipped with PLUGIN_ACCEPTANCE_CASES=user. Not
+# A to D and F. Skipped with PLUGIN_ACCEPTANCE_CASES=user. Not
 # re-indented: their heredocs write files whose first column matters (a
-# SKILL.md's front matter), and a later dispatch of #446 retires most of
-# them. The block ends at the matching "end of the per-root cases" line.
+# SKILL.md's front matter). The block ends at the matching "end of the
+# per-root cases" line.
 if [[ "$RUN_PER_ROOT" == 1 ]]; then
 
 mkdir -p "$P/.claude/skills/plan-task" "$U"
@@ -535,35 +527,15 @@ else
     fail "D: workspace-root shape (bare /zz-probe $d_bare_said; /$NAME:zz-probe $(probe_said "$d_plug"))"
 fi
 
-# ------------------------------------------------------ E: p11 shape ---
-mkdir -p "$W/projects/inner" "$SANDBOX/home" "$SANDBOX/bin"
-printf 'inner single_project %s\n' "$W/projects/inner" > "$W/.agent/projects.local"
-printf '#!/bin/sh\necho "claude stub called: $*" >&2\nexit 1\n' > "$SANDBOX/bin/claude"
-chmod +x "$SANDBOX/bin/claude"
-iout="$(sandbox_install 2>&1)"
-if [[ "$iout" == *"skipped inner"* && "$iout" != *"claude stub called"* \
-      && ! -e "$W/projects/inner/.claude/settings.local.json" && ! -e "$W/.claude/settings.local.json" ]]; then
-    pass "E: the installer skips a root inside the workspace's git tree, without running the CLI"
-else
-    fail "E: p11-shape guard (installer said: $(tr '\n' ' ' <<< "$iout" | cut -c1-400))"
-fi
-probe "$W/projects/inner" "/zz-probe"; e_bare=$?
-e_bare_said="$(probe_said "$e_bare")"
-probe "$W/projects/inner" "/$NAME:zz-probe"; e_plug=$?
-if [[ "$e_bare" -eq "$PROBE_REACHED" && "$e_plug" -eq "$PROBE_NOT_REACHED" ]]; then
-    pass "E: a session in that root has the skill bare and not under $NAME:"
-else
-    fail "E: p11-shape session (bare /zz-probe $e_bare_said; /$NAME:zz-probe $(probe_said "$e_plug"))"
-fi
-
 # --------------------------------------------- F: prefix detection ---
 # run-issue's prefix step as a session runs it: the real skill_prefix.sh,
 # through the Bash tool, in a workspace-root session (bare, where D showed
 # the skills load bare) and a project-root session (prefixed, where A showed
 # them under the plugin). The session's answer must be the script's own
 # line, which the suite also gets by running the script directly -- nothing
-# the model has to copy or interpret decides the prefix. And a location
-# the script has no rule for (the unrelated repo) makes it fail, not guess.
+# the model has to copy or interpret decides the prefix. And an
+# unregistered repo gets the plugin's names too: the script reads no
+# registry, and the plugin is enabled once, at user scope (#446).
 SPS="$W/.agent/scripts/skill_prefix.sh"
 tool_session() {  # <dir> <prompt>: one headless session allowed to run only $SPS
     SESSION_OUT="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" \
@@ -586,181 +558,10 @@ for fcase in "workspace root:$W:skill_prefix=" "project root:$P:skill_prefix=age
     fi
 done
 fdirect="$(cd "$U" && bash "$SPS" 2>&1)"; frc=$?
-[[ "$frc" -eq 1 && "$fdirect" == *"nor in any registered project root"* ]] \
-    && pass "F: in an unregistered repo the prefix step fails with a reason instead of guessing" \
+[[ "$frc" -eq 0 && "$fdirect" == "skill_prefix=agent-workspace:" ]] \
+    && pass "F: in an unregistered repo the prefix step answers agent-workspace: (no registry read)" \
     || fail "F: unregistered repo (exit $frc: $fdirect)"
 rm -f "$W/.agent/projects.local"
-# ------------------------------------------- G: parent= instance ---
-# Which instance shapes see the plugin enabled at their parent. Observed
-# with claude 2.1.282: a session reads the local settings of its git
-# toplevel (the main repository's, for a worktree). So a plain-directory
-# parent reaches none of its instances, and a git-repo parent reaches a
-# worktree of it and a plain directory in it, not a separate repository
-# nested in it. user_tier_install.sh's same_project() encodes exactly this;
-# the last check below runs the installer over these shapes and holds its
-# verdicts to what the sessions showed. A change in either fails here.
-mkdir -p "$FAM/inst/src/pkg"
-git -C "$FAM/inst/src/pkg" init -q
-if enable_in "$FAM"; then
-    probe "$FAM/inst" "/$NAME:zz-probe"; g_inst=$?
-    g_inst_said="$(probe_said "$g_inst")"
-    probe "$FAM/inst/src/pkg" "/$NAME:zz-probe"; g_pkg=$?
-    if [[ "$g_inst" -eq "$PROBE_NOT_REACHED" && "$g_pkg" -eq "$PROBE_NOT_REACHED" ]]; then
-        pass "G: a plain-directory parent's enable reaches neither its instance nor a repo inside it (so the installer enables such instances)"
-    else
-        fail "G: plain-directory parent (instance dir: $g_inst_said; package repo: $(probe_said "$g_pkg")) -- wanted 'did not reach' for both"
-    fi
-else
-    fail "G: could not enable the $NAME plugin in the parent root"
-fi
-mkdir -p "$FAMG/inst" "$FAMG/plain"
-git -C "$FAMG" init -q
-git -C "$FAMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-git -C "$FAMG/inst" init -q
-git -C "$FAMG" worktree add -q "$FAMG/wt" 2>/dev/null
-if enable_in "$FAMG"; then
-    probe "$FAMG/inst" "/$NAME:zz-probe"; g_repo=$?
-    g_repo_said="$(probe_said "$g_repo")"
-    probe "$FAMG/wt" "/$NAME:zz-probe"; g_wt=$?
-    g_wt_said="$(probe_said "$g_wt")"
-    probe "$FAMG/plain" "/$NAME:zz-probe"; g_plain=$?
-    if [[ "$g_repo" -eq "$PROBE_NOT_REACHED" && "$g_wt" -eq "$PROBE_REACHED" && "$g_plain" -eq "$PROBE_REACHED" ]]; then
-        pass "G: a git-repo parent's enable reaches a worktree and a plain directory of it, not a separate repo inside it"
-    else
-        fail "G: git-repo parent (separate repo: $g_repo_said, wanted not reached; worktree: $g_wt_said, plain dir: $(probe_said "$g_plain"), wanted reached)"
-    fi
-else
-    fail "G: could not enable the $NAME plugin in the git-repo parent root"
-fi
-# The installer's verdicts on the same shapes (sandbox HOME; its CLI is a
-# stub that only fails, so nothing is enabled -- only what it decides).
-cat > "$W/.agent/projects.local" <<REG
-fam       project         $FAM
-fam-inst  single_project  $FAM/inst    parent=fam
-famg      project         $FAMG
-famg-inst single_project  $FAMG/inst   parent=famg
-famg-wt   single_project  $FAMG/wt     parent=famg
-famg-pl   single_project  $FAMG/plain  parent=famg
-REG
-gout="$(sandbox_install 2>&1)"
-rm -f "$W/.agent/projects.local"
-if [[ "$gout" == *"fam-inst is a parent= instance that is in no git repository"* \
-      && "$gout" == *"famg-inst is a parent= instance that is a git repository of its own"* \
-      && "$gout" == *"skipped famg-wt: a parent= instance"* && "$gout" == *"skipped famg-pl: a parent= instance"* ]]; then
-    pass "G: the installer skips exactly the instances the sessions showed reached, and enables the rest"
-else
-    fail "G: installer verdicts differ from what the sessions showed ($(tr '\n' ' ' <<< "$gout" | cut -c1-600))"
-fi
-
-# ------------------------------------------------- H: a second root ---
-# The installer runs `marketplace add` of the same name and source once per
-# registered root, and the registration flow (#332) does it again for each
-# new one. The CLI keeps one machine-level record per marketplace name, so
-# the second add must succeed and leave the first root working.
-mkdir -p "$P2"
-git -C "$P2" init -q
-if enable_in "$P2"; then
-    jq -e --arg id "$NAME@$NAME" --arg m "$NAME" --arg w "$W" \
-        '.enabledPlugins[$id] == true and .extraKnownMarketplaces[$m].source.path == $w' \
-        "$P2/.claude/settings.local.json" >/dev/null \
-        && pass "H: a second root's marketplace add + install writes its own settings.local.json" \
-        || fail "H: the second root's settings.local.json does not enable $NAME from $W"
-    probe "$P2" "/$NAME:zz-probe"; h2=$?
-    h2_said="$(probe_said "$h2")"
-    probe "$P" "/$NAME:zz-probe"; h1=$?
-    if [[ "$h2" -eq "$PROBE_REACHED" && "$h1" -eq "$PROBE_REACHED" ]]; then
-        pass "H: the plugin reaches sessions in both roots after the second enable"
-    else
-        fail "H: two roots (second: $h2_said; first, re-checked: $(probe_said "$h1"))"
-    fi
-else
-    fail "H: marketplace add + install of the same source failed in a second root"
-fi
-
-# ------------------------------------------- I: machine-level takeover ---
-# What user_tier_install.sh's claim_machine_record does, with this run's
-# name: one `marketplace add` of another source from a scratch directory
-# that is in no project and no git repository.
-W2="$SANDBOX/ws2"
-cp -r "$W" "$W2"
-claim_from_scratch() {  # <source>: add it from a fresh scratch dir, then remove the dir
-    local scr="$SANDBOX/claim-scratch" rc
-    mkdir -p "$scr"
-    if git -C "$scr" rev-parse --show-toplevel >/dev/null 2>&1; then
-        rm -rf "$scr"; return 2
-    fi
-    (cd "$scr" && cli_plugin marketplace add "$1" --scope local >/dev/null 2>&1); rc=$?
-    rm -rf "$scr"
-    return "$rc"
-}
-i_before="$(km_source)"
-echo "  FACT: machine record of $NAME before the takeover: ${i_before:-<none>}"
-claim_from_scratch "$W2"; i_rc=$?
-i_after="$(km_source)"
-echo "  FACT: scratch-dir add of a second source: exit $i_rc; record now ${i_after:-<none>}"
-if [[ "$i_rc" -eq 0 && "$i_after" == "$W2" ]]; then
-    pass "I: a scratch-dir marketplace add repoints the machine record to the new source"
-else
-    fail "I: scratch-dir takeover (exit $i_rc; record '${i_after:-<none>}', wanted $W2)"
-fi
-# A later CLI run from an enabled root, which might reconcile the record
-# against the declarations it can see (the scratch one is gone).
-(cd "$P" && cli_plugin marketplace list >/dev/null 2>&1)
-i_later="$(km_source)"
-echo "  FACT: record after the scratch dir's removal and a CLI run in $P: ${i_later:-<none>}"
-[[ "$i_later" == "$W2" ]] \
-    && pass "I: the taken-over record survives the scratch directory's removal and a later CLI run" \
-    || fail "I: the record did not survive (now '${i_later:-<none>}')"
-claim_from_scratch "$W"; i_back=$?
-[[ "$i_back" -eq 0 && "$(km_source)" == "$W" ]] \
-    && pass "I: taken back the same way (last install wins)" \
-    || fail "I: taking the record back failed (exit $i_back; record '$(km_source)')"
-
-# --------------------------------------- J: removal from one root ---
-# The installer removes the plugin from doubled roots and instances with
-# uninstall + local `marketplace remove`, and then re-reads the machine
-# record. What that remove does to the record, and that it leaves other
-# roots working.
-j_before="$(km_source)"
-(cd "$P2" && cli_plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
-(cd "$P2" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1); j_rc=$?
-j_after="$(km_source)"
-echo "  FACT: local marketplace remove in $P2 (exit $j_rc): record ${j_before:-<none>} -> ${j_after:-<none>}"
-echo "  FACT: $P2 settings.local.json after uninstall + remove: $(tr -d '\n ' < "$P2/.claude/settings.local.json" 2>/dev/null || echo '<absent>')"
-probe "$P" "/$NAME:zz-probe"; j=$?
-echo "  FACT: right after that remove, /$NAME:zz-probe in $P $(probe_said "$j")"
-# The installer's repair for this (its step 6c): take the record back with
-# the same scratch-dir add, after which the other root must reach it again.
-if [[ -z "$(km_source)" ]]; then
-    claim_from_scratch "$W"; j_claim=$?
-    probe "$P" "/$NAME:zz-probe"; j2=$?
-    [[ "$j_claim" -eq 0 && "$j2" -eq "$PROBE_REACHED" ]] \
-        && pass "J: re-taking the dropped record (installer step 6c) restores the plugin in the other root" \
-        || fail "J: after re-taking the record (exit $j_claim), /$NAME:zz-probe in $P $(probe_said "$j2")"
-else
-    [[ "$j" -eq "$PROBE_REACHED" ]] \
-        && pass "J: the record survived the remove, and the other root still reaches the plugin" \
-        || fail "J: record kept, but /$NAME:zz-probe in $P $(probe_said "$j")"
-fi
-
-# ------------------------- K: local scope from a subdir of a git repo ---
-# The installer refuses to run the CLI from a plain directory inside a git
-# repository (enclosing_repo), on the ground that local scope from there
-# lands on the repository's toplevel. Checked against a repository that
-# declares nothing yet, so "wrote the toplevel's file" and "wrote nothing"
-# cannot be confused: the declaration must appear at the toplevel, and not
-# in the subdirectory.
-KR="$SANDBOX/krepo"
-mkdir -p "$KR/sub"
-git -C "$KR" init -q
-ENABLED_ROOTS+=("$KR")
-(cd "$KR/sub" && cli_plugin marketplace add "$W" --scope local >/dev/null 2>&1); k_rc=$?
-if [[ "$k_rc" -eq 0 && ! -e "$KR/sub/.claude/settings.local.json" ]] \
-   && jq -e --arg m "$NAME" '.extraKnownMarketplaces[$m] != null' "$KR/.claude/settings.local.json" >/dev/null 2>&1; then
-    pass "K: a local-scope add from a plain subdirectory of a git repo writes the repo toplevel's settings.local.json"
-else
-    fail "K: local scope from $KR/sub (exit $k_rc; toplevel file: $(tr -d '\n ' < "$KR/.claude/settings.local.json" 2>/dev/null || echo '<absent>'); sub file: $([[ -e "$KR/sub/.claude/settings.local.json" ]] && echo present || echo absent))"
-fi
 
 fi
 # ============================================= end of the per-root cases ===
@@ -836,30 +637,56 @@ us_case() {
     U_PLUG[$1]=$p
     echo "  FACT: $1 $2: bare /zz-probe $(probe_word "$b"); /$NAME:zz-probe $(probe_word "$p"); init command list: ${U_LISTED[$1]}${4:+; $4}"
 }
-# us_expect <id> <wanted bare | -> <wanted prefixed> <what a pass means>
-us_expect() {
-    if [[ ( "$2" == - || "${U_BARE[$1]}" -eq "$2" ) && "${U_PLUG[$1]}" -eq "$3" ]]; then
-        pass "$1: $4"
+# us_got <id> bare|plug: yes, no or unknown -- is that name in the case's
+# init command list? From the list when the CLI printed one (an empty list
+# is "<none>", which is evidence too); otherwise from the probe's outcome
+# (reached = yes, not reached = no, a failed session = unknown).
+us_got() {
+    local id="$1" which="$2" l name probe
+    l="${U_LISTED[$id]:-<no init line>}"
+    if [[ "$which" == bare ]]; then name="zz-probe"; probe="${U_BARE[$id]:-$PROBE_SESSION_FAILED}"
+    else name="$NAME:zz-probe"; probe="${U_PLUG[$id]:-$PROBE_SESSION_FAILED}"; fi
+    if [[ "$l" == "<none>" ]]; then
+        echo no
+    elif [[ "$l" != "<"* ]]; then
+        if tr ',' '\n' <<< "$l" | grep -qxF -e "$name" -e "/$name"; then echo yes; else echo no; fi
+    elif [[ "$probe" -eq "$PROBE_REACHED" ]]; then
+        echo yes
+    elif [[ "$probe" -eq "$PROBE_NOT_REACHED" ]]; then
+        echo no
     else
-        fail "$1: wanted bare /zz-probe $([[ "$2" == - ]] && echo "either way" || probe_word "$2") and /$NAME:zz-probe $(probe_word "$3"); bare ${U_BARE_SAID[$1]}; prefixed ${U_PLUG_SAID[$1]}"
+        echo unknown
     fi
 }
-# us_verdict <got> <wanted> [<got> <wanted> ...]: one stop condition's
-# verdict. FIRES when any session that ran gave other than wanted (a
-# definite answer beats a failed session elsewhere); UNDECIDED when none
-# did but a session failed; clear otherwise.
+# us_expect <id> <bare listed: yes|no|-> <prefixed listed: yes|no|-> <what a pass means>
+us_expect() {
+    local gb gp how="init command list: ${U_LISTED[$1]}"
+    gb="$(us_got "$1" bare)"
+    gp="$(us_got "$1" plug)"
+    [[ "${U_LISTED[$1]}" == "<"* && "${U_LISTED[$1]}" != "<none>" ]] \
+        && how="no init command list, judged by the probes: bare ${U_BARE_SAID[$1]}; prefixed ${U_PLUG_SAID[$1]}"
+    if [[ ( "$2" == - || "$gb" == "$2" ) && ( "$3" == - || "$gp" == "$3" ) ]]; then
+        pass "$1: $4"
+    else
+        fail "$1: wanted bare zz-probe listed $2 and $NAME:zz-probe listed $3; got $gb and $gp ($how)"
+    fi
+}
+# us_verdict <got> <wanted> [<got> <wanted> ...], each got from us_got: one
+# stop condition's verdict. FIRES when any definite answer differs from the
+# wanted one (a definite answer beats an unknown elsewhere); UNDECIDED when
+# none does but one is unknown; clear otherwise.
 us_verdict() {
     local fires=0 undecided=0
     while [[ $# -ge 2 ]]; do
-        if [[ "$1" -eq "$PROBE_SESSION_FAILED" ]]; then
+        if [[ "$1" == unknown ]]; then
             undecided=1
-        elif [[ "$1" -ne "$2" ]]; then
+        elif [[ "$1" != "$2" ]]; then
             fires=1
         fi
         shift 2
     done
     if [[ "$fires" == 1 ]]; then echo "FIRES"
-    elif [[ "$undecided" == 1 ]]; then echo "UNDECIDED (a session failed; see the FAIL lines, then re-run)"
+    elif [[ "$undecided" == 1 ]]; then echo "UNDECIDED (a session failed and printed no init command list; see the FAIL lines, then re-run)"
     else echo "clear"
     fi
 }
@@ -964,26 +791,26 @@ user_scope_cases() {
 
     # --------------------------------------------- U1 to U8: sessions ---
     us_case U1 "committed-off repository, at its root" "$W"
-    us_expect U1 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
-        "a session at the committed-off repository's root has the skill bare and not under $NAME:"
+    us_expect U1 yes no \
+        "a session at the committed-off repository's root lists the skill bare and not under $NAME:"
     us_case U2 "committed-off repository, in a plain subdirectory root of it" "$W/subroot"
-    us_expect U2 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
-        "a session in a plain subdirectory root of it has the skill bare and not under $NAME:"
+    us_expect U2 yes yes \
+        "a session in a plain subdirectory root of it lists the skill under both names (accepted 2026-11-12)"
     us_case U3 "committed-off repository, in a worktree of it outside its directory" "$us_wt"
-    us_expect U3 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
-        "a session in a worktree of it has the skill bare and not under $NAME:"
+    us_expect U3 yes no \
+        "a session in a worktree of it lists the skill bare and not under $NAME:"
     us_case U4 "in-tree root (inside the copy's tree, ignored by its git, no .git of its own)" "$us_intree"
-    us_expect U4 "$PROBE_REACHED" "$PROBE_NOT_REACHED" \
-        "a session in an in-tree root has the skill bare and not under $NAME:"
+    us_expect U4 yes yes \
+        "a session in an in-tree root lists the skill under both names (accepted 2026-11-12)"
     us_case U5 "repository nested in an ordinary root" "$us_root/src/pkg"
-    us_expect U5 - "$PROBE_REACHED" \
-        "a session in a repository nested in an ordinary root reaches /$NAME:zz-probe"
+    us_expect U5 - yes \
+        "a session in a repository nested in an ordinary root lists $NAME:zz-probe"
     us_case U6 "unregistered folder in no git repository" "$us_loose"
-    us_expect U6 - "$PROBE_REACHED" \
-        "a session in an unregistered folder reaches /$NAME:zz-probe"
+    us_expect U6 - yes \
+        "a session in an unregistered folder lists $NAME:zz-probe"
     us_case U7 "local true plus user true" "$us_both"
-    us_expect U7 - "$PROBE_REACHED" \
-        "a session in a root enabled at both local and user scope reaches /$NAME:zz-probe"
+    us_expect U7 - yes \
+        "a session in a root enabled at both local and user scope lists $NAME:zz-probe"
     if [[ "${U_LISTED[U7]}" == "<"* ]]; then
         n=""
         fail "U7: could not tell how many times $NAME:zz-probe is listed (${U_LISTED[U7]}): the suite's assumption about the stream-json init line does not hold on this CLI"
@@ -999,11 +826,11 @@ user_scope_cases() {
     [[ "$SESSION_RC" -eq 0 && "$US_GOT_RESULT" -eq 1 && "$SESSION_OUT" == *"OFF-ROOT-CONTROL"* ]] && ctl_ok=1
     if [[ "$ctl_ok" == 1 ]]; then
         us_case U8 "root whose local entry is false under user true" "$us_off" "its own control skill answered"
-        us_expect U8 - "$PROBE_NOT_REACHED" \
+        us_expect U8 - no \
             "a session in a root whose local entry is false has no $NAME: skill under user true"
-        ctl_code="$PROBE_REACHED"
+        ctl_code=yes
     else
-        ctl_code="$PROBE_SESSION_FAILED"
+        ctl_code=unknown
         fail "U8: the locally-off root's control skill did not answer, so a negative there proves nothing ($(session_said))"
         us_case U8 "root whose local entry is false under user true" "$us_off" "its own control skill did NOT answer"
     fi
@@ -1012,16 +839,19 @@ user_scope_cases() {
     us_finish
 
     # ----------------------------------------------- stop conditions ---
-    echo "  STOP-CHECK 1 (the committed false entry keeps workspace sessions to bare names: U1 root, U2 plain subdirectory, U3 worktree): $(us_verdict \
-        "${U_BARE[U1]}" "$PROBE_REACHED" "${U_PLUG[U1]}" "$PROBE_NOT_REACHED" \
-        "${U_BARE[U2]}" "$PROBE_REACHED" "${U_PLUG[U2]}" "$PROBE_NOT_REACHED" \
-        "${U_BARE[U3]}" "$PROBE_REACHED" "${U_PLUG[U3]}" "$PROBE_NOT_REACHED")"
-    echo "  STOP-CHECK 2 (the committed false entry covers the in-tree root: U4): $(us_verdict \
-        "${U_BARE[U4]}" "$PROBE_REACHED" "${U_PLUG[U4]}" "$PROBE_NOT_REACHED")"
+    # Stop checks 1 and 2 as amended by the owner's acceptance of the
+    # doubling (2026-11-12): what the change documents is what they hold
+    # the sessions to.
+    echo "  STOP-CHECK 1 (the committed false entry keeps the checkout's root and its worktrees to one bare name, U1 and U3; a plain subdirectory lists both names, as accepted 2026-11-12, U2): $(us_verdict \
+        "$(us_got U1 bare)" yes "$(us_got U1 plug)" no \
+        "$(us_got U2 bare)" yes "$(us_got U2 plug)" yes \
+        "$(us_got U3 bare)" yes "$(us_got U3 plug)" no)"
+    echo "  STOP-CHECK 2 (an in-tree root lists both names, as accepted 2026-11-12: U4): $(us_verdict \
+        "$(us_got U4 bare)" yes "$(us_got U4 plug)" yes)"
     echo "  STOP-CHECK 3 (a session in a repository nested in an ordinary root lists the plugin's skills: U5): $(us_verdict \
-        "${U_PLUG[U5]}" "$PROBE_REACHED")"
+        "$(us_got U5 plug)" yes)"
     echo "  STOP-CHECK 4 (a local false wins over user true: U8): $(us_verdict \
-        "$ctl_code" "$PROBE_REACHED" "${U_PLUG[U8]}" "$PROBE_NOT_REACHED")"
+        "$ctl_code" yes "$(us_got U8 plug)" no)"
     if [[ -z "$n" ]]; then
         echo "  CHECK U7 (not a stop condition; the plan's step 2 migration rests on it -- local true plus user true lists the skill once): UNDECIDED (no init command list)"
     elif [[ "$n" -eq 1 ]]; then
