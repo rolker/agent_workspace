@@ -3041,6 +3041,71 @@ EOF
     assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
 }
 
+test_mr_source_lock() {
+    echo "TEST: manifest route: setup and sync hold a lock on configs/; a second run waits, then refuses with nothing changed; without flock they run unlocked"
+    local sb url out rc gen before hpid i tool
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIPPED: flock not installed"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    # A first setup refused while another run holds the lock: no clone made.
+    mkdir -p "$sb/projects/p11/configs"
+    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+      while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
+    hpid=$!
+    for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
+    rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "held, first setup: exit 1" "1" "$rc"
+    assert_contains "held, first setup: says so" "another setup or sync of project 'p11' holds its lock $sb/projects/p11/configs/.lock.source (waited 1 s); nothing changed" "$out"
+    assert_eq "held, first setup: no clone made" "no" "$([ -e "$sb/projects/p11/configs/source-clone" ] && echo yes || echo no)"
+    assert_eq "held, first setup: the resolver not run" "no" "$([ -e "$sb/resolver.log" ] && echo yes || echo no)"
+    touch "$sb/release"
+    wait "$hpid" 2>/dev/null || true
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "released: setup exit 0" "0" "$rc"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    # A sync refused while held: the link and the clone unchanged.
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
+    mr_push "$sb" leaf >/dev/null
+    rm -f "$sb/held" "$sb/release"
+    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+      while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
+    hpid=$!
+    for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
+    rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "held, sync: exit 1" "1" "$rc"
+    assert_eq "held, sync: link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "held, sync: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+    touch "$sb/release"
+    wait "$hpid" 2>/dev/null || true
+    # Two syncs at once: both succeed, one after the other, and leave one generated dir.
+    local p1 p2 r1=0 r2=0
+    run_mr "$sb" sync >"$sb/s1.out" 2>&1 & p1=$!
+    run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
+    wait "$p1" || r1=$?
+    wait "$p2" || r2=$?
+    assert_eq "two syncs: both exit 0" "0 0" "$r1 $r2"
+    assert_contains "two syncs: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    # No flock on PATH: sync runs unlocked.
+    mkdir -p "$sb/isolatedbin"
+    for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
+        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    assert_eq "no flock: sync exit 0" "0" "$rc"
+    assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
+}
+
 test_mr_preflight_before_any_fetch() {
     echo "TEST: manifest route: missing vcs, role= or distro= is reported before any remote is contacted"
     local sb out rc tool url
@@ -3232,6 +3297,7 @@ mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up
 mr_test test_mr_preflight_before_any_fetch
+mr_test test_mr_source_lock
 mr_test test_mr_one_source_only
 
 echo ""

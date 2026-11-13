@@ -517,6 +517,15 @@ _rc_bootstrap_manifest() {
 # every package host at setup (vcs import) and sync (git pull/fetch); none
 # once fetched for the other verbs. The resolver itself comes from PyPI
 # when it is installed (make install-ros-manifest).
+#
+# Concurrency: setup and sync fetch and resolve holding an exclusive flock
+# on configs/.lock.source (waits ROS2_COLCON_LOCK_WAIT seconds, default
+# 120, then refuses with nothing changed), so two runs never clone, fetch
+# or swap the link at once. The lock file is never removed (the reason
+# project_file_set gives in _project_registry.sh). Without flock (macOS by
+# default) the fetch and resolve run unlocked, as project_file_set's
+# write does, and leftovers of killed runs are not swept (they could be a
+# concurrent run's).
 
 # "manifest" when the settings file sets source, else "bootstrap".
 _rc_route() {
@@ -838,8 +847,39 @@ _rc_manifest_prepare() {
         echo "ERROR: the manifest resolver is not installed at $bin; run: make install-ros-manifest (from the workspace main checkout)" >&2
         return 1
     fi
-    _rc_source_fetch || return 1
-    _rc_manifest_resolve || return 1
+    local rc=0
+    _rc_source_lock || return 1
+    { _rc_source_fetch && _rc_manifest_resolve; } || rc=$?
+    _rc_source_unlock
+    return "$rc"
+}
+
+# Take the project's source lock (see "Concurrency" above) on fd 9; sets
+# _RC_SOURCE_LOCKED (1 when held). Returns 1, saying so, when another run
+# holds it past the wait.
+_rc_source_lock() {
+    local configs lock wait="${ROS2_COLCON_LOCK_WAIT:-120}"
+    _RC_SOURCE_LOCKED=0
+    command -v flock >/dev/null 2>&1 || return 0
+    configs="$(_rc_root)/configs"
+    mkdir -p "$configs" || return 1
+    lock="$configs/.lock.source"
+    if ! exec 9>>"$lock"; then
+        echo "ERROR: cannot open the lock file $lock" >&2
+        return 1
+    fi
+    if ! flock -x -w "$wait" 9; then
+        exec 9>&-
+        echo "ERROR: another setup or sync of project '$(_rc_name)' holds its lock $lock (waited $wait s); nothing changed: try again when it has ended" >&2
+        return 1
+    fi
+    _RC_SOURCE_LOCKED=1
+}
+
+_rc_source_unlock() {
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] || return 0
+    exec 9>&-
+    _RC_SOURCE_LOCKED=0
 }
 
 # The value of <key> in a .resolved-from file (empty when absent).
@@ -996,7 +1036,7 @@ adapter_setup() {
             return 1
         fi
         _rc_manifest_prepare || return 1
-        echo "note: the adapter keeps configs/source-clone and configs/manifest-resolved* in $(_rc_root) and edits no ignore file; if that root is a git checkout, ignore them there"
+        echo "note: the adapter keeps configs/source-clone, configs/manifest-resolved* and configs/.lock.source in $(_rc_root) and edits no ignore file; if that root is a git checkout, ignore them there"
     else
         _rc_bootstrap_manifest || return 1
     fi
