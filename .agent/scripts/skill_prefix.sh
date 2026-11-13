@@ -91,8 +91,10 @@ dir_repo="$(common_dir "$DIR_PHYS")"
 ws_repo="$(common_dir "$WS_ROOT")"
 if [[ -n "$ws_repo" ]]; then
     [[ -n "$dir_repo" && "$dir_repo" == "$ws_repo" ]] && { echo "skill_prefix="; exit 0; }
-elif [[ "$DIR_PHYS" == "$WS_ROOT" || "$DIR_PHYS" == "$WS_ROOT"/* ]]; then
-    # A checkout in no git repository: its own tree.
+elif [[ -z "$dir_repo" && ( "$DIR_PHYS" == "$WS_ROOT" || "$DIR_PHYS" == "$WS_ROOT"/* ) ]]; then
+    # A checkout in no git repository: its own tree, but not a git
+    # repository nested in it (a session there does not read the checkout's
+    # settings, so the plugin's prefixed names are the ones it has).
     echo "skill_prefix="
     exit 0
 fi

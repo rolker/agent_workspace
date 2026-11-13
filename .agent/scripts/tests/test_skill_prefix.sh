@@ -122,6 +122,9 @@ expect_ng() { # <label> <dir> <want>
 if ! git -C "$NG" rev-parse --show-toplevel >/dev/null 2>&1; then
     expect_ng "a checkout in no git repository: a directory in it is bare" "$NG/docs" "skill_prefix="
     expect_ng "a checkout in no git repository: a directory outside it is prefix" "$R/other" "skill_prefix=agent-workspace:"
+    mkdir -p "$NG/nested"
+    git -C "$NG/nested" init -q
+    expect_ng "a checkout in no git repository: a git repository nested in it is prefix" "$NG/nested" "skill_prefix=agent-workspace:"
 else
     echo "  SKIP: the sandbox is inside a git repository"
 fi
