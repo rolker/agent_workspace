@@ -748,14 +748,20 @@ fi
 # CI target and the record commit. _GATE_OWN_PROBLEM says which, empty when
 # the checkout is sound; the gate then reads no timeline there, _ci_wt stays
 # empty, and the record goes on the PR.
+# _GATE_OWN_PROBLEM and _GATE_OWN_NOREAD (below) are display-safe as built:
+# each value in them goes through _bk_display on its own, so its 256-byte
+# cap applies to a value, never to the whole sentence. Capping the sentence
+# cut its meaning off whenever the checkout's path was long (the gate reason
+# then ended "so it is not...(+N bytes)"); the gate reasons quote them as
+# they are.
 _GATE_OWN_PROBLEM=""
 if [[ "$_GATE_PKG_ROLE" == "owning" ]]; then
     if [[ ! -d "$_gate_wt" ]]; then
-        _GATE_OWN_PROBLEM="the owning checkout $_gate_wt does not exist"
+        _GATE_OWN_PROBLEM="the owning checkout $(_bk_display "$_gate_wt") does not exist"
     else
         _gate_own_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
         if [[ -z "$_gate_own_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$_gate_own_top" && pwd -P)" ]]; then
-            _GATE_OWN_PROBLEM="the owning checkout $_gate_wt is not a git checkout's top folder"
+            _GATE_OWN_PROBLEM="the owning checkout $(_bk_display "$_gate_wt") is not a git checkout's top folder"
         fi
     fi
 fi
@@ -775,20 +781,20 @@ _GATE_OWN_SHA=""
 if [[ "$_GATE_PKG_ROLE" == "owning" && -z "$_GATE_OWN_PROBLEM" ]]; then
     _gate_own_branch=$(git -C "$_gate_wt" symbolic-ref --short -q HEAD 2>/dev/null || true)
     if [[ -z "$_gate_own_branch" ]]; then
-        _GATE_OWN_NOREAD="the owning checkout $_gate_wt has a detached HEAD, not $PR_BRANCH"
+        _GATE_OWN_NOREAD="the owning checkout $(_bk_display "$_gate_wt") has a detached HEAD, not $(_bk_display "$PR_BRANCH")"
     elif [[ "$_gate_own_branch" != "$PR_BRANCH" ]]; then
-        _GATE_OWN_NOREAD="the owning checkout $_gate_wt is on $_gate_own_branch, not $PR_BRANCH"
+        _GATE_OWN_NOREAD="the owning checkout $(_bk_display "$_gate_wt") is on $(_bk_display "$_gate_own_branch"), not $(_bk_display "$PR_BRANCH")"
     else
         _gate_own_rc=0
         _gate_own_err=$( (cd "$_gate_wt" && wt_bounded_git fetch --quiet origin -- "+refs/heads/$PR_BRANCH:refs/remotes/origin/$PR_BRANCH") 2>&1 >/dev/null ) || _gate_own_rc=$?
         if [[ "$_gate_own_rc" -ne 0 ]]; then
-            _GATE_OWN_NOREAD="origin's $PR_BRANCH could not be fetched in the owning checkout $_gate_wt ($(wt_fetch_why "$_gate_own_rc" "$_gate_own_err")), so it is not known to be current"
+            _GATE_OWN_NOREAD="origin's $(_bk_display "$PR_BRANCH") could not be fetched in the owning checkout $(_bk_display "$_gate_wt") ($(_bk_display "$(wt_fetch_why "$_gate_own_rc" "$_gate_own_err")")), so it is not known to be current"
         else
             _gate_own_origin=$(git -C "$_gate_wt" rev-parse -q --verify "refs/remotes/origin/$PR_BRANCH^{commit}" 2>/dev/null || true)
             if [[ -z "$_gate_own_origin" ]]; then
-                _GATE_OWN_NOREAD="the fetch of $PR_BRANCH in the owning checkout $_gate_wt wrote no origin/$PR_BRANCH, so it is not known to be current"
+                _GATE_OWN_NOREAD="the fetch of $(_bk_display "$PR_BRANCH") in the owning checkout $(_bk_display "$_gate_wt") wrote no origin/$(_bk_display "$PR_BRANCH"), so it is not known to be current"
             elif ! git -C "$_gate_wt" merge-base --is-ancestor "$_gate_own_origin" HEAD 2>/dev/null; then
-                _GATE_OWN_NOREAD="the owning checkout $_gate_wt does not contain origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
+                _GATE_OWN_NOREAD="the owning checkout $(_bk_display "$_gate_wt") does not contain origin's $(_bk_display "$PR_BRANCH") at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
             elif [[ "$(git -C "$_gate_wt" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != "$_gate_own_origin" ]]; then
                 # Ahead of origin: unpushed commits. Their timeline may hold
                 # entries origin does not have, and a record committed on
@@ -796,7 +802,7 @@ if [[ "$_GATE_PKG_ROLE" == "owning" && -z "$_GATE_OWN_PROBLEM" ]]; then
                 _gate_own_ahead=$(git -C "$_gate_wt" rev-list --count "$_gate_own_origin..HEAD" 2>/dev/null || echo '?')
                 _gate_own_plural="s"
                 [[ "$_gate_own_ahead" == 1 ]] && _gate_own_plural=""
-                _GATE_OWN_NOREAD="the owning checkout $_gate_wt has $_gate_own_ahead commit${_gate_own_plural} not on origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
+                _GATE_OWN_NOREAD="the owning checkout $(_bk_display "$_gate_wt") has $(_bk_display "$_gate_own_ahead") commit${_gate_own_plural} not on origin's $(_bk_display "$PR_BRANCH") at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
             else
                 _GATE_OWN_SHA="$_gate_own_origin"
             fi
@@ -897,9 +903,9 @@ elif [[ -z "$_gate_progress" ]]; then
             _gate_reasons+=("a sibling repository's pull request: package worktree $(_bk_display "$PKG_WT_DIR") has no single checkout on feature/issue-$(_bk_display "$ISSUE_NUM"), so no timeline is read for it")
         fi
     elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
-        _gate_reasons+=("$(_bk_display "$_GATE_OWN_PROBLEM"), so no timeline is read for issue #$(_bk_display "$ISSUE_NUM")")
+        _gate_reasons+=("$_GATE_OWN_PROBLEM, so no timeline is read for issue #$(_bk_display "$ISSUE_NUM")")
     elif [[ -n "$_GATE_OWN_NOREAD" ]]; then
-        _gate_reasons+=("$(_bk_display "$_GATE_OWN_NOREAD"); its timeline is not read for issue #$(_bk_display "$ISSUE_NUM")")
+        _gate_reasons+=("$_GATE_OWN_NOREAD; its timeline is not read for issue #$(_bk_display "$ISSUE_NUM")")
     elif [[ -n "$_gate_refusal" ]]; then
         _gate_reasons+=("the records gate refused the timeline in $(_bk_display "$_gate_wt"): $(_bk_display "$_gate_refusal")")
     else

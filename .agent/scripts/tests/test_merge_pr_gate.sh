@@ -887,6 +887,35 @@ for shape in other-branch detached; do
     fi
 done
 
+echo "TEST: a long owning-checkout path: the reason is whole, the display cap applies to the path alone"
+# The owning checkout's path is padded so that it stays under the 256-byte
+# display cap (_bk_display) while the reason sentence around it goes over.
+# Capping the whole sentence once cut it to "...not fea...(+N bytes)", and
+# it did so for any TMPDIR long enough, so the other cases' result depended
+# on where the suite ran. The pad is computed from $SANDBOX's own length so
+# the case holds wherever TMPDIR is.
+pad_len=$(( 240 - ${#SANDBOX} - 1 - 16 - 66 ))
+if (( pad_len < 1 )); then
+    fail "(pkg-13 long-path) TMPDIR is too long for this case: \$SANDBOX is ${#SANDBOX} bytes, so the owning checkout's path cannot be kept under the 256-byte cap"
+else
+    pad="$SANDBOX/$(printf 'p%.0s' $(seq "$pad_len"))"
+    mkdir -p "$pad"
+    sb="$(SANDBOX="$pad" make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    git -C "$A" checkout -q -b feature/issue-901-old
+    want="the owning checkout $A is on feature/issue-901-old, not feature/issue-901"
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    if (( ${#A} < 256 )) && (( ${#want} > 256 )) \
+        && [[ "$out" == *"would have refused — $want; its timeline is not read for issue #901"* ]] \
+        && [[ "$out" != *"bytes)"* ]]; then
+        pass "(pkg-13 long-path) a ${#A}-byte checkout path in a ${#want}-byte reason: the reason is printed whole"
+    else
+        fail "(pkg-13 long-path) path ${#A} bytes, reason ${#want} bytes (out=$(tail_of "$out" 900))"
+    fi
+fi
+
 echo "TEST: an owning PR's duplicate check compares with the newest record across the timeline and the PR's comments"
 # Run 1, conditions X1 (no decision summary): the push is refused, so the
 # record is a PR comment. Run 2, X2 (a summary added): committed in the
