@@ -1161,7 +1161,8 @@ $st_ok && pass "(skill 3) every timeline state reads as the mapping table says" 
 
 echo "TEST: sit-rep step 3 names the path each piece of work serves"
 # Path 1: a Direction line names the issue in its own cells, or a check
-# names the worktree's project. Path 2: a Serves line on the timeline.
+# names the worktree's project. Path 2: a Serves line on the timeline
+# (Path 3, a Serves line with the safeguard phrase, is the next test's).
 # A deferral naming an issue does not make it Path 1. Project worktrees
 # no Direction line of the workspace names (q, r) are not in its report
 # (issue #418); the project-session tests below cover a project's own
@@ -1187,7 +1188,7 @@ RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
     && pass "(skill 3) path: with no rows from step 1 the path is unknown, never guessed" || fail "(skill 3) path no rows '$OUT'"
 
-echo "TEST: sit-rep step 3 reads Path 2 from the newest complete Issue Review's Serves line only"
+echo "TEST: sit-rep step 3 reads Path 2 and Path 3 from the newest complete Issue Review's Serves line only"
 # A Serves line of "none" (review-issue's word for no goal) is no path; a
 # newer Issue Review's Serves outranks an older one either way; a Serves
 # line outside an Issue Review, or inside a fence, does not count. With
@@ -1198,7 +1199,7 @@ ir() {  # <when> <serves line or empty> [status, default complete]
     printf '## Issue Review\n**Status**: %s\n**When**: %s\n**By**: t\n\n**Issue**: #1\n\n### Scope Assessment\n\n%s\n\n' "${3:-complete}" "$1" "$2"
 }
 hdr=$'---\nissue: 1\n---\n\n# Issue\n\n'
-for n in 21 22 23 24 25 26 27 28 29 30 31; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; done
+for n in 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; done
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; } > "$SB/wt21/.agent/work-plans/issue-21/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use'; ir '2026-10-02 10:00 -04:00' '**Serves**: "none" — nothing in the README'; } > "$SB/wt22/.agent/work-plans/issue-22/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use'; } > "$SB/wt23/.agent/work-plans/issue-23/progress.md"
@@ -1209,28 +1210,40 @@ for n in 21 22 23 24 25 26 27 28 29 30 31; do mkdir -p "$SB/wt$n/.agent/work-pla
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use' partial; } > "$SB/wt28/.agent/work-plans/issue-28/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' $'### Notes\n\n**Status**: partial\n\n**Serves**: Easy to use'; } > "$SB/wt29/.agent/work-plans/issue-29/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use' partial; } > "$SB/wt30/.agent/work-plans/issue-30/progress.md"
+# Path 3: the README line's opening words, "A safeguard has to earn its
+# cost", in the newest complete Issue Review's Serves line, in any case.
+# A Direction line naming the issue still makes it Path 1 (34), an older
+# review's phrase is outranked by a newer plain goal (33), and a Serves
+# line of none that goes on to quote the phrase is still no path (35).
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Quality of the work, "A Safeguard has to earn its cost"'; } > "$SB/wt32/.agent/work-plans/issue-32/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: A safeguard has to earn its cost'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use'; } > "$SB/wt33/.agent/work-plans/issue-33/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: A safeguard has to earn its cost'; } > "$SB/wt34/.agent/work-plans/issue-34/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none, not "A safeguard has to earn its cost"'; } > "$SB/wt35/.agent/work-plans/issue-35/progress.md"
 { printf '{"worktrees":['
-  for n in 21 22 23 24 25 26 27 28 29 30 31; do
+  for n in 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35; do
       [ "$n" = 21 ] || printf ','
       printf '{"type":"workspace","issue":%s,"branch":"feature/issue-%s","path":"%s","repo":"workspace"}' "$n" "$n" "$SB/wt$n"
   done
   printf ']}\n'; } > "$SB/wl-serves.json"
 printf '#!/usr/bin/env bash\ncat %q\n' "$SB/wl-serves.json" > "$WS/.agent/scripts/worktree_list.sh"
+{ cat "$SB/rows3"; printf 'line\tA named safeguard (#34)\tfalse\tnone\t2026-10-15\n'; } > "$SB/rows-serves"
+blks="${blk//<rows_file printed in step 1>/$SB/rows-serves}"
 reset_marks
-RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$(cut -f4,7 <<< "$OUT")" == $'issue 21\tno path\nissue 22\tno path\nissue 23\tPath 2\nissue 24\tpath unknown (its issue review has no Serves line)\nissue 25\tpath unknown (its issue review has no Serves line)\nissue 26\tPath 2\nissue 27\tPath 2\nissue 28\tno path\nissue 29\tPath 2\nissue 30\tpath unknown (no complete issue review)\nissue 31\tpath unknown (no complete issue review)' ]] \
-    && pass "(skill 3) path: only the newest complete Issue Review's Serves counts (a partial or failed one, with or without Serves, changes nothing); \"none\" is no path; Serves elsewhere or fenced does not count; no Serves line or no complete review is path unknown" \
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blks" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f4,7 <<< "$OUT")" == $'issue 21\tno path\nissue 22\tno path\nissue 23\tPath 2\nissue 24\tpath unknown (its issue review has no Serves line)\nissue 25\tpath unknown (its issue review has no Serves line)\nissue 26\tPath 2\nissue 27\tPath 2\nissue 28\tno path\nissue 29\tPath 2\nissue 30\tpath unknown (no complete issue review)\nissue 31\tpath unknown (no complete issue review)\nissue 32\tPath 3\nissue 33\tPath 2\nissue 34\tPath 1\nissue 35\tno path' ]] \
+    && pass "(skill 3) path: only the newest complete Issue Review's Serves counts (a partial or failed one, with or without Serves, changes nothing); \"none\" is no path; Serves elsewhere or fenced does not count; no Serves line or no complete review is path unknown; the safeguard phrase, in any case, is Path 3, below a Direction line and above none" \
     || fail "(skill 3) path from Serves rc=$RC '$OUT'"
-rm -f "$SB/wl-serves.json"
+rm -f "$SB/wl-serves.json" "$SB/rows-serves"
 
 echo "TEST: sit-rep step 3 reads the roadmap's Paths paragraphs, as written"
 cp "$WS/docs/roadmap.md" "$SB/roadmap3.saved"
 printf '%s\n' '# R' '' '**Path 9, Not this.** Outside the section.' '' '## Direction' '' 'Intro.' '' \
     '**Path 1, Alpha one.** First sentence, with `code`. Second' 'sentence.' '' \
-    '**Path 2, Beta.** Only one sentence' '' '## Next' > "$WS/docs/roadmap.md"
+    '**Path 2, Beta.** Only one sentence' '' \
+    '**Path 3, Gamma.** In his words: "Quoted one." and "quoted' 'two." Then more.' '' '## Next' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'path\tPath 1\tAlpha one\tFirst sentence, with `code`.\npath\tPath 2\tBeta\tOnly one sentence' ]] \
-    && pass "(skill 3) paths: number, name and first sentence of each Path paragraph in the Direction section only" || fail "(skill 3) paths rc=$RC '$OUT'"
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1\tAlpha one\tFirst sentence, with `code`.\npath\tPath 2\tBeta\tOnly one sentence\npath\tPath 3\tGamma\tIn his words: "Quoted one."' ]] \
+    && pass "(skill 3) paths: number, name and first sentence of each Path paragraph in the Direction section only; a sentence may end in a closing quotation mark" || fail "(skill 3) paths rc=$RC '$OUT'"
 printf '## Direction\n\nNo paths.\n' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$OUT" == "paths=none"* ]] && pass "(skill 3) paths: none in the roadmap is said, not guessed" || fail "(skill 3) no paths '$OUT'"
@@ -1257,14 +1270,14 @@ else
         { prev = $0 }' <<< "$tpl")"
     [[ -z "$spacing" ]] && pass "(skill 8) a blank line before every section heading and after it" || fail "(skill 8) spacing: $spacing"
 fi
-grep -qF 'By default it is the focus: Path 1, Path' "$SKILL" && grep -qF '`no path`' "$SKILL" \
+grep -qF 'By default it is the focus: one of the' "$SKILL" && grep -qF '`no path`' "$SKILL" \
     && pass "(skill 8) the report marks each item's path and asks for the focus" || fail "(skill 8) path words or focus question missing"
 # A pull request with no worktree has no timeline read, so it is never
-# `no path` (work that serves neither path): Path 1 by a Direction line,
+# `no path` (work that serves none of the paths): Path 1 by a Direction line,
 # else path unknown.
 sk_flat="$(tr '\n' ' ' < "$SKILL" | tr -s ' ')"
 grep -qF 'A branch with only a pull request has no timeline here, so no Serves line was read: with no Paths paragraph it gets no path word either, like every other line; otherwise `Path 1` when a Direction line names its issue, else "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a `feature/issue-<N>` head branch, or an issue in step 3'"'"'s `closingIssuesReferences` whose repository is this one' <<< "$sk_flat" \
-    && grep -qF 'Never `no path`, which says the work serves neither path.' <<< "$sk_flat" \
+    && grep -qF 'Never `no path`, which says the work serves none of the paths.' <<< "$sk_flat" \
     && grep -qF 'isDraft,reviewDecision,updatedAt,closingIssuesReferences' "$SKILL" \
     && pass "(skill 8) a pull request with no worktree is Path 1 by a Direction line, else path unknown, never no path" \
     || fail "(skill 8) a pull request with no worktree: path words missing or it is still labelled no path"
@@ -1584,6 +1597,16 @@ RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f1,2,4,7 <<< "$OUT")" == $'workspace\tworkspace\tissue 4\tPath 1\nproject\tproj\tissue 4\tPath 1\nproject\tproj\tissue 6\tno path (serves a project goal)' ]] \
     && pass "(project 3) own worktrees reach Path 1 by a bare (#N); a goal is a project goal, never Path 2; named workspace work kept; other roots' worktrees dropped" \
     || fail "(project 3) rc=$RC '$OUT'"
+# The safeguard phrase is the workspace README's Path 3 marker; in a
+# project worktree it is a project goal like any other, never Path 3.
+p6="$P/worktrees/issue-proj-6/.agent/work-plans/issue-6/progress.md"
+cp "$p6" "$SB/p6.saved"
+printf '%s' "${served//\*\*Serves\*\*: Easy to use/**Serves**: A safeguard has to earn its cost}" > "$p6"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 3p <<< "$OUT" | cut -f1,2,4,7)" == $'project\tproj\tissue 6\tno path (serves a project goal)' ]] \
+    && pass "(project 3) the safeguard phrase in a project worktree's Serves line is a project goal, never Path 3" \
+    || fail "(project 3) safeguard phrase rc=$RC '$OUT'"
+mv "$SB/p6.saved" "$p6"
 proj_roadmap
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "" && "$(grep -c . <<< "$OUT")" -eq 3 ]] \
