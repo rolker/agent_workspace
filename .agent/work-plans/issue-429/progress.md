@@ -2087,3 +2087,55 @@ Merge (Recommended)
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `51766e95`
 
 Revision after 2a merged (pull request 460): 2a marked merged with what review changed; 2b re-checked against main, with cleanup cases (a) to (c) and the pull half of (d) already covered, one case left; acceptance table added. One open question: the pre-push review and the behind-check use the default branch, not the pin.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 06:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `51766e95`
+**Branch**: `feature/issue-429`
+
+Scope: the "Revision of 2026-11-13" refresh for pull request 2b only, checked against main at `03d0bbfa` (origin/main is the same commit).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2b is about 8 files; with the base step below about 12 files, still one pull request. Every line citation for 2b.1 checked and correct: `_gate_wt` 708-711, match loop `_m_rel` 494, four-field record 530, read 543, `unset` 548, `records_path` 723, `_ci_wt` 736, reason 761-762, `_gate_record` repo test 880, `progress_append.sh -C` 898, push 902, comment fallback 924-925, cross-check 846-850, `PR_BASE_REF` 565-566, Step 4 at 1581, sibling `gh pr list` 1612 (plan says 1597: the loop starts there), kept message 1707 |
+| Issue alignment | Needs work | Acceptance table is right except row "Needed 3: the review reads the package's diff", which is stated too broadly as "not met" (finding 2). Plan's Serves line, as checked: "Workspace goal `README.md#easy-to-use` ... `README.md#flexibility` ... Design: `docs/design.md#worktrees` (Records) and `docs/design.md#review-loop-and-timeline` (`docs/design.md#merge-gate`)"; all anchors exist (README 60, 88; design 429, 571, 657) |
+| File targeting | Needs work | 2b's files are right for the gate. The base step, if taken, touches files the plan does not list: `dispatch_phase.sh` (the task line, not run-issue), `check_branch_updates.sh`, `review-code/SKILL.md`, `script_reference.md` row 34 (finding 1) |
+| Consequences | Good | Line-citation refresh in `docs/design.md` 476-478 (already stale: says 871/925, code is 898/924), 384, 553 is listed; run-issue step 11 sentence (872-876) and the false Scope sentence (974-975) are listed |
+| Principle alignment | Good | "Test what breaks": the gate flip and end-to-end case pin the change. Finding 3 removes a test that would not fail independently |
+| ADR compliance | Good | ADR-0003 (fixture rename `p11` to `demo`, 2b.4; lines 430, 434, 511, 514 confirmed), ADR-0012/0013/0017 as in the plan; nothing new triggered |
+| ROS conventions | N/A | Workspace plan |
+
+### Verified "already done by 460" claims
+
+- Cross-check at `merge_pr.sh` 846-850, owning branch only: confirmed.
+- `PKG_WT_BASE` read from the header (`_hdr_base`, 512) and carried in `_PKG_MATCHES` (530, 543): confirmed.
+- `PR_BASE_REF` from `baseRefName` in the same `gh pr view` (559, 565-566): confirmed.
+- Cleanup (a) `test_qualified_pr_ref_resolves_package_worktree` 263-292, (b) its pkg_b `wip` commit and `test_sweep_reports_unmerged_local_branch` 727-751, (c) `test_sibling_pr_open_keeps_worktree` 310, (d) pull half `test_own_repo_pulls_only_on_the_base` 469-529, 531, 546: all confirmed.
+- `test_package_issue_loop.sh` is 946 lines, cases 1-13, case 12 creates with `--base pinned`, case 13 resumes, publish check 815-831 asserts `--repo owner/pkg_a --base pinned` from A: confirmed.
+- Gate fixture at `test_merge_pr_gate.sh` 503-526 with the "package worktrees carry no issue timeline" assertion at 522; `AGENT_NAME`/`AGENT_EMAIL` are exported at 35-36, so after the flip the record really can commit in A: confirmed.
+
+### Findings
+
+1. **[Issue alignment / File targeting] (must-fix) Take option 1, but it is not "two call sites in run-issue and a test".** What I read: (a) the pre-push task line is built by `dispatch_phase.sh` `skill_task_line` (435: `/review-code --branch --issue $issue`), not by run-issue; the handoff already prints `base=$pkg_base` (531, 565) but review-code's SKILL never reads a `base=` line, so the sub-agent falls to `resolve_default_branch` (review-code SKILL 134-142), which prefers a *local* default branch name. (b) `review-code` already accepts `--branch <base-ref>` (SKILL 43, 125-151) and passes it to `cross_model_review.sh --branch <base>` (402; that script verifies local `<base>` first, then `origin/<base>`, 848-855), but the SKILL's text does not say the cross-model call must get the same base as step 1b. (c) `check_branch_updates.sh` takes only `--strict` as `$1`, has no test suite, and has two other callers (`worktree_enter.sh` 458, pre-commit hook `check-branch-updates.py`) that must keep working with no argument. (d) run-issue step 8 says "merge main into the branch": for a pin that is not the default branch the host would merge the default branch into a feature branch started from the pin, putting unrelated commits into the package pull request (a silent harm, worse than a wrong review). PR-mode `review-code <M>` (`gh pr diff`), `triage-reviews` and `fetch_pr_reviews.sh` read the pull request through `gh` in A, whose repository `where` checks, so they carry no default-branch assumption. The exact step: **2b.7** (i) `dispatch_phase.sh`: read `pkg_base` before the task line (or rewrite it after) and, for `review-code` with no `--pr` and a package base, emit `/review-code --branch origin/<base> --issue N` (`origin/`: the local `<base>` in A may be absent or stale, the plan's own finding on the parent-branch path); no base: unchanged. (ii) `check_branch_updates.sh`: real argument parsing for `[--strict] [--base <branch>]`; with `--base` it uses that branch in place of the default for the on-branch shortcut, the fetch, the counts and the recommendations; no argument: unchanged. (iii) run-issue step 8: run `check_branch_updates.sh --base <base>` for a package issue, and "merge `origin/<base>`" (main for every other issue). (iv) review-code SKILL step 5e/branch mode: one sentence, the cross-model call takes the same base step 1b resolved. (v) `script_reference.md` row 34. Tests: `test_dispatch_phase.sh` or `test_package_issue_loop.sh` asserts the task line with `origin/pinned` for a package worktree and the unchanged line for a workspace one; `test_package_issue_loop.sh` runs step 8's block (extracted from SKILL.md the way the publish check at 815-831 does) in A with origin `pinned` ahead and `main` further ahead, asserting it reports behind `pinned` by the right count and names `origin/pinned`, and that a bare call still compares with the default. About 5 files and 80 lines more.
+2. **[Issue alignment] (should-fix) Acceptance row "Needed 3: the review reads the package's diff" is stated too broadly.** PR-mode review, triage and review fetching already read the package pull request (445, `where`'s `gh repo view` check); only the pre-push review and the behind-check judge the default branch, and only when the pin is not it. Re-state the row as met by 445 for PR mode and by 2b.7 for branch mode, so the closing pull request does not overclaim or underclaim.
+3. **[Principle alignment] (should-fix) Drop the planned `git branch -d` case; it duplicates existing assertions.** The post-removal sweep (`merge_pr.sh` 1732-1760) is one loop over every manifest entry with no owning/sibling distinction; `test_sweep_reports_unmerged_local_branch` (727-751) already asserts "Kept local branch", git's "not fully merged" and the branch still present for an entry whose remote is gone, and the "fetched only" half is the `other` setup of `test_own_repo_pulls_only_on_the_base`. A new case would fail only together with those. The plan already allows dropping it; do so and say why in the pull request.
+4. **[Issue alignment] (should-fix) Acceptance line 1, "untestable", should name what is testable.** Walking run-issue steps 1-11 for a package issue against the merged scripts: steps 1 (user tier, `base`, start-task, `where`), 2 (`gh pr list` in A), 3-4 (`next`, handoff, `check-exit` on A's timeline), 7 (publish `-R --base`, tested), 9 (`fetch_pr_reviews.sh` in A, 2b.5 adds it), 10 (pushes from A) and 11 (`merge_pr.sh --pr owner/repo#M` from the root; gate and record in A once 2b.1 lands) need no hand. The hand steps found are step 8 (the host has to know not to merge `main`) and the pre-push review base, both closed by finding 1; both are script or SKILL-block behaviour and testable. Only the Agent-tool working directory and how a sub-agent reads prose stay untested. Say so in the table.
+5. **[Consequences] (nit) Line citation.** 2b.3 says the sibling check is at 1597; the `gh pr list -R` call is 1612 (1597 is the loop's comment block). Also `docs/design.md` 476-478 cites 871 and 925, which are already off (898 and 924) before 2b; the refresh will fix both.
+
+### Summary
+
+The 2b refresh is accurate against main: every line and every "done by 460" claim checks out, and the gate change (2b.1) is correctly placed. It needs one added step before implementation: option 1 for the base of the pre-push review and the behind-check, which is the issue's own "the review reads the package's diff" line and the only hand step a real run with a non-default pin would still hit; its real size is about five files (the task line lives in `dispatch_phase.sh`, `check_branch_updates.sh` needs real argument parsing, step 8 says "merge main"), still small.
+
+### Recommended Actions
+
+- [ ] Add 2b.7 as in finding 1 (`dispatch_phase.sh` task line `--branch origin/<base>`, `check_branch_updates.sh --base`, run-issue step 8 text and block, review-code SKILL sentence for the cross-model base, `script_reference.md` row 34) with the tests named there
+- [ ] Restate the acceptance rows for "Needed 3" and "Acceptance 1" per findings 2 and 4
+- [ ] Drop the `git branch -d` cleanup case as a duplicate of `test_sweep_reports_unmerged_local_branch` (finding 3)
+- [ ] Fix the 2b.3 sibling-check citation (finding 5)
