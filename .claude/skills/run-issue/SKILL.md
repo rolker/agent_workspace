@@ -883,8 +883,10 @@ cd "<root>"
 then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`, or
 `--pr <owner/repo#M>` for a package issue, so the script targets the
 package repository and finds the package worktree. For the owning
-repository's pull request the gate reads the review in the owning
-checkout's timeline and commits and pushes its record there; it stays
+repository's pull request the gate reads the review from the owning
+checkout's committed timeline at origin's branch head (never the working
+copy), and commits and pushes its record there only when the working
+copy's `progress.md` is the committed one (else on the pull request); it stays
 report-only for every package pull request (a gap is recorded, the merge
 goes ahead). The gate enforces by default on workspace PRs (#300): a gap
 refuses with exit 1 and no entry. Only the owner says skip — `--report-only` (record and proceed),
@@ -983,8 +985,9 @@ issue 429:
   base (the project's pin of that repository, or the owner's `--base`;
   step 1), the pre-push review diffs against `origin/<base>` and step 8
   merges it, publish targets that repository and base, and the merge gate
-  reads the review in that checkout's timeline and commits its record
-  there. Package pull requests stay report-only at the gate (enforcement
+  reads the review from that checkout's committed timeline at origin's
+  branch head and commits its record there only when the working copy's
+  `progress.md` is the committed one. Package pull requests stay report-only at the gate (enforcement
   is for workspace pull requests). Sibling repositories in the package
   worktree are for building against: a sibling's own pull request is
   merged with `--pr <owner/sibling#M>`, its gate reads no timeline and its

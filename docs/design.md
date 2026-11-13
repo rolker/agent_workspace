@@ -381,7 +381,7 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 865 and 1103, 1388 and 1401, 2190-2210 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 869 and 1170, 1460 and 1473, 2262-2282 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 643, 731, 763, 902 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -464,7 +464,9 @@ Status: `decided`
   `_resolve_work_plans_dir.sh`), and every script path to a timeline goes through it:
   `resolve_work_plans_dir`, `progress_append.sh`, each `review_progress.sh` subcommand that takes or
   builds a records path (`round`, `persist`, `sources`, `findings`, `check`, `plan-sha`),
-  `dispatch_phase.sh` (`resolve_issue_dir` and `next --progress`) and `merge_pr.sh`'s gate lookup. It
+  `dispatch_phase.sh` (`resolve_issue_dir` and `next --progress`) and `merge_pr.sh`'s gate lookup (an
+  owning package pull request's read of the committed copy passes the gate's checkout rule,
+  `issue_checkout_guard`, on the checkout itself). It
   does not cover a file an agent opens directly, the sit-rep's survey (it reads each listed checkout's
   `progress.md` with `progress_read.py` directly), or `worktree_create.sh --workflow`'s scaffold (#393).
   A write that changes a timeline (an entry, its commit, a ticked box) is refused unless the file it
@@ -476,21 +478,23 @@ Status: `decided`
   changes nothing for them. `merge_pr.sh`'s gate reads the owning repository's pull request
   (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
   entry's path travels with the match (`PKG_OWN_REL`, lines 535-558) and becomes the gate's worktree
-  (lines 719-743). That checkout's timeline is read only when it is its repository's top folder, has
-  the pull request's branch checked out, its HEAD equals origin's copy of it (a bounded fetch) and its
-  `progress.md` has no uncommitted change and no assume-unchanged or skip-worktree flag (either may hold
-  entries origin does not have); otherwise the gate gives the reason
-  and the record goes on the pull request (lines 744-840). A sibling
+  (lines 719-743). The gate reads that checkout's timeline only when the checkout is its repository's
+  top folder, has the pull request's branch checked out and its HEAD equals origin's copy of it (a
+  bounded fetch); otherwise it gives the reason and the record goes on the pull request (lines
+  744-805). It then reads the committed `progress.md` at that commit, never the working copy, so
+  nothing uncommitted in the checkout changes what it reads; none committed means no timeline (lines
+  806-858). The record is committed there only when the working copy's `progress.md` is the committed
+  one (`_gate_rec_not_committed`), else it goes on the pull request. A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 886-893 and 1221-1222). Package pull requests stay
+  record goes on its own pull request (lines 890-897 and 1293-1294). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
   `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 608 and
   741), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 865 and 1103). The gate is still report-only for project pull requests (lines 1388 and
-  1401).
+  commit (lines 869 and 1170). The gate is still report-only for project pull requests (lines 1460 and
+  1473).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
   branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
@@ -561,7 +565,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    549, 595, 597, 659, 920: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (719-854, 1066-1236: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (719-858, 1133-1308: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -609,8 +613,7 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   11). When no worktree on the pull request's branch can commit and push that entry (none open, a
   sibling repository's pull request in a package worktree, the main tree, an owning checkout that is not
   its repository's top folder, not on that branch or not equal to origin's copy of it (behind, ahead
-  or diverged), its `progress.md` untracked, with staged or unstaged changes or flagged assume-unchanged or
-  skip-worktree, a `progress.md` that
+  or diverged), or whose working-copy `progress.md` is not the committed one, a `progress.md` that
   is a symlink, no agent identity, the commit refused, the push refused, or timed out with origin's
   branch not shown to contain it), it is posted as a
   comment on the pull request instead (`_gate_record` in `merge_pr.sh`). The directory sits in the
@@ -694,8 +697,9 @@ Status: `decided`
   refuses at the CI grace deadline rather than merge past a review it never saw.
 - The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
   Project and package pull requests are report-only: the gap is printed and recorded as a
-  `## Merge (report-only)` entry and the merge goes ahead. For a package issue the gate reads and records
-  the owning repository's pull request in the owning checkout's timeline; a sibling repository's pull
+  `## Merge (report-only)` entry and the merge goes ahead. For a package issue the gate reads the
+  owning repository's pull request from the owning checkout's committed timeline at origin's branch
+  head, and records there only when the working copy's `progress.md` is the committed one; a sibling repository's pull
   request reads none, and its record goes on that pull request ([Worktrees](#worktrees), Records). `--force-unreviewed` bypasses both conditions
   with a banner and a `## Merge (unreviewed)` entry. A merge that does not end merged after one of
   those entries goes to the `merge-refused` checkpoint.
@@ -705,10 +709,9 @@ Status: `decided`
   commits already present locally: a head that is not there is a reason, never a pass.
 - The record is committed and pushed only from a checkout that is its repository's top folder, has the
   pull request's branch checked out and, for a package pull request, has its HEAD equal to origin's
-  copy of it (so the record push never carries unpushed commits) and a `progress.md` with no uncommitted
-  change (not untracked, staged, edited or deleted, and not flagged assume-unchanged or skip-worktree;
-  the same conditions decide whether that timeline is read at all, so an uncommitted approval never
-  passes), and only when `progress.md` and its folders are a regular
+  copy of it (so the record push never carries unpushed commits) and a working-copy `progress.md` that
+  is the committed one (or absent from both the commit and the working copy; the gate itself reads
+  only the committed copy, so an uncommitted approval never passes), and only when `progress.md` and its folders are a regular
   file and folders (a symlink is left as found); otherwise it goes on the pull request with the reason
   and the checkout is left as found. A workspace or project pull request's worktree is not checked for
   either. When a hook refuses the commit or origin
@@ -943,6 +946,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Merge gate | Triage fix (issue 429, pull request 461): with no timeline read, the duplicate check compares with the newest record comment of either type; `merge_pr.sh` citations refreshed | #429 | 986 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Second triage fix (issue 429, pull request 461): the owning checkout is read, and the record committed there, only when its HEAD equals origin's copy of the branch and its `progress.md` has no uncommitted change; a record comment is matched only on an exact heading, with trimmed values; the workspace path is unchanged; `merge_pr.sh` citations refreshed | #429 | 993 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Third triage fix (issue 429, pull request 461): the owning checkout's timeline is not read when its `progress.md` has an uncommitted change or an assume-unchanged or skip-worktree flag; an empty or null comment body is not a record, and unreadable comments are said and recorded over; every `merge_pr.sh` citation refreshed, including the Records bullet's main-tree guard and report-only lines | #429 | 999 |
+| 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Owner's decision (issue 429, pull request 461): for a package issue the gate reads the committed `progress.md` at origin's branch head, never the working copy; the record is committed in the owning checkout only when the working copy's file is the committed one; the working-copy read conditions are gone; every `merge_pr.sh` citation refreshed | #429 | 1003 |
 
 ## Glossary
 
