@@ -613,7 +613,22 @@ _rc_detached_local_commits() {
     git -C "$clone" symbolic-ref -q HEAD >/dev/null 2>&1 && return 1
     head="$(git -C "$clone" rev-parse HEAD 2>/dev/null)" || return 1
     [ "$head" = "$target" ] && return 1
+    _rc_head_is_last_resolved "$head" && return 1
     [ -n "$(git -C "$clone" rev-list -n 1 HEAD --not --branches --tags --remotes 2>/dev/null)" ]
+}
+
+# Is <commit> the one the live resolved manifest was made from, from this
+# source, with nothing local (source-state=clean)? Then the clone holds
+# only what the adapter checked out, and commits the remote no longer has
+# are a rewrite there (a force-pushed branch, a tag moved off commits no
+# branch holds), followed rather than taken for local commits.
+_rc_head_is_last_resolved() {
+    local rf
+    rf="$(_rc_root)/configs/manifest-resolved/.resolved-from"
+    [ -n "$1" ] && [ -f "$rf" ] || return 1
+    [ "$(_rc_resolved_from "$rf" source)" = "${ACTIVE_PROJECT_SOURCE:-}" ] || return 1
+    [ "$(_rc_resolved_from "$rf" source-state)" = clean ] || return 1
+    [ "$(_rc_resolved_from "$rf" commit)" = "$1" ]
 }
 
 _rc_warn_detached_local() {  # <clone> <kind> <ref>
@@ -736,6 +751,12 @@ _rc_source_fetch() {
                     git -C "$clone" merge --quiet --ff-only "origin/$ref" \
                         || { echo "ERROR: cannot fast-forward $clone to origin/$ref" >&2; return 1; }
                     echo "source: updated $ref ${old:0:12}..${new:0:12}"
+                elif _rc_head_is_last_resolved "$old"; then
+                    # Rewritten on the remote: nothing here is local (the
+                    # clone is clean and at what was last resolved).
+                    git -C "$clone" reset --quiet --hard "origin/$ref" \
+                        || { echo "ERROR: cannot reset $clone to origin/$ref" >&2; return 1; }
+                    echo "source: $ref was rewritten on $url (not a fast-forward); followed ${old:0:12} -> ${new:0:12}"
                 else
                     echo "WARNING: source: the manifest clone $clone has local commits not on origin/$ref; resolved what is checked out, not what $url holds (push or drop them, then run sync)" >&2
                     _RC_SRC_STATE=local

@@ -2828,6 +2828,62 @@ test_mr_stale_leaf_commit_and_tag() {
     assert_contains "deleted tag: the previous result kept" "mark_two" "$(cat "$gen/repos/core.repos")"
 }
 
+test_mr_remote_rewrite_followed() {
+    echo "TEST: manifest route: a force-pushed branch and a tag moved off commits no branch holds are followed, not taken for local commits"
+    local sb url out rc gen clone work y
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    clone="$sb/projects/p11/configs/source-clone"
+    # The branch's last commit rewritten and force-pushed.
+    write_mr_manifest "$work/manifest.yaml" mark_rewritten
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am rewritten
+    git -C "$work" push --quiet --force origin main
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "force-pushed branch: exit 0" "0" "$rc"
+    assert_not_contains "force-pushed branch: no local-commits warning" "WARNING" "$out"
+    assert_contains "force-pushed branch: said" "source: main was rewritten on $url (not a fast-forward); followed" "$out"
+    assert_eq "force-pushed branch: the clone at the remote's tip" "$(git -C "$work" rev-parse HEAD)" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "force-pushed branch: the rewrite resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    assert_contains "force-pushed branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+    # Local commits on top are still local after a rewrite check.
+    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m local
+    write_mr_manifest "$work/manifest.yaml" mark_again
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am again
+    git -C "$work" push --quiet --force origin main
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_contains "rewrite with local commits on top: still warned" "has local commits not on origin/main" "$out"
+    git -C "$clone" reset --quiet --hard origin/main
+    run_mr "$sb" sync >/dev/null 2>&1
+    # A tag on a commit no branch holds, then moved to another such commit.
+    git -C "$work" checkout --quiet --detach
+    write_mr_manifest "$work/manifest.yaml" mark_x
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am x
+    git -C "$work" tag t
+    git -C "$work" push --quiet origin t
+    mr_settings "$sb" "source=$url" "source_ref=t"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_contains "tag on no branch: resolved" "mark_x" "$(cat "$gen/repos/core.repos")"
+    git -C "$work" checkout --quiet --detach main
+    write_mr_manifest "$work/manifest.yaml" mark_y
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am y
+    y="$(git -C "$work" rev-parse HEAD)"
+    git -C "$work" tag -f t >/dev/null
+    git -C "$work" push --quiet --force origin t
+    git -C "$work" checkout --quiet main
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "moved tag off no branch: exit 0" "0" "$rc"
+    assert_not_contains "moved tag off no branch: no local-commits warning" "WARNING" "$out"
+    assert_contains "moved tag off no branch: followed" "source: t -> ${y:0:12}" "$out"
+    assert_contains "moved tag off no branch: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    assert_contains "moved tag off no branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+}
+
 test_mr_stale_extends_base() {
     echo "TEST: manifest route: every sync clones the extends base afresh; a commit as extends.ref is the resolver's error"
     local sb burl out rc gen bc
@@ -3404,6 +3460,7 @@ mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit
 mr_test test_mr_stale_leaf_branch
 mr_test test_mr_stale_leaf_commit_and_tag
+mr_test test_mr_remote_rewrite_followed
 mr_test test_mr_interrupted_first_clone_and_head_ref
 mr_test test_mr_stale_extends_base
 mr_test test_mr_offline_keeps_previous
