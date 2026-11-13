@@ -2725,6 +2725,14 @@ test_mr_stale_leaf_commit_and_tag() {
     assert_eq "moved tag: exit 0" "0" "$rc"
     assert_contains "moved tag: followed" "source: rel -> ${c2:0:12}" "$out"
     assert_contains "moved tag: the new commit resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+
+    # A tag deleted on the remote is pruned, so it is no longer resolved.
+    git -C "$sb/mwork/leaf" push --quiet origin :refs/tags/rel
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "deleted tag: exit 1" "1" "$rc"
+    assert_contains "deleted tag: named" "source_ref 'rel' is not a branch or tag" "$out"
+    assert_eq "deleted tag: pruned from the clone" "" "$(git -C "$sb/projects/p11/configs/source-clone" tag -l rel)"
+    assert_contains "deleted tag: the previous result kept" "mark_two" "$(cat "$gen/repos/core.repos")"
 }
 
 test_mr_stale_extends_base() {

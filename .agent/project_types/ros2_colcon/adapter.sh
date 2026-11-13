@@ -642,10 +642,10 @@ _rc_source_fetch() {
         fi
         fresh=1
     fi
-    # Branches (pruned, so a deleted branch is not taken for one), then
-    # tags (forced, so a tag moved on the remote is followed).
-    if ! GIT_TERMINAL_PROMPT=0 git -C "$clone" fetch --quiet --prune origin \
-        || ! GIT_TERMINAL_PROMPT=0 git -C "$clone" fetch --quiet --tags --force origin; then
+    # Branches and tags in one fetch: pruned (--prune-tags too, as --prune
+    # alone keeps a tag deleted on the remote, which would then still be
+    # resolved) and forced, so a tag moved on the remote is followed.
+    if ! GIT_TERMINAL_PROMPT=0 git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
         [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
         echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the previously resolved manifest, if any, is kept" >&2
         return 1

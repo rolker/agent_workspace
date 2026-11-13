@@ -1091,7 +1091,7 @@ Deviations: the register hint says "register it as type ros2_colcon" (the type i
 **Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) A tag deleted on the source remote is still resolved as clean: neither fetch prunes tags (`--prune` without `--prune-tags`); add `--prune-tags` (or check with ls-remote) and a test — `.agent/project_types/ros2_colcon/adapter.sh:648`
+- [x] (must-fix) A tag deleted on the source remote is still resolved as clean: neither fetch prunes tags (`--prune` without `--prune-tags`); add `--prune-tags` (or check with ls-remote) and a test — `.agent/project_types/ros2_colcon/adapter.sh:648`
 - [ ] (must-fix) With a tag or commit `source_ref`, local commits on a detached HEAD in the clone are silently orphaned by `checkout --detach` and recorded `source-state=clean`; warn and keep (state local) as the branch case does, with a test — `.agent/project_types/ros2_colcon/adapter.sh:710`
 - [ ] (suggestion) sync's "not checked out yet, run setup" notice skips a whole layer that is new (no `src/`), the role-change case it exists for — `.agent/project_types/ros2_colcon/adapter.sh:1097`
 - [ ] (suggestion) validate: no warning for a clone made dirty after sync (HEAD unchanged, state clean) or a missing clone; spurious "file changed" warning when source itself changed — `.agent/project_types/ros2_colcon/adapter.sh:895`
