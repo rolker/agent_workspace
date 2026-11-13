@@ -784,3 +784,21 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone, 166 passed, 0 f
 **Decision**: publish
 
 Read: the Local Review (Pre-Push) at 7b9a57ad and its report; the full pass output. The review ran the static check and one fresh adversarial sub-review; the host set that depth and left the cross-model reviewers out for a default switch whose plan was reviewed against the merged code the same hour.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 14:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #474 at `0874396e`
+**Sources**: 4 (Plan Review @ `d624d289` (ready), Local Review (Pre-Push) @ `7b9a57ad` (covers `0874396e` via bookkeeping; approved, no findings), GitHub: 0 reviews, 0 inline comments, 0 conversation comments, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+None. The pre-push review left no open finding, GitHub carries no review or comment (Copilot's automatic review is off), and the `sources` helper reports no local findings, no candidates and no dropped entries at this head.
+
+CI at triage time: Validate Documentation and ros-manifest tests passed; Lint (pre-commit) and Validate Adapter Contract still running. This is the first CI run with the parallel default (2 jobs on the runner); `merge_pr.sh` gates the merge on it.
+
+### False positives
+- None.
