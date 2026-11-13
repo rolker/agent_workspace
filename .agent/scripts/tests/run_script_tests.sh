@@ -345,7 +345,7 @@ fi
 #     in this directory today.
 # Five absolute-/tmp
 # mktemp sites remain in production scripts that suites may invoke —
-# worktree_create.sh:1091,1132, pr_status.sh:321,336,
+# worktree_create.sh:1148,1189, pr_status.sh:321,336,
 # fetch_pr_reviews.sh:158 (cited as file:line only;
 # reproducing one of those templates here would trip the lint above).
 # Temp files those calls create bypass both TMPDIR and this sweep. Fixing

@@ -120,14 +120,14 @@ run_stubbed() {  # [VAR=value...] <worktree_create.sh args...>; from $FEAT, git 
     RC=$?
 }
 
-add_repo() {  # [VAR=value...] <repo> <dest> <branch> [<parent>]; sets OUT (ADDED or REFUSED), RC
+add_repo() {  # [VAR=value...] <repo> <dest> <branch> [<parent>] [<base>]; sets OUT (ADDED or REFUSED), RC
     local envs=()
     while [[ "${1:-}" == [A-Z]*=* ]]; do envs+=("$1"); shift; done
     OUT="$(env PATH="$GITSTUB:$PATH" ${envs[@]+"${envs[@]}"} bash -c '
         set -euo pipefail
         source "$1/.agent/scripts/_worktree_helpers.sh"
         # As worktree_create.sh calls it: inside an `if`, so set -e is off.
-        if _wt_add_repo "$2" "$3" "$4" "${5:-}"; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$@" 2>&1)"
+        if _wt_add_repo "$2" "$3" "$4" "${5:-}" "${6:-}"; then echo "ADDED"; else echo "REFUSED"; fi' _ "$SB" "$@" 2>&1)"
     RC=$?
 }
 
@@ -595,6 +595,148 @@ if command -v timeout >/dev/null 2>&1; then
     gitq -C "$SB" remote set-url origin "file:///nonexistent/origin.git"
 else
     echo "  SKIP: hanging fetch (no timeout command on this machine)"
+fi
+echo
+echo "=== A package worktree's base: the owning branch starts from origin's base, strictly (issue 429) ==="
+# A package repository PK whose origin has main and a branch 'pinned' one
+# commit ahead of main. PK's own local 'pinned' carries a commit never
+# pushed (a vcs-imported checkout's local work), which must not enter a
+# branch started from the base.
+PK="$SANDBOX/pk"
+PKO="$SANDBOX/pk-origin.git"
+gitq init -q -b main "$PK"
+gitq -C "$PK" commit -q --allow-empty -m "pk init"
+gitq init -q --bare -b main "$PKO"
+gitq -C "$PK" remote add origin "$PKO"
+gitq -C "$PK" push -q origin main
+gitq -C "$PK" remote set-head origin main
+gitq clone -q "$PKO" "$SANDBOX/pk-scratch"
+gitq -C "$SANDBOX/pk-scratch" checkout -q -b pinned
+gitq -C "$SANDBOX/pk-scratch" commit -q --allow-empty -m "pinned on origin"
+gitq -C "$SANDBOX/pk-scratch" push -q origin pinned
+gitq -C "$SANDBOX/pk-scratch" checkout -q -b feature/issue-64 main
+gitq -C "$SANDBOX/pk-scratch" commit -q --allow-empty -m "issue 64 already on origin"
+gitq -C "$SANDBOX/pk-scratch" push -q origin feature/issue-64
+PK_PINNED="$(git -C "$PKO" rev-parse pinned)"
+PK_MAIN="$(git -C "$PKO" rev-parse main)"
+PK_64="$(git -C "$PKO" rev-parse feature/issue-64)"
+gitq -C "$PK" branch pinned main
+gitq -C "$PK" checkout -q pinned
+gitq -C "$PK" commit -q --allow-empty -m "unpushed local commit on pinned"
+PK_LOCAL_PINNED="$(git -C "$PK" rev-parse pinned)"
+gitq -C "$PK" checkout -q main
+no_upstream() {  # <repo> <branch>
+    ! git -C "$1" config "branch.$2.remote" >/dev/null 2>&1 \
+        && ! git -C "$1" rev-parse --abbrev-ref "$2@{upstream}" >/dev/null 2>&1
+}
+
+# (iii) the base as origin has it, never the local copy, and no upstream.
+add_repo "$PK" "$SANDBOX/pk-wt-60" feature/issue-60 "" pinned
+if [[ "$OUT" == *"ADDED"* && "$(git -C "$PK" rev-parse --verify --quiet feature/issue-60)" = "$PK_PINNED" ]] \
+   && ! git -C "$PK" merge-base --is-ancestor "$PK_LOCAL_PINNED" feature/issue-60 \
+   && no_upstream "$PK" feature/issue-60 \
+   && [[ "$(git -C "$SANDBOX/pk-wt-60" branch --show-current)" = feature/issue-60 ]]; then
+    pass "base: the new branch starts at origin/pinned, without the local unpushed commit, with no upstream"
+else
+    fail "base: rc=$RC feature/issue-60 at $(git -C "$PK" rev-parse --short --verify --quiet feature/issue-60 || echo none), want origin's pinned: ${OUT:0:600}"
+fi
+
+# (i) a base origin does not have: refused, nothing made.
+add_repo "$PK" "$SANDBOX/pk-wt-61" feature/issue-61 "" nosuch
+check_stop "base absent on origin: refused, no branch or worktree" refused "$PK" feature/issue-61 \
+    "ERROR: 'feature/issue-61' starts from its base branch 'nosuch' as origin has it, and origin does not have it (in $PK): origin has no branch 'nosuch'. Nothing was made here; 'feature/issue-61' is not started from the local 'nosuch' or the default branch in its place." \
+    "$SANDBOX/pk-wt-61"
+# ... also when a local branch of that name exists (it is never used).
+gitq -C "$PK" branch nosuch main
+add_repo "$PK" "$SANDBOX/pk-wt-61" feature/issue-61 "" nosuch
+check_stop "base absent on origin but local: still refused" refused "$PK" feature/issue-61 \
+    "origin does not have it (in $PK): origin has no branch 'nosuch'" "$SANDBOX/pk-wt-61"
+gitq -C "$PK" branch -D nosuch
+
+# (ii) origin unreachable: refused, also with --allow-unverified-branch.
+gitq -C "$PK" remote set-url origin "file:///nonexistent/pk-origin.git"
+add_repo "$PK" "$SANDBOX/pk-wt-62" feature/issue-62 "" pinned
+check_stop "base, origin unreachable: refused (the branch's own lookup stops first)" refused "$PK" feature/issue-62 \
+    "cannot tell whether origin has 'feature/issue-62' (in $PK)" "$SANDBOX/pk-wt-62"
+add_repo WT_ALLOW_UNVERIFIED_BRANCH=true "$PK" "$SANDBOX/pk-wt-62" feature/issue-62 "" pinned
+check_stop "base, origin unreachable, --allow-unverified-branch: still refused, naming the base" refused "$PK" feature/issue-62 \
+    "ERROR: cannot tell whether origin has the base branch 'pinned' of 'feature/issue-62' (in $PK): fetching 'pinned' failed" \
+    "$SANDBOX/pk-wt-62"
+if [[ "$OUT" == *"--allow-unverified-branch does not apply to a base"* ]]; then
+    pass "base, origin unreachable: the message says --allow-unverified-branch does not apply"
+else
+    fail "base, origin unreachable: ${OUT:0:600}"
+fi
+gitq -C "$PK" remote set-url origin "$PKO"
+
+# A branch origin already has (a resume): checked out as it is, base unused.
+add_repo "$PK" "$SANDBOX/pk-wt-64" feature/issue-64 "" pinned
+if [[ "$OUT" == *"ADDED"* && "$(git -C "$PK" rev-parse --verify --quiet feature/issue-64)" = "$PK_64" \
+      && "$(git -C "$PK" config branch.feature/issue-64.merge)" = refs/heads/feature/issue-64 ]]; then
+    pass "base: a branch origin already has is checked out with its upstream, not restarted at the base"
+else
+    fail "base, existing branch on origin: rc=$RC: ${OUT:0:600}"
+fi
+
+# (vi) no base: the default branch, as before.
+add_repo "$PK" "$SANDBOX/pk-wt-63" feature/issue-63
+if [[ "$OUT" == *"ADDED"* && "$(git -C "$PK" rev-parse --verify --quiet feature/issue-63)" = "$PK_MAIN" ]] \
+   && no_upstream "$PK" feature/issue-63; then
+    pass "no base: the new branch starts at origin/main as before"
+else
+    fail "no base: rc=$RC: ${OUT:0:600}"
+fi
+
+# (v) worktree_create.sh refuses --base with --parent-issue, and outside a
+# package worktree, before anything is made.
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 65 --type workspace --base main --parent-issue 5
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: --base cannot be used with --parent-issue"* ]] && ! has_branch "$SB" feature/issue-65; then
+    pass "--base with --parent-issue: refused, nothing made"
+else
+    fail "--base with --parent-issue: rc=$RC: ${OUT:0:400}"
+fi
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 65 --type workspace --base main
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: --base is only valid for a package worktree"* ]] && ! has_branch "$SB" feature/issue-65; then
+    pass "--base without --layer: refused, nothing made"
+else
+    fail "--base without --layer: rc=$RC: ${OUT:0:400}"
+fi
+run_create "$FEAT" "$FEAT_SCRIPT" --issue 65 --type workspace --base 'bad..name'
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: --base 'bad..name' is not a valid branch name"* ]]; then
+    pass "--base with an invalid branch name: refused"
+else
+    fail "--base invalid name: rc=$RC: ${OUT:0:400}"
+fi
+
+echo
+echo "=== The manifest header: base= is written, read, and leaves layer= readable ==="
+MF="$SANDBOX/manifest-wt"
+mkdir -p "$MF"
+OUT="$(bash -c '
+    set -euo pipefail
+    source "$1/.agent/scripts/_worktree_helpers.sh"
+    printf "o\tl1_ws/src/a\tfeature/issue-1\n" | wt_write_manifest "$2" demo "owner/a#1" l1
+    wt_read_manifest "$2" >/dev/null
+    echo "noBase layer=[$WT_MANIFEST_LAYER] base=[$WT_MANIFEST_BASE] header=[$(head -n1 "$2/.worktree-repos")]"
+    wt_set_manifest_base "$2" pinned
+    entries=$(wt_read_manifest "$2"); wt_read_manifest "$2" >/dev/null
+    echo "set layer=[$WT_MANIFEST_LAYER] base=[$WT_MANIFEST_BASE] project=[$WT_MANIFEST_PROJECT] issue=[$WT_MANIFEST_ISSUE] header=[$(head -n1 "$2/.worktree-repos")] entries=[$entries]"
+    wt_set_manifest_base "$2" pinned && echo "same: ok"
+    if wt_set_manifest_base "$2" other; then echo "other: changed"; else echo "other: refused"; fi
+    echo "after [$(head -n1 "$2/.worktree-repos")]"
+    printf "o\tl1_ws/src/a\tfeature/issue-1\n" | wt_write_manifest "$2" demo "owner/a#1" l1 rel
+    wt_read_manifest "$2" >/dev/null
+    echo "write layer=[$WT_MANIFEST_LAYER] base=[$WT_MANIFEST_BASE]"
+    ls -A "$2" | tr "\n" " "' _ "$SB" "$MF" 2>&1)"
+TAB=$'\t'
+if [[ "$OUT" == *"noBase layer=[l1] base=[] header=[# project=demo issue=owner/a#1 layer=l1]"* \
+      && "$OUT" == *"set layer=[l1] base=[pinned] project=[demo] issue=[owner/a#1] header=[# project=demo issue=owner/a#1 layer=l1 base=pinned] entries=[o${TAB}l1_ws/src/a${TAB}feature/issue-1]"* \
+      && "$OUT" == *"same: ok"* && "$OUT" == *"other: refused"* && "$OUT" == *"already records base=pinned; not changed to other"* \
+      && "$OUT" == *"after [# project=demo issue=owner/a#1 layer=l1 base=pinned]"* \
+      && "$OUT" == *"write layer=[l1] base=[rel]"* && "$OUT" == *".worktree-repos "* && "$OUT" != *".worktree-repos."* ]]; then
+    pass "manifest header: base= written and set once, layer= and the entries read back with and without it, no temp file left"
+else
+    fail "manifest header: ${OUT:0:900}"
 fi
 echo
 echo "=== No resolvable default: refuse with the set-head hint, never HEAD ==="

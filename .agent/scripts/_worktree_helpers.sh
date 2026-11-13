@@ -402,30 +402,85 @@ find_worktree_by_issue() {
 #
 # A package worktree (multiple git worktrees composed under one aggregate
 # directory) records a manifest at <worktree_dir>/.worktree-repos:
-#   # project=<name> issue=<owner/repo#N|N> layer=<l>
+#   # project=<name> issue=<owner/repo#N|N> layer=<l>[ base=<branch>]
 #   <origin_repo_abs_path>\t<rel_path_in_worktree>\t<branch>
 #   ...
 # Every worktree script reads this file (never the adapter, never the
 # directory name) to learn which repos compose the worktree. A worktree
 # without this file is a legacy single-repo worktree: wt_read_manifest
 # falls back to one synthetic entry (the worktree root itself).
+# base= (issue 429) is the branch the owning repository's pull request
+# targets and its feature/issue-<N> branch started from (the project's pin,
+# adapter repo_pin, or worktree_create.sh --base). It describes the owning
+# entry only; a header without it is a worktree made before the field
+# existed (dispatch_phase.sh base writes it on resume, wt_set_manifest_base).
+# Header fields are read unanchored, so a reader ignores fields it does not
+# know.
 
 # Write the manifest. Entry lines (worktree_repos output) are read from
-# stdin. Usage:
-#   printf '%s\n' "$repo_lines" | wt_write_manifest "$dir" "$project" "$issue" "$layer"
+# stdin. <base> is optional; without it the header has no base= field.
+# Usage:
+#   printf '%s\n' "$repo_lines" | wt_write_manifest "$dir" "$project" "$issue" "$layer" ["$base"]
 wt_write_manifest() {
-    local worktree_dir="$1" project="$2" issue="$3" layer="$4"
+    local worktree_dir="$1" project="$2" issue="$3" layer="$4" base="${5:-}"
     {
-        printf '# project=%s issue=%s layer=%s\n' "$project" "$issue" "$layer"
+        printf '# project=%s issue=%s layer=%s%s\n' "$project" "$issue" "$layer" "${base:+ base=$base}"
         cat
     } > "$worktree_dir/.worktree-repos"
 }
 
+# Record <base> as the base= field of an existing manifest's header, for a
+# worktree made before the field existed (issue 429). The entry lines are
+# kept byte for byte; the file is replaced in one rename, so a reader never
+# sees half a header. A header that already records the same base is left
+# as it is; one that records another base is refused, since the base a
+# branch started from is not changed after the fact. The caller checks the
+# branch on origin first (dispatch_phase.sh base).
+# Status: 0 recorded (or already so); 1 refused or failed, a message on
+# stderr, the manifest unchanged.
+# Usage: wt_set_manifest_base <worktree_dir> <base>
+wt_set_manifest_base() {
+    local worktree_dir="$1" base="$2" manifest header have tmp
+    manifest="$worktree_dir/.worktree-repos"
+    if [ ! -f "$manifest" ]; then
+        echo "ERROR: $worktree_dir has no .worktree-repos manifest to record a base in" >&2
+        return 1
+    fi
+    if [ -z "$base" ] || [[ "$base" == *[[:space:]]* ]]; then
+        echo "ERROR: wt_set_manifest_base: '$base' is not a branch name a manifest header can hold" >&2
+        return 1
+    fi
+    header="$(head -n1 "$manifest")"
+    if [[ "$header" != "# project="* ]]; then
+        echo "ERROR: the first line of $manifest is not a manifest header: $header" >&2
+        return 1
+    fi
+    have="$(sed -n 's/.* base=\([^ ]*\).*/\1/p' <<< "$header")"
+    if [ -n "$have" ]; then
+        [ "$have" = "$base" ] && return 0
+        echo "ERROR: $manifest already records base=$have; not changed to $base" >&2
+        return 1
+    fi
+    tmp="$(mktemp "$manifest.XXXXXX")" || {
+        echo "ERROR: could not create a temporary file beside $manifest" >&2
+        return 1
+    }
+    if { printf '%s base=%s\n' "$header" "$base"; tail -n +2 "$manifest"; } > "$tmp" \
+        && mv -f "$tmp" "$manifest"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    echo "ERROR: could not rewrite $manifest" >&2
+    return 1
+}
+
 # Read the manifest for a worktree dir. Prints entry lines (without the
 # header) to stdout, and sets WT_MANIFEST_PROJECT / WT_MANIFEST_ISSUE /
-# WT_MANIFEST_LAYER from the header. Legacy fallback (no manifest file):
-# one entry — the worktree root itself, "." , current branch — and all
-# three header variables empty.
+# WT_MANIFEST_LAYER / WT_MANIFEST_BASE from the header. Legacy fallback (no
+# manifest file): one entry — the worktree root itself, "." , current
+# branch — and all four header variables empty. Every field is read
+# unanchored, so a field added after it (base=, after layer=) leaves the
+# others readable.
 # Usage: entries=$(wt_read_manifest "$worktree_dir")
 wt_read_manifest() {
     local worktree_dir="$1" manifest header
@@ -433,6 +488,7 @@ wt_read_manifest() {
     WT_MANIFEST_PROJECT=""
     WT_MANIFEST_ISSUE=""
     WT_MANIFEST_LAYER=""
+    WT_MANIFEST_BASE=""
     if [ -f "$manifest" ]; then
         header="$(head -n1 "$manifest")"
         # Read by callers (worktree_list.sh, dashboard.sh, etc.), not this file.
@@ -441,7 +497,9 @@ wt_read_manifest() {
         # shellcheck disable=SC2034
         WT_MANIFEST_ISSUE="$(sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$header")"
         # shellcheck disable=SC2034
-        WT_MANIFEST_LAYER="$(sed -n 's/.* layer=\([^ ]*\)$/\1/p' <<< "$header")"
+        WT_MANIFEST_LAYER="$(sed -n 's/.* layer=\([^ ]*\).*/\1/p' <<< "$header")"
+        # shellcheck disable=SC2034
+        WT_MANIFEST_BASE="$(sed -n 's/.* base=\([^ ]*\).*/\1/p' <<< "$header")"
         tail -n +2 "$manifest"
     else
         local branch
@@ -539,6 +597,11 @@ wt_fetch_why() {
 #   - With --allow-unverified-branch (WT_ALLOW_UNVERIFIED_BRANCH=true),
 #     "unknown" is treated as absent by those two, with a warning that
 #     names the reason. Nothing else turns "unknown" into a fresh branch.
+#   - A package worktree's base branch (worktree_create.sh --base, the
+#     owning entry's new branch; _wt_add_repo's strict start path, issue
+#     429): present, start the branch from origin/<base> with no upstream;
+#     absent or unknown, stop having made nothing, also with
+#     --allow-unverified-branch.
 #   - An existing branch's parent (worktree_create.sh
 #     check_existing_branch_parent, workspace and project types): only
 #     the draft PR's base depends on it. present, the draft PR targets the
@@ -748,9 +811,21 @@ wt_add_new_branch() {
 # another run created during the origin lookup is refused, never removed.
 # It sets WT_ADD_PARENT_LOOKED_UP=true when it asked origin about <parent_branch>.
 # Never falls back to a symlink (ADR-0012's structural no-symlink rule).
-# Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>]
+#
+# <base_branch> (issue 429; worktree_create.sh --base, the owning entry of a
+# package worktree only, never with <parent_branch>) is the strict start
+# path: a NEW '$branch' (neither local nor on origin) starts at origin's
+# <base_branch>, fetched now, with no upstream (--no-track). Origin lacking
+# it, or not answering, stops here having made nothing, whatever
+# WT_ALLOW_UNVERIFIED_BRANCH says: a branch started on a base nobody
+# verified would open a pull request against history the base does not
+# have. The local <base_branch> is never used (a vcs-imported checkout can
+# hold unpushed or stale commits there), nor the default branch in its
+# place. A '$branch' that already exists locally or on origin is checked
+# out as without a base.
+# Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>] [<base_branch>]
 _wt_add_repo() {
-    local origin="$1" dest="$2" branch="$3" parent_branch="${4:-}"
+    local origin="$1" dest="$2" branch="$3" parent_branch="${4:-}" base_branch="${5:-}"
     local out="" rc=1 made_branch=false
     WT_ADD_PARENT_LOOKED_UP=false
 
@@ -777,6 +852,23 @@ _wt_add_repo() {
             if [ "$rc" -eq 0 ] && ! wt_set_upstream "$origin" "$branch"; then
                 out="could not set the upstream of '$branch' to origin/$branch"; rc=1
             fi
+        elif [ -n "$base_branch" ]; then
+            # The strict start path: origin's base, fetched now, or nothing.
+            wt_fetch_named_branch "$origin" "$base_branch" || true
+            case "$WT_FETCH_OUTCOME" in
+                present)
+                    out="$(wt_add_new_branch "$origin" "$dest" "$branch" "origin/$base_branch" --no-track 2>&1)" || arc=$?
+                    rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
+                    ;;
+                absent)
+                    echo "ERROR: '$branch' starts from its base branch '$base_branch' as origin has it, and origin does not have it (in $origin): $WT_FETCH_REASON. Nothing was made here; '$branch' is not started from the local '$base_branch' or the default branch in its place. Push '$base_branch' to origin, or pass --base with a branch origin has." >&2
+                    return 1
+                    ;;
+                *)
+                    echo "ERROR: cannot tell whether origin has the base branch '$base_branch' of '$branch' (in $origin): $WT_FETCH_REASON. Nothing was made here; a branch started on a base origin did not confirm can diverge from it, so --allow-unverified-branch does not apply to a base. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
+                    return 1
+                    ;;
+            esac
         else
             if [ -n "$parent_branch" ]; then
                 if git -C "$origin" show-ref --verify --quiet "refs/heads/$parent_branch"; then

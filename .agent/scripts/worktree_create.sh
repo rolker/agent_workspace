@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./worktree_create.sh --issue <number> --type workspace|project [--branch <name>] [--plan-file <path>]
+#   ./worktree_create.sh --issue <owner/repo#N> --type project --layer <l> --package-repos <a,b> [--base <branch>]
 #   ./worktree_create.sh --skill <name> --type workspace
 #   ./worktree_create.sh --skill onboard-project --type project --project <name>
 #
@@ -128,6 +129,13 @@ REPO_SLUG=""
 PROJECT_REPO=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
+# --base <branch> (issue 429): a package worktree's base branch, the one
+# the owning repository's pull request targets. The owning entry's new
+# branch starts from origin's copy of it (_wt_add_repo's strict start
+# path) and the manifest header records it as base=. run-issue passes what
+# `dispatch_phase.sh base` printed (the project's pin, or the owner's
+# --base override).
+BASE_BRANCH=""
 WORKFLOW=""
 PRINT_PATH_ONLY=false
 # --allow-unverified-branch: start a new branch even when origin cannot
@@ -184,6 +192,11 @@ show_usage() {
     echo "                        (requires --layer)"
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
+    echo "  --base <branch>       Package worktrees only (with --layer): the owning repository's"
+    echo "                        base branch. Its new branch starts from origin/<branch> (never"
+    echo "                        the local copy); creation stops when origin lacks it or does not"
+    echo "                        answer, also with --allow-unverified-branch. Recorded as base="
+    echo "                        in .worktree-repos. Not with --parent-issue"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
@@ -265,6 +278,18 @@ while [[ $# -gt 0 ]]; do
             PARENT_ISSUE_NUM="$2"
             shift 2
             ;;
+        --base)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --base requires a branch name"
+                exit 1
+            fi
+            if ! git check-ref-format "refs/heads/$2" >/dev/null 2>&1; then
+                echo "Error: --base '$2' is not a valid branch name"
+                exit 1
+            fi
+            BASE_BRANCH="$2"
+            shift 2
+            ;;
         --plan-file)
             PLAN_FILE="$2"
             shift 2
@@ -313,6 +338,13 @@ if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
 fi
 if [ -n "$SKILL_NAME" ] && [ -n "$PARENT_ISSUE_NUM" ]; then
     echo "Error: --parent-issue cannot be used with --skill"
+    exit 1
+fi
+# A base and a parent would be two start points for one branch: a package
+# issue's branch starts from its base (the pin), a sub-issue's from its
+# parent's branch.
+if [ -n "$BASE_BRANCH" ] && [ -n "$PARENT_ISSUE_NUM" ]; then
+    echo "Error: --base cannot be used with --parent-issue (each names the branch's start point)"
     exit 1
 fi
 
@@ -409,6 +441,10 @@ if [ -n "$LAYER" ] || [ -n "$PACKAGE_REPOS" ]; then
         echo "Error: --layer/--package-repos require a qualified --issue owner/repo#N"
         exit 1
     fi
+fi
+if [ -n "$BASE_BRANCH" ] && [ -z "$LAYER" ]; then
+    echo "Error: --base is only valid for a package worktree (--type project --layer <l> --package-repos <a,b>)"
+    exit 1
 fi
 
 # Validate workflow template if provided
@@ -673,6 +709,14 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Error: worktree_repos returned no repos to worktree"
         exit 1
     fi
+    # --base is the owning repository's base: without an entry on
+    # $BRANCH_NAME it would be recorded for a branch this worktree does not
+    # have.
+    if [ -n "$BASE_BRANCH" ] \
+        && ! awk -F'\t' -v b="$BRANCH_NAME" '$3 == b && $2 != "." { f = 1 } END { exit !f }' <<< "$REPO_LINES"; then
+        echo "Error: --base $BASE_BRANCH is the base of the owning repository's branch '$BRANCH_NAME', and none of --package-repos $PACKAGE_REPOS is on it (the repository of $ISSUE_DISPLAY_REF is not among them)"
+        exit 1
+    fi
 fi
 
 # --- Determine worktree path ---
@@ -731,6 +775,7 @@ echo "  Repository: $REPO_SLUG"
 echo "  Type:       $WORKTREE_TYPE"
 echo "  Branch:     $BRANCH_NAME"
 [ -n "$PARENT_BRANCH" ] && echo "  Parent:     #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
+[ -n "$BASE_BRANCH" ] && echo "  Base:       $BASE_BRANCH (the owning repository's; a new branch starts from origin/$BASE_BRANCH)"
 echo "  Path:       $WORKTREE_DIR"
 echo ""
 
@@ -801,7 +846,11 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Adding worktree for $WR_ORIGIN at $WR_DEST (branch '$WR_BRANCH')..."
         WR_BRANCH_EXISTED=no
         git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$WR_BRANCH" && WR_BRANCH_EXISTED=yes
-        if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH"; then
+        # The base belongs to the owning entry alone; a sibling's branch
+        # starts as it always has (its repository's default branch).
+        WR_BASE=""
+        [ "$WR_BRANCH" = "$BRANCH_NAME" ] && [ "$WR_REL" != "." ] && WR_BASE="$BASE_BRANCH"
+        if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH" "$WR_BASE"; then
             if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
                 rm -rf "$WORKTREE_DIR"
             fi
@@ -843,7 +892,7 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         [ "$_rl_rel" = "." ] && _WRITE_MANIFEST=false
     fi
     if [ "$_WRITE_MANIFEST" = true ]; then
-        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER"
+        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER" "$BASE_BRANCH"
     fi
 
     # Generate env.sh/build.sh/test.sh for a package worktree when
@@ -1018,6 +1067,8 @@ if [ -n "$PLAN_FILE" ] && [ -n "$LAYER" ]; then
     echo "⚠️  --plan-file draft PR creation is not supported for package worktrees"
     echo "   (the aggregate dir is not itself a git repo; multi-repo PR"
     echo "   resolution is tracked separately). Create PRs per package repo by hand."
+    echo "   run-issue's publish step opens the owning repository's pull request against"
+    echo "   the recorded base (gh_create_pr.sh -R <owner/repo> --base <base>)."
 elif [ -n "$PLAN_FILE" ]; then
     echo "Creating draft PR for issue #${ISSUE_NUM:-${SKILL_NAME}}..."
     echo ""
