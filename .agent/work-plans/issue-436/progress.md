@@ -1210,3 +1210,21 @@ Round-2 findings: all ten addressed as described in the Implementation entry at 
 - [ ] (suggestion) fd 8 reaches every child (a long-lived one, such as git auto gc or a ROS daemon, keeps that directory from the sweep), and where flock on a directory fails nothing is ever removed: one `gen-*` per sync accumulates unwarned — `.agent/project_types/ros2_colcon/adapter.sh:116`
 - [ ] (suggestion) The registry accepts directory-like `source_path` values (`.`, `sub/`, `a//b`), refused only after a clone and fetch (Gemini) — `.agent/scripts/_project_registry.sh:831`
 - [ ] (suggestion) An assertion still checks the loose prefix `configs/manifest-resolved.`; tighten it to `.gen-` — `.agent/scripts/tests/test_ros2_colcon.sh:2535`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 17:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"Simplify"
+
+Q1 as put to him: how should this go on, after round 3 of 3 ended without approval and the must-fix count rose (2, 2, then 4)? Round 3's must-fix findings were shown by their headings: F1 `adapter.sh:752` "A clone with no index is wiped on a fetch or ref failure"; F2 `adapter.sh:778` "A commit only the clone holds can be orphaned silently"; F3 `adapter.sh:826` "The rewrite rule's `reset --hard` can overwrite an untracked file"; F4 `test_ros2_colcon.sh:3237` "The lock test's `pgrep -f` searches the whole machine". The six open suggestions were named.
+
+The option he chose, as worded to him: "Simplify the rule (Recommended)": the clone becomes the adapter's own: clean and on the requested ref it is updated; in any other state setup and sync refuse, changing nothing, and point to the path form for local manifest work. The preservation and rewrite machinery is removed, then a fresh review. Changes a plan rule; undone by restoring the removed commits.
+
+He first asked "What does editing the manifest inside the adapter's clone mean?" and was told: the adapter clones a git-hosted source into `<project root>/configs/source-clone/`; the plan made editing the manifest there, and committing there, a supported working style, which is why the adapter had to preserve uncommitted files, local commits, detached heads, half-made clones and rewritten remotes; the path form (`source=/path/to/manifest.yaml`) does the same job from a checkout he controls. What is given up is editing in place under `configs/`.
+
+This changes the plan's rule in "One concern: a stale manifest" ("A dirty clone is never forced ... the owner editing the manifest in the clone is a supported working style, not an error"): a modified clone is now refused, never resolved and never reconciled. The other answers offered were: keep the rule and fix again; publish as it is; stop.
