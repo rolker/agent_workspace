@@ -2,6 +2,9 @@
   "env": {
     "ENABLE_PROMPT_CACHING_1H": "1"
   },
+  "enabledPlugins": {
+    "agent-workspace@agent-workspace": false
+  },
   "permissions": {
     "allow": [
       "Bash(ls *)",
