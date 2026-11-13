@@ -590,3 +590,30 @@ Checked: must-fix 2: the review's timeline gives Scan(4, 4) (legacy `**PR**: #11
 **Decision**: publish
 
 Round 3 approved with no must-fix and no suggestions, on the tree that includes main at 2809fcef. The host then ran the full pre-commit pass once, with no SKIP, on head 5a9d7049 (the owner's rule of 2026-11-13: one full run per pull request, by the host, before publishing): every hook passed, "run_script_tests: all 48 suites passed in 564s".
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #467 at `be62d33`
+**Sources**: 4 (Local Review (Pre-Push) @ `96fedbc0` round 1, @ `7d11a8d9` round 2, @ `68cfc4e3` round 3 (covers `be62d33` via bookkeeping), CI rollup); GitHub reviews: none (Copilot review disabled for quota: skipped)
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit): pending; Validate Adapter Contract: pending; Validate Documentation: pass; ros-manifest tests (#267 prototype): pass; each in two runs, 43462602591 and 43462596167)
+
+Rounds 1 and 2: all 8 + 6 boxes ticked. Each is fixed in a later Implementation entry with commits (`8da9592c`..`094c99c8`; `4971bb6c` `6f1cd32d` `d9390180` `6efbf2c6` `7d31e57a`), except round-1 suggestion 7 (the `/orchestrator` line), deferred to the owner there and turned into round 2's owner-directed must-fix 1. The partial Implementation entry left that one box open; the timeline then shows the phase-failed Checkpoint (11:07, **Decided-by**: owner, **Decision**: takeover, **Phase**: address-findings) and the host's complete Implementation entry at `a437af53`. `git show a437af53` changes exactly one line of `.claude/skills/orchestrator/SKILL.md`, the `plan` row's answers cell, and `git diff origin/main...HEAD` touches nothing else in that file.
+
+Helper output from this worktree: `review_progress.sh sources --head be62d33` gives `local_findings: []`, `dropped_entries: []`; `findings` gives the round-3 entry with `total_findings: 1`, `open: []`. The approved round-3 "No issues found. LGTM." placeholder (Verdict approved, counts 0 | 0) is not listed: correct.
+
+Re-run here on `be62d33`: test_dispatch_phase 233/0, test_triage_reviews_integration 69/0, test_address_findings 24/0, test_review_code_convergence 38/0, test_skill_paths 143/0, test_commit_identity 94/0 (match the PR body).
+
+PR body, two sentences the timeline does not support (not edited):
+- "Gemini and Codex ran on rounds 1 and 2": the timeline names Codex once (round 1) and Gemini nowhere; round 2 says only "cross-model included".
+- "Compared with main over 1,084 timeline states ... every difference is one of the intended ones": that comparison is recorded only in the round-2 review at `7d11a8d9`, before `4971bb6c` changed the restart and `last_pr` rules; round 3 re-checked the real-timeline replays and `next` = `round` (41 reviews), not the 1,084-state comparison.
+
+Pull request 461 (`origin/feature/issue-429` at `0c6dc2d3`, already includes main): `git merge-tree` conflicts in `docs/design.md` only (both append change-log rows; also the Lines value). `dispatch_phase.sh`, run-issue and review-code SKILL.md, script_reference.md auto-merge. In the merged `cmd_handoff`, 461's `task=... --branch origin/$pkg_base` override runs first and this branch's round-3 block appends to `$task` after it, reading the per-pull-request `review_progress.sh round`: no semantic collision. No `dispatch_phase.sh:<line>` citations exist in design.md or the knowledge files.
+
+### Findings
+- [ ] (suggestion, triage) PR body: reword or drop "Gemini and Codex ran on rounds 1 and 2" (unsupported for Gemini and for round 2's reviewers) and qualify the 1,084-state comparison as made at the round-2 head, or re-run it on the final head — PR #467 body
+
+### False positives
