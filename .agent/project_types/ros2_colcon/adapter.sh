@@ -538,7 +538,7 @@ _rc_registry_field_missing() {
     local field="$1" name
     name="$(_rc_name)"
     echo "ERROR: project '$name' sets source (the manifest route), which needs $field=<name> on its registry line." >&2
-    echo "Edit the line for '$name' in .agent/projects.local to add $field=<name> (register_project.sh does not change an existing line), then run: .agent/scripts/adapter --project $name sync" >&2
+    echo "Edit the line for '$name' in .agent/projects.local to add $field=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project $name sync" >&2
 }
 
 # Non-comment, non-blank lines of a layers.txt (the resolver always writes

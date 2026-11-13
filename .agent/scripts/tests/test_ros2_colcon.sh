@@ -2970,7 +2970,7 @@ test_mr_preflight_before_any_fetch() {
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no role=: exit 1" "1" "$rc"
     assert_contains "no role=: names the field" "which needs role=<name> on its registry line" "$out"
-    assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (register_project.sh does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
+    assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
     assert_not_contains "no role=: not contacted" "cloning" "$out"
 
     sed -i 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
