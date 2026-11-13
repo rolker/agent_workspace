@@ -1474,3 +1474,32 @@ Scope: the `True`/`False` finding of the Local Review at `33cbccd7`, its fix 8fc
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 20:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a106241f8d2e28d79, resume 1 of 3)
+
+**PR**: #456 at `4430a0ec`
+**Sources**: 2 (Local Review @ `8d563c2` (covers 4430a0ec via bookkeeping), verdict approved, 0 must-fix, 0 suggestions; CI rollup). Copilot review skipped (disabled for quota); no GitHub reviews or conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending (Validate Documentation passes in both runs; Validate Adapter Contract, ros-manifest tests and Lint (pre-commit) still running in both runs 43341955028 and 43341948474; no failures)
+
+Accounting of every earlier finding box on this diff:
+- Integrated Review at `d0eb4a84`: all three findings ticked, fixed in d4a7750b, 7127cc81 and 942a442c (Implementation at `942a442c`).
+- Local Review (Pre-Push) at `3ab6be9`: its three open boxes are the same three suggestions that Integrated Review ruled on. The `sources` helper lists them as stale, because code changed since, and they are closed by that ruling and its fixes.
+- Local Review at `6807c9f4`: the must-fix false refusal of round-tripping numbers was fixed in e361588d. The box was ticked by hand, because `review_progress.sh findings` does not read a post-publish Local Review.
+- Local Review at `33cbccd7`: the must-fix false refusal of unquoted `True`/`False` was fixed in 8fc482b9. The box was ticked by hand, for the same reason.
+- Local Review at `8d563c2d`: approved. Its only box is the "No issues found. LGTM." placeholder, not a finding (see False positives).
+- Local Review (Pre-Push) at `a6c2d2f`: part 1 / PR #445, out of scope.
+
+Deliberately left unchanged, recorded by the last two rounds:
+- The float pattern refuses `._<digits>` values. No git ref can start with `.`.
+- Floats of more than 15 significant digits are refused by design.
+- Neither is an open finding.
+
+### Findings
+
+### False positives
+- (Local Review @ `8d563c2`) "No issues found. LGTM." appears as an unchecked box. It is the approved review's empty-findings placeholder, not a defect, so there is nothing to act on.
