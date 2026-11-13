@@ -16,18 +16,29 @@
 # whole pre-commit hook goes red) rather than the glob silently running one
 # fewer suite.
 #
-# One job (the default): the suites run one after another in the
-# foreground, in list order, their output streamed live, and the first
-# suite to exit non-zero stops the run — remaining suites are not
+# The default job count (issue #444) is the count this machine suits: a
+# quarter of its CPUs, at least 2 and at most 6, never more than it has
+# (4 on a 16-CPU machine, 2 on CI's 4-CPU runner). It falls back to one
+# job where a parallel default cannot work: when the CPU count cannot be
+# read, and on a bash older than 5.1 (where an explicit -j above 1 is
+# still refused, below).
+#
+# With -j 1 (or RUN_SCRIPT_TESTS_JOBS=1): the suites run one after another
+# in the foreground, in list order, their output streamed live, and the
+# first suite to exit non-zero stops the run — remaining suites are not
 # executed. This keeps runtime bounded by the first failure. Ctrl-C at a
 # terminal reaches the running suite directly, as it is in the foreground;
 # a SIGTERM sent to the runner alone stops the runner, not the suite.
 #
 # Parallel runs (issue #444), with -j N above 1: every selected suite runs,
 # at most N at a time, largest file first (a stand-in for slowest first).
-# Each suite's stdout and stderr go to one file of its own, printed whole
-# once every suite has finished: the failures first, in list order, each
-# under a "===== FAILED: <suite> =====" banner, then (only with
+# While they run, the only lines printed are one "=== run_script_tests:
+# running <suite> ===" line as each suite starts and one "---
+# run_script_tests: <suite> passed in Ns (k of n done)" line (or FAILED,
+# with the reason) as each finishes. Each suite's stdout and stderr go to
+# one file of its own, printed whole once every suite has finished: the
+# failures first, in list order, each under a "===== FAILED: <suite> ====="
+# banner, then (only with
 # --show-passed) the passing suites' output, then every suite's time,
 # slowest first, then the closing line. Nothing is interleaved and no
 # failure hides another. The exit code is what a one-job run gives for the
@@ -48,18 +59,22 @@
 # error, a fatal signal the runner does not trap, or the end of the run
 # with a process a suite left running) stops it the same way, with
 # SIGTERM, before the run's directory is removed, and says so.
-# Needs bash 5.1 (`wait -n -p`); an older bash is refused with a message.
+# Needs bash 5.1 (`wait -n -p`); on an older bash the default is one job
+# and -j above 1 is refused with a message.
 #
 # Usage: run_script_tests.sh [options] [tests-dir] [--files <file>...]
 #   Options come first, then the tests directory, then --files, which
 #   takes every argument after it as a file:
 #   -j N, --jobs N   run N suites at a time. Without it RUN_SCRIPT_TESTS_JOBS
-#                    sets the count, else the default, 1. A count above 8
-#                    runs with 8 and says so; one that is not a whole number
-#                    of at least 1 is refused. Every run prints its count;
-#                    at the default it also names the count this machine
-#                    suits (a quarter of its CPUs, at least 2 and at most
-#                    6, never more than it has). Suites do not inherit RUN_SCRIPT_TESTS_JOBS. The hook's
+#                    sets the count, else the default: the count this
+#                    machine suits (a quarter of its CPUs, at least 2 and at
+#                    most 6, never more than it has), or 1 when the CPU
+#                    count cannot be read or bash is older than 5.1. -j 1
+#                    gives the one-job run. A count above 8 runs with 8 and
+#                    says so; one that is not a whole number of at least 1
+#                    is refused. Every run prints its count and where it
+#                    came from; at the default it also says why that count.
+#                    Suites do not inherit RUN_SCRIPT_TESTS_JOBS. The hook's
 #                    entry ends in --files, so the environment variable is
 #                    the hook's only way to set the count.
 #   --shuffle[=SEED] start the suites in an order drawn from SEED (a whole
@@ -121,8 +136,9 @@
 # --all-files`, which always runs this hook regardless of what changed, and
 # runs every suite: the file list it passes includes this runner, a
 # full-run trigger. The hook passes no job count, so it runs at the
-# default (or RUN_SCRIPT_TESTS_JOBS, where set); CI sets none, so CI's job
-# count is the default. Locally, since issue #354, the hook is scoped with
+# default (or RUN_SCRIPT_TESTS_JOBS, where set; RUN_SCRIPT_TESTS_JOBS=1
+# gives the one-job run); CI sets none, so CI runs at the default, 2 jobs
+# on its 4-CPU runner. Locally, since issue #354, the hook is scoped with
 # `files:`/`exclude:`
 # (see .pre-commit-config.yaml) so a `git commit` only pays this cost when
 # the commit touches .agent/, .claude/, AGENTS.md, Makefile,
@@ -162,13 +178,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # More changed files than this runs every suite without asking the mapper.
 FILES_MAX=200
 
-# Job count (issue #444): the default, and the cap no request goes past.
-JOBS_DEFAULT=1
+# Job count (issue #444): the cap no request goes past.
 JOBS_MAX=8
-# The count this machine suits for a parallel run: a quarter of its CPUs,
-# at least 2 and at most 6, and never more than it has. Only printed while
-# the default is 1; empty when the CPU count cannot be read.
+# The default: the count this machine suits for a parallel run, a quarter
+# of its CPUs, at least 2 and at most 6, and never more than it has. Empty
+# when the CPU count cannot be read or bash is older than 5.1 (the same
+# test as the refusal of -j above 1 below), and the default is then 1.
 jobs_suited=""
+jobs_fallback=""
+bash_too_old=0
+if (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+    bash_too_old=1
+fi
 cpus=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null) || cpus=""
 if [[ "$cpus" =~ ^[0-9]+$ ]] && (( 10#$cpus >= 1 )); then
     cpus=$(( 10#$cpus ))
@@ -176,6 +197,12 @@ if [[ "$cpus" =~ ^[0-9]+$ ]] && (( 10#$cpus >= 1 )); then
     (( jobs_suited >= 2 )) || jobs_suited=2
     (( jobs_suited <= 6 )) || jobs_suited=6
     (( jobs_suited <= cpus )) || jobs_suited=$cpus
+else
+    jobs_fallback="the CPU count could not be read"
+fi
+if (( bash_too_old )); then
+    jobs_suited=""
+    jobs_fallback="bash older than 5.1"
 fi
 
 # --- Arguments: [options] [tests-dir] [--files <file>...] ---
@@ -235,7 +262,7 @@ elif [[ -n "${RUN_SCRIPT_TESTS_JOBS:-}" ]]; then
     jobs_asked="$RUN_SCRIPT_TESTS_JOBS"
     jobs_from="RUN_SCRIPT_TESTS_JOBS"
 else
-    jobs_asked="$JOBS_DEFAULT"
+    jobs_asked="${jobs_suited:-1}"
     jobs_from="default"
 fi
 if [[ ! "$jobs_asked" =~ ^[0-9]+$ ]] || (( 10#$jobs_asked < 1 )); then
@@ -244,8 +271,12 @@ if [[ ! "$jobs_asked" =~ ^[0-9]+$ ]] || (( 10#$jobs_asked < 1 )); then
 fi
 jobs=$(( 10#$jobs_asked ))
 jobs_note="$jobs_from"
-if [[ "$jobs_from" == default && -n "$jobs_suited" ]]; then
-    jobs_note="default; -j $jobs_suited suits this machine's $cpus CPUs"
+if [[ "$jobs_from" == default ]]; then
+    if [[ -n "$jobs_suited" ]]; then
+        jobs_note="default; suits this machine's $cpus CPUs"
+    else
+        jobs_note="default; $jobs_fallback"
+    fi
 fi
 if (( jobs > JOBS_MAX )); then
     jobs_note="$jobs_from asked for $jobs; the cap is $JOBS_MAX"
@@ -253,7 +284,7 @@ if (( jobs > JOBS_MAX )); then
 fi
 # The count is this run's; a runner a suite starts takes its own default.
 unset RUN_SCRIPT_TESTS_JOBS
-if (( jobs > 1 )) && (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 1) )); then
+if (( jobs > 1 && bash_too_old )); then
     echo "error: running suites in parallel needs bash 5.1 or newer (wait -n -p); this is bash $BASH_VERSION — run with -j 1" >&2
     exit 1
 fi
