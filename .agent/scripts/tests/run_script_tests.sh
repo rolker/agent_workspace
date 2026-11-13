@@ -175,9 +175,11 @@ TESTS_DIR="$SCRIPT_DIR"
 files_mode=0
 changed_files=()
 jobs_opt=""
+jobs_opt_given=0
 show_passed=0
 shuffle=0
 shuffle_seed=""
+shuffle_seed_given=0
 while [[ $# -gt 0 && "$1" == -* && "$1" != "--files" ]]; do
     case "$1" in
         -j | --jobs)
@@ -186,13 +188,14 @@ while [[ $# -gt 0 && "$1" == -* && "$1" != "--files" ]]; do
                 exit 1
             fi
             jobs_opt="$2"
+            jobs_opt_given=1
             shift 2
             ;;
-        -j?*) jobs_opt="${1#-j}"; shift ;;
-        --jobs=*) jobs_opt="${1#--jobs=}"; shift ;;
+        -j?*) jobs_opt="${1#-j}"; jobs_opt_given=1; shift ;;
+        --jobs=*) jobs_opt="${1#--jobs=}"; jobs_opt_given=1; shift ;;
         --show-passed) show_passed=1; shift ;;
         --shuffle) shuffle=1; shift ;;
-        --shuffle=*) shuffle=1; shuffle_seed="${1#--shuffle=}"; shift ;;
+        --shuffle=*) shuffle=1; shuffle_seed="${1#--shuffle=}"; shuffle_seed_given=1; shift ;;
         *)
             echo "error: unknown option '$1' ($USAGE)" >&2
             exit 1
@@ -214,7 +217,9 @@ if [[ $# -gt 0 ]]; then
 fi
 
 # --- Job count: -j, else RUN_SCRIPT_TESTS_JOBS, else the default ---
-if [[ -n "$jobs_opt" ]]; then
+# A -j given empty (`-j ""`, `--jobs=`) is refused below like `-j 0`, not
+# taken for no -j. An empty RUN_SCRIPT_TESTS_JOBS counts as unset.
+if (( jobs_opt_given )); then
     jobs_asked="$jobs_opt"
     jobs_from="-j"
 elif [[ -n "${RUN_SCRIPT_TESTS_JOBS:-}" ]]; then
@@ -244,7 +249,7 @@ if (( jobs > 1 )) && (( BASH_VERSINFO[0] < 5 || (BASH_VERSINFO[0] == 5 && BASH_V
     exit 1
 fi
 if (( shuffle )); then
-    if [[ -z "$shuffle_seed" ]]; then
+    if (( ! shuffle_seed_given )); then
         shuffle_seed=$RANDOM
     elif [[ ! "$shuffle_seed" =~ ^[0-9]+$ ]]; then
         echo "error: the --shuffle seed must be a whole number, not '$shuffle_seed' ($USAGE)" >&2

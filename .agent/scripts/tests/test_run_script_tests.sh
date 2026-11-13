@@ -1135,6 +1135,9 @@ jobs_case "-j 99 runs with the cap of 8 and says what was asked" 0 "run_script_t
 jobs_case "-j 0 is refused before any suite runs" 1 "" "" -j 0 "$U1"
 jobs_case "-j abc is refused before any suite runs" 1 "" "" -j abc "$U1"
 jobs_case "-j with no count is refused" 1 "" "" -j
+jobs_case "an empty -j \"\" is refused, not taken for no -j" 1 "" "" -j "" "$U1"
+jobs_case "an empty --jobs= is refused, not taken for no -j" 1 "" "" --jobs= "$U1"
+jobs_case "an empty --jobs= is refused also with RUN_SCRIPT_TESTS_JOBS set" 1 "" RUN_SCRIPT_TESTS_JOBS=2 --jobs= "$U1"
 jobs_case "RUN_SCRIPT_TESTS_JOBS=abc is refused before any suite runs" 1 "" RUN_SCRIPT_TESTS_JOBS=abc "$U1"
 jobs_case "an unknown option is refused" 1 "" "" --bogus "$U1"
 jobs_case "an option after the tests directory is refused, naming the order" 1 "" "" "$U1" -j 2
@@ -1288,6 +1291,7 @@ else
     fail "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order (seed=$v_seed, out=$out)"
 fi
 jobs_case "--shuffle=x is refused before any suite runs" 1 "" "" --shuffle=x "$V"
+jobs_case "an empty --shuffle= is refused, not given a random seed" 1 "" "" --shuffle= "$V"
 # U4 now holds test_b_leak.sh (listed first, finishes last) and
 # test_c_fastfail.sh (fails at once).
 v_codes=""
