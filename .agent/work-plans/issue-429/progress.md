@@ -1521,3 +1521,52 @@ Merge (Recommended)
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
 
 Revision after the verb merged (pull request 456). The plan marks it merged and re-checks 2a steps 3 to 8 and 2b steps 1 to 6 against main with files and lines. Order for this worktree: 2a next, then 2b. Adjustments: `repo_pin` takes `--layer` and its refusals and stderr note are passed through; the merge cross-check applies to the owning pull request only; the 2a tests use real `.repos` pins instead of a stub adapter type; 2b's Scope rewrite also drops a sentence issue 437 made false. One small open question (the merge cleanup's `git pull --ff-only`). No premise is gone; no issue opened.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+**Branch**: `feature/issue-429`
+
+Scope of this review: the "Revision of 2026-11-12" refresh (remaining 2a steps 3-8, 2b steps 1-6, the order 2a then 2b) against main at `b151b741` (= `origin/main` now). Merged parts (445, 456) and design settled by the 2026-11-10 review are not reopened. Owner direction read on the issue (comment of 2026-11-10): a package pull request takes its base from the manifest pin, not GitHub's default branch.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2a rest about 11 files / 450 lines, 2b about 8 / 300; built in order in one worktree. The reasons for 2a first (riskier mechanism settles first; the end-to-end case written once with the base step; the Scope text written once) hold. |
+| Issue alignment | Good | Base comes only from `repo_pin` (or an explicit `--base`), never `origin/HEAD` or the forge: matches the owner's comment. Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). |
+| File targeting | Good | Every cited line re-checked and correct: `adapter` 26/71/114-130; ros2_colcon `adapter.sh` 744-834 (`worktree_repos` prints `<layer>_ws/src/<pkg>`), 1082 (`adapter_repo_pin`); `dispatch_phase.sh` 35-38, 306, 316, 514, 660; `_resolve_work_plans_dir.sh` 152; `_worktree_helpers.sh` 416-422, 430-451 (end-anchored `layer=` at 444, still the only `layer=` reader, `WT_MANIFEST_LAYER` read nowhere else), 550, 723, 752-834; `worktree_create.sh` 256, 399-410, 770-784, 804, 814, 846, 1017-1020, mktemp at 1097/1138 vs `run_script_tests.sh` 348 citing 1091,1132; `merge_pr.sh` 485-523, 497, 504-506, 535, 545, 675, 689-704, 717, 1548-1660, 1565-1572, 1580, 1625; `progress_append.sh` 94; run-issue SKILL.md 4, 83, 671-690, 826-829, 908-932 (927-928 sentence present); `docs/design.md` 476-478 ("lines 839 and 893"); `test_package_issue_loop.sh` 682 lines, cases 1-10 from 166, `.repos` pins `main` at 100; `test_merge_pr_gate.sh` 522. Finding 3 on where two new values are stored. |
+| Consequences | Needs work | ADR route for the `base=` header field (finding 1); stale ADR-0011 wording left in live sections (finding 2). |
+| Principle alignment | Good | Strict start path ("start limits strict"), tests named per refusal, prior art (parent path read and rejected; `wt_fetch_named_branch`/`wt_add_new_branch` reused), one rule for the cross-check scope. |
+| ADR compliance | Needs work | ADR-0008 as applied by 456/ADR-0019: step 5 still says "ADR-0012's manifest paragraph ... change in 2a" (finding 1). ADR-0011/0012/0019 otherwise respected: `_pr_base.sh` names no type and calls the verb. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked per kind and answer of `repo_pin` (code at ros2_colcon `adapter.sh` 1025-1185): `branch` -> the base, and creation's strict path then fetches `origin/<base>` (`wt_fetch_named_branch`) and refuses absent/unknown even with `--allow-unverified-branch` (the `else` arm of `_wt_add_repo` is reached in that mode too, since `wt_lookup_for_new_branch` returns 1 there, so the base path still runs and still refuses offline: consistent). `tag`, `commit`, `unknown` -> refuse naming it, `--base` offered. Exit 1 (no `version:`, YAML-retyped value, stray quote/backslash/CR, unknown repo, ambiguous layers, unknown layer) -> printed verbatim, exit 2; `--layer` always passed, so the ambiguity refusal cannot arise for a package issue. Offline `NOTE ... (unverified)` -> passed through, creation decides ("creation wins"). The repository name rule is sound: `--package-repos` names are the `src/` directory names, and the `.repos` parser (`_rc_repos_entries`, key pattern `[A-Za-z0-9_.-]+`) has no nested keys, so the last path component equals the pin's key. Cross-check scope (owning `feature/issue-N` only) is right: `base=` describes the owning entry only.
+
+### Findings
+
+1. **[ADR compliance]** (should-fix) Step 5 and the Files table say ADR-0012's manifest paragraph changes in 2a. ADR-0012 line 65 lists the header as (`project`, `issue`, `layer`); adding `base` and "the base decides the start point" is decision text, which ADR-0008 (as 456 applied it: ADR-0019 says adding to a decision's text "is a new ADR") forbids editing in place. Resolution: decide the route in the plan: record the header field and start-point rule in `docs/design.md#worktrees` (plus a cross-reference addendum in ADR-0012, ADR-0008's permitted form), or a new ADR if the owner wants it as a decision. ADR-0019 already states the start point comes from the pin (its Consequences), so a design-doc entry plus addendum is probably enough.
+2. **[Consequences]** (minor) Live (non-record) sections still say ADR-0011 is amended: Principles "Keep one current design" (557), ADR table 0011/0012 row (577), Consequences row "repo_pin is a required verb" (592), Decision 5 (608). Also step 8's "a stub adapter type in the sandbox reports each kind" and Estimated Scope's "2a about 16 files, 600 lines" contradict the revision table. Resolution: mark those as superseded or update them to ADR-0019 / real `.repos` pins / 11 files.
+3. **[File targeting]** (minor) `merge_pr.sh` scan: the plan saves `PKG_OWN_REL` (2b.1) and reads `base=` (2a.7) "at the match / beside the other header fields", but matches are collected in `_PKG_MATCHES` (tab tuples, 521) and filtered by `--project` after the match; a scalar set at the match can be overwritten by a later manifest. Resolution: carry both as extra fields of the `_PKG_MATCHES` tuple and read them at line 530 with `PKG_WT_DIR`.
+4. **[Issue alignment]** (minor) A part-1 worktree with no `base=` asks `dispatch_phase.sh base` on resume, but nothing writes `base=` into its header, so the merge cross-check stays silent for it and a `--base` override given then is never checked on origin (the strict path runs only for a new branch). Resolution: either have `base` write the header field when the worktree exists and has none (after a `git ls-remote --heads` check), or state the gap in the plan as accepted.
+5. **[Issue alignment]** (minor) What `dispatch_phase.sh base` prints/returns for a workspace or single-repository issue is unstated ("unchanged" only). Resolution: one line (e.g. prints nothing, exit 0; or run-issue calls it only for a qualified ref) and a case in `test_dispatch_phase.sh`.
+
+Open question (merge cleanup `git pull --ff-only` at `merge_pr.sh` 1625, on whatever branch the owning checkout is on): recommendation **change**, not keep. Today, on a branch other than the base with an upstream it fast-forwards an unrelated branch and prints "synced" (a misleading success); on a branch with no upstream, a detached HEAD (vcstool on a tag/commit pin) or a dirty tree it marks the cleanup incomplete for a non-problem. `adapter_sync` (ros2_colcon `adapter.sh` 599-630) already pulls only when clean and on the pinned branch and fetches otherwise; one rule for both is "Keep one current design". After 2a, `baseRefName` is already in `_head_json`, so the change is a few lines: pull `--ff-only` only when the checkout is clean and on `baseRefName`; otherwise `git fetch` and say "on <x>, not the base <y>: fetched only", without marking the cleanup incomplete; an empty `baseRefName` fetches only. Place it in 2a with step 7 (it needs `baseRefName`) and rewrite 2b.3(d) to pin the new behaviour. The host decides.
+
+### Summary
+
+The refresh is accurate: every "what changed" claim and line citation checked out against main, the base comes only from the manifest pin through `repo_pin` with every kind, refusal and the offline note handled, and the cross-check scope is right. One rule conflict (editing ADR-0012's decision text, which 456 itself avoided for ADR-0011) and a few stale or unstated points need small plan edits before 2a starts; no redesign.
+
+### Recommended Actions
+
+- [ ] Choose the ADR route for `base=` and the start point (design doc + ADR-0012 addendum, or a new ADR); update step 5, the Files table and the ADR table (finding 1)
+- [ ] Update or mark superseded the stale ADR-0011 / stub-adapter / 16-file statements (finding 2)
+- [ ] Carry `PKG_OWN_REL` and the header `base=` in the `_PKG_MATCHES` tuple (finding 3)
+- [ ] Decide `base=` back-fill for part-1 worktrees or state the gap (finding 4)
+- [ ] State `dispatch_phase.sh base` behaviour for non-package issues, with a test (finding 5)
+- [ ] Host: decide the cleanup-pull question (recommended: pull only on `baseRefName`, fetch otherwise; in 2a)
