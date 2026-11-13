@@ -25,7 +25,7 @@ pickerel ... just assume that will be the state the workspace can expect
 when we are ready to clone it there." It is done when the simulator works
 in Rolling: "a working simulator in Rolling" (2026-09-21).
 
-**Paths.** Two paths run in parallel. In the owner's words (2026-11-10):
+**Paths.** Three paths run in parallel. In the owner's words (2026-11-10):
 "We can do stuff in parallel", and "let's not wait on other stuff" for
 project11. When he asks for a sit-rep, he decides which to focus on.
 
@@ -37,7 +37,8 @@ not listed in this workspace's sit-rep.
 
 **Path 2, the workspace reflects the goals.** Implementing the missing
 pieces to make this workspace reflect the goals we set. Path 2 work is
-any other work that serves a goal in the README. In the owner's words (2026-11-10):
+any other work that serves a goal in the README, other than Path 3 work.
+In the owner's words (2026-11-10):
 "the orchestrator skill which we are trialing and the use of the
 workspace for the agents I run in ~ as my overall work managers", and
 "follow up on the findings during the gz4d tests and Path 2 mentioned
@@ -50,6 +51,13 @@ and the orchestrator skill's first updates from the dogfooding log (#431).
 Also under this path: audit trials, the instruction-file trim, the backlog
 sweep, the orchestrator trial, and his "overall work managers", whose
 design waits on the orchestrator design session deferral (#398).
+
+**Path 3, less waiting for the same care.** In the owner's words
+(2026-11-13): "We have a lot of safeguards to make sure we don't produce
+slop, but I fear we may be over cautious." and "We need to re-think the
+workflow to not depend on github and to be efficient with how we run tests
+and ci." Path 3 work removes a wait or a review round that does not find
+problems, and keeps the steps that do.
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
