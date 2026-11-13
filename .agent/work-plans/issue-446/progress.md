@@ -521,3 +521,29 @@ Specialists: static (shellcheck --severity=warning clean on all changed .sh; set
 - [x] (suggestion) cli_user traps INT and TERM but not HUP, so a hang-up leaves the scratch directory — `.agent/scripts/user_tier_install.sh:788`
 - [x] (suggestion) The workspace copy keeps a real `.claude/settings.local.json` (the other two suites remove it), so the "checkout" place reads the machine's own file until the test overwrites it — `.agent/scripts/tests/test_user_tier_install.sh:44`
 - [ ] (suggestion) Plan step 4 said the follow-up issue on relaxing the session_root.sh refusals is opened in this PR; it is not (left to the owner). Open it or say so in the PR body — `.agent/work-plans/issue-446/plan.md:329`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 20:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-446 at `1296a975`
+**Addressed**: Local Review (Pre-Push) at `630c47d6` (2026-11-12 20:12 -05:00)
+**Commits**: 81deeb69, 439376e7, 2457525e, cbfdabe0, 9e659ffa, d28fe6f5, 2c8edcbd, 1296a975
+
+### Actions
+- [x] (must-fix) ADR-0018 decision 6's paragraph on how `run-issue` decides the prefix (`skill_prefix.sh`) named as superseded in both ADR Status lines, design register row 0018 and review-guide row 0018 — `docs/decisions/0018-plugin-based-skill-delivery.md:11`, `docs/decisions/0019-plugin-enabled-once-at-user-scope.md:5` (81deeb69)
+- [x] (must-fix) Decision register counts 19 ADRs; the #446 change-log row says so — `docs/design.md:739` (439376e7)
+- [x] (suggestion) A hand-written local true (no declaration, no local install in the CLI's record) that the CLI leaves is a note with the hand removal on install, still an error on --uninstall; the real CLI's behaviour on it is unverified and the code says so — `.agent/scripts/user_tier_install.sh` migrate_legacy_root (2457525e)
+- [x] (suggestion) An unparseable installed_plugins.json is a note on install and --check, an error on --uninstall (no clean-removal or "nothing installed" claim) — `.agent/scripts/user_tier_install.sh` installed_plugins_state (cbfdabe0)
+- [x] (suggestion) The no-call shortcut and --check also need a user-scope install object in installed_plugins.json; a repoint re-runs install (unverified on the real CLI, said in the code); ADR-0019 decision 1, the installer header, and the register and audit suites' stubs follow — `.agent/scripts/user_tier_install.sh` enable_user_scope (9e659ffa)
+- [x] (suggestion) --uninstall leaves a user-scope enable with no declaration, with a note naming the hand removal and no CLI call — `.agent/scripts/user_tier_install.sh` uninstall (d28fe6f5)
+- [x] (suggestion) cli_user traps HUP (exit 129) as well — `.agent/scripts/user_tier_install.sh` cli_user (2c8edcbd)
+- [x] (suggestion) test_user_tier_install.sh deletes the copy's .claude/settings.local.json — `.agent/scripts/tests/test_user_tier_install.sh:44` (1296a975)
+- [ ] (suggestion) Follow-up issue on relaxing the session_root.sh refusals — `.agent/work-plans/issue-446/plan.md:329` (left open: opening it is the owner's call; the host will ask him)
+
+### Checks
+- test_user_tier_install.sh: 265 passed, 0 failed (after the last change)
+- test_register_project.sh: 197 passed, 0 failed; test_project_integration_audit.sh: 279 passed, 0 failed (after the stub change)
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree before this entry: exit 0, validate-script-tests Passed
+- Not run: the live suite, any claude CLI call, the installer against the real HOME (per the handoff)
