@@ -20,40 +20,51 @@
 #      retired by #328; --check reports a leftover command for it as drift.)
 #   4. Permission allow-rules for the promoted scripts in
 #      .agent/user_tier_scripts.txt, by absolute path.
-#   5. The agent-workspace Claude Code plugin (ADR-0018), enabled at local
-#      scope in every registered session root: the workspace skills whose
+#   5. The agent-workspace Claude Code plugin (ADR-0018), enabled ONCE, at
+#      user scope, for the whole machine: the workspace skills whose
 #      SKILL.md declares `session_scope: project` or `both`, namespaced as
-#      /agent-workspace:<skill> so a project's own same-named skill keeps its
-#      bare name (#345). Enabling runs `claude plugin marketplace add` and
-#      `claude plugin install --scope local` from the root, which writes the
-#      root's gitignored .claude/settings.local.json -- the one scoped
-#      exception to ADR-0016 section 2 that ADR-0018 records. Skipped:
-#        - a root whose git toplevel IS this workspace checkout (compared as
-#          `pwd -P` forms): a session there already sees the bare skills by
-#          directory walk-up, and enabling would double every skill and write
-#          the workspace's own settings.local.json;
-#        - a `parent=` instance in its parent's project -- the same git
-#          toplevel, or a git worktree of the parent's repository: a session
-#          there reads the parent's local settings (observed live), so the
-#          parent is what gets enabled (a declaration in the instance
-#          itself is reported, never removed: it can shadow the parent's,
-#          and a local-scope remove from there could strip the parent's
-#          enable). Any other
-#          instance -- in no git repository, under a plain-directory
-#          parent, or a separate repository -- does not see the parent's
-#          settings, so it is enabled as a root of its own;
-#        - a root not on disk (a note, not an error);
-#        - every enable, with a note, when the `claude` CLI is not on PATH
-#          (a Codex-only machine has no plugins to enable). A plugin that
-#          must be REMOVED (a doubled root, --uninstall) is an error without
-#          the CLI, not a note: it stays enabled.
-#      A root that is in no git repository at all is enabled.
-#      The CLI's machine-level record of the marketplace (one source per
-#      machine) is handled once per run, BEFORE any root: when it names
-#      another checkout and some root is to be enabled, install takes it
-#      over with one `marketplace add` from a throwaway directory, reads it
-#      back, and on failure stops with exit 1 before touching any project
-#      root. The per-root step never touches the machine record.
+#      /agent-workspace:<skill> so a project's own same-named skill keeps
+#      its bare name (#345). Install runs `claude plugin marketplace add
+#      <this checkout> --scope user` and `claude plugin install
+#      agent-workspace@agent-workspace --scope user`, from a throwaway
+#      directory in no git repository, only when the CLI's records do not
+#      already show it: ~/.claude/settings.json then holds
+#      `enabledPlugins["agent-workspace@agent-workspace"] = true` and
+#      `extraKnownMarketplaces["agent-workspace"]` with this checkout as its
+#      directory source, and the CLI's machine-level record
+#      (plugins/known_marketplaces.json) names this checkout. Both are read
+#      back after the calls; a run that finds them current makes no CLI call.
+#      Nothing is written into any project root. The workspace checkout's
+#      own tracked .claude/settings.json sets the plugin to false, so a
+#      session at the checkout's root or in a worktree of it lists each
+#      shipped skill once, under its bare name (the plugin's source IS this
+#      checkout's .claude/skills). A session started in a subdirectory of
+#      the checkout -- a plain subdirectory, or a registered root inside its
+#      tree with no .git of its own -- lists each shipped skill under both
+#      names, bare and /agent-workspace:<skill>; both run the same skill
+#      (live suite, 2026-11-12; accepted by the owner that day). A project
+#      that does not want the plugin sets it to false in its own settings
+#      (narrower scope wins); the installer has no per-root switch. Without
+#      the `claude` CLI on PATH the enable is skipped with a note (a
+#      Codex-only machine has no plugins to enable).
+#      Migration from the per-root generation, which enabled the plugin at
+#      local scope in every registered root: install looks in the
+#      registered roots, this checkout, and every root the CLI's own record
+#      (plugins/installed_plugins.json) lists as a local-scope install of
+#      the plugin, for a .claude/settings.local.json entry from this
+#      checkout, and removes it with `claude plugin uninstall --scope local`
+#      and `claude plugin marketplace remove --scope local`, run from that
+#      root, AFTER the user-scope enable. A local `false` is left (a
+#      deliberate opt-out), as is another checkout's entry (a note). The
+#      CLI is run only where the root is its own git toplevel (not a linked
+#      worktree) or is in no git repository: from a plain subdirectory of a
+#      repository the CLI's local scope writes the toplevel's file, and from
+#      a linked worktree where it writes is not established. An entry
+#      anywhere else, a root not on disk, a file that is not JSON, and a
+#      root in the CLI's record that is no longer on disk each get a note
+#      with the removal by hand, on every run, never an error. After
+#      migrating, the user-scope entries and the machine-level record are
+#      read back, and their loss is an error.
 #   (Before ADR-0018, item 5 was a symlink per skill in ~/.claude/skills/.
 #   Those links were global to the machine and shadowed a project's own
 #   same-named skills. Install removes any left behind; --check reports them.)
@@ -108,9 +119,12 @@
 #   --check --require    also exit 1 when it is not installed, for a machine
 #                        that expects it.
 #   --uninstall          remove this checkout's hook commands and
-#                        allow-rules, and the plugin from every root where
-#                        this checkout declared it (another checkout's is
-#                        left alone).
+#                        allow-rules, the plugin at user scope when this
+#                        checkout declared it there, and every per-root
+#                        entry install would migrate (another checkout's
+#                        is left alone). An entry it cannot remove -- no
+#                        CLI, or a root the CLI is not run in -- is an
+#                        error naming the removal by hand.
 #   --disable-root <name>
 #                        remove the plugin from one registered root, the
 #                        way --uninstall does for every root (this
@@ -132,12 +146,13 @@
 #
 # Exit codes: 0 ok; 1 drift / failure; 2 usage; 3 missing dependency (jq).
 #
-# Scope: this script writes inside $HOME/.claude, plus -- only through the
-# `claude plugin` CLI, never directly -- each enabled root's gitignored
-# .claude/settings.local.json (item 5; the CLI also keeps its own plugin
-# bookkeeping under ~/.claude/plugins/). It never edits the tracked
-# .claude/settings.json in the checkout, which stays exactly as it is
-# (Ask-First).
+# Scope: this script writes inside $HOME/.claude (and, only through the
+# `claude plugin` CLI, the CLI's own user settings and plugin bookkeeping
+# under ~/.claude/plugins/). The one write outside it is the migration of
+# item 5: the CLI removing a legacy entry from a root's gitignored
+# .claude/settings.local.json, never an edit by this script. It never edits
+# the tracked .claude/settings.json in the checkout, which stays exactly as
+# it is (Ask-First).
 #
 # Test seam: AGENT_WORKSPACE_CLAUDE_BIN names the claude binary (default
 # `claude`), so the test suite can point it at a stub that records argv and
@@ -169,16 +184,19 @@ ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
 RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
-# The claude CLI's own machine-level marketplace records (ADR-0018). Read
-# only, never written here; install's one takeover `marketplace add`
-# (claim_machine_record) is what repoints it. They live under the CLI's
-# configuration home: CLAUDE_CONFIG_DIR when set, else ~/.claude. (Observed
-# with claude 2.1.282: with CLAUDE_CONFIG_DIR set, `marketplace add` writes
-# $CLAUDE_CONFIG_DIR/plugins/known_marketplaces.json and leaves ~/.claude
-# alone.) Reading ~/.claude there would see a stale record, and the
-# takeover's read-back would fail on every run.
+# The claude CLI's own plugin records (ADR-0018): the user-scope settings
+# its `--scope user` calls write, its machine-level marketplace record, and
+# its record of where the plugin is installed. Read only, never written
+# here; only the CLI's own calls change them. They live under the CLI's
+# configuration home: CLAUDE_CONFIG_DIR when set, else ~/.claude.
+# (Observed with claude 2.1.282: with CLAUDE_CONFIG_DIR set, `marketplace
+# add` writes $CLAUDE_CONFIG_DIR/plugins/known_marketplaces.json and leaves
+# ~/.claude alone.) Reading ~/.claude there would see stale records, and
+# every read-back would fail.
 CLI_HOME="${CLAUDE_CONFIG_DIR:-$CLAUDE_DIR}"
+CLI_SETTINGS="$CLI_HOME/settings.json"
 KNOWN_MARKETPLACES="$CLI_HOME/plugins/known_marketplaces.json"
+INSTALLED_PLUGINS="$CLI_HOME/plugins/installed_plugins.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
 
@@ -622,7 +640,7 @@ config_dir_note() {
     a="$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" || a="$CLAUDE_CONFIG_DIR"
     b="$(cd "$CLAUDE_DIR" 2>/dev/null && pwd -P)" || b="$CLAUDE_DIR"
     [[ "$a" != "$b" ]] || return 0
-    echo "  NOTE: CLAUDE_CONFIG_DIR is set ($CLAUDE_CONFIG_DIR): the plugin's machine-level record is read there, but the rest of the user tier lives in $CLAUDE_DIR, which a claude CLI with CLAUDE_CONFIG_DIR set does not read"
+    echo "  NOTE: CLAUDE_CONFIG_DIR is set ($CLAUDE_CONFIG_DIR): the plugin's user-scope entries and machine-level record are read there, but the rest of the user tier lives in $CLAUDE_DIR, which a claude CLI with CLAUDE_CONFIG_DIR set does not read"
 }
 
 # ------------------------------------------------------------- list mode ---
@@ -1099,26 +1117,277 @@ uninstall_refused_root() {  # <name> <root> <why the CLI does not run there>
     esac
 }
 
-# The registered roots and their verdicts, read once for every mode below
-# (--uninstall, --check, install). A registry that does not parse stops all
-# three here, before anything is read or changed: the parser has already
-# named the bad line on stderr.
-if ! PLUGIN_ROOTS="$(plugin_roots)"; then
+# ------------------------------------------------ plugin, user scope ---
+# The plugin's state in the CLI's user settings ($CLI_SETTINGS):
+#   ours         enabled, and the marketplace is declared from this checkout
+#   foreign      the marketplace is declared from ANOTHER checkout that is
+#                on disk (enabled or not)
+#   partial      anything else that names it: enabled with no declaration,
+#                declared from this checkout but not enabled, or declared
+#                from a path no longer on disk
+#   absent       neither
+#   unparseable  the file exists and is not JSON
+user_plugin_source() {
+    [[ -f "$CLI_SETTINGS" ]] || return 0
+    jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path? // empty' "$CLI_SETTINGS" 2>/dev/null || true
+}
+user_scope_state() {
+    local enabled src
+    [[ -f "$CLI_SETTINGS" ]] || { echo absent; return 0; }
+    jq -e . "$CLI_SETTINGS" >/dev/null 2>&1 || { echo unparseable; return 0; }
+    enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? // false | tostring' "$CLI_SETTINGS" 2>/dev/null)"
+    src="$(user_plugin_source)"
+    if [[ -n "$src" ]] && ! is_this_checkout "$src" && [[ -d "$src" ]]; then
+        echo foreign
+    elif [[ "$enabled" == true && -n "$src" ]] && is_this_checkout "$src"; then
+        echo ours
+    elif [[ "$enabled" == true || -n "$src" ]]; then
+        echo partial
+    else
+        echo absent
+    fi
+}
+
+# Run one `claude plugin ... --scope user` call from a throwaway directory
+# in no git repository, so no local or project settings of any directory
+# can be what the CLI reads or writes. Returns the CLI's status, or 1 with
+# the reason on stderr when no such directory can be made.
+cli_user() {  # <claude plugin args...>
+    local scratch rc=0
+    scratch="$(mktemp -d -t agent-workspace-plugin.XXXXXX)" || {
+        echo "  ERROR: could not create a scratch directory to run \`claude plugin $*\` from" >&2
+        return 1
+    }
+    # An interrupt while the CLI runs must not leave the directory behind
+    # (its path is fixed into the trap now: the local is gone by then).
+    # shellcheck disable=SC2064  # expand $scratch now, on purpose
+    trap "rm -rf $(printf '%q' "$scratch"); exit 130" INT
+    # shellcheck disable=SC2064
+    trap "rm -rf $(printf '%q' "$scratch"); exit 143" TERM
+    if git -C "$scratch" rev-parse --show-toplevel >/dev/null 2>&1; then
+        rm -rf "$scratch"
+        trap - INT TERM
+        echo "  ERROR: the scratch directory $scratch is inside a git repository -- not running the claude CLI there (point TMPDIR at a directory outside any git repository)" >&2
+        return 1
+    fi
+    (cd "$scratch" && claude_plugin "$@" >/dev/null) || rc=$?
+    rm -rf "$scratch"
+    trap - INT TERM
+    return "$rc"
+}
+
+# Enable the plugin at user scope from this checkout: `marketplace add`
+# unless the declaration and the machine-level record already name this
+# checkout, `install` unless it is already enabled; then both read back.
+# A second user-scope `marketplace add` of the same name from another path
+# repoints both records (checked on claude 2.1.322), so another checkout's
+# declaration needs no separate takeover. Returns 1, with the reason on
+# stderr.
+enable_user_scope() {
+    local src
+    src="$(user_plugin_source)"
+    if ! { [[ -n "$src" ]] && is_this_checkout "$src" && machine_record_ours; }; then
+        cli_user marketplace add "$WS_PHYS" --scope user || {
+            echo "  ERROR: \`claude plugin marketplace add $WS_PHYS --scope user\` failed" >&2
+            return 1
+        }
+    fi
+    if ! jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$CLI_SETTINGS" >/dev/null 2>&1; then
+        cli_user install "$PLUGIN_ID" --scope user || {
+            echo "  ERROR: \`claude plugin install $PLUGIN_ID --scope user\` failed" >&2
+            return 1
+        }
+    fi
+    user_scope_readback "the claude CLI reported success"
+}
+
+# The read-back after any CLI call that may change the user-scope entries
+# or the machine-level record: both must name this checkout.
+user_scope_readback() {  # <what came before, for the message>
+    if [[ "$(user_scope_state)" != ours ]]; then
+        echo "  ERROR: $1, but $CLI_SETTINGS does not show $PLUGIN_ID enabled with the $MARKETPLACE_NAME marketplace declared from $WS_PHYS" >&2
+        return 1
+    fi
+    if ! machine_record_ours; then
+        echo "  ERROR: $1, but the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout" >&2
+        return 1
+    fi
+}
+
+# ------------------------------------------------ legacy per-root entries ---
+# The per-root generation enabled the plugin at local scope in each
+# registered root. Where to look for what it left, one line per place,
+# "<kind>\t<label>\t<path>": every registered root (kind registry), this
+# checkout (checkout), and every directory the CLI's own record lists as a
+# local-scope install of the plugin (cli-record), so a root unregistered
+# by hand, or moved, is still found. Each place once, by its physical path
+# when it is on disk. A registry that does not parse returns 2 (the parser
+# has named the line on stderr).
+legacy_places() {
+    local entries name _type path _fields parse_rc=0 p key
+    local -A seen=()
+    entries="$(registry_entries_full "$WS_ROOT")" || parse_rc=$?
+    {
+        while IFS=$'\t' read -r name _type path _fields; do
+            [[ -n "$name" ]] && printf 'registry\tregistered root %s\t%s\n' "$name" "$path"
+        done <<< "$entries"
+        printf 'checkout\tthe workspace checkout\t%s\n' "$WS_ROOT"
+        if [[ -f "$INSTALLED_PLUGINS" ]]; then
+            jq -r --arg id "$PLUGIN_ID" '
+                (.plugins? // {})[$id]? // [] | if type == "array" then .[] else empty end
+                | objects | select(.scope? == "local") | (.projectPath? // empty) | strings' \
+                "$INSTALLED_PLUGINS" 2>/dev/null | while IFS= read -r p; do
+                    [[ -n "$p" ]] && printf 'cli-record\ta root in the claude CLI'"'"'s record\t%s\n' "$p"
+                done
+        fi
+    } | while IFS=$'\t' read -r _type name path; do
+        key="$(cd "$path" 2>/dev/null && pwd -P)" || key="$path"
+        [[ -n "${seen[$key]:-}" ]] && continue
+        seen[$key]=1
+        printf '%s\t%s\t%s\n' "$_type" "$name" "$path"
+    done
+    return "$parse_rc"
+}
+
+# The legacy entry in <root>'s .claude/settings.local.json:
+#   ours         this checkout's: enabled, and/or declared from this
+#                checkout or from a path no longer on disk
+#   off          the plugin set to false: a deliberate opt-out, left alone
+#   foreign      declared from another checkout that is on disk
+#   absent       no file, or nothing about the plugin in it
+#   unparseable  the file exists and is not JSON
+legacy_state() {  # <root>
+    local f="$1/.claude/settings.local.json" enabled src
+    [[ -f "$f" ]] || { echo absent; return 0; }
+    jq -e . "$f" >/dev/null 2>&1 || { echo unparseable; return 0; }
+    enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? | tostring' "$f" 2>/dev/null)"
+    src="$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path? // empty' "$f" 2>/dev/null)"
+    if [[ "$enabled" == false ]]; then
+        echo off
+    elif [[ -n "$src" ]] && ! is_this_checkout "$src" && [[ -d "$src" ]]; then
+        echo foreign
+    elif [[ "$enabled" == true || -n "$src" ]]; then
+        echo ours
+    else
+        echo absent
+    fi
+}
+
+# Why the installer does not run the claude CLI in <root>, printed, with
+# status 0; status 1 (nothing printed) when it may: <root> is its own git
+# toplevel, not a linked worktree, or is in no git repository.
+cli_refusal() {  # <root>
+    local top top_phys root_phys gd cd
+    top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    top_phys="$(cd "$top" 2>/dev/null && pwd -P)"
+    root_phys="$(cd "$1" 2>/dev/null && pwd -P)"
+    if [[ "$top_phys" != "$root_phys" ]]; then
+        echo "it is a plain directory inside the git repository $top, and the claude CLI's local scope from there writes that repository's settings, not this file"
+        return 0
+    fi
+    gd="$(cd "$1" && git rev-parse --path-format=absolute --git-dir 2>/dev/null)" \
+        && gd="$(cd "$gd" 2>/dev/null && pwd -P)"
+    cd="$(cd "$1" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+        && cd="$(cd "$cd" 2>/dev/null && pwd -P)"
+    if [[ -z "$gd" || -z "$cd" || "$gd" != "$cd" ]]; then
+        echo "it is a linked git worktree, and where the claude CLI's local scope writes from one is not established (a write to the main repository's file could remove a deliberate local false there)"
+        return 0
+    fi
+    return 1
+}
+
+# A left entry: a NOTE on stdout, or with <strict> an ERROR on stderr.
+legacy_say() {  # <strict or empty> <message>
+    if [[ "$1" == strict ]]; then echo "  ERROR: $2" >&2; else echo "  NOTE: $2"; fi
+}
+hand_removal() {  # <settings.local.json>
+    echo "delete \"$PLUGIN_ID\" from enabledPlugins and \"$MARKETPLACE_NAME\" from extraKnownMarketplaces in $1"
+}
+
+# Move one place's legacy entry to user scope (install), or remove it
+# (--uninstall: <strict> = strict). Prints what it did or why it left the
+# entry. Returns 1 when the CLI ran and the entry is still there, and, when
+# strict, also when the entry is left for any other reason (no CLI, a root
+# the CLI is not run in): --uninstall must not report a clean removal while
+# a root still enables the plugin. Sets LEGACY_CLI_RAN=1 when it ran the CLI.
+LEGACY_CLI_RAN=0
+migrate_legacy_root() {  # <kind> <label> <root> [strict]
+    local kind="$1" label="$2" root="$3" strict="${4:-}" f why rc=0
+    f="$root/.claude/settings.local.json"
+    [[ "$strict" == strict ]] && rc=1
+    if [[ ! -d "$root" ]]; then
+        if [[ "$kind" == cli-record ]]; then
+            echo "  NOTE: the claude CLI's record ($INSTALLED_PLUGINS) lists a local-scope install of $PLUGIN_ID in $root, which is not on disk -- the CLI cannot be run from there; remove it by hand: delete the object with \"scope\": \"local\" and \"projectPath\": \"$root\" from the \"$PLUGIN_ID\" array in $INSTALLED_PLUGINS"
+        else
+            echo "  NOTE: $label is not on disk ($root) -- a per-root $PLUGIN_NAME entry there, if any, is moved on a later run"
+        fi
+        return 0
+    fi
+    case "$(legacy_state "$root")" in
+        absent|off) return 0 ;;
+        unparseable)
+            legacy_say "$strict" "$f is not valid JSON -- cannot tell whether it holds a per-root $PLUGIN_NAME entry; left as it is (fix it: jq . \"$f\")"
+            return "$rc" ;;
+        foreign)
+            echo "  NOTE: $f declares the $PLUGIN_NAME marketplace from another checkout, $(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path' "$f") -- left for that checkout's installer"
+            return 0 ;;
+    esac
+    if why="$(cli_refusal "$root")"; then
+        legacy_say "$strict" "$f ($label) holds a per-root $PLUGIN_NAME entry from this checkout, and the installer does not run the claude CLI there: $why -- remove it by hand: $(hand_removal "$f")"
+        return "$rc"
+    fi
+    if ! have_claude; then
+        legacy_say "$strict" "$f ($label) holds a per-root $PLUGIN_NAME entry from this checkout; the claude CLI is not on PATH -- remove it by hand: $(hand_removal "$f")"
+        return "$rc"
+    fi
+    LEGACY_CLI_RAN=1
+    (cd "$root" && claude_plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
+    (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
+    case "$(legacy_state "$root")" in
+        absent|off)
+            if [[ "$strict" == strict ]]; then
+                echo "  removed the per-root $PLUGIN_NAME entry from $f"
+            else
+                echo "  moved the $PLUGIN_NAME plugin in $root from its per-root entry to user scope"
+            fi
+            return 0 ;;
+    esac
+    echo "  ERROR: the claude CLI ran in $root, but $f still holds a per-root $PLUGIN_NAME entry from this checkout -- remove it by hand: $(hand_removal "$f")" >&2
+    return 1
+}
+
+# Every place's legacy entry, as migrate_legacy_root treats each.
+migrate_legacy_roots() {  # [strict]
+    local kind label path rc=0
+    while IFS=$'\t' read -r kind label path; do
+        [[ -n "$path" ]] || continue
+        migrate_legacy_root "$kind" "$label" "$path" "${1:-}" || rc=1
+    done <<< "$LEGACY_PLACES"
+    return "$rc"
+}
+
+# The places, read once for every mode below (--uninstall, --check,
+# install). A registry that does not parse stops all three here, before
+# anything is read or changed: the parser has already named the bad line
+# on stderr, and a root it dropped could keep an entry nobody reports.
+if [[ "$MODE" != disable-root ]] && ! LEGACY_PLACES="$(legacy_places)"; then
     echo "ERROR: $(registry_file "$WS_ROOT") does not parse (the line is named above) -- fix it and re-run; nothing was changed" >&2
     exit 1
 fi
 
-# Does any registered root, or this checkout, hold a plugin declaration or
-# enable (or a file that cannot be read)? --uninstall's "nothing installed"
-# must mean the plugin too: the user-tier files can be gone while roots
-# still enable it.
+# Does the plugin show anywhere this installer would remove it from: at
+# user scope (anything but another checkout's declaration), or as a
+# per-root entry of this checkout's (or a file that cannot be read)?
+# --uninstall's "nothing installed" must mean the plugin too: the user-tier
+# files can be gone while the plugin is still enabled.
 plugin_anywhere() {
-    local _name root _verdict
-    while IFS=$'\t' read -r _name root _verdict; do
-        [[ -n "$root" && -d "$root" ]] || continue
-        [[ "$(plugin_state "$root")" != absent ]] && return 0
-    done <<< "$PLUGIN_ROOTS"
-    [[ "$(plugin_state "$WS_ROOT")" != absent ]]
+    local _kind _label path
+    case "$(user_scope_state)" in ours|partial|unparseable) return 0 ;; esac
+    while IFS=$'\t' read -r _kind _label path; do
+        [[ -n "$path" && -d "$path" ]] || continue
+        case "$(legacy_state "$path")" in ours|unparseable) return 0 ;; esac
+    done <<< "$LEGACY_PLACES"
+    return 1
 }
 
 # ---------------------------------------------------------- disable-root ---
@@ -1126,6 +1395,10 @@ plugin_anywhere() {
 # where this checkout declared it, and the roots the CLI never runs in are
 # reported, not touched.
 if [[ "$MODE" == "disable-root" ]]; then
+    if ! PLUGIN_ROOTS="$(plugin_roots)"; then
+        echo "ERROR: $(registry_file "$WS_ROOT") does not parse (the line is named above) -- fix it and re-run; nothing was changed" >&2
+        exit 1
+    fi
     line="$(awk -F'\t' -v n="$DISABLE_NAME" '$1 == n' <<< "$PLUGIN_ROOTS")"
     if [[ -z "$line" ]]; then
         echo "ERROR: '$DISABLE_NAME' is not registered in $(registry_file "$WS_ROOT")" >&2
@@ -1226,31 +1499,39 @@ if [[ "$MODE" == "uninstall" ]]; then
         rm -f "$link"
         echo "  removed legacy skill symlink: $(basename "$link")"
     done
-    # The plugin, from every registered root that has it enabled or
-    # declared -- skipped workspace-toplevel roots included, so a stale
-    # enable goes too. A skipped parent= instance and a root inside another
-    # git repository are the exceptions: the CLI never runs there (install
-    # and --check refuse them the same way).
+    # The plugin: every per-root entry of this checkout's (an entry the CLI
+    # cannot remove is an error naming the removal by hand), then the
+    # user-scope enable, when this checkout declared it.
     uninstall_rc=0
-    while IFS=$'\t' read -r name root verdict detail; do
-        [[ -z "$root" ]] && continue
-        if [[ ! -d "$root" ]]; then
-            echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
-            continue
-        fi
-        case "$verdict" in
-            skip-instance) uninstall_refused_root "parent= instance $name" "$root" "$(instance_cli_reason "$root")" ;;
-            skip-enclosed) uninstall_refused_root "registered root $name" "$root" "$(enclosed_reason "$detail")" ;;
-            *) uninstall_plugin_from "$root" ;;
-        esac
-    done <<< "$PLUGIN_ROOTS"
-    uninstall_plugin_from "$WS_ROOT"
+    migrate_legacy_roots strict || uninstall_rc=1
+    case "$(user_scope_state)" in
+        ours|partial)
+            if ! have_claude; then
+                echo "  ERROR: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin at user scope; run \`claude plugin uninstall $PLUGIN_ID --scope user\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope user\`" >&2
+                uninstall_rc=1
+            else
+                # Best effort, each: the state read back decides.
+                cli_user uninstall "$PLUGIN_ID" --scope user 2>/dev/null || true
+                cli_user marketplace remove "$MARKETPLACE_NAME" --scope user 2>/dev/null || true
+                if [[ "$(user_scope_state)" == absent ]]; then
+                    echo "  removed the $PLUGIN_NAME plugin at user scope"
+                else
+                    echo "  ERROR: could not remove the $PLUGIN_NAME plugin at user scope (see $CLI_SETTINGS); run \`claude plugin uninstall $PLUGIN_ID --scope user\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope user\`" >&2
+                    uninstall_rc=1
+                fi
+            fi ;;
+        foreign)
+            echo "  NOTE: the $PLUGIN_NAME plugin at user scope is declared from another checkout ($(user_plugin_source)) -- left for that checkout's --uninstall" ;;
+        unparseable)
+            echo "  ERROR: $CLI_SETTINGS is not valid JSON -- cannot tell whether the $PLUGIN_NAME plugin is enabled at user scope; not removing it" >&2
+            uninstall_rc=1 ;;
+    esac
     # Only once settings.json is rewritten: its rewrite read this file to
     # find rules written by an earlier manifest generation, and a failed
     # rewrite exited above with the file still here.
     [[ -f "$RULES_FILE" ]] && rm -f "$RULES_FILE" && echo "  removed $RULES_FILE"
     if [[ "$uninstall_rc" -ne 0 ]]; then
-        echo "agent_workspace user tier removed, except the plugin in the root(s) above." >&2
+        echo "agent_workspace user tier removed, except the plugin entries named above." >&2
         exit 1
     fi
     echo "agent_workspace user tier removed."
@@ -1441,99 +1722,66 @@ if [[ "$MODE" == "check" ]]; then
         note "legacy skill symlink (retired by ADR-0018; re-run the installer to remove it): $link -> $(readlink "$link")"
     done < <(legacy_skill_links)
 
-    # The plugin, per registered root. JSON reads only -- no CLI call.
-    own_enabled=false
-    while IFS=$'\t' read -r name root verdict detail; do
-        [[ -z "$name" ]] && continue
-        state=""
-        [[ -d "$root" ]] && state="$(plugin_state "$root")"
-        case "$verdict" in
-            enable|enable-instance)
-                if [[ "$verdict" == enable-instance ]]; then
-                    echo "  note: $name is a parent= instance $detail -- checked as a session root of its own ($root)"
-                fi
-                case "$state" in
-                    enabled) own_enabled=true ;;
-                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
-                    foreign) note "$PLUGIN_NAME plugin in registered root $name ($root) is declared from another checkout, $(plugin_source "$root"), not from this one (re-run the installer to repoint it)" ;;
-                    *)
-                        if have_claude; then
-                            note "$PLUGIN_NAME plugin not enabled from this checkout in registered root $name ($root)"
-                        else
-                            echo "  note: $PLUGIN_NAME plugin not enabled in $name ($root); the claude CLI is not on PATH, so there is nothing to enable it with"
-                        fi ;;
-                esac ;;
-            skip-workspace)
-                case "$state" in
-                    enabled|stale|foreign)
-                        if plugin_enabled_flag "$root"; then
-                            note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)"
-                        else
-                            note "$PLUGIN_NAME marketplace is declared, with the plugin not enabled, in $name ($root), whose git toplevel is this workspace checkout -- a leftover (re-run the installer to remove it)"
-                        fi ;;
-                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
-                esac ;;
-            skip-instance)
-                # Its parent's enable is what reaches it. A declaration in
-                # the instance itself can shadow the parent's: another
-                # checkout's then loads that checkout's skills here while
-                # every root above looks right.
-                case "$state" in
-                    enabled|stale|foreign)
-                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's (remove it from $root/.claude/settings.local.json by hand: the installer does not run the CLI there, because $(instance_cli_reason "$root"))" ;;
-                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
-                    absent) plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
-                esac ;;
-            skip-enclosed)
-                note "$PLUGIN_NAME plugin cannot be enabled in registered root $name ($root): $(enclosed_reason "$detail") ($(enclosed_advice "$detail"))"
-                case "$state" in
-                    enabled|stale|foreign) note "$PLUGIN_NAME plugin is declared in $root/.claude/settings.local.json itself -- remove it by hand: the installer does not run the CLI there" ;;
-                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
-                esac ;;
-            missing)
-                echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
-        esac
-    done <<< "$PLUGIN_ROOTS"
-
-    # The workspace checkout itself: its sessions see the bare skills by
-    # directory walk-up, so the plugin there doubles every one of them. The
-    # installer never enables it there; a `claude plugin install` run by hand
-    # (or from a p11-shape root, whose local scope may resolve here) would.
-    case "$(plugin_state "$WS_ROOT")" in
-        enabled|stale|foreign)
-            if plugin_enabled_flag "$WS_ROOT"; then
-                note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)"
-            else
-                note "$PLUGIN_NAME marketplace is declared, with the plugin not enabled, in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- a leftover (re-run the installer to remove it)"
+    # The plugin at user scope. JSON reads only -- no CLI call. Without the
+    # claude CLI install cannot enable it either, so a missing enable is a
+    # note naming what is needed: drift whose advice cannot clear it would
+    # keep --check red on a machine with no Claude Code.
+    plugin_note() {  # <message>: drift, or a note when the CLI is missing
+        if have_claude; then
+            note "$1"
+        else
+            echo "  note: $1; the claude CLI is not on PATH, so there is nothing to enable it with"
+        fi
+    }
+    case "$(user_scope_state)" in
+        ours)
+            # The machine-level record: the CLI keys it by marketplace name,
+            # so a machine holds ONE `agent-workspace` source; when it names
+            # another checkout, sessions may load that checkout's skills, and
+            # with no entry they may not load the plugin at all. (This relies
+            # on the CLI's format: a file the installer cannot read an entry
+            # from looks the same.)
+            if ! machine_record_ours; then
+                plugin_note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout -- sessions may not load this checkout's skills (re-run the installer: it repairs it)"
             fi ;;
-        unparseable) note "$WS_ROOT/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
+        foreign)
+            plugin_note "the $PLUGIN_NAME marketplace is declared at user scope ($CLI_SETTINGS) from another checkout, $(user_plugin_source), not from this one (re-run the installer to repoint it here)" ;;
+        unparseable)
+            note "$CLI_SETTINGS is not valid JSON -- cannot check the $PLUGIN_NAME plugin at user scope" ;;
+        *)
+            plugin_note "the $PLUGIN_NAME plugin is not enabled at user scope from this checkout ($CLI_SETTINGS; re-run the installer)" ;;
     esac
 
-    # The machine-level marketplace record. The CLI keys it by marketplace
-    # name, so a machine holds ONE `agent-workspace` source: when it names
-    # another checkout, sessions may load that checkout's skills even where
-    # every settings.local.json above declares this one, and nothing else
-    # here would notice. A record with no entry for it is drift too: live
-    # case J saw an absent record leave every enabled root without the
-    # plugin. (This relies on the CLI's format: a file the installer cannot
-    # read an entry from looks the same.) Read-only. Only while some root has the plugin enabled from this checkout: with
-    # none, no session of this checkout's loads the record, so nothing of
-    # this checkout's is wrong. Without the claude CLI, install cannot take
-    # it over either, so that is a note naming what is needed, as for an
-    # unenabled root: drift whose advice cannot clear it would keep --check
-    # red.
-    if [[ "$own_enabled" == true ]] && ! machine_record_ours; then
-        if machine_record_foreign; then
-            km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(machine_record_source) -- one source per machine, so sessions may load that checkout's skills"
-        else
-            km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) has no entry for it -- sessions in the roots enabled from this checkout may not load the plugin at all"
+    # Per-root entries the per-root generation left: notes, not drift (the
+    # plugin enabled at local and user scope is listed once, live case U7),
+    # except in the workspace checkout itself, where a local true overrides
+    # the tracked false entry and every skill is listed twice at its root.
+    while IFS=$'	' read -r kind label root; do
+        [[ -n "$root" ]] || continue
+        f="$root/.claude/settings.local.json"
+        if [[ ! -d "$root" ]]; then
+            if [[ "$kind" == cli-record ]]; then
+                echo "  note: the claude CLI's record ($INSTALLED_PLUGINS) lists a local-scope install of $PLUGIN_ID in $root, which is not on disk -- remove it by hand: delete the object with \"scope\": \"local\" and \"projectPath\": \"$root\" from the \"$PLUGIN_ID\" array in $INSTALLED_PLUGINS"
+            else
+                echo "  note: $label is not on disk ($root) -- not checked for a per-root $PLUGIN_NAME entry"
+            fi
+            continue
         fi
-        if have_claude; then
-            note "$km_what (re-run this installer: it takes the name over once, before touching any project root -- last install wins)"
-        else
-            echo "  note: $km_what; taking it over needs the claude CLI, which is not on PATH (re-run this installer where \`claude\` is on PATH)"
-        fi
-    fi
+        case "$(legacy_state "$root")" in
+            ours)
+                if [[ "$kind" == checkout ]] && jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$f" >/dev/null 2>&1; then
+                    note "$f enables the $PLUGIN_NAME plugin in the workspace checkout itself, overriding the false entry in its tracked .claude/settings.json, so a session at the checkout's root lists every skill twice (re-run the installer to remove it)"
+                elif why="$(cli_refusal "$root")"; then
+                    echo "  note: $f ($label) holds a per-root $PLUGIN_NAME entry from this checkout, and the installer does not run the claude CLI there: $why -- remove it by hand: $(hand_removal "$f")"
+                else
+                    echo "  note: $f ($label) still holds a per-root $PLUGIN_NAME entry from this checkout (re-run the installer to move it to user scope)"
+                fi ;;
+            foreign)
+                echo "  note: $f ($label) declares the $PLUGIN_NAME marketplace from another checkout, $(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path' "$f"), which a session there may load instead of this one's" ;;
+            unparseable)
+                echo "  note: $f ($label) is not valid JSON -- cannot tell whether it holds a per-root $PLUGIN_NAME entry" ;;
+        esac
+    done <<< "$LEGACY_PLACES"
 
     if [[ "$drift" -eq 0 ]]; then
         echo "agent_workspace user tier: installed and current ($WS_ROOT)"
@@ -1733,116 +1981,48 @@ while IFS= read -r link; do
     echo "  removed legacy skill symlink: $(basename "$link")"
 done < <(legacy_skill_links)
 
-# 6. the plugin. The registry is read once, for both steps below.
-
-# 6a. the machine-level marketplace record, before any project root:
-# claimed whenever it is not this checkout's -- another checkout's, or no
-# entry at all (live case J: an absent record leaves every enabled root
-# without the plugin). Only when some root is to be enabled from here and
-# can be: with none,
-# taking the name would only move another checkout's sessions onto this
-# one's skills. A root whose settings.local.json is unparseable fails in
-# 6b whatever happens, so it does not count.
-enable_root_can_succeed() {
-    local _name root verdict _detail
-    while IFS=$'\t' read -r _name root verdict _detail; do
-        case "$verdict" in enable|enable-instance) ;; *) continue ;; esac
-        [[ "$(plugin_state "$root")" != unparseable ]] && return 0
-    done <<< "$PLUGIN_ROOTS"
-    return 1
-}
-if ! machine_record_ours && enable_root_can_succeed; then
-    if ! have_claude; then
-        echo "  NOTE: the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace $(machine_record_what), not this checkout -- taking it over needs the claude CLI, which is not on PATH, so sessions may not load this checkout's skills"
-    elif ! claim_machine_record; then
+# 6. the plugin, once, at user scope (ADR-0018), then the migration of
+# per-root entries -- in that order: a local remove while the user-scope
+# declaration is present keeps the machine-level record, the reverse order
+# can drop it.
+case "$(user_scope_state)" in
+    ours)
+        if machine_record_ours; then
+            echo "  the $PLUGIN_NAME plugin is already enabled at user scope from this checkout -- no claude CLI call"
+            PLUGIN_ON=true
+        fi ;;
+    unparseable)
         echo "" >&2
-        echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step stopped before touching any project root: the machine-level record of the $MARKETPLACE_NAME marketplace could not be taken over (above). Free the name in the claude CLI's records -- the other checkout's --uninstall, or the \`claude plugin marketplace\` commands -- and re-run this installer." >&2
+        echo "agent_workspace user tier installed from $WS_ROOT, but $CLI_SETTINGS is not valid JSON, so the $PLUGIN_NAME plugin was not enabled at user scope (fix it: jq . \"$CLI_SETTINGS\"), and nothing in any project root was changed." >&2
+        exit 1 ;;
+    foreign)
+        echo "  the $PLUGIN_NAME marketplace is declared at user scope from another checkout, $(user_plugin_source) -- repointing it here (the user tier is this checkout's)" ;;
+esac
+if [[ "${PLUGIN_ON:-false}" != true ]]; then
+    if ! have_claude; then
+        echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin (a machine without Claude Code has no plugins to enable)"
+    elif enable_user_scope; then
+        echo "  enabled the $PLUGIN_NAME plugin at user scope from $WS_PHYS"
+    else
+        echo "" >&2
+        echo "agent_workspace user tier installed from $WS_ROOT, but the $PLUGIN_NAME plugin could not be enabled at user scope (above); nothing in any project root was changed." >&2
         exit 1
     fi
 fi
 
-# 6b. per registered root: each root's own declaration only
 plugin_rc=0
-while IFS=$'\t' read -r name root verdict detail; do
-    [[ -z "$name" ]] && continue
-    case "$verdict" in
-        enable)
-            enable_plugin_in_root "$root" || plugin_rc=1 ;;
-        enable-instance)
-            echo "  NOTE: $name is a parent= instance $detail -- enabled as a session root of its own ($root)"
-            enable_plugin_in_root "$root" || plugin_rc=1 ;;
-        skip-workspace)
-            echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"
-            case "$(plugin_state "$root")" in
-                enabled|stale|foreign) disable_plugin_in_root "$root" || plugin_rc=1 ;;
-                unparseable) unparseable_root "$root" "cannot tell whether the plugin doubles its skills there"; plugin_rc=1 ;;
-            esac ;;
-        skip-instance)
-            echo "  skipped $name: a parent= instance; its parent root gets the plugin"
-            # A declaration of its own can shadow the parent's (see --check).
-            case "$(plugin_state "$root")" in
-                enabled|stale|foreign)
-                    # Reported, never removed: see instance_cli_reason.
-                    echo "  ERROR: the $PLUGIN_NAME plugin is declared in parent= instance $name itself ($root), where it can shadow its parent's; the installer does not run the claude CLI there ($(instance_cli_reason "$root")) -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
-                    plugin_rc=1 ;;
-                unparseable)
-                    unparseable_root "$root" "cannot tell whether the plugin is there"
-                    plugin_rc=1 ;;
-                absent)
-                    plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
-            esac ;;
-        skip-enclosed)
-            echo "  ERROR: not enabling the $PLUGIN_NAME plugin in registered root $name ($root): $(enclosed_reason "$detail") -- $(enclosed_advice "$detail")" >&2
-            case "$(plugin_state "$root")" in
-                enabled|stale|foreign)
-                    echo "  ERROR: the $PLUGIN_NAME plugin is declared in $root/.claude/settings.local.json itself -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries there by hand" >&2 ;;
-                unparseable) unparseable_root "$root" "cannot tell whether the plugin is there" ;;
-            esac
-            plugin_rc=1 ;;
-        missing)
-            echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
-    esac
-done <<< "$PLUGIN_ROOTS"
-# ...and never in the workspace checkout itself (see --check).
-case "$(plugin_state "$WS_ROOT")" in
-    enabled|stale|foreign)
-        if plugin_enabled_flag "$WS_ROOT"; then
-            echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
-        else
-            echo "  the $PLUGIN_NAME marketplace is declared, with the plugin not enabled, in the workspace checkout itself -- removing the leftover"
-        fi
-        disable_plugin_in_root "$WS_ROOT" || plugin_rc=1 ;;
-    unparseable)
-        unparseable_root "$WS_ROOT" "cannot tell whether the plugin doubles every skill in the workspace checkout itself"
-        plugin_rc=1 ;;
-esac
-# 6c. the machine record again. 6b still runs `marketplace remove --scope
-# local` (repointing a root; removing a doubled or instance declaration),
-# and a local remove drops the machine record (live case J), which leaves
-# every enabled root without the plugin. So whenever some root is enabled
-# from here once 6b is done and the record is not this checkout's, it is
-# taken back -- whatever it was before 6b.
-root_enabled_from_here() {
-    local _name root verdict _detail
-    while IFS=$'\t' read -r _name root verdict _detail; do
-        case "$verdict" in enable|enable-instance) ;; *) continue ;; esac
-        [[ "$(plugin_state "$root")" == enabled ]] && return 0
-    done <<< "$PLUGIN_ROOTS"
-    return 1
-}
-# Without the CLI nothing in 6b ran the CLI, and 6a has already said the
-# record needs it.
-if have_claude && ! machine_record_ours && root_enabled_from_here; then
-    echo "  NOTE: after the per-root step the machine-level record of the $MARKETPLACE_NAME marketplace $(machine_record_what), not this checkout, while roots are enabled from here"
-    if ! claim_machine_record "again, after the per-root step"; then
-        echo "" >&2
-        echo "agent_workspace user tier installed from $WS_ROOT, but the per-root step lost the machine-level record of the $MARKETPLACE_NAME marketplace and it could not be taken back (above): sessions may not load this checkout's skills." >&2
-        exit 1
-    fi
+migrate_legacy_roots || plugin_rc=1
+# The read-back: a local-scope remove must not have cost the user-scope
+# enable or the machine-level record (not established on the CLI; this is
+# the guard). A re-run repairs either.
+if [[ "$LEGACY_CLI_RAN" == 1 ]] && ! user_scope_readback "after moving per-root entries to user scope"; then
+    echo "" >&2
+    echo "agent_workspace user tier installed from $WS_ROOT, but moving the per-root entries lost the $PLUGIN_NAME plugin's user-scope enable or machine-level record (above): re-run the installer to restore it." >&2
+    exit 1
 fi
 if [[ "$plugin_rc" -ne 0 ]]; then
     echo "" >&2
-    echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step failed in the root(s) above." >&2
+    echo "agent_workspace user tier installed from $WS_ROOT, but a per-root $PLUGIN_NAME entry could not be moved to user scope (above)." >&2
     exit 1
 fi
 

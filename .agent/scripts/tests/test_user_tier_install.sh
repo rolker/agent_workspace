@@ -6,8 +6,8 @@
 # skill symlink, a hook left by a deleted checkout), hook commands
 # recognised by path after the claude CLI rewrites settings.json (#394),
 # mixed entries, skill selection from session_scope frontmatter, the
-# plugin manifest generator, per-registered-root plugin enable / --check /
-# --uninstall (ADR-0018), --disable-root <name> (#332), and uninstall.
+# plugin manifest generator, the plugin enabled once at user scope and the
+# migration of per-root entries (ADR-0018, #446), and uninstall.
 #
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
@@ -15,9 +15,9 @@
 # (.agent/projects.local) removed from the copy -- so the test can add and
 # remove skills and registered roots without touching the real ones. The
 # claude CLI is NEVER run: every invocation points AGENT_WORKSPACE_CLAUDE_BIN
-# at a stub that records its argv and edits the root's settings.local.json
-# the way the real CLI does, and a `claude` on the test's PATH is the same
-# stub. No network, no gh.
+# at a stub that records its argv and edits the sandbox user settings or a
+# root's settings.local.json the way the real CLI does, and a `claude` on
+# the test's PATH is the same stub. No network, no gh.
 #
 # Run: bash .agent/scripts/tests/test_user_tier_install.sh
 
@@ -51,19 +51,27 @@ INSTALL="$WSC/.agent/scripts/user_tier_install.sh"
 HOMEDIR="$SANDBOX/home"
 mkdir -p "$HOMEDIR"
 
-# The claude stub. Records "<cwd>|<argv>" per call, then edits the cwd's
-# .claude/settings.local.json as `claude plugin ... --scope local` would.
+# The claude stub. Records "<cwd>|<argv>" per call, then edits settings as
+# `claude plugin ... --scope <scope>` would: with `--scope user`, the CLI's
+# user settings (${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json); otherwise
+# the cwd's .claude/settings.local.json. `install` and `uninstall` also
+# keep the CLI's record of installs (plugins/installed_plugins.json: the
+# plugin's array of {scope, projectPath} objects, projectPath for local
+# scope only), and `marketplace add` records its source in
+# plugins/known_marketplaces.json, the CLI's machine-level record keyed by
+# name (left alone when it is not JSON).
 # STUB_FAIL=1 makes it exit 1; STUB_NOOP=1 makes it exit 0 having written
 # nothing (a CLI that claims success but did not enable anything);
 # STUB_STDIN_LOG=<file> makes it append any line it can read from stdin there
-# (a CLI that stops for a prompt would read exactly that). `marketplace add`
-# also records its source in ~/.claude/plugins/known_marketplaces.json, the
-# CLI's machine-level record keyed by name (left alone when it is not JSON);
-# STUB_NO_KM=1 makes it skip that (a CLI that does not repoint the record),
-# and STUB_ADD_FAIL=1 makes `marketplace add` alone exit 1 having written
-# nothing (a CLI that refuses to repoint a name another source holds), and
-# STUB_REMOVE_DROPS_KM=1 makes a local `marketplace remove` also delete the
-# machine-level entry (a CLI whose local remove drops the record).
+# (a CLI that stops for a prompt would read exactly that); STUB_NO_KM=1
+# makes `marketplace add` skip the machine-level record (a CLI that does
+# not repoint it); STUB_ADD_FAIL=1 makes `marketplace add` alone exit 1
+# having written nothing; STUB_REMOVE_DROPS_KM=1 makes a local `marketplace
+# remove` also delete the machine-level entry, and STUB_LOCAL_DROPS_USER=1
+# makes a local `uninstall` also drop the user-scope enable (a CLI whose
+# local calls reach further than their scope); STUB_LOCAL_NOOP=1 makes
+# every local-scope call exit 0 having written nothing. STUB_ADD_SLEEP=<s>
+# makes `marketplace add` sleep first (time to interrupt the installer).
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -78,8 +86,17 @@ fi
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
 [[ -n "${STUB_ADD_FAIL:-}" && "$2 ${3:-}" == "marketplace add" ]] && exit 1
 [[ -n "${STUB_NOOP:-}" ]] && exit 0
-f=.claude/settings.local.json
-mkdir -p .claude
+scope=local prev=""
+for a in "$@"; do [[ "$prev" == --scope ]] && scope="$a"; prev="$a"; done
+[[ "$scope" == local && -n "${STUB_LOCAL_NOOP:-}" ]] && exit 0
+cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+if [[ "$scope" == user ]]; then
+    f="$cfg/settings.json"
+    mkdir -p "$cfg"
+else
+    f=.claude/settings.local.json
+    mkdir -p .claude
+fi
 [[ -f "$f" ]] || echo '{}' > "$f"
 case "$1 $2 ${3:-}" in
     "plugin marketplace add")    filter='.extraKnownMarketplaces["agent-workspace"] = {source: {source: "directory", path: $a}}'; arg="$4" ;;
@@ -89,12 +106,34 @@ case "$1 $2 ${3:-}" in
     *) exit 0 ;;
 esac
 jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-if [[ "$2 $3" == "marketplace remove" && -n "${STUB_REMOVE_DROPS_KM:-}" ]]; then
-    km="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/known_marketplaces.json"
+ip="$cfg/plugins/installed_plugins.json"
+case "$2" in
+    install|uninstall)
+        mkdir -p "$(dirname "$ip")"
+        [[ -f "$ip" ]] || echo '{"version": 2, "plugins": {}}' > "$ip"
+        pp=""; [[ "$scope" == local ]] && pp="$PWD"
+        if [[ "$2" == install ]]; then
+            jq --arg id "$3" --arg s "$scope" --arg p "$pp" \
+                '.plugins[$id] = ((.plugins[$id] // []) + [{scope: $s} + (if $p == "" then {} else {projectPath: $p} end)])' \
+                "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+        else
+            jq --arg id "$3" --arg s "$scope" --arg p "$pp" \
+                '.plugins[$id] = [(.plugins[$id] // [])[] | select((.scope == $s and ($p == "" or .projectPath == $p)) | not)]' \
+                "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+        fi ;;
+esac
+if [[ "$scope" == local && "$2" == uninstall && -n "${STUB_LOCAL_DROPS_USER:-}" ]]; then
+    jq 'del(.enabledPlugins["agent-workspace@agent-workspace"])' "$cfg/settings.json" > "$cfg/settings.json.tmp" \
+        && mv "$cfg/settings.json.tmp" "$cfg/settings.json"
+fi
+km="$cfg/plugins/known_marketplaces.json"
+if [[ "$2 $3" == "marketplace remove" && "$scope" == local && -n "${STUB_REMOVE_DROPS_KM:-}" ]]; then
     [[ -f "$km" ]] && jq 'del(.["agent-workspace"])' "$km" > "$km.tmp" 2>/dev/null && mv "$km.tmp" "$km"
 fi
+if [[ "$2 $3" == "marketplace remove" && "$scope" == user && -f "$km" ]]; then
+    jq 'del(.["agent-workspace"])' "$km" > "$km.tmp" 2>/dev/null && mv "$km.tmp" "$km"
+fi
 if [[ "$2 $3" == "marketplace add" && -z "${STUB_NO_KM:-}" ]]; then
-    km="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/known_marketplaces.json"
     mkdir -p "$(dirname "$km")"
     [[ -f "$km" ]] || echo '{}' > "$km"
     jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" 2>/dev/null \
@@ -103,6 +142,11 @@ fi
 STUBEOF
 chmod +x "$STUB"
 : > "$STUB_LOG"
+# The stub is the only `claude` this test can reach: first on PATH for
+# every command below, so an installer call that forgets
+# AGENT_WORKSPACE_CLAUDE_BIN still never runs the real CLI.
+PATH="$STUB_BIN:$PATH"
+export PATH
 
 # The installer's own TMPDIR (its machine-level takeover makes a scratch
 # directory there), so a test can check that nothing is left behind.
@@ -218,9 +262,9 @@ n_links=$(find "$SKILLS_DIR" -maxdepth 1 -type l 2>/dev/null | wc -l)
 [[ "$n_links" -eq 0 ]] \
     && pass "install creates no ~/.claude/skills/ symlinks (the plugin delivers skills)" \
     || fail "install created $n_links skill symlink(s)"
-[[ ! -s "$STUB_LOG" ]] \
-    && pass "with no registered roots, install never runs the claude CLI" \
-    || fail "install ran the claude CLI with no registered roots ($(cat "$STUB_LOG"))"
+[[ "$(grep -c -- '--scope user$' "$STUB_LOG")" -eq 2 && "$(grep -c -v -- '--scope user$' "$STUB_LOG")" -eq 0 ]] \
+    && pass "install enables the plugin with two claude CLI calls, both at user scope" \
+    || fail "install's claude CLI calls ($(cat "$STUB_LOG"))"
 
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
@@ -1021,7 +1065,8 @@ cp -r "$WS_ROOT/.claude" "$WSC2/.claude"
 # As for the first copy: the machine's own registry must never reach it, or
 # --force and --check would walk the owner's real project roots.
 rm -f "$WSC2/.agent/projects.local"
-run2() { HOME="$HOMEDIR" CLAUDE_CONFIG_DIR='' bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
+run2() { HOME="$HOMEDIR" CLAUDE_CONFIG_DIR='' PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="$INST_TMP" \
+    AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
 
 out="$(run2)"; rc=$?
 [[ "$rc" -ne 0 && "$out" == *"already installed for a different workspace checkout"* && "$out" == *"$WSC"* ]] \
@@ -1367,983 +1412,491 @@ else
     pass "the generator leaves no temp file behind"
 fi
 
-# ------------------------------------------- plugin, per registered root ---
-# ADR-0018. A sandboxed registry with one root of every verdict: a git repo
-# (enable), a directory in no git repo (enable), a root inside the
-# workspace copy's own git tree (skip -- it sees the bare skills), the same
-# reached through a symlinked path (still skip: pwd -P on both sides), a
-# parent root with instances, and a root not on disk (a note). The claude
-# stub stands in for the CLI.
-#
-# Instances follow what the live suite observed (case G): a session reads
-# the local settings of its git toplevel -- the main repository's, for a
-# worktree. So the parent `fam` is a git repo; `fam/inst` (a worktree of
-# it) and `fam/sub` (a plain directory in it) are skipped; `fam-stray` (a
-# sibling in no git repo) and `pp/inst` (under a plain-directory parent)
-# are enabled as roots of their own.
+# ------------------------------------------------ plugin, at user scope ---
+# ADR-0018 as amended by #446: the plugin is enabled once, at user scope,
+# and nothing is written into a project root; the per-root generation's
+# entries are migrated. Fresh HOME, so earlier sections' state cannot
+# leak in. Every root here is a sandbox directory; the claude stub stands
+# in for the CLI.
+rm -rf "$HOMEDIR"
+mkdir -p "$HOMEDIR"
+: > "$STUB_LOG"
+rm -rf "$INST_TMP" && mkdir -p "$INST_TMP"
+PID="agent-workspace@agent-workspace"
+SLJ=.claude/settings.local.json
+git -C "$WSC" init -q 2>/dev/null
+WSC_PHYS="$(cd "$WSC" && pwd -P)"
+KM_FILE="$HOMEDIR/.claude/plugins/known_marketplaces.json"
+IP_FILE="$HOMEDIR/.claude/plugins/installed_plugins.json"
 ROOTS="$SANDBOX/roots"
-mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/sub" "$ROOTS/fam-stray" "$ROOTS/pp/inst" "$ROOTS/pp/repo"
-git -C "$ROOTS/pp/repo" init -q
+mkdir -p "$ROOTS/a" "$ROOTS/nogit"
 git -C "$ROOTS/a" init -q
-git -C "$ROOTS/fam" init -q
-git -C "$ROOTS/fam" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-git -C "$ROOTS/fam" worktree add -q "$ROOTS/fam/inst" 2>/dev/null
-git -C "$WSC" init -q
-mkdir -p "$WSC/projects/inner" "$WSC/projects/inner2"
-ln -s "$WSC" "$SANDBOX/ws-link"
-NOGIT_REAL=true
-git -C "$ROOTS/nogit" rev-parse --show-toplevel >/dev/null 2>&1 && NOGIT_REAL=false
+# A root's own local settings, unrelated to the plugin: must stay as it is.
+mkdir -p "$ROOTS/a/.claude"
+echo '{"permissions": {"allow": ["Bash(make *)"]}}' > "$ROOTS/a/$SLJ"
 cat > "$WSC/.agent/projects.local" <<REG
 a        single_project  $ROOTS/a
 nogit    single_project  $ROOTS/nogit
-inner    single_project  $WSC/projects/inner
-inner2   single_project  $SANDBOX/ws-link/projects/inner2
-fam      project         $ROOTS/fam
-fam-i    single_project  $ROOTS/fam/inst  parent=fam
-fam-s    single_project  $ROOTS/fam-stray  parent=fam
-fam-d    single_project  $ROOTS/fam/sub  parent=fam
-pp       project         $ROOTS/pp
-pp-i     single_project  $ROOTS/pp/inst  parent=pp
-pp-r     single_project  $ROOTS/pp/repo  parent=pp
-gone     single_project  $ROOTS/gone
 REG
-WSC_PHYS="$(cd "$WSC" && pwd -P)"
-SLJ=.claude/settings.local.json
-enabled_in() {  # <root>: the plugin enabled from this checkout there?
-    jq -e --arg p "$WSC_PHYS" '.enabledPlugins["agent-workspace@agent-workspace"] == true
-        and .extraKnownMarketplaces["agent-workspace"].source.path == $p' "$1/$SLJ" >/dev/null 2>&1
+user_on() {  # the plugin enabled at user scope from this checkout?
+    jq -e --arg id "$PID" --arg p "$WSC_PHYS" '.enabledPlugins[$id] == true
+        and .extraKnownMarketplaces["agent-workspace"].source.path == $p' "$SETTINGS" >/dev/null 2>&1
 }
-stale_enable() {  # <root>: write an enable from this checkout by hand
+km_ours() {
+    jq -e --arg p "$WSC_PHYS" '.["agent-workspace"].source.path == $p' "$KM_FILE" >/dev/null 2>&1
+}
+legacy_enable() {  # <root> [<marketplace source>]: a per-root entry as the old installer left it
     mkdir -p "$1/.claude"
-    jq -n --arg p "$WSC_PHYS" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
-        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' \
-        > "$1/$SLJ"
+    [[ -f "$1/$SLJ" ]] && jq -e . "$1/$SLJ" >/dev/null 2>&1 || echo '{}' > "$1/$SLJ"
+    jq --arg p "${2:-$WSC_PHYS}" --arg id "$PID" '.enabledPlugins[$id] = true
+        | .extraKnownMarketplaces["agent-workspace"] = {source: {source: "directory", path: $p}}' \
+        "$1/$SLJ" > "$1/$SLJ.tmp" && mv "$1/$SLJ.tmp" "$1/$SLJ"
 }
+has_entry() {  # <root>: does its settings.local.json name the plugin at all?
+    jq -e --arg id "$PID" '(.enabledPlugins // {} | has($id)) or (.extraKnownMarketplaces // {} | has("agent-workspace"))' \
+        "$1/$SLJ" >/dev/null 2>&1
+}
+roots_sum() { find "$ROOTS" -path '*/.git' -prune -o -type f -print0 | sort -z | xargs -0 cksum 2>/dev/null; }
+log_since() { tail -n +"$(( $1 + 1 ))" "$STUB_LOG"; }
+n_log() { wc -l < "$STUB_LOG"; }
 
-: > "$STUB_LOG"
+# A clean HOME: exactly two CLI calls, both at user scope, from a throwaway
+# directory under TMPDIR (removed after), and no root's files touched.
+before_roots="$(roots_sum)"
 out="$(run)"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "install with registered roots exits 0" \
-    || fail "install with registered roots failed (rc=$rc out=${out:0:400})"
-enabled_in "$ROOTS/a" \
-    && pass "the plugin is enabled in a registered git root" \
-    || fail "the plugin is not enabled in root a ($(cat "$ROOTS/a/$SLJ" 2>/dev/null))"
-grep -qxF "$ROOTS/a|plugin marketplace add $WSC_PHYS --scope local" "$STUB_LOG" \
-   && grep -qxF "$ROOTS/a|plugin install agent-workspace@agent-workspace --scope local" "$STUB_LOG" \
-    && pass "enabling runs marketplace add (physical checkout path) and install, local scope, from the root" \
-    || fail "unexpected CLI calls for root a ($(cat "$STUB_LOG"))"
-if [[ "$NOGIT_REAL" == true ]]; then
-    enabled_in "$ROOTS/nogit" \
-        && pass "a root in no git repository is enabled, not skipped" \
-        || fail "the no-git root was not enabled"
-else
-    echo "  SKIP: the sandbox sits inside a git repository; the no-git case cannot be set up here"
-fi
-[[ ! -e "$WSC/projects/inner/$SLJ" && "$out" == *"skipped inner: its git toplevel is this workspace checkout"* ]] \
-    && pass "a root inside the workspace checkout's git tree is skipped" \
-    || fail "the workspace-toplevel root was not skipped (out=${out:0:400})"
-[[ ! -e "$WSC/projects/inner2/$SLJ" && "$out" == *"skipped inner2"* ]] \
-    && pass "the same root reached through a symlinked path is still skipped (pwd -P)" \
-    || fail "the symlinked workspace-toplevel root was not skipped"
-enabled_in "$ROOTS/fam" && [[ ! -e "$ROOTS/fam/inst/$SLJ" && ! -e "$ROOTS/fam/sub/$SLJ" \
-      && "$out" == *"skipped fam-i: a parent= instance"* && "$out" == *"skipped fam-d: a parent= instance"* ]] \
-    && pass "a git-repo parent is enabled; its worktree instance and plain-directory instance are skipped" \
-    || fail "parent/instance handling is wrong (out=${out:0:400})"
-# An instance whose sessions do not read the parent's local settings would
-# have no plugin if skipped: it is enabled as a root of its own, with a
-# note saying why -- a sibling in no git repo, and an instance under a
-# plain-directory parent (the case the live suite showed skip-instance
-# got wrong).
-enabled_in "$ROOTS/fam-stray" && [[ "$out" == *"fam-s is a parent= instance that is in no git repository"* \
-      && "$out" != *"skipped fam-s"* ]] \
-    && pass "a parent= instance in no git repository is enabled directly, with a note" \
-    || fail "no-git instance handling is wrong (out=${out:0:600})"
-enabled_in "$ROOTS/pp/inst" && enabled_in "$ROOTS/pp" && [[ "$out" == *"pp-i is a parent= instance that is in no git repository"* ]] \
-    && pass "an instance under a plain-directory parent is enabled as a root of its own" \
-    || fail "plain-parent instance handling is wrong (out=${out:0:600})"
-enabled_in "$ROOTS/pp/repo" && [[ "$out" == *"pp-r is a parent= instance that has a parent ($ROOTS/pp) in no git repository"* ]] \
-    && pass "a git-repo instance under a plain-directory parent is enabled as a root of its own, naming why" \
-    || fail "git instance under a plain parent (out=${out:0:600})"
-[[ "$out" == *"registered root gone is not on disk"* ]] \
-    && pass "a registered root not on disk is a note, not a failure" \
-    || fail "missing root not noted (out=${out:0:400})"
-if grep -q "^$WSC" "$STUB_LOG"; then
-    fail "the CLI ran inside the workspace tree ($(grep "^$WSC" "$STUB_LOG"))"
-else
-    pass "the CLI is never run inside the workspace checkout's tree"
-fi
+calls="$(cut -d'|' -f2 "$STUB_LOG" | tr '\n' ';')"
+[[ "$rc" -eq 0 && "$calls" == "plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
+    && pass "a clean install runs the CLI exactly twice: marketplace add and install, both --scope user" \
+    || fail "clean install CLI calls (rc=$rc calls=$calls out=${out:0:400})"
+bad_cwd="$(cut -d'|' -f1 "$STUB_LOG" | grep -v "^$INST_TMP/agent-workspace-plugin\." || true)"
+[[ -z "$bad_cwd" && -z "$(ls -A "$INST_TMP")" ]] \
+    && pass "...each from a throwaway directory under TMPDIR, removed afterwards" \
+    || fail "...CLI cwd not a scratch directory, or one left behind (cwd: $bad_cwd; left: $(ls -A "$INST_TMP"))"
+user_on && km_ours \
+    && pass "...and the user settings and the machine-level record name this checkout" \
+    || fail "...the user-scope entries or the machine record are wrong ($(jq -c '{enabledPlugins, extraKnownMarketplaces}' "$SETTINGS"); km: $(cat "$KM_FILE" 2>/dev/null))"
+[[ "$(roots_sum)" == "$before_roots" && ! -e "$ROOTS/nogit/.claude" ]] \
+    && pass "...and no registered root's files are written or changed" \
+    || fail "...a registered root changed"
+[[ "$out" == *"enabled the agent-workspace plugin at user scope"* ]] \
+    && pass "...and it says so" || fail "...install did not say it enabled the plugin (out=${out:0:300})"
 
-out="$(run --check)"; rc=$?
+# A re-run: no CLI call, nothing changed; --check --require clean, before
+# and after the CLI's own rewrite of settings.json (#394).
+cp "$SETTINGS" "$SANDBOX/us-before.json"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] && cmp -s "$SETTINGS" "$SANDBOX/us-before.json" \
+    && pass "a re-run makes no CLI call and leaves settings.json byte-identical" \
+    || fail "re-run (rc=$rc calls: $(log_since "$n0"); out=${out:0:300})"
+[[ "$out" == *"already enabled at user scope from this checkout -- no claude CLI call"* ]] \
+    && pass "...and says the plugin is already enabled" || fail "...re-run message (out=${out:0:300})"
+out="$(run --check --require)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
-    && pass "--check is clean with the plugin enabled in every session root" \
-    || fail "--check after plugin install (rc=$rc out=${out:0:400})"
-[[ "$out" == *"note: fam-s is a parent= instance that is in no git repository"* ]] \
-    && pass "--check notes a parent= instance enabled as a root of its own" \
-    || fail "--check did not note the mis-nested instance (out=${out:0:400})"
-rm -f "${ROOTS:?}/fam-stray/.claude/settings.local.json"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root fam-s"* ]] \
-    && pass "--check reports a mis-nested instance without the plugin as drift" \
-    || fail "mis-nested instance without the plugin not flagged (rc=$rc out=${out:0:400})"
-run >/dev/null
-
-# An instance whose parent is not on disk is not "outside its parent's
-# directory": it says the parent is missing. (An unregistered parent, or an
-# instance at its parent's own path, is dropped by the registry parser.)
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-mkdir -p "$ROOTS/lost-inst"
-cat > "$WSC/.agent/projects.local" <<REG
-lost     project         $ROOTS/lost-parent
-lost-i   single_project  $ROOTS/lost-inst  parent=lost
-REG
-out="$(run)"; out_check="$(run --check)"
-want="lost-i is a parent= instance whose parent's directory ($ROOTS/lost-parent) is not on disk"
-[[ "$out" == *"NOTE: $want -- enabled as a session root of its own"* \
-      && "$out_check" == *"note: $want -- checked as a session root of its own"* \
-      && "$out$out_check" != *"in no git repository"* ]] \
-    && pass "install and --check say an instance's parent is not on disk, not that it lies outside it" \
-    || fail "missing-parent instance wording (out=${out:0:600} check=${out_check:0:600})"
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-rm -rf "${ROOTS:?}/lost-inst"
-run >/dev/null
-
-: > "$STUB_LOG"
-run >/dev/null
-[[ ! -s "$STUB_LOG" ]] \
-    && pass "re-install over enabled roots is a no-op for the CLI (idempotent)" \
-    || fail "re-install ran the CLI again ($(cat "$STUB_LOG"))"
-
-# --check reads JSON only: it must never run the CLI.
-: > "$STUB_LOG"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root a"* ]] \
-    && pass "--check reports a registered root without the plugin" \
-    || fail "missing-plugin drift not detected (rc=$rc out=${out:0:400})"
-[[ ! -s "$STUB_LOG" ]] \
-    && pass "--check never runs the claude CLI" \
-    || fail "--check ran the CLI ($(cat "$STUB_LOG"))"
-run >/dev/null
-enabled_in "$ROOTS/a" && pass "re-install re-enables the plugin in that root" \
-    || fail "re-install did not re-enable root a"
-
-# A stale enable in a skipped (workspace-toplevel) root.
-stale_enable "$WSC/projects/inner"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"enabled in inner"*"loads twice"* ]] \
-    && pass "--check flags a stale plugin enable in a workspace-toplevel root" \
-    || fail "stale enable in a skipped root not flagged (rc=$rc out=${out:0:400})"
-run >/dev/null
-out="$(run --check)"; rc=$?
-if [[ "$rc" -eq 0 ]] && ! enabled_in "$WSC/projects/inner"; then
-    pass "install removes the stale enable from the skipped root"
-else
-    fail "the stale enable survived install (rc=$rc out=${out:0:400})"
-fi
-
-# A parent= instance with a declaration of its own: its parent's enable is
-# what reaches it, and a declaration there can shadow the parent's -- from
-# another checkout, loading that checkout's skills while every root above
-# looks right. --check flags it, whoever declared it, and install removes it.
-foreign_enable() {  # <root>: an enable declared from $SANDBOX/elsewhere
-    mkdir -p "$1/.claude" "$SANDBOX/elsewhere"
-    jq -n --arg p "$SANDBOX/elsewhere" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
-        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
-}
-# stale_enable writes a COMPLETE enable from this checkout (state
-# `enabled`); these two are the genuinely `stale` shapes.
-enable_only() {  # <root>: enabled, with no marketplace declaration
-    mkdir -p "$1/.claude"
-    echo '{"enabledPlugins": {"agent-workspace@agent-workspace": true}}' > "$1/$SLJ"
-}
-declare_only() {  # <root>: declared from this checkout, not enabled
-    mkdir -p "$1/.claude"
-    jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
-}
-# It is reported, never removed: every skipped instance shares its
-# parent's repository, where a local-scope remove could strip the parent's
-# enable -- a plain directory of it (fam-d: local scope lands on the
-# toplevel, live case K) or a linked worktree (fam-i: where local scope
-# writes is not established). Install exits 1 naming the file to edit, runs
-# no CLI from the instance, and leaves both files as they are.
-for inst in "fam-i:$ROOTS/fam/inst:a git worktree of its parent's repository" \
-            "fam-d:$ROOTS/fam/sub:a plain directory inside the git repository $ROOTS/fam"; do
-    iname="${inst%%:*}"; rest="${inst#*:}"; ipath="${rest%%:*}"; why="${rest#*:}"
-    for who in stale_enable enable_only declare_only foreign_enable; do
-        "$who" "$ipath"
-        before="$(cat "$ipath/$SLJ")"; parent_before="$(cat "$ROOTS/fam/$SLJ")"
-        out="$(run --check)"; rc=$?
-        [[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin is declared in parent= instance $iname ($ipath) itself"*"remove it from $ipath/.claude/settings.local.json by hand"*"$why"* ]] \
-            && pass "--check flags $iname's own declaration ($who), with by-hand advice" \
-            || fail "instance declaration $iname ($who) in --check (rc=$rc out=${out:0:400})"
-        : > "$STUB_LOG"
-        out="$(run)"; rc=$?
-        if [[ "$rc" -eq 1 && "$out" == *"declared in parent= instance $iname itself ($ipath)"*"does not run the claude CLI there"*"$why"* \
-              && "$(cat "$ipath/$SLJ")" == "$before" && "$(cat "$ROOTS/fam/$SLJ")" == "$parent_before" ]] \
-           && ! grep -q "^$ipath|" "$STUB_LOG" && enabled_in "$ROOTS/fam"; then
-            pass "install reports $iname's own declaration ($who) and runs no CLI there, leaving both files"
-        else
-            fail "instance declaration $iname ($who) at install (rc=$rc log=$(grep "^$ipath|" "$STUB_LOG") out=${out:0:400})"
-        fi
-        rm -f "$ipath/.claude/settings.local.json"
-    done
-done
-# An explicit local disable (enabledPlugins[id] = false, no declaration)
-# is not a declaration, but it can turn the parent's plugin off there:
-# --check and install report it, and leave it (it may be deliberate).
-mkdir -p "$ROOTS/fam/inst/.claude"
-echo '{"enabledPlugins": {"agent-workspace@agent-workspace": false}}' > "$ROOTS/fam/inst/$SLJ"
-out_check="$(run --check)"; rc_check=$?
+    && pass "--check --require after install: clean" || fail "--check --require after install (rc=$rc out=$out)"
+cli_rewrite
+n0="$(n_log)"
+out="$(run --check --require)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "--check --require stays clean after the CLI rewrites settings.json, and runs no CLI" \
+    || fail "--check after a CLI rewrite (rc=$rc out=$out calls: $(log_since "$n0"))"
 out="$(run)"; rc=$?
-want="parent= instance fam-i ($ROOTS/fam/inst) disables the agent-workspace plugin locally"
-[[ "$rc_check" -eq 0 && "$out_check" == *"note: $want"* && "$rc" -eq 0 && "$out" == *"note: $want"* \
-      && "$(cat "$ROOTS/fam/inst/$SLJ")" == '{"enabledPlugins": {"agent-workspace@agent-workspace": false}}' ]] \
-    && pass "--check and install report a parent= instance's local disable, and leave it" \
-    || fail "instance local disable (check rc=$rc_check out=${out_check:0:300}; install rc=$rc out=${out:0:300})"
-rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "--check is clean once the instance's own declaration is gone" \
-    || fail "--check after removing the instance declaration (rc=$rc out=${out:0:400})"
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "a re-run after the CLI's rewrite makes no CLI call" \
+    || fail "re-run after a CLI rewrite (rc=$rc calls: $(log_since "$n0"))"
+rm -f "$SANDBOX/us-before.json"
 
-# An instance that is a plain directory inside a git repository -- here its
-# parent -- is not acted on: the CLI's local scope from there may resolve to
-# the parent's settings.local.json and strip the parent's working enable.
-# Install refuses, names the file to edit, and exits 1; the parent's file is
-# untouched and no CLI call runs from the instance. An instance that is a
-# git repository of its own is a separate project (live case G): it is
-# enabled as a root of its own, its declaration kept.
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-mkdir -p "$ROOTS/famg/inst" "$ROOTS/famg/repo-inst"
-git -C "$ROOTS/famg" init -q
-git -C "$ROOTS/famg/repo-inst" init -q
-cat > "$WSC/.agent/projects.local" <<REG
-famg     project         $ROOTS/famg
-famg-i   single_project  $ROOTS/famg/inst       parent=famg
-famg-r   single_project  $ROOTS/famg/repo-inst  parent=famg
-REG
-run >/dev/null
-parent_before="$(cat "$ROOTS/famg/$SLJ")"
-stale_enable "$ROOTS/famg/inst"
-stale_enable "$ROOTS/famg/repo-inst"
-: > "$STUB_LOG"
+# --check reports: not enabled at user scope; declared from another
+# checkout; the machine-level record lost. Install repairs each with only
+# the calls it needs.
+cp "$SETTINGS" "$SANDBOX/us-good.json"
+jq --arg id "$PID" 'del(.enabledPlugins[$id])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"plugin is not enabled at user scope from this checkout"* ]] \
+    && pass "--check reports the plugin not enabled at user scope (drift)" \
+    || fail "--check, user-scope enable gone (rc=$rc out=$out)"
+n0="$(n_log)"
 out="$(run)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"parent= instance famg-i itself ($ROOTS/famg/inst)"*"a plain directory inside the git repository $ROOTS/famg"* \
-      && "$(cat "$ROOTS/famg/$SLJ")" == "$parent_before" ]] && enabled_in "$ROOTS/famg" && enabled_in "$ROOTS/famg/inst" \
-   && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG"; then
-    pass "install does not run the CLI from an instance inside a git repository, leaving the parent's enable intact"
-else
-    fail "instance inside a git repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-fi
+[[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin install $PID --scope user" ]] && user_on \
+    && pass "...and install repairs it with the one install call" \
+    || fail "...install over a missing enable (rc=$rc calls: $(log_since "$n0"))"
+OTHER_WS="$SANDBOX/other-ws"
+mkdir -p "$OTHER_WS/.agent" && : > "$OTHER_WS/.agent/user_tier_scripts.txt"
+jq --arg p "$OTHER_WS" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"instance famg-i ($ROOTS/famg/inst) itself"*"remove it from $ROOTS/famg/inst/.claude/settings.local.json by hand"* ]] \
-    && pass "--check tells the user to remove that instance's declaration by hand, not to re-run the installer" \
-    || fail "--check advice for an instance inside a git repo (rc=$rc out=${out:0:500})"
-enabled_in "$ROOTS/famg/repo-inst" && [[ "$out" == *"famg-r is a parent= instance that is a git repository of its own ($ROOTS/famg/repo-inst), not a worktree of its parent's"* ]] \
-    && pass "an instance that is its own git repository inside a git-repo parent is enabled as a root of its own" \
-    || fail "the repo instance was not enabled as its own root ($(cat "$ROOTS/famg/repo-inst/$SLJ"); out=${out:0:400})"
-# --uninstall refuses that instance the same way: it reports the
-# declaration for removal by hand, exits 1, and runs no CLI there, while
-# the parent and the repository instance are still uninstalled.
-inst_before="$(cat "$ROOTS/famg/inst/$SLJ")"
-: > "$STUB_LOG"
-out="$(run --uninstall 2>&1)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"declared in parent= instance famg-i itself ($ROOTS/famg/inst); --uninstall does not run the claude CLI there (it is a plain directory inside the git repository $ROOTS/famg"*"by hand"* \
-      && "$(cat "$ROOTS/famg/inst/$SLJ")" == "$inst_before" ]] \
-   && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG" && ! enabled_in "$ROOTS/famg" && ! enabled_in "$ROOTS/famg/repo-inst"; then
-    pass "--uninstall reports a skipped instance's own declaration, runs no CLI there, and still uninstalls the other roots"
-else
-    fail "--uninstall over a skipped instance's declaration (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-fi
-# A declaration from another checkout there is left alone with a note.
-foreign_enable "$ROOTS/famg/inst"
-: > "$STUB_LOG"
-out="$(run --uninstall 2>&1)"; rc=$?
-[[ "$out" == *"plugin in $ROOTS/famg/inst is declared from another checkout ($SANDBOX/elsewhere) -- left for that checkout's --uninstall"* ]] \
-      && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG" \
-    && pass "--uninstall leaves another checkout's declaration in a skipped instance, running no CLI there" \
-    || fail "--uninstall over a foreign declaration in a skipped instance (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-rm -f "$ROOTS/famg/inst/$SLJ"
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-rm -rf "${ROOTS:?}/famg"
-run >/dev/null
-
-# A registered root that is a plain directory inside some other git
-# repository: its sessions read that repository's local settings, and the
-# CLI's local scope from there writes them (live case K) -- outside every
-# registered root. Install, --check and --uninstall refuse it, never
-# running the CLI there; the other roots are unaffected.
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-mkdir -p "$ROOTS/mono/sub"
-git -C "$ROOTS/mono" init -q
-printf 'encl single_project %s\na single_project %s\n' "$ROOTS/mono/sub" "$ROOTS/a" > "$WSC/.agent/projects.local"
-: > "$STUB_LOG"
-out="$(run 2>&1)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"ERROR: not enabling the agent-workspace plugin in registered root encl ($ROOTS/mono/sub): it is a plain directory inside the git repository $ROOTS/mono"*"register the repository's toplevel ($ROOTS/mono) as the root instead"* \
-      && ! -e "$ROOTS/mono/.claude/settings.local.json" && ! -e "$ROOTS/mono/sub/.claude/settings.local.json" ]] \
-   && ! grep -q "^$ROOTS/mono" "$STUB_LOG" && enabled_in "$ROOTS/a"; then
-    pass "install refuses a root inside an unrelated git repository, runs no CLI there, and still enables the other roots"
-else
-    fail "install over a root inside an unrelated repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-fi
-: > "$STUB_LOG"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin cannot be enabled in registered root encl ($ROOTS/mono/sub): it is a plain directory inside the git repository $ROOTS/mono"* && ! -s "$STUB_LOG" ]] \
-    && pass "--check flags a root inside an unrelated git repository" \
-    || fail "--check over a root inside an unrelated repo (rc=$rc out=${out:0:500})"
-stale_enable "$ROOTS/mono/sub"
-before="$(cat "$ROOTS/mono/sub/$SLJ")"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"plugin is declared in $ROOTS/mono/sub/.claude/settings.local.json itself -- remove it by hand"* ]] \
-    && pass "--check also reports that root's own declaration for removal by hand" \
-    || fail "--check over a declaration in an enclosed root (rc=$rc out=${out:0:500})"
-: > "$STUB_LOG"
-out="$(run --uninstall 2>&1)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"declared in registered root encl itself ($ROOTS/mono/sub); --uninstall does not run the claude CLI there (it is a plain directory inside the git repository $ROOTS/mono"* \
-      && "$(cat "$ROOTS/mono/sub/$SLJ")" == "$before" ]] \
-   && ! grep -q "^$ROOTS/mono" "$STUB_LOG" && ! enabled_in "$ROOTS/a"; then
-    pass "--uninstall refuses a root inside an unrelated git repository, and still uninstalls the other roots"
-else
-    fail "--uninstall over a root inside an unrelated repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-fi
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-rm -rf "${ROOTS:?}/mono"
-run >/dev/null
-
-# A registry line that does not parse stops install, --check and
-# --uninstall before anything is read or changed, with the parser's ERROR
-# and the installer's own visible: acting on the remaining roots would
-# report success while the dropped root kept (or lacked) the plugin.
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-printf 'a single_project %s\nbad!name single_project %s\n' "$ROOTS/a" "$ROOTS/b" > "$WSC/.agent/projects.local"
-a_before="$(cat "$ROOTS/a/$SLJ")"
-for mode in install --check --uninstall; do
-    : > "$STUB_LOG"
-    if [[ "$mode" == install ]]; then out="$(run 2>&1)"; else out="$(run "$mode" 2>&1)"; fi; rc=$?
-    if [[ "$rc" -eq 1 && "$out" == *"invalid project name 'bad!name'"* && "$out" == *"ERROR: $WSC/.agent/projects.local does not parse"* \
-          && "$out" != *"installed and current"* && "$out" != *"removed"* && "$(cat "$ROOTS/a/$SLJ")" == "$a_before" && -f "$ROOT_FILE" ]] \
-       && [[ ! -s "$STUB_LOG" ]]; then
-        pass "a malformed registry line fails $mode with the parser's ERROR shown, changing nothing"
-    else
-        fail "$mode over a malformed registry (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
-    fi
-done
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-run >/dev/null
-
-# The plugin enabled at the workspace checkout itself.
-stale_enable "$WSC"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"enabled in the workspace checkout itself"* ]] \
-    && pass "--check flags the plugin enabled at the workspace checkout itself" \
-    || fail "workspace-root enable not flagged (rc=$rc out=${out:0:400})"
-run >/dev/null
-out="$(run --check)"; rc=$?
-if [[ "$rc" -eq 0 ]] && ! enabled_in "$WSC"; then
-    pass "install removes the plugin from the workspace checkout itself"
-else
-    fail "the workspace-root enable survived install (rc=$rc out=${out:0:400})"
-fi
-
-# A declaration with no enable, where the plugin must not be, doubles
-# nothing: --check calls it a leftover, not "every skill loads twice", and
-# install still removes it.
-for leftover in "$WSC/projects/inner" "$WSC"; do
-    mkdir -p "$leftover/.claude"
-    jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' \
-        > "$leftover/$SLJ"
-    out="$(run --check)"; rc=$?
-    [[ "$rc" -eq 1 && "$out" == *"marketplace is declared, with the plugin not enabled, in "*"a leftover"* \
-          && "$out" != *"loads twice"* ]] \
-        && pass "--check calls a declaration with no enable in ${leftover#"$SANDBOX"/} a leftover, not a doubled root" \
-        || fail "leftover declaration in ${leftover#"$SANDBOX"/} misreported (rc=$rc out=${out:0:400})"
-    out="$(run)"; rc=$?
-    [[ "$rc" -eq 0 && "$out" != *"every skill would load twice"* \
-          && "$(jq -c '.extraKnownMarketplaces // {} | length' "$leftover/$SLJ")" == 0 ]] \
-        && pass "install removes the leftover declaration from ${leftover#"$SANDBOX"/}" \
-        || fail "leftover declaration in ${leftover#"$SANDBOX"/} not removed (rc=$rc out=${out:0:400})"
-    rm -f "$leftover/$SLJ"
-done
-
-# A root whose declaration points at ANOTHER checkout: drift, and install
-# replaces the marketplace declaration with this checkout.
-mkdir -p "$SANDBOX/elsewhere"
-jq --arg p "$SANDBOX/elsewhere" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' \
-    "$ROOTS/a/$SLJ" > "$ROOTS/a/$SLJ.new" && mv "$ROOTS/a/$SLJ.new" "$ROOTS/a/$SLJ"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"registered root a ($ROOTS/a) is declared from another checkout, $SANDBOX/elsewhere"* ]] \
-    && pass "--check reports a root whose plugin comes from another checkout, naming it" \
-    || fail "foreign-source plugin not reported (rc=$rc out=${out:0:400})"
-: > "$STUB_LOG"
-run >/dev/null
-enabled_in "$ROOTS/a" && grep -qxF "$ROOTS/a|plugin marketplace remove agent-workspace --scope local" "$STUB_LOG" \
-    && pass "install drops the other checkout's declaration and enables from this one" \
-    || fail "install did not repoint root a ($(cat "$STUB_LOG"))"
-
-# An unparseable settings.local.json is refused, never overwritten.
-printf '{not json' > "$ROOTS/a/$SLJ"
+[[ "$rc" -eq 1 && "$out" == *"declared at user scope"*"from another checkout, $OTHER_WS"* ]] \
+    && pass "--check reports a user-scope declaration from another checkout (drift)" \
+    || fail "--check, foreign user-scope declaration (rc=$rc out=$out)"
+n0="$(n_log)"
 out="$(run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"not valid JSON -- not enabling"* && "$(cat "$ROOTS/a/$SLJ")" == '{not json' ]] \
-    && pass "install refuses a root with an unparseable settings.local.json and leaves it alone" \
-    || fail "unparseable settings.local.json handled wrong (rc=$rc out=${out:0:400})"
+[[ "$rc" -eq 0 && "$out" == *"repointing it here"* && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin marketplace add $WSC_PHYS --scope user" ]] \
+    && user_on && km_ours \
+    && pass "...and install repoints it with one marketplace add (no separate takeover)" \
+    || fail "...install over a foreign declaration (rc=$rc calls: $(log_since "$n0") out=${out:0:300})"
+jq 'del(.["agent-workspace"])' "$KM_FILE" > "$tmp" && mv "$tmp" "$KM_FILE"
 out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"settings.local.json is not valid JSON"* ]] \
-    && pass "--check reports the unparseable settings.local.json" \
-    || fail "--check missed the unparseable file (rc=$rc)"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-run >/dev/null
-# ...and so is one in a root the installer skips (a workspace-toplevel
-# root, a parent= instance inside its parent) or the workspace checkout
-# itself: whether the plugin is there is unknowable, so install and --check
-# say so.
-for broken in "$WSC/projects/inner" "$ROOTS/fam/inst" "$WSC"; do
-    mkdir -p "$broken/.claude"
-    printf '{not json' > "$broken/$SLJ"
-    out="$(run)"; rc=$?
-    [[ "$rc" -eq 1 && "$out" == *"$broken/.claude/settings.local.json is not valid JSON"* \
-          && "$(cat "$broken/$SLJ")" == '{not json' ]] \
-        && pass "install fails on an unparseable settings.local.json where the plugin must not be (${broken#"$SANDBOX"/}), leaving it alone" \
-        || fail "unparseable settings.local.json in ${broken#"$SANDBOX"/} passed install (rc=$rc out=${out:0:400})"
-    out="$(run --check)"; rc=$?
-    [[ "$rc" -eq 1 && "$out" == *"DRIFT: $broken/.claude/settings.local.json is not valid JSON"* ]] \
-        && pass "--check reports the unparseable settings.local.json in ${broken#"$SANDBOX"/}" \
-        || fail "--check missed the unparseable file in ${broken#"$SANDBOX"/} (rc=$rc out=${out:0:400})"
-    rm -f "$broken/$SLJ"
-done
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+[[ "$rc" -eq 1 && "$out" == *"machine-level record"*"has no entry for it"* ]] \
+    && pass "--check reports a machine-level record with no entry (drift)" \
+    || fail "--check, machine record gone (rc=$rc out=$out)"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin marketplace add $WSC_PHYS --scope user" ]] && km_ours \
+    && pass "...and a re-run with the settings right calls marketplace add alone and repairs it" \
+    || fail "...repair of the machine record (rc=$rc calls: $(log_since "$n0"))"
 
-# Every `claude plugin` call runs with stdin closed: a CLI that stopped for
-# a prompt must fail, not hang the installer or read the caller's input.
-# Here the caller's stdin holds answers; the stub records any it reads.
-STDIN_LOG="$SANDBOX/claude-stdin.log"
-: > "$STDIN_LOG"
-: > "$STUB_LOG"
-stale_enable "$WSC/projects/inner"          # forces an uninstall + remove too
-out="$(printf 'y\ny\ny\ny\ny\ny\ny\ny\n' | STUB_STDIN_LOG="$STDIN_LOG" run)"; rc=$?
-if [[ "$rc" -eq 0 && ! -s "$STDIN_LOG" ]] && enabled_in "$ROOTS/a" \
-   && grep -q "^$ROOTS/a|plugin install" "$STUB_LOG" && grep -q "^$WSC/projects/inner|plugin uninstall" "$STUB_LOG"; then
-    pass "every claude plugin call (enable and remove) runs with stdin closed"
-else
-    fail "a claude plugin call could read the caller's stdin (rc=$rc read=$(cat "$STDIN_LOG") out=${out:0:300})"
-fi
-rm -f "${ROOTS:?}/a/.claude/settings.local.json" "$STDIN_LOG"
-
-# CLI failure, and a CLI that claims success but enabled nothing.
-out="$(STUB_FAIL=1 run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"enabling the agent-workspace plugin in $ROOTS/a failed"* ]] \
-    && pass "a failing claude CLI makes install exit 1, naming the root" \
-    || fail "CLI failure not surfaced (rc=$rc out=${out:0:400})"
+# A CLI that claims success but writes nothing: install fails, naming it,
+# and touches no project root.
+jq --arg id "$PID" 'del(.enabledPlugins[$id]) | del(.extraKnownMarketplaces["agent-workspace"])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+legacy_enable "$ROOTS/a"
+n0="$(n_log)"
 out="$(STUB_NOOP=1 run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"reported success, but"* ]] \
-    && pass "a CLI that exits 0 without enabling the plugin is caught" \
-    || fail "silent CLI no-op not caught (rc=$rc out=${out:0:400})"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+[[ "$rc" -eq 1 && "$out" == *"reported success, but"*"does not show $PID enabled"* && "$out" == *"nothing in any project root was changed"* ]] \
+    && has_entry "$ROOTS/a" && ! log_since "$n0" | grep -q -- '--scope local' \
+    && pass "a CLI that claims success but enables nothing fails the install, before any root is touched" \
+    || fail "no-op CLI (rc=$rc out=${out:0:400})"
+out="$(STUB_FAIL=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"failed"* ]] && has_entry "$ROOTS/a" \
+    && pass "a failing CLI fails the install, and the per-root entry stays" \
+    || fail "failing CLI (rc=$rc out=${out:0:400})"
+# stdin is closed for every call: a CLI that stops for a prompt fails
+# instead of hanging the installer.
+: > "$SANDBOX/stdin.log"
+out="$(STUB_STDIN_LOG="$SANDBOX/stdin.log" run < <(yes))"; rc=$?
+[[ ! -s "$SANDBOX/stdin.log" ]] \
+    && pass "every claude plugin call runs with stdin closed" \
+    || fail "a claude plugin call read stdin: $(head -n3 "$SANDBOX/stdin.log")"
 
-# No claude CLI at all (a Codex-only machine): install notes and exits 0;
-# --check notes and does not call it drift.
-NOCLI_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$STUB_BIN" | paste -sd:)"
+# Migration. That run moved root a's per-root entry: the CLI ran from the
+# root at local scope (asserted by argv and cwd, not a file edit), the entry
+# is gone, the root's own keys stay, and the user scope is on.
+user_on && ! has_entry "$ROOTS/a" \
+    && jq -e '.permissions.allow == ["Bash(make *)"]' "$ROOTS/a/$SLJ" >/dev/null \
+    && pass "migration: a root's legacy entry ends with none; the root's own settings stay" \
+    || fail "migration of root a ($(cat "$ROOTS/a/$SLJ"))"
+grep -qxF "$ROOTS/a|plugin uninstall $PID --scope local" "$STUB_LOG" \
+    && grep -qxF "$ROOTS/a|plugin marketplace remove agent-workspace --scope local" "$STUB_LOG" \
+    && pass "...through the CLI: uninstall and marketplace remove at --scope local, run from the root" \
+    || fail "...migration CLI calls ($(grep -F "$ROOTS/a|" "$STUB_LOG"))"
+# The order: user scope first, then the local removes.
+first_local="$(grep -n -- '--scope local' "$STUB_LOG" | head -n1 | cut -d: -f1)"
+last_user="$(grep -n -- '--scope user' "$STUB_LOG" | tail -n1 | cut -d: -f1)"
+[[ -n "$first_local" && -n "$last_user" && "$last_user" -lt "$first_local" ]] \
+    && pass "...after the user-scope enable, never before" \
+    || fail "...order of the user-scope and local calls (user last at $last_user, local first at $first_local)"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" && "$out" != *"per-root"* && "$out" != *"moved the"* ]] \
+    && pass "the next run finds nothing to migrate, says nothing about it, and runs no CLI" \
+    || fail "second run after a migration (rc=$rc calls: $(log_since "$n0") out=${out:0:400})"
+
+# A root with a local false: never touched, never drift.
+mkdir -p "$ROOTS/nogit/.claude"
+jq -n --arg id "$PID" '{enabledPlugins: {($id): false}}' > "$ROOTS/nogit/$SLJ"
+cp "$ROOTS/nogit/$SLJ" "$SANDBOX/off-before.json"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+cmp -s "$ROOTS/nogit/$SLJ" "$SANDBOX/off-before.json" && [[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "a root whose local entry is false is left exactly as it is, with no CLI call" \
+    || fail "local false (rc=$rc calls: $(log_since "$n0"))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"nogit"* ]] \
+    && pass "...and --check neither reports it nor calls it drift" \
+    || fail "...--check over a local false (rc=$rc out=$out)"
+rm -f "$ROOTS/nogit/$SLJ" "$SANDBOX/off-before.json"
+
+# A root whose entry names another checkout: left, with a note.
+legacy_enable "$ROOTS/a" "$OTHER_WS"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"$ROOTS/a/$SLJ declares the agent-workspace marketplace from another checkout, $OTHER_WS"* ]] \
+    && has_entry "$ROOTS/a" && [[ "$(n_log)" -eq "$n0" ]] \
+    && pass "a root whose entry names another checkout is left, with a note" \
+    || fail "foreign per-root entry (rc=$rc out=${out:0:400} calls: $(log_since "$n0"))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"note:"*"another checkout"* ]] \
+    && pass "...and --check notes it without calling it drift" \
+    || fail "...--check over a foreign per-root entry (rc=$rc out=$out)"
+rm -f "$ROOTS/a/$SLJ"
+
+# A legacy true entry: --check notes it (not drift) and says to re-run.
+legacy_enable "$ROOTS/a"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"note: $ROOTS/a/$SLJ (registered root a) still holds a per-root agent-workspace entry"*"re-run the installer"* ]] \
+    && pass "--check notes a legacy per-root entry, not as drift" \
+    || fail "--check over a legacy entry (rc=$rc out=$out)"
+run >/dev/null
+! has_entry "$ROOTS/a" && pass "...and the installer then moves it" || fail "...legacy entry not moved"
+
+# A registered root not on disk: a note, the run succeeds; once it
+# appears, a later run migrates it.
+echo "late     single_project  $ROOTS/late" >> "$WSC/.agent/projects.local"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"registered root late is not on disk ($ROOTS/late)"* ]] \
+    && pass "a registered root not on disk is noted and does not fail the run" \
+    || fail "missing root (rc=$rc out=${out:0:400})"
+mkdir -p "$ROOTS/late"
+git -C "$ROOTS/late" init -q
+legacy_enable "$ROOTS/late"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && ! has_entry "$ROOTS/late" \
+    && pass "...and once it is on disk, a later run migrates it" \
+    || fail "...late root not migrated (rc=$rc out=${out:0:400})"
+
+# A root that is a linked git worktree: reported with the hand removal, no
+# CLI call, and the main repository's local false untouched.
+git -C "$ROOTS/a" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$ROOTS/a" worktree add -q "$ROOTS/a-wt" 2>/dev/null
+echo "awt      single_project  $ROOTS/a-wt" >> "$WSC/.agent/projects.local"
+legacy_enable "$ROOTS/a-wt"
+jq -n --arg id "$PID" '{enabledPlugins: {($id): false}}' > "$ROOTS/a/$SLJ"
+cp "$ROOTS/a/$SLJ" "$SANDBOX/main-before.json"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" && "$out" == *"NOTE: $ROOTS/a-wt/$SLJ (registered root awt) holds a per-root agent-workspace entry"*"linked git worktree"*"remove it by hand: delete \"$PID\" from enabledPlugins"* ]] \
+    && has_entry "$ROOTS/a-wt" && cmp -s "$ROOTS/a/$SLJ" "$SANDBOX/main-before.json" \
+    && pass "a legacy entry in a linked worktree is reported with the hand removal; no CLI call; the main repository's false stays" \
+    || fail "linked-worktree root (rc=$rc calls: $(log_since "$n0") out=${out:0:500})"
+out="$(run)"
+[[ "$out" == *"$ROOTS/a-wt/$SLJ"*"remove it by hand"* ]] \
+    && pass "...and it is reported again on every run" || fail "...not reported on the next run"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"note: $ROOTS/a-wt/$SLJ"*"linked git worktree"* ]] \
+    && pass "...--check notes it, not as drift" || fail "...--check over a worktree entry (rc=$rc out=$out)"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"ERROR: $ROOTS/a-wt/$SLJ"*"remove it by hand"* ]] && has_entry "$ROOTS/a-wt" \
+    && pass "...and --uninstall, which cannot remove it, exits 1 naming the hand removal" \
+    || fail "...--uninstall over a worktree entry (rc=$rc out=${out:0:500})"
+run >/dev/null
+rm -f "$ROOTS/a-wt/$SLJ" "$ROOTS/a/$SLJ" "$SANDBOX/main-before.json"
+
+# A root that is a plain subdirectory of a repository: reported, not
+# migrated; the next run neither re-migrates it nor calls it drift.
+mkdir -p "$ROOTS/a/sub"
+echo "asub     single_project  $ROOTS/a/sub" >> "$WSC/.agent/projects.local"
+legacy_enable "$ROOTS/a/sub"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" && "$out" == *"$ROOTS/a/sub/$SLJ"*"plain directory inside the git repository $ROOTS/a"*"remove it by hand"* ]] \
+    && has_entry "$ROOTS/a/sub" && [[ ! -e "$ROOTS/a/$SLJ" ]] \
+    && pass "a legacy entry in a plain subdirectory of a repository is reported, not migrated (the toplevel is not touched)" \
+    || fail "subdirectory root (rc=$rc calls: $(log_since "$n0") out=${out:0:500})"
+n0="$(n_log)"
+run >/dev/null
+out="$(run --check)"; rc=$?
+[[ "$(n_log)" -eq "$n0" && "$rc" -eq 0 && "$out" == *"note: $ROOTS/a/sub/$SLJ"* ]] \
+    && pass "...the next run does not re-migrate it, and --check does not call it drift" \
+    || fail "...subdirectory root on the next run (rc=$rc calls: $(log_since "$n0"))"
+rm -f "$ROOTS/a/sub/$SLJ"
+sed -i '/^asub /d; /^awt /d' "$WSC/.agent/projects.local"
+
+# An unparseable settings.local.json: a note, not an error.
+mkdir -p "$ROOTS/nogit/.claude"
+echo '{not json' > "$ROOTS/nogit/$SLJ"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"NOTE: $ROOTS/nogit/$SLJ is not valid JSON"* ]] \
+    && pass "an unparseable settings.local.json is a note, not an error" \
+    || fail "unparseable root (rc=$rc out=${out:0:400})"
+rm -f "$ROOTS/nogit/$SLJ"
+
+# A root found only in the CLI's own record (unregistered by hand, or
+# moved): migrated; and one whose directory is gone is noted on every run
+# with the hand removal.
+mkdir -p "$ROOTS/byhand"
+(cd "$ROOTS/byhand" && HOME="$HOMEDIR" STUB_LOG="$SANDBOX/byhand.log" "$STUB" plugin marketplace add "$WSC_PHYS" --scope local >/dev/null \
+    && HOME="$HOMEDIR" STUB_LOG="$SANDBOX/byhand.log" "$STUB" plugin install "$PID" --scope local >/dev/null)
+mkdir -p "$ROOTS/gone-later"
+(cd "$ROOTS/gone-later" && HOME="$HOMEDIR" STUB_LOG="$SANDBOX/byhand.log" "$STUB" plugin install "$PID" --scope local >/dev/null)
+rm -rf "$ROOTS/gone-later"
+jq -e --arg id "$PID" --arg p "$ROOTS/byhand" '[.plugins[$id][] | select(.scope == "local" and .projectPath == $p)] | length == 1' "$IP_FILE" >/dev/null \
+    && pass "the CLI's record lists the hand-made local install (fixture check)" \
+    || fail "fixture: installed_plugins.json ($(cat "$IP_FILE"))"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && ! has_entry "$ROOTS/byhand" \
+    && grep -qxF "$ROOTS/byhand|plugin uninstall $PID --scope local" "$STUB_LOG" \
+    && pass "a root found only in the CLI's installed_plugins.json is migrated" \
+    || fail "CLI-record root (rc=$rc out=${out:0:400})"
+gone_note="the object with \"scope\": \"local\" and \"projectPath\": \"$ROOTS/gone-later\" from the \"$PID\" array in $IP_FILE"
+[[ "$out" == *"$ROOTS/gone-later, which is not on disk"*"$gone_note"* ]] \
+    && pass "a projectPath in the CLI's record that is not on disk is noted with the hand removal" \
+    || fail "gone projectPath (out=${out:0:600})"
+out="$(run)"
+[[ "$out" == *"$gone_note"* ]] && pass "...on every run" || fail "...not noted on the next run"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"$gone_note"* ]] \
+    && pass "...and --check notes it, not as drift" || fail "...--check over a gone projectPath (rc=$rc out=$out)"
+jq --arg id "$PID" '.plugins[$id] |= map(select(.scope != "local"))' "$IP_FILE" > "$tmp" && mv "$tmp" "$IP_FILE"
+
+# The read-back after migrating: a local call that costs the user-scope
+# enable (or the machine-level record) fails the run, naming it; a re-run
+# restores it.
+legacy_enable "$ROOTS/a"
+out="$(STUB_LOCAL_DROPS_USER=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"after moving per-root entries to user scope, but"*"does not show $PID enabled"* ]] \
+    && pass "the user-scope enable is read back after migrating; its loss fails the run" \
+    || fail "read-back after migration, enable lost (rc=$rc out=${out:0:500})"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && user_on && pass "...and a re-run restores it" || fail "...re-run after a lost enable (rc=$rc)"
+legacy_enable "$ROOTS/a"
+out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"after moving per-root entries to user scope, but the claude CLI's machine-level record"* ]] \
+    && pass "the machine-level record is read back after migrating; its loss fails the run" \
+    || fail "read-back after migration, record lost (rc=$rc out=${out:0:500})"
+run >/dev/null && km_ours && pass "...and a re-run restores it" || fail "...re-run after a lost record"
+# A CLI that runs in the root but leaves the entry: an error naming it.
+legacy_enable "$ROOTS/a"
+out="$(STUB_LOCAL_NOOP=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"ERROR: the claude CLI ran in $ROOTS/a, but $ROOTS/a/$SLJ still holds"* ]] \
+    && pass "a local remove that leaves the entry is an error naming the hand removal" \
+    || fail "local no-op (rc=$rc out=${out:0:500})"
+run >/dev/null
+
+# The workspace checkout's own legacy enable: --check calls it drift (it
+# overrides the tracked false entry, doubling every skill at the
+# checkout's root); install removes it.
+legacy_enable "$WSC"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT: $WSC/$SLJ enables the agent-workspace plugin in the workspace checkout itself"* ]] \
+    && pass "--check calls a local enable in the workspace checkout itself drift" \
+    || fail "--check over the checkout's own enable (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && ! has_entry "$WSC" \
+    && grep -qxF "$WSC|plugin uninstall $PID --scope local" "$STUB_LOG" \
+    && pass "...and install removes it through the CLI" \
+    || fail "...checkout's own enable not removed (rc=$rc out=${out:0:400})"
+
+# An old install moved over in one run: per-root entries in two roots and
+# the checkout, nothing at user scope. One run ends with the plugin at user
+# scope and no per-root entry; the next prints no migration line.
+jq --arg id "$PID" 'del(.enabledPlugins[$id]) | del(.extraKnownMarketplaces["agent-workspace"])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+legacy_enable "$ROOTS/a"
+legacy_enable "$ROOTS/nogit"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && user_on && km_ours && ! has_entry "$ROOTS/a" && ! has_entry "$ROOTS/nogit" \
+    && pass "an old per-root install is moved to user scope in one run" \
+    || fail "old install migration (rc=$rc out=${out:0:500})"
+out="$(run)"
+[[ "$out" != *"moved the"* && "$out" != *"per-root"* ]] \
+    && pass "...and the next run prints no migration line" || fail "...next run mentions migration (out=${out:0:400})"
+
+# Without the claude CLI: install notes it and succeeds; --check notes the
+# missing enable without calling it drift.
+NOCLI_HOME="$SANDBOX/home-nocli"
+mkdir -p "$NOCLI_HOME"
 run_nocli() {
-    HOME="$HOMEDIR" PATH="$NOCLI_PATH" CLAUDE_CONFIG_DIR='' AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" \
-        bash "$INSTALL" "$@" 2>&1
+    ( unset CLAUDE_CONFIG_DIR
+      HOME="$NOCLI_HOME" TMPDIR="$INST_TMP" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" bash "$INSTALL" "$@" 2>&1 )
 }
+legacy_enable "$ROOTS/a"
 out="$(run_nocli)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"claude CLI is not on PATH -- not enabling"* && ! -e "$ROOTS/a/$SLJ" ]] \
-    && pass "without the claude CLI, install skips the plugin with a note and exits 0" \
-    || fail "no-CLI install (rc=$rc out=${out:0:400})"
+[[ "$rc" -eq 0 && "$out" == *"claude CLI is not on PATH -- not enabling the agent-workspace plugin"* \
+   && "$out" == *"$ROOTS/a/$SLJ (registered root a) holds a per-root agent-workspace entry from this checkout; the claude CLI is not on PATH -- remove it by hand"* ]] \
+    && pass "without the claude CLI, install notes the skipped enable and the per-root entry, and succeeds" \
+    || fail "no-CLI install (rc=$rc out=${out:0:500})"
 out="$(run_nocli --check)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"the claude CLI is not on PATH"* ]] \
-    && pass "without the claude CLI, --check notes the unenabled root and stays green" \
-    || fail "no-CLI --check (rc=$rc out=${out:0:400})"
-# ...but a plugin that must be REMOVED cannot be without the CLI: install
-# over a doubled (workspace-toplevel) root fails, and leaves it as it was.
-stale_enable "$WSC/projects/inner"
-out="$(run_nocli)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"not on PATH -- cannot remove the agent-workspace plugin from $WSC/projects/inner"* ]] \
-   && enabled_in "$WSC/projects/inner" \
-    && pass "without the claude CLI, install over a doubled root exits 1 instead of claiming success" \
-    || fail "no-CLI install over a doubled root (rc=$rc out=${out:0:400})"
-rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
-# ...and the same for a parent= instance's own declaration.
-stale_enable "$ROOTS/fam/inst"
-out="$(run_nocli)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"declared in parent= instance fam-i itself"*"by hand"* ]] \
-   && enabled_in "$ROOTS/fam/inst" \
-    && pass "without the claude CLI, install over a parent= instance's own declaration exits 1 and leaves it" \
-    || fail "no-CLI install over an instance declaration (rc=$rc out=${out:0:400})"
-rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
-run >/dev/null
+[[ "$rc" -eq 0 && "$out" == *"note: the agent-workspace plugin is not enabled at user scope"*"not on PATH"* ]] \
+    && pass "...and --check notes the missing enable without calling it drift" \
+    || fail "...no-CLI --check (rc=$rc out=$out)"
 out="$(run_nocli --uninstall)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"cannot remove the agent-workspace plugin from $ROOTS/a"* \
-      && "$out" != *"removed the agent-workspace plugin from $ROOTS/a"* ]] && enabled_in "$ROOTS/a"; then
-    pass "without the claude CLI, --uninstall exits 1 for a root whose plugin it cannot remove"
-else
-    fail "no-CLI --uninstall (rc=$rc out=${out:0:400})"
-fi
+[[ "$rc" -eq 1 && "$out" == *"ERROR: $ROOTS/a/$SLJ"*"not on PATH"* ]] && has_entry "$ROOTS/a" \
+    && pass "...and --uninstall without the CLI exits 1, naming the per-root entry it cannot remove" \
+    || fail "...no-CLI --uninstall (rc=$rc out=${out:0:400})"
 run >/dev/null
 
-# --uninstall disables the plugin in every root that has it.
-: > "$STUB_LOG"
-out="$(run --uninstall)"; rc=$?
-if [[ "$rc" -eq 0 ]] && ! enabled_in "$ROOTS/a" && ! enabled_in "$ROOTS/fam" \
-   && [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]]; then
-    pass "--uninstall removes the plugin and its marketplace from every enabled root"
-else
-    fail "--uninstall left the plugin behind (rc=$rc out=${out:0:400})"
-fi
-[[ "$out" == *"$ROOTS/gone is not on disk"* ]] \
-    && pass "--uninstall notes a registered root that is gone, without failing" \
-    || fail "--uninstall did not note the missing root (out=${out:0:400})"
-if grep -q "^$WSC" "$STUB_LOG"; then
-    fail "--uninstall ran the CLI in a skipped workspace-toplevel root"
-else
-    pass "--uninstall does not run the CLI in the skipped workspace-toplevel roots"
-fi
-
-# --uninstall with the user-tier files all gone (root file, hook link,
-# settings.json) but the plugin still enabled in registered roots: it is
-# not "nothing installed", and the roots are cleaned.
-run >/dev/null
-mv "$SETTINGS" "$SANDBOX/settings.saved"
-rm -f "$ROOT_FILE" "$HOOK_LINK"
-out="$(run --uninstall)"; rc=$?
-if [[ "$rc" -eq 0 && "$out" != *"nothing installed"* && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* ]] \
-   && ! enabled_in "$ROOTS/a" && ! enabled_in "$ROOTS/fam"; then
-    pass "--uninstall removes plugin enables from registered roots even with the user-tier files gone"
-else
-    fail "--uninstall with only plugin enables left (rc=$rc out=${out:0:400})"
-fi
-out="$(run --uninstall)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"nothing installed"* ]] \
-    && pass "--uninstall then says nothing is installed" \
-    || fail "--uninstall with nothing left (rc=$rc out=${out:0:400})"
-mv "$SANDBOX/settings.saved" "$SETTINGS"
-
-# The CLI's machine-level marketplace record is keyed by name: one source
-# per machine. --check flags a record naming another checkout, and nothing
-# else about the file (absent, another marketplace, no path field).
-KM="$HOMEDIR/.claude/plugins/known_marketplaces.json"
-mkdir -p "$(dirname "$KM")"
-run >/dev/null
-root_calls_all() {  # CLI calls the stub saw from inside any registered root
-    awk -F'|' -v p="$ROOTS/" 'index($1, p) == 1' "$STUB_LOG" | wc -l
-}
-km() {  # <agent-workspace source path, or "" for none>
-    jq -n --arg p "$1" '{"claude-plugins-official": {source: {source: "github", repo: "x/y"}}}
-        + (if $p == "" then {} else {"agent-workspace": {source: {source: "directory", path: $p}}} end)' > "$KM"
-}
-km "$SANDBOX/elsewhere"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"machine-level record of the agent-workspace marketplace ($KM) names another checkout, $SANDBOX/elsewhere"* ]] \
-    && pass "--check flags a machine-level marketplace record naming another checkout" \
-    || fail "foreign machine-level marketplace record not flagged (rc=$rc out=${out:0:400})"
-for src in "$WSC_PHYS" "$SANDBOX/ws-link"; do
-    km "$src"
-    out="$(run --check)"; rc=$?
-    [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
-        && pass "--check accepts a machine-level record of '${src#"$SANDBOX"/}' (this checkout)" \
-        || fail "machine-level record '${src#"$SANDBOX"/}' wrongly flagged (rc=$rc out=${out:0:400})"
-done
-# No entry for it -- no entry, no file, or a file with no readable entry --
-# is drift while roots are enabled from here: live case J saw an absent
-# record leave every enabled root without the plugin.
-for shape in entry file json; do
-    case "$shape" in
-        entry) km "" ;;
-        file)  rm -f "$KM" ;;
-        json)  printf '{not json' > "$KM" ;;
-    esac
-    out="$(run --check)"; rc=$?
-    [[ "$rc" -eq 1 && "$out" == *"DRIFT: the claude CLI's machine-level record of the agent-workspace marketplace ($KM) has no entry for it"* ]] \
-        && pass "--check flags a machine-level record with no entry for it (no $shape) while roots are enabled from here" \
-        || fail "absent machine record (no $shape) not flagged (rc=$rc out=${out:0:400})"
-done
-mkdir -p "$(dirname "$KM")"
-km ""
-: > "$STUB_LOG"
-out="$(run)"; rc=$?
-[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" && "$(grep -c '|plugin marketplace add ' "$STUB_LOG")" -eq 1 && "$(root_calls_all)" -eq 0 \
-      && "$out" == *"has no entry for it, not this checkout -- taking it over once, before any project root"* ]] \
-    && pass "install takes an absent machine-level record over before any root, with every root already enabled" \
-    || fail "install over an absent record (rc=$rc km=$(tr -d '\n' < "$KM") out=${out:0:400})"
-# ...and the read-back demands the record name this checkout: a CLI that
-# exits 0 and leaves no entry is a failure, not "no longer foreign".
-km ""
-out="$(STUB_NO_KM=1 run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"reported success, but its machine-level record ($KM) has no entry for it, not this checkout"* ]] \
-    && pass "a takeover that leaves the record with no entry fails the read-back" \
-    || fail "entry-less read-back passed (rc=$rc out=${out:0:400})"
-run >/dev/null
-# Last install wins, as ONE machine-level step before any project root:
-# install over a record naming another checkout takes the name over with a
-# single `marketplace add`, run from a throwaway directory outside every
-# root, and every root already enabled from here is then left alone (no CLI
-# call there at all). --check clears by following its own advice. Every root
-# is already enabled here -- the case that used to short-circuit.
-root_files() {  # every enable root's settings.local.json, verbatim
-    local r
-    for r in a nogit fam fam-stray; do
-        printf '%s=%s\n' "$r" "$(cat "$ROOTS/$r/$SLJ" 2>/dev/null || echo ABSENT)"
-    done
-}
-root_calls() {  # CLI calls the stub saw from inside any registered root
-    awk -F'|' -v p="$ROOTS/" 'index($1, p) == 1' "$STUB_LOG" | wc -l
-}
-km "$SANDBOX/elsewhere"
-before="$(root_files)"
-: > "$STUB_LOG"
-out="$(run)"; rc=$?
-adds="$(grep -c '|plugin marketplace add ' "$STUB_LOG")"
-if [[ "$rc" -eq 0 && "$out" == *"names $SANDBOX/elsewhere, not this checkout -- taking it over once, before any project root"* \
-      && "$adds" -eq 1 && "$(root_calls)" -eq 0 && "$(root_files)" == "$before" ]] \
-   && [[ "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]]; then
-    pass "install takes a foreign machine-level record over with one add outside every root, leaving enabled roots alone"
-else
-    fail "machine-level takeover (rc=$rc adds=$adds root_calls=$(root_calls) km=$(cat "$KM") out=${out:0:500})"
-fi
-if [[ -z "$(ls -A "$INST_TMP")" ]]; then
-    pass "the takeover's scratch directory is removed afterwards"
-else
-    fail "the takeover left files in its TMPDIR: $(ls -A "$INST_TMP")"
-fi
-out="$(run --check)"; rc=$?
+# CLAUDE_CONFIG_DIR: the CLI keeps its user settings and records there, so
+# the installer reads them there, and a run that finds them current makes
+# no CLI call.
+CFG="$SANDBOX/cfgdir"
+mkdir -p "$CFG"
+n0="$(n_log)"
+out="$(RUN_CFG="$CFG" run)"; rc=$?
+[[ "$rc" -eq 0 && "$(log_since "$n0" | wc -l)" -eq 2 ]] \
+    && jq -e --arg id "$PID" '.enabledPlugins[$id] == true' "$CFG/settings.json" >/dev/null \
+    && pass "with CLAUDE_CONFIG_DIR set, the enable is read from (and lands in) that directory" \
+    || fail "CLAUDE_CONFIG_DIR install (rc=$rc calls: $(log_since "$n0") out=${out:0:400})"
+n0="$(n_log)"
+out="$(RUN_CFG="$CFG" run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "...and a re-run there makes no CLI call" \
+    || fail "...CLAUDE_CONFIG_DIR re-run (rc=$rc calls: $(log_since "$n0"))"
+out="$(RUN_CFG="$CFG" run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
-    && pass "--check is clean after install took the machine-level record over" \
-    || fail "--check still flags the machine-level record after install (rc=$rc out=${out:0:400})"
+    && pass "...and --check reads it there" || fail "...CLAUDE_CONFIG_DIR --check (rc=$rc out=$out)"
+RUN_CFG="$CFG" run --uninstall >/dev/null
+run >/dev/null
 
-# The round-3 must-fix: a takeover that fails -- the CLI refuses the add, or
-# exits 0 without repointing the record -- stops install before any project
-# root. Every root's declaration survives byte for byte, the CLI never runs
-# in any root, and install exits 1. Root a is made to need enabling too, so
-# a per-root path would have run there had install carried on.
-for mode in STUB_ADD_FAIL STUB_NO_KM; do
-    km "$SANDBOX/elsewhere"
-    rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-    before="$(root_files)"
-    : > "$STUB_LOG"
-    out="$(export "$mode=1"; run)"; rc=$?
-    case "$mode" in
-        STUB_ADD_FAIL) why="exited non-zero, so the machine-level record still names $SANDBOX/elsewhere" ;;
-        STUB_NO_KM)    why="reported success, but its machine-level record ($KM) names $SANDBOX/elsewhere, not this checkout" ;;
-    esac
-    if [[ "$rc" -eq 1 && "$out" == *"$why"* && "$out" == *"stopped before touching any project root"* \
-          && "$(root_files)" == "$before" && "$(root_calls)" -eq 0 && -z "$(ls -A "$INST_TMP")" ]]; then
-        pass "a failed machine-level takeover ($mode) exits 1 with every root's declaration intact and no CLI call in any root"
-    else
-        fail "failed takeover ($mode) touched roots or passed (rc=$rc root_calls=$(root_calls) out=${out:0:500} diff=$(diff <(echo "$before") <(root_files)))"
-    fi
-done
-out="$(run)"; rc=$?
-[[ "$rc" -eq 0 ]] && enabled_in "$ROOTS/a" \
-    && pass "once the CLI takes the add, install repoints the record and enables the remaining root" \
-    || fail "install after a failed takeover (rc=$rc out=${out:0:400})"
-
-# An interrupt during the takeover's CLI call removes the scratch directory
-# too: TERM the installer while a slow stub `marketplace add` runs.
-km "$SANDBOX/elsewhere"
-: > "$STUB_LOG"
+# The scratch directory: a TMPDIR inside a git repository is refused
+# before the CLI runs; an interrupt while the CLI runs leaves nothing.
+jq --arg id "$PID" 'del(.enabledPlugins[$id]) | del(.extraKnownMarketplaces["agent-workspace"])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+mkdir -p "$SANDBOX/gittmp"
+git -C "$SANDBOX/gittmp" init -q
+n0="$(n_log)"
+out="$(RUN_TMPDIR="$SANDBOX/gittmp" run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"is inside a git repository -- not running the claude CLI there"* && "$(n_log)" -eq "$n0" ]] \
+    && [[ "$(find "$SANDBOX/gittmp" -mindepth 1 -maxdepth 1 ! -name .git | wc -l)" -eq 0 ]] \
+    && pass "a TMPDIR inside a git repository is refused before the CLI runs, and nothing is left there" \
+    || fail "TMPDIR in git (rc=$rc out=${out:0:400})"
 (
     unset CLAUDE_CONFIG_DIR
     HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="$INST_TMP" STUB_ADD_SLEEP=2 \
-        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" exec bash "$INSTALL" >/dev/null 2>&1
-) &
-inst_pid=$!
-for _ in $(seq 1 100); do
-    grep -q '|plugin marketplace add ' "$STUB_LOG" && break
-    sleep 0.1
-done
-saw_scratch="$(ls -A "$INST_TMP")"
-kill -TERM "$inst_pid" 2>/dev/null
-wait "$inst_pid"; rc=$?
-[[ "$rc" -eq 143 && -n "$saw_scratch" && -z "$(ls -A "$INST_TMP")" ]] \
-    && pass "a TERM during the takeover removes its scratch directory (exit 143)" \
-    || fail "interrupted takeover (rc=$rc scratch-before='$saw_scratch' left='$(ls -A "$INST_TMP")')"
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" >/dev/null 2>&1 &
+    pid=$!
+    sleep 1
+    ls -A "$INST_TMP" > "$SANDBOX/saw-scratch"
+    kill -TERM "$pid"
+    wait "$pid"
+    echo "$?" > "$SANDBOX/term-rc"
+)
+[[ "$(cat "$SANDBOX/term-rc")" -eq 143 && -s "$SANDBOX/saw-scratch" && -z "$(ls -A "$INST_TMP")" ]] \
+    && pass "an interrupt while the CLI runs leaves no scratch directory behind" \
+    || fail "interrupted enable (rc=$(cat "$SANDBOX/term-rc") saw='$(cat "$SANDBOX/saw-scratch")' left='$(ls -A "$INST_TMP")')"
 run >/dev/null
 
-# The scratch directory must not sit in a git repository, where the CLI's
-# local scope could resolve to that repository instead: install refuses
-# before running the CLI at all.
-mkdir -p "$SANDBOX/gittmp"
-git -C "$SANDBOX/gittmp" init -q
-km "$SANDBOX/elsewhere"
-before="$(root_files)"
-: > "$STUB_LOG"
-out="$(RUN_TMPDIR="$SANDBOX/gittmp" run)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"inside the git repository $SANDBOX/gittmp"* && ! -s "$STUB_LOG" \
-      && "$(root_files)" == "$before" && "$(ls -A "$SANDBOX/gittmp")" == ".git" ]]; then
-    pass "a takeover scratch directory inside a git repository is refused before any CLI call"
-else
-    fail "scratch-in-git-repo guard (rc=$rc log=$(cat "$STUB_LOG") left=$(ls -A "$SANDBOX/gittmp") out=${out:0:400})"
-fi
-rm -rf "${SANDBOX:?}/gittmp"
+# --check reads JSON only: it never runs the CLI.
+legacy_enable "$ROOTS/a"
+n0="$(n_log)"
+run --check >/dev/null
+[[ "$(n_log)" -eq "$n0" ]] && pass "--check runs no claude CLI call" || fail "--check ran the CLI: $(log_since "$n0")"
 
-# The per-root step still runs local `marketplace remove` (here: removing a
-# doubled declaration from a workspace-toplevel root). A CLI whose local
-# remove also drops the machine record would undo the takeover while install
-# exits 0; the read-back after the per-root step catches that and takes the
-# record back -- or, when it cannot, exits 1.
-km "$WSC_PHYS"
-stale_enable "$WSC/projects/inner"
-out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"after the per-root step the machine-level record of the agent-workspace marketplace has no entry for it"* && "$out" == *"taking it over again, after the per-root step"* \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]] \
-    && pass "a machine record dropped by the per-root step's CLI calls is caught and taken back" \
-    || fail "record lost in the per-root step (rc=$rc km=$(cat "$KM") out=${out:0:500})"
-stale_enable "$WSC/projects/inner"
-out="$(STUB_REMOVE_DROPS_KM=1 STUB_ADD_FAIL=1 run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"lost the machine-level record"*"could not be taken back"* ]] \
-    && pass "a machine record the per-root step lost and cannot take back makes install exit 1" \
-    || fail "unrecoverable lost record passed install (rc=$rc out=${out:0:500})"
+# --uninstall after a migrated install: no --scope local entry anywhere and
+# no user-scope entry; the next --uninstall finds nothing.
 run >/dev/null
-# The round-5 must-fix, as reproduced: the record starts ABSENT, the first
-# root's add creates it in the per-root step, and a later local remove (a
-# leftover declaration in the workspace checkout itself) drops it again.
-# Nothing named this checkout going in, so a before/after gate missed it:
-# install exited 0 with an empty record and --check said "current".
-km ""
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-mkdir -p "$WSC/.claude"
-jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$WSC/$SLJ"
-out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
-[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" && "$out" == *"taking it over again, after the per-root step"* ]] \
-    && pass "a record created in the per-root step and dropped later in it is taken back" \
-    || fail "absent-then-dropped record (rc=$rc km=$(tr -d '\n' < "$KM") out=${out:0:500})"
-rm -f "${WSC:?}/.claude/settings.local.json"
-run >/dev/null
-km "$SANDBOX/elsewhere"    # the state the cases below start from
-
-# With no root to enable from this checkout, install does not take the name:
-# that would only move the other checkout's sessions onto this one's skills.
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-printf 'inner single_project %s\ngone single_project %s\n' "$WSC/projects/inner" "$ROOTS/gone" > "$WSC/.agent/projects.local"
-: > "$STUB_LOG"
-out="$(run)"; rc=$?
-[[ "$rc" -eq 0 && "$out" != *"taking it over"* && ! -s "$STUB_LOG" \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
-    && pass "with no root to enable, install leaves a foreign machine-level record alone" \
-    || fail "install took the record with no root to enable (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-# Nor when every root to be enabled has an unparseable settings.local.json:
-# each fails in the per-root step whatever happens, so the name would move
-# for nothing. Install exits 1 on those roots and leaves the record.
-cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
-printf 'a single_project %s\n' "$ROOTS/a" > "$WSC/.agent/projects.local"
-cp "$ROOTS/a/$SLJ" "$SANDBOX/a-slj.saved"
-printf '{not json' > "$ROOTS/a/$SLJ"
-: > "$STUB_LOG"
-out="$(run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" != *"taking it over"* && ! -s "$STUB_LOG" \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
-    && pass "with every root to enable unparseable, install leaves a foreign machine-level record alone" \
-    || fail "install took the record for roots that cannot succeed (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
-mv "$SANDBOX/a-slj.saved" "$ROOTS/a/$SLJ"
-mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
-
-# No claude CLI: the takeover cannot run. Install says so and carries on
-# (a no-CLI machine enables nothing either), and an already-enabled root is
-# reported as what it is.
-out="$(run_nocli)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"taking it over needs the claude CLI, which is not on PATH"* \
-      && "$out" == *"plugin already enabled: $ROOTS/a"* && "$out" != *"not enabling the agent-workspace plugin in $ROOTS/a"* \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
-    && pass "without the claude CLI, install notes that the takeover needs it, and calls enabled roots enabled" \
-    || fail "no-CLI install over a foreign machine-level record (rc=$rc out=${out:0:500})"
-# ...and --check, whose "re-run this installer" could not clear it there,
-# says what is needed instead and stays green, as for an unenabled root.
-out="$(run_nocli --check)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"note: the claude CLI's machine-level record"*"names another checkout, $SANDBOX/elsewhere"*"taking it over needs the claude CLI, which is not on PATH"* \
-      && "$out" != *"DRIFT"* ]] \
-    && pass "without the claude CLI, --check notes the foreign machine-level record with advice that says the CLI is needed" \
-    || fail "no-CLI --check over a foreign machine-level record (rc=$rc out=${out:0:500})"
-# The same without the CLI when the record has NO entry for it (no entry,
-# or no file): install's 6a NOTE and --check's note name the absent entry,
-# not another checkout, and both stay green like the foreign case.
-for shape in entry file; do
-    case "$shape" in
-        entry) km "" ;;
-        file)  rm -f "$KM" ;;
-    esac
-    out="$(run_nocli)"; rc=$?
-    [[ "$rc" -eq 0 && "$out" == *"NOTE: the claude CLI's machine-level record of the agent-workspace marketplace has no entry for it, not this checkout -- taking it over needs the claude CLI, which is not on PATH"* \
-          && "$out" != *"names another checkout"* && "$out" == *"plugin already enabled: $ROOTS/a"* ]] \
-        && pass "without the claude CLI, install notes an absent machine-level record (no $shape) and that the takeover needs the CLI" \
-        || fail "no-CLI install over an absent machine-level record, no $shape (rc=$rc out=${out:0:500})"
-    out="$(run_nocli --check)"; rc=$?
-    [[ "$rc" -eq 0 && "$out" == *"note: the claude CLI's machine-level record of the agent-workspace marketplace ($KM) has no entry for it"*"taking it over needs the claude CLI, which is not on PATH"* \
-          && "$out" != *"DRIFT"* ]] \
-        && pass "without the claude CLI, --check notes an absent machine-level record (no $shape) with advice that says the CLI is needed" \
-        || fail "no-CLI --check over an absent machine-level record, no $shape (rc=$rc out=${out:0:500})"
-done
-mkdir -p "$(dirname "$KM")"
-km "$SANDBOX/elsewhere"
-run >/dev/null
-# CLAUDE_CONFIG_DIR moves the CLI's records: with it set, the record read
-# (and taken over) is the one under it, and a stale one in ~/.claude is
-# irrelevant -- reading ~/.claude there made the takeover's read-back fail
-# on every run. The rest of the user tier stays in ~/.claude, with a note.
-CFG="$SANDBOX/cfg"
-mkdir -p "$CFG/plugins"
-jq -n --arg p "$SANDBOX/elsewhere" '{"agent-workspace": {source: {source: "directory", path: $p}}}' > "$CFG/plugins/known_marketplaces.json"
-km "$WSC_PHYS"
-out="$(RUN_CFG="$CFG" run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"($CFG/plugins/known_marketplaces.json) names another checkout, $SANDBOX/elsewhere"* \
-      && "$out" == *"NOTE: CLAUDE_CONFIG_DIR is set ($CFG)"* ]] \
-    && pass "with CLAUDE_CONFIG_DIR set, --check reads the CLI's record there (and notes the rest of the tier is in ~/.claude)" \
-    || fail "--check with CLAUDE_CONFIG_DIR (rc=$rc out=${out:0:500})"
-km "$SANDBOX/elsewhere"
-out="$(RUN_CFG="$CFG" run)"; rc=$?
-[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$CFG/plugins/known_marketplaces.json")" == "$WSC_PHYS" \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
-    && pass "with CLAUDE_CONFIG_DIR set, install takes over the record there, and a stale ~/.claude one does not block it" \
-    || fail "install with CLAUDE_CONFIG_DIR (rc=$rc out=${out:0:500})"
-out="$(RUN_CFG="$CFG" run --check)"; rc=$?
-[[ "$rc" -eq 0 && "$out" != *"DRIFT"* ]] \
-    && pass "with CLAUDE_CONFIG_DIR set, --check is clean after the takeover there" \
-    || fail "--check with CLAUDE_CONFIG_DIR after install (rc=$rc out=${out:0:500})"
-rm -rf "${CFG:?}"
-km "$WSC_PHYS"
-
-# With no root enabled from this checkout, no session of this checkout's
-# loads the record and install has no root to repoint it from: not drift.
-saved_slj="$SANDBOX/saved-slj"
-mkdir -p "$saved_slj"
-for r in a nogit fam fam-stray; do
-    [[ -f "$ROOTS/$r/$SLJ" ]] && mv "$ROOTS/$r/$SLJ" "$saved_slj/$r.json"
-done
-out="$(run --check)"
-[[ "$out" != *"machine-level record"* ]] \
-    && pass "--check does not flag the machine-level record while no root has the plugin from this checkout" \
-    || fail "machine-level record flagged with no root enabled from this checkout (out=${out:0:400})"
-for r in a nogit fam fam-stray; do
-    [[ -f "$saved_slj/$r.json" ]] && mv "$saved_slj/$r.json" "$ROOTS/$r/$SLJ"
-done
-rm -rf "$saved_slj"
-rm -f "$KM"
-
-# --uninstall leaves another checkout's plugin alone: a second checkout's
-# uninstall must not take away the first's. This checkout's go as usual.
-run >/dev/null
-foreign_enable "$ROOTS/a"
-before="$(cat "$ROOTS/a/$SLJ")"
-: > "$STUB_LOG"
+legacy_enable "$ROOTS/a"
+legacy_enable "$WSC"
 out="$(run --uninstall)"; rc=$?
-if [[ "$rc" -eq 0 && "$out" == *"plugin in $ROOTS/a is declared from another checkout ($SANDBOX/elsewhere) -- left"* \
-      && "$(cat "$ROOTS/a/$SLJ")" == "$before" ]] && ! grep -q "^$ROOTS/a|" "$STUB_LOG" && ! enabled_in "$ROOTS/fam"; then
-    pass "--uninstall leaves a root declared from another checkout untouched, and still removes its own"
-else
-    fail "--uninstall and another checkout's plugin (rc=$rc out=${out:0:400} log=$(cat "$STUB_LOG"))"
-fi
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-
-# A declaration whose source is no longer on disk is no checkout's to
-# remove any more (its --uninstall cannot run): it is stale, not foreign,
-# so --check calls it not enabled from here and --uninstall removes it.
-run >/dev/null
-mkdir -p "$ROOTS/a/.claude"
-jq -n --arg p "$SANDBOX/deleted-checkout" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
-    extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$ROOTS/a/$SLJ"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root a"* \
-      && "$out" != *"declared from another checkout"* ]] \
-    && pass "--check treats a declaration whose source is gone as stale, not another checkout's" \
-    || fail "orphaned declaration misreported (rc=$rc out=${out:0:400})"
+[[ "$rc" -eq 0 ]] && ! has_entry "$ROOTS/a" && ! has_entry "$WSC" \
+    && jq -e --arg id "$PID" '((.enabledPlugins // {}) | has($id) | not) and ((.extraKnownMarketplaces // {}) | has("agent-workspace") | not)' "$SETTINGS" >/dev/null \
+    && pass "--uninstall leaves no per-root entry and no user-scope entry" \
+    || fail "--uninstall (rc=$rc out=${out:0:500} settings: $(jq -c '{enabledPlugins, extraKnownMarketplaces}' "$SETTINGS"))"
+grep -qxF "plugin uninstall $PID --scope user" <(cut -d'|' -f2 "$STUB_LOG") \
+    && grep -qxF "plugin marketplace remove agent-workspace --scope user" <(cut -d'|' -f2 "$STUB_LOG") \
+    && pass "...through the CLI at --scope user" || fail "...uninstall CLI calls"
+n0="$(n_log)"
 out="$(run --uninstall)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* \
-      && "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]] \
-    && pass "--uninstall removes a declaration whose source is no longer on disk" \
-    || fail "orphaned declaration left by --uninstall (rc=$rc out=${out:0:400})"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-
-# ...but another checkout's plugin in a root inside THIS checkout's tree
-# still doubles every skill there: --check flags it and install removes it.
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "...and a second --uninstall runs no CLI call" || fail "...second --uninstall (rc=$rc out=$out calls: $(log_since "$n0"))"
+# Another checkout's user-scope declaration is left alone by --uninstall.
 run >/dev/null
-foreign_enable "$WSC/projects/inner"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"enabled in inner"*"loads twice"* ]] \
-    && pass "--check flags another checkout's plugin in a workspace-toplevel root" \
-    || fail "foreign enable in a skipped root not flagged (rc=$rc out=${out:0:400})"
-run >/dev/null
-[[ ! -e "$WSC/projects/inner/$SLJ" ]] || [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$WSC/projects/inner/$SLJ")" == 0 ]] \
-    && pass "install removes another checkout's plugin from a workspace-toplevel root" \
-    || fail "foreign enable in a skipped root survived install ($(cat "$WSC/projects/inner/$SLJ"))"
-rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
-
-# --uninstall over an unparseable settings.local.json: it cannot tell
-# whether the plugin is there, so it says so, exits 1, and leaves the file.
-run >/dev/null
-printf '{not json' > "$ROOTS/a/$SLJ"
+jq --arg p "$OTHER_WS" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
 out="$(run --uninstall)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"$ROOTS/a/.claude/settings.local.json is not valid JSON"* \
-      && "$(cat "$ROOTS/a/$SLJ")" == '{not json' ]] \
-    && pass "--uninstall reports an unparseable settings.local.json, exits 1 and leaves it alone" \
-    || fail "--uninstall over an unparseable settings.local.json (rc=$rc out=${out:0:400})"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+[[ "$rc" -eq 0 && "$out" == *"declared from another checkout ($OTHER_WS) -- left for that checkout's --uninstall"* ]] \
+    && [[ "$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path' "$SETTINGS")" == "$OTHER_WS" ]] \
+    && pass "--uninstall leaves another checkout's user-scope declaration alone" \
+    || fail "--uninstall over a foreign user-scope declaration (rc=$rc out=${out:0:400})"
 
-# ------------------------------------------------- --disable-root <name> ---
-# One registered root (#332: register_project.sh runs it before removing a
-# registry line). It treats that root as --uninstall treats each: the
-# plugin goes where this checkout declared it; another checkout's
-# declaration, a parent= instance's parent and the rest of ~/.claude stay.
-run >/dev/null
-enabled_in "$ROOTS/a" && enabled_in "$ROOTS/fam" && enabled_in "$ROOTS/pp/inst" \
-    || fail "--disable-root setup: roots not enabled before the cases"
-cp "$SETTINGS" "$SANDBOX/settings.before-disable"
-: > "$STUB_LOG"
-out="$(run --disable-root a)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* ]] && ! enabled_in "$ROOTS/a" \
-      && [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]] \
-    && pass "--disable-root removes the plugin from that root" \
-    || fail "--disable-root a (rc=$rc out=${out:0:400} slj=$(cat "$ROOTS/a/$SLJ" 2>/dev/null))"
-enabled_in "$ROOTS/fam" && enabled_in "$ROOTS/pp/inst" && ! grep -qv "^$ROOTS/a|" "$STUB_LOG" \
-    && pass "--disable-root leaves every other root alone (the CLI ran only in that root)" \
-    || fail "--disable-root touched another root ($(cat "$STUB_LOG"))"
-cmp -s "$SETTINGS" "$SANDBOX/settings.before-disable" && [[ -f "$ROOT_FILE" ]] \
-    && pass "--disable-root leaves ~/.claude (settings.json, the root file) unchanged" \
-    || fail "--disable-root changed ~/.claude"
-: > "$STUB_LOG"
-out="$(run --disable-root a)"; rc=$?
-[[ "$rc" -eq 0 && ! -s "$STUB_LOG" ]] \
-    && pass "--disable-root on a root without the plugin is a no-op, with no CLI call" \
-    || fail "second --disable-root a (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:300})"
-foreign_enable "$ROOTS/a"
-out="$(run --disable-root a)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"declared from another checkout"* \
-      && "$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path' "$ROOTS/a/$SLJ")" == "$SANDBOX/elsewhere" ]] \
-    && pass "--disable-root leaves another checkout's declaration alone, with a note" \
-    || fail "--disable-root over a foreign declaration (rc=$rc out=${out:0:400})"
-rm -f "${ROOTS:?}/a/.claude/settings.local.json"
-# A CLI whose local remove drops the machine-level record: the other roots
-# enabled from here would lose the plugin, so the record is taken back.
-run >/dev/null
-out="$(STUB_REMOVE_DROPS_KM=1 run --disable-root a)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"taking it over back, after removing the plugin from a"* \
-      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]] && ! enabled_in "$ROOTS/a" \
-    && pass "--disable-root takes the machine-level record back when the local remove drops it" \
-    || fail "--disable-root with a dropped record (rc=$rc km=$(tr -d '\n' < "$KM" 2>/dev/null) out=${out:0:500})"
-: > "$STUB_LOG"
-out="$(run --disable-root fam-i)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"parent root provides the plugin"* && ! -s "$STUB_LOG" ]] && enabled_in "$ROOTS/fam" \
-    && pass "--disable-root on a parent= instance leaves its parent's plugin, and runs no CLI" \
-    || fail "--disable-root fam-i (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
-out="$(run --disable-root gone)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"is not on disk"* ]] \
-    && pass "--disable-root on a root not on disk is a note" \
-    || fail "--disable-root gone (rc=$rc out=${out:0:300})"
-out="$(run --disable-root nosuch)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"'nosuch' is not registered"* ]] \
-    && pass "--disable-root on an unregistered name exits 1" \
-    || fail "--disable-root nosuch (rc=$rc out=${out:0:300})"
-out="$(run --disable-root)"; rc=$?
-[[ "$rc" -eq 2 && "$out" == *"needs a registered project name"* ]] \
-    && pass "--disable-root without a name is a usage error" \
-    || fail "--disable-root without a name (rc=$rc out=${out:0:300})"
-out="$(run --disable-root a --uninstall)"; rc=$?
-[[ "$rc" -eq 2 && "$out" == *"mutually exclusive"* ]] \
-    && pass "--disable-root and another mode are mutually exclusive" \
-    || fail "--disable-root with --uninstall (rc=$rc out=${out:0:300})"
-rm -f "$SANDBOX/settings.before-disable"
-run >/dev/null
-
-rm -f "${WSC:?}/.agent/projects.local" "${SANDBOX:?}/ws-link"
-rm -rf "${WSC:?}/.git" "${WSC:?}/projects"
-run >/dev/null
+# A registry that does not parse stops install, --check and --uninstall
+# before anything changes.
+run >/dev/null 2>&1
+printf 'a single_project %s\nbad!name single_project %s\n' "$ROOTS/a" "$ROOTS/b" > "$WSC/.agent/projects.local"
+legacy_enable "$ROOTS/a"
+for mode in install --check --uninstall; do
+    n0="$(n_log)"
+    if [[ "$mode" == install ]]; then out="$(run)"; rc=$?; else out="$(run "$mode")"; rc=$?; fi
+    [[ "$rc" -eq 1 && "$out" == *"invalid project name 'bad!name'"* && "$out" == *"ERROR: $WSC/.agent/projects.local does not parse"* \
+       && "$(n_log)" -eq "$n0" ]] && has_entry "$ROOTS/a" \
+        && pass "a registry that does not parse stops $mode before anything changes" \
+        || fail "$mode over a bad registry (rc=$rc out=${out:0:400})"
+done
+rm -f "$WSC/.agent/projects.local" "$ROOTS/a/$SLJ"
 
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"
