@@ -3099,3 +3099,69 @@ Outside reviewers:
   - **Input:** owning checkout equal to origin, `progress.md` an untracked symlink to an untracked `local.md` in the same folder that holds `$APPROVED_AT_HEAD`.
   - **Result:** "Review gate: approved review at head `abc1234`", and no record. Before this round's early return, git status would have reported `??`.
   - **Fix:** in the read guard, set `_GATE_OWN_NOREAD` from `_gate_rec_unsafe` (a symlink or a non-file is not read either), or drop the early return. Add a read row. — `.agent/scripts/merge_pr.sh:770-772, 830-836`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 2 of 3)
+
+**PR**: #461 at `1e54eaed`
+**Addressed**: Local Review at `b36bbf8` (2026-11-13 10:08 -05:00), post-PR re-review, two must-fix, both closed by the owner's rule change; its boxes are left as written (`review_progress.sh findings` takes only an Integrated Review or a pre-push Local Review as a source)
+**Commits**: 76b5f5f7 (code and tests), 1e54eaed (docs)
+
+Owner's decision, put to him as: "Change the rule once: for a package issue the gate reads progress.md from the commit that equals origin's branch, not from the working copy. Every working-copy case then stops mattering." His answer: "Read the committed copy (Recommended)".
+
+### Actions
+- [x] READ (owning package PR only; `merge_pr.sh:762-858`). The guard is unchanged up to equality: top folder, on the PR branch, HEAD equals origin's copy after the bounded fetch. When those hold, `_GATE_OWN_SHA` is that commit.
+  - The gate takes `git ls-tree` of `.agent/work-plans/issue-N/progress.md` at that SHA. A regular blob (100644/100755) is written by `git cat-file blob` into a private `mktemp -d` folder, removed on EXIT (with HUP/INT/TERM traps that exit, so EXIT runs).
+  - Both readers of the owning timeline read that file: the review check (`progress_read.py` for Local/Integrated Review) and the duplicate check (`progress_read.py` for the Merge entries, plus the PR comments). There is no other reader: `review_progress.sh` is not called by the gate, and the ancestry check reads git history in `_ci_wt`, not the file.
+  - A path absent from the commit gives no timeline, reason "no progress.md for issue #N committed at origin's <branch> (<sha7>) in <A>". A non-regular blob gives a refusal naming the mode.
+  - The location rule is now `issue_checkout_guard` on the checkout itself, the check inside `records_path`, instead of `records_path` on the working-copy path, which would resolve working-copy symlinks.
+  - Reasons name the timeline as "<A>/<rel> at <sha7>". The workspace and project branch still reads its worktree's working copy through `records_path`, unchanged.
+- [x] REMOVED from the read side: `_gate_rec_dirty` and its `_GATE_OWN_NOREAD` use (untracked / staged / unstaged / deleted / assume-unchanged / skip-worktree "not read" reasons). `_gate_rec_unsafe` was never on the read side and stays record-only. No "its timeline is not read" reason remains except the checkout-level ones (detached, other branch, fetch failed, no origin ref, behind/diverged, ahead).
+- [x] RECORD (owning only; `_gate_rec_not_committed`, called from `_gate_record` after `_gate_rec_unsafe`). Rule, stated once in the code comment: "the record is committed only when the working copy's progress.md is the committed one". That means HEAD still at the SHA; tracked; a regular file; the index blob equal to the committed blob; the working file's `hash-object` equal to the index; no lowercase or `S` `ls-files -v` tag; or absent from both the commit and the working copy, with no index entry (create). Anything else gives a comment "<rel> in <A> <is untracked / is ignored and untracked / is staged but not committed / has staged changes / has unstaged changes / has staged and unstaged changes / is marked assume-unchanged or skip-worktree ...> (not committed at <sha7> where it is not), so the record is not committed there (left as found)". Symlinks and non-folders on the way keep `_gate_rec_unsafe`'s reason.
+- [x] Duplicate check (owning): reads the committed copy plus the PR comments, as before.
+- [x] Texts, last:
+  - `docs/design.md`: Records bullet, records-gate sentence, the comment-fallback list and both Merge gate bullets.
+  - `script_reference.md` rows 13 and 38, and `run-issue/SKILL.md` (two places).
+  - Each states the one rule: reads the committed timeline at origin's branch head; records only when the working copy's file is the committed one.
+  - All `merge_pr.sh` citations re-derived from the final file: Table 1 at 869 and 1170, 1460 and 1473, 2262-2282; Records bullet at 744-805, 806-858, 890-897 and 1293-1294, 869 and 1170, 1460 and 1473; mechanism 1 at 719-858 and 1133-1308.
+  - Change-log row added (1003 lines).
+
+### Test expectations, pkg-13 to pkg-22 and hang-*
+- pkg-1: reason text changed to "no progress.md for issue #901 committed at origin's feature/issue-901 (<sha>) in A" (it now means none committed); still recorded and pushed in A.
+- pkg-13, pkg-14, pkg-15, pkg-16 (incl. control), pkg-19: unchanged. Checkout-level, not read before the commit question arises; the pkg-16 control now reads the commit at R1.
+- pkg-17 (symlink / dangling / folder, nothing committed): unchanged expectation (record reason from `_gate_rec_unsafe`); the read now reports none committed.
+- pkg-18, pkg-21, pkg-22: unchanged; their timeline is the committed one (the record commits are pushed, so HEAD equals origin).
+- pkg-20 (record shapes): CHANGED. They asserted "not read" plus "; the record is not committed there". Now they assert the commit is read (stale review, or "none committed" for untracked shapes), no "not read" reason, and the record reason ", so the record is not committed there (left as found)". The untracked reason gains "(not committed at <sha7>)". NEW shape: ignored-untracked.
+- pkg-20 read: CHANGED and extended.
+  - uncommitted-approval now reads the committed stale review, not "not read".
+  - NEW: ignored-approval and symlink-approval (the re-review's two inputs) do not pass.
+  - unrelated-note now PASSES: the commit holds the approval, and no record is needed.
+  - NEW: edited-changes-requested, deleted and symlink-replaced pass from the commit with nothing recorded.
+  - Each run also asserts that the private temporary folder (TMPDIR pointed at an empty folder) is left empty. With the cleanup disabled, 6 rows fail, so the assertion is real.
+- hang-1 to hang-4, hang-ws: unchanged; they pass.
+- e2e (`test_package_issue_loop.sh`): "owning PR targeting main ... recorded in A and pushed" and "owning PR on its base: the gate passes on A's timeline" both pass.
+
+Before-fix check: the suite with these tests was run against the scripts at `e9f72dfc`. 16 tests fail there: pkg-1, all eight pkg-20 record shapes, and seven of the eight pkg-20 read shapes (all but clean).
+
+### Input table (owning checkout equal to origin unless stated; CHANGED / NEW marked)
+| Working copy / commit | What the gate reads | Verdict | Record | Test |
+|---|---|---|---|---|
+| clean, committed approval | committed approval | passes | none | pkg-2, pkg-20 read clean |
+| clean, committed stale review | committed stale | refuses (report-only) | committed and pushed in A | pkg-3, pkg-4, e2e |
+| nothing committed, nothing in the working copy | none committed — CHANGED text | refuses | created, committed and pushed | pkg-1 |
+| committed approval; working copy noted / edited to changes-requested / deleted / symlink-replaced — CHANGED/NEW | committed approval | passes | none | pkg-20 read |
+| committed stale; approval appended uncommitted — CHANGED | committed stale | refuses | PR comment, "has unstaged changes" | pkg-20 read uncommitted-approval |
+| nothing committed; ignored file with an approval — NEW | none committed | refuses | PR comment, "is ignored and untracked" | pkg-20 read ignored-approval |
+| nothing committed; untracked symlink to a local approval — NEW | none committed | refuses | PR comment, "is a symlink" | pkg-20 read symlink-approval |
+| committed stale; unstaged / staged / both / deleted / assume-unchanged / skip-worktree — CHANGED | committed stale | refuses | PR comment with that reason, file byte-identical | pkg-20 |
+| nothing committed; untracked / ignored-untracked (NEW) | none committed | refuses | PR comment, "is (ignored and) untracked (not committed at <sha7>)" | pkg-20 |
+| symlink / dangling / folder progress.md | none committed | refuses | PR comment, `_gate_rec_unsafe` reason | pkg-17 |
+| ahead / behind / diverged / detached / other branch | not read (checkout-level) | refuses | PR comment | pkg-19, pkg-16, pkg-15, pkg-13 |
+| origin silent at the fetch | not read | refuses | PR comment | hang-1 |
+
+Workspace path: unchanged. The committed-copy read and `_gate_rec_not_committed` run only when `_GATE_PKG_ROLE` is owning. The workspace branch keeps `records_path` plus a working-copy read, and the workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with unchanged assertions, so verdicts and record behaviour are as on main, apart from what earlier rounds of this PR changed in the shared comment filter.
+
+Tests: `test_merge_pr_gate.sh` 197 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed. `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0, "run_script_tests: all 37 suites passed in 626s (scoped run, 37 of 48)".
