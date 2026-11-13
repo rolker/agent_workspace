@@ -2149,3 +2149,11 @@ The 2b refresh is accurate against main: every line and every "done by 460" clai
 **Decision**: revise
 
 Open question decided: option 1, as the review's step 2b.7 gives it. The issue's own text asks that the review read the package's diff, and run-issue step 8 as written would merge the default branch into a branch started from the pin. So: (i) dispatch_phase.sh emits "/review-code --branch origin/<base> --issue N" for a pre-push review of a package issue with a recorded base, unchanged otherwise; (ii) check_branch_updates.sh takes [--strict] [--base <b>], with no argument behaving as now for its other callers; (iii) run-issue step 8 uses the base for a package issue and merges origin/<base>; (iv) review-code's SKILL says the cross_model_review.sh --branch call takes the base step 1b resolved; (v) script_reference.md; with the two tests the review names. Also: narrow the acceptance row to what is really unmet (only the pre-push review and the behind-check, only when the pin is not the default branch); drop the planned git branch -d case (already asserted); say in acceptance line 1 what is testable; fix the two line citations.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 06:09 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `a68a3d74`
+
+Revision after the plan review (needs-work) and the host's revise: added step 2b.7 (base of the pre-push review and the behind-check), narrowed the two acceptance rows, dropped the git branch -d case, fixed the two line citations, updated the Files table and Estimated Scope.
