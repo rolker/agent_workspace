@@ -3,7 +3,12 @@
 ## Status
 
 Accepted. Extends [ADR-0011](0011-project-type-adapter-contract.md)'s
-adapter contract with two verbs.
+adapter contract with two verbs. Cross-reference (2026-11-12, issue 429):
+the `.worktree-repos` header has since gained a `base=` field, the base
+branch of the owning repository's pull request, from which its new branch
+starts; it is described in
+[`docs/design.md#worktrees`](../design.md#worktrees), and the pin it comes
+from is [ADR-0019](0019-repo-pin-verb.md)'s `repo_pin`.
 
 ## Context
 
@@ -107,4 +112,7 @@ requirement structurally rather than by convention.
   is a new ADR rather than an addendum to ADR-0011
 - [ADR-0002](0002-worktree-isolation-over-branch-switching.md) — worktree
   isolation this preserves for multi-repo package worktrees
+- [ADR-0019](0019-repo-pin-verb.md) — the `repo_pin` verb a package
+  worktree's base branch comes from; the manifest's `base=` field is in
+  [`docs/design.md#worktrees`](../design.md#worktrees) (issue 429)
 - Issue #252 (`ros2_colcon` adapter phase 3: layer/package worktrees)
