@@ -1721,3 +1721,13 @@ Implementation deviations judged: start-task SKILL.md edit, citation refresh, qu
 - [ ] (suggestion) A pin of kind `unknown` (offline with no remote-tracking ref, so repo_pin's NOTE says unverified) is refused as "pinned at <ref> (unknown); only a branch can be a base": the cause may be an unanswered origin, not a non-branch; word it as "kind could not be established" and suggest retrying online — `.agent/scripts/_pr_base.sh:109-111`
 - [ ] (suggestion) `base` for an existing package worktree ignores `--package-repos` without a message, and the header comment does not say so (the implementer's stated gap): compare it with the manifest and refuse a mismatch, or say it is ignored — `.agent/scripts/dispatch_phase.sh:26-55`
 - [ ] (suggestion) docs/design.md Table 1 `dispatch_phase.sh` row was edited but its line citations (167, 228-277, 452, 581, 669, 700) are stale (`resolve_worktree` is now at 269; they were already off on main) — `docs/design.md`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 22:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first review of the base mechanism's diff, two must-fix; the round limit is reached only because the counter carries the merged pull requests' reviews, issue 459; first host address for this pull request, the owner's merge of pull request 456 having come between)
+**After**: rounds
+**Decision**: address
+
+Fix all seven findings. Host decisions on finding 1 (a resumed worktree recorded the pin as base= without checking the branch started there): (a) nothing is recorded silently. On resume with no base=, the candidate base (an explicit --base, else the pin) is recorded only after a check that the owning branch carries no foreign history against origin/<base>: every commit in origin/<base>..HEAD that is also reachable from another branch on origin (other than the issue branch itself) is foreign; if any exists, refuse, name the count and the branch they come from, and say how to proceed (recreate the worktree, or pass the --base it was really started from). (b) Creating the owning repository's branch in a package worktree always resolves a base: an explicit --base, else the manifest pin through pr_base_for; if neither gives a branch, creation refuses and asks for --base. A package worktree is no longer started from origin's default branch by omission. This follows the owner's direction of 2026-11-10 (the base comes from the manifest pin, not GitHub's default branch). Finding 2: pull origin <base> explicitly. Finding 6: refuse a --package-repos that does not match the existing manifest. The other findings as the review states them.
