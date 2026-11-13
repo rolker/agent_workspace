@@ -91,10 +91,15 @@ if [[ "$scope" == user && ( "$2" == install || "$2" == uninstall ) ]]; then
 fi
 STUBEOF
 chmod +x "$STUB"
-# vcs stub for ros2_colcon setup: imports nothing.
+# vcs stub for ros2_colcon setup: imports nothing, or with VCS_MKDIRS=1
+# makes a directory per repository, as a real import leaves.
 cat > "$STUB_BIN/vcs" <<'EOF'
 #!/usr/bin/env bash
-cat > /dev/null
+in="$(cat)"
+if [ -n "${VCS_MKDIRS:-}" ]; then
+    sed -n 's/^  \([A-Za-z0-9_.-]*\):[[:space:]]*$/\1/p' <<< "$in" \
+        | while IFS= read -r n; do mkdir -p "${@: -1}/$n"; done
+fi
 exit 0
 EOF
 chmod +x "$STUB_BIN/vcs"
@@ -705,6 +710,55 @@ check "the refusal says why and names the type ros2_colcon" \
     bash -c '[[ "$1" == *"nothing resolves a source for it"* && "$1" == *"register it as type ros2_colcon"* ]]' _ "$out"
 check "no registry line, no settings file" \
     bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
+
+echo "TEST: ros2_colcon from a source (#436): registration runs setup from the manifest, and the gate passes"
+# The resolver is THIS checkout's tools/ros-manifest/src, run by the first
+# python that imports it and yaml (the main checkout's venv, else python3);
+# with none it is a failure where the resolver is meant to be present (a
+# ros-manifest on PATH, the main checkout's .venv/bin/ros-manifest, or CI),
+# a loud skip elsewhere.
+MR_SRC="$REAL_ROOT/tools/ros-manifest/src"
+MR_PY=""
+_common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+for _py in ${_common:+"${_common%/.git}/.venv/bin/python3"} "$(command -v python3 2>/dev/null || true)"; do
+    [ -n "$_py" ] && [ -x "$_py" ] || continue
+    if PYTHONPATH="$MR_SRC" "$_py" -c 'import sys, yaml, ros_manifest; sys.exit(0 if ros_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
+        MR_PY="$_py"; break
+    fi
+done
+if [ -n "$MR_PY" ]; then
+    mkdir -p "$WS/.venv/bin"
+    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m ros_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$WS/.venv/bin/ros-manifest"
+    chmod +x "$WS/.venv/bin/ros-manifest"
+    MW="$SANDBOX/mwork/tau"
+    mkdir -p "$MW"
+    gitq init --quiet --bare -b main "$SANDBOX/mremote/tau.git"
+    gitq -C "$MW" init --quiet -b main
+    printf 'layers:\n  - core\nrepos:\n  core:\n    pkg_a:\n      url: file:///nonexistent/pkg_a.git\n      ref: main\nroles:\n  dev: {}\n' > "$MW/manifest.yaml"
+    gitq -C "$MW" add -A
+    gitq -C "$MW" commit --quiet -m init
+    gitq -C "$MW" push --quiet "$SANDBOX/mremote/tau.git" main
+    TAU="$SANDBOX/colcon/tau"
+    out="$(VCS_MKDIRS=1 reg "$WS" "$TAU" ros2_colcon --role dev --distro fakefox \
+        --set "source=file://$SANDBOX/mremote/tau.git" --set source_ref=main)"; rc=$?
+    check "exit 0, STATUS=registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+    check "setup ran and resolved from the source" \
+        bash -c '[[ "$1" == *"== adapter --project tau setup"* && "$1" == *"source: resolved role '"'"'dev'"'"' distro '"'"'fakefox'"'"'"* ]]' _ "$out"
+    check "the static gate passed, adapter validate included" bash -c '[[ "$1" == *"OK: adapter validate passed"* && "$1" == *"VERIFY=pass"* ]]' _ "$out"
+    check "the registry line carries role and distro" bash -c 'grep -qE "^tau .*role=dev.*distro=fakefox|^tau .*distro=fakefox.*role=dev" "$1"' _ "$WS/.agent/projects.local"
+    check "the settings file holds the source" \
+        [ "$(cat "$(pfile "$WS" tau)")" = "source=file://$SANDBOX/mremote/tau.git"$'\n'"source_ref=main" ]
+    check "the generated directory and the clone are in the root" \
+        bash -c '[ -L "$1/configs/manifest-resolved" ] && [ -d "$1/configs/source-clone/.git" ] && [ -d "$1/layers/main/core_ws/src/pkg_a" ]' _ "$TAU"
+    out="$(reg "$WS" --remove tau)"
+else
+    if command -v ros-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/ros-manifest" ]; }; then
+        fail "no python imports both yaml and $MR_SRC, though the resolver is meant to be present here"
+    else
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC)"
+    fi
+fi
 
 # --------------------------------------------------- a missing type ---
 echo "TEST: a type without registration.conf is refused"
