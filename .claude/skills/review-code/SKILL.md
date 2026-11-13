@@ -403,6 +403,12 @@ $WS_ROOT/.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,co
 $WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex --no-progress  # skill worktrees
 ```
 
+In branch mode, pass `--branch "$BASE"`, the same base step 1b resolved
+(the `--branch <base-ref>` this review was given, e.g. `origin/<base>` in
+a package issue's handoff), so the cross-model reviewers judge the same
+diff; a bare `--branch` lets the script resolve its own default, which can
+differ.
+
 Omit an agent from the list when its CLI is known to be unavailable
 (e.g. Codex while its quota is exhausted); a listed agent whose CLI is
 missing fails only itself, not the run.
