@@ -72,3 +72,11 @@ Read: the Issue Review at 26e4f013 and its report. The owner's rule (2026-11-13)
 ### Decisions made (owner may veto)
 - One addition to the review's scope, in the same paragraphs of run-issue this pull request already rewrites (step 10, "The host owns every push"): record-only commits (review entries, triage entries, checkpoints) are pushed once, with the merge, not after each phase; commits that change code are still pushed when made, so CI and the pull-request-mode review see them. Each push starts two CI runs; on 2026-11-13 most pushes on a published pull request carried records only. Issue 477's review ranked this first of the later changes and marked it the host's to decide — undoing it: drop that paragraph's change from the pull request.
 - Issue 465 stays open after this pull request for the wider question.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 14:45 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-465/plan.md` at `f4d00412`
+
+One pull request ("Part of #465"): the 2026-11-13 rule in the dispatcher text, run-issue, address-findings and the host standing rules, with the host's one full pass before the push and record-only pushes held until the merge, pinned by tests; stale time and rule comments last. The implement pass finds its suites with suites_for_files.sh.
