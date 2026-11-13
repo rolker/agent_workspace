@@ -49,10 +49,12 @@
 # Not promoted to the user tier (ADR-0016 decision 6;
 # .agent/user_tier_scripts.txt names it among the scripts never promoted),
 # so no permission rule allows it: each call asks for permission, showing
-# the full command, and that prompt is the owner's yes. A session in a
-# folder he does not trust must not be able to register the folder, and so
-# make its own build command runnable by the promoted build.sh, without him
-# seeing the full command.
+# the full command, unless the owner has allowed the command himself (a
+# "don't ask again" answer, auto mode, a broader allow rule). A session in
+# a folder he does not trust must not be able to register the folder, and
+# so make its own build command runnable by the promoted build.sh, without
+# him seeing the full command. The prompt is a gate, not the yes:
+# onboard-project asks his yes in text before the real call.
 
 set -uo pipefail
 

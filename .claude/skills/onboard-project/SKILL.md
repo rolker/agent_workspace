@@ -74,7 +74,8 @@ says so, and changes nothing without a yes.
 - in a folder that is not registered, its registration: its line in the
   workspace's registry and its settings file (through
   `$WS_ROOT/.agent/scripts/register_session_root.sh`, step 1; the yes is
-  that call's permission prompt);
+  asked in text after its dry run is shown, and the real call's permission
+  prompt is a second gate);
 - a setting in the project's settings file (through
   `$WS_ROOT/.agent/scripts/project_setting.sh set`);
 - a line in the clone's `.git/info/exclude`;
@@ -145,7 +146,15 @@ the rest of the run.
     command, or `none`, before the real run. Under this skill's
     `--dry-run`, stop here.
 
-    Then run it:
+    Then ask one yes in text, for this write alone: register this folder,
+    with the registry line and the settings file the dry run showed. A no
+    stops the run. Ask it even though the real call raises a permission
+    prompt: that prompt is not guaranteed. A "Yes, and don't ask again" on
+    the dry run's prompt allows the same command, so the real call can run
+    with no prompt, and auto mode or a broader allow rule removes both
+    prompts.
+
+    On the yes, run it:
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -156,8 +165,9 @@ the rest of the run.
     the commands the user gave, each as one quoted argument; `build=` and
     `test=` are the only keys it takes.
 
-    Do not also ask for a yes in text: the permission prompt for this call,
-    showing the full command, is the yes, and a no there stops the run.
+    The permission prompt for this call, when it appears, shows the full
+    command and is a second gate after the yes in text: a no there also
+    stops the run.
   - **The real run ends `STATUS=registered, <verbs> not run`**: run
     `session_root.sh` again; it now prints `type=project` and `project=`,
     and the run carries on with that. Say that the build and test were not

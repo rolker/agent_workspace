@@ -43,9 +43,9 @@ every registered root, and this script acts only there), and this record
 does not supersede it. The script has no line in
 `.agent/user_tier_scripts.txt`, so no permission rule allows it, and each
 call asks for permission, showing the full command. That prompt is the
-owner's yes: a session in a folder he does not trust cannot register the
-folder, and so make its own build command runnable, without him seeing the
-command.
+owner's gate, unless he has allowed the command: a session in a folder he
+does not trust cannot register the folder, and so make its own build
+command runnable, without him seeing the command.
 
 ## Decision
 
@@ -78,11 +78,14 @@ does not take (a name, a type, a parent root, `--remove`).
 
 - **Onboarding is one step from the project's folder.**
   `/agent-workspace:onboard-project` in a folder that is not registered
-  shows the registration's dry run and, on the permission prompt's yes,
+  shows the registration's dry run, asks one yes in text and, on that yes,
   registers the folder and carries on.
-- **Two permission prompts per registration from a project session**, the
-  dry run's and the real call's. The skill shows the dry run and does not
-  ask a third time in text.
+- **A yes in text, and the permission prompts as a second gate.** The dry
+  run and the real call each ask for permission, but a prompt is not
+  guaranteed: "Yes, and don't ask again" on the dry run's prompt allows the
+  real call too, and auto mode or a broader allow rule removes both. So
+  the skill asks one yes in text after showing the dry run, before the real
+  call, and the real call's prompt, when it appears, is a second gate.
 - **The build and test are not run** by a registration from a project
   session; the status says so.
 - **A folder in no git repository cannot be registered this way yet.**
