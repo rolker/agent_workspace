@@ -417,7 +417,7 @@ probe, not a description to keep current.
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 869 and 1176, 1466 and 1479, 2268-2288 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 643, 731, 763, 902 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 283-332, 507, 649, 737, 769, 908 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
@@ -600,7 +600,7 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   549, 595, 597, 659, 920: the round count, the exit contract, `--check-exit` and `next`, which is
+   555, 601, 603, 665, 940: the round count, the exit contract, `--check-exit` and `next`, which is
    what a resumed session reads), `merge_pr.sh` (719-858, 1139-1314: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
@@ -637,10 +637,10 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 | `plan-task` | `plan.md`, committed on the feature branch, and a `## Plan Authored` entry | `review-plan` runs next, no decision |
 | `review-plan` | A `## Plan Review` entry | The `plan` checkpoint follows every plan review, whatever its verdict: proceed, revise or stop |
 | `implement` | Commits on the branch and an `## Implementation` entry; it never pushes | `review-code` on the branch runs next, no decision |
-| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
+| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) of the current pull request without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
 | `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | `publish` has just been answered; the host does the push (`run-issue/SKILL.md` step 7) |
 | `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the `findings` checkpoint, where merging past them is the owner's answer only; with none open, the `merge` checkpoint |
-| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
+| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused`. A merge on an issue that stays open was an earlier part: with no pull request open, the `plan` checkpoint plans or implements the next one |
 
 - **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
   only place loop state lives: not the conversation, not a lock file. `publish` writes no entry, and
@@ -658,11 +658,24 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   issue, a plan or a commit; ADR-0013), are written by `progress_append.sh`, checked by
   `_progress_entry.sh` and read by `progress_read.py`.
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
-  and, as its one other input, the pull request state; it reads earlier entries for two things only, the
-  count of completed pre-push reviews on the branch since the newest `**Decision**: restart` checkpoint (`round_count`; a restart begins the new work at round 1) and whether a failed `Implementation`
-  entry belongs to `address-findings` (`skill_for`, which also looks only after that checkpoint); it makes no `gh` call and returns one action from a
-  28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
-  checkpoint, never a silent retry.
+  and, as its one other input, the pull request state; it reads earlier entries for three things only:
+  the count of completed pre-push reviews on the branch of the current pull request (`round_count`),
+  whether a failed `Implementation` entry belongs to `address-findings` (`skill_for`), both from where
+  the current pull request's work starts, and whether a `merge` answer stands with no new work after it.
+  It makes no `gh` call and returns one action from a 28-row table plus row 3a (`dispatch_phase.sh`
+  header). A partial or failed newest entry is always a `phase-failed` checkpoint, never a silent retry.
+- **An issue can be delivered in several pull requests** (owner decision 2026-11-13, #459). Where a pull
+  request starts is one rule in `pr_start.py`: after a `merge` answer, the first `## Plan Authored`, or
+  `**Addressed**`-less `## Implementation` on the branch or on another pull request than the merged one
+  (a fix on the merged one is none); a non-`merge` answer at `merge`, `findings` or `merge-refused`
+  withdraws it, a `## Merge (...)` record does nothing, and a hand merge leaves none until the host
+  records a `merge` answer. Rounds (`next`, `review_progress.sh round`) count from the newer of it and a
+  `restart` (no boundary); `sources` cuts only at it. A landed merge ends the run; the next part is a
+  fresh `/run-issue`, which asks the issue's state first (closed ends it; unreadable stops it), takes a
+  merged pull request as an earlier part, and with none open gets the `plan` checkpoint (row 3a), where
+  `proceed` is offered only for a plan unchanged since its review that names a part not yet delivered.
+  `--pr merged` (row 1, `done`) is given only by hand. The last part's `Closes #N` closes the issue on
+  the default branch; elsewhere the owner closes it; the loop never does (`run-issue/SKILL.md` step 13).
 - **Each phase but `publish` and `merge` runs in a fresh sub-agent**, except that a repeat of a phase in
   the same drive may resume the earlier agent (`run-issue/SKILL.md` 4a), and a failed phase the owner
   hands to the host runs in the host (`mode=inline`, step 5). The host does the push and the merge
@@ -988,7 +1001,9 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Owner's decision (issue 429, pull request 461): for a package issue the gate reads the committed `progress.md` at origin's branch head, never the working copy; the record is committed in the owning checkout only when the working copy's file is the committed one; the working-copy read conditions are gone; every `merge_pr.sh` citation refreshed | #429 | 1003 |
 | 2026-11-13 | Change log | Main merged into issue 429's branch (pull request 461) after #446 landed: the rows of both sides are kept in date order (#446's 2026-11-12 row before issue 429's 2026-11-13 rows), and their line counts are each side's own file at the time; this row's count is the merged file's | #429 | 1022 |
 | 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` citations refreshed after the owning record check came to compare mode as well as content with `git diff` (issue 429, pull request 461); the rule's wording, that the record is committed only when the working copy's `progress.md` is the committed one, does not change | #429 | 1023 |
-| 2026-11-13 | Sessions and roots, Registry and adapters, Decision register, Open questions | A project session may register its own folder (#466, ADR-0021, superseding ADR-0016 decision 5): the Sessions and roots Now block names ADR-0021; the exceptions bullet becomes two exceptions, the settings file and a session registering the folder it was started in through `register_session_root.sh`, which is not promoted, so each call asks for permission; the registration bullet says registration is done from the workspace or from the folder's own session; the onboarding bullet says an unregistered folder is offered registration (dry run, one yes in text, the real call's permission prompt as a second gate, build and test not run) and names the no-git gap; Registry and adapters Now says what `register_session_root.sh` takes, refuses and hands over, and that registration needs a git repository today; its Target names both ways to register; register row 0016 notes decision 5 superseded, row 0021 is added and the count says 21 (it said 19, two rows behind); C4's answer names the new way. Sessions and roots is 149 lines and Registry and adapters 139, both past the 60-line prompt, and grow by 12 and 8: the bullets name the script and the ADR that hold the rules, so no detail moves | #466 | 1045 |
+| 2026-11-13 | Review loop and timeline | An issue delivered in several pull requests (#459, owner decision 2026-11-13): the `review-code` row counts `MAX_ROUNDS` per pull request; the `merge` row says a merge on an open issue was an earlier part and the `plan` checkpoint follows; the routing bullet says `next` reads where the current pull request's work starts and whether a `merge` answer stands (row 3a); a new bullet states the boundary rule (`pr_start.py`, shared by `next`, `round` and `sources`), the issue-state check before the probe, what `proceed` relies on, and who closes the issue. The section grows by 13 lines and stays past the 60-line prompt: the rule's detail is in `pr_start.py`'s docstring and `run-issue/SKILL.md` step 13, so no further detail moves | #459 | 981 |
+| 2026-11-13 | Change log | Main merged into issue 459's branch (pull request 467) after issue 429's last pull request (461) landed: the rows of both sides are kept, issue 429's 2026-11-13 rows (already on main) before #459's, and their line counts are each side's own file at the time; the `dispatch_phase.sh` line numbers in Table 1 and the Target's mechanism 1 are refreshed for the merged script (#459 had moved them by six to twenty lines); this row's count is the merged file's | #459 | 1038 |
+| 2026-11-13 | Sessions and roots, Registry and adapters, Decision register, Open questions | A project session may register its own folder (#466, ADR-0021, superseding ADR-0016 decision 5): the Sessions and roots Now block names ADR-0021; the exceptions bullet becomes two exceptions, the settings file and a session registering the folder it was started in through `register_session_root.sh`, which is not promoted, so each call asks for permission; the registration bullet says registration is done from the workspace or from the folder's own session; the onboarding bullet says an unregistered folder is offered registration (dry run, one yes in text, the real call's permission prompt as a second gate, build and test not run) and names the no-git gap; Registry and adapters Now says what `register_session_root.sh` takes, refuses and hands over, and that registration needs a git repository today; its Target names both ways to register; register row 0016 notes decision 5 superseded, row 0021 is added and the count says 21 (it said 19, two rows behind); C4's answer names the new way. Sessions and roots is 149 lines and Registry and adapters 139, both past the 60-line prompt, and grow by 12 and 8: the bullets name the script and the ADR that hold the rules, so no detail moves | #466 | 1060 |
 
 ## Glossary
 

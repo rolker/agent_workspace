@@ -53,14 +53,41 @@ via `.agent/scripts/progress_append.sh` and read back via
 
 `.agent/scripts/dispatch_phase.sh next --issue <N> --pr <state>` routes on
 the newest `progress.md` entry (plus `--pr`, the one non-timeline input)
-and prints an `action=` token. It reads earlier entries for two things
-only: `round_count()` counts the completed `## Local Review (Pre-Push)`
-entries on the branch after the newest `**Decision**: restart`
-checkpoint (a restart begins the new work at round 1), and `skill_for()` looks for an earlier complete
-`## Implementation` after that same checkpoint to tell a failed
-address-findings pass from a failed implement pass. The routing key is the entry's `base_type`
-and its fields — never adjacency to the entry before it. Two routing rules
-worth remembering because they read as exceptions:
+and prints an `action=` token. It reads earlier entries for three things
+only, all through `.agent/scripts/pr_start.py` (issue 459):
+`round_count()` counts the completed `## Local Review (Pre-Push)`
+entries on the branch from the round start (defined below),
+`skill_for()` looks for an earlier complete `## Implementation` from that
+same start to tell a failed address-findings pass from a failed implement
+pass, and row 3a asks whether a `merge` answer stands with no new work
+after it. The rounds start after the newest `**Decision**: restart`
+checkpoint (a restart begins the new work at round 1), or, for an issue
+delivered in several pull requests, at the pull-request boundary, whichever
+is newer. The boundary is the first start entry after a `merge` answer: a
+`## Plan Authored`, or an `**Addressed**`-less `## Implementation` that is
+`**Branch**`-correlated, carries a `**PR**` number other than the merged
+pull request's, or has no correlation line and is not complete (the next
+part's first review is round 1; `pr_start.py`'s docstring has the cases
+that are not starts). A non-`merge` answer at `merge`, `findings` or
+`merge-refused` withdraws the `merge` answer; a `## Merge (...)` record
+changes nothing; a merge by hand with no `merge` answer leaves no boundary
+until the host records one (`run-issue` step 13). `review_progress.sh
+round` reads the same round start; `sources` cuts at the boundary only. A
+restart moves only the round start: it keeps an open pull request's
+earlier reviews in `sources`, leaves a standing `merge` answer armed, and
+is no remedy for a hand merge (only a recorded `merge` answer is). The
+routing key is the entry's `base_type` and its fields — never adjacency to
+the entry before it. Three routing rules worth remembering because they
+read as exceptions:
+
+- **After a merge, with no pull request open, the `plan` checkpoint**
+  (row 3a): when the timeline still holds a `merge` answer and the newest
+  entry is that answer (any `**After**`) or a `## Merge (...)` record,
+  `next --pr none` answers `checkpoint:plan` for the issue's next part
+  instead of `merge`. `run-issue` reaches it only in a fresh run for an
+  open issue (a landed merge ends the run that made it): it asks the
+  issue's state first, and probes a merged pull request as an earlier part
+  (`--pr none`), never as `--pr merged`.
 
 - **`## Local Review` and `## Local Review (Pre-Push)` route on
   `**Verdict**` alone** (`approved` vs. not), never on open findings —

@@ -25,6 +25,7 @@ error rather than as an unset email.
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True  # a commit leaves no __pycache__ beside the scripts
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import identity_base  # noqa: E402  pylint: disable=wrong-import-position
 

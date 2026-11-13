@@ -168,8 +168,12 @@ The words come from the handoff, never from the reviewer's own judgment:
 applies unchanged. A PR-mode round has no counter in the script, so there
 the words appear only when the host writes them into the handoff, and the
 host counts the round by the same rule over the PR's complete `## Local
-Review` entries: those after the newest `**Decision**: restart`
-checkpoint, plus one (pre-push rounds do not carry over).
+Review` entries: those from the round start, plus one (pre-push rounds
+do not carry over). The round start is the newer of the newest
+`**Decision**: restart` checkpoint and the pull request's start (the
+boundary after a `merge` answer; `pr_start.py` round_start, run-issue step
+13), the same start `review_progress.sh round` uses, so an earlier merged
+pull request's reviews of the same issue never count.
 
 This is the owner's standing exception from issue 321 ("a third is a
 narrow convergence check without external reviewers"; reason recorded in

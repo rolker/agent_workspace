@@ -703,6 +703,64 @@ has "$ORCH" "orchestrator: dialogs point at run-issue's Dialog layout" \
 has "$WS_ROOT/.agent/knowledge/host_standing_rules.md" "host standing rules: the dialog row's source names run-issue's Dialog layout" \
     '`run-issue/SKILL.md` step 6, Dialog layout'
 
+# --- An issue delivered in several pull requests (issue 459): step 2 asks
+# the issue's state before the pull-request probe and stops when it cannot
+# read it; on an open issue a merged pull request is an earlier part; step
+# 13 says what closes an issue and what the post-merge plan checkpoint
+# offers. `next` row 3a is tested in test_dispatch_phase.sh; this pins the
+# host prose that feeds it.
+has "$RI" "run-issue step 2: the issue state first; closed ends the run; a gh failure stops, never read as open or closed" \
+    '`CLOSED` ends the run (`done`; nothing is dispatched). A `gh` failure, no network, or an answer that is neither `OPEN` nor `CLOSED` stops the run with the error: it is never read as open or as closed.' \
+    'or for `owner/repo#N` `gh issue view <N> -R owner/repo`'
+has "$RI" "run-issue step 2: on an open issue a merged pull request is an earlier part; the surviving old worktree stops the run" \
+    'On an open issue a `MERGED` pull request is an earlier part of it' \
+    'if local `HEAD` equals a `MERGED` pull request'"'"'s `headRefOid`, the old worktree survived the merge; stop and say so' \
+    '`--pr merged` (row 1, `done`) is no longer a probe answer'
+has "$RI" "run-issue step 13: what closes the issue, the post-merge plan checkpoint, the hand-merge remedy" \
+    'Each part but the last says `Part of #N` in its body; only the last says `Closes #N`.' \
+    'A pull request into another base (a package issue'"'"'s pinned base) never closes it' \
+    'The loop never closes an issue itself.' \
+    '`proceed` (→ `implement`) is offered only when `plan.md` is unchanged since that review and the plan names a part not yet delivered; otherwise the answer is `revise`' \
+    '`**Decided-by**: owner`, his words in the body). A `restart` is no remedy there: it starts the rounds over but draws no boundary'
+has "$RI" "run-issue steps 11 and 13: a landed merge ends the run; the next part is a fresh /run-issue (issue 459)" \
+    '**A landed merge ends the run.** When `merge_pr.sh` reports the pull request merged, the run is `done`: the host reports the merge and does not call `next` again.' \
+    'The next part of the issue, if any, starts with a fresh `/run-issue <N>` (step 13).' \
+    'and the run that made the merge ends there (step 11): it never calls `next` again. The next part starts with a fresh `/run-issue <N>`'
+# The issue-state block itself, run against a stub gh: a failing gh stops
+# with a non-zero exit; CLOSED and OPEN are printed for the host to route.
+STATE_BLOCK="$(python3 - "$RI" <<'PYSTATE'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = [b for b in re.findall(r"```bash\n(.*?)```", text, re.S) if "gh issue view <N>" in b]
+print(blocks[0] if len(blocks) == 1 else "")
+PYSTATE
+)"
+if [[ -z "$STATE_BLOCK" ]]; then
+    fail "run-issue step 2: exactly one bash block asks gh issue view <N>"
+else
+    STUB_DIR="$(mktemp -d)"
+    STATE_BODY="$(printf '%s\n' "$STATE_BLOCK" | sed -e 's/<N>/7/g' -e 's/ \[-R <owner\/repo>\]//')"
+    for st in fail CLOSED OPEN; do
+        if [[ "$st" == fail ]]; then
+            printf '#!/usr/bin/env bash\necho "gh: could not resolve host" >&2\nexit 1\n' > "$STUB_DIR/gh"
+        else
+            printf '#!/usr/bin/env bash\necho %s\n' "$st" > "$STUB_DIR/gh"
+        fi
+        chmod +x "$STUB_DIR/gh"
+        out="$(PATH="$STUB_DIR:$PATH" bash -c "$STATE_BODY" 2>&1)"; rc=$?
+        if [[ "$st" == fail ]]; then
+            [[ "$rc" -ne 0 && "$out" == *"STOP: could not read the state of issue"* ]] \
+                && pass "run-issue step 2 block: a failing gh stops the run (rc=$rc)" \
+                || fail "run-issue step 2 block: a failing gh did not stop (rc=$rc out=$out)"
+        else
+            [[ "$rc" -eq 0 && "$out" == *"issue state: $st"* ]] \
+                && pass "run-issue step 2 block: gh answering $st prints it for the host" \
+                || fail "run-issue step 2 block: $st (rc=$rc out=$out)"
+        fi
+    done
+    rm -rf "$STUB_DIR"
+fi
+
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only
 # literally (the 2026-10-15 audit the issue cites); an empty Reason cell

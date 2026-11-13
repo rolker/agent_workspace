@@ -195,8 +195,12 @@ convergence check on the round 2 review's findings and the fix diff since
 it; no cross-model reviewers)`; a host may write the same words into a
 PR-mode handoff, counting the round as `review_progress.sh round` counts
 pre-push ones but over the PR's complete `## Local Review` entries: those
-after the newest `**Decision**: restart` checkpoint, plus one (pre-push
-rounds do not carry over, so the first PR-mode review is round 1). When they are there and the round they name is 3 or
+from the round start, plus one (pre-push rounds do not carry over, so the
+first PR-mode review is round 1). The round start is the newer of the
+newest `**Decision**: restart` checkpoint and the pull request's start (the
+boundary after a `merge` answer; `pr_start.py` round_start, run-issue
+step 13), the same start the pre-push count uses: an earlier merged pull
+request's reviews of the same issue never count. When they are there and the round they name is 3 or
 later, review only the prior round's findings and the fix diff since that
 review, and skip 5e (cross-model); the other specialists of the
 whole-diff tier still run. Record `**Depth**: <tier> (reason: round <R>
@@ -520,7 +524,9 @@ from `$WS_ROOT/.agent/scripts/review_progress.sh` (tested in
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Round = prior complete `## Local Review (Pre-Push)` entries for THIS branch,
-# after the newest `**Decision**: restart` checkpoint, + 1;
+# from the round start (the newer of the newest
+# `**Decision**: restart` checkpoint and the pull-request boundary after a
+# `merge` answer, pr_start.py round_start), + 1;
 # prev_must_fix = must-fix count of the newest such entry ("-" if none).
 $WS_ROOT/.agent/scripts/review_progress.sh round --issue <N> --branch "$BRANCH"
 

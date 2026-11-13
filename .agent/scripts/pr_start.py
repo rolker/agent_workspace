@@ -1,0 +1,209 @@
+"""Where the current pull request's work starts on an issue's timeline.
+
+The one definition of the "a pull request ended here" boundary (issue 459),
+read by ``dispatch_phase.sh next`` (round counting, the failed-phase skill
+mapping, the post-merge route) and by ``review_progress.sh`` (``round``,
+``sources``). Both load it with a plain ``from pr_start import ...`` after
+putting this directory on ``sys.path`` from the environment, so
+``tests/suites_for_files.sh`` maps a change here to their suites.
+
+Input is ``progress_read.py``'s ``entries`` list (file order is
+chronological). One pass over it gives two starts and the armed state:
+
+- the **round start**: the newest of a restart and a pull-request boundary.
+  Rounds count from it (``next``'s round count and failed-phase mapping,
+  ``review_progress.sh round``).
+- the **pull-request start**: the newest pull-request boundary only (a
+  restart does not move it). ``review_progress.sh sources`` lists the review
+  entries from it, so a restart recorded while a pull request is open keeps
+  that pull request's earlier reviews, open boxes included, in triage input.
+
+The pass:
+
+- ``## Checkpoint`` with **Decision**: restart: the round start moves to the
+  next entry (the owner restated the goal; rounds start over). Nothing
+  else changes: the pull-request start does not move, and a standing
+  ``merge`` answer stays armed, so the next part's first start entry after
+  it is still the pull-request boundary (and the round start, being later).
+- ``## Checkpoint`` with **Decision**: merge and **After**: merge or findings
+  arms: the pull request may have merged. The merged pull request's number
+  is taken there: the number of the newest PR-correlated entry before the
+  answer (the review the merge answer was given on); none when there is no
+  such entry.
+- ``## Checkpoint`` with **After**: merge, findings or merge-refused and any
+  other answer disarms: that merge was not made or did not land. A
+  ``merge`` answer at merge-refused neither arms nor disarms (an earlier arm
+  stands, with its number).
+- While armed, the first start entry is the boundary (both starts move
+  there) and disarms. A start entry is:
+
+  - a ``## Plan Authored``, whatever its **Status**;
+  - an ``## Implementation`` with no **Addressed** value that is
+    Branch-correlated (ADR-0013: **Branch** only "if no PR exists yet"),
+    whatever its **Status**: a failed first implementation of the next part
+    is that part's start, so its retry is ``implement``;
+  - an ``## Implementation`` with no **Addressed** value whose **PR** number
+    is not the merged pull request's (a draft pull request of the next part
+    existed before its first implementation). One with the merged pull
+    request's own number is a fix to that pull request (issue 332, entry
+    64), not a start. When the merged number is unknown (no PR-correlated
+    entry before the merge answer, or no number on the line), it is not a
+    start: a missed boundary over-counts rounds, which raises the rounds
+    checkpoint early (the owner is asked), while a false one would reset the
+    round count and drop the earlier reviews' open boxes from ``sources``
+    silently;
+  - an ``## Implementation`` with no **Addressed** value and no correlation
+    line only when its **Status** is not ``complete`` (a failed or partial
+    first implementation that stopped before writing the line). A complete
+    one is a pass that lost its lines (a fix pass that lost **Addressed**
+    too), not a start.
+
+- A ``## Merge (...)`` record neither arms nor disarms: ``merge_pr.sh`` writes
+  it at the gate, before the merge, whether or not the merge lands.
+- Every other entry changes nothing; an entry that is not a start entry
+  never disarms.
+
+Limitations: a merge made by hand with no ``merge`` answer recorded leaves
+no boundary, and a restart does not make one (it moves only the round
+start). The host records the owner's merge as a ``merge`` checkpoint
+(**Decided-by**: owner) before the next part.
+
+Pull-request numbers: an entry's number is its ``**PR**`` correlation, or,
+when ``progress_read.py`` parsed none (a legacy ``**PR**: #11 — 1 review(s),
+...`` line with no ``at `<sha>``` part), the ``#<n>`` that opens its
+``**PR**`` field. Only this module reads that fallback; the correlation
+contract of ``progress_read.py`` is unchanged. The newest number seen is
+forgotten at a boundary, so a part whose own reviews carry no number never
+takes the previous part's (its merged number is then unknown).
+"""
+
+import re
+from collections import namedtuple
+
+ARM_AFTERS = ("merge", "findings")
+DISARM_AFTERS = ("merge", "findings", "merge-refused")
+
+Scan = namedtuple("Scan", "round_start pr_start armed")
+
+# The box review-code writes on an approved review (its SKILL.md report
+# template), with any annotation after it ("No issues found. LGTM. Suite
+# 48/48."). That text, not a prefix of it: "No issues found in x but y
+# breaks" is a finding. The marker alone is not enough (see
+# is_lgtm_placeholder): the entry must also count no findings.
+_LGTM = re.compile(r"No issues found\. LGTM\.(\s|$)")
+# The review's summary line as the timeline writes it:
+# "**Must-fix**: 0 | **Suggestions**: 0" (progress_read.py gives the rest of
+# the line after "Must-fix" as that field's value).
+_COUNTS = re.compile(r"^\s*(\d+)\s*\|\s*\*\*Suggestions\*\*:\s*(\d+)\b")
+_PR_FIELD = re.compile(r"^\s*#(\d+)\b")
+
+
+def _norm(value):
+    return (value or "").strip().lower()
+
+
+def _status(entry):
+    return _norm(entry.get("status") or (entry.get("fields") or {}).get("Status"))
+
+
+def _pr_number(entry):
+    c = entry.get("correlation") or {}
+    if c.get("kind") == "pr":
+        try:
+            return int(c.get("pr"))
+        except (TypeError, ValueError):
+            return None
+    if c.get("kind"):
+        return None
+    m = _PR_FIELD.match((entry.get("fields") or {}).get("PR") or "")
+    return int(m.group(1)) if m else None
+
+
+def _is_start_entry(entry, merged_pr):
+    base = entry.get("base_type")
+    if base == "Plan Authored":
+        return True
+    if base != "Implementation":
+        return False
+    if ((entry.get("fields") or {}).get("Addressed") or "").strip():
+        return False
+    kind = (entry.get("correlation") or {}).get("kind")
+    if kind == "branch":
+        return True
+    number = _pr_number(entry)
+    if kind == "pr" or number is not None:
+        return merged_pr is not None and number is not None and number != merged_pr
+    return _status(entry) != "complete"
+
+
+def scan(entries):
+    """Return ``Scan(round_start, pr_start, armed)``: the index of the first
+    entry the rounds count from (the newest restart or pull-request
+    boundary), the index of the first entry of the current pull request
+    (the newest pull-request boundary), 0 when there is none, and whether
+    the timeline is armed at its end (a ``merge`` answer with no start entry
+    after it)."""
+    rstart = pstart = 0
+    armed = False
+    merged_pr = last_pr = None
+    for i, entry in enumerate(entries):
+        if entry.get("base_type") == "Checkpoint":
+            fields = entry.get("fields") or {}
+            after = _norm(fields.get("After"))
+            decision = _norm(fields.get("Decision"))
+            if decision == "restart":
+                rstart = i + 1
+            elif decision == "merge":
+                if after in ARM_AFTERS:
+                    armed = True
+                    merged_pr = last_pr
+            elif after in DISARM_AFTERS:
+                armed = False
+            continue
+        if armed and _is_start_entry(entry, merged_pr):
+            rstart = pstart = i
+            armed = False
+            last_pr = None
+        number = _pr_number(entry)
+        if number is not None:
+            last_pr = number
+    return Scan(rstart, pstart, armed)
+
+
+def round_start(entries):
+    """Index of the first entry the rounds count from."""
+    return scan(entries).round_start
+
+
+def pr_start(entries):
+    """Index of the first entry of the current pull request's work."""
+    return scan(entries).pr_start
+
+
+def merge_armed(entries):
+    """True when a ``merge`` answer stands with no start entry after it."""
+    return scan(entries).armed
+
+
+def _counts_no_findings(fields):
+    """True only when the entry's summary line says 0 must-fix and 0
+    suggestions; an absent or unreadable line is not a zero count."""
+    m = _COUNTS.match(fields.get("Must-fix") or "")
+    if m:
+        return m.group(1) == "0" and m.group(2) == "0"
+    mf, sg = (fields.get("Must-fix") or "").strip(), (fields.get("Suggestions") or "").strip()
+    return mf == "0" and sg == "0"
+
+
+def is_lgtm_placeholder(entry, finding):
+    """The ``- [ ] No issues found. LGTM.`` box review-code leaves unchecked
+    on an approved review: not an open finding. All three must hold: the
+    verdict is approved, the entry's own summary line counts no must-fix and
+    no suggestion (absent line: the box stays listed), and the box text
+    opens with the marker."""
+    fields = entry.get("fields") or {}
+    return (
+        _norm(fields.get("Verdict")) == "approved"
+        and _counts_no_findings(fields)
+        and bool(_LGTM.match((finding.get("text") or "").strip()))
+    )

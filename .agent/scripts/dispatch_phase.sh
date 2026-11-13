@@ -88,9 +88,10 @@
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #     A pre-push review-code task line at round 3 or later (as
 #     `review_progress.sh round` counts it: complete reviews on the branch
-#     after the newest restart checkpoint, the same rule as `next`) ends
-#     with its scope and the words "no cross-model reviewers" (issue 321,
-#     the round-3 exception).
+#     from the round start, pr_start.py round_start, the same rule as
+#     `next`) ends with its scope and the words "no
+#     cross-model reviewers" (issue 321, the round-3 exception). The first
+#     review of the next pull request of an issue is round 1 (issue 459).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -107,7 +108,10 @@
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
 #                      [--type workspace|project] [--project <name>]
 #                      [--progress <file>]
-#     The run-issue decision table (28 rows; see the plan for #276 PR 2).
+#     The run-issue decision table (28 rows; see the plan for #276 PR 2),
+#     plus row 3a (issue 459): after a merge answer with no pull request
+#     open (--pr none), when the newest entry is that answer or a Merge
+#     record, `checkpoint:plan` for the issue's next pull request.
 #     Prints `action=<token>`, `reason=<one line>`, then `round=<n>` when
 #     the action concerns the pre-push review loop, `phase=<skill>` when a
 #     checkpoint:phase-failed / retry / takeover names a failed phase, and
@@ -119,7 +123,9 @@
 # Exit codes:
 #   next:        0 action decided; 2 usage (including no worktree for
 #                --issue, a --progress path that does not exist, or one the
-#                records gate refuses); 3 the
+#                records gate refuses; with --pr none the no-worktree error
+#                also says a run is over after its own merge and the next
+#                part starts with a fresh /run-issue <N>); 3 the
 #                timeline could not be parsed (progress_read.py's message
 #                stays on stderr).
 #   handoff /
@@ -915,7 +921,21 @@ cmd_next() {
         [[ -n "$issue" ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
         local ref="$issue" wt resolved rc=0
         issue=$(parse_issue_ref "$ref" next) || exit 2
-        resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || { rc=$?; report_resolve_failure next "$rc" "$type" "$ref"; }
+        resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || {
+            rc=$?
+            # No worktree with --pr none is what a run that asks `next` again
+            # after its own merge sees: merge_pr.sh removed the worktree, and
+            # an issue still open probes as none (issue 459). That run is
+            # over; say what to do instead of only that nothing was found.
+            if [[ "$rc" -eq 1 && "$pr" == "none" ]]; then
+                local shown="$ref"
+                [[ "$shown" =~ ^[0-9]+$ ]] && shown="#$shown"
+                echo "error: next: no $type worktree found for issue $shown" >&2
+                echo "  If a pull request of this issue just merged, this run is over (the merge removed the worktree; run-issue step 11): run /run-issue $ref to start the next part, or nothing if the issue is closed." >&2
+                exit 2
+            fi
+            report_resolve_failure next "$rc" "$type" "$ref"
+        }
         wt=$(sed -n 1p <<< "$resolved")
         progress="$wt/.agent/work-plans/issue-$issue/progress.md"
     fi
@@ -932,8 +952,11 @@ cmd_next() {
         json='{"entries": []}'
     fi
 
-    printf '%s' "$json" | PR_STATE="$pr" "$PYTHON" -c '
+    printf '%s' "$json" | PR_STATE="$pr" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import round_start, merge_armed
 
 MAX_ROUNDS = 3
 PR = os.environ["PR_STATE"]
@@ -979,17 +1002,12 @@ TYPE_TO_SKILL = {
 }
 
 
-def restart_start():
-    # Index of the first entry after the newest **Decision**: restart
-    # checkpoint (0 when there is none). The owner restated the goal
-    # (/orchestrator recipe (a)), so the new work starts here: round_count()
-    # counts reviews from it and skill_for() names phases from it.
-    start = 0
-    for i, e in enumerate(entries):
-        if e.get("base_type") == "Checkpoint" \
-                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
-            start = i + 1
-    return start
+# The first entry the rounds count from: after the newest **Decision**:
+# restart checkpoint, or at the first start entry after a merge answer,
+# whichever is newer (pr_start.py round_start holds the one rule, shared
+# with review_progress.sh round; issue 459). round_count() counts reviews
+# from it and skill_for() names phases from it.
+START = round_start(entries)
 
 
 def skill_for(entry):
@@ -1013,11 +1031,12 @@ def skill_for(entry):
         # pass. Ordinal position alone ("is this the first one?") would
         # misroute a second consecutive failed implement: retry -> failed
         # again must still name **Phase**: implement (issue #314). Only
-        # entries after the newest restart checkpoint count, the same start
-        # round_count() uses: a restart begins the new work at its first
-        # implement, so a complete Implementation from before it does not
-        # make the next failed pass an address-findings pass (issue 321).
-        for e in entries[restart_start():]:
+        # entries from START count, the same start round_count() uses: a
+        # restart (issue 321) or the next pull request after a merge (issue
+        # 459) begins the new work at its first implement, so a complete
+        # Implementation from before it does not make the next failed pass
+        # an address-findings pass.
+        for e in entries[START:]:
             if e is entry:
                 break
             if e.get("base_type") == "Implementation" \
@@ -1040,13 +1059,14 @@ def round_count():
     # newest such entrys branch correlation (hermetic under --progress). Only
     # status == "complete" counts as a round: a partial/failed review that
     # was retried (row 3 already routed it to checkpoint:phase-failed) must
-    # not inflate the round count toward MAX_ROUNDS. Only reviews after the
-    # newest **Decision**: restart checkpoint count (the owner restated the
-    # goal, /orchestrator recipe (a)): the new work starts at round 1. The
-    # same rule as review_progress.sh round, which the round-3 handoff uses.
+    # not inflate the round count toward MAX_ROUNDS. Only reviews from
+    # START count: after a restart (the owner restated the goal,
+    # /orchestrator recipe (a)) or after a merged pull request of the issue
+    # (issue 459), the new work starts at round 1. The same rule as
+    # review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
     n = 0
-    for e in entries[restart_start():]:
+    for e in entries[START:]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \
@@ -1078,6 +1098,32 @@ if status in ("partial", "failed"):
     if phase:
         emit("checkpoint:phase-failed", reason, phase=phase)
     emit("checkpoint:phase-failed", reason)
+
+# Row 3a (issue 459) -- after a merge, with the issue still open and no
+# pull request: the merged pull request was an earlier part, and the plan
+# checkpoint is asked for the next one (proceed -> implement, revise ->
+# plan-task: rows 10/11). It fires only when all three hold:
+#   - --pr none (an open or draft pull request keeps rows 21/23 below:
+#     a merge answer is still a merge to make, a Merge record a refusal);
+#   - the timeline is armed at its end (pr_start.py: a merge answer at
+#     merge/findings with no start entry after it and no non-merge answer
+#     at merge/findings/merge-refused);
+#   - the newest entry is a Checkpoint answered merge (any After, so the
+#     merge-refused checkpoint answered merge counts) or a Merge record
+#     (written at the gate before a merge that then landed).
+# The last guard keeps it from shadowing anything the host records after
+# it: the plan checkpoint answer, a phase-failed retry or takeover, or a
+# stop all leave the timeline armed until the first start entry, and they
+# route by their own rows (2, 10, 11, 26, 27). It sits after rows 2 and 3.
+# run-issue reaches it only for an open issue (the issue state is asked
+# first; a closed issue ends the run), and a merged pull request on the
+# branch is probed as none, not merged (row 1).
+if PR == "none" and merge_armed(entries) and (
+        (base == "Checkpoint" and (fields.get("Decision") or "").strip().lower() == "merge")
+        or base in ("Merge (report-only)", "Merge (unreviewed)")):
+    emit("checkpoint:plan",
+         "a pull request of this issue merged and none is open -- plan the next part "
+         "(proceed implements the reviewed plan, revise refreshes it)")
 
 # Rows 5-27, dispatched on the newest entrys base_type (Checkpoint rows
 # dispatch again on **After**/**Decision**). Exactly one of these blocks can
