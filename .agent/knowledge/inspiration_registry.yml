@@ -86,19 +86,6 @@ projects:
       - integration with review pipelines
       - model-agnostic enforcement mechanisms
 
-  diffx:
-    type: inspiration
-    repo: wong2/diffx
-    description: Local code review tool designed for the coding-agent workflow
-    # Added 2026-07-14 (emerging-source sweep). Review-before-push UX
-    # for humans supervising agents — adjacent to our review-code /
-    # triage-reviews loop and the CLI-first constraint.
-    interest_areas:
-      - review-before-push workflow integration
-      - diff presentation for human supervision of agent output
-      - inline commenting and finding-tracking UX
-      - staying local-first / terminal-adjacent
-
   harness:
     type: inspiration
     repo: majiayu000/harness
@@ -157,19 +144,6 @@ projects:
       - flow authoring (YAML-defined stage pipelines, faceted prompting)
       - run recording and replay (NDJSON event log, run diff/replay/undo)
 
-  harness-starter-kit:
-    type: inspiration
-    repo: harnessworks/harness-starter-kit
-    description: Prompt-first harness engineering for safer AI coding agent workflows
-    # Added 2026-07-14 (emerging-source sweep). Newest of the batch
-    # (created 2026-05); watch whether "harness engineering" as a
-    # discipline develops enforcement-backed patterns beyond ours.
-    interest_areas:
-      - enforcement-backed instruction design
-      - safety guardrails for agent workflows
-      - harness bootstrap / starter-kit UX
-      - prompt-engineering-as-configuration patterns
-
   claude-code:
     type: inspiration
     repo: anthropics/claude-code
@@ -205,6 +179,9 @@ projects:
   # platforms; excluded per Tier-3 defer + STEELMAN reasoning.
   # LearnPrompt/cc-harness-skills (232★) — six CC-derived portable skills;
   # demoted 2026-09-14: content frozen since v0.1.0 (2026-04-01), no issues/PRs.
+  # harnessworks/harness-starter-kit — prompt-first harness engineering;
+  # moved here 2026-11-13: no commit since 2026-06-18 (148 days at this
+  # check). Digest kept as the record.
 
   # --- Archived sources (2026-04-19) ---
   #
@@ -237,3 +214,10 @@ projects:
   # (STEELMAN doc, base+overlay prompts, role vocabulary) roadmapped
   # 2026-07-14; SQLite mailbox / watchdog / conflict-tier survey preserved
   # in the digest.
+  #
+  # --- Archived 2026-11-13 ---
+  #
+  # diffx (wong2/diffx) — no commits since 2026-06-23, pull requests
+  # disabled upstream; the condition set in the digest on 2026-09-14
+  # (still dormant at the next check) is met. Portable ideas are already
+  # triaged in the digest, which is kept as the record.

@@ -1,9 +1,10 @@
 # Inspiration Digest: harness
 
 Type: inspiration
-Last checked: 2026-09-22
-Repo: majiayu000/harness (no local clone checked out; survey done from README
-+ GitHub API — see "Clone note" below)
+Last checked: 2026-11-13
+Repo: majiayu000/harness @ 030fbbc302f0f1be76ae97f4991d22f4a2d0a6ed
+Previously checked: 2026-09-22 (no commit SHA recorded: the first survey was
+done from the README and GitHub API without a clone)
 
 First-run survey. Registry interest areas: Starlark-sandboxed policy engine
 for execution rules; independent cross-agent code review (architectural
@@ -123,11 +124,93 @@ findings above; a future changelog-mode check should clone for source-
 level detail on the Starlark rule dialect and the `cross_review`
 JSON-RPC handler if those become adoption candidates.
 
+## Changelog (2026-09-22 → 2026-11-13)
+
+Method note: the 2026-09-22 survey recorded no commit SHA, so the GitHub
+compare API could not be used (no base to compare from). Substituted: the
+commit list since 2026-09-22 (`gh api repos/majiayu000/harness/commits?since=2026-09-22T00:00:00Z`,
+30 commits), `gh release list`, and `CHANGELOG.md` in the new shallow clone
+(`.agent/scratchpad/inspiration/harness/` in the main checkout, HEAD 030fbbc, 2026-11-13). The
+clone is depth 1, so no per-commit diffs were read. The first clone is now
+in place for future runs.
+
+**Releases**: v0.7.0 (2026-10-19, first release since v0.6.34 on 2026-05-30),
+v0.7.1 (2026-10-29), v0.7.2 (2026-11-13, a few hours before this check).
+
+- **Architecture moved to a workflow runtime (v0.7.0, breaking).** The
+  Harness-owned JSON-RPC `thread/*` and `turn/*` methods and the legacy
+  `/tasks` routes were removed; durable work is submitted through
+  `POST/GET /api/workflows/runtime/submissions` (detail, `/stream`,
+  `/artifacts`, `/prompts`, `/proof`). New: declarative workflow definitions,
+  intake bindings, candidate selection/promotion, durable replay
+  transcripts. The "submission" object from the survey is therefore now the
+  primary API, not a side feature. A 22,910-line net deletion (Phase 1
+  removal) accompanied it.
+- **Fail-closed API auth (v0.7.0).** HTTP API now refuses to run without
+  `api_token` / `HARNESS_API_TOKEN` unless `allow_unauthenticated = true`.
+- **Evaluation and cost control.** Manifest-driven eval runs, report/diff
+  commands, attestations, a supervised Docker task host with native quality
+  gates; CPU-time and USD budget enforcement (v0.7.1: USD-capped eval runs
+  stop when spend is unknown instead of counting it as zero). Open issues
+  #1768 and #1770 (live baselines, production spend verification) remain.
+- **Operator tooling.** Console v3 dashboard connected to live data, an
+  operator monitor cockpit, alerting, runtime trajectory spans.
+- **Agents.** OpenCode execution and per-turn ACP backends, pinned
+  agent-contract activities, agent stack inventory.
+- **Distribution (v0.7.2).** Prebuilt binaries (macOS arm64/x64, Linux
+  x64/arm64) with SHA-256 files attached to releases; v0.7.0 notes had said
+  source-only.
+- **Security hygiene.** Dependency advisories (rustls, rustls-webpki, openssl,
+  tokio, rustix) patched in v0.7.0 / v0.7.1 / v0.7.2.
+- **Not found changed in this range** (README and `CHANGELOG.md` read; no
+  commit-level diff of the crates): the Starlark policy engine
+  (`harness-rules`, README still describes the hardened dialect), the
+  `[agents.review]` cross-agent review config (README still shows
+  `reviewer_agent = "codex"`, `max_rounds = 3`), and per-run worktree
+  isolation. Their implementation was not read at source level.
+
+**Corrections to the 2026-09-22 survey**
+
+- The survey said the JSON-RPC surface has 32 methods; the current README
+  diagram says 30, and v0.7.0 removed the `thread/*` / `turn/*` methods the
+  survey implied were the main interface. The `cross_review` method still
+  exists in `crates/harness-protocol/src/methods.rs`.
+- The survey said Postgres was required for the server. Still true for the
+  fleet server; the README now states explicitly that one-shot
+  `harness exec` needs neither Postgres nor the server (README lines 98, 114).
+- The survey's "Clone note" (no local clone) is superseded by the clone made
+  on this run.
+
 ## Activity Snapshot
 
-See "Activity Snapshot (2026-09-22)" above.
+Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
+
+- 92 stars (was 74), MIT, Rust, not archived, default branch `main`,
+  `pushedAt` 2026-11-13T14:08Z.
+- 7 open issues, 1 open PR (the v0.7.2 release PR, #2175). The open issues
+  are roadmap-style feature requests filed 2026-10/11: #2168 policy-gated
+  event evaluation and decision router, #2169 correlating events / issues /
+  PRs / CI / workflow attempts across sessions, #2170 operator attention
+  queue with human-intervention reasons, #2171 supervised recurring agent
+  loops with explicit mandates and stop conditions, plus eval/cost items
+  #1744, #1768, #1770. The survey-era numbering (issues to #1955) implies
+  most of the earlier backlog was closed.
+- 30 commits since 2026-09-22, but the cadence slowed: 3 commits on
+  2026-11-13, then 2026-10-29, 10-19..10-21, 10-13, 10-11, 10-07, and a
+  burst 09-25..09-30. Mostly eval, runtime and release fixes, not new
+  review/policy design.
+- Still active and releasing (3 releases between 2026-10-19 and 2026-11-13); not a candidate for
+  archiving.
 
 ## Pending Review
+
+New in the 2026-11-13 check (ids are stable for triage):
+
+(none pending from this round)
+
+Carried from 2026-09-22, still undecided (the Starlark, cross-review and
+sandbox-tier items were not changed by the commits read; the submission
+item is sharpened by `harness-1`):
 
 - `starlark-policy-engine-vs-prose-rules` — Compare `harness-rules`'
   hardened-Starlark execution-policy model against this workspace's
@@ -156,13 +239,22 @@ See "Activity Snapshot (2026-09-22)" above.
 
 ## Roadmapped
 
-(none — first-run survey; items above are pending review, not yet
-triaged into roadmap/skip/defer)
+(none)
 
 ## Skipped
 
-(none)
+- `harness-3` `fail-closed-defaults-and-unknown-spend` — informational: two
+  instances of failing on missing evidence, no change to workspace tooling
+  (2026-11-13)
+- `harness-4` `prebuilt-binary-release-with-checksums` — applies only to
+  shipping a tool binary, which this workspace does not do (2026-11-13)
 
 ## Deferred
 
-(none)
+- `harness-1` `durable-submission-api-now-primary` — the concrete part is
+  covered by the roadmapped `gstack-2` (progress entries record their
+  commit); the rest is a comparison with a database-backed design the
+  workspace does not follow (2026-11-13)
+- `harness-2` `operator-attention-queue-and-stop-conditions` — design
+  discussion upstream only (issues #2170, #2171); nothing shipped
+  (2026-11-13)

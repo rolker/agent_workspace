@@ -1,9 +1,10 @@
 # Inspiration Digest: ccswarm
 
 Type: inspiration
-Last checked: 2026-09-22
-Repo: nwiizo/ccswarm (no local clone checked out; survey done from README +
-GitHub API — see "Clone note" below)
+Last checked: 2026-11-13
+Repo: nwiizo/ccswarm @ 2d4f7c7434e1ac1280a8dfb808ae32885803759a
+Previously checked: 2026-09-22 (no commit SHA recorded: the first survey was
+done from the README and GitHub API without a clone)
 
 First-run survey. Registry interest areas: Sangha quorum model (shared
 acceptance criteria, per-agent assessment, recorded decision);
@@ -142,11 +143,102 @@ only (no local clone); `docs/SANGHA_PRODUCT_CORE.md`,
 source were not read and would be needed before any roadmap decision on
 the quorum-gate interest area.
 
+## Changelog (2026-09-22 → 2026-11-13)
+
+Method note: the 2026-09-22 survey recorded no commit SHA, so the GitHub
+compare API could not be used (no base). Used instead the 14 commits since
+2026-09-22 from `gh api repos/nwiizo/ccswarm/commits?since=2026-09-22T00:00:00Z`,
+`gh release list`, and `CHANGELOG.md` in the new shallow clone (HEAD 2d4f7c7,
+commit date 2026-11-07; clone at `.agent/scratchpad/inspiration/ccswarm/` in
+the main checkout). Commit diffs were not read; the `CHANGELOG.md` entries for
+0.11.0 and 0.10.2 and the README were.
+
+**Release state**: the last GitHub release and tag is v0.10.2 (2026-10-09).
+`CHANGELOG.md` has a dated `[0.11.0] - 2026-11-06` section and the README
+tells users to install the Herdr plugin with `--ref v0.11.0`, but no
+v0.11.0 tag or release exists on GitHub as of this check (`gh release list`,
+`gh api repos/nwiizo/ccswarm/tags`). Treat 0.11.0 as untagged.
+
+Changes (all from the 0.11.0 section of `CHANGELOG.md` unless stated):
+
+- **Sangha gates now run (interest area 1).** "Sangha stages run their
+  `gates` once approvals reach quorum. A failed gate fails the stage with
+  `gate_failed`, even when every member approved; a round below quorum skips
+  the gates. Previously Sangha dispatch bypassed the gates." Machine checks
+  are bound to the vote outcome, not run by members. This closes the exact
+  gap the 2026-09-22 survey named (see corrections).
+- **Routing by status, not text (interest area 2/4).** Rule conditions
+  `success`/`failure` follow a stage's top-level status instead of words in
+  its output; a failed stage quoting a success tag no longer routes as
+  success. A rejected Sangha round or failed gate now stops the default flow
+  rather than continuing to implement.
+- **Read-only enforcement.** Codex stages (including Sangha members) with
+  `permission: readonly` run under `codex exec --sandbox read-only`; a
+  rate-limit fallback to a provider that cannot enforce read-only fails
+  with an error. The AI rule judge is read-only too.
+- **Herdr dependency (breaking, interest area 3).** Local provider calls now
+  run in background tabs of a Herdr (terminal workspace manager) 0.9.5+ pane
+  and fail before retrying outside Herdr; remote A2A execution unchanged.
+  New stage `execution: live` for interactive Claude Code sessions with
+  user answers; Herdr notifications on finish / awaiting approval.
+- **Large removal.** Library modules never reached by the CLI were deleted
+  (`governance`, `hooks`, `identity`, `resource`, agent orchestration and
+  type-state builders, session management), plus the `ccswarm task` command,
+  bridge context history, session persistence, multi-turn continuation and
+  provider resume flags, and `ccswarm doctor --error`.
+- **Run tooling (interest area 5).** `run view|diff`, `cost`, `tail`,
+  `replay`, `undo`, `session view` accept the 8-character run ID or any
+  unique prefix. README still says `undo` is advisory (lists commits) and
+  `replay` re-executes the task.
+- **Process hygiene.** CI runs the release workflow's checks (format, strict
+  Clippy, locked tests, rustdoc) plus a dependency audit on every PR;
+  RustSec advisories patched in the lockfile; Ctrl-C now cleans up the stage
+  tab, provider process and temp directory.
+- **Unchanged since the survey**: the README still states that evidence-bound
+  acceptance, objection resolution and checkpoint recovery are "the next
+  design, not shipped guarantees" (README lines 14-17), so checkpoint
+  recovery remains unshipped. The Copilot provider still fails fast
+  (README line 141).
+
+**Corrections to the 2026-09-22 survey**
+
+- Survey finding 1 said Sangha "currently bypasses the ordinary stage-gate
+  path entirely" and that required checks could not be bound to the vote.
+  False since 0.11.0 (unreleased/untagged): gates run once after quorum.
+- Survey finding 3 (multi-provider abstraction, Claude/Codex/Copilot probing)
+  omitted that local execution now requires Herdr; "Copilot compatibility
+  names fail fast" stands.
+- The "5 most recent commits" in the survey's snapshot (v0.10.0 / v0.10.1
+  release commits, 2026-09) are older than the Herdr/gate work; development
+  was not stalled as the "week-plus gap since last push" suggested.
+- The "Clone note" is superseded by the clone made on this run;
+  `docs/SANGHA_PRODUCT_CORE.md` exists in the clone but was only grepped for
+  its gate table (line 211), not read in full.
+
 ## Activity Snapshot
 
-See "Activity Snapshot (2026-09-22)" above.
+Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
+
+- 157 stars (was 152), MIT, Rust, not archived, default branch `master`,
+  `pushedAt` 2026-11-07T11:56Z (six days before this check).
+- 0 open issues; 16 open PRs, of which 15 are dependabot bumps (#72-#83,
+  #86-#88) and one is a Windows build fix from an outside
+  contributor (#84, open since 2026-08-12, no maintainer response seen).
+- 14 commits since 2026-09-22 in three bursts: 2026-10-09 (v0.10.2),
+  2026-11-06 and 2026-11-07 (Herdr, gates, status routing, cleanup).
+  Single-maintainer direct pushes plus merged self-authored PRs (#89-#91).
+- Verdict: still active, with the work the survey said was "next"
+  (gate binding) now landed on master. Not a candidate for archiving.
 
 ## Pending Review
+
+New in the 2026-11-13 check:
+
+(none pending from this round)
+
+Carried from 2026-09-22, still undecided (`quorum-gate-for-plan-review` is
+partly sharpened by `ccswarm-1`; its note that Sangha "bypasses gates" is
+no longer true):
 
 - `quorum-gate-for-plan-review` — Evaluate whether a Sangha-style
   multiple-persona quorum vote (rather than a single review-plan pass)
@@ -174,13 +266,22 @@ See "Activity Snapshot (2026-09-22)" above.
 
 ## Roadmapped
 
-(none — first-run survey; items above are pending review, not yet
-triaged into roadmap/skip/defer)
+(none)
 
 ## Skipped
 
-(none)
+- `ccswarm-1` `quorum-then-machine-gates-ordering` — the workspace already
+  follows the rule: merge waits on CI for the reviewed commit, and hooks run
+  regardless of reviews (2026-11-13)
+- `ccswarm-2` `route-by-status-not-by-text` — checked 2026-11-13:
+  `dispatch_phase.sh` routes on the parsed `Status` / `Verdict` fields of the
+  progress entry via `progress_read.py`, not on free text (2026-11-13)
+- `ccswarm-4` `prune-unreached-code` — informational parallel to this
+  workspace's "rules without enforcement" audits (2026-11-13)
+- `ccswarm-5` `watch-untagged-release` — informational: only matters if the
+  0.11.0 tag appears and local-provider behaviour is relied on (2026-11-13)
 
 ## Deferred
 
-(none)
+- `ccswarm-3` `read-only-enforced-not-requested` — repeats the earlier
+  undecided `fail-fast-unsupported-provider-pattern` item (2026-11-13)
