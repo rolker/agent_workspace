@@ -87,9 +87,14 @@ Scan = namedtuple("Scan", "round_start pr_start armed")
 
 # The box review-code writes on an approved review (its SKILL.md report
 # template), with any annotation after it ("No issues found. LGTM. Suite
-# 48/48."). Exactly that text, not a prefix of it: "No issues found in x
-# but y breaks" is a finding.
+# 48/48."). That text, not a prefix of it: "No issues found in x but y
+# breaks" is a finding. The marker alone is not enough (see
+# is_lgtm_placeholder): the entry must also count no findings.
 _LGTM = re.compile(r"No issues found\. LGTM\.(\s|$)")
+# The review's summary line as the timeline writes it:
+# "**Must-fix**: 0 | **Suggestions**: 0" (progress_read.py gives the rest of
+# the line after "Must-fix" as that field's value).
+_COUNTS = re.compile(r"^\s*(\d+)\s*\|\s*\*\*Suggestions\*\*:\s*(\d+)\b")
 _PR_FIELD = re.compile(r"^\s*#(\d+)\b")
 
 
@@ -180,8 +185,25 @@ def merge_armed(entries):
     return scan(entries).armed
 
 
+def _counts_no_findings(fields):
+    """True only when the entry's summary line says 0 must-fix and 0
+    suggestions; an absent or unreadable line is not a zero count."""
+    m = _COUNTS.match(fields.get("Must-fix") or "")
+    if m:
+        return m.group(1) == "0" and m.group(2) == "0"
+    mf, sg = (fields.get("Must-fix") or "").strip(), (fields.get("Suggestions") or "").strip()
+    return mf == "0" and sg == "0"
+
+
 def is_lgtm_placeholder(entry, finding):
     """The ``- [ ] No issues found. LGTM.`` box review-code leaves unchecked
-    on an approved review: not an open finding."""
-    verdict = _norm((entry.get("fields") or {}).get("Verdict"))
-    return verdict == "approved" and bool(_LGTM.match((finding.get("text") or "").strip()))
+    on an approved review: not an open finding. All three must hold: the
+    verdict is approved, the entry's own summary line counts no must-fix and
+    no suggestion (absent line: the box stays listed), and the box text
+    opens with the marker."""
+    fields = entry.get("fields") or {}
+    return (
+        _norm(fields.get("Verdict")) == "approved"
+        and _counts_no_findings(fields)
+        and bool(_LGTM.match((finding.get("text") or "").strip()))
+    )

@@ -171,6 +171,13 @@ out=$("$RP" sources --progress "$TMPD/lgtm.md" --head "$HEAD" --reviews "$TMPD/r
     && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 && ! -s "$TMPD/lgtm.err" ]] \
     && pass "sources: an approved review's LGTM placeholder is neither a local finding at the head nor a dropped entry at another head" \
     || fail "sources: LGTM placeholder (rc=$rc out=$out err=$(<"$TMPD/lgtm.err"))"
+for summary in "**Must-fix**: 0 | **Suggestions**: 1" ""; do
+    lgtm_entry approved abc1234 "$summary" > "$TMPD/lgtm_n.md"
+    out=$("$RP" sources --progress "$TMPD/lgtm_n.md" --head "$HEAD" --reviews "$TMPD/rules.json")
+    [[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+        && pass "sources: an approved review whose summary line is '${summary:-absent}' keeps the box listed (only a zero count drops it)" \
+        || fail "sources: placeholder with summary '${summary:-absent}' (out=$out)"
+done
 lgtm_entry changes-requested abc1234 > "$TMPD/lgtm_cr.md"
 out=$("$RP" sources --progress "$TMPD/lgtm_cr.md" --head "$HEAD" --reviews "$TMPD/rules.json")
 [[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \

@@ -87,7 +87,9 @@ single latest `## Integrated Review`, `## Local Review (Pre-Push)` or
 `## Local Review` by canonical type (a legacy `## External Review` never
 qualifies), in file order — never merges findings across entries, never falls
 back to an older one. The `No issues found. LGTM.` box an approved review
-leaves unchecked is not listed as open:
+leaves unchecked is not listed as open when the entry's summary line counts
+`**Must-fix**: 0 | **Suggestions**: 0`; otherwise (a count above zero, or
+no summary line) it is listed like any other box:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"

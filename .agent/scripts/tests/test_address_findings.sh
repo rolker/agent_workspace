@@ -207,7 +207,7 @@ rm -f "$LR"
 for t in "Local Review|**PR**: #70 at \`aaaaaaa\`" "Local Review (Pre-Push)|**Branch**: feature/issue-7 at \`aaaaaaa\`"; do
     ty="${t%%|*}"; corr="${t#*|}"
     cp "$TMPD/with_ir.md" "$TMPD/lgtm.md"
-    printf '\n## %s\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n%s\n\n### Findings\n- [ ] No issues found. LGTM.\n' "$ty" "$corr" >> "$TMPD/lgtm.md"
+    printf '\n## %s\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n%s\n**Must-fix**: 0 | **Suggestions**: 0\n\n### Findings\n- [ ] No issues found. LGTM.\n' "$ty" "$corr" >> "$TMPD/lgtm.md"
     out=$("$RP" findings --progress "$TMPD/lgtm.md")
     [[ "$(printf '%s' "$out" | jq -r '.source.type')" == "$ty" && "$(printf '%s' "$out" | jq '.open|length')" -eq 0 ]] \
         && pass "findings: an approved $ty is the source with no open finding (its LGTM placeholder is not one)" \
@@ -218,15 +218,31 @@ for t in "Local Review|**PR**: #70 at \`aaaaaaa\`" "Local Review (Pre-Push)|**Br
         && pass "findings: the same box on a changes-requested $ty stays open (only an approved review's placeholder is filtered)" \
         || fail "findings: changes-requested $ty box (out=$out)"
 done
-# The placeholder is the exact text, with any annotation after it (real
-# approved reviews annotate it); a box that only starts with "No issues
-# found" is a finding even on an approved review.
-cp "$TMPD/with_ir.md" "$TMPD/lgtm.md"
-printf '\n## Local Review (Pre-Push)\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n**Branch**: feature/issue-7 at `aaaaaaa`\n\n### Findings\n- [ ] No issues found. LGTM. Suite 48/48.\n- [ ] No issues found in x but y breaks — `y.sh:2`\n- [ ] No issues found.LGTM.\n' >> "$TMPD/lgtm.md"
-out=$("$RP" findings --progress "$TMPD/lgtm.md")
-[[ "$(printf '%s' "$out" | jq -c '[.open[].index]')" == "[1,2]" ]] \
-    && pass "findings: an annotated placeholder is not open; 'No issues found in x but y breaks' and a misspelt placeholder stay open on an approved review" \
-    || fail "findings: placeholder is the exact text (out=$out)"
+# The placeholder opens with the exact marker, with any annotation after it
+# (real approved reviews annotate it); a box that only starts with "No
+# issues found" is a finding even on an approved review.
+lgtm_review() {  # <summary line or ""> <box>...
+    local summary="$1"; shift
+    cp "$TMPD/with_ir.md" "$TMPD/lgtm.md"
+    printf '\n## Local Review (Pre-Push)\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n**Branch**: feature/issue-7 at `aaaaaaa`\n%s\n\n### Findings\n' "$summary" >> "$TMPD/lgtm.md"
+    printf -- '- [ ] %s\n' "$@" >> "$TMPD/lgtm.md"
+    "$RP" findings --progress "$TMPD/lgtm.md" | jq -c '[.open[].index]'
+}
+got=$(lgtm_review "**Must-fix**: 0 | **Suggestions**: 0" "No issues found. LGTM. Suite 48/48." "No issues found in x but y breaks — \`y.sh:2\`" "No issues found.LGTM.")
+[[ "$got" == "[1,2]" ]] \
+    && pass "findings: an annotated placeholder on a zero-count approved review is not open; 'No issues found in x but y breaks' and a misspelt placeholder stay open" \
+    || fail "findings: placeholder is the exact marker (got $got)"
+# The entry must count no findings: a finding typed after the marker on an
+# approved review that counts a suggestion stays open; so does any box
+# when the summary line is absent.
+got=$(lgtm_review "**Must-fix**: 0 | **Suggestions**: 1" "No issues found. LGTM. except the race in x")
+[[ "$got" == "[0]" ]] \
+    && pass "findings: 'No issues found. LGTM. except the race in x' on an approved review counting a suggestion stays open" \
+    || fail "findings: marker with a non-zero count (got $got)"
+got=$(lgtm_review "" "No issues found. LGTM.")
+[[ "$got" == "[0]" ]] \
+    && pass "findings: with no summary line the placeholder stays listed (no zero count to read)" \
+    || fail "findings: marker with no summary line (got $got)"
 rm -f "$TMPD/lgtm.md"
 
 git -C "$REPO" add -A && git -C "$REPO" -c user.name=t -c user.email=t@t commit -q -m "fix: findings"
