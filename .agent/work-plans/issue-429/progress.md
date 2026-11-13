@@ -2596,3 +2596,64 @@ Fix the three must-fix and suggestions 1 to 3. (1) The restore never deletes or 
 - Against `df029cd7`'s `merge_pr.sh`: the gate suite gave 137/14. These failed: pkg-12 present, pkg-13 ×2, pkg-16 ×3, pkg-17 ×3, pkg-15, hang-1 to hang-4.
 - Against `df029cd7`'s `check_branch_updates.sh`: the loop suite gave 218/2.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 07:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `8eb34cd0`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Round note: this is round 3 of this diff. The host corrected the counter, which still carries PRs 445, 456 and 460 (issue 459).
+
+Scope: the round-2 findings and the fixes in `957a7c4e`, `2241a5fd` and `24f9b8eb`.
+- Cross-model: skipped (round-3 convergence check, per handoff).
+- Claude adversarial: a fresh sub-review ran.
+
+Suites run by the sub-review on HEAD, all passing:
+- test_merge_pr_gate: 151 passed, 0 failed.
+- test_merge_pr: 150 passed, 0 failed.
+- test_package_issue_loop: 220 passed, 0 failed.
+
+No `sleep 300` process was left afterwards.
+
+The round-2 findings hold, except where noted:
+
+- **Symlink restore.** `_gate_rec_unsafe` leaves a symlinked or non-regular `progress.md`, or a symlinked parent folder, exactly as found. The restore runs only after exit 3 and removes only what the record created.
+  - Workspace PRs differ from main in wording only, plus two improvements: exit 3 now restores the staged entry, and an undone push keeps pre-existing edits.
+- **Off-branch read.** `_GATE_OWN_NOREAD` is set only for owning package PRs, and pkg-16 gives no pass.
+  - The sub-review diffed this against main. For workspace PRs, the read, the verdict, `_ci_wt` and the duplicate check are unchanged. That includes worktrees behind origin, ahead of it, or holding unpushed bookkeeping commits.
+- **design.md citations.** All checked against the final file.
+- **Repeated comments.** One comment across runs. The comment matcher is the same as main's package-PR matcher: heading prefix plus an exact `**Conditions**` line. It is no looser.
+- **check_branch_updates.sh with no argument.** Run side by side with main: up to date, behind, offline, stale `origin/HEAD`, "(unknown)" and no origin all give exit codes identical to main's. Only the warning text differs.
+- **Timed-out push.** Origin has the commit: kept. Origin answers without it: undone, with a comment. Origin cannot be asked: see the must-fix.
+
+### Findings
+- [ ] (must-fix) A record push that times out while origin cannot be asked is never published, and the PR still merges.
+  - Input (observed by the sub-review on the hang-4 fixture): run 1 has `HANG_MODE=silent`. The commit is kept in A, with no comment.
+  - Run 2 has origin answering. It prints "already recorded at ..., same conditions" and calls `gh pr merge`. Origin's branch does not have the record commit, and no comment exists.
+  - The same happens in one run when git-over-ssh hangs but gh's HTTPS API works, for a workspace PR under `--report-only` or `--force-unreviewed` (from reading the code; not run): the PR merges with its record only in a local, unpushed commit.
+  - "The next push of B publishes it" never happens, because nothing pushes after the merge.
+  - Fix: let this outcome take the undo-and-comment path, accepting a possible duplicate, and update the design.md Merge gate bullet (line 708) and script_reference row 38 to match.
+  - `.agent/scripts/merge_pr.sh:1116-1121`
+- [ ] (suggestion) A timed-out push is undone even when origin has the record commit, if the host pushed on top of it before ls-remote ran.
+  - Input: the push lands, the host pushes on top, and ls-remote then shows another sha that has the record commit as an ancestor.
+  - Result: A is reset and a comment is posted. The record exists twice, and the next run finds A not containing origin.
+  - Fix: test ancestry, not equality. This is a narrow race.
+  - `.agent/scripts/merge_pr.sh:1110`
+- [ ] (suggestion) For an owning package PR, the duplicate check's comment fallback can match an older comment that a newer timeline entry superseded.
+  - Input:
+    - Run 1, conditions X1: the push is refused, so the record becomes a comment.
+    - Run 2, conditions X2: committed in the timeline.
+    - Run 3, conditions X1 again: the timeline's latest record is X2, so the check falls back to the comments.
+  - Result: "already recorded (as a PR comment)" is printed and no record is made, although the latest record says X2.
+  - Fix: compare against the newest record across both stores.
+  - `.agent/scripts/merge_pr.sh:1222-1239`
+- [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. That is the owner's call at the merge checkpoint, carried over from round 1.
+  - `.agent/work-plans/issue-429/plan.md:192,562`
