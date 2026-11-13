@@ -1675,7 +1675,9 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             _OWN_FETCH_ONLY="not clean"
         fi
         if [[ -z "$_OWN_FETCH_ONLY" ]]; then
-            if _git_err="$(wt_bounded_git -C "$_OWN_ORIGIN" pull --ff-only 2>&1)"; then
+            # origin's base, named: never the branch's configured upstream,
+            # which can be another remote or branch, or missing.
+            if _git_err="$(wt_bounded_git -C "$_OWN_ORIGIN" pull --ff-only --no-rebase origin "$PR_BASE_REF" 2>&1)"; then
                 echo "  ✅ $PR_REPO_SLUG synced ($PR_BASE_REF fast-forwarded at $_OWN_ORIGIN)"
             else
                 echo "  ⚠️  Could not fast-forward $PR_REPO_SLUG's checkout at $_OWN_ORIGIN:" >&2

@@ -495,6 +495,75 @@ test_own_repo_pulls_only_on_the_base() {
     done
 }
 
+# The pull takes origin's base by name, whatever the base branch's
+# configured upstream is (review finding 2, issue 429). origin: main = M0 M1,
+# pinned = M0 P1; the checkout sits clean on its own pinned at M0, the PR's
+# base is pinned, and the upstream is <setup>: origin/pinned, origin/main
+# (another branch), or none.
+_upstream_case() {  # <num> <setup: tracks|other|none> ; sets OUT, RC, OA, P1, M1
+    local num="$1" setup="$2" sb wt scratch
+    sb="$(make_merge_sandbox)"
+    OA="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-$num" \
+        p11 "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
+    set_manifest_base "$wt" pinned
+    scratch="$sb/scratch_clone"
+    git clone --quiet "$(git -C "$OA" remote get-url origin)" "$scratch"
+    git -C "$scratch" checkout --quiet -b pinned
+    git -C "$scratch" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m P1
+    git -C "$scratch" checkout --quiet main
+    git -C "$scratch" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m M1
+    git -C "$scratch" push --quiet origin main pinned
+    P1="$(git -C "$scratch" rev-parse pinned)"
+    M1="$(git -C "$scratch" rev-parse main)"
+    git -C "$OA" fetch --quiet origin
+    git -C "$OA" checkout --quiet --no-track -b pinned main
+    case "$setup" in
+        tracks) git -C "$OA" branch --quiet -u origin/pinned pinned ;;
+        other) git -C "$OA" branch --quiet -u origin/main pinned ;;
+        none) ;;
+    esac
+    write_pr_view_fixture "$sb" "owner/pkg_a" "$num" "feature/issue-$num" "Test PR" pinned
+    OUT="$(run_merge_pr "$sb" --pr "owner/pkg_a#$num" --no-wait --no-roadmap-update 2>&1)"
+    RC=$?
+}
+
+test_own_repo_pull_takes_origin_base_not_upstream() {
+    echo "TEST: the cleanup pulls origin's base by name, whatever the base branch tracks (issue 429)"
+    local setup
+    for setup in tracks other none; do
+        _upstream_case 581 "$setup"
+        assert_eq "$setup: exit 0" "0" "$RC"
+        assert_contains "$setup: synced, naming the base" "owner/pkg_a synced (pinned fast-forwarded" "$OUT"
+        assert_eq "$setup: pinned is origin's pinned" "$P1" "$(git -C "$OA" rev-parse pinned)"
+        assert_eq "$setup: pinned holds none of origin's main" "false" \
+            "$(git -C "$OA" merge-base --is-ancestor "$M1" pinned && echo true || echo false)"
+        assert_eq "$setup: not marked incomplete" "false" \
+            "$(grep -q 'cleanup incomplete' <<< "$OUT" && echo true || echo false)"
+    done
+}
+
+test_own_repo_failed_fetch_marks_cleanup_incomplete() {
+    echo "TEST: off the base with origin unreachable: the failed fetch is said and marks the cleanup incomplete (issue 429)"
+    local sb wt out origin_a bare
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-583" \
+        p11 "owner/pkg_a#583" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-583")"
+    set_manifest_base "$wt" main
+    git -C "$origin_a" checkout --quiet -b other
+    # origin stops answering; its URL (which names owner/pkg_a) is kept.
+    bare="$(git -C "$origin_a" remote get-url origin)"
+    mv "$bare" "$bare.gone"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 583 "feature/issue-583"
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#583 --no-wait --no-roadmap-update 2>&1)"
+    assert_contains "the failed fetch is named, with why no pull was due" \
+        "Could not fetch origin in owner/pkg_a's checkout at $origin_a (on other, not the base main, so no pull was due)" "$out"
+    assert_contains "git's reason is shown" "pkg_a.git" "$out"
+    assert_eq "not reported as fetched only" "false" "$(grep -q 'fetched only:' <<< "$out" && echo true || echo false)"
+    assert_contains "the cleanup is marked incomplete" "cleanup incomplete" "$out"
+}
+
 test_package_pr_base_cross_check() {
     echo "TEST: the owning PR's base is compared with the worktree's recorded base; a sibling's is not (issue 429)"
     local sb out rc=0 origin_a origin_b wt
@@ -874,6 +943,8 @@ test_sibling_check_failure_fails_closed
 test_sibling_without_remote_fails_closed
 test_own_repo_sync_failure_is_reported
 test_own_repo_pulls_only_on_the_base
+test_own_repo_pull_takes_origin_base_not_upstream
+test_own_repo_failed_fetch_marks_cleanup_incomplete
 test_package_pr_base_cross_check
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
