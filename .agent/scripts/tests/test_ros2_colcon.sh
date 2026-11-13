@@ -75,6 +75,23 @@ assert_not_contains() {
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
+# git@github.com:<owner>/<repo>.git is served from the fake_remotes/github.com
+# folder of the per-test sandbox git runs in (found upward from git's own
+# working directory); outside one, it fails as an unreachable host does.
+# No test reaches the network.
+cat > "$SANDBOX/fakessh" <<'SSH_EOF'
+#!/usr/bin/env bash
+d="$PWD"
+while [ "$d" != / ] && [ ! -d "$d/fake_remotes/github.com" ]; do d="$(dirname "$d")"; done
+if [ ! -d "$d/fake_remotes/github.com" ]; then
+    echo "ssh: Could not resolve hostname github.com: Name or service not known" >&2
+    exit 255
+fi
+cd "$d/fake_remotes/github.com" && eval "exec ${@: -1}"
+SSH_EOF
+chmod +x "$SANDBOX/fakessh"
+export GIT_SSH_COMMAND="$SANDBOX/fakessh"
+
 # Base sandbox: dispatcher + registry lib + both adapter types.
 make_sandbox() {
     local sb
@@ -216,6 +233,7 @@ make_worktree_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_resolve_default_branch.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_pr_base.sh" "$sb/.agent/scripts/"
     mkdir -p "$sb/stubbin"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/gh"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
@@ -226,24 +244,36 @@ make_worktree_sandbox() {
     echo "$sb"
 }
 
-# A real (committed, no origin fetch needed since it's all local) git repo
-# for a package under a layer's src/, standing in for a real package
-# checkout post-`adapter setup`.
+# A real (committed) git repo for a package under a layer's src/, standing
+# in for a real package checkout post-`adapter setup`. Its origin is
+# git@github.com:owner/<name>.git, which the adapter reads as owner/<name>,
+# served offline by the GIT_SSH_COMMAND stub below from the sandbox's
+# fake_remotes/github.com/owner/<name>.git: a package worktree's owning
+# branch starts from its base as origin has it (issue 429), and the base is
+# the manifest's pin, fakefox, which origin holds as a branch beside main.
 make_committed_pkg_repo() {
     local proj="$1" layer="$2" name="$3"
     local dir="$proj/layers/main/${layer}_ws/src/$name"
-    mkdir -p "$dir"
+    local bare
+    bare="$(dirname "$(dirname "$proj")")/fake_remotes/github.com/owner/${name}.git"
+    mkdir -p "$dir" "$(dirname "$bare")"
     git -C "$dir" init --quiet
     echo "$name" > "$dir/README.md"
     git -C "$dir" add README.md
     git -C "$dir" -c user.name=t -c user.email=t@t commit --quiet -m init
-    git -C "$dir" remote add origin "git@github.com:owner/${name}.git"
     git -C "$dir" branch -m main 2>/dev/null || true
+    git init --quiet --bare -b main "$bare"
+    git -C "$dir" remote add origin "git@github.com:owner/${name}.git"
+    git -C "$dir" push --quiet origin main main:fakefox
+    git -C "$dir" fetch --quiet origin
+    git -C "$dir" remote set-head origin main >/dev/null
 }
 
-# The fixtures' origins cannot be reached, so origin cannot say whether it
-# has a branch: --allow-unverified-branch starts it anyway (#323); these
-# tests are about the manifest and layout, not the branch lookup.
+# These tests are about the manifest and layout, not the branch lookup.
+# make_committed_pkg_repo's origins answer (the GIT_SSH_COMMAND stub), so
+# there the lookup decides as it would online; --allow-unverified-branch
+# (#323) is kept for an origin that cannot be reached, which then starts a
+# sibling's branch anyway. It never applies to a base (issue 429).
 run_worktree_create() {
     local sb="$1"
     shift
@@ -302,6 +332,15 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
     assert_eq "build.sh is syntactically valid bash" "0" "$(bash -n "$wt/build.sh" >/dev/null 2>&1; echo $?)"
     assert_eq "test.sh is syntactically valid bash" "0" "$(bash -n "$wt/test.sh" >/dev/null 2>&1; echo $?)"
     assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
+    # No --base: the base is the manifest's pin of pkg_a, fakefox, a branch
+    # on origin (issue 429), never origin's default branch by omission.
+    assert_eq "no --base: the header records the pin as base=" \
+        "# project=p11 issue=owner/pkg_a#111 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+    assert_contains "the banner names the base and where it came from" \
+        "Base:       fakefox (from the project's pin of pkg_a;" "$out"
+    assert_eq "the owning branch starts at origin's fakefox" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" rev-parse refs/remotes/origin/fakefox)" \
+        "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD)"
     assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
         "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"
     assert_contains "enter banner uses the qualified issue and --project" \
@@ -310,6 +349,196 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "worktree_remove.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
     assert_not_contains "banner never prints the bare number for a package worktree" \
         "--issue 111 --type project" "$out"
+}
+
+test_worktree_create_package_base_from_pin_or_refused() {
+    echo "TEST: a package worktree without --base takes the pin; a pin that is no branch refuses before anything is made (issue 429)"
+    local sb out rc=0 proj wt a
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    # A tag pin: origin answers, so the kind is known, and it is no branch.
+    git -C "$a" tag v9
+    git -C "$a" push --quiet origin v9
+    write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-120"
+    assert_eq "a tag pin, no --base: exits 1" "1" "$rc"
+    assert_contains "the pin's own refusal" "pkg_a is pinned at v9 (tag); only a branch can be a base" "$out"
+    assert_contains "creation says it needs a base and asks for --base" \
+        "is not started from origin's default branch by omission; pass --base <branch>. Nothing was made." "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "no owning branch made" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/issue-120 && echo true || echo false)"
+    assert_eq "no sibling branch made" "false" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-120 && echo true || echo false)"
+    # The same with --base: the override is the base.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a --base main 2>&1)" || rc=$?
+    assert_eq "with --base main: exit 0" "0" "$rc"
+    assert_eq "with --base main: base=main recorded" \
+        "# project=p11 issue=owner/pkg_a#120 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+    assert_contains "the banner says the base came from --base" "Base:       main (from --base;" "$out"
+    # A worktree with no owning entry (only a sibling) has no base to resolve.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#121 --type project --project p11 \
+        --layer l1 --package-repos pkg_b 2>&1)" || rc=$?
+    assert_eq "siblings only: exit 0 with the tag pin (no owning branch to start)" "0" "$rc"
+    assert_eq "siblings only: no base= in the header" \
+        "# project=p11 issue=owner/pkg_a#121 layer=l1" \
+        "$(head -n1 "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-121/.worktree-repos")"
+}
+
+test_worktree_create_package_existing_branch_needs_named_base() {
+    echo "TEST: an owning branch that already exists gets base= only from a named --base, checked (issue 429)"
+    local sb out rc=0 proj a b wt hosted_main
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    b="$proj/layers/main/l1_ws/src/pkg_b"
+    # origin's main moves one commit past the pin fakefox.
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "main only"
+    git -C "$a" push --quiet origin main
+    hosted_main="$(git -C "$a" rev-parse main)"
+
+    # A local branch started from fakefox, with work of its own, no --base:
+    # the pin is not taken for it. Refused, the sibling added first (pkg_b,
+    # listed first) rolled back, the existing branch kept.
+    git -C "$a" branch feature/issue-130 origin/fakefox
+    git -C "$a" checkout --quiet feature/issue-130
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "own work"
+    git -C "$a" checkout --quiet main
+    local own130; own130="$(git -C "$a" rev-parse feature/issue-130)"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-130"
+    assert_eq "existing branch, no --base: exits 1" "1" "$rc"
+    assert_contains "says why: it already existed, the pin is not taken, name the base" \
+        "'feature/issue-130' already existed (locally or on origin), so this workspace cannot know which branch it started from, and does not take the pin (fakefox) for it." "$out"
+    assert_contains "and how to go on" "Pass --base naming the branch it was started from, or start 'feature/issue-130' anew" "$out"
+    assert_contains "the sibling added first is rolled back" "rolling back 2 already-created worktree(s)" "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "the sibling's new branch is removed" "false" \
+        "$(git -C "$b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-130 && echo true || echo false)"
+    assert_eq "the sibling's worktree is removed" "1" "$(git -C "$b" worktree list --porcelain | grep -c '^worktree ')"
+    assert_eq "the existing owning branch is kept as it was" "$own130" "$(git -C "$a" rev-parse feature/issue-130)"
+    # ... with the --base it was started from: recorded.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+        --layer l1 --package-repos pkg_b,pkg_a --base fakefox 2>&1)" || rc=$?
+    assert_eq "with --base fakefox: exit 0" "0" "$rc"
+    assert_eq "with --base fakefox: recorded" \
+        "# project=p11 issue=owner/pkg_a#130 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+
+    # Started from main, named main: recorded (where it started is the
+    # owner's word; the check is that origin has it and history is shared).
+    git -C "$a" branch feature/issue-131 main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#131 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base main 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-131"
+    assert_eq "existing branch from main, --base main: exit 0" "0" "$rc"
+    assert_eq "existing branch from main, --base main: recorded" \
+        "# project=p11 issue=owner/pkg_a#131 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+    assert_eq "the branch is not moved" "$hosted_main" "$(git -C "$a" rev-parse feature/issue-131)"
+
+    # A named base origin lacks: refused, rolled back.
+    git -C "$a" branch feature/issue-133 main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#133 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base nosuch 2>&1)" || rc=$?
+    assert_eq "existing branch, --base origin lacks: exits 1" "1" "$rc"
+    assert_contains "says so" "'feature/issue-133' already existed, and --base nosuch cannot be its base: origin has no branch 'nosuch'." "$out"
+    assert_eq "no aggregate dir" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-133" ] && echo true || echo false)"
+
+    # An orphan owning branch: no history in common with the named base.
+    git -C "$a" checkout --quiet --orphan feature/issue-134
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "orphan"
+    git -C "$a" checkout --quiet main
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#134 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
+    assert_eq "orphan existing branch: exits 1" "1" "$rc"
+    assert_contains "says there is no history in common" "'feature/issue-134' has no commit in common with origin's 'fakefox'" "$out"
+
+    # A branch on origin only: checked out from origin, then the same rule.
+    git -C "$a" push --quiet origin origin/fakefox:refs/heads/feature/issue-132
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "branch on origin only, no --base: exits 1" "1" "$rc"
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-132"
+    assert_eq "branch on origin only, --base fakefox: exit 0" "0" "$rc"
+    assert_eq "branch on origin only, --base fakefox: recorded" \
+        "# project=p11 issue=owner/pkg_a#132 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+}
+
+test_worktree_create_package_parent_issue_starts_from_parent() {
+    echo "TEST: --parent-issue on a package worktree: the pin is not read; the branch starts from the parent's, which base= records (issue 429)"
+    local sb out rc=0 proj a wt parent_tip
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    # The parent's branch on origin, one commit past main; the pin is a tag,
+    # which would refuse if it were read.
+    git -C "$a" checkout --quiet -b feature/issue-10
+    git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "parent work"
+    git -C "$a" push --quiet origin feature/issue-10
+    git -C "$a" checkout --quiet main
+    git -C "$a" branch --quiet -D feature/issue-10
+    parent_tip="$(git -C "$a" rev-parse refs/remotes/origin/feature/issue-10)"
+    git -C "$a" tag v9
+    git -C "$a" push --quiet origin v9
+    write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#12 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --parent-issue 10 2>&1)" || rc=$?
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-12"
+    assert_eq "exit 0 (the tag pin is not read)" "0" "$rc"
+    assert_eq "the branch starts at the parent's tip" "$parent_tip" "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD)"
+    assert_contains "the banner names the parent" "Parent:     #10 (feature/issue-10)" "$out"
+    assert_contains "the banner names the parent's branch as the base" "Base:       feature/issue-10 (the parent's branch:" "$out"
+    assert_not_contains "no pin-sourced base in the banner" "from the project's pin" "$out"
+    assert_eq "base= records the parent's branch" \
+        "# project=p11 issue=owner/pkg_a#12 layer=l1 base=feature/issue-10" "$(head -n1 "$wt/.worktree-repos")"
+    # --base with --parent-issue stays refused.
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#13 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --parent-issue 10 --base main 2>&1)" || rc=$?
+    assert_eq "--base with --parent-issue: exits 1" "1" "$rc"
+    assert_contains "says so" "--base cannot be used with --parent-issue" "$out"
+}
+
+test_worktree_create_package_refuses_branch_and_empty_base() {
+    echo "TEST: --branch and an empty or invalid --base are refused for a package worktree, before anything is made (issue 429)"
+    local sb out rc=0 proj a
+    sb="$(make_worktree_sandbox)"
+    proj="$(make_lookup_project "$sb")"
+    a="$proj/layers/main/l1_ws/src/pkg_a"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+        --layer l1 --package-repos pkg_a --branch foo 2>&1)" || rc=$?
+    assert_eq "--branch with --layer: exits 1" "1" "$rc"
+    assert_contains "says why" "--branch is not valid for a package worktree (--layer): the adapter names each repository's branch" "$out"
+    assert_eq "no branch foo made" "false" "$(git -C "$a" show-ref --verify --quiet refs/heads/foo && echo true || echo false)"
+    assert_eq "no feature/issue-140 made" "false" \
+        "$(git -C "$a" show-ref --verify --quiet refs/heads/feature/issue-140 && echo true || echo false)"
+    local v
+    for v in "" "-foo" "HEAD"; do
+        rc=0
+        out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+            --layer l1 --package-repos pkg_a --base "$v" 2>&1)" || rc=$?
+        assert_eq "--base '$v': exits 1" "1" "$rc"
+        if [ -z "$v" ]; then
+            assert_contains "--base '': refused, not ignored" "Error: --base requires a branch name" "$out"
+        else
+            assert_contains "--base '$v': refused" "Error: --base '$v' is not a valid branch name" "$out"
+        fi
+    done
+    assert_eq "nothing made" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-140" ] && echo true || echo false)"
 }
 
 test_worktree_create_package_hook_preflight_checks_package_repos() {
@@ -2090,6 +2319,10 @@ echo ""
 
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
+test_worktree_create_package_base_from_pin_or_refused
+test_worktree_create_package_existing_branch_needs_named_base
+test_worktree_create_package_parent_issue_starts_from_parent
+test_worktree_create_package_refuses_branch_and_empty_base
 test_worktree_create_package_hook_preflight_checks_package_repos
 test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_create_lookup_unknown_first_repo

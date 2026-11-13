@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./worktree_create.sh --issue <number> --type workspace|project [--branch <name>] [--plan-file <path>]
+#   ./worktree_create.sh --issue <owner/repo#N> --type project --layer <l> --package-repos <a,b> [--base <branch>]
 #   ./worktree_create.sh --skill <name> --type workspace
 #   ./worktree_create.sh --skill onboard-project --type project --project <name>
 #
@@ -128,6 +129,18 @@ REPO_SLUG=""
 PROJECT_REPO=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
+# --base <branch> (issue 429): a package worktree's base branch, the one
+# the owning repository's pull request targets. Without it the base is the
+# project's pin of the owning repository (pr_base_for); a package worktree
+# with an owning entry always has one. The owning entry's new branch
+# starts from origin's copy of it (_wt_add_repo's strict start path) and
+# the manifest header records it as base=; for an owning branch that
+# already existed only a --base given by name is recorded, after
+# wt_check_named_base. With --parent-issue the pin is not read (the branch
+# starts from the parent's). run-issue passes what
+# `dispatch_phase.sh base` printed (the project's pin, or the owner's
+# --base override).
+BASE_BRANCH=""
 WORKFLOW=""
 PRINT_PATH_ONLY=false
 # --allow-unverified-branch: start a new branch even when origin cannot
@@ -184,6 +197,18 @@ show_usage() {
     echo "                        (requires --layer)"
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
+    echo "  --base <branch>       Package worktrees only (with --layer): the owning repository's"
+    echo "                        base branch; without it, the project's pin of that repository"
+    echo "                        (adapter repo_pin), and a pin that is no branch refuses. Its new"
+    echo "                        branch starts from origin/<branch> (never the local copy, never"
+    echo "                        origin's default branch); creation stops when origin lacks it or"
+    echo "                        does not answer, also with --allow-unverified-branch. An owning"
+    echo "                        branch that already exists needs --base naming where it started"
+    echo "                        (checked: on origin, history in common). Recorded as base= in"
+    echo "                        .worktree-repos. Not with --parent-issue (the parent's branch is"
+    echo "                        the start then; an owning branch that already exists is accepted"
+    echo "                        with no base= recorded, and dispatch_phase.sh base --base <branch>"
+    echo "                        records one later)"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
@@ -265,6 +290,18 @@ while [[ $# -gt 0 ]]; do
             PARENT_ISSUE_NUM="$2"
             shift 2
             ;;
+        --base)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                echo "Error: --base requires a branch name"
+                exit 1
+            fi
+            if ! wt_valid_branch_name "$2"; then
+                echo "Error: --base '$2' is not a valid branch name"
+                exit 1
+            fi
+            BASE_BRANCH="$2"
+            shift 2
+            ;;
         --plan-file)
             PLAN_FILE="$2"
             shift 2
@@ -313,6 +350,13 @@ if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
 fi
 if [ -n "$SKILL_NAME" ] && [ -n "$PARENT_ISSUE_NUM" ]; then
     echo "Error: --parent-issue cannot be used with --skill"
+    exit 1
+fi
+# A base and a parent would be two start points for one branch: a package
+# issue's branch starts from its base (the pin), a sub-issue's from its
+# parent's branch.
+if [ -n "$BASE_BRANCH" ] && [ -n "$PARENT_ISSUE_NUM" ]; then
+    echo "Error: --base cannot be used with --parent-issue (each names the branch's start point)"
     exit 1
 fi
 
@@ -409,6 +453,19 @@ if [ -n "$LAYER" ] || [ -n "$PACKAGE_REPOS" ]; then
         echo "Error: --layer/--package-repos require a qualified --issue owner/repo#N"
         exit 1
     fi
+fi
+if [ -n "$BASE_BRANCH" ] && [ -z "$LAYER" ]; then
+    echo "Error: --base is only valid for a package worktree (--type project --layer <l> --package-repos <a,b>)"
+    exit 1
+fi
+# --branch names the issue's branch in the one repository a worktree is of.
+# In a package worktree the adapter names every repository's branch
+# (feature/issue-<N> for the owning one, feature/<repo>-issue-<N> for each
+# sibling), so a custom name matches no entry: the owning branch would go
+# unrecognised and start from origin's default branch with no base.
+if [ -n "$BRANCH_NAME" ] && [ -n "$LAYER" ]; then
+    echo "Error: --branch is not valid for a package worktree (--layer): the adapter names each repository's branch (feature/issue-<N> for the repository that owns the issue), and a package worktree's owning branch must start from its base"
+    exit 1
 fi
 
 # Validate workflow template if provided
@@ -673,6 +730,40 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Error: worktree_repos returned no repos to worktree"
         exit 1
     fi
+    # --base is the owning repository's base: without an entry on
+    # $BRANCH_NAME it would be recorded for a branch this worktree does not
+    # have.
+    if [ -n "$BASE_BRANCH" ] \
+        && ! awk -F'\t' -v b="$BRANCH_NAME" '$3 == b && $2 != "." { f = 1 } END { exit !f }' <<< "$REPO_LINES"; then
+        echo "Error: --base $BASE_BRANCH is the base of the owning repository's branch '$BRANCH_NAME', and none of --package-repos $PACKAGE_REPOS is on it (the repository of $ISSUE_DISPLAY_REF is not among them)"
+        exit 1
+    fi
+    # A package worktree's NEW owning branch always starts from a base (issue
+    # 429): the --base given, else the project's pin of the owning
+    # repository (_pr_base.sh pr_base_for, adapter repo_pin). Neither giving
+    # a branch refuses here, before anything is made: the branch is never
+    # started from origin's default branch by omission. With --parent-issue
+    # the pin is not read: the branch starts from the parent's branch, as a
+    # sub-issue's always has. Siblings get no base. An owning branch that
+    # already exists is not started here; see the manifest write below.
+    OWN_REL=""
+    if [ -n "$LAYER" ]; then
+        OWN_REL="$(awk -F'\t' -v b="$BRANCH_NAME" '$3 == b && $2 != "." { print $2; exit }' <<< "$REPO_LINES")"
+    fi
+    BASE_SOURCE=""
+    if [ -n "$OWN_REL" ] && [ -z "$BASE_BRANCH" ] && [ -z "$PARENT_ISSUE_NUM" ]; then
+        # shellcheck source=_pr_base.sh
+        source "$SCRIPT_DIR/_pr_base.sh"
+        PB_ARGS=(--repo "$(basename "$OWN_REL")" --layer "$LAYER")
+        [ -n "$PROJECT_NAME" ] && PB_ARGS+=(--project "$PROJECT_NAME")
+        if ! BASE_BRANCH="$(pr_base_for "${PB_ARGS[@]}")"; then
+            echo "Error: the owning repository's branch '$BRANCH_NAME' needs a base branch to start from, and the project's pin of $(basename "$OWN_REL") gives none (above). A package worktree is not started from origin's default branch by omission; pass --base <branch>. Nothing was made."
+            exit 1
+        fi
+        BASE_SOURCE="the project's pin of $(basename "$OWN_REL")"
+    elif [ -n "$OWN_REL" ]; then
+        BASE_SOURCE="--base"
+    fi
 fi
 
 # --- Determine worktree path ---
@@ -731,6 +822,9 @@ echo "  Repository: $REPO_SLUG"
 echo "  Type:       $WORKTREE_TYPE"
 echo "  Branch:     $BRANCH_NAME"
 [ -n "$PARENT_BRANCH" ] && echo "  Parent:     #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
+[ -n "$BASE_BRANCH" ] && echo "  Base:       $BASE_BRANCH (from $BASE_SOURCE; a new owning branch starts from origin/$BASE_BRANCH)"
+[ -n "$LAYER" ] && [ -n "$PARENT_BRANCH" ] && [ -n "$OWN_REL" ] \
+    && echo "  Base:       $PARENT_BRANCH (the parent's branch: a new owning branch starts from it, and base= records it when found, as a sub-issue's draft PR targets it)"
 echo "  Path:       $WORKTREE_DIR"
 echo ""
 
@@ -766,6 +860,9 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     # unrelated later failure elsewhere in the script (e.g. --plan-file
     # draft-PR creation) never undoes an otherwise-successful worktree.
     WT_ADDED_ENTRIES=()
+    OWN_DEST=""
+    OWN_STARTED_FROM_BASE=false
+    OWN_STARTED_FROM_PARENT=false
 
     _wt_rollback_package_worktree() {
         local rc=$?
@@ -801,11 +898,20 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Adding worktree for $WR_ORIGIN at $WR_DEST (branch '$WR_BRANCH')..."
         WR_BRANCH_EXISTED=no
         git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$WR_BRANCH" && WR_BRANCH_EXISTED=yes
-        if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH"; then
+        # The base belongs to the owning entry alone; a sibling's branch
+        # starts as it always has (its repository's default branch).
+        WR_BASE=""
+        [ "$WR_BRANCH" = "$BRANCH_NAME" ] && [ "$WR_REL" != "." ] && WR_BASE="$BASE_BRANCH"
+        if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH" "$WR_BASE"; then
             if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
                 rm -rf "$WORKTREE_DIR"
             fi
             exit 1
+        fi
+        if [ -n "$LAYER" ] && [ "$WR_BRANCH" = "$BRANCH_NAME" ] && [ "$WR_REL" != "." ]; then
+            OWN_DEST="$WR_DEST"
+            OWN_STARTED_FROM_BASE="$WT_ADD_STARTED_FROM_BASE"
+            OWN_STARTED_FROM_PARENT="$WT_ADD_STARTED_FROM_PARENT"
         fi
         WT_ADDED_ENTRIES+=("$WR_DEST|$WR_ORIGIN|$WR_BRANCH|$WR_BRANCH_EXISTED")
         if [ "${#WT_ADDED_ENTRIES[@]}" -eq 1 ]; then
@@ -842,8 +948,52 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         IFS=$'\t' read -r _rl_origin _rl_rel _rl_branch <<< "$REPO_LINES"
         [ "$_rl_rel" = "." ] && _WRITE_MANIFEST=false
     fi
+    # base= is recorded only for a base known or named (issue 429):
+    #   - this run started the owning branch at origin's base: that base;
+    #   - this run started it from the parent's branch (--parent-issue):
+    #     the parent's branch when it is found (locally or on origin,
+    #     PARENT_BRANCH_FOUND), the branch a sub-issue's draft PR targets
+    #     (check_existing_branch_parent's rule), else nothing;
+    #     An owning branch that already existed is accepted here with no
+    #     base= and a note (--base is refused with --parent-issue);
+    #   - otherwise, the owning branch already existed (locally or on origin): where
+    #     it started cannot be known, so the pin is not trusted; only a
+    #     --base given by name is recorded, after wt_check_named_base
+    #     (origin has it, and the branch shares history with it). Without
+    #     --base, or when a check fails, creation stops and the trap rolls
+    #     back what this run added (the existing branch is kept).
+    MANIFEST_BASE=""
+    if [ -n "$OWN_DEST" ]; then
+        if [ "$OWN_STARTED_FROM_BASE" = true ]; then
+            MANIFEST_BASE="$BASE_BRANCH"
+        elif [ -n "$PARENT_BRANCH" ]; then
+            if [ "$OWN_STARTED_FROM_PARENT" = true ] && [ "$PARENT_BRANCH_FOUND" = true ]; then
+                MANIFEST_BASE="$PARENT_BRANCH"
+            else
+                echo "Note: no base= recorded: '$BRANCH_NAME' was not started from the parent's branch '$PARENT_BRANCH' by this run (it already existed, or the parent was not found); dispatch_phase.sh base --base <branch> records one later." >&2
+            fi
+        elif [ "$BASE_SOURCE" != "--base" ]; then
+            echo "ERROR: '$BRANCH_NAME' already existed (locally or on origin), so this workspace cannot know which branch it started from, and does not take the pin ($BASE_BRANCH) for it. Nothing is recorded and this worktree is rolled back. Pass --base naming the branch it was started from, or start '$BRANCH_NAME' anew (delete it locally and on origin first)." >&2
+            exit 1
+        else
+            _nb_rc=0
+            wt_check_named_base "$OWN_DEST" "$BRANCH_NAME" "$BASE_BRANCH" || _nb_rc=$?
+            case "$_nb_rc" in
+                0) MANIFEST_BASE="$BASE_BRANCH" ;;
+                3)
+                    echo "ERROR: '$BRANCH_NAME' already existed, and --base $BASE_BRANCH could not be checked: $WT_BASE_CHECK_REASON. Nothing is recorded and this worktree is rolled back. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
+                    exit 1
+                    ;;
+                *)
+                    echo "ERROR: '$BRANCH_NAME' already existed, and --base $BASE_BRANCH cannot be its base: $WT_BASE_CHECK_REASON. Nothing is recorded and this worktree is rolled back. Pass --base naming the branch it was started from." >&2
+                    exit 1
+                    ;;
+            esac
+            unset _nb_rc
+        fi
+    fi
     if [ "$_WRITE_MANIFEST" = true ]; then
-        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER"
+        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER" "$MANIFEST_BASE"
     fi
 
     # Generate env.sh/build.sh/test.sh for a package worktree when
@@ -1018,6 +1168,8 @@ if [ -n "$PLAN_FILE" ] && [ -n "$LAYER" ]; then
     echo "⚠️  --plan-file draft PR creation is not supported for package worktrees"
     echo "   (the aggregate dir is not itself a git repo; multi-repo PR"
     echo "   resolution is tracked separately). Create PRs per package repo by hand."
+    echo "   run-issue's publish step opens the owning repository's pull request against"
+    echo "   the recorded base (gh_create_pr.sh -R <owner/repo> --base <base>)."
 elif [ -n "$PLAN_FILE" ]; then
     echo "Creating draft PR for issue #${ISSUE_NUM:-${SKILL_NAME}}..."
     echo ""

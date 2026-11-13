@@ -1513,3 +1513,569 @@ Deliberately left unchanged, recorded by the last two rounds:
 **Decision**: merge
 
 Merge (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:37 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+
+Revision after the verb merged (pull request 456). The plan marks it merged and re-checks 2a steps 3 to 8 and 2b steps 1 to 6 against main with files and lines. Order for this worktree: 2a next, then 2b. Adjustments: `repo_pin` takes `--layer` and its refusals and stderr note are passed through; the merge cross-check applies to the owning pull request only; the 2a tests use real `.repos` pins instead of a stub adapter type; 2b's Scope rewrite also drops a sentence issue 437 made false. One small open question (the merge cleanup's `git pull --ff-only`). No premise is gone; no issue opened.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+**Branch**: `feature/issue-429`
+
+Scope of this review: the "Revision of 2026-11-12" refresh (remaining 2a steps 3-8, 2b steps 1-6, the order 2a then 2b) against main at `b151b741` (= `origin/main` now). Merged parts (445, 456) and design settled by the 2026-11-10 review are not reopened. Owner direction read on the issue (comment of 2026-11-10): a package pull request takes its base from the manifest pin, not GitHub's default branch.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2a rest about 11 files / 450 lines, 2b about 8 / 300; built in order in one worktree. The reasons for 2a first (riskier mechanism settles first; the end-to-end case written once with the base step; the Scope text written once) hold. |
+| Issue alignment | Good | Base comes only from `repo_pin` (or an explicit `--base`), never `origin/HEAD` or the forge: matches the owner's comment. Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). |
+| File targeting | Good | Every cited line re-checked and correct: `adapter` 26/71/114-130; ros2_colcon `adapter.sh` 744-834 (`worktree_repos` prints `<layer>_ws/src/<pkg>`), 1082 (`adapter_repo_pin`); `dispatch_phase.sh` 35-38, 306, 316, 514, 660; `_resolve_work_plans_dir.sh` 152; `_worktree_helpers.sh` 416-422, 430-451 (end-anchored `layer=` at 444, still the only `layer=` reader, `WT_MANIFEST_LAYER` read nowhere else), 550, 723, 752-834; `worktree_create.sh` 256, 399-410, 770-784, 804, 814, 846, 1017-1020, mktemp at 1097/1138 vs `run_script_tests.sh` 348 citing 1091,1132; `merge_pr.sh` 485-523, 497, 504-506, 535, 545, 675, 689-704, 717, 1548-1660, 1565-1572, 1580, 1625; `progress_append.sh` 94; run-issue SKILL.md 4, 83, 671-690, 826-829, 908-932 (927-928 sentence present); `docs/design.md` 476-478 ("lines 839 and 893"); `test_package_issue_loop.sh` 682 lines, cases 1-10 from 166, `.repos` pins `main` at 100; `test_merge_pr_gate.sh` 522. Finding 3 on where two new values are stored. |
+| Consequences | Needs work | ADR route for the `base=` header field (finding 1); stale ADR-0011 wording left in live sections (finding 2). |
+| Principle alignment | Good | Strict start path ("start limits strict"), tests named per refusal, prior art (parent path read and rejected; `wt_fetch_named_branch`/`wt_add_new_branch` reused), one rule for the cross-check scope. |
+| ADR compliance | Needs work | ADR-0008 as applied by 456/ADR-0019: step 5 still says "ADR-0012's manifest paragraph ... change in 2a" (finding 1). ADR-0011/0012/0019 otherwise respected: `_pr_base.sh` names no type and calls the verb. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked per kind and answer of `repo_pin` (code at ros2_colcon `adapter.sh` 1025-1185): `branch` -> the base, and creation's strict path then fetches `origin/<base>` (`wt_fetch_named_branch`) and refuses absent/unknown even with `--allow-unverified-branch` (the `else` arm of `_wt_add_repo` is reached in that mode too, since `wt_lookup_for_new_branch` returns 1 there, so the base path still runs and still refuses offline: consistent). `tag`, `commit`, `unknown` -> refuse naming it, `--base` offered. Exit 1 (no `version:`, YAML-retyped value, stray quote/backslash/CR, unknown repo, ambiguous layers, unknown layer) -> printed verbatim, exit 2; `--layer` always passed, so the ambiguity refusal cannot arise for a package issue. Offline `NOTE ... (unverified)` -> passed through, creation decides ("creation wins"). The repository name rule is sound: `--package-repos` names are the `src/` directory names, and the `.repos` parser (`_rc_repos_entries`, key pattern `[A-Za-z0-9_.-]+`) has no nested keys, so the last path component equals the pin's key. Cross-check scope (owning `feature/issue-N` only) is right: `base=` describes the owning entry only.
+
+### Findings
+
+1. **[ADR compliance]** (should-fix) Step 5 and the Files table say ADR-0012's manifest paragraph changes in 2a. ADR-0012 line 65 lists the header as (`project`, `issue`, `layer`); adding `base` and "the base decides the start point" is decision text, which ADR-0008 (as 456 applied it: ADR-0019 says adding to a decision's text "is a new ADR") forbids editing in place. Resolution: decide the route in the plan: record the header field and start-point rule in `docs/design.md#worktrees` (plus a cross-reference addendum in ADR-0012, ADR-0008's permitted form), or a new ADR if the owner wants it as a decision. ADR-0019 already states the start point comes from the pin (its Consequences), so a design-doc entry plus addendum is probably enough.
+2. **[Consequences]** (minor) Live (non-record) sections still say ADR-0011 is amended: Principles "Keep one current design" (557), ADR table 0011/0012 row (577), Consequences row "repo_pin is a required verb" (592), Decision 5 (608). Also step 8's "a stub adapter type in the sandbox reports each kind" and Estimated Scope's "2a about 16 files, 600 lines" contradict the revision table. Resolution: mark those as superseded or update them to ADR-0019 / real `.repos` pins / 11 files.
+3. **[File targeting]** (minor) `merge_pr.sh` scan: the plan saves `PKG_OWN_REL` (2b.1) and reads `base=` (2a.7) "at the match / beside the other header fields", but matches are collected in `_PKG_MATCHES` (tab tuples, 521) and filtered by `--project` after the match; a scalar set at the match can be overwritten by a later manifest. Resolution: carry both as extra fields of the `_PKG_MATCHES` tuple and read them at line 530 with `PKG_WT_DIR`.
+4. **[Issue alignment]** (minor) A part-1 worktree with no `base=` asks `dispatch_phase.sh base` on resume, but nothing writes `base=` into its header, so the merge cross-check stays silent for it and a `--base` override given then is never checked on origin (the strict path runs only for a new branch). Resolution: either have `base` write the header field when the worktree exists and has none (after a `git ls-remote --heads` check), or state the gap in the plan as accepted.
+5. **[Issue alignment]** (minor) What `dispatch_phase.sh base` prints/returns for a workspace or single-repository issue is unstated ("unchanged" only). Resolution: one line (e.g. prints nothing, exit 0; or run-issue calls it only for a qualified ref) and a case in `test_dispatch_phase.sh`.
+
+Open question (merge cleanup `git pull --ff-only` at `merge_pr.sh` 1625, on whatever branch the owning checkout is on): recommendation **change**, not keep. Today, on a branch other than the base with an upstream it fast-forwards an unrelated branch and prints "synced" (a misleading success); on a branch with no upstream, a detached HEAD (vcstool on a tag/commit pin) or a dirty tree it marks the cleanup incomplete for a non-problem. `adapter_sync` (ros2_colcon `adapter.sh` 599-630) already pulls only when clean and on the pinned branch and fetches otherwise; one rule for both is "Keep one current design". After 2a, `baseRefName` is already in `_head_json`, so the change is a few lines: pull `--ff-only` only when the checkout is clean and on `baseRefName`; otherwise `git fetch` and say "on <x>, not the base <y>: fetched only", without marking the cleanup incomplete; an empty `baseRefName` fetches only. Place it in 2a with step 7 (it needs `baseRefName`) and rewrite 2b.3(d) to pin the new behaviour. The host decides.
+
+### Summary
+
+The refresh is accurate: every "what changed" claim and line citation checked out against main, the base comes only from the manifest pin through `repo_pin` with every kind, refusal and the offline note handled, and the cross-check scope is right. One rule conflict (editing ADR-0012's decision text, which 456 itself avoided for ADR-0011) and a few stale or unstated points need small plan edits before 2a starts; no redesign.
+
+### Recommended Actions
+
+- [ ] Choose the ADR route for `base=` and the start point (design doc + ADR-0012 addendum, or a new ADR); update step 5, the Files table and the ADR table (finding 1)
+- [ ] Update or mark superseded the stale ADR-0011 / stub-adapter / 16-file statements (finding 2)
+- [ ] Carry `PKG_OWN_REL` and the header `base=` in the `_PKG_MATCHES` tuple (finding 3)
+- [ ] Decide `base=` back-fill for part-1 worktrees or state the gap (finding 4)
+- [ ] State `dispatch_phase.sh base` behaviour for non-package issues, with a test (finding 5)
+- [ ] Host: decide the cleanup-pull question (recommended: pull only on `baseRefName`, fetch otherwise; in 2a)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work, small text edits only; first revise at this checkpoint since the last proceed)
+**After**: plan
+**Decision**: revise
+
+Revise the plan for the review's five findings, with these host decisions: (1) the base= field and the start-point rule are recorded in docs/design.md#worktrees with a cross-reference addendum in ADR-0012, not by editing ADR-0012's decision text and not as a new ADR; (2) remove the stale "ADR-0011 amended", stub-adapter and size statements; (3) PKG_OWN_REL and the header's base= travel inside the _PKG_MATCHES record; (4) a worktree with no base= gets the field written on resume, and a --base given on resume is checked on origin; (5) say what dispatch_phase.sh base prints for a workspace or single-repository issue, with a test. Open question decided: change the merge cleanup's pull. Pull --ff-only only when the owning checkout is clean and on the pull request's base branch; otherwise fetch and print "fetched only" without marking the cleanup incomplete; an empty base also means fetch only. It goes in 2a next to the cross-check step, and 2b's cleanup test pins the new behaviour.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:43 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+
+Revision for the plan review (needs-work) and the host's checkpoint. The header field and start-point rule are recorded in the design (Worktrees) with an ADR-0012 cross-reference addendum only; stale ADR-0011, stub-adapter and size statements are corrected; the owning-checkout path and the header base travel in the `_PKG_MATCHES` record; a worktree with no base gets it written on resume after an origin check; `dispatch_phase.sh base` prints nothing for an issue with no package base, with a test; and the cleanup pull runs only when the owning checkout is clean and on the pull request's base (otherwise fetch only), in 2a, pinned by 2b's case (d).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+**Branch**: `feature/issue-429`
+
+Convergence review of the revision for the previous Plan Review (needs-work) and the host's checkpoint (revise, six decisions). Code on the branch equals main at `b151b741`. Merged parts (445, 456) and earlier-settled design not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: 2a's rest, then 2b, in this worktree. |
+| Issue alignment | Good | Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). Base still comes only from the pin or `--base` (owner comment of 2026-11-10). Finding 3. |
+| File targeting | Needs work | Pull-rule test is placed in the wrong suite and an existing assertion it breaks is not listed (finding 1). |
+| Consequences | Good | Decision 1 route reflected in step 5, Files, ADR and Consequences tables. Banner (finding 2). |
+| Principle alignment | Good | Strict resume write-back (refuse, write nothing) fits "start limits strict". |
+| ADR compliance | Good | ADR-0012 decision text and its line-65 header list untouched; addendum only (ADR-0008); no new ADR. |
+| ROS conventions | N/A | Workspace plan. |
+
+Decisions applied, each checked in plan.md: (1) step 5 (395-398), Files row 560, ADR row 613, Consequences row 629: applied. (2) Stale text: "ADR-0011 amended" survives only in the record heading of step 2 with its bracketed correction (366); "stub adapter" only negated (262, 424); sizes say 11 files / 500 lines with the 16/600 figure explained (217, 244, 675): applied. (3) `_PKG_MATCHES` carries `PKG_OWN_REL` and `base=` (2a.7 row 261, 2b.1 439-445): applied; the `-` placeholder is sound: the record is built once (`merge_pr.sh` 521) and read only at 527 (ambiguity message) and 533 (`PKG_WT_DIR`/`PKG_WT_PROJECT`/`PKG_WT_ISSUE`), no reader outside `merge_pr.sh` (grep of `.agent`), a tab `IFS` is whitespace so empty fields do collapse (today's `_hdr_project`/`_hdr_issue` already could), and `-` cannot be a real branch, project or relative path. Mapping back at both reads covers every reader. (4) Step 6 (401-407): `wt_set_manifest_base` beside `wt_write_manifest` (`_worktree_helpers.sh` 416-422), origin check via `wt_bounded_git` (exists, 476), refuse and write nothing when absent or unknown, differing `--base` refused; consistent with step 3's "header first" rule and with step 5's un-anchored `layer=` reader (an appended ` base=` would otherwise blank `WT_MANIFEST_LAYER`, 444). Consequence accepted by the decision: an offline resume of a part-1 worktree stops at step 1. (5) Step 6 (407-410) and step 8 (427-428): applied, but see finding 3. (6) Step 7 (413-421): pull only when clean and on `baseRefName`, else fetch with "fetched only: <why>", not incomplete; failed pull or fetch still incomplete; empty base fetch only; 1742 untouched; matches `merge_pr.sh` 1624-1631 and `_OWN_ORIGIN` (1569) as the owning repository's own checkout. Note: `adapter_sync` (ros2_colcon `adapter.sh` 614-617) skips a dirty checkout outright rather than fetching, so "the rule adapter_sync already follows" is approximate; fetching a dirty checkout is harmless.
+
+Nothing the previous review confirmed has regressed: the revision table's citations (`merge_pr.sh` 485-535, 545, 1548-1660; `_worktree_helpers.sh` 416-451) re-read and still correct.
+
+### Findings
+
+1. **[File targeting]** (should-fix) The pull-rule case does not belong in `test_merge_pr_gate.sh`: that suite tests the gate, and its stub stops a run at the merge by default (`GH_MERGE_EXIT=1`, line 181). The package cleanup (Step 4) is tested in `test_merge_pr.sh` (sibling, sweep, banner and sync cases, 295-611), and its `write_pr_view_fixture` (139-144) writes no `baseRefName`. After 2a's rule every package case there has an empty base and fetches only, so `test_own_repo_sync_failure_is_reported` (394-421; asserts "Could not fast-forward owner/pkg_a" and "cleanup incomplete") fails. Resolution: put the pull-rule case in `test_merge_pr.sh` beside that test; give `write_pr_view_fixture` a `baseRefName` (default `main`, the sandbox origin's branch) so the existing case keeps pinning a failed pull; add `test_merge_pr.sh` to 2a's Files row and step 8. Likewise 2b.3's cleanup cases (a)-(d), listed under `test_merge_pr_gate.sh` (Files row 562), fit `test_merge_pr.sh`, where (b)/(c)-like cases already exist (`test_sibling_pr_open_keeps_worktree` 295, `test_sweep_reports_unmerged_local_branch` 524); check before adding duplicates.
+2. **[Consequences]** (minor) After a fetch-only cleanup the final banner still prints "merged, cleaned up, and synced" (`merge_pr.sh` 1759), the misleading success the rule set out to remove. Resolution: one line in step 7: the banner says the checkout was fetched only (or the step accepts it explicitly); the case in finding 1 asserts it.
+3. **[Issue alignment]** (minor) Step 6 lists "a bare number" among the no-base cases, but `resolve_issue_dir` (`dispatch_phase.sh` 306) maps a unique bare number to a package worktree's owning checkout; `base` would then print nothing and the handoff would drop `base=` for a package issue. Resolution: decide "no base" by the resolved worktree (no manifest, or a lone `.` entry) and pre-creation mode (no `--layer`), not by the form of the ref.
+4. **[File targeting]** (nit) Files row 559 (2a tests) still lists `test_adapter.sh` and `test_ros2_colcon.sh` as edited ("Verb" cases merged in 456) and omits `test_dispatch_phase.sh`; step 8 names `test_dispatch_phase.sh` both as gaining a case and as unchanged (427, 431). Resolution: fix the row and the list when 2a starts.
+
+### Summary
+
+All six checkpoint decisions are in the plan as decided and agree with each other and with main; the `-` placeholder, the resume write-back and the pull rule are sound. The pull-rule test is aimed at the wrong suite and misses an existing assertion it breaks; that and three smaller points are edits to make as 2a starts, not a reason for another plan round.
+
+### Recommended Actions
+
+- [ ] Move the pull-rule case to `test_merge_pr.sh`; add `baseRefName` to `write_pr_view_fixture`; list the suite in 2a (finding 1)
+- [ ] State the final banner after a fetch-only cleanup (finding 2)
+- [ ] Key "no package base" on the resolved worktree, not on a bare number (finding 3)
+- [ ] Correct the 2a tests row and step 8's suite list (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict ready; its four notes are text edits the review says to make as 2a starts)
+**After**: plan
+**Decision**: proceed
+
+Proceed with 2a's remaining steps (the base-branch mechanism), then 2b as its own pull request. The implementer applies the review's four notes: the pull-rule test goes in test_merge_pr.sh with a baseRefName in write_pr_view_fixture (not test_merge_pr_gate.sh); the final banner says what happened after a fetch-only cleanup; "no base" is decided by the worktree a ref resolves to, not by how the ref is written; the Files table and step 8 are corrected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `08db856f`
+
+Pull request 2a's remaining steps (3 to 8): the base branch of a package pull request. 2b (the gate, the end-to-end test, the Scope text) is not started.
+
+**Commits**: 796ad13a (strict start path, `--base`, header field), 9ade367e (`dispatch_phase.sh base`, `_pr_base.sh`, handoff `base=`, run-issue and start-task text), fb92b220 (`merge_pr.sh` cross-check and cleanup pull rule), 0bdf1abe (design, ADR-0012 addendum, script reference), 1ff0ac0c (plan corrections), 08db856f (Table 1 mode count)
+
+### What changed
+- `_worktree_helpers.sh`: `_wt_add_repo` takes a fifth argument, the base. A new owning branch starts from `origin/<base>` fetched now, `--no-track`. If origin lacks the base or does not answer, it stops having made nothing, also with `--allow-unverified-branch`. The local `<base>` is never used. `wt_write_manifest` writes ` base=<b>` when given. `wt_read_manifest` reads `layer=` unanchored and sets `WT_MANIFEST_BASE`. New `wt_set_manifest_base` replaces the header line in one rename, and refuses a different recorded base.
+- `worktree_create.sh --base <branch>`: only with `--layer`. It is refused with `--parent-issue`, for an invalid name, and when no entry is on `feature/issue-N`. It is passed to the owning entry only. The draft-PR message points at publish. `run_script_tests.sh` re-cites the two `/tmp` mktemp lines (now 1148 and 1189).
+- `_pr_base.sh` (new, sourced) `pr_base_for`, in order: the recorded `base=`; then `--base`; then `adapter repo_pin <repo> --layer <l>` when its kind is `branch`. A tag, commit or unknown pin refuses with "<repo> is pinned at <ref> (<kind>); only a branch can be a base. Pass --base <branch>.". An adapter exit 1 shows the adapter's message, then "none is guessed", exit 2. The NOTE "unverified" passes through.
+- `dispatch_phase.sh base`: decided by the resolved worktree.
+  - A package worktree: the recorded base. With none recorded, the pin or `--base`, checked with `wt_bounded_git ls-remote` in the owning checkout, then written; absent or no answer refuses and writes nothing.
+  - Any other worktree: nothing, exit 0; `--base`/`--layer` refused.
+  - No worktree yet: the owning entry from `adapter worktree_repos` gives the directory name.
+  - The handoff prints `base=` after `package_worktree=` when recorded.
+- `merge_pr.sh`:
+  - `_PKG_MATCHES` carries `base=` as a fourth field, `-` for empty, mapped back at both reads.
+  - `_head_json` adds `baseRefName`.
+  - For `feature/issue-N` only, a differing or unreadable base is a gate reason.
+  - Step 4 pulls the owning checkout only when it is clean and on the PR's base. Otherwise it fetches (bounded) and prints "fetched only: <why>", not incomplete; the banner says the checkout was fetched only.
+- `run-issue/SKILL.md`: usage `--base`; step 1 runs `base` before `/start-task` and passes `--base` with `--layer`/`--package-repos`; publish passes `-R <owner/repo> --base <base>`. `start-task/SKILL.md`: `--base` in the creation-only list.
+- Docs: `docs/design.md#worktrees` Base branch bullet; change-log row; refreshed `merge_pr.sh` and `dispatch_phase.sh` citations in the Records bullet and mechanism 1; Table 1's mode count. ADR-0012 cross-reference addendum (Status and References), decision text unchanged. Script reference rows.
+
+### The four plan-review notes
+1. The cleanup pull-rule test is in `test_merge_pr.sh` (`test_own_repo_pulls_only_on_the_base`). `write_pr_view_fixture` defaults `baseRefName` to `main`. `test_own_repo_sync_failure_is_reported` now also asserts a pull was attempted (not fetch-only), so it still pins a failed pull on the base. Nothing was added to `test_merge_pr_gate.sh`.
+2. The banner after a fetch-only cleanup: "merged and cleaned up; <repo>'s checkout was fetched only, not fast-forwarded (<why>)". It is asserted for all four fetch-only setups.
+3. "No base" is keyed on the resolved worktree. A bare `11` resolving to the package worktree prints `base=pinned` (tested).
+4. The plan's Files table and step 8 are corrected in 1ff0ac0c, with steps 6 and 7 annotated as built.
+
+### Deviations from the plan
+- `start-task/SKILL.md` edited: its creation-only flag list would otherwise send `--base` to `worktree_enter.sh` without saying so.
+- The `merge_pr.sh` and `dispatch_phase.sh` line citations in `docs/design.md`'s Records bullet and mechanism 1 were refreshed here, not left to 2b, because this change moved them. The mechanism-1 `dispatch_phase.sh` numbers were already off by 3 on main.
+- `dispatch_phase.sh base` refuses a qualified ref with no worktree and no `--layer`/`--package-repos` (exit 2) rather than printing nothing. The plan was silent on that case, and "nothing" would be a silent wrong answer for a package issue.
+- A recorded base whose `baseRefName` cannot be read is a gate reason, not silence.
+- The resume origin check passes git's message to `wt_fetch_why` with a "git ls-remote exited N" fallback, so the wording is true for ls-remote.
+
+### Checks
+- Suites run directly:
+  - `test_worktree_create.sh` 71/0
+  - `test_package_issue_loop.sh` 180/0
+  - `test_dispatch_phase.sh` 148/0
+  - `test_merge_pr.sh` 131/0
+  - `test_merge_pr_gate.sh` 121/0 (unchanged suite)
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, identity sourced: every hook passed, rc 0, including `validate-script-tests`, shellcheck and check-design-anchors. The branch touches `.agent/scripts/_*.sh` helpers and `run_script_tests.sh`, both full-run triggers, so that hook ran every suite. Its per-suite output is hidden by pre-commit on a pass.
+- Each new behaviour has a test that fails on the old code. Examples: the base start point (old code starts from origin/main), the `base` subcommand, `base=` in the handoff, fetch-only and its banner, the cross-check reason.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `69b6072a`
+**Base**: main
+**Depth**: Deep (reason: 17 files, +1414/-95; new and changed worktree/merge scripts and run-issue/start-task skills, cross-layer: creation, dispatch, merge)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Round correction by the host: `review_progress.sh round` counts 7 because the pre-push reviews of this issue's merged pull requests 445 and 456 share this timeline (tracked as issue 459). The code beyond main (`git diff main...HEAD`) had never been reviewed, so this is round 1 of a new change: full Deep depth, cold read of the whole diff, cross-model reviewers run, verdict script given `--round 1`.
+
+Specialists: static analysis (pre-commit shellcheck on the 9 changed .sh files: pass); governance and plan drift (lead); Claude adversarial (fresh subagent); cross-model gemini (via agy) and codex, both completed; Copilot skipped (disabled for quota). Suites run: test_worktree_create 71/0, test_package_issue_loop 180/0, test_dispatch_phase 148/0, test_merge_pr 131/0; no sleep or wall-clock tuning in the new cases, no leftover processes.
+
+Implementation deviations judged: start-task SKILL.md edit, citation refresh, qualified-ref refusal with no worktree, unreadable baseRefName as a gate reason, wt_fetch_why fallback: all accepted. The stated gap (`base` ignores `--package-repos` for an existing worktree) is suggestion 5.
+
+### Findings
+- [x] (must-fix) Resume write-back records the pin as `base=` without checking the owning branch started there: a worktree made without `--base` (every part-1 worktree, or `/start-task --layer l1 --package-repos pkg_a` directly) starts `feature/issue-N` at origin's default branch; `base` then writes `base=<pin>` after only an `ls-remote`, publish targets the pin and carries default-only commits, and the merge cross-check agrees. Check ancestry against origin/<base> before recording (or refuse), and decide whether a package worktree may be created without `--base` — `.agent/scripts/dispatch_phase.sh:789-807`
+- [x] (must-fix) Cleanup `pull --ff-only` follows the checkout's configured upstream, not origin's `$PR_BASE_REF`: a base branch tracking another remote/branch is moved to unrelated history while the line says "<base> fast-forwarded"; one with no upstream fails and marks the cleanup incomplete. Pull `origin "$PR_BASE_REF"` explicitly; test both upstream setups (codex, adversarial) — `.agent/scripts/merge_pr.sh:1678`
+- [x] (suggestion) A legacy `project/` worktree's header says `project=project` (`${PROJECT_NAME:-project}`); resume passes `--project project` to the adapter, which refuses "not registered", and step 1 stops. Pass the header's project only when it is registered — `.agent/scripts/dispatch_phase.sh:786`
+- [x] (suggestion) The failed-fetch branch of the cleanup ("Could not fetch origin ... so no pull was due", incomplete) has no test; add one with a dead origin and a checkout off the base — `.agent/scripts/tests/test_merge_pr.sh`
+- [x] (suggestion) A pin of kind `unknown` (offline with no remote-tracking ref, so repo_pin's NOTE says unverified) is refused as "pinned at <ref> (unknown); only a branch can be a base": the cause may be an unanswered origin, not a non-branch; word it as "kind could not be established" and suggest retrying online — `.agent/scripts/_pr_base.sh:109-111`
+- [x] (suggestion) `base` for an existing package worktree ignores `--package-repos` without a message, and the header comment does not say so (the implementer's stated gap): compare it with the manifest and refuse a mismatch, or say it is ignored — `.agent/scripts/dispatch_phase.sh:26-55`
+- [x] (suggestion) docs/design.md Table 1 `dispatch_phase.sh` row was edited but its line citations (167, 228-277, 452, 581, 669, 700) are stale (`resolve_worktree` is now at 269; they were already off on main) — `docs/design.md`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 22:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first review of the base mechanism's diff, two must-fix; the round limit is reached only because the counter carries the merged pull requests' reviews, issue 459; first host address for this pull request, the owner's merge of pull request 456 having come between)
+**After**: rounds
+**Decision**: address
+
+Fix all seven findings. Host decisions on finding 1 (a resumed worktree recorded the pin as base= without checking the branch started there): (a) nothing is recorded silently. On resume with no base=, the candidate base (an explicit --base, else the pin) is recorded only after a check that the owning branch carries no foreign history against origin/<base>: every commit in origin/<base>..HEAD that is also reachable from another branch on origin (other than the issue branch itself) is foreign; if any exists, refuse, name the count and the branch they come from, and say how to proceed (recreate the worktree, or pass the --base it was really started from). (b) Creating the owning repository's branch in a package worktree always resolves a base: an explicit --base, else the manifest pin through pr_base_for; if neither gives a branch, creation refuses and asks for --base. A package worktree is no longer started from origin's default branch by omission. This follows the owner's direction of 2026-11-10 (the base comes from the manifest pin, not GitHub's default branch). Finding 2: pull origin <base> explicitly. Finding 6: refuse a --package-repos that does not match the existing manifest. The other findings as the review states them.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `c7a73165`
+**Addressed**: Local Review (Pre-Push) at `69b6072a` (2026-11-12 22:17 -05:00)
+**Commits**: d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d, c7a73165
+
+### Actions
+- [x] (must-fix 1) Resume no longer records an unchecked base; creation always resolves a base — `.agent/scripts/dispatch_phase.sh` (cmd_base), `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` (`wt_base_foreign_history`, `WT_ADD_STARTED_FROM_BASE`). (a) The candidate base (`--base`, else the pin) is written only when no commit in `origin/<base>..feature/issue-N` is also on another origin branch (base and the issue branch excluded). One bounded fetch goes into a private ref namespace, removed again; the checkout's remote-tracking refs are untouched. A refusal names the count and the branches (most commits first, ties closest first), says "Recreate the worktree, or pass the --base it was started from", and writes nothing. (b) A package worktree with an owning entry always resolves a base before anything is made (`--base`, else `pr_base_for`); no branch means refuse and ask for `--base`. An owning branch that already exists (locally or on origin) gets `base=` only after the same check, else creation refuses and rolls back with the branch kept. Siblings get no base. Every creation path goes through `worktree_create.sh`: direct, `/start-task`, run-issue step 1.
+- [x] (must-fix 2) Cleanup pulls `origin <base>` by name: `pull --ff-only --no-rebase origin "$PR_BASE_REF"` — `.agent/scripts/merge_pr.sh:1678-1680`; test `test_own_repo_pull_takes_origin_base_not_upstream` (upstream origin/pinned, origin/main, none). On the old code it fails 5 assertions: "other" is moved to main's history, "none" is marked incomplete.
+- [x] (suggestion 3) Legacy `project=project` header: the header's project is passed to the adapter only when `registry_lookup` finds it — `.agent/scripts/dispatch_phase.sh` cmd_base. Test: owner/pkg_a#14 with a `project=project` header reaches the adapter's answer, not "not registered".
+- [x] (suggestion 4) Failed-fetch test: `test_own_repo_failed_fetch_marks_cleanup_incomplete` (origin's bare moved away, URL kept, checkout on `other`) — `.agent/scripts/tests/test_merge_pr.sh`
+- [x] (suggestion 5) An unknown pin now gives one of three true messages: origin not asked or not answering (the adapter's "(unverified)" NOTE; retry or `--base`), a name no branch can have, or origin asked with no branch or tag of that name — `.agent/scripts/_pr_base.sh`. Tests for all three are in case 11 of `test_package_issue_loop.sh`.
+- [x] (suggestion 6) For an existing package worktree, `--package-repos` must equal the manifest's repositories as a set (order free); a mismatch is refused naming both. Header comment and exit codes updated — `.agent/scripts/dispatch_phase.sh`. Tests: `pkg_b,pkg_a` gives the recorded base; `pkg_a` is refused.
+- [x] (suggestion 7) Table 1's `dispatch_phase.sh` row now cites 219, 280-329, 504, 638, 726, 758, 905. Mechanism 1's citations are refreshed to 544, 590, 592, 654, 923 (this pass moved them) — `docs/design.md`
+
+### Finding 1: inputs and results
+`wt_base_foreign_history <checkout> <branch> <base>` (unit cases in `test_worktree_create.sh`). Origin has: main = M0 M1; rel = M0 R1; old = M0; ahead = M0 M1 A1; dev2 = M0 M1 D2.
+
+| Branch | Base | Result |
+|---|---|---|
+| no own commits, from rel | rel | 0, none |
+| from rel plus own commits | rel | 0, none |
+| from origin main (the reported case) | rel | 1: 1 commit, from main (named first) |
+| base is an ancestor of main: from main plus own | old | 1: 1 commit, from main |
+| main is an ancestor of the base: from main plus own | ahead | 0 (only its own commit) |
+| issue branch pushed to origin, from rel | rel | 0 (its pushed copy is not "another") |
+| issue branch pushed to origin, from main | rel | 1 (main's commit; the branch itself not named) |
+| two origin branches carry it | rel | 1: 2 commits, "dev2 (2), main (1), ..." |
+| base not on origin | nosuch | 2: "origin has no branch 'nosuch'", nothing written |
+| no local branch | rel | 3 |
+| origin unreachable / fetch fails | rel | 3, git's line; nothing written |
+| every case | | no `refs/wt-base-check/` refs left, remote-tracking refs unchanged |
+
+End to end:
+- Resume (`test_package_issue_loop.sh` case 13): C (from main before `pinned` moved on; main is an ancestor of pinned) records `pinned`. C14 (from main after main moved past pinned) is refused with "1 commit(s) ... origin's main (1)", header unchanged; with `--base main` (its own commit pushed) `base=main` is recorded. A `--base` origin lacks, a tag pin and a dead origin (bounded, git's "Network is unreachable") each refuse and write nothing.
+- Creation (`test_ros2_colcon.sh`):
+  - No `--base` gives base=fakefox (the pin), and the branch is at origin/fakefox.
+  - A tag pin with no `--base` refuses before anything is made (no directory, no owning or sibling branch); with `--base main` it records main.
+  - Siblings only: no base, created.
+  - Existing local branch from the pin, with own work: recorded.
+  - Existing local branch from main (main past the pin): refused, rolled back, branch kept at its commit, no check refs left; with `--base main`: recorded.
+  - Branch on origin only, from the pin: recorded.
+
+### Existing tests changed, and why
+- `test_ros2_colcon.sh`: package repositories' origins were unreachable `git@github.com:owner/<pkg>` URLs. Creation now needs a base origin confirms, so they are served offline by a `GIT_SSH_COMMAND` stub from the per-test `fake_remotes/github.com/` (it fails as an unreachable host outside one). origin holds the pin `fakefox` as a branch, and the sandbox copies `_pr_base.sh`. The tests state a base through the pin; none asserts a refusal, since each is about layout or rollback.
+- `test_package_issue_loop.sh`:
+  - Setup now asserts `base=main` on C and C2 and none on C9. It then strips `base=` from C so C stands in for a pre-field worktree, which keeps the "no base= line" handoff check and case 13 meaningful.
+  - The `unknown` expectation is the new message.
+  - Case 13's dead-origin check passes `--base pinned` and expects the new "could not check whether ... started from origin's 'pinned'" message.
+- `test_worktree_create.sh`, `test_merge_pr.sh`: only additions.
+- `run_script_tests.sh` re-cites `worktree_create.sh:1215,1256`.
+
+### Checks
+- Suites run directly on the final code: `test_ros2_colcon.sh` 531/0, `test_package_issue_loop.sh` 188/0, `test_worktree_create.sh` 84/0, `test_merge_pr.sh` 150/0. `test_dispatch_phase.sh` 148/0 (run after the last `dispatch_phase.sh` code edit).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. This includes `validate-script-tests`: a shared helper changed, so every suite ran. shellcheck and check-design-anchors passed too.
+- Tests that fail on the old code:
+  - finding 2: shown, 5 failures with the old pull line.
+  - finding 1: the reported-case refusal and the creation base= checks (the old code recorded `pinned` and created with no base).
+  - finding 3: the old code passes `--project project` and gets "not registered".
+  - finding 5: the old message is "(unknown)".
+  - finding 6: the old code ignored the list.
+- Finding 4's test pins existing behaviour.
+
+### Notes
+- The fetch for the check pulls every origin branch's objects once, on resume or creation over an existing branch only.
+- A commit of the issue's own that someone also pushed to another origin branch counts as foreign (conservative: the run refuses and names that branch).
+- Table 1's other rows (`worktree_create.sh`, `merge_pr.sh`) cite lines that were already stale before this pass (the table calls itself a dated probe). Only the `dispatch_phase.sh` row was in scope and is now true.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2d814db9`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification, unchanged from round 1: worktree/dispatch/merge scripts and skills, cross-layer)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round 2 of this diff (the dispatcher counts higher because the merged pull requests 445 and 456 share the timeline, issue 459; the verdict script was given `--round 2`). Scope: round 1's seven findings and the fix diff d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d. Round-2 rule: Deep on the whole diff, so cross-model ran (gemini via agy, codex: both completed); Copilot skipped (disabled for quota); fresh Claude adversarial sub-review ran.
+
+Round 1 findings: 1 (resume records unchecked base) fixed by the foreign-history check and creation always resolving a base, but see must-fix 1 and 2 below; 2 (explicit `pull --ff-only --no-rebase origin <base>`) fixed and tested; 3 (legacy `project=project`), 4 (failed-fetch test), 5 (three true `unknown` messages), 6 (`--package-repos` set compared) and 7 (Table 1 citations) fixed as stated.
+
+Suites run: test_ros2_colcon 531/0, test_worktree_create 84/0, test_package_issue_loop 188/0, test_dispatch_phase 148/0, test_merge_pr 150/0; no `refs/wt-base-check/` refs left in this checkout. The GIT_SSH_COMMAND stub in test_ros2_colcon serves only the sandbox's fake_remotes and fails as unreachable elsewhere; the layout and rollback tests still assert what they did. The comment at test_ros2_colcon.sh:272 still says the fixture origins cannot be reached.
+
+### Findings
+- [x] (must-fix) A package worktree with `--parent-issue` and no `--base` now starts from the pin, not the parent: `worktree_create.sh --issue owner/pkg_a#12 --type project --layer l1 --package-repos pkg_a --parent-issue 10` resolves BASE_BRANCH from the pin (the `--base`/`--parent-issue` guard at :354 runs before it), `_wt_add_repo` takes the base path ahead of the parent path, the banner still says "Parent: #10", and base=<pin> is recorded. Before this pass the branch started from feature/issue-10. Refuse the combination or skip pin resolution with a parent (codex, adversarial) — `.agent/scripts/worktree_create.sh:738`
+- [x] (must-fix) `wt_base_foreign_history` counts the issue's own commits as foreign when another origin branch also has them: feature/issue-7 from origin/rel plus one own commit, its tip also pushed as feature/issue-12 (a sub-issue branch stacked on it with --parent-issue, or a backup) gives rc=1 "1 commit(s) ... origin's feature/issue-12 (1): it did not start from 'rel'", false, and both resume and creation over the existing branch refuse. This is the host's rule as written, so it needs a decision: e.g. count only commits that another branch has AND that are not descended from the branch's fork point with the base, or word the refusal as "also on <branch>" and offer a way through (adversarial, gemini) — `.agent/scripts/_worktree_helpers.sh:519-536`
+- [x] (suggestion) A branch with no history in common with the base passes: an orphan feature/issue-N makes every merge-base empty, every origin branch is skipped, rc=0, and base= is recorded although no pull request can be opened. Require `merge-base <tip> <ns>/<base>` to be non-empty (codex) — `.agent/scripts/_worktree_helpers.sh:529`
+- [x] (suggestion) The check's fetch updates the checkout's remote-tracking refs (git's opportunistic update for a command-line refspec), contrary to its header: verified, a clone with no refs/remotes/origin/dev gets one after `fetch origin "+refs/heads/*:refs/wt-base-check/x/*"`. Add `--refmap=`; the "remote-tracking refs are unchanged" test passes on the current code because its clone's refs were already current (adversarial) — `.agent/scripts/_worktree_helpers.sh:507`, `.agent/scripts/tests/test_worktree_create.sh:816` (deferred: falls away: wt_base_foreign_history and its all-branch fetch are removed (host decision); wt_check_named_base fetches only origin/<base> by its own refspec)
+- [x] (suggestion) No INT/TERM handling: a Ctrl-C during the merge-base loop of `dispatch_phase.sh base` leaves `refs/wt-base-check/<pid>-<rand>/*` refs that pin objects and show in `--all`; sweep stale ones at the start or trap (adversarial) — `.agent/scripts/_worktree_helpers.sh:500-562` (deferred: falls away: the private refs/wt-base-check refs are no longer made (check removed, host decision))
+- [x] (suggestion) `--branch <name>` with `--layer` is not refused, and the owning entry is found by `BRANCH_NAME`: `--branch foo --layer l1 --package-repos pkg_a` finds no owning entry, resolves no base, and feature/issue-N starts from origin's default branch with no base= (adversarial) — `.agent/scripts/worktree_create.sh:735`
+- [x] (suggestion) `dispatch_phase.sh base --base ""` is ignored (the pin is used) and `pr_base_for`/`cmd_base` validate with `check-ref-format refs/heads/<b>`, which accepts `-foo` and `HEAD`; use `git check-ref-format --branch` and refuse an empty value, as worktree_create.sh does (gemini) — `.agent/scripts/dispatch_phase.sh:752`, `.agent/scripts/_pr_base.sh:68`
+- [x] (suggestion) Test gaps: no case for the foreign-history refusal after sibling worktrees were added (rollback of siblings); case 13's dead-origin resume now passes `--base pinned`, so reading the pin while origin is down and then reaching the check is no longer exercised (adversarial) — `.agent/scripts/tests/test_ros2_colcon.sh`, `.agent/scripts/tests/test_package_issue_loop.sh`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 22:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of the base mechanism's diff, two must-fix, both from the host's own round-1 decision; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+The host withdraws its round-1 decision (a): the foreign-history check (wt_base_foreign_history) is removed, with its fetch of every origin branch and its private refs. It guessed where a branch started and was wrong both ways (the issue's own commits on a stacked or backup branch read as foreign; an orphan branch passed). Replacement, simpler: a worktree with no base= recorded never has one recorded from the pin. On resume, and on creation over an owning branch that already exists, the base must be named with --base; it is recorded after two checks only: the branch exists on origin (bounded), and the issue branch has a common ancestor with origin/<base>. Without --base the run refuses and says so truthfully: the worktree or branch predates base recording, or already existed, so the workspace cannot know where it started; pass --base naming the branch it was started from, or recreate it. Decision (b) stands: creating a NEW owning branch always resolves a base (--base, else the pin; refuse if neither is a branch). Must-fix 1: with --parent-issue the pin is not read; the branch starts from the parent's branch as before this change, and what base= records then follows what the existing sub-issue flow targets (the parent's branch), stated in the entry. Suggestions 6, 7, 8 and the stale comment are fixed as the review states; 3 becomes the common-ancestor check above; 4 and 5 fall away with the removed check (confirm no caller or text still refers to it).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `8e62ad61`
+**Addressed**: Local Review (Pre-Push) at `2d814db9` (2026-11-12 22:50 -05:00), under the host's Checkpoint of 2026-11-12 22:51
+**Commits**: a0363b19, e10b5348, 77939677, 8e62ad61
+
+### Actions
+- [x] Withdrawn check removed (host decision). `wt_base_foreign_history` is gone, along with its fetch of every origin branch, the private `refs/wt-base-check/` refs, its tests and every text about it. Nothing outside this progress timeline still names it (grep for `wt_base_foreign_history`, `WT_FOREIGN` and `wt-base-check`). This also retires must-fix 2 — `.agent/scripts/_worktree_helpers.sh`
+- [x] Replacement rule: a base is named and checked. A worktree with no recorded `base=`, or an owning branch that already existed at creation, never gets the pin.
+  - The base must be named with `--base`. It is recorded after `wt_check_named_base`: origin has the branch (`wt_fetch_named_branch`, bounded), and the issue branch has a common ancestor with `origin/<base>` (suggestion 3).
+  - Without `--base`, the run refuses and writes nothing. The message says the worktree predates base recording, or the branch already existed, so the workspace cannot know where it started; it asks for `--base` naming that branch, or a recreate.
+  - With origin down, the run refuses and writes nothing, giving the whole fetch reason.
+  - Code: `dispatch_phase.sh` cmd_base, `worktree_create.sh` manifest write, `_worktree_helpers.sh` `wt_check_named_base`.
+- [x] (must-fix 1) `--parent-issue` on a package worktree. The pin is not read, and a new branch starts from the parent's branch as before this change. `base=` records the parent's branch when it is found, which is the existing sub-issue flow's own notion (`check_existing_branch_parent` → `PARENT_BRANCH_FOUND`): a sub-issue's draft PR targets the parent's branch when it is found locally or on origin. The banner's new `Base:` line names the parent's branch. Test: `test_worktree_create_package_parent_issue_starts_from_parent`, where the pin is a tag that would refuse if read. It checks that the branch is at the parent's tip, that both banner lines and `base=feature/issue-10` agree, and that `--base` with `--parent-issue` is still refused — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 4) deferred: falls away with the removed check. `wt_check_named_base` fetches only `origin/<base>`, by its own refspec.
+- [x] (suggestion 5) deferred: falls away; no private refs are made any more.
+- [x] (suggestion 6) `--branch` with `--layer` is refused, and I chose refusal over resolving a base. `--branch` renames the issue's branch in the one repository a worktree is of, but in a package worktree the adapter names every repository's branch. A custom name therefore matches no entry, and no base could be tied to it. Test: `test_worktree_create_package_refuses_branch_and_empty_base` — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 7) `--base` validation is the same in `pr_base_for`, `cmd_base` and `worktree_create.sh`: `check-ref-format --branch` plus `refs/heads/<b>` (`wt_valid_branch_name`). An empty value is refused, not ignored; `-foo`, `HEAD`, `a..b` and `@{-1}` are refused. Tested in all three paths — `.agent/scripts/_pr_base.sh`, `dispatch_phase.sh`, `worktree_create.sh`
+- [x] (suggestion 8) Two test gaps closed:
+  - (i) An existing owning branch without `--base`, listed after a sibling: refused, "rolling back 2", the sibling's worktree and branch removed, the existing branch kept (`test_ros2_colcon.sh`).
+  - (ii) The pin read while origin is down: `base` prints `base=pinned` with the "(unverified)" note, then creation with origin down refuses with nothing made in either repository (`test_package_issue_loop.sh` case 12).
+- [x] The comment at `test_ros2_colcon.sh:272` now says the fixture origins answer.
+
+### Resume: inputs and results (`dispatch_phase.sh base`, the worktree exists)
+| header `base=` | `--base` | origin | result |
+|---|---|---|---|
+| X | none, or X | – | `base=X` |
+| X | Y ≠ X | – | refused (records X) |
+| none | none | – | refused: "records no base: it was made before base recording ... cannot know which branch ... started from, and does not take the pin". The pin is not read; nothing written |
+| none | `""`, `-foo`, `HEAD` | – | refused: not a valid branch name |
+| none | B, which origin lacks | answers | refused: "origin has no branch 'B'"; nothing written |
+| none | B | down | refused: "could not check --base B ... (whole fetch reason)"; nothing written |
+| none | B; orphan issue branch | answers | refused: "has no commit in common with origin's 'B'"; nothing written |
+| none | B, on origin, history shared | answers | `base=B` recorded, entries unchanged (also under a `project=project` header) |
+
+### Creation: inputs and results (`worktree_create.sh`, owning branch)
+| owning branch | `--base` | `--parent-issue` | result |
+|---|---|---|---|
+| new | B | no | starts at `origin/B`, `base=B`; refused with nothing made if origin lacks B or is down |
+| new | none; pin a branch P | no | starts at `origin/P`, `base=P` |
+| new | none; pin a tag, commit or unknown | no | refused before anything is made |
+| new | none | yes | pin not read; starts from the parent's branch; `base=<parent>` when found. If the parent is not found it starts from the default branch with the pre-existing WARNING (unchanged sub-issue behaviour) and gets no `base=`, with a note |
+| any | B | yes | refused |
+| exists (local or origin) | none | no | refused: "already existed ... cannot know ... does not take the pin"; rolled back, siblings too; the branch kept |
+| exists | B, origin has it, history shared | no | `base=B` |
+| exists | B, which origin lacks; or an orphan branch | no | refused, rolled back |
+| exists | B, origin down | no | refused (retry), rolled back |
+| exists | none | yes | checked out; no `base=` (a note); a later `base --base` records it |
+| `--branch` with `--layer` | – | – | refused, nothing made |
+| no owning entry (siblings only) | none | no | no base, as before |
+
+`run-issue` step 1 now passes `--base` to creation only when the owner gave it, never the pin `base` printed; otherwise creation would turn the pin into a "named" base for an existing branch.
+
+### Tests removed or changed
+- **Removed** (the check is withdrawn):
+  - the `wt_base_foreign_history` edge table in `test_worktree_create.sh`;
+  - `test_worktree_create_package_existing_branch_checked_before_base_recorded` in `test_ros2_colcon.sh`;
+  - case 13's foreign refusal and its no-leftover-refs check in `test_package_issue_loop.sh`.
+- **Replaced by:**
+  - the `wt_check_named_base` and `wt_valid_branch_name` input table (`test_worktree_create.sh`);
+  - `test_worktree_create_package_existing_branch_needs_named_base`, `..._parent_issue_starts_from_parent` and `..._refuses_branch_and_empty_base` (`test_ros2_colcon.sh`);
+  - case 13 rewritten to the resume table above (`test_package_issue_loop.sh`).
+- **Changed:** case 13's "origin has the pinned branch: recorded" check now passes `--base pinned`, because recording without a named base is exactly what the new rule forbids. The legacy `project=project` check now records a named `--base`: no adapter call remains on the resume path, so I removed the header-project code that round 1 added.
+
+### Checks
+- Suites run directly on the final code, all with 0 failures: `test_worktree_create.sh` rc 0, `test_ros2_colcon.sh` 558/0, `test_package_issue_loop.sh` 194/0, `test_dispatch_phase.sh` 148/0, `test_merge_pr.sh` 150/0.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran every suite because a shared helper changed.
+- Each of these fails on round 2's code:
+  - the resume refusal without `--base`, which round 2 recorded from the pin;
+  - the parent case, where round 2 read the tag pin and refused;
+  - the `--branch` refusal;
+  - the empty and `-foo` `--base` values;
+  - the existing-branch refusal without `--base`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 23:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `0144179c`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 3 of this diff. The dispatcher counts higher because merged pull requests 445 and 456 share this timeline (issue 459); the verdict script was given `--round 3`.
+
+Scope: round 2's eight findings and the fix diff a0363b19, e10b5348, 77939677.
+
+Cross-model: skipped (round-3 convergence check, per handoff). A fresh Claude adversarial sub-review ran every row of the Implementation entry's resume and creation tables in sandboxes.
+
+Round 2's findings:
+- Must-fix 1 (`--parent-issue` overridden by the pin): fixed. The pin is not read; the branch starts from the parent's branch; `base=` records the parent's branch when it is found.
+- Must-fix 2 (the issue's own commits counted as foreign): fell away. The host withdrew the history check, and nothing outside `.agent/work-plans` still refers to `wt_base_foreign_history`, `wt-base-check` or `WT_FOREIGN` (grep).
+- Suggestion 3 (orphan branch passes): now refused with rc 4, "no commit in common".
+- Suggestions 4 and 5 (the history check's fetch and refs): fell away with the check.
+- Suggestion 6 (`--branch` with `--layer`): refused before anything is made.
+- Suggestion 7 (`--base` values): `''`, `-foo`, `HEAD`, `a..b` and `@{-1}` are refused through `wt_valid_branch_name`.
+- Suggestion 8 (test gaps): sibling rollback is tested. The pin read with origin down is case 12. The stale test comment is fixed.
+
+Checked by running:
+- Every table row gives the stated result, and each refusal message is true for its input. This covers an existing branch without `--base`, origin down, and a base origin lacks.
+- Rollback: a sibling added first, then a refusal. Both repositories are back to `main`, no aggregate directory is left, and the pre-existing branch is kept.
+- Two rows start from the default branch: "parent not found" and "exists, none, yes". The first is main's own parent-not-found WARNING path, unchanged. The second checks out the existing branch. In both, the printed Note is true.
+- The only thing left behind is a fetched `refs/remotes/origin/<base>` for a base origin has.
+- run-issue step 1 and the scripts agree: `--base` goes to creation only when the owner gave it.
+
+No regressions:
+- `merge_pr.sh` is unchanged since round 2, so the cleanup pull still names origin's base.
+- The unknown-pin messages are unchanged.
+- The `--package-repos` comparison is unchanged.
+- Table 1's `dispatch_phase.sh` row cites 216 and 277-326, which is where `derive_project_name` and `resolve_worktree` are.
+
+Suites run: test_ros2_colcon 558/0, test_worktree_create 79/0, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] (suggestion) The rule "an owning branch that already exists needs `--base`, else creation refuses" is stated without its `--parent-issue` exception. Input: an existing local `feature/issue-201` with `--layer l1 --package-repos pkg_a --parent-issue 10`. Result: exit 0, a Note, no `base=`. `--base` cannot be given there either, since it is refused with `--parent-issue`. Add the exception: the existing branch is accepted, no base is recorded, and `dispatch_phase.sh base --base` records one later — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3 of this diff, no must-fix; one documentation suggestion goes to triage)
+**After**: publish
+**Decision**: publish
+
+Round 3 approved after running every row of the two input tables against the real scripts. One suggestion stays open for triage: the rule "an existing owning branch needs --base" is written without its --parent-issue exception in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #460 at `4c248c51`
+**Sources**: 4 (Local Review (Pre-Push) @ `69b6072a` round 1, @ `2d814db9` round 2, @ `0144179c` round 3 (covers 4c248c51 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: the three pre-push reviews after the Checkpoint of 2026-11-12 21:45 (After: plan, Decision: proceed). Rounds 1 (7 findings) and 2 (8 findings) are all ticked, each with its fix or its host decision recorded. The helper also lists stale open boxes in entries at `a6c2d2f`, `3ab6be9` and `8d563c2`: those belong to the merged pull requests 445 and 456 and are out of scope here, not re-triaged. CI at triage time: Validate Documentation passed in both runs, one ros-manifest run passed; Lint (pre-commit), Validate Adapter Contract and the other ros-manifest run had no conclusion yet.
+
+### Findings
+- [x] (should-fix, documentation defect, Local Review (Pre-Push) @ `0144179c` covers head via bookkeeping) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" is written without its `--parent-issue` exception. Verified in code: `worktree_create.sh:955-969` accepts an existing owning branch under `--parent-issue`, records no `base=`, prints a Note, and exits 0; `--base` is refused with `--parent-issue`, so the rule as written cannot be followed there. Under the Quality Standard, documentation that states a rule the code does not follow is a defect, not a nit. Fix in this pull request: add the exception (existing branch accepted, no base recorded, `dispatch_phase.sh base --base` records one later) to all three places — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid, a documentation defect to fix in this pull request)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 460: state the --parent-issue exception to "an existing owning branch needs --base" in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text: the existing branch is accepted, no base is recorded, and dispatch_phase.sh base --base records one later.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 2 of 3)
+
+**PR**: #460 at `9bc5f3ee`
+**Addressed**: Integrated Review at `4c248c51` (2026-11-12 23:18 -05:00)
+**Commits**: 9bc5f3ee
+
+### Actions
+- [x] (should-fix, documentation defect) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" now carries its `--parent-issue` exception everywhere it was stated without it. The exception matches `worktree_create.sh`'s manifest write: with `--parent-issue`, where `--base` is refused, an existing owning branch is accepted, no `base=` is recorded, a Note says so, and `dispatch_phase.sh base --base <branch>` records one later. This is text only; no behaviour changed. Places:
+  - `docs/design.md#worktrees` (Base branch bullet)
+  - `.claude/skills/start-task/SKILL.md:175`
+  - `.agent/scripts/worktree_create.sh`: the `--base` usage text, and the manifest-write comment, which stated the rule the same way
+  - `.agent/WORKTREE_GUIDE.md` (Base branch bullet)
+  - `.agent/knowledge/script_reference.md` (`worktree_create.sh` row)
+  - `.agent/work-plans/issue-429/plan.md` (Part 2 step 4)
+
+### Places left as they are
+- `.claude/skills/run-issue/SKILL.md` (lines 144 and 247) states the rule without the exception, and I left it: run-issue never passes `--parent-issue`, so in its flow the rule holds as written.
+- The ADR-0012 addendum also stays. It says only that for a branch the workspace did not start "only a base the owner names is recorded", which is still true when nothing is recorded.
+- No test asserts the usage text: a grep of `.agent/scripts/tests/` found none.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran the suites the branch's changed files reach.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 23:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 3 of 3)
+
+**PR**: #460 at `7b85fe7d`
+**Depth**: Deep (reason: whole-diff classification; fix round scoped by the handoff to the one documentation suggestion and the text-only fix 9bc5f3ee)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Fix-round re-review of the round-3 suggestion (the `--parent-issue` exception to the existing-branch rule). Cross-model: skipped per handoff (text and usage text only, no behaviour).
+
+- **The exception, in each of the six places changed** (`docs/design.md#worktrees`, start-task SKILL.md, `WORKTREE_GUIDE.md`, `script_reference.md`, `worktree_create.sh`'s `--base` usage text and its manifest-write comment): each says an existing owning branch is accepted, no `base=` is recorded, a note says so, and `dispatch_phase.sh base --base <branch>` records one later. That matches `worktree_create.sh`'s manifest write, the `elif [ -n "$PARENT_BRANCH" ]` branch with its Note, and the refusal of `--base` with `--parent-issue`.
+- **No behaviour changed:** inside `worktree_create.sh`, the diff of 9bc5f3ee touches only `echo` lines of `show_usage` and a comment block; `bash -n` passes.
+- **Places left as they are:**
+  - run-issue SKILL.md never passes `--parent-issue` (0 occurrences), so its rule needs no exception.
+  - The ADR-0012 addendum still holds ("for a branch the workspace did not start only a base the owner names is recorded": the exception records nothing). It defers the detail to design.md.
+- **Suites rerun at 7b85fe7d:** test_ros2_colcon 558/0, test_worktree_create 0 failed, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 23:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a30219fdb6d71d1ef, resume 1 of 3)
+
+**PR**: #460 at `89ea6ef7`
+**Sources**: 2 (Local Review @ `7b85fe7d` (covers 89ea6ef7 via bookkeeping), CI rollup); Copilot skipped (disabled for quota); no GitHub reviews or comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Repeat triage after the documentation fix 9bc5f3ee and its re-review. The previous Integrated Review's one finding (the `--parent-issue` exception to "an existing owning branch needs `--base`") is fixed: `docs/design.md:505-507`, `.claude/skills/start-task/SKILL.md:175` and the `--base` usage text at `.agent/scripts/worktree_create.sh:205-211` now state that the existing branch is accepted, no `base=` is recorded, and `dispatch_phase.sh base --base` records one later. That matches the Note path at `worktree_create.sh:973`. The same text was also corrected in WORKTREE_GUIDE.md, script_reference.md and plan.md. The Local Review at `7b85fe7d` approved with no findings; its only box is the "No issues found" placeholder, not an action item. The helper now lists the round-3 pre-push entry at `0144179c` as stale with one open box: that is the same finding, ruled on in the previous Integrated Review and fixed in 9bc5f3ee. The stale open boxes at `a6c2d2f`, `3ab6be9` and `8d563c2` belong to the merged pull requests 445 and 456 and remain out of scope. CI at triage time: Validate Documentation passed in both runs; Lint (pre-commit), Validate Adapter Contract and both ros-manifest runs had no conclusion yet, and none had failed.
+
+### Findings
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended)
