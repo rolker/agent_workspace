@@ -1128,3 +1128,30 @@ Deviations: the register hint says "register it as type ros2_colcon" (the type i
 - `bash .agent/scripts/tests/test_project_file.sh`: 542 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit hides which suites it ran on a pass).
 - Not verified: the BSD `mv -h` path on a real BSD/macOS host (tested only with a stub mv on Linux); the no-flock fallback only with flock absent from PATH on Linux.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 16:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent acd44ebb128a81666, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `9329b41e`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~2,300 lines across 16 files)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round-1 findings: all nine addressed as described in the Implementation entry at `9329b41e`, verified by reading each fix and by tests; finding 2 (detached-HEAD commits) is fixed for tag and commit refs only (new must-fix 1 below).
+
+### Findings
+- [ ] (must-fix) Changing source_ref from a tag or commit to a branch silently orphans local commits on the clone's detached HEAD: the branch switch runs `checkout --quiet`, which hides git's "leaving commits behind"; apply the detached-commit guard before the branch switch, with a test (Codex, Gemini, Claude adversarial and the lead all confirmed) — `.agent/project_types/ros2_colcon/adapter.sh:703`
+- [ ] (must-fix) The leftovers sweep removes a user's moved-aside directory such as `manifest-resolved.backup` (any 6 alphanumerics match), which the adapter's own "move it aside" error invites; mark the adapter's own directories (e.g. require its `.resolved-from` header, or a distinct prefix) — `.agent/project_types/ros2_colcon/adapter.sh:878`
+- [ ] (suggestion) A remote rewrite is taken for local commits and stays stale (with a misleading warning): a force-pushed branch, or a tag moved off commits no branch holds; treat HEAD equal to the recorded `commit=` as not local — `.agent/project_types/ros2_colcon/adapter.sh:732`
+- [ ] (suggestion) Lock covers fetch and resolve only: setup's import loop, sync's pull loop and other readers follow the link unlocked, and a concurrent swap can `rm -rf` the directory mid-read; read one resolved directory per run, or state it in the header — `.agent/project_types/ros2_colcon/adapter.sh:908`
+- [ ] (suggestion) fd 9 is inherited by git and the resolver during the critical section; a detached child (auto gc) would hold the lock; close it on those calls (`9>&-`) — `.agent/project_types/ros2_colcon/adapter.sh:922`
+- [ ] (suggestion) An invalid ROS2_COLCON_LOCK_WAIT (e.g. `abc`) is reported as "another setup or sync holds its lock"; validate it or tell flock's exit 64 from 1 — `.agent/project_types/ros2_colcon/adapter.sh:926`
+- [ ] (suggestion) `--prune-tags` deletes tags the user made in the clone, yet the detached warning says commits are "on no branch or tag" as if a tag protects them; say branch only — `.agent/project_types/ros2_colcon/adapter.sh:735`
+- [ ] (suggestion) On GNU, a real `mv -T` failure falls through `mv -fh` (unknown there) to `rm -f` of the live link, leaving no link and letting the next sweep remove the previous directory; probe the option once instead of falling back on any failure — `.agent/project_types/ros2_colcon/adapter.sh:846`
+- [ ] (suggestion) The two-syncs-at-once test catches a missing lock only through its directory-count assertion, about 19 runs in 20 (lock disabled in a scratch copy, 20 runs); the exit and tip assertions pass without the lock — `.agent/scripts/tests/test_ros2_colcon.sh:3137`
+- [ ] (suggestion) A URL `source` refuses blanks but not other control characters (the path form and source_path refuse both) — `.agent/scripts/_project_registry.sh:804`
