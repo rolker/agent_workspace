@@ -2328,3 +2328,37 @@ Not covered by a test: an owning manifest entry `.` (a legacy single-repository 
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`: identity sourced, no SKIP, rc 0.
   - Every hook passed, or was skipped for having no files.
   - That includes `validate-script-tests` (the suites the changed files reach), `check-design-anchors` and `shellcheck`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 06:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `43a724a8`
+**Base**: main
+**Depth**: Deep (reason: enforcement script `merge_pr.sh` (the merge gate) changed; 11 files, +973 -131)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Round note: `review_progress.sh round` counts this as round 10, because the pre-push reviews of this issue's three earlier pull requests (445, 456, 460, all merged) are on the same timeline (issue 459). The host corrected it to round 1: the code on this branch beyond main (`git diff main...HEAD`, pull request 2b) had never been reviewed. So this was a cold, full-depth read of the whole diff, with the cross-model reviewers. The verdict script was given `--round 1`.
+
+Specialists:
+- Static analysis: shellcheck through pre-commit passed on the 5 changed scripts.
+- Governance and plan drift: done by the lead.
+- Claude adversarial: a fresh subagent.
+- Cross-model: gemini (agy) and codex both ran and completed. Copilot was skipped (disabled for quota).
+
+Suites run on HEAD, all passing: test_merge_pr_gate 131/0, test_package_issue_loop 214/0, test_merge_pr 150/0 and test_dispatch_phase, rc 0. The adversarial specialist ran HEAD's tests against main's scripts: 10 gate failures and 13 loop failures, so the new tests catch the old behaviour.
+
+Verdicts on workspace pull requests are unchanged except on a hang. `_GATE_PKG_ROLE` is empty there, so the three `!= sibling` guards act exactly as the old `-z PKG_WT_DIR` checks did. A timed-out fetch leaves only local `rev-parse` to decide, and that yields "not present locally" or "does not resolve", never a pass. A timed-out push takes the undo path.
+
+### Findings
+- [ ] (must-fix) `check_branch_updates.sh --base <b>` fetches without a refspec. In a `--single-branch` or narrowed clone, `origin/<b>` is never created or refreshed, so the script reports "up-to-date" (exit 0, even with `--strict`) while the branch is behind. Reproduced: a single-branch clone of main, origin's `pinned` 1 ahead, result "up-to-date with pinned", rc=0. Fix: fetch `+refs/heads/<b>:refs/remotes/origin/<b>` (as `_worktree_helpers.sh:671` does), treat a missing `origin/<b>` after the fetch as a warning rather than 0 behind, and add a regression test. Found by codex and the Claude adversarial specialist. — `.agent/scripts/check_branch_updates.sh:113-128`
+- [ ] (must-fix) The record commit in the owning checkout leaves that checkout dirty when the package repository's own hook refuses the commit (pre-commit, or commitlint rejecting `progress: merge (report-only) for #N`). `progress_append.sh` exits 3 with the entry appended and staged. `merge_pr.sh` only posts the PR comment and does not undo the append, unlike the push-refused path. Result: the record exists twice, a later run's idempotency read sees the uncommitted entry, and cleanup finds a dirty tree. This exposure is new with this PR. Fix: restore progress.md to HEAD (or remove it if new) on refusal; add a test with a failing hook in pkg_a. — `.agent/scripts/merge_pr.sh:932,960-961`
+- [ ] (suggestion) The owning checkout is not checked to be on the PR branch. If A is on `feature/issue-N-old`, the write guard accepts it and the commit lands there. `push origin feature/issue-N` then says "Everything up-to-date" and the script reports the record as pushed when it is not. Require `branch --show-current == PR_BRANCH`, or push `HEAD:$PR_BRANCH`. — `.agent/scripts/merge_pr.sh:728-737,942`
+- [ ] (suggestion) For the owning role, `_ci_wt` takes `rev-parse --show-toplevel` with no "path is the top" check. An owning folder that exists but is no longer a checkout resolves to an enclosing repository, which then supplies the fetch and the CI-target SHA. Apply `_gate_record`'s equality check here too. Found by gemini and the Claude adversarial specialist. — `.agent/scripts/merge_pr.sh:764-774`
+- [ ] (suggestion) The gate's CI-target fetch in the owning checkout has the same no-refspec gap as the first must-fix. In a single-branch package clone, `origin/feature/issue-N` (made at creation) is not refreshed, so `HEAD_NOW` can be a stale SHA and becomes the CI target. Use the explicit refspec. — `.agent/scripts/merge_pr.sh:1086`
+- [ ] (suggestion) The new bounded calls have no test. Add one gate case with a hanging origin (expect a refusal reason, never a pass) and one record push that times out (expect the commit undone and a comment). — `.agent/scripts/tests/test_merge_pr_gate.sh`
+- [ ] (suggestion) The behaviour change of `wt_bounded_git` for workspace pull requests is not documented. Through `timeout` with `GIT_TERMINAL_PROMPT=0`, an SSH passphrase or host-key prompt with no agent now waits out the limit and fails, where `git -C ... fetch` used to prompt. The gate then refuses unless the review is at the head, which is the safe direction. Add one line to `docs/design.md` (Merge gate) or `script_reference.md`. — `docs/design.md`
+- [ ] (suggestion) This PR closes issue 429, but the two follow-up issues drafted in plan.md have not been filed: compatibility-mode persistence, and the real-name fixtures in six other suites. That is an owner call: file them, or allow them to be filed, before the merge so nothing is lost. — `.agent/work-plans/issue-429/plan.md:192,562`
