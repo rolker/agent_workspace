@@ -37,18 +37,15 @@
 #       - a package worktree (a manifest whose issue checkout is not the
 #         worktree itself): its header's base= is the answer, and a --base
 #         that differs is refused. A header with no base= (a worktree made
-#         before the field) gets one: the candidate (--base, else the pin)
-#         is written (wt_set_manifest_base) only after the owning branch is
-#         checked against origin in the owning checkout
-#         (wt_base_foreign_history, one bounded fetch): no commit beyond
-#         origin's <base> that another origin branch also has. Commits
-#         from another branch (a branch started from origin's default
-#         when the pin is another), origin lacking the base, or origin not
-#         answering each refuse and write nothing. --layer, when given,
-#         must be the header's layer, and --package-repos the set of
-#         repositories the manifest holds; a mismatch is refused. The
-#         header's project= is passed to the adapter only when it is a
-#         registered project (a legacy layout writes project=project).
+#         before the field) never gets one from the pin: where its branch
+#         started cannot be known. Without --base it refuses saying so;
+#         with --base the named branch is written (wt_set_manifest_base)
+#         only after wt_check_named_base in the owning checkout (bounded):
+#         origin has the branch, and feature/issue-<N> shares history with
+#         origin/<base>. A failed check, or origin not answering, refuses
+#         and writes nothing. --layer, when given, must be the header's
+#         layer, and --package-repos the set of repositories the manifest
+#         holds; a mismatch is refused.
 #       - any other worktree (workspace, single-repository project, a lone
 #         "." manifest): no package base. Prints nothing, exit 0; --base,
 #         --layer or --package-repos is refused.
@@ -136,10 +133,10 @@
 #                base; 2 refused (usage, no single owning entry, a pin that
 #                is not a branch or cannot be read, a --base that differs
 #                from the recorded one, a --layer or --package-repos
-#                that does not match the manifest, and on resume: the
-#                owning branch carrying another origin branch's commits
-#                beyond the base, origin lacking the base or not
-#                answering), the reason on stderr.
+#                that does not match the manifest, an invalid or empty
+#                --base, and on resume: no --base, origin lacking the
+#                base or not answering, no history in common with it),
+#                the reason on stderr.
 #
 # See docs/decisions/0013-progress-md-entry-type-vocabulary.md for the
 # entry-type vocabulary and .agent/work-plans/issue-276/ for the plan.
@@ -741,7 +738,7 @@ cmd_where() {
 # header comment for the three cases. Prints `base=<branch>`, or nothing
 # for an issue with no package base.
 cmd_base() {
-    local issue="" type="workspace" project="" layer="" package_repos="" override=""
+    local issue="" type="workspace" project="" layer="" package_repos="" override="" base_given=false
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)         [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
@@ -749,7 +746,7 @@ cmd_base() {
             --project)       [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
             --layer)         [[ $# -ge 2 ]] || usage; layer="$2"; shift 2 ;;
             --package-repos) [[ $# -ge 2 ]] || usage; package_repos="$2"; shift 2 ;;
-            --base)          [[ $# -ge 2 ]] || usage; override="$2"; shift 2 ;;
+            --base)          [[ $# -ge 2 ]] || usage; override="$2"; base_given=true; shift 2 ;;
             *) usage ;;
         esac
     done
@@ -760,7 +757,7 @@ cmd_base() {
         [[ "$type" == project ]] || { echo "error: base: --layer/--package-repos are only valid with --type project" >&2; exit 2; }
         [[ -n "$layer" && -n "$package_repos" ]] || { echo "error: base: --layer and --package-repos must be given together" >&2; exit 2; }
     fi
-    if [[ -n "$override" ]] && ! git check-ref-format "refs/heads/$override" >/dev/null 2>&1; then
+    if [[ "$base_given" == true ]] && ! wt_valid_branch_name "$override"; then
         echo "error: base: --base '$override' is not a valid branch name" >&2
         exit 2
     fi
@@ -783,10 +780,9 @@ cmd_base() {
         fi
         # shellcheck source=_pr_base.sh
         source "$SCRIPT_DIR/_pr_base.sh"
-        local header hdr_layer hdr_project hdr_base
+        local header hdr_layer hdr_base
         header=$(head -n1 "$wt/.worktree-repos")
         hdr_layer=$(sed -n 's/.* layer=\([^ ]*\).*/\1/p' <<< "$header")
-        hdr_project=$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$header")
         hdr_base=$(sed -n 's/.* base=\([^ ]*\).*/\1/p' <<< "$header")
         if [[ -n "$layer" && "$layer" != "$hdr_layer" ]]; then
             echo "error: base: the package worktree $wt for $ref is of layer '${hdr_layer}', not --layer $layer" >&2
@@ -803,41 +799,34 @@ cmd_base() {
                 exit 2
             fi
         fi
-        local -a pargs=(--repo "$(basename "$dir")" --recorded "$hdr_base")
-        [[ -n "$hdr_layer" ]] && pargs+=(--layer "$hdr_layer")
-        # A legacy layout's header says project=project (worktree_create.sh's
-        # fallback when no project is registered): that name is passed only
-        # when it is registered, else the adapter finds the project itself.
-        if [[ -n "$hdr_project" ]] && registry_lookup "$ROOT_DIR" "$hdr_project" >/dev/null 2>&1; then
-            pargs+=(--project "$hdr_project")
+        # A worktree made before base= existed: where its owning branch
+        # started cannot be known, so the pin is not read for it; the base is
+        # recorded only when named (--base) and checked: origin has it, and
+        # the branch shares history with it (wt_check_named_base, bounded).
+        # Anything else refuses and writes nothing.
+        if [[ -z "$hdr_base" && -z "$override" ]]; then
+            echo "error: base: $wt records no base: it was made before base recording, so this workspace cannot know which branch $ref's feature/issue-$num in $dir started from, and does not take the pin for it. Pass --base naming the branch it was started from, or recreate the worktree. Nothing was recorded." >&2
+            exit 2
         fi
+        local -a pargs=(--repo "$(basename "$dir")" --recorded "$hdr_base")
         [[ -n "$override" ]] && pargs+=(--base "$override")
         base=$(pr_base_for "${pargs[@]}") || exit 2
         if [[ -z "$hdr_base" ]]; then
-            # A worktree made before base= existed: record the candidate
-            # (--base, else the pin) only once the owning branch is known to
-            # have started there: no commit beyond origin's <base> that
-            # another origin branch has (wt_base_foreign_history; one
-            # bounded fetch). Anything else refuses and writes nothing.
-            local own="feature/issue-$num" frc=0
-            wt_base_foreign_history "$dir" "$own" "$base" || frc=$?
-            case "$frc" in
+            local own="feature/issue-$num" nrc=0
+            wt_check_named_base "$dir" "$own" "$base" || nrc=$?
+            case "$nrc" in
                 0) ;;
-                1)
-                    echo "error: base: $own in $dir carries $WT_FOREIGN_COUNT commit(s) that origin's '$base' does not have and origin's $WT_FOREIGN_FROM has: it did not start from '$base', and a pull request against '$base' would carry them. Nothing was recorded in $wt/.worktree-repos. Recreate the worktree (worktree_create.sh starts the branch from the base), or pass the --base it was started from." >&2
-                    exit 2
-                    ;;
-                2)
-                    echo "error: base: origin of $dir has no branch '$base', so it cannot be $ref's base; nothing was recorded in $wt/.worktree-repos. Pass --base with a branch origin has, or push '$base' first." >&2
+                3)
+                    echo "error: base: could not check --base $base for $own in $dir ($WT_BASE_CHECK_REASON); nothing was recorded in $wt/.worktree-repos. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
                     exit 2
                     ;;
                 *)
-                    echo "error: base: could not check whether $own in $dir started from origin's '$base' ($WT_FOREIGN_REASON); nothing was recorded in $wt/.worktree-repos. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
+                    echo "error: base: --base $base cannot be the base of $own in $dir: $WT_BASE_CHECK_REASON. Nothing was recorded in $wt/.worktree-repos. Pass --base naming the branch it was started from." >&2
                     exit 2
                     ;;
             esac
             wt_set_manifest_base "$wt" "$base" || exit 2
-            echo "note: base: recorded base=$base in $wt/.worktree-repos (origin has it, and $own carries no other origin branch's commits beyond it)" >&2
+            echo "note: base: recorded base=$base in $wt/.worktree-repos (named by --base; origin has it, and $own shares history with it)" >&2
         fi
         echo "base=$base"
         return 0

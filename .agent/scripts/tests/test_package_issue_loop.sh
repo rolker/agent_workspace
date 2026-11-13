@@ -831,6 +831,20 @@ created=$(tail -n +"$((gh_before + 1))" "$GH_LOG" | grep '^pr create ')
 check "publish: gh pr create --repo owner/pkg_a --base pinned (gh_create_pr.sh spells -R as --repo), from A" \
     "$([[ "$rc" -eq 0 && "$created" == "pr create --repo owner/pkg_a --base pinned "*"| cwd=$A11" ]]; echo $?)" "rc=$rc created=$created out=$out"
 
+# The pin read while origin is down: repo_pin answers from local refs and
+# says so (unverified); creation then asks origin itself and stops, having
+# made nothing ("creation wins").
+pin_a pinned
+out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#16' "${PRE[@]}")
+check "pin read with origin down: base=pinned from local refs, said to be unverified" \
+    "$([[ "$out" == *"(unverified)"* && "$out" == *"base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+GIT_SSH_COMMAND="$STUB/deadssh" create --issue owner/pkg_a#16 --type project --project demo --layer l1 --package-repos pkg_b,pkg_a; rc=$?
+check "creation with origin down, base from that pin: refused, nothing made" \
+    "$([[ "$rc" -ne 0 && ! -e "$H/worktrees/issue-demo-owner-pkg_a-16" ]] \
+        && ! git -C "$PKG_A_HOSTED" show-ref --verify --quiet refs/heads/feature/issue-16 \
+        && ! git -C "$PKG_B_HOSTED" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-16 \
+        && grep -q "(unverified)" "$SANDBOX/create.log" && grep -q "cannot tell whether origin has" "$SANDBOX/create.log"; echo $?)" "$(cat "$SANDBOX/create.log")"
+
 # A base origin lacks stops creation and rolls back the sibling already added.
 create --issue owner/pkg_a#13 --type project --project demo --layer l1 --package-repos pkg_b,pkg_a --base nosuch; rc=$?
 check "creation with a base origin lacks: refused, the sibling added first rolled back, no worktree" \
@@ -840,65 +854,72 @@ check "creation with a base origin lacks: refused, the sibling added first rolle
         && grep -q "origin does not have it" "$SANDBOX/create.log"; echo $?)" "$(cat "$SANDBOX/create.log")"
 
 # ----------------------------------------------------------------- case 13
-# A worktree made before base= existed (C, owner/pkg_a#7, made in setup with
-# no --base): `base` records the base on resume, only after origin confirms
-# it, and writes nothing otherwise.
+# A worktree made before base= existed (C, owner/pkg_a#7, its header
+# stripped in setup): its branch's start cannot be known, so the pin is
+# never recorded for it. Only a --base named by the owner is, after two
+# checks: origin has it, and the branch shares history with it.
 echo "TEST: resume of a worktree with no recorded base"
 hdr_before=$(cat "$C/.worktree-repos")
-out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base nosuch)
-check "--base origin lacks: refused, nothing recorded" \
-    "$([[ "$out" == *"origin of $A has no branch 'nosuch'"*"nothing was recorded"* && "$out" == *"rc=2" \
-          && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
 pin_a v1
 out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
-check "a pin that is a tag: refused, nothing recorded" \
-    "$([[ "$out" == *"pkg_a is pinned at v1 (tag)"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+check "no --base: refused, saying the worktree predates base recording; the pin (a tag here) is not read; nothing recorded" \
+    "$([[ "$out" == *"error: base: $C records no base: it was made before base recording, so this workspace cannot know which branch owner/pkg_a#7's feature/issue-7 in $A started from, and does not take the pin for it. Pass --base naming the branch it was started from, or recreate the worktree. Nothing was recorded."* \
+          && "$out" != *"v1"* && "$out" != *"NOTE"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
 pin_a pinned
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
+check "no --base with the pin a branch: still refused, nothing recorded" \
+    "$([[ "$out" == *"records no base"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base nosuch)
+check "--base origin lacks: refused, nothing recorded" \
+    "$([[ "$out" == *"--base nosuch cannot be the base of feature/issue-7 in $A: origin has no branch 'nosuch'. Nothing was recorded"* && "$out" == *"rc=2" \
+          && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+for v in "" "-foo" "HEAD"; do
+    out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base "$v")
+    check "--base '$v': refused as no valid branch name, nothing recorded" \
+        "$([[ "$out" == *"error: base: --base '$v' is not a valid branch name"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+done
 GOOD_SSH="$GIT_SSH_COMMAND"
 out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#7' --type project --base pinned)
-check "origin unreachable: the origin check fails, nothing recorded" \
-    "$([[ "$out" == *"could not check whether feature/issue-7 in $A started from origin's 'pinned'"*"Network is unreachable"* \
+check "origin unreachable: the check cannot be made, nothing recorded" \
+    "$([[ "$out" == *"could not check --base pinned for feature/issue-7 in $A ("*"Network is unreachable"* \
           && "$out" == *"nothing was recorded"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
 export GIT_SSH_COMMAND="$GOOD_SSH"
-out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
-check "origin has the pinned branch: base=pinned, and the header now records it, entries unchanged" \
-    "$([[ "$out" == *"recorded base=pinned in $C/.worktree-repos"* && "$out" == *"base=pinned"$'\n'"rc=0" \
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base pinned)
+check "--base pinned, on origin and sharing history: base=pinned recorded, entries unchanged" \
+    "$([[ "$out" == *"recorded base=pinned in $C/.worktree-repos (named by --base"* && "$out" == *"base=pinned"$'\n'"rc=0" \
           && "$(head -n1 "$C/.worktree-repos")" == "$(head -n1 <<< "$hdr_before") base=pinned" \
           && "$(tail -n +2 "$C/.worktree-repos")" == "$(tail -n +2 <<< "$hdr_before")" ]]; echo $?)" "$out"
 out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base main)
 check "after that, a different --base is refused" "$([[ "$out" == *"records base=pinned"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
-# That record is right: A started from origin's main before pinned, and
-# main is an ancestor of pinned, so A carries no commit pinned lacks that
-# another origin branch has.
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
+check "after that, no --base gives the recorded base" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
 
-# The reported case: a worktree made from origin's main after main moved
-# past the pin (one commit pinned lacks), header without base=, the pin a
-# branch. The resume refuses, naming the commit's count and its branch,
-# and writes nothing; with the --base it really started from, it records.
-git -C "$PIN_SEED" checkout -q main
-git -C "$PIN_SEED" pull -q origin main
-git -C "$PIN_SEED" commit -q --allow-empty -m "main moves past pinned"
-git -C "$PIN_SEED" push -q origin main
+# A legacy layout's header (project=project) records a named base too.
 create --issue owner/pkg_a#14 --type project --project demo --layer l1 --package-repos pkg_a,pkg_b --base main \
     || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#14 with --base main"; }
 C14="$H/worktrees/issue-demo-owner-pkg_a-14"
-A14="$C14/l1_ws/src/pkg_a"
-git -C "$A14" commit -q --allow-empty -m "own work on 14"
-git -C "$A14" push -q origin feature/issue-14
-# Its header as a legacy layout writes it (project=project, finding 3 of the
-# review): base passes the adapter no unregistered project name.
 { printf '# project=project issue=owner/pkg_a#14 layer=l1\n'; tail -n +2 "$C14/.worktree-repos"; } > "$C14/hdr.new" && mv "$C14/hdr.new" "$C14/.worktree-repos"
-hdr14=$(cat "$C14/.worktree-repos")
-out=$(dp "$H" base --issue 'owner/pkg_a#14' --type project)
-check "started from main, pin pinned: refused, naming 1 commit from origin's main and how to proceed; nothing recorded" \
-    "$([[ "$out" == *"error: base: feature/issue-14 in $A14 carries 1 commit(s) that origin's 'pinned' does not have and origin's main (1) has: it did not start from 'pinned'"* \
-          && "$out" == *"Recreate the worktree"*"or pass the --base it was started from."* \
-          && "$out" != *"not registered"* && "$out" == *"rc=2" && "$(cat "$C14/.worktree-repos")" == "$hdr14" ]]; echo $?)" "$out"
-check "the check leaves no refs behind in A14's repository" \
-    "$([[ -z "$(git -C "$A14" for-each-ref refs/wt-base-check/)" ]]; echo $?)"
 out=$(dp "$H" base --issue 'owner/pkg_a#14' --type project --base main)
-check "the same with the --base it started from (its own commits pushed to origin): recorded" \
+check "a project=project header: --base main recorded" \
     "$([[ "$out" == *"base=main"$'\n'"rc=0" && "$(head -n1 "$C14/.worktree-repos")" == "# project=project issue=owner/pkg_a#14 layer=l1 base=main" ]]; echo $?)" "$out"
+
+# An owning branch with no history in common with the named base (an
+# orphan): refused, nothing recorded.
+create --issue owner/pkg_a#15 --type project --project demo --layer l1 --package-repos pkg_a --base main \
+    || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#15 with --base main"; }
+C15="$H/worktrees/issue-demo-owner-pkg_a-15"
+A15="$C15/l1_ws/src/pkg_a"
+strip_base "$C15"
+git -C "$A15" checkout -q --orphan orphan15
+git -C "$A15" commit -q --allow-empty -m "orphan root"
+git -C "$A15" branch -q -f feature/issue-15 orphan15
+git -C "$A15" checkout -q feature/issue-15
+git -C "$A15" branch -q -D orphan15
+hdr15=$(cat "$C15/.worktree-repos")
+out=$(dp "$H" base --issue 'owner/pkg_a#15' --type project --base main)
+check "an orphan owning branch: refused, no history in common, nothing recorded" \
+    "$([[ "$out" == *"--base main cannot be the base of feature/issue-15 in $A15: 'feature/issue-15' has no commit in common with origin's 'main'."* \
+          && "$out" == *"rc=2" && "$(cat "$C15/.worktree-repos")" == "$hdr15" ]]; echo $?)" "$out"
 
 # --package-repos on an existing package worktree must be the set it was
 # made with (C11: pkg_a,pkg_b); a --layer, the header's layer.

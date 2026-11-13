@@ -19,8 +19,10 @@
 #          branch already started from the recorded one.
 #       2. --base (the owner's override) is the answer. Whether origin has
 #          it is decided where something is made from it: worktree
-#          creation's strict start path, or the resume write-back in
-#          dispatch_phase.sh base.
+#          creation's strict start path, or wt_check_named_base for a
+#          branch that already existed (creation over it, or resume in
+#          dispatch_phase.sh base, which never reads the pin for a
+#          worktree that recorded no base).
 #       3. Otherwise `adapter repo_pin <name> [--layer <l>]` (ADR-0019), the
 #          type's own reading of its pin, prints "<ref>\t<kind>":
 #            branch                 -> <ref> is the base;
@@ -50,14 +52,14 @@
 _PR_BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 pr_base_for() {
-    local repo="" layer="" project="" recorded="" override=""
+    local repo="" layer="" project="" recorded="" override="" base_given=false
     while [ $# -gt 0 ]; do
         case "$1" in
             --repo)     repo="${2:-}"; shift 2 || return 2 ;;
             --layer)    layer="${2:-}"; shift 2 || return 2 ;;
             --project)  project="${2:-}"; shift 2 || return 2 ;;
             --recorded) recorded="${2:-}"; shift 2 || return 2 ;;
-            --base)     override="${2:-}"; shift 2 || return 2 ;;
+            --base)     override="${2:-}"; base_given=true; shift 2 || return 2 ;;
             *) echo "error: pr_base_for: unknown argument '$1'" >&2; return 2 ;;
         esac
     done
@@ -65,7 +67,12 @@ pr_base_for() {
         echo "error: pr_base_for: --repo <name> is required" >&2
         return 2
     fi
-    if [ -n "$override" ] && ! git check-ref-format "refs/heads/$override" >/dev/null 2>&1; then
+    # A --base given is never ignored: empty, "HEAD", a leading "-" or
+    # the @{-N} shorthand is refused (git check-ref-format --branch, and
+    # as refs/heads/<name>).
+    if [ "$base_given" = true ] && { [ -z "$override" ] \
+            || ! git check-ref-format --branch "$override" >/dev/null 2>&1 \
+            || ! git check-ref-format "refs/heads/$override" >/dev/null 2>&1; }; then
         echo "error: --base '$override' is not a valid branch name" >&2
         return 2
     fi
