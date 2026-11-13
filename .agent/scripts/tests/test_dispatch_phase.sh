@@ -939,63 +939,39 @@ out=$(run_handoff --issue 9 --skill implement)
 [[ "$out" == *"in the shape \`$SB/.claude/skills/run-issue/SKILL.md\` step 4"* ]] \
     && pass "handoff: implement's exit contract names the writer and the run-issue skill by absolute path (issue 429)" || fail "handoff implement exit contract absolute paths (out=$out)"
 
-# The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
-# on conventions=, only for the committing passes of a workspace handoff: a
-# review phase is never told to skip a hook. run_script_tests.sh is not
-# named, so the handoff does not invite a second, separate suite run. The
-# pre-commit it names is the main checkout's venv one by absolute path (the
-# sandbox root here): a worktree has no .venv, so a bare `pre-commit` is
-# "command not found" there, and the absolute form is what the permission
-# allowlist matches (pre-push review round 1, must-fix). The run takes
-# minutes, past the Bash tool's 120 s default, so the rule asks for a long
-# timeout and a wait for the exit (round 1, suggestion). A sub-issue
-# worktree branches from its parent's feature branch, so main...HEAD also
-# covers the parent's files; the rule says so (round 1, suggestion). The
-# hook runs only the suites the changed files reach, all of them when the
-# branch deletes an in-scope file, and none when deletions are the only
-# in-scope change (pre-commit drops deleted paths), so the rule says CI
-# covers that (round 2, suggestion; reworded for issue #410).
+# The hook rule (issue #465, owner-decided 2026-11-13) rides on
+# conventions=, only for the committing passes of a workspace handoff: a
+# review phase is never told to skip a hook. SKIP covers every commit, the
+# progress entry's included; --no-verify stays forbidden. The agent runs the
+# suites that test what it changed, each on its own, and names them in its
+# entry; the full pre-commit pass is the host's (run-issue step 7), so the
+# agent's text prints no pre-commit command and names no runner (a full run
+# per pass is what the rule removed). The old rule's scope word
+# ("intermediate" commits) must not come back either (plan review note 7).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
-    [[ "$conv" == *"SKIP=validate-script-tests"* && "$conv" == *"\`$SB/.venv/bin/pre-commit run --files "* \
-        && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
-        && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
-        && "$conv" == *"600000 ms"*"wait for its exit"* \
-        && "$conv" == *"suites those files reach when a changed file that still exists matches that hook"*"deletes an in-scope file"*"only in-scope changes are deletions runs none, and CI's all-files run covers that"*"about 2 minutes"* \
-        && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
+    [[ "$conv" == *"owner-decided 2026-11-13, issue #465"* \
+        && "$conv" == *"\`SKIP=validate-script-tests\` on every commit you make, your progress entry's commit included"* \
+        && "$conv" == *"\`--no-verify\` is never allowed"* \
+        && "$conv" == *"Run only the suites that test what you changed, each on its own with \`bash .agent/scripts/tests/<suite>\`"* \
+        && "$conv" == *"its \`test_<name>.sh\` and any \`test_<name>_*.sh\`"* \
+        && "$conv" == *"\`test_skill_paths.sh\` when you changed text under \`.claude/skills/\` or \`.agent/knowledge/\`"* \
+        && "$conv" == *"A changed script with no such suite gets none: name it in your entry, and the host's pass covers it."* \
+        && "$conv" == *"In your entry, name each suite you ran with its result line, and say the full pass was left to the host."* \
+        && "$conv" == *"the host runs the full pass once before the push, and CI checks every push"* \
+        && "$conv" != *"pre-commit run --files"* && "$conv" != *".venv/bin/pre-commit"* \
+        && "$conv" != *"run_script_tests.sh"* && "$conv" != *"suites_for_files.sh"* \
+        && "$conv" != *"intermediate"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
-        && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
-        || fail "handoff $sk once-per-pass rule (conv=$conv)"
+        && pass "handoff: $sk (workspace) conventions= carries the 2026-11-13 hook rule (SKIP on every commit, own suites only, host's full pass), no pre-commit command, and the existing conventions" \
+        || fail "handoff $sk hook rule (conv=$conv)"
 done
-# A main checkout whose path has a space: the rule prints ROOT_DIR through
-# printf %q, so the printed command runs as written. The fake pre-commit
-# proves the escaped path resolves to the right executable (round 2,
-# suggestion); the ordinary-path case above pins the unchanged form.
-SBS="$SANDBOX/root with space"
-mkdir -p "$SBS/.agent/scripts" "$SBS/worktrees/workspace" "$SBS/.venv/bin"
-git -C "$SBS" init -q -b main
-git -C "$SBS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
-    cp "$SCRIPT_DIR/../$f" "$SBS/.agent/scripts/"
-done
-git -C "$SBS" worktree add -q "$SBS/worktrees/workspace/issue-workspace-9" -b feature/issue-9 >/dev/null 2>&1
-printf '#!/usr/bin/env bash\necho "fake-pre-commit $*"\n' > "$SBS/.venv/bin/pre-commit"
-chmod +x "$SBS/.venv/bin/pre-commit"
-out=$(cd "$SBS" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill address-findings 2>&1); rc=$?
-conv=$(printf '%s\n' "$out" | grep '^conventions=')
-want_prefix="$(printf '%q' "$SBS")/.venv/bin/pre-commit run --files "
-printed="${conv#*\`"$want_prefix"}"
-[[ "$rc" -eq 0 && "$printed" != "$conv" ]] && printed="$want_prefix${printed%%\`*}" || printed=""
-ran=$([[ -n "$printed" ]] && cd "$SBS" && bash -c "$printed" 2>&1)
-[[ -n "$printed" && "$printed" == *'root\ with\ space/.venv/bin/pre-commit'* && "$ran" == "fake-pre-commit run --files"* ]] \
-    && pass "handoff: a main checkout path with a space prints escaped (printf %q) and the printed command runs" \
-    || fail "handoff spaced root (rc=$rc printed=$printed ran=$ran conv=$conv)"
 
 for sk in review-issue plan-task review-plan review-code triage-reviews; do
     out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
-    [[ -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+    [[ -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* && "$conv" != *"Hook rule"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
         && pass "handoff: $sk conventions= carries no hook-skip rule, keeps the existing conventions" \
         || fail "handoff $sk must not carry the hook rule (conv=$conv)"
@@ -1119,11 +1095,11 @@ printf 'myproj\tsingle_project\t%s\n' "$SBP1/myproj" > "$SBP1/.agent/projects.lo
 out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" == *"worktree=$SBP1/myproj/worktrees/issue-9"* ]] \
     && pass "resolve_worktree --type project: a single registered project resolves via registry_worktree_dir" || fail "resolve_worktree project registry (rc=$rc out=$out)"
-# The once-per-pass hook rule names a workspace hook and workspace CI, so a
-# --type project implement handoff carries none (issue #399).
+# The hook rule names a workspace hook and workspace CI, so a --type
+# project implement handoff carries none (issues #399, #465).
 out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill implement --type project 2>&1); rc=$?
 conv=$(printf '%s\n' "$out" | grep '^conventions=')
-[[ "$rc" -eq 0 && -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+[[ "$rc" -eq 0 && -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* && "$conv" != *"Hook rule"* \
     && "$conv" == *"local time with offset"*"scratchpad"* ]] \
     && pass "handoff: --type project implement conventions= carries no workspace hook rule" \
     || fail "handoff project implement must not carry the hook rule (rc=$rc out=$out)"

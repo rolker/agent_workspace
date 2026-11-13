@@ -77,12 +77,12 @@
 #     issue #455); no address is held here. conventions tells
 #     the phase to start every command chain with `cd <worktree> &&`.
 #     For `implement` and `address-findings` in a workspace handoff,
-#     conventions also carries the once-per-pass hook rule (owner-decided
-#     2026-10-20, issue #399): SKIP=validate-script-tests on intermediate
-#     commits only, one `pre-commit run --files` over the branch's changed
-#     files before the entry (it runs the script suites those files reach,
-#     issue #410), CI as the backstop; other phases and project handoffs
-#     carry none.
+#     conventions also carries the hook rule (owner-decided 2026-11-13,
+#     issue #465): SKIP=validate-script-tests on every commit, the entry's
+#     included, never --no-verify; no full pre-commit pass, only the suites
+#     that test what the pass changed, named in its entry; the host runs
+#     the full pass once before the push (run-issue step 7) and CI checks
+#     every push. Other phases and project handoffs carry none.
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
@@ -602,20 +602,21 @@ cmd_handoff() {
     else
         echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
     fi
-    # The once-per-pass hook rule (issue #399, owner-decided 2026-10-20):
-    # only the committing passes of a workspace handoff get it. It names a
-    # workspace hook and workspace CI, so a project handoff carries none,
-    # and no review phase is ever told to skip a hook.
-    # ROOT_DIR goes through printf %q because the agent runs the printed
-    # command as written: an ordinary path prints unchanged (so the
+    # The hook rule (issue #465, owner-decided 2026-11-13): only the
+    # committing passes of a workspace handoff get it. It names a workspace
+    # hook, workspace suites and workspace CI, so a project handoff carries
+    # none, and no review phase is ever told to skip a hook. The full
+    # pre-commit pass is the host's (run-issue step 7), so the agent's text
+    # prints no pre-commit command.
+    # The worktree path goes through printf %q because the agent runs the
+    # printed `cd` as written: an ordinary path prints unchanged (so the
     # permission allowlist still matches it) and a path with a space or
     # other shell character comes out escaped.
-    local pass_rule="" root_q wt_q
-    root_q=$(printf '%q' "$ROOT_DIR")
+    local pass_rule="" wt_q
     wt_q=$(printf '%q' "$wt")
     case "$skill" in
         implement|address-findings)
-            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$root_q/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; the file list is left unquoted because no repo path has a space; in a sub-issue worktree it also covers the parent's files). It runs the script test suites those files reach when a changed file that still exists matches that hook (every suite when the branch deletes an in-scope file or touches a shared helper; a branch whose only in-scope changes are deletions runs none, and CI's all-files run covers that), so run no separate suite; it takes about 2 minutes for a typical fix, about 7 when every suite runs: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
+            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-11-13, issue #465): set \`SKIP=validate-script-tests\` on every commit you make, your progress entry's commit included; every other hook still runs, and \`--no-verify\` is never allowed. Do not run the full pre-commit pass over the branch and do not run every suite: the host runs the full pass once before the push, and CI checks every push. Run only the suites that test what you changed, each on its own with \`bash .agent/scripts/tests/<suite>\` from the worktree: for each script under \`.agent/scripts/\` you changed, its \`test_<name>.sh\` and any \`test_<name>_*.sh\` (\`<name>\` is the script's file name without a leading \`_\` and without \`.sh\` or \`.py\`, so \`dispatch_phase.sh\` gives \`test_dispatch_phase.sh\`); \`test_skill_paths.sh\` when you changed text under \`.claude/skills/\` or \`.agent/knowledge/\`; and each suite file you changed. A changed script with no such suite gets none: name it in your entry, and the host's pass covers it. If a suite fails, fix the cause and run that suite again until it passes. In your entry, name each suite you ran with its result line, and say the full pass was left to the host."
             ;;
     esac
     # A dispatched sub-agent's shell returns to the session's start folder on
