@@ -1237,10 +1237,22 @@ U4="$TMPD/case_u4"
 U4_MARK="$TMPD/case_u4_later"
 mkdir -p "$U4"
 write_checkpoint_stub "$U4"
-make_stub "$U4" test_a_slowfail.sh 'echo "a-out"; sleep 1; exit 1'
-make_stub "$U4" test_b_leak.sh 'echo "b-out"; : > "${TMPDIR:?}/left_by_b"'
-make_stub "$U4" test_c_fail.sh 'echo "c-out"; sleep 0.5; exit 4'
+# The finish order does not rest on sleeps racing each other: each suite
+# records its pid, and the next one waits until that suite is gone (reaped
+# by the runner: a zombie still answers kill -0), then one second more, so
+# the runner has seen one finish before the next comes. 30 s caps each
+# wait, so a broken chain fails the case rather than hanging it.
+# u4_pid <name>: shell text recording this suite's pid as <name>.
+u4_pid() { printf 'echo $$ > %q.tmp && mv %q.tmp %q' "$TMPD/u4_pid_$1" "$TMPD/u4_pid_$1" "$TMPD/u4_pid_$1"; }
+# u4_after <name>: shell text waiting until suite <name> is gone, then 1 s.
+u4_after() {
+    printf 'f=%q; for _ in $(seq 1 300); do [[ -s "$f" ]] && break; sleep 0.1; done; p=$(cat "$f" 2>/dev/null); for _ in $(seq 1 300); do [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || break; sleep 0.1; done; sleep 1' "$TMPD/u4_pid_$1"
+}
+make_stub "$U4" test_a_slowfail.sh "echo 'a-out'; $(u4_after c); exit 1"
+make_stub "$U4" test_b_leak.sh "$(u4_pid b); echo 'b-out'; : > \"\${TMPDIR:?}/left_by_b\""
+make_stub "$U4" test_c_fail.sh "$(u4_pid c); echo 'c-out'; $(u4_after b); exit 4"
 make_stub "$U4" test_z_later.sh "sleep 0.2; touch '$U4_MARK'"
+rm -f "$TMPD"/u4_pid_*
 out=$("$RUNNER" -j 4 "$U4" 2>&1); rc=$?
 u4_a=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_a_slowfail.sh =====' | cut -d: -f1)
 u4_b=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_b_leak.sh =====' | cut -d: -f1)
