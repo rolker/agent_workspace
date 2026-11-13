@@ -1965,3 +1965,13 @@ Suites run: test_ros2_colcon 558/0, test_worktree_create 79/0, test_package_issu
 
 ### Findings
 - [ ] (suggestion) The rule "an owning branch that already exists needs `--base`, else creation refuses" is stated without its `--parent-issue` exception. Input: an existing local `feature/issue-201` with `--layer l1 --package-repos pkg_a --parent-issue 10`. Result: exit 0, a Note, no `base=`. `--base` cannot be given there either, since it is refused with `--parent-issue`. Add the exception: the existing branch is accepted, no base is recorded, and `dispatch_phase.sh base --base` records one later — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3 of this diff, no must-fix; one documentation suggestion goes to triage)
+**After**: publish
+**Decision**: publish
+
+Round 3 approved after running every row of the two input tables against the real scripts. One suggestion stays open for triage: the rule "an existing owning branch needs --base" is written without its --parent-issue exception in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text.
