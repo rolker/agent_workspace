@@ -433,3 +433,18 @@ Confirmed from the code at the head (`.claude/skills/onboard-project/SKILL.md`, 
 **Decision**: merge
 
 Asked: "Merge pull request 469 once its CI is green? I check that its combined-with-main run passes, since that is the run that failed on the other pull request." The owner's answer, verbatim: "yes to both" (the other question was about pull request 468). He had been shown what the pull request does, what the reviews caught, the three limits left as they are, and that ADR-0021's Decision section is byte-identical to what he approved. The host merges only when every check on f1aa9688, the pull_request run included, has passed, with no relaxing flag, and stops and reports otherwise. F3 is deferred to issue #470 on his word.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 12:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #469 at `c01727b1`
+**Depth**: Light (reason: narrow review of merge commit c01727b1 only, per handoff; the rest of the pull request was approved at 7423e4cd; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the merge of main (pull request 467, issue 459) into this branch. `git show --remerge-diff c01727b1`: the one conflict, in `docs/design.md`'s change log, keeps main's two issue 459 rows unchanged and in main's order, then this branch's issue 466 row; the only text the resolution adds is that row's count, 1045 to 1060. Checked by line diff: main's side of `docs/design.md` (base 8161b57d to f4eb22cb) equals the merge's change against this branch apart from that count, and this branch's side equals the merge's change against main apart from that count, so nothing was lost or duplicated. Counts: `wc -l` 1060; Sessions and roots lines 177-325 = 149, Registry and adapters 326-464 = 139 (main's one edit there, the `dispatch_phase.sh` line-number refresh, keeps the line count); Decision register 21 rows, 21 ADR files. `script_reference.md` and `test_skill_paths.sh` hold both sides' changes exactly, no row or test twice. Interaction: the three files are the only ones both sides touch; main's new pins in `test_skill_paths.sh` read only `run-issue/SKILL.md`, which this branch does not change; nothing in pull request 467 reads `onboard-project`, `register_session_root.sh`, ADR-0016/0021, `user_tier_scripts.txt` or a count of scripts or ADRs. Under main's `pr_start.py` this timeline's `merge` answer stays armed (a Local Review is not a start entry), so this entry counts in the same pull request. Ran: `check_design_anchors.sh` (exit 0), `test_skill_paths.sh` (146 passed, 0 failed), `test_dispatch_phase.sh` (233 passed, 0 failed); `dispatch_phase.sh next --issue 466 --pr open` before this entry printed `action=merge`. No static-analysis profile for the resolution (Markdown only).
+
+### Findings
+- [ ] No issues found. LGTM.
