@@ -1841,3 +1841,81 @@ Suites run: test_ros2_colcon 531/0, test_worktree_create 84/0, test_package_issu
 **Decision**: address
 
 The host withdraws its round-1 decision (a): the foreign-history check (wt_base_foreign_history) is removed, with its fetch of every origin branch and its private refs. It guessed where a branch started and was wrong both ways (the issue's own commits on a stacked or backup branch read as foreign; an orphan branch passed). Replacement, simpler: a worktree with no base= recorded never has one recorded from the pin. On resume, and on creation over an owning branch that already exists, the base must be named with --base; it is recorded after two checks only: the branch exists on origin (bounded), and the issue branch has a common ancestor with origin/<base>. Without --base the run refuses and says so truthfully: the worktree or branch predates base recording, or already existed, so the workspace cannot know where it started; pass --base naming the branch it was started from, or recreate it. Decision (b) stands: creating a NEW owning branch always resolves a base (--base, else the pin; refuse if neither is a branch). Must-fix 1: with --parent-issue the pin is not read; the branch starts from the parent's branch as before this change, and what base= records then follows what the existing sub-issue flow targets (the parent's branch), stated in the entry. Suggestions 6, 7, 8 and the stale comment are fixed as the review states; 3 becomes the common-ancestor check above; 4 and 5 fall away with the removed check (confirm no caller or text still refers to it).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `8e62ad61`
+**Addressed**: Local Review (Pre-Push) at `2d814db9` (2026-11-12 22:50 -05:00), under the host's Checkpoint of 2026-11-12 22:51
+**Commits**: a0363b19, e10b5348, 77939677, 8e62ad61
+
+### Actions
+- [x] Withdrawn check removed (host decision). `wt_base_foreign_history` is gone, along with its fetch of every origin branch, the private `refs/wt-base-check/` refs, its tests and every text about it. Nothing outside this progress timeline still names it (grep for `wt_base_foreign_history`, `WT_FOREIGN` and `wt-base-check`). This also retires must-fix 2 — `.agent/scripts/_worktree_helpers.sh`
+- [x] Replacement rule: a base is named and checked. A worktree with no recorded `base=`, or an owning branch that already existed at creation, never gets the pin.
+  - The base must be named with `--base`. It is recorded after `wt_check_named_base`: origin has the branch (`wt_fetch_named_branch`, bounded), and the issue branch has a common ancestor with `origin/<base>` (suggestion 3).
+  - Without `--base`, the run refuses and writes nothing. The message says the worktree predates base recording, or the branch already existed, so the workspace cannot know where it started; it asks for `--base` naming that branch, or a recreate.
+  - With origin down, the run refuses and writes nothing, giving the whole fetch reason.
+  - Code: `dispatch_phase.sh` cmd_base, `worktree_create.sh` manifest write, `_worktree_helpers.sh` `wt_check_named_base`.
+- [x] (must-fix 1) `--parent-issue` on a package worktree. The pin is not read, and a new branch starts from the parent's branch as before this change. `base=` records the parent's branch when it is found, which is the existing sub-issue flow's own notion (`check_existing_branch_parent` → `PARENT_BRANCH_FOUND`): a sub-issue's draft PR targets the parent's branch when it is found locally or on origin. The banner's new `Base:` line names the parent's branch. Test: `test_worktree_create_package_parent_issue_starts_from_parent`, where the pin is a tag that would refuse if read. It checks that the branch is at the parent's tip, that both banner lines and `base=feature/issue-10` agree, and that `--base` with `--parent-issue` is still refused — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 4) deferred: falls away with the removed check. `wt_check_named_base` fetches only `origin/<base>`, by its own refspec.
+- [x] (suggestion 5) deferred: falls away; no private refs are made any more.
+- [x] (suggestion 6) `--branch` with `--layer` is refused, and I chose refusal over resolving a base. `--branch` renames the issue's branch in the one repository a worktree is of, but in a package worktree the adapter names every repository's branch. A custom name therefore matches no entry, and no base could be tied to it. Test: `test_worktree_create_package_refuses_branch_and_empty_base` — `.agent/scripts/worktree_create.sh`
+- [x] (suggestion 7) `--base` validation is the same in `pr_base_for`, `cmd_base` and `worktree_create.sh`: `check-ref-format --branch` plus `refs/heads/<b>` (`wt_valid_branch_name`). An empty value is refused, not ignored; `-foo`, `HEAD`, `a..b` and `@{-1}` are refused. Tested in all three paths — `.agent/scripts/_pr_base.sh`, `dispatch_phase.sh`, `worktree_create.sh`
+- [x] (suggestion 8) Two test gaps closed:
+  - (i) An existing owning branch without `--base`, listed after a sibling: refused, "rolling back 2", the sibling's worktree and branch removed, the existing branch kept (`test_ros2_colcon.sh`).
+  - (ii) The pin read while origin is down: `base` prints `base=pinned` with the "(unverified)" note, then creation with origin down refuses with nothing made in either repository (`test_package_issue_loop.sh` case 12).
+- [x] The comment at `test_ros2_colcon.sh:272` now says the fixture origins answer.
+
+### Resume: inputs and results (`dispatch_phase.sh base`, the worktree exists)
+| header `base=` | `--base` | origin | result |
+|---|---|---|---|
+| X | none, or X | – | `base=X` |
+| X | Y ≠ X | – | refused (records X) |
+| none | none | – | refused: "records no base: it was made before base recording ... cannot know which branch ... started from, and does not take the pin". The pin is not read; nothing written |
+| none | `""`, `-foo`, `HEAD` | – | refused: not a valid branch name |
+| none | B, which origin lacks | answers | refused: "origin has no branch 'B'"; nothing written |
+| none | B | down | refused: "could not check --base B ... (whole fetch reason)"; nothing written |
+| none | B; orphan issue branch | answers | refused: "has no commit in common with origin's 'B'"; nothing written |
+| none | B, on origin, history shared | answers | `base=B` recorded, entries unchanged (also under a `project=project` header) |
+
+### Creation: inputs and results (`worktree_create.sh`, owning branch)
+| owning branch | `--base` | `--parent-issue` | result |
+|---|---|---|---|
+| new | B | no | starts at `origin/B`, `base=B`; refused with nothing made if origin lacks B or is down |
+| new | none; pin a branch P | no | starts at `origin/P`, `base=P` |
+| new | none; pin a tag, commit or unknown | no | refused before anything is made |
+| new | none | yes | pin not read; starts from the parent's branch; `base=<parent>` when found. If the parent is not found it starts from the default branch with the pre-existing WARNING (unchanged sub-issue behaviour) and gets no `base=`, with a note |
+| any | B | yes | refused |
+| exists (local or origin) | none | no | refused: "already existed ... cannot know ... does not take the pin"; rolled back, siblings too; the branch kept |
+| exists | B, origin has it, history shared | no | `base=B` |
+| exists | B, which origin lacks; or an orphan branch | no | refused, rolled back |
+| exists | B, origin down | no | refused (retry), rolled back |
+| exists | none | yes | checked out; no `base=` (a note); a later `base --base` records it |
+| `--branch` with `--layer` | – | – | refused, nothing made |
+| no owning entry (siblings only) | none | no | no base, as before |
+
+`run-issue` step 1 now passes `--base` to creation only when the owner gave it, never the pin `base` printed; otherwise creation would turn the pin into a "named" base for an existing branch.
+
+### Tests removed or changed
+- **Removed** (the check is withdrawn):
+  - the `wt_base_foreign_history` edge table in `test_worktree_create.sh`;
+  - `test_worktree_create_package_existing_branch_checked_before_base_recorded` in `test_ros2_colcon.sh`;
+  - case 13's foreign refusal and its no-leftover-refs check in `test_package_issue_loop.sh`.
+- **Replaced by:**
+  - the `wt_check_named_base` and `wt_valid_branch_name` input table (`test_worktree_create.sh`);
+  - `test_worktree_create_package_existing_branch_needs_named_base`, `..._parent_issue_starts_from_parent` and `..._refuses_branch_and_empty_base` (`test_ros2_colcon.sh`);
+  - case 13 rewritten to the resume table above (`test_package_issue_loop.sh`).
+- **Changed:** case 13's "origin has the pinned branch: recorded" check now passes `--base pinned`, because recording without a named base is exactly what the new rule forbids. The legacy `project=project` check now records a named `--base`: no adapter call remains on the resume path, so I removed the header-project code that round 1 added.
+
+### Checks
+- Suites run directly on the final code, all with 0 failures: `test_worktree_create.sh` rc 0, `test_ros2_colcon.sh` 558/0, `test_package_issue_loop.sh` 194/0, `test_dispatch_phase.sh` 148/0, `test_merge_pr.sh` 150/0.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran every suite because a shared helper changed.
+- Each of these fails on round 2's code:
+  - the resume refusal without `--base`, which round 2 recorded from the pin;
+  - the parent case, where round 2 read the tag pin and refused;
+  - the `--branch` refusal;
+  - the empty and `-foo` `--base` values;
+  - the existing-branch refusal without `--base`.
