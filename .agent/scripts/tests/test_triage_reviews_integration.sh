@@ -157,6 +157,109 @@ if [[ "$c_first" -eq 1 && "$c_suffix" -eq 0 && "$c_checked" -eq 0 && "$n_open" -
 else
     fail "sources: matching rules (first=$c_first suffix=$c_suffix checked=$c_checked open=$n_open)"
 fi
+# An approved review's unchecked "No issues found. LGTM." box is not an open
+# finding (pr_start.py is_lgtm_placeholder, shared with findings; issue
+# 459): at the head it is no local finding, at another head it is no
+# dropped entry and no warning. A changes-requested review's box with the
+# same words still counts.
+lgtm_entry() {  # <verdict> <sha> [summary line, default "**Must-fix**: 0 | **Suggestions**: 0"]
+    printf '## Local Review\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: %s\n\n**PR**: #70 at `%s`\n%s\n\n### Findings\n- [ ] No issues found. LGTM.\n\n' "$1" "$2" "${3-**Must-fix**: 0 | **Suggestions**: 0}"
+}
+{ lgtm_entry approved 0ld0000; lgtm_entry approved abc1234; } > "$TMPD/lgtm.md"
+out=$("$RP" sources --progress "$TMPD/lgtm.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>"$TMPD/lgtm.err"); rc=$?
+[[ "$rc" -eq 0 && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 && ! -s "$TMPD/lgtm.err" ]] \
+    && pass "sources: an approved review's LGTM placeholder is neither a local finding at the head nor a dropped entry at another head" \
+    || fail "sources: LGTM placeholder (rc=$rc out=$out err=$(<"$TMPD/lgtm.err"))"
+for summary in "**Must-fix**: 0 | **Suggestions**: 1" ""; do
+    lgtm_entry approved abc1234 "$summary" > "$TMPD/lgtm_n.md"
+    out=$("$RP" sources --progress "$TMPD/lgtm_n.md" --head "$HEAD" --reviews "$TMPD/rules.json")
+    [[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+        && pass "sources: an approved review whose summary line is '${summary:-absent}' keeps the box listed (only a zero count drops it)" \
+        || fail "sources: placeholder with summary '${summary:-absent}' (out=$out)"
+done
+lgtm_entry changes-requested abc1234 > "$TMPD/lgtm_cr.md"
+out=$("$RP" sources --progress "$TMPD/lgtm_cr.md" --head "$HEAD" --reviews "$TMPD/rules.json")
+[[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+    && pass "sources: the same box on a changes-requested review is still a local finding" \
+    || fail "sources: changes-requested box (out=$out)"
+# An issue delivered in several pull requests (issue 459): the open boxes
+# of the merged first pull request's reviews are not listed as stale for
+# the second; only entries from pr_start (the next part's Plan Authored
+# after the merge answer) count. Without the merge answer they still are.
+open_review() {  # <type> <corr-line> <text>
+    printf '## %s\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: changes-requested\n\n%s\n\n### Findings\n- [ ] (must-fix) %s — `scripts/x.sh:3`\n\n' "$1" "$2" "$3"
+}
+part_checkpoint() {  # <after> <decision>
+    printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: %s\n**Decision**: %s\n\n' "$1" "$2"
+}
+part_plan() {
+    printf '## Plan Authored\n**Status**: complete\n**When**: 2026-09-17 12:10 -04:00\n**By**: t (m)\n**Plan**: `.agent/work-plans/issue-7/plan.md` at `1111111`\n\n'
+}
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/parts.md"
+out=$("$RP" sources --progress "$TMPD/parts.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>"$TMPD/parts.err")
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) part 2 finding — `scripts/x.sh:3`"]' \
+    && ! -s "$TMPD/parts.err" ]] \
+    && pass "sources: after a merge answer and the next part's plan, the merged pull request's open boxes are not dropped entries (issue 459)" \
+    || fail "sources: earlier part's boxes (out=$out err=$(<"$TMPD/parts.err"))"
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge address
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/noparts.md"
+out=$("$RP" sources --progress "$TMPD/noparts.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 1 && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+    && pass "sources: with no merge answer (merge checkpoint answered address) the older entry is still listed as dropped" \
+    || fail "sources: no boundary (out=$out)"
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  printf '## External Review\n**Status**: complete\n**When**: 2026-09-17 13:00 -04:00\n**By**: t (m)\n**PR**: #70 at `abc1234`\n\n### Actions\n- [ ] legacy action on part 2 — `scripts/x.sh:3`\n\n'; } > "$TMPD/parts_ext.md"
+out=$("$RP" sources --progress "$TMPD/parts_ext.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq -r '.local_findings[0].entry_type')" == "External Review" && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 ]] \
+    && pass "sources: an External Review after the boundary is still read (the predecessor --type gave before)" \
+    || fail "sources: External Review after the slice (out=$out)"
+# A restart cuts the round count, not the pull request (issue 459 host
+# decision): a restart recorded while the pull request is open keeps the
+# reviews before it, open boxes included, in triage input, as on main.
+{ open_review "Local Review" '**PR**: #70 at `abc1234`' "before the restart"
+  part_checkpoint rounds restart
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "after the restart"; } > "$TMPD/restart.md"
+out=$("$RP" sources --progress "$TMPD/restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) before the restart — `scripts/x.sh:3`","(must-fix) after the restart — `scripts/x.sh:3`"]' ]] \
+    && pass "sources: a restart while the pull request is open keeps that pull request's earlier reviews, open boxes included" \
+    || fail "sources: restart keeps the open pull request's reviews (out=$out)"
+# A restart leaves a standing merge answer armed (second fix round, host
+# decision): merge answer, restart, the next part's plan -- the plan is the
+# pull-request boundary, so the merged part's reviews are not listed.
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_checkpoint rounds restart
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/merge_restart.md"
+out=$("$RP" sources --progress "$TMPD/merge_restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) part 2 finding — `scripts/x.sh:3`"]' ]] \
+    && pass "sources: merge answer, restart, next part's plan -- the merged part's reviews are neither findings nor dropped entries" \
+    || fail "sources: merge answer then restart (out=$out)"
+# A merge boundary still cuts after a restart: merge answer, restart, next
+# part's plan -- the restart clears the arm, so the plan is no boundary and
+# the earlier pull request's entry stays (the documented limitation); a
+# merge answer, the next part's plan, then a restart cuts at the plan.
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 before the restart"
+  part_checkpoint rounds restart
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 after the restart"; } > "$TMPD/parts_restart.md"
+out=$("$RP" sources --progress "$TMPD/parts_restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 2 ]] \
+    && pass "sources: a restart in the next part keeps that part's earlier reviews and still cuts the merged pull request's" \
+    || fail "sources: restart after a merge boundary (out=$out)"
 
 # ============================================ sources: coverage (#309) =====
 # Real git histories. A review recorded at R still covers head H when R is an

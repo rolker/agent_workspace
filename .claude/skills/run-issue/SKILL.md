@@ -81,12 +81,12 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 It decides by location, not by anything this session has to copy or
 interpret: `skill_prefix=` (bare) when the session is in the workspace
 checkout's git repository (the checkout, a worktree of it, or a root like
-`p11-jazzy` inside it), `skill_prefix=agent-workspace:` anywhere else (a
+`demo-jazzy` inside it), `skill_prefix=agent-workspace:` anywhere else (a
 registered project root, for this skill). The plugin is enabled once, at
 user scope; the workspace checkout's tracked `.claude/settings.json` sets
 it to false, so a session at the checkout's root or in a worktree of it
 lists each shipped skill once, bare. A session started in a subdirectory
-of the checkout (a root like `p11-jazzy`) lists each shipped skill under
+of the checkout (a root like `demo-jazzy`) lists each shipped skill under
 both names, bare and `/agent-workspace:<skill>`; both run the same skill
 (accepted by the owner, 2026-11-12), and the bare name is the one to use.
 Remember the printed value for the whole run and pass it on every handoff
@@ -237,8 +237,8 @@ B="$($WS_ROOT/.agent/scripts/dispatch_phase.sh base --issue <ref> --type <type> 
 echo "${B:-no package base}"
 ```
 
-Keep the branch after `base=` as `<base>` for the run (step 7 needs it); no
-line means the issue has no package base.
+Keep the branch after `base=` as `<base>` for the run (steps 7 and 8 need
+it); no line means the issue has no package base.
 
 Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <ref> --type <type>` (and `--layer`, `--package-repos` when
@@ -300,19 +300,45 @@ source $WS_ROOT/.agent/scripts/set_git_identity_env.sh --agent claude-code "<mod
   && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [...]
 ```
 
-### 2. Probe PR state
+### 2. Probe the issue and PR state
+
+First the issue's own state, in the repository that owns it (issue 459):
+`gh issue view <N>`, or for `owner/repo#N` `gh issue view <N> -R
+owner/repo`:
+
+```bash
+S="$(gh issue view <N> [-R <owner/repo>] --json state --jq .state)" \
+  || { echo "STOP: could not read the state of issue <ref> (see above); do not continue"; exit 1; }
+echo "issue state: ${S:-?}"
+```
+
+`CLOSED` ends the run (`done`; nothing is dispatched). A `gh` failure, no
+network, or an answer that is neither `OPEN` nor `CLOSED` stops the run
+with the error: it is never read as open or as closed. Only an open issue
+goes on to the pull-request probe:
 
 ```bash
 gh pr list --head "$(git branch --show-current)" --state all \
-  --json number,state,isDraft,title
+  --json number,state,isDraft,title,headRefOid
 ```
 
-No result → `--pr none`. A result with `isDraft == true` → still `--pr
-none` (a pre-existing `[PLAN]` draft the publish step below will take over
-by `isDraft`, not by title — see step 8). Otherwise map GitHub `state`
-(`OPEN`/`MERGED`/`CLOSED`) to `open`/`merged`/... — a closed-not-merged PR
-is outside this loop's action-token vocabulary; stop and hand it to the
-user. Keep the PR number `<M>` for every `--pr <M>` call below.
+On an open issue a `MERGED` pull request is an earlier part of it (an issue
+delivered in several pull requests, step 13), not the end: take the `OPEN`
+pull request if there is one (a draft one counts as below), and otherwise
+answer `--pr none`, whatever `MERGED` rows the list holds. Exception: if
+local `HEAD` equals a `MERGED` pull request's `headRefOid`, the old
+worktree survived the merge; stop and say so (recreate the worktree and
+branch from the base, step 13), and do not route or implement on it.
+
+No `OPEN` result → `--pr none`. A result with `isDraft == true` → still
+`--pr none` (a pre-existing `[PLAN]` draft the publish step below will take
+over by `isDraft`, not by title — see step 8). An `OPEN` one → `--pr open`.
+A closed-not-merged PR with no open one is outside this loop's action-token
+vocabulary; stop and hand it to the user. Keep the PR number `<M>` for
+every `--pr <M>` call below. `--pr merged` (row 1, `done`) is no longer a
+probe answer: it is given only by hand, for a run that should end on a
+merged pull request. Nor is it how a run ends after its own merge: that run
+ends when the merge lands, without asking `next` again (step 11).
 
 ### 3. Ask `next` what happens next
 
@@ -323,7 +349,8 @@ $WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <ref> --pr <none|draft|op
 
 Prints `action=<token>`, `reason=<one line>`, and, depending on the row:
 `round=<n>`, `phase=<skill>`, `mode=inline`. Read the full contract and the
-28-row decision table in the script's header comment and inline comments
+28-row decision table (plus row 3a, the step after a merge; step 13) in the
+script's header comment and inline comments
 (`$WS_ROOT/.agent/scripts/dispatch_phase.sh`) — this skill does not restate them.
 Route on `action=` per "Action tokens" below.
 
@@ -481,8 +508,9 @@ that sub-review never resumes. Round 1 is never reused (see below), so the
 first read of any branch is always cold.
 
 **Never reuse**: round 1 of any phase; an agent from a different issue; an
-agent already resumed 3 times; or any agent from before a merge-from-main
-landed on the branch (its view of the diff is stale). A resumed agent is
+agent already resumed 3 times; or any agent from before a merge of the base
+(step 8: `main`, or a package issue's `<base>`) landed on the branch (its
+view of the diff is stale). A resumed agent is
 held to the *same* exit contract and the same `--check-exit` check as a
 fresh one — nothing about the contract relaxes.
 
@@ -760,19 +788,31 @@ gh pr ready <M>
 `gh_create_pr.sh` injects the AI signature on create; `gh pr edit` does
 not, so append it to the body file yourself before this call.
 
-### 8. Merge-from-main before the final pre-push review
+### 8. Merge the base before the final pre-push review
 
 Before every `review-code --branch` dispatch (row 12, `--pr none`), check
-whether the branch is behind:
+whether the branch is behind its base: `main` for a workspace or
+single-repository issue, `<base>` (step 1) for a package issue:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/check_branch_updates.sh
+$WS_ROOT/.agent/scripts/check_branch_updates.sh [--base <base>]
 ```
 
-If behind, merge main into the branch first, so the SHA `review-code`
-reviews is the SHA that gets pushed — a merge-from-main after the review
-would leave the review stale at the merge checkpoint.
+Pass `--base <base>` for a package issue (step 1 stops a package issue
+that has no base, so every one reaching here has it); with no `--base` the
+script compares with the repository's default branch, which for a package
+need not be the branch the project pins and the feature branch started
+from.
+
+If behind, merge the branch the script compared with into the branch
+first: `git merge origin/main`, or `git merge origin/<base>` for a package
+issue (never the default branch into a branch started from another one:
+that puts unrelated commits into the package pull request). Then the SHA
+`review-code` reviews is the SHA that gets pushed — a merge of the base
+after the review would leave the review stale at the merge checkpoint. The
+`review-code --branch` handoff of a package issue with a recorded base
+already names `origin/<base>` as the branch to diff against.
 
 ### 9. Waiting for reviews
 
@@ -843,8 +883,8 @@ Dispatched phases never push — the exit contract in every handoff says so.
 The host pushes: at publish (step 7), after every `## Implementation`
 written while a PR exists (before the next `review-code <M>` or
 `triage-reviews` dispatch, so the head those phases correlate on contains
-the fix), and before `review-code --branch` when a merge-from-main just
-landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
+the fix), and before `review-code --branch` when a merge of the base
+(`main`, or a package issue's `<base>`) just landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
 (...)` record commit from inside its own gate — that is the merge script's
 contract, not a phase's, and `run-issue` leaves it alone.
 
@@ -872,12 +912,14 @@ cd "<root>"
 
 then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`, or
 `--pr <owner/repo#M>` for a package issue, so the script targets the
-package repository and finds the package worktree. Until the merge gate
-reads a package issue's timeline (the second pull request of issue 429),
-its record for a package pull request says the worktree "carries no issue
-timeline" and is posted as a pull-request comment; it stays report-only. The gate
-enforces by default on workspace PRs (#300): a gap refuses with exit 1 and
-no entry. Only the owner says skip — `--report-only` (record and proceed),
+package repository and finds the package worktree. For the owning
+repository's pull request the gate reads the review from the owning
+checkout's committed timeline at origin's branch head (never the working
+copy), and commits and pushes its record there only when the working
+copy's `progress.md` is the committed one (else on the pull request); it stays
+report-only for every package pull request (a gap is recorded, the merge
+goes ahead). The gate enforces by default on workspace PRs (#300): a gap
+refuses with exit 1 and no entry. Only the owner says skip — `--report-only` (record and proceed),
 `--no-wait` (skip the CI wait) and `--allow-pending-review` (merge under a
 review check-run that is still running) are passed only on the owner's
 explicit answer for that merge, never on the host's judgment. If the merge
@@ -895,9 +937,16 @@ the script's error text and ask the owner at the merge checkpoint.
 Bookkeeping-only commits after the reviewed head (progress.md, work plans,
 roadmap) need no new review and no new CI wait: the gate and the CI target
 both walk back over them.
-`--pr merged` short-circuits
-`next` to `action=done` before any worktree or progress resolution is
-attempted (row 1) — the worktree may already be gone.
+
+**A landed merge ends the run.** When `merge_pr.sh` reports the pull
+request merged, the run is `done`: the host reports the merge and does not
+call `next` again. The worktree is gone, and on an issue that is still open
+(an earlier part, a non-default base, or an auto-close not yet visible)
+step 2's probe answers `--pr none`, not `merged`, so `next` would find no
+worktree (it then exits 2 and says the run is over). The next part of the
+issue, if any, starts with a fresh `/run-issue <N>` (step 13). `--pr
+merged`, given by hand, still short-circuits `next` to `action=done` before
+any worktree or progress resolution is attempted (row 1).
 
 One precondition belongs to step 9, not here: if the latest `## Integrated
 Review` recorded `**CI**: pending`, CI is re-checked *before* the merge
@@ -919,6 +968,70 @@ stopped checkpoint. `/run-issue <N> --resume` re-asks that exact
 checkpoint (same `**After**`, and `**Phase**` if the row carried one) and
 records the new answer as a fresh `## Checkpoint` entry, which then routes
 normally on the following `next` call.
+
+### 13. An issue delivered in several pull requests
+
+An issue can be delivered in parts, one pull request each, on one
+timeline (issue 459). Each part but the last says `Part of #N` in its
+body; only the last says `Closes #N`.
+
+**What closes the issue.** A merged pull request whose body says `Closes
+#N` closes it only when it merges into the repository's default branch. A
+pull request into another base (a package issue's pinned base) never
+closes it: at that merge's hand-back the host tells the owner the issue
+stays open and why, and the owner closes it when the last part is in. The
+loop never closes an issue itself.
+
+**After each merge.** `merge_pr.sh` removes the worktree and deletes the
+branch, and the run that made the merge ends there (step 11): it never
+calls `next` again. The next part starts with a fresh `/run-issue <N>`:
+step 1 recreates the worktree and `feature/issue-<N>` from the base; step 2
+asks the issue's state first (closed → `done`, nothing to do; unreadable →
+stop), then probes the pull requests: the merged one is an earlier part, an
+open one is taken, a draft one or none gives `--pr none`. `next` then
+answers `checkpoint:plan` (row 3a: the newest entry is the `merge` answer,
+or the `## Merge (...)` record the gate wrote before a merge that landed,
+and the timeline is armed).
+
+**The post-merge plan checkpoint** shows, in the dialog: the pull request
+just merged; that the issue is still open and why it can be (more parts to
+come, a non-default base, or a `Part of` body written by mistake on what was
+the last part: then the answer is `stop`, and the owner closes the issue);
+the plan's parts and which are delivered; and the newest `## Plan Review`'s
+`**Plan**` commit against the current one (`review_progress.sh plan-sha
+--plan <plan.md>`). `proceed` (→ `implement`) is offered only when
+`plan.md` is unchanged since that review and the plan names a part not yet
+delivered; otherwise the answer is `revise` (→ `plan-task`, then
+`review-plan`). `stop` ends the run as anywhere else.
+
+**Where a pull request ends** (`pr_start.py`, read by `next`, `round` and
+`sources`). After a `merge` answer, the next new work starts the next pull
+request: the part's `## Plan Authored`, or its first `## Implementation`
+with no `**Addressed**` that is `**Branch**`-correlated, or carries a
+`**PR**` number other than the merged pull request's (a draft of the next
+part that existed before it; the merged number is the newest PR-correlated
+entry's since the previous boundary, before the `merge` answer; a legacy
+`**PR**: #N — ...` line counts by its `#N`), or has no correlation line and is not
+`complete`, whatever the status otherwise. Its first pre-push review is
+round 1 with outside reviewers, and a failed first implement is retried as
+`implement`. Not a start: a fix on the merged pull request's own number, a
+`**PR**` Implementation when the merged number is unknown (no boundary is
+guessed: a missed one only brings the rounds checkpoint early), and a
+complete Implementation with no correlation line. The rounds count from
+the round start, the newer of this boundary and a `restart`; `sources`
+cuts only at the boundary. A `restart` moves only the round start: while a
+pull request is open it keeps that pull request's earlier reviews in triage
+input, and after a `merge` answer it leaves the answer standing, so the
+next part's first start entry is still the boundary. A refused or failed merge is no
+boundary: the `merge-refused`, `merge` or `findings` checkpoint answered
+anything but `merge` disarms it, and a `## Merge (...)` record does nothing
+either way. A merge made by hand with no `merge` answer recorded leaves no
+boundary, and the next part's reviews would count with the last part's:
+before the next part, the host records the owner's merge as a `##
+Checkpoint` (`**After**: merge`, `**Decision**: merge`, `**Decided-by**:
+owner`, his words in the body). A `restart` is no remedy there: it starts
+the rounds over but draws no boundary, so `sources` would still list the
+merged part's reviews.
 
 ## Action tokens
 
@@ -956,8 +1069,9 @@ unexpected type rather than guessing at what happened.
 
 ## Scope
 
-What this loop deliberately does not cover, per the owner's own notes on
-the plan for issue #276 and the plan for issue 429:
+What this loop covers at its edges, and what it deliberately leaves out,
+per the owner's own notes on the plan for issue #276 and the plan for
+issue 429:
 
 - **Field mode** (#208/#209) — the publish and merge steps here are
   GitHub-only; a non-GitHub publish path is a separate, later change to
@@ -966,16 +1080,24 @@ the plan for issue #276 and the plan for issue 429:
   `--type project` runs end to end with the records in the repository the
   issue belongs to (the default setting). A records location outside the
   repository, or untracked records, is the records lookup of issue 393.
-- **More than one owning repository per issue.** An ADR-0012 package
-  issue (`owner/repo#N`) is driven in the checkout of the one repository
-  that owns it; sibling repositories in the package worktree are for
-  building against. The records gate (`records_path` in
-  `_resolve_work_plans_dir.sh`) refuses them, and the worktree's top
-  folder, for every records read and write a script makes:
+- **One owning repository per issue (supported); more than one is not.**
+  An ADR-0012 package issue (`owner/repo#N`) is driven end to end in the
+  checkout of the one repository that owns it: its branch starts from the
+  base (the project's pin of that repository, or the owner's `--base`;
+  step 1), the pre-push review diffs against `origin/<base>` and step 8
+  merges it, publish targets that repository and base, and the merge gate
+  reads the review from that checkout's committed timeline at origin's
+  branch head and commits its record there only when the working copy's
+  `progress.md` is the committed one. Package pull requests stay report-only at the gate (enforcement
+  is for workspace pull requests). Sibling repositories in the package
+  worktree are for building against: a sibling's own pull request is
+  merged with `--pr <owner/sibling#M>`, its gate reads no timeline and its
+  record goes on that pull request. The records gate (`records_path` in
+  `_resolve_work_plans_dir.sh`) refuses the siblings, and the worktree's
+  top folder, for every records read and write a script makes:
   `progress_append.sh`, every `review_progress.sh` subcommand that takes
-  a path (`findings` and `check` included), the resolver and
-  `dispatch_phase.sh`. It does not guard a write from outside any
-  worktree, which commits on that checkout's own branch. Composition stays
-  the adapter's (ADR-0012): `run-issue` passes `--layer` and
-  `--package-repos` through and reads only the worktree's
-  `.worktree-repos` manifest, through `dispatch_phase.sh`.
+  a path (`findings` and `check` included), the resolver,
+  `dispatch_phase.sh` and the merge gate. Composition stays the adapter's
+  (ADR-0012): `run-issue` passes `--layer` and `--package-repos` through
+  and reads only the worktree's `.worktree-repos` manifest, through
+  `dispatch_phase.sh`.

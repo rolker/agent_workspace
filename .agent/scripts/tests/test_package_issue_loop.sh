@@ -56,6 +56,65 @@ export GIT_SSH_COMMAND="$STUB/fakessh"
 cat > "$STUB/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s | cwd=%s\n' "$*" "$PWD" >> "${GH_LOG:?}"
+cwd_repo() {  # the repository gh resolves in $PWD (see below), as owner/repo
+    local pick="" r url nwo
+    for r in $(git remote 2>/dev/null); do
+        [ "$(git config --get "remote.$r.gh-resolved")" = base ] && pick="$r"
+    done
+    if [ -z "$pick" ]; then
+        for r in upstream github origin; do
+            git remote get-url "$r" >/dev/null 2>&1 && { pick="$r"; break; }
+        done
+    fi
+    [ -n "$pick" ] || { echo "no git remotes found" >&2; return 1; }
+    url=$(git remote get-url "$pick"); nwo="${url#*github.com[:/]}"; echo "${nwo%.git}"
+}
+# Pull-request reads and writes (case 14), only when GH_FIX names the
+# fixture folder: pr_<owner>_<repo>_<M>.json answers `pr view`; `pr merge`
+# exits GH_MERGE_EXIT (default 0); `pr comment` appends its body to
+# comments_posted.md; `pr list` counts no open pull request; `api` answers
+# empty lists. Without GH_FIX these exit 1, as before.
+if [ -n "${GH_FIX:-}" ]; then
+    case "$1 $2" in
+        "pr view")
+            num="$3"; shift 3; repo=""; fields=""; jqx=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    -R|--repo) repo="$2"; shift 2 ;;
+                    --json) fields="$2"; shift 2 ;;
+                    --jq) jqx="$2"; shift 2 ;;
+                    *) shift ;;
+                esac
+            done
+            [ -n "$repo" ] || repo=$(cwd_repo) || exit 1
+            if [ "$fields" = "mergeable,mergeStateStatus" ]; then
+                echo '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; exit 0
+            fi
+            f="$GH_FIX/pr_$(printf '%s' "$repo" | tr '/' '_')_${num}.json"
+            [ -f "$f" ] || { echo "GraphQL: Could not resolve to a PullRequest with the number of '$num'." >&2; exit 1; }
+            if [ -n "$jqx" ]; then jq -r "$jqx" "$f"; else cat "$f"; fi
+            exit 0 ;;
+        "pr merge") exit "${GH_MERGE_EXIT:-0}" ;;
+        "pr comment")
+            body=""
+            while [ $# -gt 0 ]; do case "$1" in --body-file) body="$2"; shift 2 ;; *) shift ;; esac; done
+            [ -n "$body" ] && cat "$body" >> "$GH_FIX/comments_posted.md"
+            exit 0 ;;
+        "pr list") echo 0; exit 0 ;;
+        "api "*)
+            case "$2" in
+                --paginate) p="$3" ;;
+                *) p="$2" ;;
+            esac
+            case "$p" in
+                */check-runs) echo '{"check_runs":[]}' ;;
+                */status) echo '{"state":"success","statuses":[]}' ;;
+                */actions/workflows) echo '{"total_count":0,"workflows":[]}' ;;
+                *) echo '[]' ;;
+            esac
+            exit 0 ;;
+    esac
+fi
 case "$1 $2" in
     "issue view") echo '{"title":"Fix the thing","body":"b","comments":[]}'; exit 0 ;;
     "pr create") echo "https://github.com/owner/x/pull/1"; exit 0 ;;
@@ -221,7 +280,7 @@ for _ in 1 2; do
         | "$S/progress_append.sh" 7 >/dev/null 2>&1)
 done
 out=$(dp "$H" --issue 'owner/pkg_a#7' --skill review-code --type project)
-check "review-code handoff counts rounds on A's branch (round 3 after two reviews)" \
+check "review-code handoff counts rounds on A's branch (round 3 after two reviews); no recorded base: the bare --branch" \
     "$([[ "$out" == *"task=/review-code --branch --issue 7 (round 3:"* ]]; echo $?)" "$out"
 
 gh_before=$(wc -l < "$GH_LOG")
@@ -940,6 +999,244 @@ check "single-repository project issue: base prints nothing, exit 0" "$([[ "$out
 out=$(dp "$SOLO" base --issue 7 --type project --project solo --base main)
 check "single-repository project issue with --base: refused" \
     "$([[ "$out" == *"no package worktree"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+
+# ----------------------------------------------------------------- case 14
+# The loop end to end for one package issue, owner/pkg_a#17, from the
+# session root H, with its base at the pin `pinned` (not origin's default
+# branch): creation, where, the implement and pre-push review handoffs,
+# step 8's behind-check and merge of the base, publish, the review fetch, a
+# review and a checkpoint in A's timeline, then merge_pr.sh --pr
+# owner/pkg_a#31 up to its (stubbed) merge: the gate reads A's timeline,
+# its record lands in A and nowhere else, and a sibling pkg_b pull request
+# with the same number leaves A's timeline alone.
+echo "TEST: one package issue end to end, with its base at the pin"
+strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*m//g"; }
+pin_a pinned
+create --issue owner/pkg_a#17 --type project --project demo --layer l1 --package-repos pkg_a,pkg_b --base pinned \
+    || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#17 with --base pinned"; }
+C17="$H/worktrees/issue-demo-owner-pkg_a-17"
+A17="$C17/l1_ws/src/pkg_a"
+B17="$C17/l1_ws/src/pkg_b"
+out=$(dp "$H" base --issue 'owner/pkg_a#17' --type project)
+check "e2e: base= is the recorded pin" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" where --issue 'owner/pkg_a#17' --type project)
+check "e2e: where prints A" "$([[ "$out" == "$A17"$'\n'"rc=0" ]]; echo $?)" "$out"
+
+# implement: a commit in A, the Implementation entry, check-exit OK.
+echo "fix" > "$A17/fix.txt"
+git -C "$A17" add fix.txt
+git -C "$A17" commit -q -m "Fix the thing"
+(cd "$A17" && entry Implementation "**Branch**: feature/issue-17 at \`$(git -C "$A17" rev-parse --short HEAD)\`" \
+    | "$S/progress_append.sh" 17 --title "Fix the thing" >/dev/null 2>&1)
+out=$(dp "$H" --check-exit --issue 'owner/pkg_a#17' --skill implement --type project --before 0)
+check "e2e: check-exit finds the Implementation entry in A" \
+    "$([[ "$out" == "status=OK"$'\n'"sha=$(git -C "$A17" rev-parse --short HEAD)"$'\n'"rc=0" ]]; echo $?)" "$out"
+
+# The pre-push review handoff diffs against origin/<base>, also at round 3.
+out=$(dp "$H" --issue 'owner/pkg_a#17' --skill review-code --type project)
+check "e2e: the pre-push review-code task line names origin/pinned" \
+    "$([[ "$out" == *"base=pinned"$'\n'"task=/review-code --branch origin/pinned --issue 17"$'\n'* ]]; echo $?)" "$out"
+out=$(dp "$H" --issue 'owner/pkg_a#17' --skill review-code --type project --skill-prefix agent-workspace:)
+check "e2e: with a skill prefix the task line keeps it" \
+    "$([[ "$out" == *$'\n'"task=/agent-workspace:review-code --branch origin/pinned --issue 17"$'\n'* ]]; echo $?)" "$out"
+out=$(dp "$H" --issue 'owner/pkg_a#17' --skill review-code --type project --pr 31)
+check "e2e: a PR-mode review-code task line is unchanged" \
+    "$([[ "$out" == *$'\n'"task=/review-code 31"$'\n'* ]]; echo $?)" "$out"
+for _ in 1 2; do
+    (cd "$A17" && entry 'Local Review (Pre-Push)' '**Verdict**: needs-work' "**Branch**: feature/issue-17 at \`$(git -C "$A17" rev-parse --short HEAD)\`" \
+        | "$S/progress_append.sh" 17 >/dev/null 2>&1)
+done
+out=$(dp "$H" --issue 'owner/pkg_a#17' --skill review-code --type project)
+check "e2e: round 3 keeps origin/pinned and adds the convergence scope" \
+    "$([[ "$out" == *"task=/review-code --branch origin/pinned --issue 17 (round 3:"*"no cross-model reviewers)"* ]]; echo $?)" "$out"
+
+# Step 8: origin's pinned moves 2 commits ahead, its main 3 (main is the
+# default branch). The block from SKILL.md, in A, with --base pinned.
+git -C "$PIN_SEED" fetch -q origin
+git -C "$PIN_SEED" checkout -q -B pinned origin/pinned
+for i in 1 2; do git -C "$PIN_SEED" commit -q --allow-empty -m "pinned $i"; done
+git -C "$PIN_SEED" push -q origin pinned
+git -C "$PIN_SEED" checkout -q -B main origin/main
+for i in 1 2 3; do git -C "$PIN_SEED" commit -q --allow-empty -m "main $i"; done
+git -C "$PIN_SEED" push -q origin main
+STEP8=$(python3 - "$WS/.claude/skills/run-issue/SKILL.md" <<'PY3'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = [b for b in re.findall(r"```bash\n(.*?)```", text, re.S) if "check_branch_updates.sh" in b]
+print(blocks[0] if len(blocks) == 1 else "")
+PY3
+)
+check "SKILL.md has one step 8 block, and it takes [--base <base>]" \
+    "$([[ "$STEP8" == *"check_branch_updates.sh [--base <base>]"* ]]; echo $?)" "$STEP8"
+STEP8_PKG="${STEP8//\[--base <base>\]/--base pinned}"
+STEP8_BARE="${STEP8//\[--base <base>\]/}"
+out=$(cd "$A17" && bash -c "$STEP8_PKG" 2>&1 | strip_ansi); rc=$?
+check "step 8 for a package issue: behind origin/pinned by 2, recommends merging origin/pinned" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Checking for updates in base branch (pinned)"* && "$out" == *"Base branch:     origin/pinned"* \
+          && "$out" == *"Commits behind:  2"* && "$out" == *"git merge origin/pinned"* && "$out" != *"main"* ]]; echo $?)" "$out"
+out=$(cd "$A17" && bash -c "$STEP8_BARE" 2>&1 | strip_ansi)
+check "a bare call still compares with the default branch: behind origin/main by 3" \
+    "$([[ "$out" == *"Checking for updates in default branch (main)"* && "$out" == *"Default branch:  main"* \
+          && "$out" == *"Commits behind:  3"* && "$out" == *"git merge origin/main"* ]]; echo $?)" "$out"
+CBU="$S/check_branch_updates.sh"
+out=$(cd "$A17" && "$CBU" --strict --base pinned 2>&1 | strip_ansi)
+rc=$(cd "$A17" && "$CBU" --strict --base pinned >/dev/null 2>&1; echo $?)
+check "--strict --base pinned while behind pinned: exit 1, counting against pinned" \
+    "$([[ "$rc" -eq 1 && "$out" == *"Commits behind:  2"* && "$out" == *"Strict mode: Blocking"* ]]; echo $?)" "rc=$rc $out"
+for bad in "--base" "--base bad..name" "--bogus"; do
+    # shellcheck disable=SC2086
+    rc=$(cd "$A17" && "$CBU" $bad >/dev/null 2>&1; echo $?)
+    check "check_branch_updates.sh $bad: refused with exit 2" "$([[ "$rc" -eq 2 ]]; echo $?)" "rc=$rc"
+done
+git -C "$A17" merge -q --no-edit origin/pinned
+out=$(cd "$A17" && bash -c "$STEP8_PKG" 2>&1 | strip_ansi)
+check "after merging origin/pinned: up to date with pinned, and origin/main's commits did not come in" \
+    "$([[ "$out" == *"up-to-date with pinned"* ]] && ! git -C "$A17" merge-base --is-ancestor origin/main HEAD; echo $?)" "$out"
+
+# A single-branch clone of main has no origin/pinned and a configured refspec
+# that does not cover it: the explicit refspec still fetches it, and the
+# branch is judged behind pinned by the true count.
+SBC="$SANDBOX/single-branch-a"
+git clone -q --single-branch --branch main "$REM/owner/pkg_a.git" "$SBC"
+git -C "$SBC" checkout -q -b feature/issue-18
+want=$(git -C "$REM/owner/pkg_a.git" rev-list --count main..pinned)
+out=$(cd "$SBC" && "$CBU" --base pinned 2>&1 | strip_ansi)
+rc=$(cd "$SBC" && "$CBU" --strict --base pinned >/dev/null 2>&1; echo $?)
+check "single-branch clone of main, origin's pinned $want ahead: behind pinned by $want, --strict exits 1" \
+    "$([[ "$want" -gt 0 && "$rc" -eq 1 && "$out" == *"Commits behind:  $want"* && "$out" == *"git merge origin/pinned"* \
+          && "$out" != *"up-to-date"* && "$(git -C "$SBC" rev-parse origin/pinned)" == "$(git -C "$REM/owner/pkg_a.git" rev-parse pinned)" ]]; echo $?)" \
+    "rc=$rc want=$want $out"
+# A base origin does not have: a true message and exit 2, with or without --strict.
+out=$(cd "$SBC" && "$CBU" --base no-such-base 2>&1 | strip_ansi)
+rc=$(cd "$SBC" && "$CBU" --base no-such-base >/dev/null 2>&1; echo $?)
+rcs=$(cd "$SBC" && "$CBU" --strict --base no-such-base >/dev/null 2>&1; echo $?)
+check "a base origin does not have: 'origin has no branch', exit 2 (also --strict)" \
+    "$([[ "$rc" -eq 2 && "$rcs" -eq 2 && "$out" == *"origin has no branch 'no-such-base'"* && "$out" != *"up-to-date"* \
+          && "$out" != *"Could not fetch"* ]]; echo $?)" "rc=$rc rcs=$rcs $out"
+# An origin that cannot be reached: a warning saying so, exit 0 (never blocks).
+git -C "$SBC" remote set-url origin "$SANDBOX/no-such-origin.git"
+raw=$(cd "$SBC" && "$CBU" --strict --base pinned 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "origin unreachable: 'Could not fetch', not compared, exit 0 even with --strict" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Could not fetch 'pinned' from origin; not compared"* && "$out" != *"origin has no branch"* \
+          && "$out" != *"up-to-date"* ]]; echo $?)" "rc=$rc $out"
+# An origin that does not answer: ended by the time limit, said so, exit 0.
+if command -v timeout >/dev/null 2>&1; then
+    HANG_PIDS="$SANDBOX/cbu-hang.pids"
+    printf '#!/usr/bin/env bash\necho $$ >> "%s"\nexec sleep 300\n' "$HANG_PIDS" > "$SANDBOX/cbu-hang-ssh"
+    chmod +x "$SANDBOX/cbu-hang-ssh"
+    git -C "$SBC" remote set-url origin "ssh://git@example.invalid/owner/pkg_a.git"
+    started=$SECONDS
+    raw=$(cd "$SBC" && GIT_SSH_COMMAND="$SANDBOX/cbu-hang-ssh" CHECK_BRANCH_UPDATES_TIMEOUT=1 "$CBU" --strict --base pinned 2>&1; echo "RC=$?")
+    rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+    elapsed=$((SECONDS - started))
+    reached=no; left=""
+    if [[ -s "$HANG_PIDS" ]]; then
+        reached=yes
+        while read -r p; do kill "$p" 2>/dev/null || true; done < "$HANG_PIDS"
+        while read -r p; do kill -0 "$p" 2>/dev/null && left="$left $p"; done < "$HANG_PIDS"
+    fi
+    check "origin hangs: ended by CHECK_BRANCH_UPDATES_TIMEOUT (${elapsed}s < 60s), said so, exit 0; no process left" \
+        "$([[ "$reached" == yes && -z "$left" && "$rc" -eq 0 && "$elapsed" -lt 60 \
+              && "$out" == *"origin did not answer within 1s; not compared with pinned"* ]]; echo $?)" "rc=$rc reached=$reached left=$left $out"
+fi
+# With no --base the name comes from origin/HEAD or `remote show`, and main's
+# script warned and exited 0 when it could not compare ("Could not fetch from
+# remote"); it still warns with exit 0, never an error, in both cases:
+# a stale origin/HEAD naming a branch origin no longer has, and an origin
+# that names no default branch ("(unknown)").
+NB="$SANDBOX/no-base"
+git init -q --bare -b main "$NB/o.git"
+git clone -q "$NB/o.git" "$NB/c" 2>/dev/null
+git -C "$NB/c" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$NB/c" push -q origin main
+git -C "$NB/c" checkout -q -b feature/issue-19
+git -C "$NB/c" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
+raw=$(cd "$NB/c" && "$CBU" 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "no --base, stale origin/HEAD (master gone): a warning naming it, exit 0, no error" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Warning: origin has no branch 'master' (the default branch origin/HEAD names here"* \
+          && "$out" != *"Error"* ]]; echo $?)" "rc=$rc $out"
+git init -q --bare -b main "$NB/empty.git"
+git -C "$NB/c" remote set-url origin "$NB/empty.git"
+git -C "$NB/c" symbolic-ref -d refs/remotes/origin/HEAD
+raw=$(cd "$NB/c" && "$CBU" 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "no --base, origin names no default branch: a warning, exit 0, no error and no '(unknown)' branch" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Warning: origin does not name its default branch; not compared"* \
+          && "$out" != *"Error"* && "$out" != *"(unknown)"* ]]; echo $?)" "rc=$rc $out"
+
+# The approved pre-push review, publish (step 7's block), the review fetch.
+(cd "$A17" && entry 'Local Review (Pre-Push)' '**Verdict**: approved' "**Branch**: feature/issue-17 at \`$(git -C "$A17" rev-parse --short HEAD)\`" \
+    | "$S/progress_append.sh" 17 >/dev/null 2>&1)
+out=$(cd "$A17" && AGENT_MODEL=m bash -c "$PUB" 2>&1); rc=$?
+check "e2e: publish from A pushes feature/issue-17 to pkg_a's origin" \
+    "$([[ "$rc" -eq 0 && "$(git -C "$REM/owner/pkg_a.git" rev-parse feature/issue-17)" == "$(git -C "$A17" rev-parse HEAD)" ]]; echo $?)" "rc=$rc $out"
+GHF="$SANDBOX/ghfix17"
+mkdir -p "$GHF"
+pr_fixture() {  # <repo> <M> <head branch> <head sha> <base>
+    printf '{"state":"OPEN","headRefName":"%s","title":"Fix the thing","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x"}],"body":"","baseRefName":"%s","url":"https://github.com/owner/%s/pull/%s"}\n' \
+        "$3" "$4" "$5" "$1" "$2" > "$GHF/pr_owner_${1}_${2}.json"
+}
+pr_fixture pkg_a 31 feature/issue-17 "$(git -C "$A17" rev-parse HEAD)" pinned
+gh_before=$(wc -l < "$GH_LOG")
+out=$(cd "$A17" && GH_FIX="$GHF" "$S/fetch_pr_reviews.sh" --pr 31 2>&1); rc=$?
+reads=$(tail -n +"$((gh_before + 1))" "$GH_LOG")
+check "e2e: fetch_pr_reviews.sh --pr 31 from A reads owner/pkg_a's pull request" \
+    "$([[ "$rc" -eq 0 && "$reads" == *"api --paginate repos/owner/pkg_a/pulls/31/reviews | cwd=$A17"* \
+          && "$reads" != *"repos/owner/pkg_b"* ]]; echo $?)" "rc=$rc $reads $out"
+
+# The post-push review at the head, then a checkpoint (bookkeeping after it),
+# both pushed by the host.
+(cd "$A17" && entry 'Local Review' '**Verdict**: approved' "**PR**: #31 at \`$(git -C "$A17" rev-parse --short HEAD)\`" '' '### Findings' \
+    | "$S/progress_append.sh" 17 >/dev/null 2>&1)
+(cd "$A17" && entry Checkpoint '**Decided-by**: owner' '**After**: merge' '**Decision**: merge' | "$S/progress_append.sh" 17 >/dev/null 2>&1)
+git -C "$A17" push -q origin feature/issue-17
+pr_fixture pkg_a 31 feature/issue-17 "$(git -C "$A17" rev-parse HEAD)" main
+# A sibling pull request with the same number, pkg_b#31, from B's branch.
+pr_fixture pkg_b 31 feature/pkg_a-issue-17 "$(git -C "$B17" rev-parse HEAD)" main
+heads17() {  # every repository a misplaced record could land in, but A
+    local d
+    for d in "$WS" "$B17" "$PKG_A_HOSTED" "$PKG_B_HOSTED" "$A" "$A11"; do
+        printf '%s %s %s\n' "$d" "$(git -C "$d" rev-parse HEAD)" "$(git -C "$d" status --porcelain | tr '\n' ' ')"
+    done
+    git -C "$REM/owner/pkg_b.git" for-each-ref --format='%(refname) %(objectname)'
+}
+merge17() {  # <owner/repo#M> [env...]: merge_pr.sh from the session root
+    local ref="$1"; shift
+    (cd "$H" && env GH_FIX="$GHF" "$@" "$S/merge_pr.sh" --pr "$ref" --no-wait 2>&1)
+}
+others_before=$(heads17)
+a_before=$(git -C "$A17" rev-parse HEAD)
+rc=0; out=$(merge17 owner/pkg_b#31 GH_MERGE_EXIT=1) || rc=$?
+check "e2e: the sibling pkg_b#31 reads no timeline in A, records on its own pull request, and leaves A alone" \
+    "$([[ "$out" == *"a sibling repository's pull request: this issue's records are in $A17, and a sibling's gate is not read there"* \
+          && "$out" == *"posted as a comment on owner/pkg_b#31"* && "$out" != *"approved review at head"* \
+          && "$(git -C "$A17" rev-parse HEAD)" == "$a_before" && -z "$(git -C "$A17" status --porcelain)" \
+          && "$(git -C "$REM/owner/pkg_a.git" rev-parse feature/issue-17)" == "$a_before" && "$(heads17)" == "$others_before" \
+          && -d "$C17" && ! -e "$C17/.agent/work-plans" ]]; echo $?)" "rc=$rc $out $(diff <(echo "$others_before") <(heads17))"
+: > "$GHF/comments_posted.md"
+
+# The owning pull request with a base other than the recorded one: one gate
+# reason, report-only, the record committed and pushed in A only.
+rc=0; out=$(merge17 owner/pkg_a#31 GH_MERGE_EXIT=1) || rc=$?
+reasons=$(grep 'would have refused' <<< "$out")
+check "e2e: owning PR targeting main: one reason (the base), report-only, recorded in A and pushed, nowhere else" \
+    "$([[ "$reasons" == *"would have refused — targets main; this worktree's recorded base is pinned" \
+          && "$out" == *"review at \`"*"covers head"* \
+          && "$out" == *"Merge (report-only) entry recorded in $A17/.agent/work-plans/issue-17/progress.md and pushed"* \
+          && "$(git -C "$A17" log -1 --format=%s)" == "progress: merge (report-only) for #17" \
+          && "$(git -C "$REM/owner/pkg_a.git" rev-parse feature/issue-17)" == "$(git -C "$A17" rev-parse HEAD)" \
+          && "$(heads17)" == "$others_before" && ! -e "$C17/.agent/work-plans" && ! -s "$GHF/comments_posted.md" ]]; echo $?)" \
+    "rc=$rc $out $(diff <(echo "$others_before") <(heads17))"
+
+# GitHub's head follows the record push; the base now matches: the gate
+# passes on the review two bookkeeping commits back, nothing is recorded,
+# the merge goes through and the cleanup removes the worktree.
+pr_fixture pkg_a 31 feature/issue-17 "$(git -C "$A17" rev-parse HEAD)" pinned
+a_before=$(git -C "$A17" rev-parse HEAD)
+rc=0; out=$(merge17 owner/pkg_a#31) || rc=$?
+check "e2e: owning PR on its base: the gate passes on A's timeline, nothing recorded, merged, worktree removed" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Review gate: approved review at head"* && "$out" != *"would have refused"* \
+          && "$out" != *"entry recorded"* && "$(git -C "$REM/owner/pkg_a.git" rev-parse --verify -q feature/issue-17)" != "$a_before" \
+          && ! -e "$C17" && "$out" == *"Done: PR #31 merged"* ]]; echo $?)" "rc=$rc $out"
 
 echo
 echo "test_package_issue_loop: $PASS passed, $FAIL failed"

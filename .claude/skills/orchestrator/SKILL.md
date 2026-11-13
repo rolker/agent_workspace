@@ -73,7 +73,7 @@ else waits for the owner, written `**Decided-by**: owner`.
 | Checkpoint | Host may answer | Owner only |
 |---|---|---|
 | `issue-actions` | `proceed` | anything that changes scope |
-| `plan` | `proceed`, `revise` | — |
+| `plan` | `proceed`, `revise`; at the plan checkpoint raised after a merge, `proceed` only under run-issue step 13's conditions (the plan unchanged since its last review, and naming a part not yet delivered), otherwise `revise` | — |
 | `publish`, `rounds` | `publish`, `address` | — |
 | `findings` | `address` | `merge` (deferring open findings) |
 | `merge` | — | every answer |
