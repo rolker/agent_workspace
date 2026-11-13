@@ -2,7 +2,8 @@
 # .agent/scripts/tests/test_dispatch_phase.sh
 # Tests for dispatch_phase.sh (issue #276 PR 2): the handoff block, the
 # --check-exit exit-outcome check, and the `next` decision table (28 rows,
-# one fixture per row plus five end-to-end timelines). Hermetic: mktemp -d
+# one fixture per row plus five end-to-end timelines; row 3a and the
+# pr_start.py boundary of issue 459 with their own fixtures and timelines). Hermetic: mktemp -d
 # sandboxes and --progress fixture files only; no `gh` involved (`next`
 # never calls it).
 # Run: bash .agent/scripts/tests/test_dispatch_phase.sh
@@ -37,7 +38,7 @@ mk_sandbox() {  # <issue-num>
     git -C "$sb" init -q -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace"
-    for f in dispatch_phase.sh progress_read.py review_progress.sh _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+    for f in dispatch_phase.sh progress_read.py pr_start.py review_progress.sh _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     git -C "$sb" worktree add -q "$sb/worktrees/workspace/issue-workspace-$n" -b "feature/issue-$n" >/dev/null 2>&1
@@ -68,6 +69,20 @@ assert_next() {
     done
     [[ "$ok" -eq 1 ]] && pass "$label" || fail "$label (missing pattern in: $out)"
 }
+
+# step <file> <pr> <want-action> [want-pattern...] -- one step of a growing
+# timeline file; append <file> <entry> adds the next entry to it.
+step() {  # <file> <pr> <want-action> [want-pattern...]
+    local f="$1" pr="$2" want="$3"; shift 3
+    local out rc ok=1 pat
+    out=$(bash "$DP" next --pr "$pr" --progress "$f" 2>&1); rc=$?
+    if [[ "$rc" -ne 0 || "$out" != "action=$want"* ]]; then
+        fail "timeline step expected action=$want (rc=$rc out=${out:0:200})"; TIMELINE_OK=0; return
+    fi
+    for pat in "$@"; do [[ "$out" == *"$pat"* ]] || ok=0; done
+    [[ "$ok" -eq 1 ]] || { fail "timeline step action=$want missing pattern (out=$out)"; TIMELINE_OK=0; }
+}
+append() { local f="$1"; shift; printf '%s\n\n' "$*" >> "$f"; }
 
 # ----------------------------------------------------------- entry builders ---
 issue_review() {  # <status> <actions-open 0|1>
@@ -114,6 +129,9 @@ integrated_review() {  # <status> <box: open|clean>
     [[ "$2" == open ]] && box="- [ ] (must-fix) still open — \`x.sh\`"
     printf '## Integrated Review\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**PR**: #9 at `5555555`\n\n### Findings\n%s\n' "$1" "$NOW" "$box"
 }
+integrated_review_n() {  # <number> -- a clean Integrated Review of pull request #<number>
+    printf '## Integrated Review\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: #%s at `5555555`\n\n### Findings\n- [x] (must-fix) fixed\n' "$NOW" "$1"
+}
 merge_record() {  # <report-only|unreviewed>
     printf '## Merge (%s)\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: #9 at `6666666`\n' "$1" "$NOW"
 }
@@ -137,6 +155,12 @@ out=$(bash "$DP" next --pr none --progress "$TMPD/does_not_exist.md" 2>&1); rc=$
 SB0="$(mk_sandbox 9)"
 out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr none --issue 42 2>&1); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* ]] && pass "next: no worktree for --issue is rc 2" || fail "next no worktree (rc=$rc out=$out)"
+[[ "$out" == *"this run is over"*"run /run-issue 42 to start the next part, or nothing if the issue is closed"* ]] \
+    && pass "next: no worktree with --pr none (a run asking again after its own merge) says what to do: /run-issue <N> for the next part (issue 459)" \
+    || fail "next no worktree hint (out=$out)"
+out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr open --issue 42 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* && "$out" != *"this run is over"* ]] \
+    && pass "next: no worktree with --pr open is the plain rc-2 error (no merge hint)" || fail "next no worktree --pr open (rc=$rc out=$out)"
 out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr none --issue 9 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" == "action=review-issue"* ]] && pass "next: a missing progress.md in an EXISTING worktree is an empty timeline (row 4), not an error" || fail "next missing file in worktree (rc=$rc out=$out)"
 out=$(run_next none $'## Implementation\n```\nunterminated fence'); rc=$?
@@ -278,6 +302,452 @@ $(implementation complete "")
 $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)
 $(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
 
+echo "TEST: pr_start.py -- where the current pull request's work starts (issue 459)"
+# The one boundary rule, read by next and review_progress.sh. Each case is
+# a synthetic timeline (0-based entry indexes) with the start and the armed
+# state at its end; the replay table in the issue-459 plan's Tests section.
+implementation_pr() {  # <status> [number, default 9] -- an Implementation correlated to a pull request
+    printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**PR**: #%s at `2222222`\n' "$1" "$NOW" "${2:-9}"
+}
+implementation_nocorr() {  # <status> -- a pass that never wrote a correlation line (nor **Addressed**)
+    printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n\nstopped early\n' "$1" "$NOW"
+}
+implementation_nocorr_failed() { implementation_nocorr failed; }
+PR_START_PY="$SCRIPT_DIR/../pr_start.py"
+# assert_start <label> <fixture> <want "start armed">
+assert_start() {
+    local label="$1" content="$2" want="$3" f got
+    f="$TMPD/start_$$_$RANDOM.md"
+    printf '%s\n' "$content" > "$f"
+    got=$(python3 "$SCRIPT_DIR/../progress_read.py" "$f" | PR_START_DIR="$(dirname "$PR_START_PY")" python3 -B -c '
+import json, os, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import scan
+r = scan(json.load(sys.stdin)["entries"])
+print(r.round_start, "yes" if r.armed else "no")' 2>&1)
+    [[ "$got" == "$want" ]] && pass "pr_start: $label -> $want" || fail "pr_start: $label (want '$want', got '$got')"
+}
+M="$(checkpoint merge merge)"
+assert_start "no merge answer: start 0, not armed" \
+    "$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9)" "0 no"
+assert_start "a single pull request ends armed with no boundary (451, 455, 354, 307 shape)" \
+    "$(implementation complete "")
+$(integrated_review complete clean)
+$M" "0 yes"
+assert_start "merge, stop, merge, Plan Authored: the Plan Authored" \
+    "$M
+$(checkpoint merge stop)
+$M
+$(plan_authored complete)" "3 no"
+assert_start "merge, stop: the stop disarms (nothing landed)" \
+    "$M
+$(checkpoint merge stop)" "0 no"
+assert_start "merge, Merge record, landed, Plan Authored: a Merge record neither arms nor disarms" \
+    "$M
+$(merge_record report-only)
+$(plan_authored complete)" "2 no"
+assert_start "merge, Merge record (newest): still armed" \
+    "$M
+$(merge_record report-only)" "0 yes"
+assert_start "merge, record, merge-refused/retriage, review, merge, Plan Authored: the Plan Authored" \
+    "$M
+$(merge_record report-only)
+$(checkpoint merge-refused retriage)
+$(integrated_review complete clean)
+$M
+$(plan_authored complete)" "5 no"
+assert_start "merge, record, merge-refused/address, Branch fix: no boundary (refused)" \
+    "$M
+$(merge_record report-only)
+$(checkpoint merge-refused address)
+$(implementation complete "")" "0 no"
+assert_start "merge, refusal, address checkpoint, Branch Implementation (merge-from-main): no boundary" \
+    "$M
+$(checkpoint merge address)
+$(implementation complete "")" "0 no"
+assert_start "merge, Branch Implementation with no checkpoint between (the other order): the Implementation" \
+    "$M
+$(implementation complete "")" "1 no"
+assert_start "merge, PR-correlated fix: still armed (a PR-correlated entry never disarms)" \
+    "$M
+$(implementation_pr complete)" "0 yes"
+assert_start "merge, PR-correlated fix, merge, Plan Authored: the Plan Authored" \
+    "$M
+$(implementation_pr complete)
+$M
+$(plan_authored complete)" "3 no"
+assert_start "merge, Addressed Branch fix: not a start entry, still armed" \
+    "$M
+$(implementation complete addressed)" "0 yes"
+assert_start "merge, restart, Plan Authored, merge, Plan Authored: the last Plan Authored" \
+    "$M
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$M
+$(plan_authored complete)" "4 no"
+assert_start "merge, restart: the restart moves the round start and leaves the merge answer armed" \
+    "$M
+$(checkpoint rounds restart)" "2 yes"
+assert_start "hand merge: review, Branch Implementation, no merge answer: no boundary (known limitation)" \
+    "$(local_review_prepush complete changes-requested feature/issue-9)
+$(implementation complete "")" "0 no"
+assert_start "issue-307 shape then a part: merge, record, merge-refused answered merge, Plan Authored: the Plan Authored" \
+    "$M
+$(merge_record report-only)
+$(checkpoint merge-refused merge)
+$(plan_authored complete)" "3 no"
+assert_start "issue-307 shape: a merge answer at merge-refused neither arms nor disarms (the earlier arm stands)" \
+    "$M
+$(merge_record report-only)
+$(checkpoint merge-refused merge)" "0 yes"
+assert_start "a merge answer at merge-refused with no earlier arm does not arm" \
+    "$(merge_record report-only)
+$(checkpoint merge-refused merge)" "0 no"
+assert_start "a failed start entry while armed is the boundary (whatever its Status)" \
+    "$(implementation complete "")
+$M
+$(checkpoint plan proceed)
+$(implementation failed "")" "3 no"
+assert_start "a failed Implementation with no correlation line while armed is the boundary" \
+    "$M
+$(implementation_nocorr_failed)" "1 no"
+# Start entries told apart by pull-request number (issue 459 pre-push
+# review, must-fix 1). The merged pull request's number is the newest
+# PR-correlated entry's before the merge answer: integrated_review is #9.
+IR9="$(integrated_review complete clean)"
+assert_start "merged #9, plan proceed, Implementation on another pull request's draft (#6): the Implementation" \
+    "$IR9
+$M
+$(checkpoint plan proceed)
+$(implementation_pr complete 6)" "3 no"
+assert_start "merged #9, a failed Implementation on #6: the boundary too (whatever its Status)" \
+    "$IR9
+$M
+$(implementation_pr failed 6)" "2 no"
+assert_start "issue 332 entry 64 shape: merged #9, an Addressed-less fix on #9 itself: no boundary, still armed" \
+    "$IR9
+$M
+$(implementation_pr complete 9)" "0 yes"
+assert_start "merged number unknown (no PR-correlated entry before the merge answer), Implementation on #6: no boundary (the safe side)" \
+    "$(local_review_prepush complete approved feature/issue-9)
+$M
+$(implementation_pr complete 6)" "0 yes"
+assert_start "the number is taken at each merge answer: part 2 on #6 merged, a fix on #6 after it is no boundary" \
+    "$IR9
+$M
+$(implementation_pr complete 6)
+$(integrated_review_n 6)
+$M
+$(implementation_pr complete 6)" "2 yes"
+assert_start "merged #9, a complete Implementation with no correlation line (a fix pass that lost **Addressed** and its line): no boundary" \
+    "$IR9
+$M
+$(implementation_nocorr complete)" "0 yes"
+assert_start "merged #9, a partial Implementation with no correlation line: the boundary" \
+    "$IR9
+$M
+$(implementation_nocorr partial)" "2 no"
+assert_start "merged #9, a complete Branch Implementation (no **Addressed**): the boundary" \
+    "$IR9
+$M
+$(implementation complete "")" "2 no"
+# Two starts: the round start moves at a restart, the pull-request start
+# does not (sources keeps an open pull request's reviews across a restart).
+assert_starts() {  # <label> <fixture> <want "round_start pr_start armed">
+    local label="$1" content="$2" want="$3" f got
+    f="$TMPD/starts_$$_$RANDOM.md"
+    printf '%s\n' "$content" > "$f"
+    got=$(python3 "$SCRIPT_DIR/../progress_read.py" "$f" | PR_START_DIR="$(dirname "$PR_START_PY")" python3 -B -c '
+import json, os, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import scan, round_start, pr_start, merge_armed
+e = json.load(sys.stdin)["entries"]
+r = scan(e)
+assert (r.round_start, r.pr_start, r.armed) == (round_start(e), pr_start(e), merge_armed(e))
+print(r.round_start, r.pr_start, "yes" if r.armed else "no")' 2>&1)
+    [[ "$got" == "$want" ]] && pass "pr_start: $label -> $want" || fail "pr_start: $label (want '$want', got '$got')"
+}
+# A restart moves only the round start (issue 459, second fix round, host
+# decision). The pre-push review's timelines, with their new values:
+# merge answer, restart, the next part's plan -> both starts at the plan.
+assert_starts "merge answer, restart, Plan Authored, Implementation, review: both starts at the Plan Authored (was Scan(12, 0)-shaped: pull-request start 0)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$IR9
+$M
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)" "6 6 no"
+# A hand merge (no merge answer) then a restart: the restart is no boundary
+# (the remedy is a merge checkpoint by the owner), so the pull-request
+# start stays 0 and only the rounds start over.
+assert_starts "hand merge with no merge answer, restart, Plan Authored: round start after the restart, pull-request start 0 (Scan(7, 0)-shaped; unchanged, by design)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_pr complete changes-requested open)
+$IR9
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")" "5 0 no"
+assert_starts "the same with the owner's merge recorded as a merge checkpoint before the restart: both starts at the Plan Authored" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_pr complete changes-requested open)
+$IR9
+$M
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")" "6 6 no"
+# The newest pull-request number is forgotten at a boundary (second fix
+# round, must-fix 2): a part whose Integrated Review line carries no
+# number never takes the previous part's.
+assert_starts "part 2's Integrated Review has no readable number: its post-merge fix on #11 is no boundary (pull-request start 4, was 10)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$IR9
+$M
+$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(checkpoint rounds publish)
+$(printf '## Integrated Review\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: see the pull request\n\n### Findings\n- [x] (must-fix) fixed\n' "$NOW")
+$M
+$(implementation_pr complete 11)" "4 4 yes"
+# A legacy "**PR**: #11 -- 1 review(s), ..." line parses to no correlation
+# in progress_read.py; pr_start.py reads its leading #11 itself.
+LEGACY_IR11="$(printf '## Integrated Review\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: #11 — 1 review(s), 1 valid, 0 false positives\n\n### Findings\n- [x] (must-fix) fixed\n' "$NOW")"
+assert_starts "a legacy '**PR**: #11 — 1 review(s)' line gives the merged number: a fix on #11 is no boundary, the next part on #12 is" \
+    "$LEGACY_IR11
+$M
+$(implementation_pr complete 11)
+$(implementation_pr complete 12)" "3 3 no"
+assert_starts "the legacy line read as #11 at the merge answer: an Implementation on #12 first is the boundary" \
+    "$LEGACY_IR11
+$M
+$(implementation_pr complete 12)" "2 2 no"
+assert_starts "a restart while the pull request is open: round start after it, pull-request start unmoved" \
+    "$(implementation complete "")
+$IR9
+$(checkpoint rounds restart)
+$(implementation complete addressed)" "3 0 no"
+assert_starts "a merge boundary moves both starts" \
+    "$IR9
+$M
+$(plan_authored complete)" "2 2 no"
+assert_starts "merge boundary, then a restart: the round start is the restart, the pull-request start the boundary" \
+    "$IR9
+$M
+$(plan_authored complete)
+$(local_review_prepush complete changes-requested feature/issue-9)
+$(checkpoint rounds restart)
+$(implementation complete addressed)" "5 2 no"
+assert_start "the post-merge plan checkpoint (revise, proceed or stop) keeps the armed state" \
+    "$M
+$(checkpoint plan revise)" "0 yes"
+assert_start "After findings, Decision merge arms too" \
+    "$(checkpoint findings merge)
+$(plan_authored complete)" "1 no"
+# Real timelines in this repository (issue 459 replay): 429 (several pull
+# requests; every boundary is a Plan Authored, the first two at 25 and 50;
+# pull request 461 adds a fourth part at 71), 332 (four pull requests, one merged by hand
+# with no merge answer: boundaries 67 and 81 only), single-pull-request
+# issues (no boundary, armed at the end).
+real_boundaries() {  # <progress.md> -- every start the scan moves to (P Plan Authored, I Implementation), then "armed=<yes|no>"
+    python3 "$SCRIPT_DIR/../progress_read.py" "$1" | PR_START_DIR="$(dirname "$PR_START_PY")" python3 -B -c '
+import json, os, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import scan
+e = json.load(sys.stdin)["entries"]
+seen, prev = [], 0
+for k in range(1, len(e) + 1):
+    s = scan(e[:k]).round_start
+    if s != prev:
+        seen.append("%d%s" % (s, {"Plan Authored": "P", "Implementation": "I"}.get(e[s]["base_type"], "?")))
+        prev = s
+print(" ".join(seen), "armed=" + ("yes" if scan(e).armed else "no"))'
+}
+WP="$SCRIPT_DIR/../../work-plans"
+got=$(real_boundaries "$WP/issue-429/progress.md")
+[[ "$got" == "25P 50P"* && "$got" != *[I?]* ]] \
+    && pass "pr_start: issue 429's real timeline -- boundaries at 25 and 50 first, each a Plan Authored ($got)" \
+    || fail "pr_start: issue 429 real timeline (got '$got')"
+got=$(real_boundaries "$WP/issue-332/progress.md")
+[[ "$got" == "67I 81I armed=yes" ]] \
+    && pass "pr_start: issue 332's real timeline -- the Branch Implementations at 67 and 81 (63's merge answer is followed by a PR-correlated fix first); the hand-merged part has none" \
+    || fail "pr_start: issue 332 real timeline (got '$got')"
+for n in 451 455 354 307; do
+    got=$(real_boundaries "$WP/issue-$n/progress.md")
+    [[ "$got" == " armed=yes" ]] \
+        && pass "pr_start: issue $n's real timeline (one pull request) -- no boundary, armed at the end" \
+        || fail "pr_start: issue $n real timeline (got '$got')"
+done
+
+echo "TEST: next -- the next pull request of an issue counts its own rounds (issue 459)"
+PART1="$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(implementation complete addressed)
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)
+$(implementation complete addressed)
+$(local_review_prepush complete changes-requested feature/issue-9 ccc3333)
+$(checkpoint rounds publish)
+$(integrated_review complete clean)
+$(checkpoint merge merge)"
+PART2="$PART1
+$(plan_authored complete)
+$(plan_review complete)
+$(checkpoint plan proceed)
+$(implementation complete "")"
+assert_next "round_count: part 1 had three reviews and merged; part 2's first review is round 1 -> address-findings (not checkpoint:rounds)" none \
+    "$PART2
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)" address-findings "round=1"
+assert_next "round_count: part 2's second review is round 2 -> address-findings" none \
+    "$PART2
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)
+$(implementation complete addressed)
+$(local_review_prepush complete changes-requested feature/issue-9 eee5555)" address-findings "round=2"
+assert_next "round_count: part 2 reaches MAX_ROUNDS only on its own third review" none \
+    "$PART2
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)
+$(implementation complete addressed)
+$(local_review_prepush complete changes-requested feature/issue-9 eee5555)
+$(implementation complete addressed)
+$(local_review_prepush complete changes-requested feature/issue-9 fff6666)" checkpoint:rounds "round=3"
+assert_next "round_count: part 2 starts at its first Branch Implementation when no plan entry came between" none \
+    "$PART1
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)" address-findings "round=1"
+assert_next "round_count: a refused merge (merge-refused answered address) is no boundary -- the fix's review is round 4" none \
+    "$PART1
+$(checkpoint merge-refused address)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)" checkpoint:rounds "round=4"
+PART2_FAILED="$PART1
+$(checkpoint plan proceed)
+$(implementation failed "")"
+assert_next "skill_for: a failed first implement of part 2 maps to implement -- part 1's complete Implementations do not count" none \
+    "$PART2_FAILED" checkpoint:phase-failed "phase=implement"
+RETRY_PHASE2="$(run_next none "$PART2_FAILED" | sed -n 's/^phase=//p')"
+assert_next "skill_for: the retry answer to it (Phase: ${RETRY_PHASE2:-none printed}, from next) dispatches implement, not address-findings" none \
+    "$PART2_FAILED
+$(checkpoint phase-failed retry "${RETRY_PHASE2:-missing}")" implement
+assert_next "skill_for: part 2's later failed pass with no **Addressed** after its own complete implement maps to address-findings" none \
+    "$PART2_FAILED
+$(checkpoint phase-failed retry implement)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)
+$(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
+
+echo "TEST: next -- row 3a, after a merge with no pull request open (issue 459)"
+# The state walk from the issue-459 plan's third review: which row answers
+# each state once row 3a is in.
+MERGED="$PART1"   # ... Integrated Review, Checkpoint merge/merge (armed)
+assert_next "walk 1: armed, newest the merge answer, --pr none -> checkpoint:plan (row 3a; was merge, issue 459 acceptance)" none \
+    "$MERGED" checkpoint:plan "merged"
+out=$(run_next none "$MERGED")
+[[ "$out" != "action=merge"* ]] && pass "acceptance: next after a merge checkpoint with no pull request does not answer merge" || fail "acceptance: merge again (out=$out)"
+assert_next "walk 2: armed, newest a Merge record (written at the gate, then the merge landed), --pr none -> checkpoint:plan (row 3a, not row 23)" none \
+    "$MERGED
+$(merge_record report-only)" checkpoint:plan
+assert_next "walk 3: armed, newest a Merge record, --pr open (refused) -> checkpoint:merge-refused (row 23 unchanged)" open \
+    "$MERGED
+$(merge_record report-only)" checkpoint:merge-refused
+assert_next "walk 4: not armed (merge-refused answered address), newest a Merge record, --pr none -> row 23 unchanged" none \
+    "$MERGED
+$(checkpoint merge-refused address)
+$(merge_record unreviewed)" checkpoint:merge-refused
+assert_next "walk 4b: no merge answer at all, newest a Merge record, --pr none -> row 23 unchanged" none \
+    "$(merge_record report-only)" checkpoint:merge-refused
+out=$(bash "$DP" next --pr merged --progress "$TMPD/never_read.md" 2>&1)
+[[ "$out" == "action=done"* ]] && pass "walk 5: armed, --pr merged given -> row 1, done (before any read)" || fail "walk 5 (out=$out)"
+assert_next "walk 6: a stop at the merge checkpoint after a merge answer -> row 2, done" none \
+    "$MERGED
+$(checkpoint merge stop)" "done"
+assert_next "walk 6b: a stop at the post-merge plan checkpoint (still armed) -> row 2, done" none \
+    "$MERGED
+$(checkpoint plan stop)" "done"
+assert_next "walk 7: armed, then the next part's Plan Authored newest -> row 8, review-plan" none \
+    "$MERGED
+$(plan_authored complete)" review-plan
+assert_next "row 21 unchanged: armed, newest the merge answer, --pr open -> merge" open \
+    "$MERGED" merge
+assert_next "row 21 unchanged: armed, newest the merge answer, --pr draft -> merge" draft \
+    "$MERGED" merge
+assert_next "row 3a: After findings answered merge, merge landed, --pr none -> checkpoint:plan" none \
+    "$(integrated_review complete open)
+$(checkpoint findings merge)" checkpoint:plan
+assert_next "row 3a: the issue-307 shape (merge, record, merge-refused answered merge), --pr none -> checkpoint:plan" none \
+    "$MERGED
+$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:plan
+assert_next "row 28 unchanged: the issue-307 shape with the pull request still open -> checkpoint:unexpected" open \
+    "$MERGED
+$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:unexpected
+assert_next "row 28 unchanged: merge-refused answered merge with no earlier merge answer (not armed), --pr none -> checkpoint:unexpected" none \
+    "$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:unexpected
+assert_next "row 3a needs the newest entry: armed, newest a PR-correlated fix, --pr none -> row 12, review-code" none \
+    "$MERGED
+$(implementation_pr complete)" review-code
+assert_next "row 3a needs --pr none: a failed newest entry while armed is still row 3" none \
+    "$MERGED
+$(plan_authored failed)" checkpoint:phase-failed "phase=plan-task"
+
+echo "TEST: next -- row 3a does not loop on the plan checkpoint it raises (issue 459)"
+# Sequence 1: merge lands, checkpoint:plan, revise recorded -> plan-task;
+# the plan checkpoint answer leaves the timeline armed, so a row 3a keyed
+# on the armed state alone would raise checkpoint:plan again, forever.
+TL="$TMPD/timeline_postmerge_revise.md"; TIMELINE_OK=1
+printf '%s\n\n' "$MERGED" > "$TL"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan revise)"
+step "$TL" none plan-task
+append "$TL" "$(plan_authored complete)"
+step "$TL" none review-plan
+append "$TL" "$(plan_review complete)"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan proceed)"
+step "$TL" none implement
+append "$TL" "$(implementation complete "")"
+step "$TL" none review-code pre-push
+append "$TL" "$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)"
+step "$TL" none address-findings round=1
+[[ "$TIMELINE_OK" -eq 1 ]] && pass "timeline F: merge, checkpoint:plan, revise -> plan-task, then the next part's own loop from round 1" || fail "timeline F had a mismatch (see above)"
+# proceed straight to implement after the merge.
+assert_next "row 3a: the post-merge checkpoint answered proceed -> implement (row 10)" none \
+    "$MERGED
+$(checkpoint plan proceed)" implement
+# Sequence 2: revise, plan-task writes no entry (check-exit MISSING), the
+# phase-failed checkpoint is answered retry or takeover: rows 26/27, not 3a.
+assert_next "row 3a: revise, plan-task wrote nothing, phase-failed answered retry -> plan-task (row 26)" none \
+    "$MERGED
+$(checkpoint plan revise)
+$(checkpoint phase-failed retry plan-task)" plan-task
+assert_next "row 3a: the same answered takeover -> plan-task, mode=inline (row 27)" none \
+    "$MERGED
+$(checkpoint plan revise)
+$(checkpoint phase-failed takeover plan-task)" plan-task "mode=inline"
+assert_next "row 3a: proceed, implement wrote nothing, phase-failed answered retry -> implement (row 26)" none \
+    "$MERGED
+$(checkpoint plan proceed)
+$(checkpoint phase-failed retry implement)" implement
+# A failed first implement of the next part is its start entry: the retry
+# dispatches implement, not address-findings (part 1's complete
+# Implementations are before the boundary).
+TL="$TMPD/timeline_postmerge_failed.md"; TIMELINE_OK=1
+printf '%s\n\n' "$MERGED" > "$TL"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan proceed)"
+step "$TL" none implement
+append "$TL" "$(implementation failed "")"
+step "$TL" none checkpoint:phase-failed phase=implement
+append "$TL" "$(checkpoint phase-failed retry implement)"
+step "$TL" none implement
+[[ "$TIMELINE_OK" -eq 1 ]] && pass "timeline G: merge, proceed, a failed first implement of the next part -> phase=implement, retry -> implement" || fail "timeline G had a mismatch (see above)"
+
 echo "TEST: next -- a restart checkpoint as the newest entry (orchestrator recipe (a))"
 assert_next "restart: a restart checkpoint with no entry after it routes to row 28, checkpoint:unexpected (the host then dispatches review-issue)" none \
     "$TWO_ROUNDS
@@ -350,17 +820,6 @@ echo "TEST: next -- five end-to-end timelines (must never hit row 28)"
 
 # (A) clean run to merge
 TL="$TMPD/timeline_a.md"
-step() {  # <file> <pr> <want-action> [want-pattern...]
-    local f="$1" pr="$2" want="$3"; shift 3
-    local out rc ok=1 pat
-    out=$(bash "$DP" next --pr "$pr" --progress "$f" 2>&1); rc=$?
-    if [[ "$rc" -ne 0 || "$out" != "action=$want"* ]]; then
-        fail "timeline step expected action=$want (rc=$rc out=${out:0:200})"; TIMELINE_OK=0; return
-    fi
-    for pat in "$@"; do [[ "$out" == *"$pat"* ]] || ok=0; done
-    [[ "$ok" -eq 1 ]] || { fail "timeline step action=$want missing pattern (out=$out)"; TIMELINE_OK=0; }
-}
-append() { local f="$1"; shift; printf '%s\n\n' "$*" >> "$f"; }
 
 : > "$TL"
 TIMELINE_OK=1
@@ -517,7 +976,7 @@ SBS="$SANDBOX/root with space"
 mkdir -p "$SBS/.agent/scripts" "$SBS/worktrees/workspace" "$SBS/.venv/bin"
 git -C "$SBS" init -q -b main
 git -C "$SBS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBS/.agent/scripts/"
 done
 git -C "$SBS" worktree add -q "$SBS/worktrees/workspace/issue-workspace-9" -b feature/issue-9 >/dev/null 2>&1
@@ -598,6 +1057,45 @@ append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)
 out=$(run_handoff --issue 9 --skill review-code)
 [[ "$out" == *"task=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review's findings"* ]] \
     && pass "handoff: two reviews after the restart -- the next is round 3 of the new work" || fail "handoff restart round 3 (out=$out)"
+# Issue 459 acceptance: the pull request merged; the first pre-push review
+# of the next part's diff is round 1, a full review with outside reviewers.
+append "$P9" "$(integrated_review complete clean)"
+append "$P9" "$(checkpoint merge merge)"
+append "$P9" "$(plan_authored complete)"
+append "$P9" "$(plan_review complete)"
+append "$P9" "$(checkpoint plan proceed)"
+append "$P9" "$(implementation complete "")"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* && "$out" != *"no cross-model reviewers"* ]] \
+    && pass "handoff: after a merge, the next pull request's first pre-push review is round 1 -- the bare task line, no \"no cross-model reviewers\" (issue 459)" || fail "handoff next pull request round 1 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *"task=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review's findings"* ]] \
+    && pass "handoff: two reviews of the next pull request -- the next is its own round 3" || fail "handoff next pull request round 3 (out=$out)"
+# The pre-push review's timeline (issue 459, must-fix 1): part 1 had three
+# pre-push reviews and merged as #9; the next part's draft pull request #6
+# existed, the post-merge plan checkpoint was answered proceed (no Plan
+# Authored), and its first Implementation carries **PR**: #6.
+printf '# Issue 9\n\n' > "$P9"
+for sha in aaa1111 bbb2222 ccc3333; do
+    append "$P9" "$(implementation complete addressed)"
+    append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9 $sha)"
+done
+append "$P9" "$(integrated_review complete clean)"
+append "$P9" "$(checkpoint merge merge)"
+append "$P9" "$(checkpoint plan proceed)"
+append "$P9" "$(implementation_pr complete 6)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* && "$out" != *"no cross-model reviewers"* ]] \
+    && pass "handoff: the next part's first Implementation on its own draft pull request (#6, the merged one #9) -- round 1, the bare task line" || fail "handoff next part on a draft PR (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)"
+out=$(bash "$DP" next --pr none --progress "$P9" 2>&1)
+[[ "$out" == "action=address-findings"*"round=1"* ]] \
+    && pass "next: the same timeline after the next part's first review -> address-findings round=1 (was checkpoint:rounds round=4)" || fail "next next part on a draft PR (out=$out)"
+out=$(cd "$SB" && bash .agent/scripts/review_progress.sh round --progress "$P9" --branch feature/issue-9 2>&1)
+[[ "$out" == "round=2"* ]] \
+    && pass "review_progress round agrees: the next review is round 2 (was round=5)" || fail "round next part on a draft PR (out=$out)"
 git -C "$WT9" checkout -q --detach
 out=$(run_handoff --issue 9 --skill review-code); rc=$?
 git -C "$WT9" checkout -q feature/issue-9
@@ -613,7 +1111,7 @@ SBP1="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP1" init -q -b main
 git -C "$SBP1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP1/.agent/scripts"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBP1/.agent/scripts/"
 done
 mkdir -p "$SBP1/myproj/worktrees/issue-9"
@@ -637,7 +1135,7 @@ SBP2="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP2" init -q -b main
 git -C "$SBP2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP2/.agent/scripts"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBP2/.agent/scripts/"
 done
 mkdir -p "$SBP2/project/worktrees/issue-9"
@@ -787,7 +1285,7 @@ mk_project_sandbox() {  # <issue-num> <project-name>... -- first name owns the i
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace" "$sb/.agent/project_types"
     cp -r "$SCRIPT_DIR/../../project_types/single_project" "$sb/.agent/project_types/"
-    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+    for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     : > "$sb/.agent/projects.local"
@@ -902,7 +1400,7 @@ git -C "$PSBW" init -q -b main
 git -C "$PSBW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$PSBW/.agent/scripts" "$PSBW/.agent/project_types" "$PSBW/home"
 cp -r "$SCRIPT_DIR/../../project_types/single_project" "$PSBW/.agent/project_types/"
-for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
+for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$PSBW/.agent/scripts/"
 done
 : > "$PSBW/.agent/projects.local"

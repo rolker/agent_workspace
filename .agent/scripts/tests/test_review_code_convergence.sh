@@ -89,6 +89,41 @@ out=$("$RP" round --branch feature/issue-7 --progress "$FIX/restart1.md")
 out=$("$RP" round --branch feature/issue-7 --progress "$FIX/restart2.md")
 [[ "$out" == $'round=2\nprev_must_fix=4' ]] && pass "round: two restarts -> only reviews after the newest count" || fail "round: two restarts (out=$out)"
 
+# An issue delivered in several pull requests (issue 459): after a merge
+# answer, the next part's first new work (its Plan Authored, or an
+# Implementation with no **Addressed** that is not PR-correlated) starts the
+# count over; a refused merge does not. Same rule as dispatch_phase.sh next
+# (pr_start.py).
+merge_checkpoint() {  # <after> <decision>
+    printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: %s\n**Decision**: %s\n' "$1" "$2"
+}
+next_plan() {
+    printf '## Plan Authored\n**Status**: complete\n**When**: 2026-09-17 12:10 -04:00\n**By**: t (m)\n**Plan**: `.agent/work-plans/issue-7/plan.md` at `1111111`\n'
+}
+branch_impl() {  # <branch>
+    printf '## Implementation\n**Status**: complete\n**When**: 2026-09-17 12:20 -04:00\n**By**: t (m)\n**Branch**: %s at `2222222`\n' "$1"
+}
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3; printf '\n'
+  prepush_entry feature/issue-7 2; printf '\n'
+  prepush_entry feature/issue-7 1; printf '\n'
+  merge_checkpoint merge merge; printf '\n'
+  next_plan; printf '\n'
+  branch_impl feature/issue-7; } > "$FIX/merged0.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/merged0.md")
+[[ "$out" == $'round=1\nprev_must_fix=-' ]] && pass "round: three reviews, a merge answer, the next part's plan and implementation -> round 1 (the merged pull request's reviews do not count; issue 459)" || fail "round: next pull request after a merge (out=$out)"
+{ cat "$FIX/merged0.md"; printf '\n'; prepush_entry feature/issue-7 2; } > "$FIX/merged1.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/merged1.md")
+[[ "$out" == $'round=2\nprev_must_fix=2' ]] && pass "round: one review of the next pull request -> round 2, prev from it" || fail "round: next pull request, one review (out=$out)"
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3; printf '\n'
+  prepush_entry feature/issue-7 1; printf '\n'
+  merge_checkpoint merge merge; printf '\n'
+  merge_checkpoint merge-refused address; printf '\n'
+  branch_impl feature/issue-7; } > "$FIX/refused.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/refused.md")
+[[ "$out" == $'round=3\nprev_must_fix=1' ]] && pass "round: a merge answer the merge-refused checkpoint then answered address is no boundary -> the fix keeps counting (round 3)" || fail "round: refused merge (out=$out)"
+
 # malformed file (unterminated fence) -> non-zero, not a silent round 1
 printf '## Implementation\n```\nopen\n' > "$FIX/bad.md"
 "$RP" round --branch feature/issue-7 --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?

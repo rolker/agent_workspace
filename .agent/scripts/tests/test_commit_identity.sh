@@ -121,6 +121,14 @@ hook_in "$sb" GIT_AUTHOR_EMAIL=someone+x@example.org
 [ $HOOK_RC -eq 0 ] && pass "agent email someone+x@example.org" || fail "agent (rc=$HOOK_RC: $HOOK_OUT)"
 hook_in "$sb" GIT_AUTHOR_EMAIL=someone@EXAMPLE.ORG
 [ $HOOK_RC -eq 0 ] && pass "domain compared case-insensitively" || fail "domain case (rc=$HOOK_RC: $HOOK_OUT)"
+# A hook run leaves no __pycache__ beside the scripts (a follow-up found
+# during issue 459): a copy of the hook and its helper in the sandbox, so
+# the check never depends on the real checkout's state.
+mkdir -p "$sb/copy/.agent/hooks" "$sb/copy/.agent/scripts"
+cp "$HOOK" "$sb/copy/.agent/hooks/" && cp "$HELPER" "$sb/copy/.agent/scripts/"
+run_in "$sb" -- python3 "$sb/copy/.agent/hooks/check-commit-identity.py" >/dev/null 2>&1
+[ ! -e "$sb/copy/.agent/scripts/__pycache__" ] \
+    && pass "a hook run writes no __pycache__ beside identity_base.py" || fail "hook run left $sb/copy/.agent/scripts/__pycache__"
 
 echo "TEST: the hook rejects another local part, another domain and another base in GIT_AUTHOR_EMAIL"
 for other in "other+x@example.org" "other@example.org" "someone+x@example.net" "someone@example.net" "someone+@example.org" \
