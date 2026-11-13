@@ -214,9 +214,9 @@ inside a package worktree today `_gate_wt` is the top folder C, the records gate
 package pull request records "carries no issue timeline" as a pull-request comment. Part 2 closes the
 rest of the issue: the base branch, the gate, the end-to-end test and the texts. Cut as **two pull
 requests (built one after the other here; originally planned in parallel)**: **2a the base branch** (with its own texts) and **2b the gate,
-the end-to-end test and the Scope text**. 2a is the larger (about 16 files, 600 lines, of which the verb
-is about 5 files); 2b is about 8 files and 300 lines. If review finds 2a heavy, the verb (steps 1 to 2)
-can be its own pull request ahead of the rest; the cut line is already there.
+the end-to-end test and the Scope text**. 2a is the larger (it was about 16 files and 600 lines with the verb, which has merged; what is left is
+about 11 files and 500 lines); 2b is about 8 files and 300 lines. The verb (steps 1 to 2) did go ahead as its
+own pull request (456).
 
 ### Revision of 2026-11-12 (the verb merged; every remaining step re-checked against main at `b151b741`)
 
@@ -241,7 +241,7 @@ manifest resolver). Read the code, not this summary; what the merged verb is, as
 on top; the end-to-end test of 2b is then written once, complete with the base step, instead of written in
 2b and extended in 2a; and 2b's Scope text then describes the final state in one edit. 2b is the smaller,
 independent change (nothing in it needs 2a), so a late 2b costs nothing. 2a's remaining part is about 11
-files and 450 lines (the 16 files and 600 lines included the verb). The later pull request (2b) must: merge
+files and 500 lines (the 16 files and 600 lines included the verb). The later pull request (2b) must: merge
 or rebase onto main after 2a; re-run `test_package_issue_loop.sh`, `test_merge_pr_gate.sh` and
 `test_records_write_gate.sh` (the last has a static scan over `.agent/scripts/*.sh` for committers of
 work-plans paths; 2b adds none, since it records through `progress_append.sh`); extend the end-to-end case
@@ -254,15 +254,15 @@ it loses is that the base step then lands in 2a's own tests.
 
 | Step | Status | Detail (files and lines read) |
 |---|---|---|
-| 2a.3 `_pr_base.sh`, `dispatch_phase.sh base`, handoff `base=` | **Adjusted** | The table of kinds and the repository-name rule are unchanged: the owning entry is the one on `feature/issue-N` (`adapter_worktree_repos`, ros2_colcon `adapter.sh` 744-834; the path printed is `<layer>_ws/src/<pkg>`, so the last component is the name). After the worktree exists, `issue_checkout_of` (`_resolve_work_plans_dir.sh` 152) returns that checkout; its `basename` is the name. Three adjustments. (1) `pr_base_for` passes `--layer <l>` to `repo_pin` whenever it has one (the header's `layer=` or `--layer`); a package issue always has one, and without it the verb refuses an ambiguous pin. (2) A refusal from `repo_pin` (exit 1) is printed verbatim and ends with exit 2; it already covers "no `version:`" and "YAML would change it", so those need no code of their own. (3) The "unverified" note is passed through from stderr and not parsed, since the verb has no flag; creation's strict check still decides ("creation wins", step 4). Read the header with `sed` as `dispatch_phase.sh` 316 does, because `wt_read_manifest`'s globals are lost inside `$(...)`. Place: `cmd_base` beside `cmd_where` (`dispatch_phase.sh` 660) using `resolve_issue_dir` (306); `base=` joins the handoff after `package_worktree=` (514) and the header comment lists (35-38) |
+| 2a.3 `_pr_base.sh`, `dispatch_phase.sh base`, handoff `base=` | **Adjusted** |  The table of kinds and the repository-name rule are unchanged: the owning entry is the one on `feature/issue-N` (`adapter_worktree_repos`, ros2_colcon `adapter.sh` 744-834; the path printed is `<layer>_ws/src/<pkg>`, so the last component is the name). After the worktree exists, `issue_checkout_of` (`_resolve_work_plans_dir.sh` 152) returns that checkout; its `basename` is the name. Three adjustments. (1) `pr_base_for` passes `--layer <l>` to `repo_pin` whenever it has one (the header's `layer=` or `--layer`); a package issue always has one, and without it the verb refuses an ambiguous pin. (2) A refusal from `repo_pin` (exit 1) is printed verbatim and ends with exit 2; it already covers "no `version:`" and "YAML would change it", so those need no code of their own. (3) The "unverified" note is passed through from stderr and not parsed, since the verb has no flag; creation's strict check still decides ("creation wins", step 4). Read the header with `sed` as `dispatch_phase.sh` 316 does, because `wt_read_manifest`'s globals are lost inside `$(...)`. Place: `cmd_base` beside `cmd_where` (`dispatch_phase.sh` 660) using `resolve_issue_dir` (306); `base=` joins the handoff after `package_worktree=` (514) and the header comment lists (35-38) |
 | 2a.4 strict start path, `worktree_create.sh --base` | Unchanged | `_wt_add_repo` is `_worktree_helpers.sh` 752-834; the new-branch arm is 780-808 and takes the base as a fifth argument after `parent_branch` (753). `wt_fetch_named_branch` (550-597) and `wt_add_new_branch` (723-734) are reused as they are. The caller is `worktree_create.sh` 804; the owning-entry test already exists at 814 (`WR_BRANCH = BRANCH_NAME`), so the base goes to the call at 804 when that holds and `WR_REL` is not `.`. `--base` is parsed beside `--parent-issue` (256), refused with it (314 region), and allowed only with `--layer` (gating block 399-410). The rollback trap (770-784) already undoes only entries this run added. The draft-pull-request message is `worktree_create.sh` 1017-1020, still as quoted. Tests (i) to (vi) stand. Also: `run_script_tests.sh` 348 cites `worktree_create.sh:1091,1132` for two `/tmp` mktemp sites; they are at 1097 and 1138 on main already (off by 6 before this work), so 2a re-cites them after its own edits move them |
-| 2a.5 header `base=`, `layer=` reader | Unchanged | `wt_write_manifest` is `_worktree_helpers.sh` 416-422 (one caller, `worktree_create.sh` 846); `wt_read_manifest` 430-451 with the end-anchored reader at 444. Other header readers (`worktree_list.sh` 273, `merge_pr.sh` 505-506, `dispatch_phase.sh` 316) read other fields unanchored, so they are unaffected. Fixtures write headers with no `base=` (`test_merge_pr.sh` 227, `test_sitrep_checks.sh` 1044 and the lines after, `test_merge_pr_gate.sh` 434, 514), which keeps "no `base=` means no cross-check" true |
-| 2a.6 `run-issue/SKILL.md` | Unchanged | Argument hint line 4 and usage 121-144 gain `--base`; step 1 (192-257) runs `dispatch_phase.sh base` before the `start-task` follow, then the existing `where` block; publish is 671-690 (`-R` already there from part 1; `--base` passes through `gh_create_pr.sh` to `gh pr create`, header line 47). Issue 295 changed `gh_create_pr.sh` (the registered-root check, 146-180) but a package repository is still not accepted without `-R`, so `-R` stays |
-| 2a.7 merge cross-check | **Adjusted** | `_head_json` is `merge_pr.sh` 545 (`--json headRefOid,comments,body`); add `baseRefName`. The gate reasons list starts at 675. Adjustment: the header's `base=` is the base of the owning entry only, so the reason applies only when `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`; a sibling pull request (`feature/<repo>-issue-N`) targets its own repository's branch and would otherwise get a false "targets ... recorded base" reason. `base=` is read in the manifest scan beside the other two header fields (504-506), with the same `sed` shape. Fixtures with no `baseRefName` stay silent |
+| 2a.5 header `base=`, `layer=` reader | Unchanged in code; record route set (host decision) | `wt_write_manifest` is `_worktree_helpers.sh` 416-422 (one caller, `worktree_create.sh` 846); `wt_read_manifest` 430-451 with the end-anchored reader at 444. Other header readers (`worktree_list.sh` 273, `merge_pr.sh` 505-506, `dispatch_phase.sh` 316) read other fields unanchored, so they are unaffected. Fixtures write headers with no `base=` (`test_merge_pr.sh` 227, `test_sitrep_checks.sh` 1044 and the lines after, `test_merge_pr_gate.sh` 434, 514), which keeps "no `base=` means no cross-check" true. `base=` and the start-point rule are recorded in `docs/design.md#worktrees`; ADR-0012 gets a cross-reference addendum only |
+| 2a.6 `run-issue/SKILL.md` | Adjusted (resume write-back and non-package output, host decision) | Argument hint line 4 and usage 121-144 gain `--base`; step 1 (192-257) runs `dispatch_phase.sh base` before the `start-task` follow, then the existing `where` block; publish is 671-690 (`-R` already there from part 1; `--base` passes through `gh_create_pr.sh` to `gh pr create`, header line 47). Issue 295 changed `gh_create_pr.sh` (the registered-root check, 146-180) but a package repository is still not accepted without `-R`, so `-R` stays |
+| 2a.7 merge cross-check and cleanup pull | **Adjusted** | `_head_json` is `merge_pr.sh` 545 (`--json headRefOid,comments,body`); add `baseRefName`. The gate reasons list starts at 675. Adjustment: the header's `base=` is the base of the owning entry only, so the reason applies only when `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`; a sibling pull request (`feature/<repo>-issue-N`) targets its own repository's branch and would otherwise get a false "targets ... recorded base" reason. `base=` is read in the manifest scan beside the other two header fields (504-506), with the same `sed` shape, and carried inside the `_PKG_MATCHES` record (521, read at 527 and 533). The cleanup pull at 1625 follows the rule in step 7 (host decision). Fixtures with no `baseRefName` stay silent |
 | 2a.8 tests | **Adjusted** | `test_package_issue_loop.sh` is 682 lines with cases 1 to 10 (166-613); 2a appends case 11 onward. Its sandbox already has a layer manifest with `.repos` pins of `main` for both repositories (line 100), so the verb of 456 answers every kind for real: a case rewrites that file between `base` calls (pre-creation mode needs no worktree) to a branch, a tag, a 40-hex commit and a missing branch. **No stub adapter type is needed** (the old step 8 called for one). The `pinned` branch is created in the bare origin the `GIT_SSH_COMMAND` stub serves. Unchanged suites to run: as listed in step 8, plus `test_adapter.sh` and `test_ros2_colcon.sh` as they stand |
-| 2b.1 gate reads and records in the owning checkout | Unchanged, with one capture added | The scan is `merge_pr.sh` 485-523; the match breaks at 497 with `_m_rel` set, but `_m_rel` is unset at 535, so `PKG_OWN_REL` must be saved at the match, and only when `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`. `_gate_wt` is assigned at 689-696; the read passes `records_path` at 704 (a read; no `--write`). `_ci_wt` has `-z "$PKG_WT_DIR"` at 717 and `_gate_record` at 848; its record goes through `progress_append.sh -C` at 866 and `git push` at 870; the package comment branch is 892. After issue 437 that write passes `records_path --write` (`progress_append.sh` 94): A is on `feature/issue-N`, which `_wpd_checkout_is_issue` accepts, so no carve-out is needed and none is made |
+| 2b.1 gate reads and records in the owning checkout | Adjusted (carried in `_PKG_MATCHES`) | The scan is `merge_pr.sh` 485-523; the match breaks at 497 with `_m_rel` set, but `_m_rel` is unset at 535, so `PKG_OWN_REL` must travel inside the `_PKG_MATCHES` record (a scalar set at the match could be overwritten by a later manifest or dropped by the `--project` filter; empty fields written as `-`, since a tab `IFS` collapses them), and only when `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`. `_gate_wt` is assigned at 689-696; the read passes `records_path` at 704 (a read; no `--write`). `_ci_wt` has `-z "$PKG_WT_DIR"` at 717 and `_gate_record` at 848; its record goes through `progress_append.sh -C` at 866 and `git push` at 870; the package comment branch is 892. After issue 437 that write passes `records_path --write` (`progress_append.sh` 94): A is on `feature/issue-N`, which `_wpd_checkout_is_issue` accepts, so no carve-out is needed and none is made |
 | 2b.2 report-only stays | Unchanged | `docs/design.md#merge-gate` text is as quoted in the step |
-| 2b.3 cleanup tests | Unchanged | `merge_pr.sh` Step 4 is 1548-1660; the own-entry match is 1565-1572; the sibling `gh pr list` check 1580; the kept-worktree message 1640. Not changed, as planned. See the open question about `git pull --ff-only` there |
+| 2b.3 cleanup tests | **Adjusted** (pull rule, host decision) | `merge_pr.sh` Step 4 is 1548-1660; the own-entry match is 1565-1572; the sibling `gh pr list` check 1580; the kept-worktree message 1640. The sweep is not changed; the owning checkout's pull is (2a step 7: pull only when clean and on the base, else fetch only), and case (d) pins it |
 | 2b.4 fixture name | Unchanged | Four lines in `test_merge_pr_gate.sh`: 430, 434, 511, 514. Mechanism comments: `merge_pr.sh` 512 and `run-issue/SKILL.md` 83. The follow-up issue text stays as drafted |
 | 2b.5 end-to-end test | Unchanged | The flip is the package case at `test_merge_pr_gate.sh` 503-526 (the assertion at 522, "package worktrees carry no issue timeline", changes to the record landing in A with the main tree and the container untouched). The step's own fixtures can follow cases 8-10 of `test_package_issue_loop.sh` |
 | 2b.6 texts | **Adjusted** | Two more edits than listed. `run-issue/SKILL.md` Scope (908-932) still says the gate "does not guard a write from outside any worktree, which commits on that checkout's own branch" (927-928); issue 437 made that false and changed only `docs/design.md`, so the Scope rewrite drops the sentence. Step 11's "until the merge gate reads ..." sentence is at 826-829. `docs/design.md` still says "`merge_pr.sh` does not read that timeline yet ... (lines 839 and 893)" (476-478) and cites `merge_pr.sh` lines at 526 and 573; all are refreshed with the code |
@@ -271,11 +271,17 @@ it loses is that the base step then lands in 2a's own tests.
 not edited by part 2, `test_package_issue_loop.sh` already holds its block (cases 8 to 10), and the
 textual overlaps left are `docs/design.md` (Records bullet, change log) and `script_reference.md` rows.
 
-**Open question for the plan review (small):** the merge cleanup (`merge_pr.sh` 1625) runs `git pull
---ff-only` in the owning repository's own checkout, whichever branch it is on, while 456 made
-`adapter_sync` pull only on the pinned branch. Step 3(d) pins today's behaviour by a test (a checkout on
-another branch keeps "not fully merged" and the pull's result is reported, never silent). Whether the
-cleanup should also pull only on the base is a behaviour change the plan does not make; say so if you want it.
+**Decided at the checkpoint after the plan review (2026-11-12), now in the steps below:** (1) `base=` and the
+start-point rule go in `docs/design.md#worktrees` with a cross-reference addendum in ADR-0012; no edit of its
+decision text, no new ADR (2a step 5). (2) The stale "ADR-0011 amended", stub-adapter and size statements are
+corrected (2a step 8, the Files table, the self-check, the ADR and Consequences tables, decision 5, Estimated
+Scope). (3) `PKG_OWN_REL` and the header's `base=` travel inside the `_PKG_MATCHES` record (2a step 7, 2b
+step 1). (4) A worktree with no `base=` gets the field written on resume after an origin check, and a
+`--base` given on resume is checked on origin (2a step 6). (5) `dispatch_phase.sh base` prints nothing and
+exits 0 for an issue with no package base, with a test in `test_dispatch_phase.sh` (2a steps 6 and 8). (6) The
+merge cleanup pulls `--ff-only` only when the owning checkout is clean and on the pull request's base,
+otherwise fetches and prints "fetched only" without marking the cleanup incomplete, an empty base meaning
+fetch only; it is in 2a next to the cross-check (step 7) and 2b's cleanup case (d) pins it.
 
 **The goal this serves besides `easy-to-use`:** `README.md#flexibility` (Workspace goals, Flexibility):
 "When practical, preference should go to open source and open standards to minimize vendor lock-in. Have an
@@ -357,7 +363,7 @@ unchanged.
    prints the default branch from `git symbolic-ref --short refs/remotes/origin/HEAD` (`origin/` removed;
    `git ls-remote --symref origin HEAD` when that ref is absent) with kind `branch`; exit 1 when undetermined
    or a different name.
-2. **ADR-0011 amended in 2a** (Status paragraph: now 13 verbs, as ADR-0012 amended it to 12; the verb table
+2. **ADR-0011 amended in 2a** [merged as ADR-0019 with a Status note on ADR-0011; no amendment of its table] (Status paragraph: now 13 verbs, as ADR-0012 amended it to 12; the verb table
    gains the row). `docs/design.md` verb text and change-log row; `.agent/knowledge/script_reference.md`
    rows; the `adapter` header verb list. Tests in the existing `test_adapter.sh`/`test_ros2_colcon.sh`: both
    types, all four kinds, offline fallback, a branch deleted upstream (a stale remote ref is not enough, so
@@ -386,18 +392,42 @@ unchanged.
 5. **The manifest header carries the base.** `wt_write_manifest` gains an optional fifth value; header
    `# project=P issue=I layer=L base=B`. `wt_read_manifest` un-anchors the `layer=` reader
    (`s/.* layer=\([^ ]*\).*/\1/p`) and sets `WT_MANIFEST_BASE`. Test: the layer reads back with and without
-   `base=`. ADR-0012's manifest paragraph and `docs/design.md#worktrees` (the start point and the header
-   field) change in 2a.
+   `base=`. **Where it is recorded (host decision, 2026-11-12):** `docs/design.md#worktrees` states the header
+   field `base=` and the start-point rule, in 2a. ADR-0012 gets a cross-reference addendum only (ADR-0008's
+   form: a dated note pointing at that design section); its decision text, including the header list at its
+   line 65, is not edited, and no new ADR is written (ADR-0019 already says the start point comes from the pin).
 6. **`run-issue/SKILL.md`**: usage `--base <branch>` (override); step 1 runs `dispatch_phase.sh base` before
    `start-task` and stops with its message; publish `gh_create_pr.sh -R <owner/repo> --base <base>` for a
-   package issue. A part-1 worktree with no `base=` asks the same subcommand when resumed.
+   package issue. **Resume (host decision):** for a worktree that exists with no `base=` (a part-1 worktree),
+   `dispatch_phase.sh base` takes the base (the pin, or `--base`), checks that origin has the branch
+   (`git ls-remote --heads origin <base>` in the owning checkout, through `wt_bounded_git`), and only then
+   writes `base=<branch>` into the header's first line (a new helper `wt_set_manifest_base` beside
+   `wt_write_manifest`, `_worktree_helpers.sh` 416-422); absent or unknown on origin: it refuses and writes
+   nothing. A `--base` given on resume is checked on origin the same way; one that differs from a recorded
+   `base=` is refused as before. **For an issue with no package base** (a workspace issue, a single-repository
+   project issue, any worktree with no `.worktree-repos` manifest or only a lone `.` entry, a bare number)
+   `base` prints nothing and exits 0; the handoff has no `base=` line; `/run-issue` calls it for every issue
+   and treats empty output as "no base" (it passes no `--base` to publish).
 7. **The merge cross-check** (moved here from the gate): `_head_json` gains `baseRefName` (the same `gh pr
    view`, no new request); a reason "targets <x>; this worktree's recorded base is <y>" joins the gate
-   reasons. Report-only like every package reason; silent without `base=`.
+   reasons. Report-only like every package reason; silent without `base=`. **Cleanup pull rule (host decision),
+   same step because it needs the base `_head_json` now carries:** in Step 4's package branch (`merge_pr.sh`
+   1625) `git pull --ff-only` in the owning repository's own checkout runs only when that checkout is clean
+   (`git status --porcelain` empty) and on the pull request's base branch (`baseRefName`, kept from the read
+   before the merge); otherwise it runs `git fetch origin` and prints "fetched only: <why>" (`on <x>, not the
+   base <y>`, `not clean`, or `no base known`), without marking the cleanup incomplete. An empty
+   `baseRefName` also means fetch only. A failed pull in the pulling case, or a failed fetch, still marks the
+   cleanup incomplete. This is the rule `adapter_sync` already follows (pull only when clean and on the pinned
+   branch). The generic `git pull --ff-only` for workspace and project pull requests (1742) is untouched.
 8. **Tests and suites.** `test_package_issue_loop.sh`: the sandbox's pkg_a has default branch `main` and
-   pin `pinned`; `base` with and without `--base`; tag, commit and unknown refuse (a stub adapter type in the
-   sandbox reports each kind); the repository name comes from the owning entry and differs from the forge
-   name; gh log shows `pr create -R owner/pkg_a --base pinned`. Unchanged suites that prove workspace and
+   pin `pinned`; `base` with and without `--base`; tag, commit and unknown refuse (the sandbox's real
+   `.repos` pins, rewritten per case; no stub adapter type); the repository name comes from the owning entry and differs from the forge
+   name; gh log shows `pr create -R owner/pkg_a --base pinned`; resume: a worktree with no `base=` gets it
+   written, a base absent on origin refuses and writes nothing, a `--base` on resume is checked on origin.
+   `test_dispatch_phase.sh` gains a case: `base` on a workspace worktree and on a single-repository project
+   worktree prints nothing, exits 0, and the handoff has no `base=` line. One case in `test_merge_pr_gate.sh`
+   for the cleanup pull rule: clean on the base pulls; dirty, other branch, detached or empty base fetches
+   only and is not incomplete. Unchanged suites that prove workspace and
    single-repository issues: `test_worktree_create.sh` (existing cases), `test_dispatch_phase.sh`,
    `test_gh_create_pr.sh`, `test_resolve_work_plans_dir.sh`, `test_progress_append.sh`, `test_adapter.sh`,
    `test_ros2_colcon.sh` (existing cases).
@@ -408,7 +438,11 @@ Needs nothing from 2a; the end-to-end test's base step is added by whichever of 
 
 1. **The gate reads and records in the owning checkout.** The manifest scan in `merge_pr.sh` already
    matches the entry by branch and slug; keep its relative path (`_m_rel`) as `PKG_OWN_REL` instead of
-   parsing the slug a second time. When `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`, set `_gate_wt` to
+   parsing the slug a second time, carried **inside the `_PKG_MATCHES` record** (host decision) with the
+   header's `base=` (added by 2a, step 7), not in a scalar set at the match, which a later manifest could
+   overwrite or the `--project` filter discard. The record is tab-separated, and `read` with a tab `IFS`
+   collapses empty fields, so an empty value is written as `-` and mapped back when read (`merge_pr.sh` 521
+   and the two reads at 527 and 533). When `PR_BRANCH` is `feature/issue-${ISSUE_NUM}`, set `_gate_wt` to
    `$PKG_WT_DIR/$PKG_OWN_REL` (A). That is a value change at the existing assignment: `records_path
    "$_gate_cand" "$_gate_wt"` stays as is, and the guard accepts A. `_ci_wt` and `_gate_record`'s "is a
    repo" test (guarded by `-z "$PKG_WT_DIR"` now) accept this case, so the ancestry check, the CI target and
@@ -423,12 +457,14 @@ Needs nothing from 2a; the end-to-end test's base step is added by whichever of 
    workspace PRs only until #265 settles project timelines". Nothing in part 2 settles that. What changes is
    that the record now lands on the right timeline, so a package merge no longer posts a false "would have
    refused" comment.
-3. **Cleanup across the repositories** (`merge_pr.sh` Step 4, package branch; code unchanged, behaviour
-   pinned by tests). Merged owning pull request with: (a) no sibling work: C removed, A's branch deleted;
+3. **Cleanup across the repositories** (`merge_pr.sh` Step 4, package branch; code unchanged by 2b, behaviour
+   pinned by tests; the pull rule in (d) is 2a's change). Merged owning pull request with: (a) no sibling work: C removed, A's branch deleted;
    (b) a sibling with unmerged commits and no remote: C removed, the sibling's branch kept and named;
    (c) a sibling with an open pull request: C kept; (d) the owning repository's own checkout (the layer's
    `src/<repo>` that the worktree was made from) on a branch other than the base: `git branch -d` keeps
-   the merged branch as "not fully merged" and says so; nothing is force-deleted. The merge runs from the
+   the merged branch as "not fully merged" and says so; nothing is force-deleted, and, with 2a's pull rule,
+   the pull is replaced by "fetched only" there (also for a dirty checkout and an empty base), not marked
+   incomplete, while a clean checkout on the base is fast-forwarded. The merge runs from the
    session root (run-issue step 11, part 1).
 4. **The made-up project name.** In `test_merge_pr_gate.sh` the package fixtures use a real project's short
    name as project name and in the worktree folder name (4 lines: two part 1 added, two it copied from);
@@ -518,11 +554,11 @@ fallback to a pull-request comment. Rows with "none today" are the input to the 
 | `.agent/scripts/adapter`, `.agent/scripts/validate_adapter.sh`, both adapters' `adapter.sh`, `docs/decisions/0011-*.md`, `docs/decisions/0019-*.md` | `repo_pin` as the 13th required verb; ADR-0019 (Status note on ADR-0011). **Merged, pull request 456** | 2a (merged) |
 | `.agent/scripts/_pr_base.sh` (new, sourced), `.agent/scripts/dispatch_phase.sh` | `pr_base_for`; `base` subcommand; `base=` in the handoff | 2a |
 | `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` | `--base`; strict start path in `_wt_add_repo`; `base=` header; un-anchored `layer=` reader; `WT_MANIFEST_BASE` | 2a |
-| `.agent/scripts/merge_pr.sh` | Base cross-check reason (`baseRefName`) | 2a |
+| `.agent/scripts/merge_pr.sh` | Base cross-check reason (`baseRefName`, `base=` in the `_PKG_MATCHES` record); cleanup pull only when clean and on the base | 2a |
 | `.claude/skills/run-issue/SKILL.md` | `--base`, step 1 `base`, publish `--base` | 2a |
 | `.agent/scripts/tests/test_adapter.sh`, `test_ros2_colcon.sh`, `test_worktree_create.sh`, `test_package_issue_loop.sh` | Verb, strict path, header and base cases (no new suite file) | 2a |
-| `docs/design.md`, `docs/decisions/0012-*.md`, `.agent/knowledge/script_reference.md` | Verb text, start point and header, rows, change log | 2a |
-| `.agent/scripts/merge_pr.sh` | Gate reads and records in the owning checkout (`PKG_OWN_REL` from the scan); sibling reason | 2b |
+| `docs/design.md`, `.agent/knowledge/script_reference.md`; `docs/decisions/0012-*.md` (cross-reference addendum only) | `base=` and the start-point rule in `docs/design.md#worktrees`, rows, change log; ADR-0012 addendum | 2a |
+| `.agent/scripts/merge_pr.sh` | Gate reads and records in the owning checkout (`PKG_OWN_REL` carried in the `_PKG_MATCHES` record); sibling reason | 2b |
 | `.agent/scripts/tests/test_merge_pr_gate.sh` | Flip the package expectation; owning, sibling and cleanup cases (a to d); rename the fixture project to `demo` | 2b |
 | `.agent/scripts/tests/test_package_issue_loop.sh` | End-to-end case from creation to the merge call | 2b |
 | `.claude/skills/run-issue/SKILL.md`, `docs/design.md`, `.agent/knowledge/script_reference.md` | Scope, step 11, Records and Merge gate text, `merge_pr.sh` row, change log | 2b |
@@ -554,7 +590,7 @@ The sixteen headings of `docs/principles.md`:
 |---|---|
 | Leave a trail; start limits strict | Package gate records go to the owning timeline; a run with no resolvable base refuses |
 | Enforce what matters, as simply as possible | The start point is enforced in code (fetch, no tracking, refuse when absent or unknown, even with `--allow-unverified-branch`); the merge cross-check reports a wrong target; the gate stays report-only as the design says |
-| Keep one current design | The base texts (design, ADR-0011, ADR-0012, script rows) are in 2a with the code; gate text in 2b |
+| Keep one current design | The base texts (`docs/design.md#worktrees`, an ADR-0012 cross-reference addendum, script rows) are in 2a with the code; the verb's ADR-0019 is merged; gate text in 2b |
 | A change includes its consequences | Consequences table; `script_reference.md`, design and change log in the same pull requests |
 | Only what's needed | No stopgap for a missing verb, no qualified identity in records; `--base` only as an override |
 | Small steps; step back when they stop converging | The verb went first and merged (456); 2a's rest, then 2b, one after the other in this worktree |
@@ -574,7 +610,7 @@ The sixteen headings of `docs/principles.md`:
 | ADR | Triggered | How addressed |
 |---|---|---|
 | 0003 | Yes | Synthetic sandbox; no project named in scripts or tests |
-| 0011 / 0012 | Yes | Reads `.worktree-repos` and the adapter's branch rule; no branching on project type. Part 2: `repo_pin` becomes the 13th required verb and ADR-0011 is amended in 2a (as ADR-0012 amended it to 12); the manifest header gains `base=` and ADR-0012's manifest paragraph says so |
+| 0011 / 0012 | Yes | Reads `.worktree-repos` and the adapter's branch rule; no branching on project type. Part 2: `repo_pin` became the 13th required verb with ADR-0019 and a Status note on ADR-0011 (merged, 456; ADR-0011's table is not amended); the manifest header gains `base=`, recorded in `docs/design.md#worktrees` with a cross-reference addendum in ADR-0012, whose decision text is not edited (ADR-0008) |
 | 0013 | Yes | Unchanged: `**PR**: #M` stays bare, meaning the timeline's own repository |
 | 0014 | Yes | The handoff's `worktree=` is the owning checkout; one driver per issue unchanged |
 | 0016 / 0018 | Yes | The session stays at the root; `session_root.sh` and `skill_prefix.sh` are read there once (they refuse a package checkout, shown) |
@@ -589,8 +625,8 @@ The sixteen headings of `docs/principles.md`:
 | Package records exist | Design Records bullet ("has no timeline" reversed); issue 393's "stay so" line is reversed in PR 1's text, not by editing 393 | Yes, PR 1 |
 | Gate reads the owning timeline | The package expectation in `test_merge_pr_gate.sh` flips; Merge gate text and line citations; run-issue step 11 sentence | Yes, 2b |
 | A base branch exists | Branch start point, manifest header, handoff, publish, merge cross-check, run-issue usage | Yes, 2a and 2b |
-| `repo_pin` is a required verb | `adapter` header and usage, `validate_adapter.sh`, both adapters, ADR-0011, design verb text, script rows | Yes, 2a |
-| The manifest header gains `base=` | The `layer=` reader, ADR-0012 manifest paragraph, design Worktrees | Yes, 2a |
+| `repo_pin` is a required verb | `adapter` header and usage, `validate_adapter.sh`, both adapters, ADR-0019 and a note on ADR-0011, design verb text, script rows | Yes, merged (456) |
+| The manifest header gains `base=` | The `layer=` reader, design Worktrees (field and start-point rule), ADR-0012 cross-reference addendum | Yes, 2a |
 
 ## Decisions for the owner's veto
 
@@ -605,10 +641,10 @@ The sixteen headings of `docs/principles.md`:
 
 Part 2 (decided from `docs/principles.md` and `docs/design.md`; undo cost in brackets):
 
-5. **The base comes from the adapter: `repo_pin` is added in 2a as a required verb**, with ADR-0011
-   amended; `--base` is an override only; a pinned tag, commit or unknown refuses and names it. Issue 436
+5. **The base comes from the adapter: `repo_pin` is added in 2a as a required verb**, (merged as pull request 456
+   with ADR-0019 and a Status note on ADR-0011, not an amendment of its table); `--base` is an override only; a pinned tag, commit or unknown refuses and names it. Issue 436
    planned this verb as its own pull request (c); it moves here and the host records that on issue 436.
-   [Moderate: removing a required verb needs another ADR amendment.]
+   [Moderate: removing a required verb needs another ADR.]
 6. **The base also decides the branch's start point**, by its own strict path (fetch origin's base,
    `--no-track`, refuse when absent or unknown even with `--allow-unverified-branch`, never the local copy),
    owning entry only, and is recorded in the manifest header as `base=`. [Moderate: a header field and a
@@ -620,7 +656,9 @@ Part 2 (decided from `docs/principles.md` and `docs/design.md`; undo cost in bra
    opened. [Low.]
 9. **Part 2 is two pull requests, built one after the other in this single worktree: 2a (the verb, merged as
    pull request 456, then the rest) and then 2b**; 437 merged first. [Low.]
-10. **Cleanup behaviour is pinned by tests, not changed**, including a package checkout not on the base. [None.]
+10. **Cleanup: the branch and worktree sweep is pinned by tests, not changed; the owning checkout's pull is
+    (host decision, 2026-11-12):** `git pull --ff-only` only when it is clean and on the pull request's base,
+    otherwise fetch only, never marked incomplete for that. [Low: a few lines in `merge_pr.sh`.]
 11. **Draft pull requests at worktree creation stay unsupported for a package worktree**; the message
     points at publish. [None.]
 
@@ -632,10 +670,11 @@ GitHub-bound table are the owner's discussion, not a question about this plan.
 
 ## Estimated Scope
 
-Three pull requests in all. PR 1 (part 1) is merged (pull request 445; about 17 files). Part 2 is 2a
-(about 16 files, 600 lines: the verb and ADR, the base resolver, the strict start path, the header, the
-cross-check, run-issue, tests, base texts) and 2b (about 8 files, 300 lines: gate, cleanup tests,
-end-to-end test, Scope and gate texts). They are built one after the other in this worktree (2a first; "Revision of 2026-11-12"); issue 437 has merged. The verb (part of 2a) is merged as pull request 456.
+Four pull requests in all. Two are merged: part 1 (pull request 445; about 17 files) and the verb, the first
+part of 2a (pull request 456; about 5 files). Still to build, one after the other in this worktree (2a first;
+"Revision of 2026-11-12"): **2a, the rest** (about 11 files, 500 lines: the base resolver, the strict start
+path, the header, the cross-check and the cleanup pull rule, run-issue, tests, base texts) and **2b** (about
+8 files, 300 lines: gate, cleanup tests, end-to-end test, Scope and gate texts). Issue 437 has merged.
 
 Not tested, and why:
 
