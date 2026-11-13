@@ -1788,7 +1788,7 @@ End to end:
 - `run_script_tests.sh` re-cites `worktree_create.sh:1215,1256`.
 
 ### Checks
-- Suites run directly on the final code: `test_ros2_colcon.sh` 531/0, `test_package_issue_loop.sh` 188/0, `test_worktree_create.sh` 84/0, `test_merge_pr.sh` 150/0. `test_dispatch_phase.sh` 148/0 was run before the last dispatch_phase edits; the pre-commit run below covers it.
+- Suites run directly on the final code: `test_ros2_colcon.sh` 531/0, `test_package_issue_loop.sh` 188/0, `test_worktree_create.sh` 84/0, `test_merge_pr.sh` 150/0. `test_dispatch_phase.sh` 148/0 (run after the last `dispatch_phase.sh` code edit).
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. This includes `validate-script-tests`: a shared helper changed, so every suite ran. shellcheck and check-design-anchors passed too.
 - Tests that fail on the old code:
   - finding 2: shown, 5 failures with the old pull line.
