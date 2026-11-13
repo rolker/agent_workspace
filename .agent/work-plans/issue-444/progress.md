@@ -401,3 +401,13 @@ GitHub: 0 reviews, 0 inline comments, 0 conversation comments; Copilot's automat
 - [ ] (suggestion, Local Review (Pre-Push) @ 3880add0) Valid. stop_suites KILLs its watchdog's group at :706 but leaves `stop_watchdog` set; after every interrupted parallel run, on_interrupt exits and kill_now (:720) KILLs `-$stop_watchdog` again, by then usually reaped. It reaches a live process only if that pid has been reused as a group leader within milliseconds, which needs the pid space to wrap (very unlikely), but the result would be a KILL to an unrelated process group of the same user. Fix: `stop_watchdog=""` right after :706 (the live_groups exclusion at :661 only matters while the watchdog runs) — `.agent/scripts/tests/run_script_tests.sh:720`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified both open suggestions valid and recommends fixing them in this pull request: a few lines in cleanup_run with one test, and one line clearing stop_watchdog; part 2 of the issue turns the parallel default on and must not inherit them; under the owner's rule of 2026-11-13 a fix pass after publish runs only the touched suite and CI is the check, so the fix costs no second local full run; first host address at this checkpoint)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at f1ecdb34 and its report. S1 run_script_tests.sh:553 a signal during the end-of-run stop leaves the run's temp directory behind; S2 run_script_tests.sh:720 kill_now signals a stale watchdog id.
