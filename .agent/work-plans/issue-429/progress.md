@@ -1919,3 +1919,49 @@ The host withdraws its round-1 decision (a): the foreign-history check (wt_base_
   - the `--branch` refusal;
   - the empty and `-foo` `--base` values;
   - the existing-branch refusal without `--base`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 23:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `0144179c`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 3 of this diff. The dispatcher counts higher because merged pull requests 445 and 456 share this timeline (issue 459); the verdict script was given `--round 3`.
+
+Scope: round 2's eight findings and the fix diff a0363b19, e10b5348, 77939677.
+
+Cross-model: skipped (round-3 convergence check, per handoff). A fresh Claude adversarial sub-review ran every row of the Implementation entry's resume and creation tables in sandboxes.
+
+Round 2's findings:
+- Must-fix 1 (`--parent-issue` overridden by the pin): fixed. The pin is not read; the branch starts from the parent's branch; `base=` records the parent's branch when it is found.
+- Must-fix 2 (the issue's own commits counted as foreign): fell away. The host withdrew the history check, and nothing outside `.agent/work-plans` still refers to `wt_base_foreign_history`, `wt-base-check` or `WT_FOREIGN` (grep).
+- Suggestion 3 (orphan branch passes): now refused with rc 4, "no commit in common".
+- Suggestions 4 and 5 (the history check's fetch and refs): fell away with the check.
+- Suggestion 6 (`--branch` with `--layer`): refused before anything is made.
+- Suggestion 7 (`--base` values): `''`, `-foo`, `HEAD`, `a..b` and `@{-1}` are refused through `wt_valid_branch_name`.
+- Suggestion 8 (test gaps): sibling rollback is tested. The pin read with origin down is case 12. The stale test comment is fixed.
+
+Checked by running:
+- Every table row gives the stated result, and each refusal message is true for its input. This covers an existing branch without `--base`, origin down, and a base origin lacks.
+- Rollback: a sibling added first, then a refusal. Both repositories are back to `main`, no aggregate directory is left, and the pre-existing branch is kept.
+- Two rows start from the default branch: "parent not found" and "exists, none, yes". The first is main's own parent-not-found WARNING path, unchanged. The second checks out the existing branch. In both, the printed Note is true.
+- The only thing left behind is a fetched `refs/remotes/origin/<base>` for a base origin has.
+- run-issue step 1 and the scripts agree: `--base` goes to creation only when the owner gave it.
+
+No regressions:
+- `merge_pr.sh` is unchanged since round 2, so the cleanup pull still names origin's base.
+- The unknown-pin messages are unchanged.
+- The `--package-repos` comparison is unchanged.
+- Table 1's `dispatch_phase.sh` row cites 216 and 277-326, which is where `derive_project_name` and `resolve_worktree` are.
+
+Suites run: test_ros2_colcon 558/0, test_worktree_create 79/0, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] (suggestion) The rule "an owning branch that already exists needs `--base`, else creation refuses" is stated without its `--parent-issue` exception. Input: an existing local `feature/issue-201` with `--layer l1 --package-repos pkg_a --parent-issue 10`. Result: exit 0, a Note, no `base=`. `--base` cannot be given there either, since it is refused with `--parent-issue`. Add the exception: the existing branch is accepted, no base is recorded, and `dispatch_phase.sh base --base` records one later — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
