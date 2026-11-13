@@ -151,3 +151,70 @@ Revise for all nine findings. Host decisions: (1) "the issue is closed" ends the
 **Plan**: `.agent/work-plans/issue-459/plan.md` at `7afb7867`
 
 Revision applying the nine checkpoint decisions: guarded boundary (arm on merge decision, disarm on Merge record or non-merge answer), checkpoint:plan after a merge with no PR, closed issue ends the run before the PR probe, hand-merge limitation, shared placeholder predicate, plain import, handoff and 461-based tests. The owner's question is the last section.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 09:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #459 — dispatch_phase: an issue delivered in several pull requests is routed wrongly after the first merge (round count carries over; next answers merge)
+**Plan**: `.agent/work-plans/issue-459/plan.md` at `7afb7867`
+**Branch**: `feature/issue-459`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five commits, 161 lines with the owner's section; decision 6 applied. |
+| Issue alignment | Needs work | Serves: "Keep work moving without the owner (the review loop driven by `/run-issue`) — `docs/design.md#review-loop-and-timeline`" (checked). Rule 2 is unreachable on a real multi-PR issue: the probe rule of the previous plan was dropped (finding 1). |
+| File targeting | Good | Unchanged and right. |
+| Consequences | Needs work | The probe change, the issue-state failure path and the package issue's repository are not stated (findings 1, 3). |
+| Principle alignment | Needs work | "Enforce what matters, as simply as possible": disarming on a Merge record loses real boundaries (finding 2). |
+| ADR compliance | Good | 0013 (no new type; relies on `**Branch**` only before a PR), 0014, 0017. |
+| ROS conventions | N/A | Workspace plan. |
+
+### The nine checkpoint decisions in plan.md
+
+1. Closed issue ends the run before the probe; what closes it in each case; the loop never closes an issue: applied (Approach 5, owner's Rule 2). But see finding 1: the probe rule that made "no pull request" possible was cut.
+2. Hand-merge limitation, remedy (`merge` checkpoint, `Decided-by: owner`, or `restart`), test: applied (Approach 1 tests, 5).
+3. Disarm on a Merge record or a non-`merge` answer at `merge`/`findings`/`merge-refused`, not on PR-correlated entries: applied as decided. The Merge-record half is wrong (finding 2); it was my previous review's suggestion.
+4. `checkpoint:plan` after a merge with no PR: applied (Approach 2); routes exist at `dispatch_phase.sh:1092-1096`. Keyed on "newest entry is a merge-decision checkpoint", which misses a newest Merge record (finding 2).
+5. One placeholder predicate in `pr_start.py`, used by `findings` and `sources`: applied (Approach 3).
+6. Cut to size, alternatives and owner block in the owner's question: applied.
+7. Plain `from pr_start import pr_start`, script directory through the environment: applied (Approach 1).
+8. Handoff test, no "no cross-model reviewers" on part 2's first pre-push review: applied.
+9. Fixture from 461's head: applied ("429 at 461's head (four pull requests)").
+
+Not regressed: one shared rule replacing `restart_start()` (`dispatch_phase.sh:974-984`) and the `cmd_round` loop (`review_progress.sh:151-161`); PR-correlated entries never disarm; refused-merge and restart-plus-merge tests; 332 fixture. Regressed: the probe rule (finding 1).
+
+### Replay (throwaway Python, the rule as written vs. without the Merge-record disarm)
+
+- 429 on main: boundaries 25, 50, end armed (entry 70). 332: 67, 81. 451 (single PR): none, ends armed. Same under both variants. Correct.
+- `merge`/`stop` → `--resume` → `merge` → Plan Authored: the stop is a non-`merge` answer at `merge` (disarms, or never armed), the re-asked `merge` arms, boundary at the Plan Authored. Arm → entry-less failure → `stop` → resume → `merge` → Plan Authored: the same. Correct.
+- Arm → `## Merge (report-only)` → merge lands → Plan Authored: as written, disarmed, no boundary (start 0); without the Merge-record disarm, boundary at the Plan Authored. 307's real shape (arm, record, `merge-refused`/`merge`) followed by a part: as written no boundary. Wrong as written (finding 2).
+- Arm → record → refused → `merge-refused`/`retriage` → re-review → `merge` → Plan Authored: boundary at the Plan Authored under both. Arm → record → `merge-refused`/`address` → Branch fix: no boundary under both. Correct.
+- Plan refresh on the old branch before the merge: boundary at that Plan Authored (start of the next part's work; correct). If that merge is then refused and fixed in PR mode, the re-armed `merge` puts a second boundary at part 2's first Branch Implementation; harmless (plan entries count no rounds).
+- Arm → Branch-correlated Implementation with no checkpoint between: a boundary under both variants (finding 5).
+
+### Findings
+
+1. **[Issue alignment]** must-fix (regression): the previous plan's probe rule ("a MERGED pull request counts only when its `headRefOid` equals HEAD") is gone and nothing replaces it. Run-issue step 2 (`SKILL.md:300-312`) lists `--head <branch> --state all`; the recreated `feature/issue-<N>` has the same name, so it finds the earlier parts. Verified live: `gh pr list --head feature/issue-429 --state all` returns 461 OPEN and 460, 456, 445 MERGED; between 460's merge and 461's publish it returned only MERGED rows. Sequence: part 1 merged → worktree and branch recreated → issue open → probe MERGED → `--pr merged` → row 1 (`dispatch_phase.sh:896-901`) → `done`; the new `checkpoint:plan` row never fires. Fix: with the issue open (checked first), the probe takes an OPEN or draft pull request if any and otherwise answers `none`; a MERGED one is an earlier part. If the old worktree survived (local HEAD equals a MERGED pull request's `headRefOid`), stop and recreate from the base; never implement on it. Row 1 is then reached only by an explicit `--pr merged`; say so in the design and the owner's question.
+2. **[Principle alignment]** must-fix: a `## Merge (...)` record must not disarm. `merge_pr.sh` writes it at the gate, before the merge (`merge_pr.sh:991-1014`), into the PR worktree's timeline (`:870-894`; a package PR takes the comment path instead), "whether or not the merge itself then succeeds" (`run-issue/SKILL.md:599-601`). Sequence: `merge` → `## Merge (report-only)` → merge lands → next part's Plan Authored: no boundary, rounds carry over (the bug). And Rule 2 misroutes: after that merge the newest entry is the record, so `next --pr none` hits row 23 (`dispatch_phase.sh:1164-1166`), `checkpoint:merge-refused`, whose answers dispatch `triage-reviews`/`address-findings` on a merged PR. It affects single-repository project PRs with any gate gap (the gate falls through to report-only, `:998-1013`) and workspace merges the owner allowed with `--report-only`/`--force-unreviewed`; not package PRs. Fix: a Merge record neither arms nor disarms (a refusal after it is disarmed by the `merge-refused` answer the loop records, `SKILL.md:881-886`), and Rule 2 keys on "armed at the end of the timeline and `--pr none`", which covers a newest record. Replayed: 429 and 332 unchanged; the report-only-landed and 307 shapes get their boundary; refused-retriage unchanged. This reverses half of my previous finding 3.
+3. **[Consequences]** should-fix: the issue-state check is unspecified. A `gh` failure or offline must stop the run with the error, as `where` does (`SKILL.md:268-271`); never read it as open or closed. For `owner/repo#N`, ask that repository (`gh issue view <N> -R owner/repo`), not the workspace.
+4. **[Issue alignment]** should-fix: `proceed` at the post-merge `checkpoint:plan` implements the plan as last reviewed, with no fresh review. That is sound only when `plan.md` is unchanged since its newest Plan Review (`review_progress.sh plan-sha` against that entry's `**Plan**`) and the plan names a part not yet delivered. The checkpoint (owner or `/orchestrator` host) shows: the pull request just merged, that the issue is still open (and why it can be: a non-default base, a `Part of` body by mistake; then the answer is `stop` and close), the plan's parts with those delivered, and the newest Plan Review's verdict and SHA against the current one. If the plan changed since, `proceed` is not offered; answer `revise`.
+5. **[Test what breaks]** suggestion: "a merge-from-main `Implementation` while armed (no false boundary)" contradicts the rule. A Branch-correlated, Addressed-less Implementation right after an armed `merge` is a boundary, indistinguishable from part 2's first implement. Write the test as arm → entry-less refusal → `merge`/`address` checkpoint → Branch Implementation → no boundary, and state the other order as a boundary (ADR-0013: a fix while the PR is open carries `**PR**`).
+6. **[Owner's question]** should-fix: "If it is open and no pull request exists" hides finding 1: merged pull requests on the branch stop ending the run, which is the owner's decision to make. Rule 1's text says nothing on Merge records (finding 2). "Old timelines read the same" is false: multi-PR timelines count fewer rounds, which is the point. Say "no entry format changes". Missing: the stop on a failed issue-state check, and what `proceed` after a merge relies on (finding 4). The other sentences match the steps.
+
+### Summary
+
+All nine decisions are in the plan, and the boundary is still right on 429, 332 and single-PR timelines. Two must-fix defects remain before the rules go to the owner. Rule 2 cannot fire because the probe still finds the earlier parts' merged pull requests. Rule 1 drops the boundary, and Rule 2 misroutes to `merge-refused`, whenever a `## Merge (...)` record precedes a landed merge. With findings 1 and 2 applied and the owner's section corrected (6), both rules are sound to put to the owner.
+
+### Recommended Actions
+
+- [ ] State the probe rule for an open issue (MERGED is an earlier part; open/draft or `none`) and the surviving-old-worktree stop (finding 1).
+- [ ] Drop the Merge-record disarm; key Rule 2 on "armed at the end and `--pr none`"; test the report-only-landed shape (finding 2).
+- [ ] Issue-state check: stop on failure; `-R owner/repo` for a package issue (finding 3).
+- [ ] Post-merge `checkpoint:plan`: what it shows, and no `proceed` on a plan changed since its review (finding 4).
+- [ ] Fix the merge-from-main test description (finding 5).
+- [ ] Correct the owner's section (finding 6).
