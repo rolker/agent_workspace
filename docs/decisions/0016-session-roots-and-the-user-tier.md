@@ -22,9 +22,12 @@ takes a superseding ADR, not an edit here.
 Decision 3 is superseded for skills by
 [ADR-0018](0018-plugin-based-skill-delivery.md): workspace skills reach
 project sessions through the `agent-workspace` Claude Code plugin, not
-`~/.claude/skills/` symlinks. ADR-0018 also records a scoped exception to
+`~/.claude/skills/` symlinks. ADR-0018 also recorded a scoped exception to
 decision 2 (the project's gitignored `.claude/settings.local.json`, written
-only by `claude plugin`).
+only by `claude plugin`); [ADR-0019](0019-plugin-enabled-once-at-user-scope.md)
+withdrew it on 2026-11-12 (#446): the plugin is enabled once, at user scope,
+and the user tier gains its entries in `~/.claude/settings.json` and the
+CLI's `~/.claude/plugins/` records.
 
 ## Context
 
@@ -249,4 +252,7 @@ machine that expects it.
   deferred to PR 4), #259 (`AGENTS.md` trim — keep the rendered headings)
 - `.agent/work-plans/issue-265/spike-results.md` — the mechanism spike
 - [ADR-0018](0018-plugin-based-skill-delivery.md) — supersedes decision 3
-  for skills (plugin delivery); scoped exception to decision 2
+  for skills (plugin delivery); scoped exception to decision 2, withdrawn
+  by ADR-0019
+- [ADR-0019](0019-plugin-enabled-once-at-user-scope.md) — the plugin enabled
+  once, at user scope; nothing written into a project checkout

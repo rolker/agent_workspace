@@ -8,6 +8,14 @@ rest of ADR-0016 section 3 (the `SessionStart` hook, the `PreToolUse` hook, the
 permission allow-rules) stands until issue #351 moves the hooks into the
 plugin too. Records one scoped exception to ADR-0016 decision 2.
 
+Decisions 3 and 4, and the rejected alternative "Enable the plugin at user
+scope", are superseded by
+[ADR-0019](0019-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446):
+the plugin is enabled once, at user scope, nothing is written into a
+project checkout (the exception to ADR-0016 decision 2 is withdrawn), and
+a session started in a subdirectory of the workspace checkout lists each
+shipped skill under both names, accepted by the owner that day.
+
 Before 2026-11-09 this ADR was Provisional. The promotion condition was
 ADR-0016's own acceptance run (see "Acceptance" below). It passed on
 2026-11-09: the `/run-issue` loop ran from the GeoZui4D root through the
@@ -392,6 +400,8 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
   a new ADR and ADR-0016 gets only a Status/References pointer
 - [ADR-0014](0014-in-process-phase-handoff.md) — `dispatch_phase.sh`, which
   gains `--skill-prefix`
+- [ADR-0019](0019-plugin-enabled-once-at-user-scope.md) — supersedes
+  decisions 3 and 4 and the user-scope alternative (2026-11-12, #446)
 - Issue #345 (this change), #351 (hooks into the plugin), #317 (the
   acceptance run), #335 (zero-footprint design doc; this is its packaging
   answer for skills), #332 (registration; reuses decision 3), #321
