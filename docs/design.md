@@ -361,8 +361,9 @@ Status: `decided`
   repository today (`adapter validate`), although any registered folder is a project (owner,
   2026-11-12): a folder in no git repository is refused and rolled back, a named gap.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
-  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
-  records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
+  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
+  `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
+  settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
   project has none"; anything that needs a shell is a script the key points at. A command set in the
   file runs without sourcing the legacy or shared config below, so nothing they export (an SDK path,
@@ -373,7 +374,8 @@ Status: `decided`
   so settings kept in a git checkout through a link leave that untracked file there. A key the
   project's type never reads is refused the same way: each type lists such keys in
   `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
-  owns; `single_project`: `bootstrap_url`), so no setting is stored and silently ignored. Per
+  owns; `single_project`: `bootstrap_url`, `source`, `source_ref` and `source_path`), so no setting
+  is stored and silently ignored. Per
   setting, the adapters read the file; for a setting it leaves unset, the legacy
   `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
   when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
@@ -394,8 +396,28 @@ Status: `decided`
   for the two type names finds only help text and docstrings, and the `single_project` default in
   `_resolve_project_type` (`adapter:80`) (2026-10-09).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
-  colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
-  order and the distro rule.
+  colcon layers driven by a manifest directory, `configs/manifest` or the generated
+  `configs/manifest-resolved`, and its `adapter.sh` header holds the layers, the bootstrap URL order
+  and the distro rule.
+- `ros2_colcon` has two routes to that directory (#436), chosen by one fact, the settings file setting
+  `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
+  new format, is an absolute path read in place or a git repository the adapter clones into
+  `configs/source-clone` (`source_ref`, `source_path`, default `manifest.yaml`), resolved for the
+  registry line's `role=` and `distro=` (both required) by the workspace-installed resolver,
+  `<main checkout>/.venv/bin/ros-manifest` from `make install-ros-manifest`, called by CLI only, into a
+  new generated directory that `configs/manifest-resolved` is relinked to; every verb reads the
+  directory the same way on both routes. One source only: `source` beside any other bootstrap source is
+  a hard error that names it. Never silently stale: `setup` and `sync` fetch the clone, fast-forward a
+  clean one on its branch, and clone every `extends` base afresh; a dirty clone or local commits are
+  never forced and resolve with a warning that `validate` repeats, and a failed fetch or resolve keeps
+  the previous directory. `validate` also fails when the directory was resolved from another source,
+  ref, role or distro, and names checkouts the manifest no longer lists; the adapter removes none.
+  Network is needed at `setup` and `sync` (the source, every `extends` host, every package host) and
+  for the resolver's install. A package worktree's `env.sh` is not rewritten when `sync` changes the
+  layers; `sync` says to recreate it. The adapter edits no ignore file. Registration works for a path
+  that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set source=...`
+  runs `setup`); `source` does not choose the type, and onboarding an empty session folder from a
+  source is #473's.
 - The active project is resolved in this order: `--project`, then the cwd inside a registered hosting
   directory (longest match), then the legacy `project/` checkout (`adapter` header, "Multi-tenant
   resolution").
@@ -1005,6 +1027,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Change log | Main merged into issue 459's branch (pull request 467) after issue 429's last pull request (461) landed: the rows of both sides are kept, issue 429's 2026-11-13 rows (already on main) before #459's, and their line counts are each side's own file at the time; the `dispatch_phase.sh` line numbers in Table 1 and the Target's mechanism 1 are refreshed for the merged script (#459 had moved them by six to twenty lines); this row's count is the merged file's | #459 | 1038 |
 | 2026-11-13 | Sessions and roots, Registry and adapters, Decision register, Open questions | A project session may register its own folder (#466, ADR-0021, superseding ADR-0016 decision 5): the Sessions and roots Now block names ADR-0021; the exceptions bullet becomes two exceptions, the settings file and a session registering the folder it was started in through `register_session_root.sh`, which is not promoted, so each call asks for permission; the registration bullet says registration is done from the workspace or from the folder's own session; the onboarding bullet says an unregistered folder is offered registration (dry run, one yes in text, the real call's permission prompt as a second gate, build and test not run) and names the no-git gap; Registry and adapters Now says what `register_session_root.sh` takes, refuses and hands over, and that registration needs a git repository today; its Target names both ways to register; register row 0016 notes decision 5 superseded, row 0021 is added and the count says 21 (it said 19, two rows behind); C4's answer names the new way. Sessions and roots is 149 lines and Registry and adapters 139, both past the 60-line prompt, and grow by 12 and 8: the bullets name the script and the ADR that hold the rules, so no detail moves | #466 | 1060 |
 | 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` line numbers in Table 1, the Records bullet and the Target's mechanism 1 refreshed after the owning checkout's reason came to cap each value rather than the whole sentence (issue 444, pull request 468: a comment of six lines moved everything after line 750); no statement changes | #444 | 1061 |
+| 2026-11-13 | Registry and adapters | The settings keys `source`, `source_ref` and `source_path` (refused for `single_project` through its `unused_settings`), and the `ros2_colcon` manifest route: `source` selects it, the workspace-installed `ros-manifest` resolves the manifest for the registry line's role and distro into `configs/manifest-resolved`, one source only, never silently stale, its network needs and its registration limit. Section is 161 lines, past the 60-line prompt: asked whether the detail moves next to the code; the route's mechanics are in the `ros2_colcon/adapter.sh` header and the key grammar in the `_project_registry.sh` header, and the bullet keeps only what crosses them (the settings file, the registry line, the resolver install and registration) | #436 | 1084 |
 
 ## Glossary
 
