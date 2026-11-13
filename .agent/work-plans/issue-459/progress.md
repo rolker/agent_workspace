@@ -465,3 +465,52 @@ Round-1 findings verified fixed: draft-PR start by number (the round-1 timeline 
 - [x] (suggestion) The LGTM marker with "any annotation" hides `- [ ] No issues found. LGTM. except the race in x` on an approved review (`findings` open: []). Main's 7 annotated placeholders are verification notes (`Gate suite 54/54 ...`, `test_dispatch_phase 76/76 ...`, `(Four owner-approved AGENTS.md edits ...)`), one carrying held items ("suggestion 6 and the cube_bathymetry example stay with the owner"); also requiring the entry's `**Must-fix**: 0 | **Suggestions**: 0` catches a finding typed after the marker with a non-zero count — `.agent/scripts/pr_start.py:83`
 - [x] (suggestion) The docs say rounds count "from the current pull request's start" while the code has a separate `pr_start` a restart does not move; the texts mean `round_start` (they define it in the next sentence, but the phrase invites a host to use `pr_start`): say "the round start" — `.claude/skills/review-code/SKILL.md:198`, `.agent/knowledge/review_depth_classification.md:171`, `.agent/scripts/review_progress.sh:161`
 - [x] (suggestion) `__pycache__`: no command of this change leaves one (none present after the eight suites). The `identity_base.cpython-314.pyc` comes from the commit-identity hook (`.agent/hooks/check-commit-identity.py:28-29` imports `identity_base` without `sys.dont_write_bytecode`; issue 455, `f5a19d85`..`f61c1834`); it is gitignored (`.gitignore:57`), a stray only in the sense that every commit rewrites it. Out of scope here; a one-line follow-up for 455's hook — `.agent/hooks/check-commit-identity.py:29`
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-13 11:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad7bb2b25f9d3f046, resume 1 of 3)
+
+**Branch**: feature/issue-459 at `7d31e57a`
+**Addressed**: Local Review (Pre-Push) at `7d11a8d9` (2026-11-13 10:55 -05:00)
+**Commits**: `4971bb6c` `6f1cd32d` `d9390180` `6efbf2c6` `7d31e57a`
+
+Partial for one reason only: the owner-directed `/orchestrator` line (must-fix 1) was refused by the permission system (auto-mode classifier, "Undermining Oversight") on the single Edit to `.claude/skills/orchestrator/SKILL.md`. Per the handoff it was not worked around; its box stays open for the host to take to the owner. Everything else is done.
+
+### Actions
+- [ ] (must-fix 1, owner-directed) `/orchestrator` table `plan` row: post-merge `proceed` only under run-issue step 13's conditions, otherwise `revise` — NOT DONE: the edit was refused by the permission system; the intended cell text: "`proceed`, `revise`; at the plan checkpoint raised after a merge, `proceed` only under run-issue step 13's conditions (the plan unchanged since its last review, and naming a part not yet delivered), otherwise `revise`" — `.claude/skills/orchestrator/SKILL.md:76`
+- [x] (must-fix 2) `last_pr` cleared where a boundary is drawn; an entry with no parsed correlation whose `**PR**` field opens with `#N` (the legacy `**PR**: #11 — 1 review(s), ...` shape: on main all such lines are External Reviews, plus one Implementation `#266 (round-2 fixes)` on issue 265; Checkpoints are never read for numbers) is read as #N in `pr_start.py` only; `progress_read.py` unchanged. Tests: the review's timeline with an unreadable part-2 Integrated Review gives pull-request start 4 (was 10); a legacy `#11` line gives the merged number (fix on #11 no start, #12 is) — `.agent/scripts/pr_start.py` (`4971bb6c`)
+- [x] (must-fix 3) A restart moves only the round start and no longer ends the armed state; run-issue step 13 drops "or a `restart`" from the hand-merge remedy and says what a restart does (rounds over, no boundary, keeps an open PR's earlier reviews, leaves a standing merge answer armed); design, lifecycle, script reference and plan.md Approach/owner text follow. Tests: merge answer, restart, Plan Authored → `Scan(6, 6)` (both at the Plan Authored; the review's `Scan(12, 0)` shape now gives the plan's index for both); hand merge, restart, Plan Authored → `Scan(5, 0)` (the review's `Scan(7, 0)` shape: unchanged by design, the remedy is a merge checkpoint); the same with a merge checkpoint → `Scan(6, 6)`; `merge, restart` → `2 yes` (was `2 no`); restart inside an open PR unchanged (`3 0`); `sources` for merge answer, restart, plan lists only part 2 — `.agent/scripts/pr_start.py`, `.claude/skills/run-issue/SKILL.md` (`4971bb6c`, `d9390180`)
+- [x] (suggestion) LGTM placeholder dropped only when approved AND the entry's summary line counts `0 | **Suggestions**: 0` (absent line: listed) AND the box opens with the marker. Tests: "except the race in x" with a suggestion counted stays listed; no summary line stays listed; `sources` the same — `.agent/scripts/pr_start.py` (`6f1cd32d`)
+- [x] (suggestion) "the round start", defined once (the newer of a restart and the pull request's start) — `.claude/skills/review-code/SKILL.md:198,517`, `.agent/knowledge/review_depth_classification.md:171`, `.agent/scripts/review_progress.sh:161`, review_loop_lifecycle.md (`6efbf2c6`, `d9390180`)
+- [x] (suggestion) `check-commit-identity.py` sets `sys.dont_write_bytecode`; test_commit_identity runs a copy of the hook in its sandbox and checks no `__pycache__` (fails on the old hook) — `.agent/hooks/check-commit-identity.py:28` (`7d31e57a`, own commit, follow-up to 455)
+
+### The 7 real annotated placeholders on main (plus the 2 on Integrated Reviews)
+- 276 Local Review "test_dispatch_phase 76/76 ...": approved, 0/0 → placeholder (dropped)
+- 276 Local Review "All five round-1 items resolved ...": approved, 0/0 → dropped
+- 284 Local Review "Verified locally with HOME ...": approved, 0/0 → dropped
+- 286 Local Review "Gate suite 54/54 ...": approved, 0/0 → dropped
+- 335 Local Review (Pre-Push) "(Round-2 must-fix and suggestions 1-5 verified resolved; suggestion 6 and the cube_bathymetry example stay with the owner ...)": approved, its entry counts `0 | **Suggestions**: 0` → dropped. It is the one carrying held items; it is not listed because its own count is zero (the held items are not counted as findings of that entry). It would be listed had the entry counted a suggestion.
+- 335 Local Review "(Copilot's two PR findings are resolved ...)": approved, 0/0 → dropped
+- 425 Local Review (Pre-Push) "The round 1 suggestion is closed by 58e8f94e ...": approved, 0/0, already checked → dropped
+- 335 and 354 Integrated Reviews carrying the marker: no verdict → listed (unchanged).
+
+### Start-entry rule (while armed; a restart moves only the round start and keeps the arm)
+| Entry | Merged number | Start? |
+|---|---|---|
+| Plan Authored, any Status | any | yes |
+| Implementation with **Addressed** | any | no |
+| Implementation, **Branch**, any Status | any | yes |
+| Implementation, **PR** #X (correlation, or legacy `#X — ...` field), X ≠ merged | known | yes |
+| the same, X = merged | known | no |
+| the same | unknown (no number since the previous boundary) | no |
+| Implementation, no correlation and no `#N` field, not complete | any | yes |
+| Implementation, no correlation, complete | any | no |
+| Checkpoint restart | - | round start only |
+
+### Replay on main (round start / pull-request start; `next` = `round` on every complete pre-push review)
+429: 25, 50 / 25, 50 (9 of 9 agree); 332: 67, 81 / 67, 81 (20 of 20); 307, 354, 451, 455: none / none (3, 2, 1, 3 agree); all armed at the end.
+
+### Verification
+The full `pre-commit run --files ...` pass was SKIPPED on the owner's direction ("have agent skip pre-commit and let ci handle it"); CI's lint job is the check for the remaining suites. Each commit ran the fast hooks with `SKIP=validate-script-tests`. Suites run directly on the final tree: test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0. New behaviour tests fail on the code before this pass (6 in test_dispatch_phase, 1 in test_commit_identity checked by restoring the old files). No `__pycache__` left (one written while the hook edit was still unstaged, as pre-commit stashes it, was removed; a hook run on the committed hook writes none).
