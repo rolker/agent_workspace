@@ -397,7 +397,7 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 869 and 1170, 1460 and 1473, 2262-2282 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 869 and 1176, 1466 and 1479, 2268-2288 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 643, 731, 763, 902 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -502,15 +502,15 @@ Status: `decided`
   806-858). The record is committed there only when the working copy's `progress.md` is the committed
   one (`_gate_rec_not_committed`), else it goes on the pull request. A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 890-897 and 1293-1294). Package pull requests stay
+  record goes on its own pull request (lines 890-897 and 1299-1300). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
   `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 608 and
   741), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 869 and 1170). The gate is still report-only for project pull requests (lines 1460 and
-  1473).
+  commit (lines 869 and 1176). The gate is still report-only for project pull requests (lines 1466 and
+  1479).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
   branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
@@ -581,7 +581,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    549, 595, 597, 659, 920: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (719-858, 1133-1308: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (719-858, 1139-1314: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -966,6 +966,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Third triage fix (issue 429, pull request 461): the owning checkout's timeline is not read when its `progress.md` has an uncommitted change or an assume-unchanged or skip-worktree flag; an empty or null comment body is not a record, and unreadable comments are said and recorded over; every `merge_pr.sh` citation refreshed, including the Records bullet's main-tree guard and report-only lines | #429 | 999 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Owner's decision (issue 429, pull request 461): for a package issue the gate reads the committed `progress.md` at origin's branch head, never the working copy; the record is committed in the owning checkout only when the working copy's file is the committed one; the working-copy read conditions are gone; every `merge_pr.sh` citation refreshed | #429 | 1003 |
 | 2026-11-13 | Change log | Main merged into issue 429's branch (pull request 461) after #446 landed: the rows of both sides are kept in date order (#446's 2026-11-12 row before issue 429's 2026-11-13 rows), and their line counts are each side's own file at the time; this row's count is the merged file's | #429 | 1022 |
+| 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` citations refreshed after the owning record check came to compare mode as well as content with `git diff` (issue 429, pull request 461); the rule's wording, that the record is committed only when the working copy's `progress.md` is the committed one, does not change | #429 | 1023 |
 
 ## Glossary
 
