@@ -411,7 +411,8 @@ Status: `decided`
   clean one on its branch, and clone every `extends` base afresh; a dirty clone or local commits are
   never forced and resolve with a warning that `validate` repeats, and a failed fetch or resolve keeps
   the previous directory. `setup` and `sync` fetch and resolve holding a flock on
-  `configs/.lock.source`, never removed (unlocked without `flock`, as the settings writer is). `validate` also fails when the directory was resolved from another source,
+  `configs/.lock.source`, never removed, and every verb reads one generated directory throughout,
+  never removed while a run reads it (unguarded without `flock`, as the settings writer is). `validate` also fails when the directory was resolved from another source,
   ref, role or distro, and names checkouts the manifest no longer lists; the adapter removes none.
   Network is needed at `setup` and `sync` (the source, every `extends` host, every package host) and
   for the resolver's install. A package worktree's `env.sh` is not rewritten when `sync` changes the
@@ -1030,6 +1031,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` line numbers in Table 1, the Records bullet and the Target's mechanism 1 refreshed after the owning checkout's reason came to cap each value rather than the whole sentence (issue 444, pull request 468: a comment of six lines moved everything after line 750); no statement changes | #444 | 1061 |
 | 2026-11-13 | Registry and adapters | The settings keys `source`, `source_ref` and `source_path` (refused for `single_project` through its `unused_settings`), and the `ros2_colcon` manifest route: `source` selects it, the workspace-installed `ros-manifest` resolves the manifest for the registry line's role and distro into `configs/manifest-resolved`, one source only, never silently stale, its network needs and its registration limit. Section is 161 lines, past the 60-line prompt: asked whether the detail moves next to the code; the route's mechanics are in the `ros2_colcon/adapter.sh` header and the key grammar in the `_project_registry.sh` header, and the bullet keeps only what crosses them (the settings file, the registry line, the resolver install and registration) | #436 | 1084 |
 | 2026-11-13 | Registry and adapters | The manifest route's fetch and resolve hold a flock on `configs/.lock.source`, never removed, unlocked without `flock` as the settings writer is. One sentence in the existing bullet; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1086 |
+| 2026-11-13 | Registry and adapters | Every verb on the manifest route reads one generated directory throughout, never removed while a run reads it; unguarded without `flock`. The lock sentence grows by one line; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1088 |
 
 ## Glossary
 
