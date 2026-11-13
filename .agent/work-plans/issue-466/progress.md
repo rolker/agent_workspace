@@ -322,3 +322,22 @@ Other sentences changed: register_session_root.sh's header (Usage), which said a
 - test_register_session_root.sh: 60 passed, 0 failed
 - check_design_anchors.sh: exit 0
 - No full pre-commit pass and no full suite, on the host's direction: the pull request exists and CI on the push is the check. The commit used SKIP=validate-script-tests; no --no-verify.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 12:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a13b5dfc9c1880daf, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #469 at `49a2fcea`
+**Depth**: Deep (reason: whole-PR classification as the pre-push rounds, security-relevant registration gate; this pass checks the fix commit 08ea7ad6 for Integrated Review F1 and F2)
+**Must-fix**: 1 | **Suggestions**: 1
+
+F1 holds: only the value after build=/test= is passed, never the note; a second dry run runs with exactly the final --set list; the yes is asked on its output; a refused list gets no yes; the real call takes the same arguments and no others. No path reaches the real call without the yes. F2 holds for a type that reads build and test: the kept file is read and shown in full, its build and test passed as --set, a missing one asked for, and the reworded claim (the question shows everything written, the prompt only build and test) is true. ADR-0021 is not touched by 08ea7ad6 (its diff stat names the script header, test_skill_paths.sh, SKILL.md and progress.md only). F3 out of scope, on the host's direction.
+
+Ran: test_skill_paths.sh alone, 139 passed 0 failed. Sandbox probe (the test's own sandbox setup, a folder with configs/manifest, so type ros2_colcon): first dry run prints "no settings file (nothing to write)" and no note; the second dry run with --set build=none --set test=none ends STATUS=refused ("'build' is not read for project 'rosy' (type ros2_colcon)"); the call with no --set gets past that check. Static, governance, plan drift and Claude adversarial: read by this reviewer for the one commit. Cross-model reviewers not run, on the host's direction for this pass (the skill would run them at a first PR-mode review); no full suite, no full pre-commit pass (CI runs them).
+
+### Findings
+- [ ] (must-fix) The new text requires one --set build= and one --set test= always, but a ros2_colcon folder (detected from configs/manifest) reads neither key: its dry run lists none and prints no note, any --set for them, even none, is refused, and the skill's refusal rule offers only "another command or stop", so a ROS 2 workspace folder can no longer be registered through onboarding (round 2's text passed --set only for listed or asked keys, and worked). Pass a key only when the first dry run lists it, a kept file has it, or a note: asks for it; with "no settings file (nothing to write)" and no note, the list is empty — `.claude/skills/onboard-project/SKILL.md:146`
+- [ ] (suggestion) "Read that file" names no way to read it: the file is in the workspace checkout's .agent/projects.d/, outside the session's root, so the read raises a permission prompt; say so, and that a refused read stops the run, since the yes needs the file's contents — `.claude/skills/onboard-project/SKILL.md:163`
