@@ -1274,11 +1274,26 @@ PY
 # A PR comment is a record only when its first line, with trailing blanks
 # and a carriage return trimmed, is exactly one of the two headings: a
 # heading quoted inside a body, or a first line that is a heading plus more
-# text, is not one. Prints the newest such body (jq filter).
+# text, is not one; an empty or null body is not one either. Prints the
+# newest such body (jq filter). Anything else that is not a string (a body
+# or a comment of another type) makes jq fail, and _gate_rec_comment says
+# so: the store is then unread, never "no record".
 _GATE_REC_COMMENT_JQ='[.comments[]? | .body // ""]
-    | map(select((split("\n")[0] | sub("\\s+$"; "")) as $h
+    | map(select(((split("\n")[0] // "") | sub("\\s+$"; "")) as $h
         | $h == "## Merge (report-only)" or $h == "## Merge (unreviewed)"))
     | last // empty'
+# Prints the newest record comment's body in <json> (empty: none). Returns
+# 1, after saying so, when the comments could not be read: the caller then
+# records rather than skip on a store it never read.
+_gate_rec_comment() {  # <json>
+    local out rc=0
+    out=$(jq -r "$_GATE_REC_COMMENT_JQ" <<<"$1" 2>/dev/null) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        echo "  ⚠️  the PR's comments could not be read for the duplicate check (jq exit $rc) — recording rather than skipping" >&2
+        return 1
+    fi
+    printf '%s' "$out"
+}
 # The value of a record field in a comment body, trailing blanks and a
 # carriage return trimmed (a body edited into CRLF still matches).
 _gate_rec_field() {  # <body> <field name>
@@ -1316,8 +1331,7 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         # doubt records again rather than skip.
         local c_json="${_gate_json:-}"
         [[ -n "$c_json" ]] || c_json='{}'
-        c_body=$(jq -r "$_GATE_REC_COMMENT_JQ" \
-            <<<"$c_json" 2>/dev/null || echo "")
+        c_body=$(_gate_rec_comment "$c_json") || return 1
         if [[ -n "$c_body" ]]; then
             c_type=$(head -n1 <<<"$c_body" | sed 's/^## //; s/[[:space:]]*$//')
             c_cond=$(_gate_rec_field "$c_body" Conditions)
@@ -1351,9 +1365,7 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         # it matches only when it is of the requested type with the same
         # conditions: a report-only record after an unreviewed one is the
         # newest state, and a later --force-unreviewed run records again.
-        latest=$(jq -r \
-            "$_GATE_REC_COMMENT_JQ" \
-            <<<"$_gate_json" 2>/dev/null || echo "")
+        latest=$(_gate_rec_comment "$_gate_json") || return 1
         [[ -z "$latest" ]] && return 1
         [[ "$(head -n1 <<<"$latest" | sed 's/^## //; s/[[:space:]]*$//')" == "$etype" ]] || return 1
         l_cond=$(_gate_rec_field "$latest" Conditions)

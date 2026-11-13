@@ -518,10 +518,17 @@ dedup_case() {  # <label> <flag> <expect: skips|records> <comment body>...
     local label="$1" flag="$2" expect="$3" b args='[]' out n
     shift 3
     args=$(jq -n '[{"body":"## Decision summary\n\n**What changed**: x"}]')
-    for b in "$@"; do args=$(jq --arg b "$b" '. + [{"body": $b}]' <<<"$args"); done
+    for b in "$@"; do
+        case "$b" in
+            __NULL__) args=$(jq '. + [{"body": null}]' <<<"$args") ;;
+            __NUMBER__) args=$(jq '. + [5]' <<<"$args") ;;
+            *) args=$(jq --arg b "$b" '. + [{"body": $b}]' <<<"$args") ;;
+        esac
+    done
     jq --argjson c "$args" '.comments = $c' "$ws_fixture" > "$ws_fixture.tmp" && mv "$ws_fixture.tmp" "$ws_fixture"
     : > "$sb/gh_fixtures/comments_posted.md"
     out="$(run_merge "$sb" "$flag" 2>&1)" || true
+    DEDUP_LAST_OUT="$out"
     n=$(grep -c '^## Merge (' "$sb/gh_fixtures/comments_posted.md")
     if [[ "$expect" == skips && "$n" -eq 0 && "$out" == *"already recorded (as a PR comment), same conditions"* ]] \
         || [[ "$expect" == records && "$n" -eq 1 && "$out" != *"already recorded"* ]]; then
@@ -553,6 +560,19 @@ $(rec_body 'Merge (report-only)' "$cond_a")"
         "$(rec_body 'Merge (report-only)' "$cond_a")" "$(rec_body 'Merge (report-only) — why we forced' "something else")"
     dedup_case "only a comment whose first line is the heading plus text, conditions A; --report-only with A" --report-only records \
         "$(rec_body 'Merge (report-only) — why we forced' "$cond_a")"
+    dedup_case "report-only A, then an empty-body comment; --report-only with A" --report-only skips \
+        "$(rec_body 'Merge (report-only)' "$cond_a")" ""
+    dedup_case "report-only A, then a null-body comment; --report-only with A" --report-only skips \
+        "$(rec_body 'Merge (report-only)' "$cond_a")" __NULL__
+    # A comment that is not an object: the filter fails, which is said, and
+    # the record is written rather than skipped.
+    dedup_case "report-only A, then a comment that is a number; --report-only with A (unreadable: records)" --report-only records \
+        "$(rec_body 'Merge (report-only)' "$cond_a")" __NUMBER__
+    if grep -q "the PR's comments could not be read for the duplicate check (jq exit 5) — recording rather than skipping" <<<"$DEDUP_LAST_OUT"; then
+        pass "(dedup-c unreadable) the failed read is said"
+    else
+        fail "(dedup-c unreadable) the failed read is not said (out=$(tail_of "$DEDUP_LAST_OUT" 500))"
+    fi
 else
     fail "(dedup-c) could not read the conditions the calibration run posted"
 fi
@@ -1228,6 +1248,51 @@ for variant in crlf heading-plus-text; do
         pass "(pkg-21 $variant) owning PR, record comment $variant: the real record is the newest and matches, nothing posted"
     else
         fail "(pkg-21 $variant) (out1=$(tail_of "$out1" 300) out2=$(tail_of "$out2" 600))"
+    fi
+done
+
+echo "TEST: an owning PR's duplicate check with an empty, null or unreadable comment never reads the comments as empty"
+# The review's input: the timeline holds Merge (unreviewed) X; the comments
+# hold a newer Merge (report-only) X and one odd comment. A --force-unreviewed
+# run with X must record (the newest record is the report-only one). Before
+# the fix the odd comment made the filter fail, the comments read as "no
+# record", and the timeline's X was skipped as a duplicate.
+for variant in empty null number; do
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    F="$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+    out1="$(run_pkg_merge "$sb" owner/pkg_a#901 --force-unreviewed)" || true
+    tl=$(python3 "$sb/.agent/scripts/progress_read.py" "$A/.agent/work-plans/issue-901/progress.md" --type "Merge (unreviewed)" | jq -c '.entries[-1].fields')
+    x=$(jq -r '.Conditions' <<<"$tl")
+    c_when=$(python3 -c 'import sys,datetime as d; t=d.datetime.strptime(sys.argv[1],"%Y-%m-%d %H:%M %z")+d.timedelta(hours=1); print(t.strftime("%Y-%m-%d %H:%M ")+t.strftime("%z")[:3]+":"+t.strftime("%z")[3:])' "$(jq -r '.When' <<<"$tl")")
+    case "$variant" in
+        empty) odd='{"body": ""}' ;;
+        null) odd='{"body": null}' ;;
+        number) odd='5' ;;
+    esac
+    jq --arg b "## Merge (report-only)
+**When**: $c_when
+**Conditions**: $x
+" --argjson odd "$odd" '.comments += [{"body": $b}, $odd]' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+    out2="$(run_pkg_merge "$sb" owner/pkg_a#901 --force-unreviewed)" || true
+    ok=true
+    [[ "$out1" == *"Merge (unreviewed) entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed"* ]] || ok=false
+    [[ "$out2" != *"already recorded"* ]] || ok=false
+    # Recorded, not skipped. (Run 2's entry can be byte-identical to run 1's
+    # within one minute, which progress_append.sh treats as already
+    # committed, so HEAD moving is not asserted.)
+    [[ "$out2" == *"Merge (unreviewed) entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed"* ]] || ok=false
+    if [[ "$variant" == number ]]; then
+        [[ "$out2" == *"the PR's comments could not be read for the duplicate check (jq exit 5) — recording rather than skipping"* ]] || ok=false
+    else
+        [[ "$out2" != *"could not be read for the duplicate check"* ]] || ok=false
+    fi
+    if [[ "$ok" == true ]]; then
+        pass "(pkg-22 $variant) owning PR, a newer report-only X comment beside a $variant comment: --force-unreviewed with X records"
+    else
+        fail "(pkg-22 $variant) (x=${x:0:80} out1=$(tail_of "$out1" 300) out2=$(tail_of "$out2" 700))"
     fi
 done
 
