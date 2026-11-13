@@ -685,3 +685,15 @@ PR body, sentences no longer true or missing (not edited):
 - [x] (suggestion, triage) PR body: update the five places above (1,352-state comparison after the merge, second merge of main and its PR-mode review, 429 boundaries 25/50/71 and 45 reviews, the full-run statement vs CI, the past "After the merge" section) — PR #467 body
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 12:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+merge 467 when CI is green
+
+He gave this answer ahead of CI finishing, after the hand-back that said the pull request was at the merge checkpoint with nothing open from review and its body brought up to date. CI then finished green on head 4e053828 (Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests, two runs each, all pass), and GitHub reports the pull request clean and mergeable.
