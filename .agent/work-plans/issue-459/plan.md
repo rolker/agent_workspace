@@ -23,8 +23,9 @@ Atomic commits, after rebasing on 461 once it merges:
    `pr_start(entries)`, one pass: a `Decision: merge` checkpoint (After `merge`
    or `findings`) arms; a later checkpoint with After `merge`, `findings` or
    `merge-refused` and a non-merge answer disarms; the first start entry while
-   armed (`## Plan Authored`, or an `## Implementation` with `**Branch**` and no
-   `**Addressed**`) is the boundary; a restart checkpoint sets the start and
+   armed (`## Plan Authored`, or an `## Implementation` with no `**Addressed**`
+   that is not PR-correlated: `**Branch**`, or no correlation line on a failed
+   pass) is the boundary, whatever its Status; a restart checkpoint sets the start and
    clears the armed state. A `## Merge (...)` record neither arms nor disarms
    (`merge_pr.sh` writes it at the gate, before the merge, whether or not it
    lands). PR-correlated entries do not disarm. It relies on ADR-0013's

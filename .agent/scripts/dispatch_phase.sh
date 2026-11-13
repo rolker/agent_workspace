@@ -88,9 +88,10 @@
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #     A pre-push review-code task line at round 3 or later (as
 #     `review_progress.sh round` counts it: complete reviews on the branch
-#     after the newest restart checkpoint, the same rule as `next`) ends
-#     with its scope and the words "no cross-model reviewers" (issue 321,
-#     the round-3 exception).
+#     from the start of the current pull request's work, pr_start.py, the
+#     same rule as `next`) ends with its scope and the words "no
+#     cross-model reviewers" (issue 321, the round-3 exception). The first
+#     review of the next pull request of an issue is round 1 (issue 459).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -924,8 +925,10 @@ cmd_next() {
         json='{"entries": []}'
     fi
 
-    printf '%s' "$json" | PR_STATE="$pr" "$PYTHON" -c '
+    printf '%s' "$json" | PR_STATE="$pr" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import pr_start
 
 MAX_ROUNDS = 3
 PR = os.environ["PR_STATE"]
@@ -971,17 +974,12 @@ TYPE_TO_SKILL = {
 }
 
 
-def restart_start():
-    # Index of the first entry after the newest **Decision**: restart
-    # checkpoint (0 when there is none). The owner restated the goal
-    # (/orchestrator recipe (a)), so the new work starts here: round_count()
-    # counts reviews from it and skill_for() names phases from it.
-    start = 0
-    for i, e in enumerate(entries):
-        if e.get("base_type") == "Checkpoint" \
-                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
-            start = i + 1
-    return start
+# The first entry of the work of the current pull request: after the newest
+# **Decision**: restart checkpoint, or at the first start entry after a
+# merge answer (pr_start.py holds the one rule, shared with
+# review_progress.sh round and sources; issue 459). round_count() counts
+# reviews from it and skill_for() names phases from it.
+START = pr_start(entries)
 
 
 def skill_for(entry):
@@ -1005,11 +1003,12 @@ def skill_for(entry):
         # pass. Ordinal position alone ("is this the first one?") would
         # misroute a second consecutive failed implement: retry -> failed
         # again must still name **Phase**: implement (issue #314). Only
-        # entries after the newest restart checkpoint count, the same start
-        # round_count() uses: a restart begins the new work at its first
-        # implement, so a complete Implementation from before it does not
-        # make the next failed pass an address-findings pass (issue 321).
-        for e in entries[restart_start():]:
+        # entries from START count, the same start round_count() uses: a
+        # restart (issue 321) or the next pull request after a merge (issue
+        # 459) begins the new work at its first implement, so a complete
+        # Implementation from before it does not make the next failed pass
+        # an address-findings pass.
+        for e in entries[START:]:
             if e is entry:
                 break
             if e.get("base_type") == "Implementation" \
@@ -1032,13 +1031,14 @@ def round_count():
     # newest such entrys branch correlation (hermetic under --progress). Only
     # status == "complete" counts as a round: a partial/failed review that
     # was retried (row 3 already routed it to checkpoint:phase-failed) must
-    # not inflate the round count toward MAX_ROUNDS. Only reviews after the
-    # newest **Decision**: restart checkpoint count (the owner restated the
-    # goal, /orchestrator recipe (a)): the new work starts at round 1. The
-    # same rule as review_progress.sh round, which the round-3 handoff uses.
+    # not inflate the round count toward MAX_ROUNDS. Only reviews from
+    # START count: after a restart (the owner restated the goal,
+    # /orchestrator recipe (a)) or after a merged pull request of the issue
+    # (issue 459), the new work starts at round 1. The same rule as
+    # review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
     n = 0
-    for e in entries[restart_start():]:
+    for e in entries[START:]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \
