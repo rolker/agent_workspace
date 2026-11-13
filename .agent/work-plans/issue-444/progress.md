@@ -411,3 +411,20 @@ GitHub: 0 reviews, 0 inline comments, 0 conversation comments; Copilot's automat
 **Decision**: address
 
 Read: the Integrated Review at f1ecdb34 and its report. S1 run_script_tests.sh:553 a signal during the end-of-run stop leaves the run's temp directory behind; S2 run_script_tests.sh:720 kill_now signals a stale watchdog id.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #468 at `0f6b78d8`
+**Addressed**: Integrated Review at `bb125a16` (2026-11-13 11:38 -05:00)
+**Commits**: 6b4da8f2, 0f6b78d8
+
+### Actions
+- [x] S1: a signal during the end-of-run stop left the run's directory behind. cleanup_run now traps INT/TERM/HUP to `kill_now; rm -rf "$RUN_ROOT"; exit 130/143/129` before `stop_suites TERM`. New (u8) case beside the "still running at exit" test: a suite leaves a sleep that ignores SIGTERM; after that line, SIGTERM to the runner and Ctrl-C (SIGINT to its group) each end the run in 2–52 ms with rc 143/130, "stop cut short; KILLing 1", the sleep gone and no RUN_ROOT. Checked against the pre-fix runner in a scratch harness: both cases fail there (rc 143/130 by default action, sleep alive, directory left; the harness removed it) — `.agent/scripts/tests/run_script_tests.sh:553`
+- [x] S2: kill_now KILLed a stale watchdog id. stop_suites now reaps the watchdog (`wait`) and clears `stop_watchdog` right after KILLing its group. The `wait` is part of the fix, not extra: live_groups skips the watchdog only while `stop_watchdog` names it, so an unreaped watchdog still listed by `jobs -p` could otherwise be counted as a live group by kill_now after on_interrupt — `.agent/scripts/tests/run_script_tests.sh:720`
+
+### Checks
+- Full pre-commit pass and the full script suite skipped on the owner's direction (2026-11-13: one local run before a pull request, already made at 3880add0); CI on the push is the check. Both commits used `SKIP=validate-script-tests`; every other hook ran and passed (shellcheck included).
+- `test_run_script_tests.sh` three times in a row on the final tree (loaded machine): 163 passed, 0 failed in 47 s; 163/0 in 47 s; 163/0 in 46 s. No new /tmp/run-script-tests.* directory after the three runs.
