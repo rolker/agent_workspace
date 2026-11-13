@@ -427,28 +427,10 @@ CI, but not a tracked item).
 
 ## Pending Review (2026-11-13 round)
 
-- `gstack-1` `retire-skills-on-measured-no-gain` — cut a skill when a
-  plain model does as well for less (plan-eng-review: 15 of 16 flaws found
-  without it, 7.1x the cost with it); retirement removes the owned entry
-  and leaves a user-written same-named one. May matter as a stated
-  criterion for retiring workspace skills and for `/audit-workspace`
-  (2026-11-13)
-- `gstack-2` `checkpoint-records-commit` — `/context-save` stamps the
-  described commit and `/context-restore` reports commits landed since and
-  moves remaining work to "verify first". May matter for progress-timeline
-  checkpoints and run-issue handoffs (2026-11-13)
-- `gstack-3` `merge-at-reviewed-head` — merge with
-  `--match-head-commit` bound to the reviewed pin, then verify main's tree.
-  May matter for the merge script; no `match-head-commit` found in
-  `.agent/scripts/*.sh` (2026-11-13)
 - `gstack-4` `lane-wait-and-spend-rules` — warm-wait check-ins to keep the
   prompt cache, parallel reads capped at 4k characters per call, and a
   spend threshold that triggers a written handoff for a rotate/continue
   decision. May matter for run-issue waits and long background phases
-  (2026-11-13)
-- `gstack-5` `friction-by-skill-metric` — per-skill questions, errors and
-  aborts counted from run records, with an explicit "not tracked" state.
-  May matter as a mechanical source for the orchestrator friction log
   (2026-11-13)
 - `gstack-6` `per-model-skill-loadouts` — render a smaller skill for a
   named model, full for unknown ones, with a mismatch warning. May matter
@@ -456,6 +438,31 @@ CI, but not a tracked item).
 - `gstack-7` `modernize-aging-pr-skill` — range-diff-proven rebase of an
   old PR and an explicit modernize/rework/close verdict, never closing on
   its own. May matter for stale draft PRs and branches (2026-11-13)
+
+## Roadmapped (2026-11-13 decisions)
+
+- `gstack-1` `retire-skills-on-measured-no-gain` — a retirement criterion
+  for skills and review phases: keep one only if it finds things a plain
+  model does not, measured on a known case. Gstack cut a review skill after
+  a plain model found 15 of 16 planted flaws without it and the skill cost
+  7.1x (their numbers, not verified). Added to docs/roadmap.md (2026-11-13)
+- `gstack-2` `checkpoint-records-commit` — every progress entry records the
+  commit it describes, and a resuming phase states the commits landed since
+  before acting. Owner's note: "this seems like it could be useful". Added
+  to docs/roadmap.md (2026-11-13)
+- `gstack-5` `friction-by-skill-metric` — a small reader that counts, per
+  skill or phase, questions to the owner, refusals and review rounds from
+  existing records (transcripts, progress records), printing "not tracked"
+  where there is no data; feeds the friction log and the `gstack-1`
+  retirement criterion. Added to docs/roadmap.md (2026-11-13)
+
+## Deferred (2026-11-13 decisions)
+
+- `gstack-3` `merge-at-reviewed-head` — owner's reason: "I typically don't
+  have multiple agents working on the same PR". Fact recorded with it:
+  `merge_pr.sh` already captures the reviewed head and targets CI at it;
+  only the final `gh pr merge --merge` call is not pinned with
+  `--match-head-commit` (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
