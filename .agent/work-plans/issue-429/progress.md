@@ -1513,3 +1513,11 @@ Deliberately left unchanged, recorded by the last two rounds:
 **Decision**: merge
 
 Merge (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:37 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `92fe4a93`
+
+Revision after the verb merged (pull request 456). The plan marks it merged and re-checks 2a steps 3 to 8 and 2b steps 1 to 6 against main with files and lines. Order for this worktree: 2a next, then 2b. Adjustments: `repo_pin` takes `--layer` and its refusals and stderr note are passed through; the merge cross-check applies to the owning pull request only; the 2a tests use real `.repos` pins instead of a stub adapter type; 2b's Scope rewrite also drops a sentence issue 437 made false. One small open question (the merge cleanup's `git pull --ff-only`). No premise is gone; no issue opened.
