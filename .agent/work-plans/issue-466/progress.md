@@ -159,3 +159,22 @@ Read: the Plan Review at bcde893b and its report. The implement handoff carries 
 ### Decisions made (owner may veto)
 - The new register_session_root.sh is not promoted to the user tier: every call prompts, showing the full command — undoing it: a later change adds it to user_tier_scripts.txt with a guard-test exception and its own decision record for ADR-0016 decision 6.
 - Proceed on a needs-work plan review without a re-plan, with the must-fix and notes in the implement handoff — undoing it: answer this checkpoint revise instead; nothing is implemented yet.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-466 at `03f37dcd`
+
+Implements the plan as amended by the Plan Review's must-fix (the script is NOT promoted; plan steps 1 and 3 and the installer re-run dropped) and its seven notes.
+
+- `.agent/scripts/register_session_root.sh` (new): takes only `--dry-run` and `--set build=`/`test=` (each one quoted argument, at most once); the folder is `pwd -P`. WS_ROOT from its own location (as `session_root.sh` lines 76-78). Refuses, exit 1 and before handing over: already a registered root (note 1), inside a registered root or `worktrees=` dir, inside the workspace or its repository, over a registered root or the workspace (loop over the registry with `_registry_path_under`, note 2), not the top of its git repository, a linked worktree, a name already registered (pointing at `register_project.sh --name` from the workspace). Then `exec register_project.sh <folder> --skip-run [--dry-run] [--set ...]`, never `--install-user-tier`. Header says each call asks for permission and why, and names the no-git gap and the unlocked pre-check race.
+- `.agent/scripts/tests/test_register_session_root.sh` (new, synthetic sandbox only): 53 checks, each refusal above, `--set build=x` on a registered folder leaves its settings file unchanged, dry run writes nothing, no build/test/installer run, no-build folder refused until `--set build=none --set test=none`, a value with a blank kept whole, no-git folder refused and rolled back, worktree copy registers in the main checkout, absent from the manifest.
+- `.agent/user_tier_scripts.txt`: comment only; the never-promoted paragraph names the script and the reason. No manifest line; `test_user_tier_guard.sh` unchanged.
+- `.agent/scripts/tests/test_script_tests_hook_scope.sh`: ROOT_READERS entry for the new suite (its drift check requires one).
+- `.claude/skills/onboard-project/SKILL.md`: step 1 exit-1 branch (dry run `2>&1`, refusals as printed, ask for build/test when a note says none detected, the real call's permission prompt is the yes, re-read `session_root.sh` and carry on, no-git gap named); Overview, write list, settings-file paragraph, description. `test_skill_paths.sh` pins the new wording.
+- `docs/decisions/0021-a-project-session-may-register-its-own-folder.md` (new, Accepted 2026-11-13): supersedes ADR-0016 decision 5 only; non-promotion recorded in Context. `0016`: one-line ADR-0008 pointer. Review guide: 0021 row, 0016 note. Number checked free on origin/main and both open pull requests' branches before writing.
+- `docs/design.md`: Sessions and roots, Registry and adapters (Now and Target), decision register (row 0021, 0016 note, count 19 -> 21), C4, change-log row.
+- `.agent/knowledge/script_reference.md` row; `register_project.sh` header comment only.
+
+Suites run, each on its own: test_register_session_root 53/0, test_user_tier_guard 64/0, test_user_tier_install 276/0, test_skill_paths 138/0, test_register_project 197/0, test_script_tests_hook_scope 326/0 (touched: ROOT_READERS); check_design_anchors.sh clean. Commits used SKIP=validate-script-tests; the full pre-commit pass was skipped on the owner's direction (2026-11-13), for the host's one run before publishing.
