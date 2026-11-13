@@ -580,3 +580,13 @@ Checked: must-fix 2: the review's timeline gives Scan(4, 4) (legacy `**PR**: #11
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 3, no findings; the one full suite run before publishing passed)
+**After**: publish
+**Decision**: publish
+
+Round 3 approved with no must-fix and no suggestions, on the tree that includes main at 2809fcef. The host then ran the full pre-commit pass once, with no SKIP, on head 5a9d7049 (the owner's rule of 2026-11-13: one full run per pull request, by the host, before publishing): every hook passed, "run_script_tests: all 48 suites passed in 564s".
