@@ -1262,3 +1262,25 @@ Line counts: adapter.sh 2044 before, 1998 after the rule change (94437a33), 2054
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1044 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 150 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
 - Not verified: BSD/macOS (`mv -h`, no flock, `stat -c` in the test's fingerprint helper is GNU); a run killed between the checkout and the record leaves a clone that is refused (stated in the header; not tested).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 17:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `105f5763`
+**Base**: origin/main
+**Depth**: Deep (reason: ~3,000 lines over 16 files; untrusted remote input reaching git, paths and generated files)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 4 | **Ship**: recommended — round 4: 2 mechanical must-fix (prev 4), not rising; fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) Origin check uses `git remote get-url`, which applies `url.*.insteadOf`; with such a rule every run after the first refuses the clone and re-cloning cannot recover. Compare `git config --get remote.origin.url` instead (reproduced by the Claude adversarial reviewer) — `.agent/project_types/ros2_colcon/adapter.sh:720`
+- [ ] (must-fix) A file marked assume-unchanged or skip-worktree hides a local edit from `git status`, so the clone reads as untouched; when the ref has not moved, the edit is resolved and recorded as the remote commit. Refuse when `git ls-files -v` shows a lowercase or `S` flag (reproduced: the status is empty with the edit present) — `.agent/project_types/ros2_colcon/adapter.sh:744`
+- [ ] (suggestion) INT/TERM/HUP between the fresh clone and the record (and a failed record write at :829) leaves a half-made clone this run created, which every later run refuses; the plan says this run removes it. Trap around the window or remove on these paths — `.agent/project_types/ros2_colcon/adapter.sh:790`
+- [ ] (suggestion) `fetch --prune-tags --force` deletes local tags in a clone that reads as untouched (local work lost silently); refuse when a local tag is not on origin, or state it in the rule — `.agent/project_types/ros2_colcon/adapter.sh:802`
+- [ ] (suggestion) Without flock, two runs can both see no clone; the loser's failed `git clone` then runs `rm -rf` on the winner's clone. Claim the path with `mkdir "$clone"` (no -p) before cloning into it — `.agent/project_types/ros2_colcon/adapter.sh:790`
+- [ ] (suggestion) The path-source `file-stamp` is taken after the resolver ran, so an edit during resolve is recorded as resolved; take it before resolve (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:918`
+- [ ] (suggestion) New test code uses GNU-only `stat -c`, `sha256sum` (mr_tree_hash) and bare `sed -i` (2940-3562); CI is ubuntu-only, but the suite cannot run on macOS where the adapter claims BSD support — `.agent/scripts/tests/test_ros2_colcon.sh:2662`
+- [ ] (suggestion) The assertion that `.resolved-from` has no `source-state` guards only a key from the withdrawn rule; remove it — `.agent/scripts/tests/test_ros2_colcon.sh:2697`
