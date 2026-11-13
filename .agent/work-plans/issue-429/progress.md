@@ -1731,3 +1731,74 @@ Implementation deviations judged: start-task SKILL.md edit, citation refresh, qu
 **Decision**: address
 
 Fix all seven findings. Host decisions on finding 1 (a resumed worktree recorded the pin as base= without checking the branch started there): (a) nothing is recorded silently. On resume with no base=, the candidate base (an explicit --base, else the pin) is recorded only after a check that the owning branch carries no foreign history against origin/<base>: every commit in origin/<base>..HEAD that is also reachable from another branch on origin (other than the issue branch itself) is foreign; if any exists, refuse, name the count and the branch they come from, and say how to proceed (recreate the worktree, or pass the --base it was really started from). (b) Creating the owning repository's branch in a package worktree always resolves a base: an explicit --base, else the manifest pin through pr_base_for; if neither gives a branch, creation refuses and asks for --base. A package worktree is no longer started from origin's default branch by omission. This follows the owner's direction of 2026-11-10 (the base comes from the manifest pin, not GitHub's default branch). Finding 2: pull origin <base> explicitly. Finding 6: refuse a --package-repos that does not match the existing manifest. The other findings as the review states them.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `c7a73165`
+**Addressed**: Local Review (Pre-Push) at `69b6072a` (2026-11-12 22:17 -05:00)
+**Commits**: d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d, c7a73165
+
+### Actions
+- [x] (must-fix 1) Resume no longer records an unchecked base; creation always resolves a base — `.agent/scripts/dispatch_phase.sh` (cmd_base), `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` (`wt_base_foreign_history`, `WT_ADD_STARTED_FROM_BASE`). (a) The candidate base (`--base`, else the pin) is written only when no commit in `origin/<base>..feature/issue-N` is also on another origin branch (base and the issue branch excluded). One bounded fetch goes into a private ref namespace, removed again; the checkout's remote-tracking refs are untouched. A refusal names the count and the branches (most commits first, ties closest first), says "Recreate the worktree, or pass the --base it was started from", and writes nothing. (b) A package worktree with an owning entry always resolves a base before anything is made (`--base`, else `pr_base_for`); no branch means refuse and ask for `--base`. An owning branch that already exists (locally or on origin) gets `base=` only after the same check, else creation refuses and rolls back with the branch kept. Siblings get no base. Every creation path goes through `worktree_create.sh`: direct, `/start-task`, run-issue step 1.
+- [x] (must-fix 2) Cleanup pulls `origin <base>` by name: `pull --ff-only --no-rebase origin "$PR_BASE_REF"` — `.agent/scripts/merge_pr.sh:1678-1680`; test `test_own_repo_pull_takes_origin_base_not_upstream` (upstream origin/pinned, origin/main, none). On the old code it fails 5 assertions: "other" is moved to main's history, "none" is marked incomplete.
+- [x] (suggestion 3) Legacy `project=project` header: the header's project is passed to the adapter only when `registry_lookup` finds it — `.agent/scripts/dispatch_phase.sh` cmd_base. Test: owner/pkg_a#14 with a `project=project` header reaches the adapter's answer, not "not registered".
+- [x] (suggestion 4) Failed-fetch test: `test_own_repo_failed_fetch_marks_cleanup_incomplete` (origin's bare moved away, URL kept, checkout on `other`) — `.agent/scripts/tests/test_merge_pr.sh`
+- [x] (suggestion 5) An unknown pin now gives one of three true messages: origin not asked or not answering (the adapter's "(unverified)" NOTE; retry or `--base`), a name no branch can have, or origin asked with no branch or tag of that name — `.agent/scripts/_pr_base.sh`. Tests for all three are in case 11 of `test_package_issue_loop.sh`.
+- [x] (suggestion 6) For an existing package worktree, `--package-repos` must equal the manifest's repositories as a set (order free); a mismatch is refused naming both. Header comment and exit codes updated — `.agent/scripts/dispatch_phase.sh`. Tests: `pkg_b,pkg_a` gives the recorded base; `pkg_a` is refused.
+- [x] (suggestion 7) Table 1's `dispatch_phase.sh` row now cites 219, 280-329, 504, 638, 726, 758, 905. Mechanism 1's citations are refreshed to 544, 590, 592, 654, 923 (this pass moved them) — `docs/design.md`
+
+### Finding 1: inputs and results
+`wt_base_foreign_history <checkout> <branch> <base>` (unit cases in `test_worktree_create.sh`). Origin has: main = M0 M1; rel = M0 R1; old = M0; ahead = M0 M1 A1; dev2 = M0 M1 D2.
+
+| Branch | Base | Result |
+|---|---|---|
+| no own commits, from rel | rel | 0, none |
+| from rel plus own commits | rel | 0, none |
+| from origin main (the reported case) | rel | 1: 1 commit, from main (named first) |
+| base is an ancestor of main: from main plus own | old | 1: 1 commit, from main |
+| main is an ancestor of the base: from main plus own | ahead | 0 (only its own commit) |
+| issue branch pushed to origin, from rel | rel | 0 (its pushed copy is not "another") |
+| issue branch pushed to origin, from main | rel | 1 (main's commit; the branch itself not named) |
+| two origin branches carry it | rel | 1: 2 commits, "dev2 (2), main (1), ..." |
+| base not on origin | nosuch | 2: "origin has no branch 'nosuch'", nothing written |
+| no local branch | rel | 3 |
+| origin unreachable / fetch fails | rel | 3, git's line; nothing written |
+| every case | | no `refs/wt-base-check/` refs left, remote-tracking refs unchanged |
+
+End to end:
+- Resume (`test_package_issue_loop.sh` case 13): C (from main before `pinned` moved on; main is an ancestor of pinned) records `pinned`. C14 (from main after main moved past pinned) is refused with "1 commit(s) ... origin's main (1)", header unchanged; with `--base main` (its own commit pushed) `base=main` is recorded. A `--base` origin lacks, a tag pin and a dead origin (bounded, git's "Network is unreachable") each refuse and write nothing.
+- Creation (`test_ros2_colcon.sh`):
+  - No `--base` gives base=fakefox (the pin), and the branch is at origin/fakefox.
+  - A tag pin with no `--base` refuses before anything is made (no directory, no owning or sibling branch); with `--base main` it records main.
+  - Siblings only: no base, created.
+  - Existing local branch from the pin, with own work: recorded.
+  - Existing local branch from main (main past the pin): refused, rolled back, branch kept at its commit, no check refs left; with `--base main`: recorded.
+  - Branch on origin only, from the pin: recorded.
+
+### Existing tests changed, and why
+- `test_ros2_colcon.sh`: package repositories' origins were unreachable `git@github.com:owner/<pkg>` URLs. Creation now needs a base origin confirms, so they are served offline by a `GIT_SSH_COMMAND` stub from the per-test `fake_remotes/github.com/` (it fails as an unreachable host outside one). origin holds the pin `fakefox` as a branch, and the sandbox copies `_pr_base.sh`. The tests state a base through the pin; none asserts a refusal, since each is about layout or rollback.
+- `test_package_issue_loop.sh`:
+  - Setup now asserts `base=main` on C and C2 and none on C9. It then strips `base=` from C so C stands in for a pre-field worktree, which keeps the "no base= line" handoff check and case 13 meaningful.
+  - The `unknown` expectation is the new message.
+  - Case 13's dead-origin check passes `--base pinned` and expects the new "could not check whether ... started from origin's 'pinned'" message.
+- `test_worktree_create.sh`, `test_merge_pr.sh`: only additions.
+- `run_script_tests.sh` re-cites `worktree_create.sh:1215,1256`.
+
+### Checks
+- Suites run directly on the final code: `test_ros2_colcon.sh` 531/0, `test_package_issue_loop.sh` 188/0, `test_worktree_create.sh` 84/0, `test_merge_pr.sh` 150/0. `test_dispatch_phase.sh` 148/0 was run before the last dispatch_phase edits; the pre-commit run below covers it.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. This includes `validate-script-tests`: a shared helper changed, so every suite ran. shellcheck and check-design-anchors passed too.
+- Tests that fail on the old code:
+  - finding 2: shown, 5 failures with the old pull line.
+  - finding 1: the reported-case refusal and the creation base= checks (the old code recorded `pinned` and created with no base).
+  - finding 3: the old code passes `--project project` and gets "not registered".
+  - finding 5: the old message is "(unknown)".
+  - finding 6: the old code ignored the list.
+- Finding 4's test pins existing behaviour.
+
+### Notes
+- The fetch for the check pulls every origin branch's objects once, on resume or creation over an existing branch only.
+- A commit of the issue's own that someone also pushed to another origin branch counts as foreign (conservative: the run refuses and names that branch).
+- Table 1's other rows (`worktree_create.sh`, `merge_pr.sh`) cite lines that were already stale before this pass (the table calls itself a dated probe). Only the `dispatch_phase.sh` row was in scope and is now true.
