@@ -739,84 +739,64 @@ else
     fail "manifest header: ${OUT:0:900}"
 fi
 echo
-echo "=== Did a branch start from its base? wt_base_foreign_history, every edge (issue 429) ==="
-# FH's origin: main = M0 M1; rel = M0 R1 (the pin; diverged from main);
-# old = M0 (a base that is an ancestor of main); ahead = M0 M1 A1 (a base
-# main is an ancestor of); dev2 = M0 M1 D2. FH itself is a clone.
-FHO="$SANDBOX/fh-origin.git"
-FH="$SANDBOX/fh"
-FHS="$SANDBOX/fh-seed"
-gitq init -q --bare -b main "$FHO"
-gitq init -q -b main "$FHS"
-gitq -C "$FHS" commit -q --allow-empty -m M0
-gitq -C "$FHS" branch old
-gitq -C "$FHS" checkout -q -b rel
-gitq -C "$FHS" commit -q --allow-empty -m R1
-gitq -C "$FHS" checkout -q main
-gitq -C "$FHS" commit -q --allow-empty -m M1
-gitq -C "$FHS" checkout -q -b ahead
-gitq -C "$FHS" commit -q --allow-empty -m A1
-gitq -C "$FHS" checkout -q -b dev2 main
-gitq -C "$FHS" commit -q --allow-empty -m D2
-gitq -C "$FHS" push -q "$FHO" main rel old ahead dev2
-gitq clone -q "$FHO" "$FH"
-own() {  # <branch> <start>: a local branch at <start> plus one commit of its own
-    gitq -C "$FH" branch "$1" "$2"
-    gitq -C "$FH" checkout -q "$1"
-    gitq -C "$FH" commit -q --allow-empty -m "own work on $1"
-    gitq -C "$FH" checkout -q main
-}
-gitq -C "$FH" branch b1 origin/rel
-own b2 origin/rel
-gitq -C "$FH" branch b3 origin/main
-own b4 origin/main
-own b5 origin/main
-own b6 origin/rel
-gitq -C "$FH" push -q origin b6
-own b7 origin/main
-gitq -C "$FH" push -q origin b7
-own b10 origin/dev2
-FH_TRACKING_BEFORE="$(git -C "$FH" for-each-ref refs/remotes/)"
-fh() {  # <branch> <base> [VAR=value...]: prints "rc count [from] [reason]"
+echo "=== A named base for an existing branch: wt_check_named_base, every input (issue 429) ==="
+# NB's origin: main = M0 M1; rel = M0 R1. NB is a clone with branches:
+# fromrel (rel plus its own commit), frommain (main plus its own), and an
+# orphan with no history in common with anything on origin.
+NBO="$SANDBOX/nb-origin.git"
+NB="$SANDBOX/nb"
+NBS="$SANDBOX/nb-seed"
+gitq init -q --bare -b main "$NBO"
+gitq init -q -b main "$NBS"
+gitq -C "$NBS" commit -q --allow-empty -m M0
+gitq -C "$NBS" checkout -q -b rel
+gitq -C "$NBS" commit -q --allow-empty -m R1
+gitq -C "$NBS" checkout -q main
+gitq -C "$NBS" commit -q --allow-empty -m M1
+gitq -C "$NBS" push -q "$NBO" main rel
+gitq clone -q "$NBO" "$NB"
+gitq -C "$NB" checkout -q -b fromrel origin/rel
+gitq -C "$NB" commit -q --allow-empty -m "own on fromrel"
+gitq -C "$NB" checkout -q -b frommain origin/main
+gitq -C "$NB" commit -q --allow-empty -m "own on frommain"
+gitq -C "$NB" checkout -q --orphan orphan
+gitq -C "$NB" commit -q --allow-empty -m "orphan root"
+gitq -C "$NB" checkout -q main
+nb() {  # <branch> <base> [VAR=value...]: prints "rc [reason]"
     local b="$1" base="$2"; shift 2
     env ${@+"$@"} bash -c '
         source "$1/.agent/scripts/_worktree_helpers.sh"
-        rc=0; wt_base_foreign_history "$2" "$3" "$4" || rc=$?
-        echo "$rc $WT_FOREIGN_COUNT [$WT_FOREIGN_FROM] [$WT_FOREIGN_REASON]"' _ "$SB" "$FH" "$b" "$base" 2>&1
+        rc=0; wt_check_named_base "$2" "$3" "$4" || rc=$?
+        echo "$rc [$WT_BASE_CHECK_REASON]"' _ "$SB" "$NB" "$b" "$base" 2>&1
 }
-fh_case() {  # <label> <want> <branch> <base> [VAR=value...]
+nb_case() {  # <label> <want> <branch> <base> [VAR=value...]
     local label="$1" want="$2" got; shift 2
-    got="$(fh "$@")"
-    if [[ "$got" == "$want" ]]; then pass "foreign history: $label"; else fail "foreign history: $label: got [$got], want [$want]"; fi
+    got="$(nb "$@")"
+    if [[ "$got" == "$want" ]]; then pass "named base: $label"; else fail "named base: $label: got [$got], want [$want]"; fi
 }
-fh_case "no commits of its own, started from the base: none" "0 0 [] []" b1 rel
-fh_case "started from the base, with its own commits: none" "0 0 [] []" b2 rel
-fh_case "started from origin's default (main) while the base is rel: main's commit is foreign, main named first" "1 1 [main (1), ahead (1), b7 (1) and 1 more] []" b3 rel
-fh_case "a base that is an ancestor of main (old), branch from main: main's commit is foreign" "1 1 [main (1), ahead (1), b7 (1) and 1 more] []" b4 old
-fh_case "main is an ancestor of the base (ahead), branch from main: its own commit only, none" "0 0 [] []" b5 ahead
-fh_case "the issue branch pushed to origin, started from the base: its own commits are not foreign" "0 0 [] []" b6 rel
-fh_case "the issue branch pushed to origin, started from main: main's commit still foreign (b7 itself not named)" "1 1 [main (1), ahead (1), dev2 (1)] []" b7 rel
-fh_case "two origin branches carry the foreign commits: the one with most first" "1 2 [dev2 (2), main (1), ahead (1) and 1 more] []" b10 rel
-fh_case "a base origin does not have" "2 0 [] [origin has no branch 'nosuch']" b2 nosuch
-fh_case "no local branch of that name" "3 0 [] [$FH has no branch 'nobranch']" nobranch rel
-gitq -C "$FH" remote set-url origin "file:///nonexistent/fh-origin.git"
-got="$(fh b2 rel)"
-if [[ "$got" == "3 0 [] ["*"nonexistent"*"]" ]]; then
-    pass "foreign history: origin unreachable: not decided (3), git's reason"
+nb_case "started from the named base, own commits: accepted" "0 []" fromrel rel
+nb_case "started from main, named main: accepted" "0 []" frommain main
+nb_case "started from main, named rel: accepted too (history in common; where it started is the owner's word)" "0 []" frommain rel
+nb_case "an orphan branch: refused, no history in common" "4 ['orphan' has no commit in common with origin's 'rel']" orphan rel
+nb_case "a base origin does not have: refused" "2 [origin has no branch 'nosuch']" fromrel nosuch
+nb_case "no local branch of that name: refused" "1 [$NB has no branch 'nobranch']" nobranch rel
+gitq -C "$NB" remote set-url origin "file:///nonexistent/nb-origin.git"
+got="$(nb fromrel rel)"
+if [[ "$got" == "3 [fetching 'rel' failed ("*"nonexistent"*"), and origin could not be asked; it had 'rel' at the last fetch (origin/rel)]" ]]; then
+    pass "named base: origin unreachable: not decided (3), the whole reason"
 else
-    fail "foreign history: origin unreachable: got [$got]"
+    fail "named base: origin unreachable: got [$got]"
 fi
-gitq -C "$FH" remote set-url origin "$FHO"
-got="$(fh b2 rel PATH="$GITSTUB:$PATH" STUB_FETCH=fail)"
-if [[ "$got" == "3 0 [] [fatal: stub fetch failed]" ]]; then
-    pass "foreign history: the fetch fails: not decided (3), git's line"
+gitq -C "$NB" remote set-url origin "$NBO"
+OUT="$(bash -c '
+    source "$1/.agent/scripts/_worktree_helpers.sh"
+    for b in main feature/x "" -foo HEAD "a..b" "@{-1}" "x y"; do
+        if wt_valid_branch_name "$b"; then echo "[$b] ok"; else echo "[$b] no"; fi
+    done' _ "$SB" 2>&1)"
+if [[ "$OUT" == "[main] ok"$'\n'"[feature/x] ok"$'\n'"[] no"$'\n'"[-foo] no"$'\n'"[HEAD] no"$'\n'"[a..b] no"$'\n'"[@{-1}] no"$'\n'"[x y] no" ]]; then
+    pass "wt_valid_branch_name: empty, -foo, HEAD, a..b, @{-1} and a space refused"
 else
-    fail "foreign history: fetch fails: got [$got]"
-fi
-if [[ "$(git -C "$FH" for-each-ref refs/remotes/)" == "$FH_TRACKING_BEFORE" && -z "$(git -C "$FH" for-each-ref refs/wt-base-check/)" ]]; then
-    pass "foreign history: the checkout's remote-tracking refs are unchanged and no check refs are left"
-else
-    fail "foreign history: refs changed: $(git -C "$FH" for-each-ref refs/wt-base-check/ refs/remotes/)"
+    fail "wt_valid_branch_name: $OUT"
 fi
 
 echo

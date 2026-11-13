@@ -474,91 +474,52 @@ wt_set_manifest_base() {
     return 1
 }
 
-# Whether <branch> in <checkout> started from origin's <base> (issue 429),
-# asked before a base is recorded for a branch this run did not start
-# there: a worktree made before base= existed (dispatch_phase.sh base) or
-# an owning branch that already existed at creation (worktree_create.sh).
-# A commit in origin/<base>..<branch> that another branch on origin also
-# has is foreign: the branch carries history the base does not, so a pull
-# request against <base> would carry it too. Commits only <branch> has
-# (its own work, pushed to origin's <branch> or not) are not foreign; the
-# issue branch on origin and <base> itself are left out of "another".
-#
-# One bounded fetch (wt_bounded_git) of every origin branch, into a private
-# ref namespace removed again before returning: the checkout's own
-# remote-tracking refs are neither read (they can be stale) nor changed.
-#
-# Sets WT_FOREIGN_COUNT (foreign commits), WT_FOREIGN_FROM (the origin
-# branches they are on, most first and, among equals, the one with the
-# fewest commits <branch> lacks first: "main (3), dev (1)"; at most three
-# named, then "and N more") and WT_FOREIGN_REASON (one line, for 2 and 3).
-# Returns 0 none foreign; 1 foreign; 2 origin has no branch <base>; 3 not
-# decided (origin did not answer, or <checkout> has no branch <branch>).
-# Usage: wt_base_foreign_history <checkout> <branch> <base>
-# shellcheck disable=SC2034  # the WT_FOREIGN_* results are read by callers
-wt_base_foreign_history() {
-    local checkout="$1" branch="$2" base="$3"
-    local ns="refs/wt-base-check/$$-${RANDOM}" err rc=0 tip
-    WT_FOREIGN_COUNT=0
-    WT_FOREIGN_FROM=""
-    WT_FOREIGN_REASON=""
+# Whether a branch name is one this workspace takes as a base (issue 429):
+# not empty, valid as a branch to git (`check-ref-format --branch`, which
+# refuses "HEAD" and a leading "-") and as refs/heads/<name> (which refuses
+# the @{-N} shorthand --branch alone would expand).
+# Usage: wt_valid_branch_name <name> && ...
+wt_valid_branch_name() {
+    [ -n "${1:-}" ] \
+        && git check-ref-format --branch "$1" >/dev/null 2>&1 \
+        && git check-ref-format "refs/heads/$1" >/dev/null 2>&1
+}
+
+# The two checks before a NAMED base (--base) is recorded for a branch this
+# workspace did not start from it (issue 429): a worktree made before base=
+# existed, on resume (dispatch_phase.sh base), or an owning branch that
+# already existed at creation (worktree_create.sh). Where such a branch
+# started cannot be known, so nothing is inferred from the pin; the owner
+# names the base, and only what can be checked is checked:
+#   1. origin has the branch <base> (wt_fetch_named_branch, bounded; it
+#      fetches origin/<base>);
+#   2. <branch> has a common ancestor with origin/<base>, so a pull request
+#      from one to the other can exist.
+# Sets WT_BASE_CHECK_REASON (one line, no final period) when not 0.
+# Returns 0 both hold; 1 <checkout> has no branch <branch>; 2 origin has no
+# branch <base>; 3 origin could not be asked (offline, timed out); 4 no
+# common ancestor.
+# Usage: wt_check_named_base <checkout> <branch> <base>
+# shellcheck disable=SC2034  # WT_BASE_CHECK_REASON is read by callers
+wt_check_named_base() {
+    local checkout="$1" branch="$2" base="$3" tip
+    WT_BASE_CHECK_REASON=""
     tip="$(git -C "$checkout" rev-parse --verify --quiet "refs/heads/$branch^{commit}" 2>/dev/null)" || tip=""
     if [ -z "$tip" ]; then
-        WT_FOREIGN_REASON="$checkout has no branch '$branch'"
-        return 3
+        WT_BASE_CHECK_REASON="$checkout has no branch '$branch'"
+        return 1
     fi
-    err="$(wt_bounded_git -C "$checkout" fetch --quiet --no-tags --no-write-fetch-head origin "+refs/heads/*:$ns/*" 2>&1)" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-        WT_FOREIGN_REASON="$(wt_fetch_why "$rc" "${err:-git fetch exited $rc}")"
-        git -C "$checkout" for-each-ref --format='delete %(refname)' "$ns/" 2>/dev/null \
-            | git -C "$checkout" update-ref --stdin 2>/dev/null || true
-        return 3
+    wt_fetch_named_branch "$checkout" "$base" || true
+    case "$WT_FETCH_OUTCOME" in
+        present) ;;
+        absent) WT_BASE_CHECK_REASON="$WT_FETCH_REASON"; return 2 ;;
+        *) WT_BASE_CHECK_REASON="$WT_FETCH_REASON"; return 3 ;;
+    esac
+    if [ -z "$(git -C "$checkout" merge-base "$tip" "refs/remotes/origin/$base" 2>/dev/null)" ]; then
+        WT_BASE_CHECK_REASON="'$branch' has no commit in common with origin's '$base'"
+        return 4
     fi
-    local status=0 ref name mbs n extra all_mbs="" total
-    local -a found=()
-    if ! git -C "$checkout" rev-parse --verify --quiet "$ns/$base^{commit}" >/dev/null 2>&1; then
-        WT_FOREIGN_REASON="origin has no branch '$base'"
-        status=2
-    else
-        while IFS= read -r ref; do
-            [ -n "$ref" ] || continue
-            name="${ref#"$ns/"}"
-            [ "$name" = "$base" ] && continue
-            [ "$name" = "$branch" ] && continue
-            mbs="$(git -C "$checkout" merge-base --all "$tip" "$ref" 2>/dev/null | tr '\n' ' ')" || mbs=""
-            [ -n "$mbs" ] || continue
-            # shellcheck disable=SC2086  # merge bases are hex ids
-            n="$(git -C "$checkout" rev-list --count $mbs "^$ns/$base" 2>/dev/null)" || n=0
-            if [ "${n:-0}" -gt 0 ]; then
-                # Ties are named closest first: the branch with the fewest
-                # commits <branch> does not have (main, not a branch made
-                # from main since).
-                extra="$(git -C "$checkout" rev-list --count "$ref" "^$tip" 2>/dev/null)" || extra=0
-                found+=("$n $extra $name")
-                all_mbs="$all_mbs $mbs"
-            fi
-        done < <(git -C "$checkout" for-each-ref --format='%(refname)' "$ns/")
-        if [ "${#found[@]}" -gt 0 ]; then
-            # shellcheck disable=SC2086
-            total="$(git -C "$checkout" rev-list --count $all_mbs "^$ns/$base" 2>/dev/null)" || total=""
-            WT_FOREIGN_COUNT="${total:-?}"
-            local line i=0 more=0
-            while IFS= read -r line; do
-                [ -n "$line" ] || continue
-                i=$((i + 1))
-                if [ "$i" -le 3 ]; then
-                    WT_FOREIGN_FROM="${WT_FOREIGN_FROM:+$WT_FOREIGN_FROM, }${line#* * } (${line%% *})"
-                else
-                    more=$((more + 1))
-                fi
-            done < <(printf '%s\n' "${found[@]}" | sort -k1,1nr -k2,2n -k3,3)
-            [ "$more" -gt 0 ] && WT_FOREIGN_FROM="$WT_FOREIGN_FROM and $more more"
-            status=1
-        fi
-    fi
-    git -C "$checkout" for-each-ref --format='delete %(refname)' "$ns/" 2>/dev/null \
-        | git -C "$checkout" update-ref --stdin 2>/dev/null || true
-    return "$status"
+    return 0
 }
 
 # Read the manifest for a worktree dir. Prints entry lines (without the
@@ -910,15 +871,17 @@ wt_add_new_branch() {
 # hold unpushed or stale commits there), nor the default branch in its
 # place. A '$branch' that already exists locally or on origin is checked
 # out as without a base. WT_ADD_STARTED_FROM_BASE is true after a success
-# only when this call started '$branch' at origin's <base_branch>: the
-# caller records base= for it as it is, and checks an existing branch
-# first (wt_base_foreign_history).
+# only when this call started '$branch' at origin's <base_branch>, and
+# WT_ADD_STARTED_FROM_PARENT only when it started '$branch' from
+# <parent_branch>: the caller records base= from these, and for an
+# existing branch only a named base after wt_check_named_base.
 # Usage: _wt_add_repo <origin_repo> <dest_dir> <branch> [<parent_branch>] [<base_branch>]
 _wt_add_repo() {
     local origin="$1" dest="$2" branch="$3" parent_branch="${4:-}" base_branch="${5:-}"
-    local out="" rc=1 made_branch=false started_from_base=false
+    local out="" rc=1 made_branch=false started_from_base=false started_from_parent=false
     WT_ADD_PARENT_LOOKED_UP=false
     WT_ADD_STARTED_FROM_BASE=false
+    WT_ADD_STARTED_FROM_PARENT=false
 
     if git -C "$origin" show-ref --verify --quiet "refs/heads/$branch"; then
         out="$(git -C "$origin" worktree add "$dest" "$branch" 2>&1)"; rc=$?
@@ -983,6 +946,7 @@ _wt_add_repo() {
             if [ -n "$base" ]; then
                 out="$(wt_add_new_branch "$origin" "$dest" "$branch" "$base" 2>&1)" || arc=$?
                 rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
+                started_from_parent=true
             elif start="$(_wt_default_start_point "$origin")"; then
                 out="$(wt_add_new_branch "$origin" "$dest" "$branch" "$start" --no-track 2>&1)" || arc=$?
                 rc=$arc; if [ "$arc" -ne 2 ]; then made_branch=true; fi
@@ -995,6 +959,8 @@ _wt_add_repo() {
     if [ "$rc" -eq 0 ]; then
         # shellcheck disable=SC2034  # read by worktree_create.sh
         WT_ADD_STARTED_FROM_BASE="$started_from_base"
+        # shellcheck disable=SC2034  # read by worktree_create.sh
+        WT_ADD_STARTED_FROM_PARENT="$started_from_parent"
         return 0
     fi
     echo "ERROR: could not create a worktree for $origin at $dest (branch '$branch')" >&2

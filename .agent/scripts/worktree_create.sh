@@ -134,9 +134,10 @@ PARENT_ISSUE_NUM=""
 # project's pin of the owning repository (pr_base_for); a package worktree
 # with an owning entry always has one. The owning entry's new branch
 # starts from origin's copy of it (_wt_add_repo's strict start path) and
-# the manifest header records it as base=; an owning branch that already
-# existed is recorded only after wt_base_foreign_history finds no history
-# of another origin branch on it. run-issue passes what
+# the manifest header records it as base=; for an owning branch that
+# already existed only a --base given by name is recorded, after
+# wt_check_named_base. With --parent-issue the pin is not read (the branch
+# starts from the parent's). run-issue passes what
 # `dispatch_phase.sh base` printed (the project's pin, or the owner's
 # --base override).
 BASE_BRANCH=""
@@ -202,9 +203,10 @@ show_usage() {
     echo "                        branch starts from origin/<branch> (never the local copy, never"
     echo "                        origin's default branch); creation stops when origin lacks it or"
     echo "                        does not answer, also with --allow-unverified-branch. An owning"
-    echo "                        branch that already exists is checked for history of another"
-    echo "                        origin branch first. Recorded as base= in .worktree-repos."
-    echo "                        Not with --parent-issue"
+    echo "                        branch that already exists needs --base naming where it started"
+    echo "                        (checked: on origin, history in common). Recorded as base= in"
+    echo "                        .worktree-repos. Not with --parent-issue (the parent's branch is"
+    echo "                        the start then)"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
@@ -287,11 +289,11 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --base)
-            if [[ -z "${2:-}" || "$2" == -* ]]; then
+            if [[ $# -lt 2 || -z "$2" ]]; then
                 echo "Error: --base requires a branch name"
                 exit 1
             fi
-            if ! git check-ref-format "refs/heads/$2" >/dev/null 2>&1; then
+            if ! wt_valid_branch_name "$2"; then
                 echo "Error: --base '$2' is not a valid branch name"
                 exit 1
             fi
@@ -452,6 +454,15 @@ if [ -n "$LAYER" ] || [ -n "$PACKAGE_REPOS" ]; then
 fi
 if [ -n "$BASE_BRANCH" ] && [ -z "$LAYER" ]; then
     echo "Error: --base is only valid for a package worktree (--type project --layer <l> --package-repos <a,b>)"
+    exit 1
+fi
+# --branch names the issue's branch in the one repository a worktree is of.
+# In a package worktree the adapter names every repository's branch
+# (feature/issue-<N> for the owning one, feature/<repo>-issue-<N> for each
+# sibling), so a custom name matches no entry: the owning branch would go
+# unrecognised and start from origin's default branch with no base.
+if [ -n "$BRANCH_NAME" ] && [ -n "$LAYER" ]; then
+    echo "Error: --branch is not valid for a package worktree (--layer): the adapter names each repository's branch (feature/issue-<N> for the repository that owns the issue), and a package worktree's owning branch must start from its base"
     exit 1
 fi
 
@@ -725,17 +736,20 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Error: --base $BASE_BRANCH is the base of the owning repository's branch '$BRANCH_NAME', and none of --package-repos $PACKAGE_REPOS is on it (the repository of $ISSUE_DISPLAY_REF is not among them)"
         exit 1
     fi
-    # A package worktree's owning branch always has a base (issue 429): the
-    # --base given, else the project's pin of the owning repository
-    # (_pr_base.sh pr_base_for, adapter repo_pin). Neither giving a branch
-    # refuses here, before anything is made: the branch is never started
-    # from origin's default branch by omission. Siblings get no base.
+    # A package worktree's NEW owning branch always starts from a base (issue
+    # 429): the --base given, else the project's pin of the owning
+    # repository (_pr_base.sh pr_base_for, adapter repo_pin). Neither giving
+    # a branch refuses here, before anything is made: the branch is never
+    # started from origin's default branch by omission. With --parent-issue
+    # the pin is not read: the branch starts from the parent's branch, as a
+    # sub-issue's always has. Siblings get no base. An owning branch that
+    # already exists is not started here; see the manifest write below.
     OWN_REL=""
     if [ -n "$LAYER" ]; then
         OWN_REL="$(awk -F'\t' -v b="$BRANCH_NAME" '$3 == b && $2 != "." { print $2; exit }' <<< "$REPO_LINES")"
     fi
     BASE_SOURCE=""
-    if [ -n "$OWN_REL" ] && [ -z "$BASE_BRANCH" ]; then
+    if [ -n "$OWN_REL" ] && [ -z "$BASE_BRANCH" ] && [ -z "$PARENT_ISSUE_NUM" ]; then
         # shellcheck source=_pr_base.sh
         source "$SCRIPT_DIR/_pr_base.sh"
         PB_ARGS=(--repo "$(basename "$OWN_REL")" --layer "$LAYER")
@@ -806,7 +820,9 @@ echo "  Repository: $REPO_SLUG"
 echo "  Type:       $WORKTREE_TYPE"
 echo "  Branch:     $BRANCH_NAME"
 [ -n "$PARENT_BRANCH" ] && echo "  Parent:     #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
-[ -n "$BASE_BRANCH" ] && echo "  Base:       $BASE_BRANCH (from $BASE_SOURCE; the owning repository's new branch starts from origin/$BASE_BRANCH)"
+[ -n "$BASE_BRANCH" ] && echo "  Base:       $BASE_BRANCH (from $BASE_SOURCE; a new owning branch starts from origin/$BASE_BRANCH)"
+[ -n "$LAYER" ] && [ -n "$PARENT_BRANCH" ] && [ -n "$OWN_REL" ] \
+    && echo "  Base:       $PARENT_BRANCH (the parent's branch: a new owning branch starts from it, and base= records it when found, as a sub-issue's draft PR targets it)"
 echo "  Path:       $WORKTREE_DIR"
 echo ""
 
@@ -844,6 +860,7 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     WT_ADDED_ENTRIES=()
     OWN_DEST=""
     OWN_STARTED_FROM_BASE=false
+    OWN_STARTED_FROM_PARENT=false
 
     _wt_rollback_package_worktree() {
         local rc=$?
@@ -889,9 +906,10 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             fi
             exit 1
         fi
-        if [ -n "$WR_BASE" ]; then
+        if [ -n "$LAYER" ] && [ "$WR_BRANCH" = "$BRANCH_NAME" ] && [ "$WR_REL" != "." ]; then
             OWN_DEST="$WR_DEST"
             OWN_STARTED_FROM_BASE="$WT_ADD_STARTED_FROM_BASE"
+            OWN_STARTED_FROM_PARENT="$WT_ADD_STARTED_FROM_PARENT"
         fi
         WT_ADDED_ENTRIES+=("$WR_DEST|$WR_ORIGIN|$WR_BRANCH|$WR_BRANCH_EXISTED")
         if [ "${#WT_ADDED_ENTRIES[@]}" -eq 1 ]; then
@@ -928,34 +946,46 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         IFS=$'\t' read -r _rl_origin _rl_rel _rl_branch <<< "$REPO_LINES"
         [ "$_rl_rel" = "." ] && _WRITE_MANIFEST=false
     fi
-    # base= is recorded only for a branch known to have started there:
-    # this run started it at origin's base, or, for an owning branch that
-    # already existed (locally or on origin), it carries no history of
-    # another origin branch beyond the base (wt_base_foreign_history).
-    # Anything else stops, and the trap rolls back what this run added.
+    # base= is recorded only for a base known or named (issue 429):
+    #   - this run started the owning branch at origin's base: that base;
+    #   - this run started it from the parent's branch (--parent-issue):
+    #     the parent's branch when it is found (locally or on origin,
+    #     PARENT_BRANCH_FOUND), the branch a sub-issue's draft PR targets
+    #     (check_existing_branch_parent's rule), else nothing;
+    #   - the owning branch already existed (locally or on origin): where
+    #     it started cannot be known, so the pin is not trusted; only a
+    #     --base given by name is recorded, after wt_check_named_base
+    #     (origin has it, and the branch shares history with it). Without
+    #     --base, or when a check fails, creation stops and the trap rolls
+    #     back what this run added (the existing branch is kept).
     MANIFEST_BASE=""
     if [ -n "$OWN_DEST" ]; then
         if [ "$OWN_STARTED_FROM_BASE" = true ]; then
             MANIFEST_BASE="$BASE_BRANCH"
+        elif [ -n "$PARENT_BRANCH" ]; then
+            if [ "$OWN_STARTED_FROM_PARENT" = true ] && [ "$PARENT_BRANCH_FOUND" = true ]; then
+                MANIFEST_BASE="$PARENT_BRANCH"
+            else
+                echo "Note: no base= recorded: '$BRANCH_NAME' was not started from the parent's branch '$PARENT_BRANCH' by this run (it already existed, or the parent was not found); dispatch_phase.sh base --base <branch> records one later." >&2
+            fi
+        elif [ "$BASE_SOURCE" != "--base" ]; then
+            echo "ERROR: '$BRANCH_NAME' already existed (locally or on origin), so this workspace cannot know which branch it started from, and does not take the pin ($BASE_BRANCH) for it. Nothing is recorded and this worktree is rolled back. Pass --base naming the branch it was started from, or start '$BRANCH_NAME' anew (delete it locally and on origin first)." >&2
+            exit 1
         else
-            _fh_rc=0
-            wt_base_foreign_history "$OWN_DEST" "$BRANCH_NAME" "$BASE_BRANCH" || _fh_rc=$?
-            case "$_fh_rc" in
+            _nb_rc=0
+            wt_check_named_base "$OWN_DEST" "$BRANCH_NAME" "$BASE_BRANCH" || _nb_rc=$?
+            case "$_nb_rc" in
                 0) MANIFEST_BASE="$BASE_BRANCH" ;;
-                1)
-                    echo "ERROR: '$BRANCH_NAME' already existed and carries $WT_FOREIGN_COUNT commit(s) that origin's '$BASE_BRANCH' does not have and origin's $WT_FOREIGN_FROM has: it did not start from '$BASE_BRANCH' (from $BASE_SOURCE), and a pull request against '$BASE_BRANCH' would carry them. Nothing is recorded and this worktree is rolled back. Pass the --base it was started from, or start '$BRANCH_NAME' anew from '$BASE_BRANCH' (delete it locally and on origin first)." >&2
-                    exit 1
-                    ;;
-                2)
-                    echo "ERROR: '$BRANCH_NAME' already existed, and whether it started from '$BASE_BRANCH' (from $BASE_SOURCE) cannot be checked: $WT_FOREIGN_REASON. Nothing is recorded and this worktree is rolled back. Pass --base with the branch origin has that it started from." >&2
+                3)
+                    echo "ERROR: '$BRANCH_NAME' already existed, and --base $BASE_BRANCH could not be checked: $WT_BASE_CHECK_REASON. Nothing is recorded and this worktree is rolled back. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
                     exit 1
                     ;;
                 *)
-                    echo "ERROR: '$BRANCH_NAME' already existed, and whether it started from '$BASE_BRANCH' (from $BASE_SOURCE) could not be checked: $WT_FOREIGN_REASON. Nothing is recorded and this worktree is rolled back. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
+                    echo "ERROR: '$BRANCH_NAME' already existed, and --base $BASE_BRANCH cannot be its base: $WT_BASE_CHECK_REASON. Nothing is recorded and this worktree is rolled back. Pass --base naming the branch it was started from." >&2
                     exit 1
                     ;;
             esac
-            unset _fh_rc
+            unset _nb_rc
         fi
     fi
     if [ "$_WRITE_MANIFEST" = true ]; then
