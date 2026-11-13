@@ -2797,3 +2797,25 @@ Outside scope, not counted (already on main, worked out from the code, not run):
 **Decision**: publish
 
 Round 4 approved with no must-fix and no suggestions. One older behaviour already on main was noted outside scope (the comments-only duplicate check takes the last comment of the same entry type); it goes into the pull request body as a known gap.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 08:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `7836be6`
+**Sources**: 6 (Local Review (Pre-Push) rounds 1-4 of this diff @ `43a724a`, `2d17b3b`, `8eb34cd`, `f98c44e` (round 4 covers `7836be6` via bookkeeping); GitHub reviews: none (Copilot skipped, disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: the four pre-push reviews after the `## Checkpoint` with `After: plan`, `Decision: proceed`. The helper's five stale entries (`a6c2d2f`, `3ab6be9`, `8d563c2`, `0144179`, `7b85fe7`) belong to the merged PRs 445, 456 and 460 and are out of scope; not re-triaged.
+
+Rounds 1-3 of this diff: every finding is ticked. Round 1: 2 must-fix and 5 suggestions fixed; round 2: 3 must-fix and 3 suggestions fixed; round 3: 1 must-fix and 2 suggestions fixed, each confirmed by round 4 (test_merge_pr_gate 158/0, test_merge_pr 150/0, test_package_issue_loop 220/0, run by the round-4 sub-review). The follow-up-issue suggestion carried through rounds 1-3 is ticked as deferred to the owner (no issue opened). Round 4 approved; its only box, "No issues found. LGTM.", is a placeholder, not a finding.
+
+CI at triage: of 8 check runs on `7836be6`, both Validate Documentation runs succeeded; Lint (pre-commit), Validate Adapter Contract and ros-manifest tests (two runs each) had not concluded. Not waited for.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) round 4 @ `f98c44e`, out-of-scope note; pre-existing on main) When no timeline is read for the PR (`_gate_progress` empty: a sibling or off-branch owning checkout, no worktree), the comments-only duplicate check selects the last comment whose heading is the same entry type (`startswith("## " + etype)`), not the newest record of either type. Input: comments `## Merge (unreviewed)` with conditions A, then `## Merge (report-only)` with conditions A; a `--force-unreviewed` run with conditions A skips its record although the newest record is the report-only one, so the bypass is not recorded as the latest state. Same code on main (`merge_pr.sh` 976-986 there); this diff does not widen its reach (it narrows it: owning package PRs now read the timeline when on-branch). Recommendation: fix in this PR, since it is a few lines: select the last comment starting with either `## Merge (report-only)` or `## Merge (unreviewed)` (as the owning branch already does at line 1259), skip only when its type equals `etype` and its Conditions match; add one gate test mirroring pkg-18's comment-only case. If the owner keeps scope, track it as a follow-up issue in the workspace repo (not opened here). — `.agent/scripts/merge_pr.sh:1287-1297`
+
+### False positives
+- None.
