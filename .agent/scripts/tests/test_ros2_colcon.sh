@@ -3228,6 +3228,122 @@ test_mr_source_lock() {
     assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
 }
 
+test_mr_pin_fd_not_inherited() {
+    echo "TEST: manifest route: vcs, colcon and git started after the pin do not inherit its descriptor (fd 8)"
+    local sb rc realgit tool
+    if ! command -v flock >/dev/null 2>&1 || [ ! -d /proc/self/fd ]; then
+        echo "  SKIPPED: needs flock and /proc"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    realgit="$(command -v git)"
+    mkdir -p "$sb/fdbin"
+    for tool in vcs colcon; do
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "echo $tool >> \"$sb/ran.log\"" \
+            "[ -e /proc/self/fd/8 ] && echo $tool >> \"$sb/fd8.log\"" \
+            "exec \"$sb/bin/$tool\" \"\$@\"" > "$sb/fdbin/$tool"
+    done
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo git >> \"$sb/ran.log\"" \
+        "[ -e /proc/self/fd/8 ] && echo \"git \$*\" >> \"$sb/fd8.log\"" \
+        "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
+    chmod +x "$sb/fdbin/"*
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" init --quiet
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "sync: exit 0" "0" "$rc"
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
+        "$sb/.agent/scripts/adapter" --project p11 build >/dev/null 2>&1) || rc=$?
+    assert_eq "build: exit 0" "0" "$rc"
+    assert_contains "vcs ran" "vcs" "$(cat "$sb/ran.log")"
+    assert_contains "colcon ran" "colcon" "$(cat "$sb/ran.log")"
+    assert_contains "git ran" "git" "$(cat "$sb/ran.log")"
+    assert_eq "none of them got fd 8" "" "$(cat "$sb/fd8.log" 2>/dev/null)"
+}
+
+test_mr_swap_failures_and_unguarded_leftovers() {
+    echo "TEST: manifest route: a failed mv probe changes nothing; a failed swap without -T/-h says the link is gone; a directory that cannot be locked is said once; without flock at most two generated dirs remain and the replaced one is kept"
+    local sb out rc gen cfg before realmv realmktemp realflock tool i prev
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_one
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    mkdir -p "$sb/stub"
+    # The probe's scratch directory cannot be made: an error, nothing changed.
+    realmktemp="$(command -v mktemp)"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *.mv-probe.*) echo "mktemp: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmktemp\" \"\$@\"" > "$sb/stub/mktemp"
+    chmod +x "$sb/stub/mktemp"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_two
+    rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "probe fails: exit 1" "1" "$rc"
+    assert_contains "probe fails: said, nothing changed" "cannot probe how mv renames a link in $cfg (above); nothing changed" "$out"
+    assert_eq "probe fails: the link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "probe fails: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "probe fails: no new generated dir" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    rm -f "$sb/stub/mktemp"
+    # An mv with neither -T nor -h whose rename fails after the old link was removed.
+    realmv="$(command -v mv)"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" -T "*|*" -fh "*) echo "mv: illegal option" >&2; exit 64 ;; esac' \
+        'case " $* " in *"/manifest-resolved ") echo "mv: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/stub/mv"
+    chmod +x "$sb/stub/mv"
+    rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "no -T/-h, rename fails: exit 1" "1" "$rc"
+    assert_contains "no -T/-h, rename fails: says the link is gone" "there is no resolved manifest link now; run sync again" "$out"
+    assert_not_contains "no -T/-h, rename fails: never says nothing changed" "nothing changed" "$out"
+    assert_eq "no -T/-h, rename fails: indeed no link" "no" "$([ -L "$gen" ] && echo yes || echo no)"
+    rm -f "$sb/stub/mv"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "then: sync puts the link back" "0" "$rc"
+    assert_contains "then: the new result live" "mark_two" "$(cat "$gen/repos/core.repos")"
+    if command -v flock >/dev/null 2>&1; then
+        # flock cannot lock a directory here: nothing removed, said once per run.
+        realflock="$(command -v flock)"
+        printf '%s\n' '#!/usr/bin/env bash' \
+            'case " $* " in *" -E 75 "*) echo "flock: simulated failure" >&2; exit 66 ;; esac' \
+            "exec \"$realflock\" \"\$@\"" > "$sb/stub/flock"
+        chmod +x "$sb/stub/flock"
+        mkdir -p "$cfg/manifest-resolved.gen-Old111" "$cfg/manifest-resolved.gen-Old222"
+        rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "no directory lock: sync exit 0" "0" "$rc"
+        assert_eq "no directory lock: said once" "1" "$(printf '%s\n' "$out" | grep -c 'WARNING: cannot lock or remove')"
+        assert_contains "no directory lock: names the remedy" "remove those the link manifest-resolved does not point at by hand" "$out"
+        assert_eq "no directory lock: nothing removed" "yes" "$([ -d "$cfg/manifest-resolved.gen-Old111" ] && [ -d "$cfg/manifest-resolved.gen-Old222" ] && echo yes || echo no)"
+        rm -f "$sb/stub/flock"
+        run_mr "$sb" sync >/dev/null 2>&1
+        assert_eq "with a lock again: the sweep removes them" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    fi
+    # No flock at all: the directory just replaced is kept, older ones removed.
+    mkdir -p "$sb/isolatedbin"
+    for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
+        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    for i in 1 2 3; do
+        prev="$(readlink "$gen")"
+        write_mr_manifest "$sb/m/manifest.yaml" "mark_unlocked_$i"
+        rc=0; (cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+        assert_eq "no flock, sync $i: exit 0" "0" "$rc"
+        assert_eq "no flock, sync $i: the replaced directory kept" "yes" "$([ -f "$cfg/$prev/layers.txt" ] && echo yes || echo no)"
+        assert_eq "no flock, sync $i: at most two generated dirs" "2" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+        assert_contains "no flock, sync $i: the new result live" "mark_unlocked_$i" "$(cat "$gen/repos/core.repos")"
+    done
+}
+
 test_mr_swap_interrupt_and_sweep() {
     echo "TEST: manifest route: an interrupt just after the link swap keeps the new directory; BSD mv -h swaps; a killed run's leftovers are swept"
     local sb out rc gen realmv cfg live before
@@ -3582,6 +3698,8 @@ mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up
 mr_test test_mr_swap_interrupt_and_sweep
+mr_test test_mr_swap_failures_and_unguarded_leftovers
+mr_test test_mr_pin_fd_not_inherited
 mr_test test_mr_preflight_before_any_fetch
 mr_test test_mr_source_lock
 mr_test test_mr_lock_fd_not_inherited

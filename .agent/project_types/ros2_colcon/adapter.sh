@@ -100,8 +100,8 @@ _rc_manifest_dir() {
 # once, and otherwise leaves it to the sweep. A directory removed between
 # reading the link and taking the lock is noticed (no layers.txt) and the
 # link read again. A link the adapter did not write (to another name) is
-# read through, unpinned. fd 8 is inherited by children (colcon, git): one
-# that outlives the run only delays the sweep of that directory.
+# read through, unpinned. The programs the adapter starts (git, vcs,
+# colcon, the resolver) run through _rc_nofd, so none inherits fd 8.
 _rc_pin_manifest_dir() {
     local configs link target i
     [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
@@ -114,7 +114,12 @@ _rc_pin_manifest_dir() {
         [[ "$target" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] || return 0
         if command -v flock >/dev/null 2>&1; then
             { exec 8<"$configs/$target"; } 2>/dev/null || continue
-            flock -s 8 9>&- || { exec 8<&-; return 0; }
+            if ! flock -s 8 9>&-; then
+                exec 8<&-
+                echo "WARNING: cannot take a shared lock on $configs/$target (flock on a directory failed here); this run reads it unguarded, and a sync meanwhile may replace it" >&2
+                _RC_MDIR_PIN="$configs/$target"
+                return 0
+            fi
             _RC_MDIR_FD=1
         fi
         if [ -f "$configs/$target/layers.txt" ]; then
@@ -133,18 +138,27 @@ _rc_unpin_manifest_dir() {
     _RC_MDIR_PIN=""
 }
 
-# Remove a generated directory no run is reading: with flock, only when an
-# exclusive lock on it is free at once (a reader's shared lock keeps it,
-# for a later sweep); without flock, at once (unprotected, see
-# "Concurrency" in the manifest-route header).
+# Run a program without the reader pin (fd 8) or the source lock (fd 9),
+# so a child that outlives the adapter (git's auto gc, a ROS daemon a test
+# starts) holds neither.
+_rc_nofd() {
+    "$@" 8<&- 9>&-
+}
+
+# Remove a generated directory no run is reading (with flock only; the
+# caller never removes one without it): only when an exclusive lock on it
+# is free at once. A reader's shared lock keeps it for a later sweep. When
+# a directory cannot be locked at all, nothing is removed and that is said
+# once per run, so leftovers never pile up unsaid.
 _rc_remove_generated() {
-    local dir="$1"
+    local dir="$1" rc=0
     [ -d "$dir" ] || return 0
-    if command -v flock >/dev/null 2>&1; then
-        flock -x -n "$dir" rm -rf -- "$dir" 9>&- 2>/dev/null || true
-    else
-        rm -rf -- "$dir"
+    flock -x -n -E 75 "$dir" rm -rf -- "$dir" 8<&- 9>&- 2>/dev/null || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 75 ] && [ "${_RC_WARNED_DIRLOCK:-0}" -eq 0 ]; then
+        _RC_WARNED_DIRLOCK=1
+        echo "WARNING: cannot lock or remove $dir (exit $rc); previous results under $(dirname "$dir")/manifest-resolved.gen-* are left: remove those the link manifest-resolved does not point at by hand" >&2
     fi
+    return 0
 }
 
 # Require the manifest dir (dir or resolving symlink) with at least one
@@ -523,7 +537,7 @@ _rc_bootstrap_manifest() {
         # cloned before. Branch is the developer's business (feature work
         # on a Pattern B manifest repo is normal) — report, don't refuse.
         local existing_url existing_branch
-        if ! existing_url="$(git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
+        if ! existing_url="$(_rc_nofd git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
             echo "ERROR: $clone_dir exists but is not a git checkout with an 'origin' remote." >&2
             echo "Remove it (or point bootstrap.yaml elsewhere) and rerun setup." >&2
             return 1
@@ -533,13 +547,13 @@ _rc_bootstrap_manifest() {
             echo "Remove it (or fix git_url in the bootstrap config) and rerun setup." >&2
             return 1
         fi
-        existing_branch="$(git -C "$clone_dir" branch --show-current 2>/dev/null)"
+        existing_branch="$(_rc_nofd git -C "$clone_dir" branch --show-current 2>/dev/null)"
         if [ "$existing_branch" != "$branch" ]; then
             echo "  WARNING: existing checkout is on '${existing_branch:-detached}', bootstrap pins '$branch' — reusing as-is"
         else
             echo "  (already present — reusing existing checkout)"
         fi
-    elif ! git clone -b "$branch" "$git_url" "$clone_dir"; then
+    elif ! _rc_nofd git clone -b "$branch" "$git_url" "$clone_dir"; then
         echo "ERROR: failed to clone $git_url (branch: $branch)" >&2
         return 1
     fi
@@ -601,8 +615,14 @@ _rc_bootstrap_manifest() {
 # (_rc_pin_manifest_dir), holding a shared flock on it, and a directory a
 # run still reads is never removed under it: the run that replaced it
 # leaves it, and a later sweep removes it once no run reads it. Without
-# flock nothing guards a reader: a sync can remove the directory another
-# run is reading.
+# flock no reader is guarded, so a swap never removes the directory it
+# replaces: it removes only older generated directories, so at most two
+# remain (the live one and the one before it), and a run reading one
+# loses it only after two more syncs. Two unlocked setups or syncs at once
+# may still remove each other's directory in progress (that run then
+# fails). Where flock cannot lock a directory at all, nothing is removed
+# and the run says so once. Programs the adapter starts (git, vcs,
+# colcon, the resolver) run through _rc_nofd and inherit neither lock.
 
 # "manifest" when the settings file sets source, else "bootstrap".
 _rc_route() {
@@ -676,7 +696,7 @@ _rc_check_single_source() {
 # a stray copy elsewhere is never used.
 _rc_resolver_bin() {
     local common main="$WORKSPACE_ROOT"
-    common="$(git -C "$WORKSPACE_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+    common="$(_rc_nofd git -C "$WORKSPACE_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
     [ -n "$common" ] && main="${common%/.git}"
     echo "$main/.venv/bin/ros-manifest"
 }
@@ -691,18 +711,18 @@ _RC_CLONE_MARK=ros2-colcon-adapter-commit
 # recorded commit, and no uncommitted change, untracked or ignored file.
 _rc_clone_modified() {
     local clone="$1" url="$2" top real origin gitdir mark head branch st
-    top="$(git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
+    top="$(_rc_nofd git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
     real="$(cd "$clone" 2>/dev/null && pwd -P || true)"
     if [ -z "$top" ] || [ "$top" != "$real" ]; then
         echo "it is not a git clone (a file or directory the adapter did not make)"
         return 0
     fi
-    origin="$(git -C "$clone" remote get-url origin 2>/dev/null || true)"
+    origin="$(_rc_nofd git -C "$clone" remote get-url origin 2>/dev/null || true)"
     if [ "${origin%.git}" != "${url%.git}" ]; then
         echo "its origin is '${origin:-none}', not source $url"
         return 0
     fi
-    gitdir="$(git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
+    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
     if [ ! -e "$gitdir/index" ]; then
         echo "it has no index (never checked out: half-made by an interrupted run)"
         return 0
@@ -712,16 +732,16 @@ _rc_clone_modified() {
         echo "it has no record of the commit the adapter left it at ($gitdir/$_RC_CLONE_MARK)"
         return 0
     fi
-    if branch="$(git -C "$clone" symbolic-ref -q --short HEAD 2>/dev/null)"; then
+    if branch="$(_rc_nofd git -C "$clone" symbolic-ref -q --short HEAD 2>/dev/null)"; then
         echo "HEAD is on the branch '$branch', not detached at ${mark:0:12} where the adapter left it"
         return 0
     fi
-    head="$(git -C "$clone" rev-parse -q --verify HEAD 2>/dev/null || true)"
+    head="$(_rc_nofd git -C "$clone" rev-parse -q --verify HEAD 2>/dev/null || true)"
     if [ "$head" != "$mark" ]; then
         echo "HEAD is at ${head:0:12}, not at ${mark:0:12} where the adapter left it"
         return 0
     fi
-    st="$(git --no-optional-locks -C "$clone" status --porcelain --untracked-files=all --ignored=matching 2>/dev/null | head -n 3)"
+    st="$(_rc_nofd git --no-optional-locks -C "$clone" status --porcelain --untracked-files=all --ignored=matching 2>/dev/null | head -n 3)"
     if [ -n "$st" ]; then
         echo "it has uncommitted changes or untracked files ($(printf '%s' "$st" | tr '\n' ';' | sed 's/;/; /g'))"
         return 0
@@ -770,7 +790,7 @@ _rc_source_fetch() {
         mkdir -p "$(dirname "$clone")" || return 1
         echo "source: cloning $url into $clone"
         created_here=1
-        if ! GIT_TERMINAL_PROMPT=0 git clone --quiet --no-checkout -- "$url" "$clone"; then
+        if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git clone --quiet --no-checkout -- "$url" "$clone"; then
             rm -rf -- "$clone"
             echo "ERROR: cannot clone source $url; nothing changed" >&2
             return 1
@@ -779,29 +799,29 @@ _rc_source_fetch() {
     # Branches and tags in one fetch, pruned (--prune-tags too, so a tag
     # deleted on the remote is seen as gone) and forced: the clone then
     # holds what origin holds, a rewritten branch or moved tag included.
-    if ! GIT_TERMINAL_PROMPT=0 git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
+    if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
         [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
         echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the clone's checkout and the previously resolved manifest, if any, are as they were" >&2
         return 1
     fi
-    if git -C "$clone" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+    if _rc_nofd git -C "$clone" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
         kind=branch
-        sha="$(git -C "$clone" rev-parse "refs/remotes/origin/$ref^{commit}")"
-    elif git -C "$clone" show-ref --verify --quiet "refs/tags/$ref"; then
+        sha="$(_rc_nofd git -C "$clone" rev-parse "refs/remotes/origin/$ref^{commit}")"
+    elif _rc_nofd git -C "$clone" show-ref --verify --quiet "refs/tags/$ref"; then
         kind=tag
-        sha="$(git -C "$clone" rev-parse "refs/tags/$ref^{commit}")"
+        sha="$(_rc_nofd git -C "$clone" rev-parse "refs/tags/$ref^{commit}")"
     elif [[ "$ref" =~ ^[0-9a-fA-F]{7,64}$ ]] \
-        && sha="$(git -C "$clone" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" \
-        && [ -n "$(git -C "$clone" for-each-ref --count=1 --contains "$sha" refs/remotes/origin refs/tags 2>/dev/null)" ]; then
+        && sha="$(_rc_nofd git -C "$clone" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" \
+        && [ -n "$(_rc_nofd git -C "$clone" for-each-ref --count=1 --contains "$sha" refs/remotes/origin refs/tags 2>/dev/null)" ]; then
         kind=commit
     else
         [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
         echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters); the clone's checkout and the resolved manifest are as they were" >&2
         return 1
     fi
-    gitdir="$(git -C "$clone" rev-parse --absolute-git-dir)"
+    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir)"
     old="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
-    if ! git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
+    if ! _rc_nofd git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
         [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
         echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
         return 1
@@ -866,7 +886,7 @@ _rc_manifest_resolve() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    err="$("$bin" resolve --manifest "$_RC_SRC_FILE" --role "$role" --distro "$distro" \
+    err="$(_rc_nofd "$bin" resolve --manifest "$_RC_SRC_FILE" --role "$role" --distro "$distro" \
         --out "$tmp" --layout manifest-dir --cache-dir "$tmp.cache" 2>&1 >/dev/null)" || rc=$?
     rm -rf -- "$tmp.cache"
     [ -n "$err" ] && printf '%s\n' "$err" >&2
@@ -909,18 +929,29 @@ _rc_manifest_resolve() {
     fi
     # The form this mv supports, probed once: GNU mv -T or BSD mv -h, both
     # rename(2) the link over the old one, never into the directory it
-    # points at. A failure of that form is an error that leaves the live
-    # link in place. Only an mv with neither removes the old link first,
-    # leaving a moment with no link.
+    # points at. A failed probe, or a failure of that form, is an error
+    # that leaves the live link in place. Only an mv with neither (the
+    # probe says "none") removes the old link first, leaving a moment with
+    # no link, and a failure then says the link is gone.
     local mvform rc_mv=0
-    mvform="$(_rc_mv_link_form "$configs")"
+    if ! mvform="$(_rc_mv_link_form "$configs")"; then
+        echo "ERROR: cannot probe how mv renames a link in $configs (above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
     case "$mvform" in
         T) mv -T "$tmp.link" "$link" || rc_mv=$? ;;
         h) mv -fh "$tmp.link" "$link" || rc_mv=$? ;;
-        *) rm -f -- "$link"; mv "$tmp.link" "$link" || rc_mv=$? ;;
+        none)
+            rm -f -- "$link"
+            if ! mv "$tmp.link" "$link"; then
+                echo "ERROR: this mv cannot rename a link over another, so the old link $link was removed first, and putting the new one in place failed (above): there is no resolved manifest link now; run sync again" >&2
+                _rc_resolve_cleanup
+                return 1
+            fi ;;
     esac
     if [ "$rc_mv" -ne 0 ]; then
-        echo "ERROR: cannot rename the new link over $link (mv${mvform:+ -$mvform} failed, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        echo "ERROR: cannot rename the new link over $link (mv -$mvform failed, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
         _rc_resolve_cleanup
         return 1
     fi
@@ -928,8 +959,14 @@ _rc_manifest_resolve() {
     trap - EXIT HUP INT TERM
     if [ -n "$prev" ] && [ "$prev" != "$(basename "$tmp")" ] \
         && [[ "$prev" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] && [ -d "$configs/$prev" ]; then
-        _rc_remove_generated "${configs:?}/$prev"
+        if [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ]; then
+            _rc_remove_generated "${configs:?}/$prev"
+        fi
     fi
+    # Without flock no reader is guarded, so the directory just replaced is
+    # kept (a run may still read it) and only older ones are removed: at
+    # most the live directory and the one before it remain.
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] || _rc_prune_unlocked "$configs" "$(basename "$tmp")" "$prev"
     [ -n "$prev" ] && [ "$old_layers" != "$new_layers" ] && _RC_LAYERS_CHANGED=1
     echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
 }
@@ -950,14 +987,17 @@ _rc_resolve_cleanup() {
 
 # Which option of this mv renames a symbolic link to a directory over
 # another such link rather than into the directory: T (GNU), h (BSD), or
-# empty for neither. Probed once per resolve, in a scratch directory
+# none; returns 1 when the probe itself cannot run. Probed once per resolve, in a scratch directory
 # <configs>/.mv-probe.XXXXXX that is removed (and swept if a kill left it).
 _rc_mv_link_form() {
-    local configs="$1" d f form=""
-    d="$(mktemp -d "$configs/.mv-probe.XXXXXX")" || { echo ""; return 0; }
+    local configs="$1" d f form=none
+    d="$(mktemp -d "$configs/.mv-probe.XXXXXX")" || return 1
     for f in T h; do
         rm -rf -- "${d:?}"/*
-        mkdir "$d/t" && ln -s t "$d/old" && ln -s t "$d/new" || break
+        if ! { mkdir "$d/t" && ln -s t "$d/old" && ln -s t "$d/new"; }; then
+            rm -rf -- "$d"
+            return 1
+        fi
         if [ "$f" = T ]; then
             mv -T "$d/new" "$d/old" 2>/dev/null || continue
         else
@@ -970,6 +1010,22 @@ _rc_mv_link_form() {
     done
     rm -rf -- "$d"
     echo "$form"
+}
+
+# Without flock: remove the generated directories (with their caches and
+# links) other than <keep1> and <keep2>.
+_rc_prune_unlocked() {
+    local configs="$1" keep1="$2" keep2="$3" e n base
+    for e in "$configs"/manifest-resolved.gen-*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        n="$(basename "$e")"
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
+        base="${n%.cache}"
+        base="${base%.link}"
+        [ "$base" = "$keep1" ] || [ "$base" = "$keep2" ] && continue
+        rm -rf -- "$e"
+    done
+    return 0
 }
 
 # Remove configs/manifest-resolved.gen-XXXXXX directories, caches and links
@@ -1126,7 +1182,7 @@ _rc_validate_manifest_route() {
             _rc_clone_refusal "$clone" "$reason" | sed '1s/^/❌ /' >&2
             issues=$((issues + 1))
         else
-            head="$(git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
+            head="$(_rc_nofd git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
             got="$(_rc_resolved_from "$rf" commit)"
             if [ -n "$head" ] && [ -n "$got" ] && [ "$head" != "$got" ]; then
                 echo "⚠️  WARNING: the manifest clone $clone is at ${head:0:12}, the resolved manifest is from ${got:0:12} (run: .agent/scripts/adapter --project $name sync)" >&2
@@ -1233,7 +1289,7 @@ adapter_setup() {
         fi
         echo "Setting up layer: $layer"
         mkdir -p "$layer_dir/src"
-        if ! vcs import --skip-existing "$layer_dir/src" < "$repos_file"; then
+        if ! _rc_nofd vcs import --skip-existing "$layer_dir/src" < "$repos_file"; then
             if _rc_is_optional_layer "$layer"; then
                 echo "WARNING: import failed for optional layer '$layer' (private repo?) — continuing"
                 continue
@@ -1264,7 +1320,7 @@ adapter_build() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && colcon build --symlink-install \
+            && _rc_nofd colcon build --symlink-install \
                 --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: build failed for layer: $layer" >&2
@@ -1299,7 +1355,7 @@ adapter_test() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && colcon test --event-handlers console_direct+ \
+            && _rc_nofd colcon test --event-handlers console_direct+ \
                 --return-code-on-test-failure "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: tests failed for layer: $layer" >&2
@@ -1343,24 +1399,24 @@ adapter_sync() {
             version="${entry#*$'\t'}"
             repo_dir="$layer_dir/src/$name"
             [ -d "$repo_dir" ] || missing=$((missing + 1))
-            git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
-            if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+            _rc_nofd git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
+            if [ -n "$(_rc_nofd git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
                 echo "  $layer/$name: skipped (uncommitted changes)"
                 continue
             fi
-            branch="$(git -C "$repo_dir" branch --show-current 2>/dev/null)"
+            branch="$(_rc_nofd git -C "$repo_dir" branch --show-current 2>/dev/null)"
             # A detached checkout has no branch; an empty pin must not
             # match it and send it down the pull path.
             if [ -n "$branch" ] && [ "$branch" = "$version" ]; then
                 echo "  $layer/$name: on '$branch' — pulling..."
-                if ! git -C "$repo_dir" pull --rebase 2>/dev/null; then
+                if ! _rc_nofd git -C "$repo_dir" pull --rebase 2>/dev/null; then
                     # Abort a wedged rebase so the checkout stays usable.
-                    git -C "$repo_dir" rebase --abort >/dev/null 2>&1 || true
+                    _rc_nofd git -C "$repo_dir" rebase --abort >/dev/null 2>&1 || true
                     echo "  $layer/$name: pull failed (continuing)" >&2
                 fi
             else
                 echo "  $layer/$name: on '${branch:-detached}' (pinned: $version) — fetching..."
-                git -C "$repo_dir" fetch 2>/dev/null \
+                _rc_nofd git -C "$repo_dir" fetch 2>/dev/null \
                     || echo "  $layer/$name: fetch failed (continuing)" >&2
             fi
         done < <(_rc_repos_entries "$repos_file")
@@ -1476,7 +1532,7 @@ adapter_repos() {
         [ -d "$layer_dir/src" ] || continue
         for pkg_dir in "$layer_dir/src"/*; do
             [ -d "$pkg_dir" ] || continue
-            git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
+            _rc_nofd git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
             echo "$(basename "$pkg_dir"):$pkg_dir"
             found=1
         done
@@ -1554,7 +1610,7 @@ adapter_worktree_repos() {
         # workspace repo, say) when $pkg_dir has none of its own — compare
         # against --show-toplevel to require a repo rooted at $pkg_dir itself.
         local pkg_toplevel pkg_dir_real
-        pkg_toplevel="$(git -C "$pkg_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        pkg_toplevel="$(_rc_nofd git -C "$pkg_dir" rev-parse --show-toplevel 2>/dev/null || true)"
         pkg_dir_real="$(cd "$pkg_dir" && pwd -P)"
         if [ -z "$pkg_toplevel" ] || [ "$pkg_toplevel" != "$pkg_dir_real" ]; then
             echo "ERROR: $pkg_dir (layer '$layer', package '$pkg') is not a git repository" >&2
@@ -1788,7 +1844,7 @@ _rc_pin_kind() {
     toplevel=""
     dir_real=""
     if [ -d "$dir" ]; then
-        toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        toplevel="$(_rc_nofd git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
         dir_real="$(cd "$dir" && pwd -P)"
     fi
     local cloned=false rc=1 why="could not be reached"
@@ -1811,9 +1867,9 @@ _rc_pin_kind() {
         fi
     elif [ "$cloned" = true ]; then
         echo "NOTE: repo_pin: origin of $dir $why; the kind of '$ref' comes from local refs (unverified)" >&2
-        if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+        if _rc_nofd git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
             kind=branch
-        elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
+        elif _rc_nofd git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
             kind=tag
         fi
     else
@@ -1979,7 +2035,7 @@ adapter_scope_for_pr() {
     local dir="$path"
     [ -d "$dir" ] || dir="$(dirname "$dir")"
     local url
-    if ! url="$(git -C "$dir" remote get-url origin 2>/dev/null)"; then
+    if ! url="$(_rc_nofd git -C "$dir" remote get-url origin 2>/dev/null)"; then
         echo "ERROR: no git repository with an 'origin' remote at or above: $path" >&2
         return 1
     fi
