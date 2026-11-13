@@ -802,3 +802,13 @@ CI at triage time: Validate Documentation and ros-manifest tests passed; Lint (p
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, verbatim (2026-11-13, given once the code review had approved the change with no findings and before the pull request was published): "merge it when ci turns green". He had been told what the pull request does (the parallel job count on by default, 4 jobs on this machine, 2 on CI's runner; issue 444 stays open), that two shuffled full runs passed, and that the host left the cross-model reviewers out of this review. The host merges pull request 474 only when every check on 0874396e has passed, the pull_request run included, with no relaxing flag, and stops and reports otherwise.
