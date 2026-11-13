@@ -252,3 +252,43 @@ The revision is ready. The phrase is a sound marker, sounder than a path-number 
 **Decision**: proceed
 
 Read: the Plan Review at ddae18ee and its report. The implement handoff carries the five notes, and the first review's notes 3 and 4.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 14:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-477 at `5d5eff1d`
+
+Part 1 of the plan, with both plan reviews' notes. Commits `99cd885c` (texts) and `5d5eff1d` (sit-rep and tests).
+
+- `docs/roadmap.md`: "Two paths" becomes "Three paths"; Path 2 gains ", other than Path 3 work."; the approved Path 3 paragraph after Path 2, before `**Format.**` (checked character for character against the issue body after unwrapping).
+- `README.md`: the approved bullet "A safeguard has to earn its cost: ..." after the first "Quality of the work" bullet (checked character for character).
+- `.claude/skills/review-issue/SKILL.md`: one sentence in the Serves rule: work serving that README line writes "A safeguard has to earn its cost", word for word, in its Serves line (the phrase kept on one source line so a grep finds it).
+- `.claude/skills/sitrep/SKILL.md`: step 3's `serves=` awk prints `path3` on `index(tolower(s), "a safeguard has to earn its cost")`, after the `none` test; `wpath` order is Path 1, then project goal (for `goal` or `path3`), then Path 3, then Path 2. Comment and "Rows are" paragraph updated; "serves neither" becomes "serves no goal" / "serves none of the paths"; path-word list gains `Path 3`; the closing question becomes "one of the paths step 3 printed, or several"; first-sentence pattern `(.+?\.\x22?)(?:\s|$)`, with one sentence of prose saying so. No sentence counts paths.
+- `.agent/scripts/tests/test_sitrep_checks.sh`: Serves cases 32 (phrase in mixed case: Path 3), 33 (phrase in the older review, newer plain goal: Path 2), 34 (phrase plus a Direction line naming it: Path 1), 35 (`none` then the phrase: no path); a project-session row whose Serves line carries the phrase reads "no path (serves a project goal)"; the paths test gains a Path 3 paragraph whose first sentence ends `."`; the closing-question and "none of the paths" greps follow the new wording. Sandboxes stay generic about the number of paths.
+- `.agent/scripts/tests/test_skill_paths.sh`: comments at the head and the roadmap check say three; the check of the workspace's own `docs/roadmap.md` also requires a `**Path 3,` paragraph; three `grep -qiF` checks pin the phrase in `README.md`, review-issue's skill and the sit-rep skill.
+
+### Paths block on this worktree's roadmap (step 3's awk and python as written after the change)
+
+```
+path	Path 1	project11 on a second machine	In the owner's words (2026-11-10): "I also want to move project11 to this workspace".
+path	Path 2	the workspace reflects the goals	Implementing the missing pieces to make this workspace reflect the goals we set.
+path	Path 3	less waiting for the same care	In the owner's words (2026-11-13): "We have a lot of safeguards to make sure we don't produce slop, but I fear we may be over cautious."
+```
+
+### Tests
+
+- `bash .agent/scripts/tests/test_skill_paths.sh`: 149 passed, 0 failed (baseline 146; +3 phrase checks).
+- `bash .agent/scripts/tests/test_sitrep_checks.sh`: 211 passed, 0 failed (baseline 210; +1 project-row assertion; the new Serves cases and the Path 3 paragraph sit inside existing assertions).
+- Skipped on the owner's direction (2026-11-13, "yes, one local run before a pr"): the full pre-commit pass and every other suite; every commit used `SKIP=validate-script-tests`. The host makes the one full run before publishing.
+
+### For the pull request description
+
+- The clause ", other than Path 3 work" in Path 2's paragraph is host-written, not approved by the owner by name; it is listed for his veto.
+- Issues reviewed before this change, whose Serves lines do not carry "A safeguard has to earn its cost" (465 and 477 among them), read Path 2 in the sit-rep until they are re-reviewed.
+- `docs/design.md` line 105 ("names the two paths") is left for the later pull request that changes that file (accepted by the plan review).
+
+### Refused, skipped, left out
+
+- Refused by the permission checker: one `python3` heredoc that rewrote `.claude/skills/sitrep/SKILL.md` by string replacement; the same three edits were made with the Edit tool instead (no workaround of the check's intent).
+- Nothing outside the six files in scope was touched.
