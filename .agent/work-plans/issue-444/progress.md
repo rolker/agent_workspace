@@ -310,3 +310,16 @@ Dismissed, with evidence: the "wait -n misses children" and "late leak should gi
 - [ ] (suggestion) A suite reaped by `wait -n` leaves `job_of`, so a process it left running in its own group is not stopped by a later interrupt or the EXIT cleanup (not a regression; the second sweep catches it only if it writes to TMPDIR); keep every launched group for `stop_suites` — `.agent/scripts/tests/run_script_tests.sh:712`
 - [ ] (suggestion) (u4)'s finish-order check relies on 0.5 s gaps between three suites that start one after another; under load or on a 4-vCPU runner b and c can swap and fail a correct runner; widen the gaps (about 1 s and 2.5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1252`
 - [ ] (suggestion) (u8c) bounds a 1 s cleanup by `u8_secs -le 4` measured with whole-second `date +%s` against a 5 s backstop; a 1 to 2 s stall under load fails it; measure with EPOCHREALTIME or bound against the backstop (under 5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1523`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 is approved with no must-fix and four suggestions; two of them, S3 and S4, are tests that can fail a correct runner under load, which is the failure the owner is paying for today, and S1 and S2 are small robustness fixes in the same file; fixing them before publishing costs one fix pass and a narrow round 3, less than a fix round after CI has started)
+**After**: publish
+**Decision**: address
+
+Read: the round 2 Local Review (Pre-Push) at f1bf7501 and its reviewer's report. S1 run_script_tests.sh:530 a second signal during a stop should KILL at once; S2 :712 keep every launched process group for stop_suites; S3 test_run_script_tests.sh:1252 widen (u4)'s gaps; S4 :1523 time (u8c) with EPOCHREALTIME or bound it below 5 s. First host address at this checkpoint.
+
+### Decisions made (owner may veto)
+- Address the four suggestions before publishing rather than publish as approved — undoing it: none needed before the push; the branch can be published at f1bf7501 instead.
