@@ -120,6 +120,9 @@ timelines (0-based entry index) and synthetic sequences:
 | `.agent/scripts/dispatch_phase.sh`, `review_progress.sh` | Use it; new row; `findings`, `check`, `sources`; headers |
 | `.agent/scripts/tests/test_dispatch_phase.sh`, `test_review_code_convergence.sh`, `test_address_findings.sh` | Cases above |
 | `.claude/skills/run-issue/SKILL.md`, `docs/design.md`, `.agent/knowledge/review_loop_lifecycle.md`, `.agent/knowledge/script_reference.md` | Docs |
+| `.agent/scripts/tests/test_triage_reviews_integration.sh`, `test_skill_paths.sh` | Added in implementation: `sources` cases (the merged part's boxes, a restart keeps the open pull request's reviews), the run-issue prose pins and the issue-state block against a stub `gh` |
+| `.claude/skills/address-findings/SKILL.md` | Added in implementation: names the post-publish `## Local Review` as a source and the LGTM placeholder |
+| `.claude/skills/review-code/SKILL.md`, `.agent/knowledge/review_depth_classification.md` | Added in the first fix round: the round count starts at the current pull request's start (newer of a restart and the boundary) |
 
 Merge with 461 (planned against main plus 461): it edits `cmd_handoff` ~line 529
 and `base` (not `cmd_next`), `run-issue/SKILL.md`, `docs/design.md` (the
