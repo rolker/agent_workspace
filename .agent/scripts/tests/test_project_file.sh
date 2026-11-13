@@ -1696,6 +1696,8 @@ test_source_keys() {
     for v in 'source=relative/m.yaml|source must be an absolute path' \
         'source=ftp://host/m.git|source must be an absolute path' \
         'source=/a b/m.yaml|source must be an absolute path' \
+        $'source=https://e.invalid/m\x01.git|source must be an absolute path' \
+        $'source=file:///srv/m\x7f.git|source must be an absolute path' \
         $'source=https://e.invalid/m.git\nsource_ref=-x|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=a..b|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=x.lock|source_ref must be a branch, tag or commit' \

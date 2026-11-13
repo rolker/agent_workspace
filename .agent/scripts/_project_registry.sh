@@ -801,12 +801,12 @@ _project_file_value_error() {
             ;;
         source)
             if [[ "$value" =~ ^(https?|file):// ]]; then
-                if ! [[ "$value" =~ ^(https?|file)://[^[:space:]]+$ ]]; then
-                    echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks, got '$value'"
+                if ! [[ "$value" =~ ^(https?|file)://[^[:space:][:cntrl:]]+$ ]]; then
+                    echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
                     return 1
                 fi
             elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
-                echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks, got '$value'"
+                echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
                 return 1
             fi
             ;;
