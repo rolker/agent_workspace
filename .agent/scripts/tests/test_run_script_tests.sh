@@ -1675,6 +1675,54 @@ else
 fi
 for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 
+# --- Case (u8), a signal during that end-of-run stop: the process left
+#     running ignores SIGTERM, so the stop would take the 5 seconds. A
+#     SIGTERM to the runner, or a Ctrl-C to its process group, after the
+#     "still running at exit" line KILLs it at once and still removes the
+#     run's directory. Timed from the signal: a runner that waits out the
+#     deadline measures 4500 ms or more. ---
+U8E="$TMPD/case_u8e"
+mkdir -p "$U8E"
+write_checkpoint_stub "$U8E"
+make_stub "$U8E" test_deaf_left.sh "trap '' TERM
+sleep 30 &
+echo \"\$! \$TMPDIR\" > '$TMPD/u8e_info.tmp' && mv '$TMPD/u8e_info.tmp' '$TMPD/u8e_info'"
+for sig in TERM INT; do
+    u8_start "$U8E" "$TMPD/u8e_info"
+    u8_pids=()
+    u8_root=""
+    if read -r u8_left u8_tmp < "$TMPD/u8e_info" 2>/dev/null; then
+        u8_pids=("$u8_left")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+    for _ in $(seq 1 100); do
+        grep -q 'still running at exit$' "$TMPD/u8.log" && break
+        sleep 0.1
+    done
+    u8_stopping=no
+    grep -q 'still running at exit$' "$TMPD/u8.log" && u8_stopping=yes
+    u8_t0=$(ms_now)
+    if [[ $sig == TERM ]]; then
+        kill -s TERM "$u8_runner"
+    else
+        kill -s INT -- "-$u8_runner"
+    fi
+    wait "$u8_runner"; rc=$?
+    u8_ms=$(( $(ms_now) - u8_t0 ))
+    u8_alive=$(u8_alive_of "${u8_pids[@]}")
+    if [[ $u8_stopping == yes && ${#u8_pids[@]} -eq 1 && -z "$u8_alive" && $u8_ms -lt 3000 ]] \
+            && { [[ $sig == INT && $rc -eq 130 ]] || [[ $sig == TERM && $rc -eq 143 ]]; } \
+            && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]] \
+            && grep -q '^run_script_tests: stop cut short; KILLing 1 ' "$TMPD/u8.log"; then
+        pass "(u8) SIG$sig during the end-of-run stop KILLs what is left at once and removes the run's directory (${u8_ms} ms after it)"
+    else
+        fail "(u8) SIG$sig during the end-of-run stop KILLs what is left at once and removes the run's directory (rc=$rc, stopping=$u8_stopping, ${u8_ms} ms after it, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fi
+    for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+    # A runner without the fix leaves the directory: do not leave it too.
+    [[ "$u8_root" != */run-script-tests.* ]] || rm -rf "$u8_root"
+done
+
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
