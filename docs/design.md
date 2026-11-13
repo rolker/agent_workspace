@@ -381,7 +381,7 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 829 and 1087, 1365 and 1378, 2167-2187 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 865 and 1103, 1388 and 1401, 2190-2210 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 643, 731, 763, 902 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -477,19 +477,20 @@ Status: `decided`
   (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
   entry's path travels with the match (`PKG_OWN_REL`, lines 535-558) and becomes the gate's worktree
   (lines 719-743). That checkout's timeline is read only when it is its repository's top folder, has
-  the pull request's branch checked out and its HEAD equals origin's copy of it (a bounded fetch; a
-  checkout ahead of origin may hold entries origin does not have); otherwise the gate gives the reason
-  and the record goes on the pull request (lines 744-804). A sibling
+  the pull request's branch checked out, its HEAD equals origin's copy of it (a bounded fetch) and its
+  `progress.md` has no uncommitted change and no assume-unchanged or skip-worktree flag (either may hold
+  entries origin does not have); otherwise the gate gives the reason
+  and the record goes on the pull request (lines 744-840). A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 850-857 and 1210-1211). Package pull requests stay
+  record goes on its own pull request (lines 886-893 and 1221-1222). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
   `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 608 and
   741), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 818 and 1056). The gate is still report-only for project pull requests (lines 1316 and
-  1329).
+  commit (lines 865 and 1103). The gate is still report-only for project pull requests (lines 1388 and
+  1401).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
   branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
@@ -560,7 +561,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    549, 595, 597, 659, 920: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (719-818, 1050-1225: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (719-854, 1066-1236: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -608,7 +609,8 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   11). When no worktree on the pull request's branch can commit and push that entry (none open, a
   sibling repository's pull request in a package worktree, the main tree, an owning checkout that is not
   its repository's top folder, not on that branch or not equal to origin's copy of it (behind, ahead
-  or diverged), its `progress.md` untracked or with staged or unstaged changes, a `progress.md` that
+  or diverged), its `progress.md` untracked, with staged or unstaged changes or flagged assume-unchanged or
+  skip-worktree, a `progress.md` that
   is a symlink, no agent identity, the commit refused, the push refused, or timed out with origin's
   branch not shown to contain it), it is posted as a
   comment on the pull request instead (`_gate_record` in `merge_pr.sh`). The directory sits in the
@@ -704,7 +706,9 @@ Status: `decided`
 - The record is committed and pushed only from a checkout that is its repository's top folder, has the
   pull request's branch checked out and, for a package pull request, has its HEAD equal to origin's
   copy of it (so the record push never carries unpushed commits) and a `progress.md` with no uncommitted
-  change (not untracked, staged or edited), and only when `progress.md` and its folders are a regular
+  change (not untracked, staged, edited or deleted, and not flagged assume-unchanged or skip-worktree;
+  the same conditions decide whether that timeline is read at all, so an uncommitted approval never
+  passes), and only when `progress.md` and its folders are a regular
   file and folders (a symlink is left as found); otherwise it goes on the pull request with the reason
   and the checkout is left as found. A workspace or project pull request's worktree is not checked for
   either. When a hook refuses the commit or origin
@@ -717,8 +721,9 @@ Status: `decided`
   newest record across its timeline and the pull request's comments, by the entries' own `**When**`; a
   tie or an unreadable time records again rather than skip. With no timeline read, the newest record
   comment of either type is compared, and only a record of the same type with the same conditions
-  is a duplicate. A comment is a record only when its first line is exactly one of the two headings,
-  and its values are compared with trailing blanks and a carriage return trimmed.
+  is a duplicate. A comment is a record only when its first line is exactly one of the two headings
+  (an empty or null body is not one; comments that cannot be read are said, and the record is
+  written), and its values are compared with trailing blanks and a carriage return trimmed.
 - The gate is local only. A Merge click on GitHub bypasses it, and the server-side complement, a required
   status check, is not built; building it changes CI and branch protection, which is Ask First
   (`merge_pr.sh`, Step 1.5 comment; [Rules](#rules)).
@@ -937,6 +942,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Third review fix (issue 429): a record push that times out is kept only when origin's branch contains the record commit, else undone and posted on the pull request, also when origin cannot be asked; an owning pull request's duplicate check compares with the newest record across both stores; `merge_pr.sh` citations refreshed | #429 | 983 |
 | 2026-11-13 | Merge gate | Triage fix (issue 429, pull request 461): with no timeline read, the duplicate check compares with the newest record comment of either type; `merge_pr.sh` citations refreshed | #429 | 986 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Second triage fix (issue 429, pull request 461): the owning checkout is read, and the record committed there, only when its HEAD equals origin's copy of the branch and its `progress.md` has no uncommitted change; a record comment is matched only on an exact heading, with trimmed values; the workspace path is unchanged; `merge_pr.sh` citations refreshed | #429 | 993 |
+| 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Third triage fix (issue 429, pull request 461): the owning checkout's timeline is not read when its `progress.md` has an uncommitted change or an assume-unchanged or skip-worktree flag; an empty or null comment body is not a record, and unreadable comments are said and recorded over; every `merge_pr.sh` citation refreshed, including the Records bullet's main-tree guard and report-only lines | #429 | 999 |
 
 ## Glossary
 
