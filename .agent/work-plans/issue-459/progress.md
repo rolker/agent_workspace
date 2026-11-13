@@ -617,3 +617,25 @@ Pull request 461 (`origin/feature/issue-429` at `0c6dc2d3`, already includes mai
 - [x] (suggestion, triage) PR body: reword or drop "Gemini and Codex ran on rounds 1 and 2" (unsupported for Gemini and for round 2's reviewers) and qualify the 1,084-state comparison as made at the round-2 head, or re-run it on the final head — PR #467 body
 
 ### False positives
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-11-13 11:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #467 at 91967144
+**Addressed**: Integrated Review at `3f167a6b`
+
+The branch took main: merge commit `91967144` merges main at `8161b57d` (pull request 461, issue 429's last part) into the branch head `b3fc6b97`.
+
+- **Conflict**: one, in `docs/design.md`, both sides appending 2026-11-13 change-log rows. All rows kept: main's nine issue 429 rows (already landed, counts 959 to 1023) first, then #459's row (981, this branch's file at that point), then a new Change log row for this merge whose count, 1038, is the merged file's `wc -l`. No prose sentence was changed by both sides. The `dispatch_phase.sh` line citations main had written (Table 1's row `216, 277-326, 501, 643, 731, 763, 902`; the Target's mechanism 1 `549, 595, 597, 659, 920`) were false for the merged script, which this branch lengthened; refreshed to `222, 283-332, 507, 649, 737, 769, 908` and `555, 601, 603, 665, 940`, each re-derived by grep on the merged file, and the merge row says so. `merge_pr.sh` was changed only by main, so its citations stand. `check_design_anchors.sh` passes.
+- **Files both sides changed**, auto-merged, merged regions read:
+  - `dispatch_phase.sh` `cmd_handoff`: 461's package base form (`/review-code --branch origin/<base> --issue <N>`) is set first, then this branch's round block appends the round-3 words to whatever `task` holds; the round comes from `review_progress.sh round`, which counts from `pr_start.py`'s round start. They compose.
+  - `run-issue/SKILL.md`: step 2 (issue state first, merged PR as an earlier part), step 8 (461: base for a package issue, `git merge origin/<base>`), step 10, step 11 (461's gate paragraph on the owning checkout, then this branch's "A landed merge ends the run"), step 13 (worktree recreated from the base) and Scope (461) read as one consistent text; no sentence contradicts another.
+  - `review-code/SKILL.md`: main's cross-model `--branch "$BASE"` paragraph and this branch's round-start text are separate regions; consistent.
+  - `script_reference.md`: main's `_resolve_work_plans_dir.sh`, `check_branch_updates.sh`, `merge_pr.sh`, `dispatch_phase.sh` rows and this branch's `review_progress.sh` and new `pr_start.py` rows; separate rows, consistent. No test file was changed by both sides.
+- **Issue 429's lengthened timeline** (107 entries): `pr_start` boundaries at entries 25, 50 and 71, each a Plan Authored; the final scan gives round start and pull-request start 71, armed yes. The real-timeline test in `test_dispatch_phase.sh` passes.
+- **Suites** (run directly): test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0, test_package_issue_loop 220/0, test_merge_pr_gate 200/0 (passed/failed).
+- The full `pre-commit run --files` pass was skipped on the owner's direction (2026-11-13); commits carried `SKIP=validate-script-tests`, and the merge commit's own hooks passed. CI on the pull request checks the rest.
+- Noticed, not touched: before this merge the branch's own `design.md` already carried `dispatch_phase.sh` citations its script changes had moved (Table 1 `216, 277-326, 501, 635, ...` against actual `222, 283-332, 507, ...`); the merge refresh above corrects them, and no test checks those numbers.
