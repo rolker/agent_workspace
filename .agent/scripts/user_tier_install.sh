@@ -32,8 +32,12 @@
 #      `enabledPlugins["agent-workspace@agent-workspace"] = true` and
 #      `extraKnownMarketplaces["agent-workspace"]` with this checkout as its
 #      directory source, and the CLI's machine-level record
-#      (plugins/known_marketplaces.json) names this checkout. Both are read
-#      back after the calls; a run that finds them current makes no CLI call.
+#      (plugins/known_marketplaces.json) names this checkout, and the CLI's
+#      record of installs (plugins/installed_plugins.json) lists a
+#      user-scope install. Repointing another checkout's declaration
+#      re-runs the install. The settings and the machine-level record are
+#      read back after the calls; a run that finds all three current makes
+#      no CLI call.
 #      Nothing is written into any project root. The workspace checkout's
 #      own tracked .claude/settings.json sets the plugin to false, so a
 #      session at the checkout's root or in a worktree of it lists each
@@ -802,21 +806,29 @@ cli_user() {  # <claude plugin args...>
 
 # Enable the plugin at user scope from this checkout: `marketplace add`
 # unless the declaration and the machine-level record already name this
-# checkout, `install` unless it is already enabled; then both read back.
-# A second user-scope `marketplace add` of the same name from another path
-# repoints both records (checked on claude 2.1.322), so another checkout's
-# declaration needs no separate takeover. Returns 1, with the reason on
-# stderr.
+# checkout; `install` unless it is already enabled, the CLI's record lists
+# a user-scope install, and the declaration was this checkout's before
+# this call; then both read back. A second user-scope `marketplace add` of
+# the same name from another path repoints both records (checked on claude
+# 2.1.322), so another checkout's declaration needs no separate takeover.
+# A repoint re-runs `install` because the enable and the CLI's install
+# record and cache are the other checkout's. Whether the real CLI's
+# `install` of a plugin already enabled at user scope refreshes that
+# record and cache from the repointed marketplace, or exits non-zero, is
+# not verified (no live case covers it); a failure is reported as one.
+# Returns 1, with the reason on stderr.
 enable_user_scope() {
-    local src
+    local src repointed=false
     src="$(user_plugin_source)"
+    [[ -n "$src" ]] && ! is_this_checkout "$src" && repointed=true
     if ! { [[ -n "$src" ]] && is_this_checkout "$src" && machine_record_ours; }; then
         cli_user marketplace add "$WS_PHYS" --scope user || {
             echo "  ERROR: \`claude plugin marketplace add $WS_PHYS --scope user\` failed" >&2
             return 1
         }
     fi
-    if ! jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$CLI_SETTINGS" >/dev/null 2>&1; then
+    if [[ "$repointed" == true || "$(user_install_record)" == absent ]] \
+        || ! jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$CLI_SETTINGS" >/dev/null 2>&1; then
         cli_user install "$PLUGIN_ID" --scope user || {
             echo "  ERROR: \`claude plugin install $PLUGIN_ID --scope user\` failed" >&2
             return 1
@@ -935,6 +947,24 @@ installed_plugins_state() {
     [[ -f "$INSTALLED_PLUGINS" ]] || { echo absent; return 0; }
     if jq empty "$INSTALLED_PLUGINS" >/dev/null 2>&1; then echo ok; else echo unparseable; fi
 }
+# Does the CLI's record list a user-scope install of the plugin? present,
+# absent (no file, or no such object), or unparseable. The record does not
+# name the marketplace's source, so it cannot say which checkout the
+# install came from; it only says the CLI ran an install at user scope.
+user_install_record() {
+    case "$(installed_plugins_state)" in
+        absent) echo absent; return 0 ;;
+        unparseable) echo unparseable; return 0 ;;
+    esac
+    if jq -e --arg id "$PLUGIN_ID" '
+        [(.plugins? // {})[$id]? // [] | if type == "array" then .[] else empty end
+         | objects | select(.scope? == "user")] | length > 0' "$INSTALLED_PLUGINS" >/dev/null 2>&1; then
+        echo present
+    else
+        echo absent
+    fi
+}
+
 # What an unparseable record costs, for a message: legacy_places reads the
 # roots it lists, and drops them all when it cannot.
 installed_plugins_unreadable() {
@@ -1364,6 +1394,11 @@ if [[ "$MODE" == "check" ]]; then
             # from looks the same.)
             if ! machine_record_ours; then
                 plugin_note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout -- sessions may not load this checkout's skills (re-run the installer: it repairs it)"
+            fi
+            # The same test as install's shortcut: --check calls current
+            # only what install leaves alone.
+            if [[ "$(user_install_record)" == absent ]]; then
+                plugin_note "the claude CLI's record of plugin installs ($INSTALLED_PLUGINS) lists no user-scope install of $PLUGIN_ID, though $CLI_SETTINGS enables it -- the CLI's install and cache may be missing or another checkout's (re-run the installer: it runs the install)"
             fi ;;
         foreign)
             plugin_note "the $PLUGIN_NAME marketplace is declared at user scope ($CLI_SETTINGS) from another checkout, $(user_plugin_source), not from this one (re-run the installer to repoint it here)" ;;
@@ -1616,9 +1651,13 @@ done < <(legacy_skill_links)
 # per-root entries -- in that order: a local remove while the user-scope
 # declaration is present keeps the machine-level record, the reverse order
 # can drop it.
+# The shortcut also needs the CLI's record of a user-scope install: an
+# enable with none was not made by the CLI's `install` (or its record was
+# lost), so install runs. A record that does not parse cannot say; it is
+# reported after the migration, and no CLI call is made over it.
 case "$(user_scope_state)" in
     ours)
-        if machine_record_ours; then
+        if machine_record_ours && [[ "$(user_install_record)" != absent ]]; then
             echo "  the $PLUGIN_NAME plugin is already enabled at user scope from this checkout -- no claude CLI call"
             PLUGIN_ON=true
         fi ;;

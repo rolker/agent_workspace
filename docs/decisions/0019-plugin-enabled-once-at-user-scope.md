@@ -70,11 +70,13 @@ answered "Q1 accept it".
 `user_tier_install.sh` runs `claude plugin marketplace add <checkout>
 --scope user` and `claude plugin install agent-workspace@agent-workspace
 --scope user`, from a throwaway directory in no git repository, only when
-the records do not already show the plugin enabled from this checkout and
-the machine-level record naming it; it reads both back. A re-run that
-finds them current makes no CLI call. Another checkout's user-scope
-declaration is repointed by the same `marketplace add` (the user tier is
-already singular); there is no separate machine-record takeover.
+the records do not already show the plugin enabled from this checkout,
+the machine-level record naming it, and a user-scope install in the CLI's
+`installed_plugins.json`; it reads the first two back. A re-run that finds
+them current makes no CLI call. Another checkout's user-scope declaration
+is repointed by the same `marketplace add` (the user tier is already
+singular), and `install` is run again after it; there is no separate
+machine-record takeover.
 
 ### 2. Nothing is written into a project checkout
 

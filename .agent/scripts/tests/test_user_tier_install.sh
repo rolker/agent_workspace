@@ -57,7 +57,8 @@ mkdir -p "$HOMEDIR"
 # the cwd's .claude/settings.local.json. `install` and `uninstall` also
 # keep the CLI's record of installs (plugins/installed_plugins.json: the
 # plugin's array of {scope, projectPath} objects, projectPath for local
-# scope only), and `marketplace add` records its source in
+# scope only; a second install of the same scope and path replaces its
+# object), and `marketplace add` records its source in
 # plugins/known_marketplaces.json, the CLI's machine-level record keyed by
 # name (left alone when it is not JSON).
 # STUB_FAIL=1 makes it exit 1; STUB_NOOP=1 makes it exit 0 having written
@@ -114,7 +115,8 @@ case "$2" in
         pp=""; [[ "$scope" == local ]] && pp="$PWD"
         if [[ "$2" == install ]]; then
             jq --arg id "$3" --arg s "$scope" --arg p "$pp" \
-                '.plugins[$id] = ((.plugins[$id] // []) + [{scope: $s} + (if $p == "" then {} else {projectPath: $p} end)])' \
+                '.plugins[$id] = ([(.plugins[$id] // [])[] | select((.scope == $s and ($p == "" or .projectPath == $p)) | not)]
+                    + [{scope: $s} + (if $p == "" then {} else {projectPath: $p} end)])' \
                 "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
         else
             jq --arg id "$3" --arg s "$scope" --arg p "$pp" \
@@ -1550,10 +1552,30 @@ out="$(run --check)"; rc=$?
     || fail "--check, foreign user-scope declaration (rc=$rc out=$out)"
 n0="$(n_log)"
 out="$(run)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"repointing it here"* && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin marketplace add $WSC_PHYS --scope user" ]] \
+[[ "$rc" -eq 0 && "$out" == *"repointing it here"* \
+   && "$(log_since "$n0" | cut -d'|' -f2 | tr '\n' ';')" == "plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
     && user_on && km_ours \
-    && pass "...and install repoints it with one marketplace add (no separate takeover)" \
+    && pass "...and install repoints it with marketplace add (no separate takeover), then re-runs install (the install record was the other checkout's)" \
     || fail "...install over a foreign declaration (rc=$rc calls: $(log_since "$n0") out=${out:0:300})"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(n_log)" -eq "$n0" ]] \
+    && pass "...and the run after the repoint makes no CLI call" \
+    || fail "...run after a repoint (rc=$rc calls: $(log_since "$n0"))"
+# The enable and the declaration are this checkout's, but the CLI's record
+# lists no user-scope install: --check calls it drift, and install runs the
+# install call alone.
+jq --arg id "$PID" '.plugins[$id] |= map(select(.scope != "user"))' "$IP_FILE" > "$tmp" && mv "$tmp" "$IP_FILE"
+n0="$(n_log)"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT: the claude CLI's record of plugin installs ($IP_FILE) lists no user-scope install of $PID"* && "$(n_log)" -eq "$n0" ]] \
+    && pass "--check reports an enable with no user-scope install in the CLI's record (drift)" \
+    || fail "--check, user-scope install record gone (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin install $PID --scope user" ]] \
+    && jq -e --arg id "$PID" '[.plugins[$id][] | select(.scope == "user")] | length == 1' "$IP_FILE" >/dev/null \
+    && pass "...and install runs the one install call, which records it" \
+    || fail "...install over a missing user-scope install record (rc=$rc calls: $(log_since "$n0") record: $(cat "$IP_FILE"))"
 jq 'del(.["agent-workspace"])' "$KM_FILE" > "$tmp" && mv "$tmp" "$KM_FILE"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"machine-level record"*"has no entry for it"* ]] \

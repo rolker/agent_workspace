@@ -72,6 +72,9 @@ unset XDG_CONFIG_HOME CLAUDE_CONFIG_DIR
 gitq() { git -c user.name=t -c user.email=t@example.invalid -c init.defaultBranch=main "$@"; }
 
 # ------------------------------------------------------------ fixtures ---
+# The claude stub edits the user settings, a root's local settings, the
+# machine-level record and the CLI's record of a user-scope install as
+# `claude plugin` would.
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 mkdir -p "$STUB_BIN"
@@ -100,6 +103,16 @@ if [[ "$2 $3" == "marketplace add" ]]; then
     mkdir -p "$(dirname "$km")"
     [[ -f "$km" ]] || echo '{}' > "$km"
     jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" && mv "$km.tmp" "$km"
+fi
+if [[ "$scope" == user && ( "$2" == install || "$2" == uninstall ) ]]; then
+    ip="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+    mkdir -p "$(dirname "$ip")"
+    [[ -f "$ip" ]] || echo '{"version": 2, "plugins": {}}' > "$ip"
+    if [[ "$2" == install ]]; then
+        jq --arg id "$3" '.plugins[$id] = ([(.plugins[$id] // [])[] | select(.scope != "user")] + [{scope: "user"}])' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    else
+        jq --arg id "$3" '.plugins[$id] = [(.plugins[$id] // [])[] | select(.scope != "user")]' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    fi
 fi
 STUBEOF
 chmod +x "$STUB"

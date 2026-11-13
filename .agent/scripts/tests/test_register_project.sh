@@ -44,8 +44,9 @@ gitq() { git -c user.name=t -c user.email=t@example.invalid -c init.defaultBranc
 
 # The claude stub: records "<cwd>|<argv>" and edits the sandbox user
 # settings (--scope user) or the cwd's .claude/settings.local.json (local
-# scope) as `claude plugin` would, and the machine-level record as
-# `marketplace add` does.
+# scope) as `claude plugin` would, the machine-level record as
+# `marketplace add` does, and the CLI's record of a user-scope install
+# (plugins/installed_plugins.json) as `install` and `uninstall` do.
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -77,6 +78,16 @@ if [[ "$2 $3" == "marketplace add" ]]; then
     mkdir -p "$(dirname "$km")"
     [[ -f "$km" ]] || echo '{}' > "$km"
     jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" && mv "$km.tmp" "$km"
+fi
+if [[ "$scope" == user && ( "$2" == install || "$2" == uninstall ) ]]; then
+    ip="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+    mkdir -p "$(dirname "$ip")"
+    [[ -f "$ip" ]] || echo '{"version": 2, "plugins": {}}' > "$ip"
+    if [[ "$2" == install ]]; then
+        jq --arg id "$3" '.plugins[$id] = ([(.plugins[$id] // [])[] | select(.scope != "user")] + [{scope: "user"}])' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    else
+        jq --arg id "$3" '.plugins[$id] = [(.plugins[$id] // [])[] | select(.scope != "user")]' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    fi
 fi
 STUBEOF
 chmod +x "$STUB"
