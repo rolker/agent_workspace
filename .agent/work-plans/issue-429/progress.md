@@ -1644,3 +1644,53 @@ All six checkpoint decisions are in the plan as decided and agree with each othe
 **Decision**: proceed
 
 Proceed with 2a's remaining steps (the base-branch mechanism), then 2b as its own pull request. The implementer applies the review's four notes: the pull-rule test goes in test_merge_pr.sh with a baseRefName in write_pr_view_fixture (not test_merge_pr_gate.sh); the final banner says what happened after a fetch-only cleanup; "no base" is decided by the worktree a ref resolves to, not by how the ref is written; the Files table and step 8 are corrected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 22:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `08db856f`
+
+Pull request 2a's remaining steps (3 to 8): the base branch of a package pull request. 2b (the gate, the end-to-end test, the Scope text) is not started.
+
+**Commits**: 796ad13a (strict start path, `--base`, header field), 9ade367e (`dispatch_phase.sh base`, `_pr_base.sh`, handoff `base=`, run-issue and start-task text), fb92b220 (`merge_pr.sh` cross-check and cleanup pull rule), 0bdf1abe (design, ADR-0012 addendum, script reference), 1ff0ac0c (plan corrections), 08db856f (Table 1 mode count)
+
+### What changed
+- `_worktree_helpers.sh`: `_wt_add_repo` takes a fifth argument, the base. A new owning branch starts from `origin/<base>` fetched now, `--no-track`. If origin lacks the base or does not answer, it stops having made nothing, also with `--allow-unverified-branch`. The local `<base>` is never used. `wt_write_manifest` writes ` base=<b>` when given. `wt_read_manifest` reads `layer=` unanchored and sets `WT_MANIFEST_BASE`. New `wt_set_manifest_base` replaces the header line in one rename, and refuses a different recorded base.
+- `worktree_create.sh --base <branch>`: only with `--layer`. It is refused with `--parent-issue`, for an invalid name, and when no entry is on `feature/issue-N`. It is passed to the owning entry only. The draft-PR message points at publish. `run_script_tests.sh` re-cites the two `/tmp` mktemp lines (now 1148 and 1189).
+- `_pr_base.sh` (new, sourced) `pr_base_for`, in order: the recorded `base=`; then `--base`; then `adapter repo_pin <repo> --layer <l>` when its kind is `branch`. A tag, commit or unknown pin refuses with "<repo> is pinned at <ref> (<kind>); only a branch can be a base. Pass --base <branch>.". An adapter exit 1 shows the adapter's message, then "none is guessed", exit 2. The NOTE "unverified" passes through.
+- `dispatch_phase.sh base`: decided by the resolved worktree.
+  - A package worktree: the recorded base. With none recorded, the pin or `--base`, checked with `wt_bounded_git ls-remote` in the owning checkout, then written; absent or no answer refuses and writes nothing.
+  - Any other worktree: nothing, exit 0; `--base`/`--layer` refused.
+  - No worktree yet: the owning entry from `adapter worktree_repos` gives the directory name.
+  - The handoff prints `base=` after `package_worktree=` when recorded.
+- `merge_pr.sh`:
+  - `_PKG_MATCHES` carries `base=` as a fourth field, `-` for empty, mapped back at both reads.
+  - `_head_json` adds `baseRefName`.
+  - For `feature/issue-N` only, a differing or unreadable base is a gate reason.
+  - Step 4 pulls the owning checkout only when it is clean and on the PR's base. Otherwise it fetches (bounded) and prints "fetched only: <why>", not incomplete; the banner says the checkout was fetched only.
+- `run-issue/SKILL.md`: usage `--base`; step 1 runs `base` before `/start-task` and passes `--base` with `--layer`/`--package-repos`; publish passes `-R <owner/repo> --base <base>`. `start-task/SKILL.md`: `--base` in the creation-only list.
+- Docs: `docs/design.md#worktrees` Base branch bullet; change-log row; refreshed `merge_pr.sh` and `dispatch_phase.sh` citations in the Records bullet and mechanism 1; Table 1's mode count. ADR-0012 cross-reference addendum (Status and References), decision text unchanged. Script reference rows.
+
+### The four plan-review notes
+1. The cleanup pull-rule test is in `test_merge_pr.sh` (`test_own_repo_pulls_only_on_the_base`). `write_pr_view_fixture` defaults `baseRefName` to `main`. `test_own_repo_sync_failure_is_reported` now also asserts a pull was attempted (not fetch-only), so it still pins a failed pull on the base. Nothing was added to `test_merge_pr_gate.sh`.
+2. The banner after a fetch-only cleanup: "merged and cleaned up; <repo>'s checkout was fetched only, not fast-forwarded (<why>)". It is asserted for all four fetch-only setups.
+3. "No base" is keyed on the resolved worktree. A bare `11` resolving to the package worktree prints `base=pinned` (tested).
+4. The plan's Files table and step 8 are corrected in 1ff0ac0c, with steps 6 and 7 annotated as built.
+
+### Deviations from the plan
+- `start-task/SKILL.md` edited: its creation-only flag list would otherwise send `--base` to `worktree_enter.sh` without saying so.
+- The `merge_pr.sh` and `dispatch_phase.sh` line citations in `docs/design.md`'s Records bullet and mechanism 1 were refreshed here, not left to 2b, because this change moved them. The mechanism-1 `dispatch_phase.sh` numbers were already off by 3 on main.
+- `dispatch_phase.sh base` refuses a qualified ref with no worktree and no `--layer`/`--package-repos` (exit 2) rather than printing nothing. The plan was silent on that case, and "nothing" would be a silent wrong answer for a package issue.
+- A recorded base whose `baseRefName` cannot be read is a gate reason, not silence.
+- The resume origin check passes git's message to `wt_fetch_why` with a "git ls-remote exited N" fallback, so the wording is true for ls-remote.
+
+### Checks
+- Suites run directly:
+  - `test_worktree_create.sh` 71/0
+  - `test_package_issue_loop.sh` 180/0
+  - `test_dispatch_phase.sh` 148/0
+  - `test_merge_pr.sh` 131/0
+  - `test_merge_pr_gate.sh` 121/0 (unchanged suite)
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, identity sourced: every hook passed, rc 0, including `validate-script-tests`, shellcheck and check-design-anchors. The branch touches `.agent/scripts/_*.sh` helpers and `run_script_tests.sh`, both full-run triggers, so that hook ran every suite. Its per-suite output is hidden by pre-commit on a pass.
+- Each new behaviour has a test that fails on the old code. Examples: the base start point (old code starts from origin/main), the `base` subcommand, `base=` in the handoff, fetch-only and its banner, the cross-check reason.
