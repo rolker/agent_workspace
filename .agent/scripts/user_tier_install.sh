@@ -125,17 +125,6 @@
 #                        is left alone). An entry it cannot remove -- no
 #                        CLI, or a root the CLI is not run in -- is an
 #                        error naming the removal by hand.
-#   --disable-root <name>
-#                        remove the plugin from one registered root, the
-#                        way --uninstall does for every root (this
-#                        checkout's declaration only; another checkout's is
-#                        left alone). Nothing else in ~/.claude changes.
-#                        register_project.sh runs it before it removes a
-#                        registry line (--remove, or a failed registration
-#                        after the installer ran), so <name> must still be
-#                        registered. A parent= instance whose parent
-#                        provides the plugin, or a root the CLI never runs
-#                        in, gets the same report as --uninstall gives it.
 #   --list-skills        print the skills the plugin exposes (session_scope
 #                        project|both), one per line.
 #   --generate-plugin-manifest
@@ -217,9 +206,8 @@ set_mode() {
     fi
     MODE="$1"
 }
-DISABLE_NAME=""
 usage_line() {
-    echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --disable-root <name> | --list-skills | --generate-plugin-manifest" >&2
+    echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --list-skills | --generate-plugin-manifest" >&2
 }
 while [[ $# -gt 0 ]]; do
     arg="$1"
@@ -229,16 +217,6 @@ while [[ $# -gt 0 ]]; do
         --require)     REQUIRE=true ;;
         --force)       FORCE=true ;;
         --uninstall)   set_mode uninstall ;;
-        --disable-root)
-            set_mode disable-root
-            if [[ $# -eq 0 || -z "$1" || "$1" == -* ]]; then
-                echo "ERROR: --disable-root needs a registered project name" >&2
-                usage_line
-                exit 2
-            fi
-            DISABLE_NAME="$1"
-            shift
-            ;;
         --list-skills) set_mode list-skills ;;
         --generate-plugin-manifest) set_mode generate-plugin-manifest ;;
         -h|--help)
@@ -262,7 +240,7 @@ fi
 # it up front made `make validate` exit 3 on a jq-less machine -- the exact
 # case this script's --check is supposed to keep green.
 case "$MODE" in
-    install|check|uninstall|disable-root|generate-plugin-manifest)
+    install|check|uninstall|generate-plugin-manifest)
         if ! command -v jq >/dev/null 2>&1; then
             if [[ "$MODE" == "check" ]]; then
                 echo "agent_workspace user tier: jq not installed -- cannot check (install jq to enable this check)"
@@ -725,174 +703,12 @@ have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
 # installer on a read nobody will answer.
 claude_plugin() { "$CLAUDE_BIN" plugin "$@" </dev/null; }
 
-# Would a Claude Code session in <instance> read the local settings of
-# <parent>? Observed live (claude 2.1.282, plugin_acceptance.sh case G): a
-# session reads the local settings of its project root, which is its git
-# toplevel -- the main repository's, for a git worktree. So yes exactly
-# when both are in git and share the toplevel (a plain directory inside
-# the parent's repository) or share the repository (a worktree of it); no
-# for an instance in no git repository (even inside a plain-directory
-# parent) and for a separate repository nested in the parent. Sets
-# NOT_SAME_WHY to the reason when it answers no.
-NOT_SAME_WHY=""
-same_project() {  # <instance> <parent>
-    local it pt ic pc
-    NOT_SAME_WHY=""
-    if ! it="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)"; then
-        NOT_SAME_WHY="is in no git repository, so its sessions have a project root of their own"
-        return 1
-    fi
-    if ! pt="$(git -C "$2" rev-parse --show-toplevel 2>/dev/null)"; then
-        NOT_SAME_WHY="has a parent ($2) in no git repository, whose local settings reach no other directory's sessions"
-        return 1
-    fi
-    # One repository: the same git common dir, which a plain directory in
-    # it and every worktree of it share.
-    ic="$(cd "$1" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-        && pc="$(cd "$2" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-        && ic="$(cd "$ic" && pwd -P)" && pc="$(cd "$pc" && pwd -P)" \
-        && [[ "$ic" == "$pc" ]] && return 0
-    NOT_SAME_WHY="is a git repository of its own ($it), not a worktree of its parent's ($pt), so its sessions do not read the parent's local settings"
-    return 1
-}
-
-# One line per registered entry: <name>\t<path>\t<verdict>[\t<detail>], where
-# verdict is
-#   enable          a session root that gets the plugin
-#   enable-instance a parent= instance whose sessions do NOT read its
-#                   parent's local settings (same_project), so it is enabled
-#                   as a session root of its own (a note says so; <detail>
-#                   is its wording: why)
-#   skip-workspace  its git toplevel is this workspace checkout
-#   skip-instance   a parent= instance in its parent's project (same git
-#                   toplevel, or a worktree of its repository): the parent
-#                   root's enable reaches it, and is what gets enabled
-#   skip-enclosed   a plain directory inside some other git repository
-#                   (<detail> is that repository's toplevel): a session
-#                   there reads the repository's local settings, and the
-#                   CLI's local scope from there writes them (live case K)
-#                   -- outside every registered root -- so the installer
-#                   refuses it: no CLI call there from install, --check or
-#                   --uninstall
-#   missing         the path does not exist on disk
-# A malformed registry line is reported by the registry parser on stderr;
-# the valid lines are still printed, but the function returns 2, and the
-# caller (PLUGIN_ROOTS below) stops: acting on the remaining roots would
-# report success while the dropped root kept, or lacked, the plugin.
-plugin_roots() {
-    local entries name _type path fields top top_phys parent parent_path
-    local outside detail
-    local parse_rc=0
-    entries="$(registry_entries_full "$WS_ROOT")" || parse_rc=$?
-    [[ -n "$entries" ]] || return "$parse_rc"
-    while IFS=$'\t' read -r name _type path fields; do
-        [[ -z "$name" ]] && continue
-        outside=false
-        detail=""
-        if parent="$(_registry_field_of "$fields" parent)" && [[ -n "$parent" ]]; then
-            # Skipping an instance is right only while the parent's local
-            # settings reach its sessions; the registry cannot say whether
-            # they do, so check it here (same_project).
-            parent_path="$(awk -F'\t' -v n="$parent" '$1 == n { print $3; exit }' <<< "$entries")"
-            if [[ -d "$path" && -d "$parent_path" ]] && same_project "$path" "$parent_path"; then
-                printf '%s\t%s\t%s\n' "$name" "$path" skip-instance
-                continue
-            fi
-            outside=true
-            # The registry parser already drops an instance whose parent is
-            # unregistered or at the instance's own path.
-            if [[ ! -d "$parent_path" ]]; then
-                detail="whose parent's directory ($parent_path) is not on disk"
-            else
-                detail="that $NOT_SAME_WHY"
-            fi
-        fi
-        if [[ ! -d "$path" ]]; then
-            printf '%s\t%s\t%s\n' "$name" "$path" missing
-        elif top="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" \
-             && top_phys="$(cd "$top" 2>/dev/null && pwd -P)" \
-             && [[ "$top_phys" == "$WS_PHYS" ]]; then
-            printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
-        elif top="$(enclosing_repo "$path")"; then
-            printf '%s\t%s\t%s\t%s\n' "$name" "$path" skip-enclosed "$top"
-        elif [[ "$outside" == true ]]; then
-            printf '%s\t%s\t%s\t%s\n' "$name" "$path" enable-instance "$detail"
-        else
-            # Includes a root in no git repository at all: nothing there
-            # sees the workspace's skills, so it is a session root like any.
-            printf '%s\t%s\t%s\n' "$name" "$path" enable
-        fi
-    done <<< "$entries"
-    return "$parse_rc"
-}
-
 # Is <path> this checkout, lexically or as its `pwd -P` form?
 is_this_checkout() {  # <path>
     local phys
     [[ "$1" == "$WS_ROOT" || "$1" == "$WS_PHYS" ]] && return 0
     phys="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
     [[ "$phys" == "$WS_PHYS" ]]
-}
-
-# The plugin's state in <root>'s .claude/settings.local.json:
-#   enabled      enabled, and the marketplace source is this checkout
-#   foreign      the marketplace is declared from ANOTHER checkout (enabled
-#                or not): that checkout's, not this one's, to remove
-#   stale        enabled with no declaration, declared from this checkout
-#                but not enabled, or declared from a source no longer on
-#                disk (no checkout is left to remove it, so this one may;
-#                a checkout that is only unmounted looks the same, and is
-#                out of scope -- ADR-0018)
-#   absent       neither
-#   unparseable  the file exists and is not JSON
-plugin_state() {  # <root>
-    local f="$1/.claude/settings.local.json" enabled src
-    [[ -f "$f" ]] || { echo absent; return 0; }
-    jq -e . "$f" >/dev/null 2>&1 || { echo unparseable; return 0; }
-    enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id] // false' "$f")"
-    src="$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f")"
-    if [[ -n "$src" ]] && ! is_this_checkout "$src"; then
-        if [[ -d "$src" ]]; then echo foreign; else echo stale; fi
-    elif [[ "$enabled" == true && -n "$src" ]]; then
-        echo enabled
-    elif [[ "$enabled" == true || -n "$src" ]]; then
-        echo stale
-    else
-        echo absent
-    fi
-}
-
-# Is the plugin enabled in <root> (whatever declares it)? A root where it
-# must not be can hold only a leftover declaration, which doubles nothing.
-plugin_enabled_flag() {  # <root>
-    jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id] == true' "$1/.claude/settings.local.json" >/dev/null 2>&1
-}
-
-# Does <root> set the plugin explicitly to false (a local disable)? With no
-# declaration, plugin_state calls that `absent`; in a parent= instance it
-# can still turn off the plugin its parent enables.
-plugin_disabled_flag() {  # <root>
-    jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id] == false' "$1/.claude/settings.local.json" >/dev/null 2>&1
-}
-local_disable_note() {  # <name> <root>
-    echo "  note: parent= instance $1 ($2) disables the $PLUGIN_NAME plugin locally (enabledPlugins[\"$PLUGIN_ID\"] = false in its .claude/settings.local.json), which can turn off the plugin its parent enables there -- left as it is, since it may be deliberate; delete that entry to use the parent's"
-}
-
-# The marketplace source <root> currently declares, or empty.
-plugin_source() {  # <root>
-    local f="$1/.claude/settings.local.json"
-    [[ -f "$f" ]] || return 0
-    jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f" 2>/dev/null
-}
-
-# Does the claude CLI's machine-level record of the marketplace positively
-# name another checkout? The CLI keys it by name, so a machine holds ONE
-# source. A missing file, entry or `path` field (the format is the CLI's,
-# not ours) says nothing either way, and is not "another checkout".
-machine_record_foreign() {
-    local src
-    src="$(machine_record_source)"
-    [[ -n "$src" ]] && ! is_this_checkout "$src"
 }
 
 # Does the machine-level record name THIS checkout? Anything else -- another
@@ -922,199 +738,6 @@ machine_record_what() {
 machine_record_source() {
     [[ -f "$KNOWN_MARKETPLACES" ]] || return 0
     jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null || true
-}
-
-# Is <dir> inside a git repository whose toplevel is somewhere else? Prints
-# that toplevel. The CLI's local scope may resolve to the enclosing
-# repository rather than the cwd, so a `--scope local` call from such a
-# directory could act on that repository's settings.local.json instead --
-# for a parent= instance, the parent's working enable. Both callers refuse
-# to run the CLI there.
-enclosing_repo() {  # <dir>
-    local top top_phys dir_phys
-    top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
-    top_phys="$(cd "$top" 2>/dev/null && pwd -P)" || return 1
-    dir_phys="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-    [[ "$top_phys" != "$dir_phys" ]] || return 1
-    printf '%s\n' "$top"
-}
-
-# Why the installer does not run the CLI in a skip-enclosed root.
-enclosed_reason() {  # <enclosing toplevel>
-    echo "it is a plain directory inside the git repository $1, so its sessions read that repository's local settings and the claude CLI's local scope from there writes $1/.claude/settings.local.json, outside every registered root"
-}
-enclosed_advice() {  # <enclosing toplevel>
-    echo "register the repository's toplevel ($1) as the root instead, or move the root out of that repository"
-}
-
-# Why the installer does not run the CLI from a skipped parent= instance.
-# Every such instance shares its parent's repository (same_project): it is
-# a plain directory in it, where local scope lands on the repository's
-# toplevel (live case K) -- the parent's working enable -- or a linked
-# worktree of it, where local scope writes has not been established.
-# Either way a local-scope remove could strip the parent's enable, so the
-# instance's own declaration is reported, never removed.
-instance_cli_reason() {  # <instance>
-    local top gd cd
-    gd="$(cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-dir 2>/dev/null)"
-    cd="$(cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-    if [[ -n "$gd" && -n "$cd" && "$gd" != "$cd" ]]; then
-        echo "it is a git worktree of its parent's repository, and where the claude CLI's local scope writes from a worktree is not established"
-    elif top="$(enclosing_repo "$1")"; then
-        echo "it is a plain directory inside the git repository $top, and the claude CLI's local scope from there writes that repository's settings"
-    else
-        echo "it shares its parent's git repository, so the claude CLI's local scope from there may write the parent's settings"
-    fi
-}
-
-# Take the machine-level record over for this checkout (last install wins,
-# ADR-0018). Called BEFORE any project root is touched when the record is
-# not this checkout's (another checkout's, or no entry), and once more
-# after the per-root step if that step lost it. The record is
-# global, so it is handled as one machine-level step, never per root: a
-# per-root takeover that failed left the record foreign, and every later
-# root repeated it.
-#
-# The one `marketplace add` runs from a throwaway directory outside every
-# project and every git repository, so the only local declaration it writes
-# goes with that directory, and a refusal leaves every root as it was. The
-# record is read back afterwards: a CLI that exits 0 without repointing it
-# is a failure too. Returns 1, with the reason on stderr.
-claim_machine_record() {  # [<when>, for the message]
-    local when="${1:-once, before any project root}" what scratch top rc=0
-    what="$(machine_record_what)"
-    scratch="$(mktemp -d -t agent-workspace-claim.XXXXXX)" || {
-        echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
-        return 1
-    }
-    # An interrupt while the CLI runs must not leave the scratch directory
-    # behind (the value is fixed into the trap now: the local is gone by
-    # the time a trap set by the caller would run).
-    # shellcheck disable=SC2064  # expand $scratch now, on purpose
-    trap "rm -rf $(printf '%q' "$scratch"); exit 130" INT
-    # shellcheck disable=SC2064
-    trap "rm -rf $(printf '%q' "$scratch"); exit 143" TERM
-    # An add from a scratch directory inside a git repository could write
-    # that repository's settings.local.json instead (enclosing_repo).
-    if top="$(enclosing_repo "$scratch")"; then
-        rm -rf "$scratch"
-        trap - INT TERM
-        echo "  ERROR: the scratch directory for the machine-level takeover is inside the git repository $top -- not running the CLI there (point TMPDIR at a directory outside any git repository)" >&2
-        return 1
-    fi
-    echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $what, not this checkout -- taking it over $when (last install wins)"
-    (cd "$scratch" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) || rc=1
-    rm -rf "$scratch"
-    trap - INT TERM
-    if [[ "$rc" -ne 0 ]]; then
-        echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still ${what}" >&2
-        return 1
-    fi
-    if ! machine_record_ours; then
-        echo "  ERROR: the claude CLI reported success, but its machine-level record ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout" >&2
-        return 1
-    fi
-    echo "  the machine-level record of the $MARKETPLACE_NAME marketplace now names this checkout"
-}
-
-# The report for a root whose settings.local.json cannot be read: whether
-# the plugin is there is unknowable, so the caller fails rather than guess,
-# and the file is left exactly as it is.
-unparseable_root() {  # <root> <what was not done>
-    echo "  ERROR: $1/.claude/settings.local.json is not valid JSON -- $2 (fix it: jq . \"$1/.claude/settings.local.json\")" >&2
-}
-
-# Enable the plugin in one root: its own declaration only -- the
-# machine-level record is claim_machine_record's, run once before this.
-# Idempotent: an already-enabled root is left alone, without running the
-# CLI at all. Also the entry point the registration flow (#332) re-runs for
-# a newly registered root, by re-running this installer. Returns 1 on a CLI
-# failure or an unparseable settings file.
-enable_plugin_in_root() {  # <root>
-    local root="$1"
-    case "$(plugin_state "$root")" in
-        enabled)
-            echo "  plugin already enabled: $root"
-            return 0 ;;
-        unparseable)
-            unparseable_root "$root" "not enabling the plugin there"
-            return 1 ;;
-    esac
-    if ! have_claude; then
-        echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin in $root"
-        return 0
-    fi
-    # A leftover declaration in this root -- another checkout's, or this
-    # one's without the enable -- would make `marketplace add` refuse the
-    # name; drop it first so this source takes its place. A registered root
-    # is this checkout's registry's to repoint (uninstall, by contrast,
-    # leaves another checkout's declaration alone). A root that is already
-    # enabled from here never gets here, so this never removes a working
-    # declaration.
-    if [[ -n "$(plugin_source "$root")" ]]; then
-        (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
-    fi
-    if ! (cd "$root" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
-       || ! (cd "$root" && claude_plugin install "$PLUGIN_ID" --scope local >/dev/null); then
-        echo "  ERROR: enabling the $PLUGIN_NAME plugin in $root failed (claude plugin exited non-zero)" >&2
-        return 1
-    fi
-    if [[ "$(plugin_state "$root")" != enabled ]]; then
-        echo "  ERROR: the claude CLI reported success, but $root/.claude/settings.local.json does not show $PLUGIN_ID enabled from $WS_PHYS" >&2
-        return 1
-    fi
-    echo "  enabled the $PLUGIN_NAME plugin in $root"
-}
-
-# Disable and undeclare the plugin in one root (best-effort CLI calls; the
-# resulting file state is what decides success). Only called for a root
-# where the plugin is present, so without the CLI it cannot succeed: the
-# plugin stays enabled, and saying "removed" (or letting install report
-# success over a doubled root) would be a lie.
-disable_plugin_in_root() {  # <root>
-    local root="$1"
-    if ! have_claude; then
-        echo "  ERROR: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin from $root; run \`claude plugin uninstall $PLUGIN_ID --scope local\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope local\` there" >&2
-        return 1
-    fi
-    (cd "$root" && claude_plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
-    (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
-    if [[ "$(plugin_state "$root")" == absent ]]; then
-        echo "  removed the $PLUGIN_NAME plugin from $root"
-        return 0
-    fi
-    echo "  ERROR: could not remove the $PLUGIN_NAME plugin from $root (see its .claude/settings.local.json)" >&2
-    return 1
-}
-
-# ------------------------------------------------------------- uninstall ---
-# Remove the plugin from one root, if it is this checkout's there. A
-# declaration from another checkout is left alone with a note: a second
-# checkout's uninstall must not take away the first's plugin. Sets
-# uninstall_rc=1 on a failure.
-uninstall_plugin_from() {  # <root>
-    local root="$1"
-    case "$(plugin_state "$root")" in
-        enabled|stale) disable_plugin_in_root "$root" || uninstall_rc=1 ;;
-        foreign) echo "  NOTE: the $PLUGIN_NAME plugin in $root is declared from another checkout ($(plugin_source "$root")) -- left for that checkout's --uninstall" ;;
-        unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
-    esac
-}
-
-# A root where the installer never runs the CLI (a skipped parent= instance):
-# its own declaration from this checkout is reported for removal by hand,
-# exactly as install and --check report it, because a local-scope remove
-# there could strip its parent's enable (instance_cli_reason). Sets
-# uninstall_rc=1 when something is left.
-uninstall_refused_root() {  # <name> <root> <why the CLI does not run there>
-    local name="$1" root="$2" why="$3"
-    case "$(plugin_state "$root")" in
-        enabled|stale)
-            echo "  ERROR: the $PLUGIN_NAME plugin is declared in $name itself ($root); --uninstall does not run the claude CLI there ($why) -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
-            uninstall_rc=1 ;;
-        foreign) echo "  NOTE: the $PLUGIN_NAME plugin in $root is declared from another checkout ($(plugin_source "$root")) -- left for that checkout's --uninstall" ;;
-        unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
-    esac
 }
 
 # ------------------------------------------------ plugin, user scope ---
@@ -1370,7 +993,7 @@ migrate_legacy_roots() {  # [strict]
 # install). A registry that does not parse stops all three here, before
 # anything is read or changed: the parser has already named the bad line
 # on stderr, and a root it dropped could keep an entry nobody reports.
-if [[ "$MODE" != disable-root ]] && ! LEGACY_PLACES="$(legacy_places)"; then
+if ! LEGACY_PLACES="$(legacy_places)"; then
     echo "ERROR: $(registry_file "$WS_ROOT") does not parse (the line is named above) -- fix it and re-run; nothing was changed" >&2
     exit 1
 fi
@@ -1389,59 +1012,6 @@ plugin_anywhere() {
     done <<< "$LEGACY_PLACES"
     return 1
 }
-
-# ---------------------------------------------------------- disable-root ---
-# One registered root, as --uninstall treats each (below): the plugin goes
-# where this checkout declared it, and the roots the CLI never runs in are
-# reported, not touched.
-if [[ "$MODE" == "disable-root" ]]; then
-    if ! PLUGIN_ROOTS="$(plugin_roots)"; then
-        echo "ERROR: $(registry_file "$WS_ROOT") does not parse (the line is named above) -- fix it and re-run; nothing was changed" >&2
-        exit 1
-    fi
-    line="$(awk -F'\t' -v n="$DISABLE_NAME" '$1 == n' <<< "$PLUGIN_ROOTS")"
-    if [[ -z "$line" ]]; then
-        echo "ERROR: '$DISABLE_NAME' is not registered in $(registry_file "$WS_ROOT")" >&2
-        exit 1
-    fi
-    IFS=$'\t' read -r name root verdict detail <<< "$line"
-    uninstall_rc=0
-    record_was_ours=false
-    machine_record_ours && record_was_ours=true
-    if [[ ! -d "$root" ]]; then
-        echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
-    else
-        case "$verdict" in
-            skip-instance)
-                echo "  $name is a parent= instance whose parent root provides the plugin -- the parent's is left alone"
-                uninstall_refused_root "parent= instance $name" "$root" "$(instance_cli_reason "$root")" ;;
-            skip-enclosed) uninstall_refused_root "registered root $name" "$root" "$(enclosed_reason "$detail")" ;;
-            *) uninstall_plugin_from "$root" ;;
-        esac
-    fi
-    # A local `marketplace remove` can drop the CLI's machine-level record
-    # (live case J), which would leave every other root enabled from here
-    # without the plugin. When the record was this checkout's and some
-    # other root is still enabled from here, take it back, as install's
-    # step 6c does.
-    if [[ "$record_was_ours" == true ]] && have_claude && ! machine_record_ours; then
-        still_enabled=false
-        while IFS=$'\t' read -r _n r v _d; do
-            case "$v" in enable|enable-instance) ;; *) continue ;; esac
-            [[ "$(plugin_state "$r")" == enabled ]] && still_enabled=true
-        done <<< "$PLUGIN_ROOTS"
-        if [[ "$still_enabled" == true ]] && ! claim_machine_record "back, after removing the plugin from $name"; then
-            echo "agent_workspace plugin: removed from $name ($root), but the machine-level record of the $MARKETPLACE_NAME marketplace was lost and could not be taken back (above): sessions in the other roots may not load this checkout's skills -- re-run the installer." >&2
-            exit 1
-        fi
-    fi
-    if [[ "$uninstall_rc" -ne 0 ]]; then
-        echo "agent_workspace plugin: not removed from $name ($root) -- see above." >&2
-        exit 1
-    fi
-    echo "agent_workspace plugin: none left from this checkout in $name ($root)."
-    exit 0
-fi
 
 if [[ "$MODE" == "uninstall" ]]; then
     if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]] && ! plugin_anywhere; then

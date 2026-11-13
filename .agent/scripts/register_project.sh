@@ -473,7 +473,6 @@ if [ "$MODE" = "remove" ]; then
     LINE="$(registry_raw_line "$NAME")"
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY RUN: nothing is changed."
-        echo "would run: user_tier_install.sh --disable-root $NAME (removes the plugin from $PROJECT_ROOT when this checkout enabled it there)"
         echo "would remove the registry line: $LINE"
         if [ -e "$SETTINGS" ]; then
             if [ "$KEEP_SETTINGS" -eq 1 ]; then echo "would keep the settings file $SETTINGS (--keep-settings)"
@@ -490,13 +489,6 @@ if [ "$MODE" = "remove" ]; then
         rm -f "$TMP"
         echo "ERROR: the registry without '$NAME' would not parse (above); nothing removed" >&2
         final refused "fix the line that names '$NAME', then re-run" 1
-    fi
-    # Then the plugin: the installer finds the root through the registry,
-    # so it goes before the line.
-    if ! "$INSTALLER" --disable-root "$NAME" 8>&-; then
-        rm -f "$TMP"
-        echo "ERROR: could not remove the workspace plugin from $PROJECT_ROOT (above); nothing else was changed" >&2
-        final refused "fix the plugin removal above, then re-run register_project.sh --remove $NAME" 1
     fi
     if ! install_registry "$TMP" "$NAME" absent; then
         echo "ERROR: could not write the registry without '$NAME' (above). The workspace plugin is already removed from $PROJECT_ROOT; the registry line and the settings file are kept" >&2
@@ -896,7 +888,6 @@ fi
 
 # ------------------------------------------------------------- register ---
 ROLLBACK_ARMED=0
-INSTALLER_RAN=0
 LINE_WRITTEN=0
 SETTINGS_BACKUP=""
 SETUP_RAN=0
@@ -910,18 +901,6 @@ LINE_LEFT=0
 ROLLBACK_RUNNING=0      # a rollback has started and not finished
 ROLLBACK_DONE=" "       # its steps finished so far, " "-separated
 ENDING=0                # a handler is ending the run: a signal then waits
-ROOT_PLUGIN_BEFORE=0    # the plugin was enabled at the root before step 4
-# Is the workspace plugin enabled at the project's root from this checkout
-# (user_tier_install.sh's "enabled" state; the ids are its PLUGIN_ID and
-# MARKETPLACE_NAME)? The installer leaves such a root as it is, so a
-# rollback must too.
-root_plugin_enabled_here() {
-    local f="$PROJECT_ROOT/.claude/settings.local.json" src
-    [ -f "$f" ] || return 1
-    jq -e '.enabledPlugins["agent-workspace@agent-workspace"] == true' "$f" >/dev/null 2>&1 || return 1
-    src="$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path // ""' "$f" 2>/dev/null)" || return 1
-    [ -n "$src" ] && [ "$(phys "$src")" = "$(phys "$ROOT")" ]
-}
 SETTINGS_WRITING=0      # this run started writing the settings file
 SETTINGS_WRITTEN_SUM="" # the file's checksum once this run wrote it
 # The settings file's checksum, "absent" when there is none.
@@ -969,15 +948,6 @@ rollback() {
     ROLLBACK_RUNNING=1
     echo "" >&2
     echo "Rolling back the registration of '$NAME':" >&2
-    if [ "$INSTALLER_RAN" -eq 1 ] && [ "$ROOT_PLUGIN_BEFORE" -eq 1 ]; then
-        echo "  left the workspace plugin at $PROJECT_ROOT enabled: it was enabled there from this checkout before this run" >&2
-    elif [ "$INSTALLER_RAN" -eq 1 ]; then
-        if ! "$INSTALLER" --disable-root "$NAME" >&2 8>&-; then
-            echo "  WARNING: could not remove the workspace plugin from $PROJECT_ROOT (above)" >&2
-            rollback_left "the workspace plugin enabled at $PROJECT_ROOT"
-        fi
-    fi
-    ROLLBACK_DONE+="plugin "
     # LINE_WRITTEN is set before the registry is renamed, so a signal
     # between the rename and the next line still gets here; the line is
     # looked for, since the rename may not have happened. The name was free
@@ -1029,9 +999,6 @@ rollback() {
 # where it can be. The plugin step cannot be checked from here, so an
 # unfinished one is named.
 rollback_unfinished() {
-    if [[ "$ROLLBACK_DONE" != *" plugin "* ]] && [ "$INSTALLER_RAN" -eq 1 ] && [ "$ROOT_PLUGIN_BEFORE" -eq 0 ]; then
-        rollback_left "the workspace plugin enabled at $PROJECT_ROOT, perhaps"
-    fi
     if [[ "$ROLLBACK_DONE" != *" line "* ]] && [ "$LINE_WRITTEN" -eq 1 ] && registry_raw_line "$NAME" >/dev/null; then
         rollback_left "its registry line in $REGISTRY"
         LINE_LEFT=1
@@ -1224,8 +1191,6 @@ done
 echo ""
 if [ "$RUN_UT" -eq 1 ]; then
     echo "== user_tier_install.sh"
-    root_plugin_enabled_here && ROOT_PLUGIN_BEFORE=1
-    INSTALLER_RAN=1
     "$INSTALLER" 8>&- || failed "the user-tier installer failed (above)" "fix the installer failure"
     echo ""
     echo "== registration_verify.sh $NAME --user-tier"

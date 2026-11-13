@@ -500,38 +500,6 @@ for case in "validate:$PV" "build:$(make_proj theta 1 1 0)" "test:$(make_proj io
         bash -c '[ ! -s "$1" ] && [ ! -e "$2/.claude/settings.local.json" ]' _ "$STUB_LOG" "$dir"
 done
 
-echo "TEST: an installer failure after a passing build disables the root and rolls back"
-# Another registered root whose settings.local.json is not JSON makes the
-# installer fail after it has enabled the new root.
-PBAD="$(make_proj broken)"
-printf 'broken  single_project  %s\n' "$PBAD" >> "$WS/.agent/projects.local"
-printf 'build=make\ntest=make test\n' > "$(pfile "$WS" broken)"
-mkdir -p "$PBAD/.claude" && printf '{not json' > "$PBAD/$SLJ"
-PK="$(make_proj kappa)"
-: > "$STUB_LOG"
-out="$(reg "$WS" "$PK")"; rc=$?
-check "exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
-check "the root was enabled, then disabled by --disable-root" \
-    bash -c 'grep -qxF "$1|plugin install agent-workspace@agent-workspace --scope local" "$2" && grep -qxF "$1|plugin uninstall agent-workspace@agent-workspace --scope local" "$2"' _ "$PK" "$STUB_LOG"
-check "no enable left in the root" bash -c '! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$1" >/dev/null 2>&1' _ "$PK/$SLJ"
-check "no registry line, no settings file; the other root's line kept" \
-    bash -c '! grep -q "^kappa " "$1" && [ ! -e "$2" ] && grep -q "^broken " "$1"' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappa)"
-echo "TEST: the rollback leaves a plugin the root had enabled before the run"
-PKE="$(make_proj kappae)"
-mkdir -p "$PKE/.claude"
-jq -n --arg p "$(cd "$WS" && pwd -P)" '{enabledPlugins: {"agent-workspace@agent-workspace": true}, extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$PKE/$SLJ"
-cp "$PKE/$SLJ" "$SANDBOX/slj.before"
-: > "$STUB_LOG"
-out="$(reg "$WS" "$PKE")"; rc=$?
-check "exit 1, STATUS=refused, saying the plugin is left as it was" \
-    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"left the workspace plugin at $3 enabled: it was enabled there from this checkout before this run"* ]]' _ "$rc" "$out" "$PKE"
-check "no uninstall in that root; its settings.local.json is byte for byte the same" \
-    bash -c '! grep -qF "$1|plugin uninstall" "$2" && cmp -s "$1/$3" "$4"' _ "$PKE" "$STUB_LOG" "$SLJ" "$SANDBOX/slj.before"
-check "no registry line, no settings file" \
-    bash -c '! grep -q "^kappae " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappae)"
-rm -f "$PBAD/$SLJ"
-reg "$WS" --remove broken >/dev/null
-
 echo "TEST: with the user tier installed, registration enables the plugin and verifies it"
 PL="$(make_proj lambda)"
 : > "$STUB_LOG"
@@ -703,8 +671,6 @@ rmdir "$PL/worktrees/issue-lambda-7" "$PL/worktrees"
 : > "$STUB_LOG"
 out="$(reg "$WS" --remove lambda)"; rc=$?
 check "exit 0, STATUS=removed" [ "$rc" -eq 0 -a "$(status_of "$out")" = removed ]
-check "the plugin is disabled in the root first" \
-    bash -c 'grep -qxF "$1|plugin uninstall agent-workspace@agent-workspace --scope local" "$2" && ! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$1/$3" >/dev/null 2>&1' _ "$PL" "$STUB_LOG" "$SLJ"
 check "the line and the settings file are gone; the content was printed" \
     bash -c '! grep -q "^lambda " "$1" && [ ! -e "$2" ] && [[ "$3" == *"    build=make"* ]]' _ "$WS/.agent/projects.local" "$(pfile "$WS" lambda)" "$out"
 check "the project is left alone, and the output says so" \
