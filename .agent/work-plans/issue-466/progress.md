@@ -227,3 +227,26 @@ ADR-0021's Decision section stays within what the owner agreed: decision 1 is th
 - test_script_tests_hook_scope.sh: 326 passed, 0 failed
 - check_design_anchors.sh: exit 0
 - The full pre-commit pass and the full suite were skipped on the owner's direction (2026-11-13, "yes, one local run before a pr"): the host runs the one full pass before publishing. Every commit used SKIP=validate-script-tests; no --no-verify.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 11:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-466 at `2212c07b`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-diff classification as round 1, security-relevant: the permission gate for registration; fix round re-review of 303696b1..HEAD, the merge of pull request 461 set aside)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1's must-fix is closed: the only path to the real `register_session_root.sh` call is under the `STATUS=dry-run` bullet, after the yes in text; a refusal (exit 1, the wrapper's or register_project.sh's), the skill's own --dry-run, and user-supplied commands (asked before the yes) all stop or come before it; a re-run in a registered folder never reaches the branch. The question must name the registry line (folder and name) and the build and test commands. ADR-0021's Decision section is byte-identical to 9f2d5fd4 (diff of the section between the two commits is empty; only Context and Consequences hunks). The --set pass-through quoting is safe: every valid value excludes quotes, $, backtick, backslash, ( ), & | ; < >, and detected commands are fixed strings. Both types require build and test, so a key with no detected command always gives a note: line and the skill asks for it. The name check is register_project.sh:581's rule copied exactly. The merge's conflict resolution keeps main's rows and this branch's row last; design.md is 1045 lines, Sessions and roots 149 and Registry and adapters 139 as the row says, check_design_anchors.sh exit 0.
+
+Reviewers: static (shellcheck --severity=warning on register_session_root.sh and the two touched tests, clean), governance, plan drift, Claude adversarial (fresh sub-agent: 0 must-fix, 4 suggestions), cross-model Gemini (agy) completed EXIT=0 and Codex completed EXIT=0 (fix-round rule: whole-diff Deep tier, so cross-model ran). Suites run one at a time: test_register_session_root.sh 60 passed 0 failed; test_skill_paths.sh 139 passed 0 failed. Full suite and full pre-commit not run (owner's rule of 2026-11-13; the host runs the one pass).
+
+Dismissed: Codex's lock race (round 1's judged limit (a), not in the fix diff; each call still needs its own yes in text); Codex's nested repository inside a workspace worktree outside the checkout (workspace worktrees live under the checkout here and are refused as inside it; not in the fix diff); Gemini's worktrees= containment (worktrees= must lie under its root or the workspace, both already refused, round 1 probe); Gemini's unset key re-detected (both types require build and test, a missing one gives a note: and the skill asks); Gemini's plan divergence on promotion (ADR-0021 records it).
+
+### Findings
+- [ ] (suggestion) Before the yes, re-run the dry run with the exact --set arguments the real call will pass: a user's command register_project.sh refuses (e.g. "make && make install") or a copied "(detected (Makefile))" annotation is only caught after the yes, as STATUS=refused and a rollback, and the shown output is then exactly the real call's (Claude adversarial, confirmed by reading) — `.claude/skills/onboard-project/SKILL.md:149`
+- [ ] (suggestion) A settings file left under the folder's name (register_project.sh --remove --keep-settings) is kept: the dry run says "settings file kept as it is" with no build= or test= lines, so the question names no commands and the skill's "both show what is written" is untrue there; show that file's build and test in the question — `.claude/skills/onboard-project/SKILL.md:165`
+- [ ] (suggestion) The name rule is a second copy of register_project.sh's; a change to one leaves the other refusing or passing names differently (worst case round 1's NEXT=--name message again); move it into a function in _project_registry.sh both call — `.agent/scripts/register_session_root.sh:171`
