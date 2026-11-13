@@ -89,3 +89,11 @@ Read: the Issue Review at 7395390f and its report. The one action that is the ow
 
 ### Decisions made (owner may veto)
 - Proceed to planning with the review's narrow shape (one new guarded script, no interface change to session_root.sh, registry_require_root or register_project.sh) — undoing it: revise the plan at its checkpoint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 11:21 -05:00
+**By**: Claude Code (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-466/plan.md` at `1d0b8f5a`
+
+One new guarded user-tier script (register_session_root.sh) registers only the session's own unregistered root via register_project.sh --skip-run; onboard-project step 1 offers it; guard test gets a named exception; design.md in the same PR; ADR-0021 only after the owner's yes.
