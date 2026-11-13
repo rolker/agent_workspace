@@ -145,3 +145,17 @@ The plan is small and well grounded except for one choice. Promoting the new scr
 - [ ] Drop the promotion: no `user_tier_scripts.txt` entry and no `test_user_tier_guard.sh` change. Add the script to the manifest's "never promoted" comment, assert its absence in `test_register_session_root.sh`, and state "not promoted; each call prompts" in the script header, `script_reference.md` and design.md.
 - [ ] Remove the "re-run `user_tier_install.sh` on each machine" consequence and the PR note.
 - [ ] Refuse a folder that is already a registered root before delegating, and test that `--set` cannot change a registered project's settings through this script.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's one must-fix removes work rather than adding it: the new script is NOT promoted to the user tier, so plan steps 1 and 3 and the installer re-run are dropped; the review says nothing else needs a re-plan and its seven notes are each a bounded instruction the implement pass can apply; the owner asked for this change in under an hour and a re-plan plus second review would cost about ten minutes for no new information; first host answer at this checkpoint)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at bcde893b and its report. The implement handoff carries the must-fix and the notes verbatim. The must-fix keeps the change inside what the owner agreed to: ADR-0021 supersedes ADR-0016 decision 5 only, and promotion would have broken decision 6 (promoted only if inert outside every registered root). Consequence the owner will see: registering from a project session asks for permission each time, and that prompt is the yes. The owner answered "yes to ADR-0021" on 2026-11-13, so plan step 7 is unblocked.
+
+### Decisions made (owner may veto)
+- The new register_session_root.sh is not promoted to the user tier: every call prompts, showing the full command — undoing it: a later change adds it to user_tier_scripts.txt with a guard-test exception and its own decision record for ADR-0016 decision 6.
+- Proceed on a needs-work plan review without a re-plan, with the must-fix and notes in the implement handoff — undoing it: answer this checkpoint revise instead; nothing is implemented yet.
