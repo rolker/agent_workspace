@@ -75,8 +75,8 @@
 #
 # findings The address-findings source entry (latest Integrated Review,
 #          Local Review (Pre-Push) or post-publish Local Review) and its open
-#          findings with indexes; an approved review's "No issues found.
-#          LGTM." placeholder is not one.
+#          findings with indexes; an approved, zero-count review's "No
+#          issues found. LGTM." placeholder is not one.
 # check    Flip one of that entry's checkboxes to [x], optionally with a
 #          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
 #
@@ -158,10 +158,10 @@ cmd_round() {
     local json
     json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
         echo "error: round: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
-    # Prior COMPLETE entries for THIS branch, from the start of the current
-    # pull request's work (pr_start.py round_start: after the newest restart
-    # checkpoint, or the first new work after a merge answer, whichever is
-    # newer; issue 459); the newest is the last in file order. The whole
+    # Prior COMPLETE entries for THIS branch, from the round start
+    # (pr_start.py round_start: the newer of the newest restart checkpoint
+    # and the pull request's start, the first new work after a merge
+    # answer; issue 459); the newest is the last in file order. The whole
     # timeline is read (not --type) because the boundary is drawn from
     # Checkpoint, Plan Authored and Implementation entries. round_count() in
     # dispatch_phase.sh `next` reads the same round_start.
@@ -613,8 +613,9 @@ print()
 # re-review is the source of the fix pass after it, issue 459), with its
 # open (unchecked) findings and their index among the entry's checkbox
 # lines — the index `check` flips. The "No issues found. LGTM." box an
-# approved review leaves unchecked is not an open finding (pr_start.py
-# is_lgtm_placeholder, the predicate `sources` uses too). Exit 0 with
+# approved review that counts 0 must-fix and 0 suggestions leaves unchecked
+# is not an open finding (pr_start.py is_lgtm_placeholder, the predicate
+# `sources` uses too). Exit 0 with
 # "source": null when no qualifying entry exists. `check` selects the same
 # entry.
 cmd_findings() {
