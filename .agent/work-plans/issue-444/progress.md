@@ -467,3 +467,13 @@ Mechanism: the ordinary tail of a signal-handling change, not a wrong design; th
 - [ ] (suggestion, Local Review @ c327c009) Valid. cleanup_run prints "still running at exit" (:552) before installing its INT/TERM/HUP traps (:558-560); a signal between them takes the default action inside the EXIT trap, so stop_suites never starts: no watchdog, the left process runs on until it ends by itself, and /tmp/run-script-tests.* is left behind. For a person the window is three builtins, microseconds; it matters only to something that reacts to the line. The new (u8) test does: it polls the log every 0.1 s and signals right after seeing the line. To fail, the runner must be descheduled in those microseconds for longer than the test takes to wake, run two greps and send the signal (a few ms at best, up to about 100 ms). On an idle machine that does not happen; on a heavily loaded one (load 14 to 20 seen today) it is roughly one run in thousands or rarer, and a failure costs a rerun of the suite. Fix: move the echo after the three `trap` lines; no new test needed — `.agent/scripts/tests/run_script_tests.sh:552`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the one open finding is valid and its fix is moving one echo below three trap lines, no new test; triage recommends fixing it here; it removes a possible flake in the test this pull request adds, and flaky tests under load are what cost the owner time today; second host address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 0713d270 and its report. Finding: run_script_tests.sh:552, the "still running at exit" line is printed before the three new trap lines are installed. Triage's note on the mechanism: the ordinary tail of a signal-handling change, the window shrinking each round; if another point turns up, the cure is one handler installed once for the whole parallel section and its cleanup, which belongs to part 2 of the issue.
