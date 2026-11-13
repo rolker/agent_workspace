@@ -626,3 +626,21 @@ Scope: round 2's findings and the diff b208d2da..939d23d0. Cross-model: skipped 
 The host read the Local Review (Pre-Push) entry at 20ad72bd. Its one new suggestion (user_tier_install.sh:834: the take-over stops on a failed user-scope uninstall without naming a hand removal, and runs that uninstall when only the enable exists) is carried forward, not fixed: it needs a take-over between two checkouts on one machine and a CLI refusal that is itself unverified. It is listed for the owner's veto at the merge point.
 
 Live run 2 (Claude Code 2.1.323, model haiku, head 20ad72bd), with the aw-accept name shortened to N: U1 list zz-probe; U2 list zz-probe,N:zz-probe (accepted doubling); U3 list zz-probe (its prefixed probe session failed; the list decides); U4 list zz-probe,N:zz-probe (accepted doubling); U5, U6, U7 list N:zz-probe (U7 once); U8 list <none>, its control skill answered; U-end neither entry left; the real settings identical under jq -S before and after. Stop checks 1 to 4 clear; CHECK U7 yes.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-12 21:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #458 at `b4eb5532`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `939d23d0` (covers b4eb5532 via bookkeeping), CI rollup; GitHub: 0 reviews, 0 inline comments, 0 conversation comments — Copilot's automatic review is off in this repository's ruleset since 2026-11-12)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Lint (pre-commit) still running at this entry; ros-manifest tests, Validate Adapter Contract and Validate Documentation passed. Round 2 (Local Review @ `630c47d6`) is stale for this head; its open item and round 3's were read against the code and are ruled below. No open must-fix.
+
+### Findings
+- [x] (suggestion, Local Review R3 @ `939d23d0`) Confirmed in the code: the take-over runs `uninstall --scope user` also when the user settings only enable the plugin with no install record (line 835's second branch), and a failure returns 1 with "nothing was repointed" and no hand removal. Not fixed: carried forward by the host's Checkpoint (b4eb5532) and named in the PR body's Decision summary for the owner's veto at the merge point — `.agent/scripts/user_tier_install.sh:834`
+- [x] (suggestion, Local Review R1 @ `630c47d6`, stale) Follow-up issue on relaxing the two `session_root.sh` refusals: left to the owner, and the PR body says so ("Left for the owner") — `.agent/work-plans/issue-446/plan.md:329`
+
+### False positives
