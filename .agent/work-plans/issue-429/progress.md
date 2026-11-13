@@ -1802,3 +1802,32 @@ End to end:
 - The fetch for the check pulls every origin branch's objects once, on resume or creation over an existing branch only.
 - A commit of the issue's own that someone also pushed to another origin branch counts as foreign (conservative: the run refuses and names that branch).
 - Table 1's other rows (`worktree_create.sh`, `merge_pr.sh`) cite lines that were already stale before this pass (the table calls itself a dated probe). Only the `dispatch_phase.sh` row was in scope and is now true.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2d814db9`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification, unchanged from round 1: worktree/dispatch/merge scripts and skills, cross-layer)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round 2 of this diff (the dispatcher counts higher because the merged pull requests 445 and 456 share the timeline, issue 459; the verdict script was given `--round 2`). Scope: round 1's seven findings and the fix diff d02587c4, be953d46, 517b827e, e2638167, 37c1ad2d. Round-2 rule: Deep on the whole diff, so cross-model ran (gemini via agy, codex: both completed); Copilot skipped (disabled for quota); fresh Claude adversarial sub-review ran.
+
+Round 1 findings: 1 (resume records unchecked base) fixed by the foreign-history check and creation always resolving a base, but see must-fix 1 and 2 below; 2 (explicit `pull --ff-only --no-rebase origin <base>`) fixed and tested; 3 (legacy `project=project`), 4 (failed-fetch test), 5 (three true `unknown` messages), 6 (`--package-repos` set compared) and 7 (Table 1 citations) fixed as stated.
+
+Suites run: test_ros2_colcon 531/0, test_worktree_create 84/0, test_package_issue_loop 188/0, test_dispatch_phase 148/0, test_merge_pr 150/0; no `refs/wt-base-check/` refs left in this checkout. The GIT_SSH_COMMAND stub in test_ros2_colcon serves only the sandbox's fake_remotes and fails as unreachable elsewhere; the layout and rollback tests still assert what they did. The comment at test_ros2_colcon.sh:272 still says the fixture origins cannot be reached.
+
+### Findings
+- [ ] (must-fix) A package worktree with `--parent-issue` and no `--base` now starts from the pin, not the parent: `worktree_create.sh --issue owner/pkg_a#12 --type project --layer l1 --package-repos pkg_a --parent-issue 10` resolves BASE_BRANCH from the pin (the `--base`/`--parent-issue` guard at :354 runs before it), `_wt_add_repo` takes the base path ahead of the parent path, the banner still says "Parent: #10", and base=<pin> is recorded. Before this pass the branch started from feature/issue-10. Refuse the combination or skip pin resolution with a parent (codex, adversarial) — `.agent/scripts/worktree_create.sh:738`
+- [ ] (must-fix) `wt_base_foreign_history` counts the issue's own commits as foreign when another origin branch also has them: feature/issue-7 from origin/rel plus one own commit, its tip also pushed as feature/issue-12 (a sub-issue branch stacked on it with --parent-issue, or a backup) gives rc=1 "1 commit(s) ... origin's feature/issue-12 (1): it did not start from 'rel'", false, and both resume and creation over the existing branch refuse. This is the host's rule as written, so it needs a decision: e.g. count only commits that another branch has AND that are not descended from the branch's fork point with the base, or word the refusal as "also on <branch>" and offer a way through (adversarial, gemini) — `.agent/scripts/_worktree_helpers.sh:519-536`
+- [ ] (suggestion) A branch with no history in common with the base passes: an orphan feature/issue-N makes every merge-base empty, every origin branch is skipped, rc=0, and base= is recorded although no pull request can be opened. Require `merge-base <tip> <ns>/<base>` to be non-empty (codex) — `.agent/scripts/_worktree_helpers.sh:529`
+- [ ] (suggestion) The check's fetch updates the checkout's remote-tracking refs (git's opportunistic update for a command-line refspec), contrary to its header: verified, a clone with no refs/remotes/origin/dev gets one after `fetch origin "+refs/heads/*:refs/wt-base-check/x/*"`. Add `--refmap=`; the "remote-tracking refs are unchanged" test passes on the current code because its clone's refs were already current (adversarial) — `.agent/scripts/_worktree_helpers.sh:507`, `.agent/scripts/tests/test_worktree_create.sh:816`
+- [ ] (suggestion) No INT/TERM handling: a Ctrl-C during the merge-base loop of `dispatch_phase.sh base` leaves `refs/wt-base-check/<pid>-<rand>/*` refs that pin objects and show in `--all`; sweep stale ones at the start or trap (adversarial) — `.agent/scripts/_worktree_helpers.sh:500-562`
+- [ ] (suggestion) `--branch <name>` with `--layer` is not refused, and the owning entry is found by `BRANCH_NAME`: `--branch foo --layer l1 --package-repos pkg_a` finds no owning entry, resolves no base, and feature/issue-N starts from origin's default branch with no base= (adversarial) — `.agent/scripts/worktree_create.sh:735`
+- [ ] (suggestion) `dispatch_phase.sh base --base ""` is ignored (the pin is used) and `pr_base_for`/`cmd_base` validate with `check-ref-format refs/heads/<b>`, which accepts `-foo` and `HEAD`; use `git check-ref-format --branch` and refuse an empty value, as worktree_create.sh does (gemini) — `.agent/scripts/dispatch_phase.sh:752`, `.agent/scripts/_pr_base.sh:68`
+- [ ] (suggestion) Test gaps: no case for the foreign-history refusal after sibling worktrees were added (rollback of siblings); case 13's dead-origin resume now passes `--base pinned`, so reading the pin while origin is down and then reaching the check is no longer exercised (adversarial) — `.agent/scripts/tests/test_ros2_colcon.sh`, `.agent/scripts/tests/test_package_issue_loop.sh`
