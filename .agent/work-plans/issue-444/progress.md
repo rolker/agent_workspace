@@ -243,3 +243,25 @@ Overlap with other load, as the owner accepted ("q12 do it now"): the driver no 
 - In the earlier batch the driver checked only at the start of each run. Other runs were going then for serial1, serial2 and seeds 2, 8 and 9.
 
 The driver and the logs are in this session's scratchpad (`indep/`); they are not checked in, as decision D7 of the plan says. Every run named its job count. The only counts above 4 are the plan's own eight-job run and its 8 busy loops, all within the 16 CPUs.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 10:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-444 at `c323b709`
+**Base**: origin/main
+**Depth**: Deep (reason: 1,360 changed lines; `.pre-commit-config.yaml` is an override trigger)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Checked after the merge of origin/main (c323b709): the 48 suites, the three new ones from main among them (test_commit_identity.sh, test_fresh_clone_no_project.sh, test_records_write_gate.sh), all passed in one run at `-j 4 --shuffle=444` (561 s, exit 0, load average 14 to 20 with other agents' runs going); afterwards `git status --porcelain` was empty. No new suite from main uses pgrep/pkill or writes outside its sandbox (grep). Branch pre-commit with SKIP=validate-script-tests: exit 0. Cross-model: gemini and codex both complete (EXIT=0).
+
+Dismissed, with evidence: "the EXIT trap does not run on an untrapped INT/TERM/HUP" (gemini, Claude adversarial) — bash 5.2 here runs it on all three, tested; "wait -n misses children that finished before the wait" (codex) — 400 rounds of the runner's own start/wait pattern, jobs finished before the wait, no miss; "a late leak listed first should give exit 2 over a later failure" (codex) — a one-job run stops at the failure and never sees the late leak, so exit 1 is what one job gives; "unused total, wrong k under --shuffle" (gemini) — total is used at :803, and k is list position as :757 says; "--timings, # serial:, sleep_arg missing, bash 5.1" (gemini, codex) — dropped or chosen by the plan review and its checkpoint; stopped jobs on /dev/tty — no suite or script opens /dev/tty; duplicate scoped suites — the mapper prints dict keys.
+
+### Findings
+- [ ] (must-fix) Header says the runner sends KILL "to whatever is left 5 seconds later", but :614 KILLs every suite's group as soon as all suite leaders have exited, so a child still doing its own cleanup is killed at once; reword the header (or drop :614 and leave KILL to the watchdog), and add a (u8) variant with a suite that ignores the signal, so the 5 s backstop is tested at all — `.agent/scripts/tests/run_script_tests.sh:39`
+- [ ] (suggestion) Exits from the parallel section other than on_interrupt (a `set -u` abort, the "lost track" exit 1 at :651, a signal landing between `&` and `job_of[$!]=` at :636-638) remove RUN_ROOT under suites that keep running; have the EXIT cleanup kill the groups of `jobs -p` too — `.agent/scripts/tests/run_script_tests.sh:512`
+- [ ] (suggestion) An empty count or seed (`-j ""`, `--jobs=`, `--shuffle=`) falls back to the default or a random seed instead of being refused like `-j 0` — `.agent/scripts/tests/run_script_tests.sh:217`
+- [ ] (suggestion) (u4)'s first run cannot tell "first failing in list order" from "first to finish": both give exit 1; make the first-listed failure a leak there (the second run and (v) cover it today) — `.agent/scripts/tests/test_run_script_tests.sh:1234`
