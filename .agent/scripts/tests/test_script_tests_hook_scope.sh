@@ -535,6 +535,22 @@ if [[ "$ENTRY" == *"run_script_tests.sh --files" ]]; then
 else
     fail "hook entry does not end in 'run_script_tests.sh --files' (scoped runs need the file list): $ENTRY"
 fi
+# Issue #444: the hook sets no job count of its own. -j would have to sit
+# before --files (which takes every later argument as a file), and a count
+# fixed here would also fix CI's; the runner's default, or
+# RUN_SCRIPT_TESTS_JOBS, is the one place it is set.
+if [[ " $ENTRY " =~ [[:space:]](-j[0-9]*|--jobs(=[^[:space:]]*)?)[[:space:]] ]]; then
+    fail "hook entry passes a job count ('${BASH_REMATCH[1]}'): the runner's default or RUN_SCRIPT_TESTS_JOBS sets it: $ENTRY"
+else
+    pass "hook entry passes no job count (the runner's default or RUN_SCRIPT_TESTS_JOBS applies)"
+fi
+# The comment block directly above the hook's `- id:` line.
+HOOK_COMMENT="$(awk '/^[[:space:]]*#/ { c = c $0 "\n"; next } /^[[:space:]]*- id: validate-script-tests[[:space:]]*$/ { printf "%s", c; exit } { c = "" }' "$CONFIG")"
+if [[ "$HOOK_COMMENT" == *RUN_SCRIPT_TESTS_JOBS* ]]; then
+    pass "the hook's comment names RUN_SCRIPT_TESTS_JOBS as the way to set the job count"
+else
+    fail "the comment above the validate-script-tests hook no longer names RUN_SCRIPT_TESTS_JOBS (the only way to set its job count)"
+fi
 if echo "$BLOCK" | grep -qE '^\s*pass_filenames:\s*true\s*$'; then
     pass "pass_filenames: true"
 else

@@ -14,7 +14,16 @@
 # files, over 200 files), (o) deletions and renames through a real git
 # hook (`git commit -a`, a pathspec commit, a rename out of the hook's
 # scope, and an edit-only control), (p) the branch run, (q) a non-ASCII
-# deletion on the branch, (r) no default branch to diff against.
+# deletion on the branch, (r) no default branch to diff against. (s1)–(s4)
+# pin what a one-job run keeps (issue #444): exit codes, header and running
+# lines, the stop at the first failure, leak attribution, live output.
+# (t1) and (u5) cover the late leak caught by the second sweep; (u1)–(u8)
+# and (v) the job pool: the job count and the argument order, hidden and
+# shown output, unmixed failure output, every suite run and the exit code
+# by list order, attribution while suites overlap, trappable SIGINT and
+# SIGQUIT, the interrupt with its 5-second KILL backstop, a second signal
+# cutting the stop short, processes a finished suite left running, and
+# --shuffle.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -25,6 +34,10 @@
 # Run: bash .agent/scripts/tests/test_run_script_tests.sh
 
 set -u
+# Every nested run below names its job count (-j 1 in the one-job cases),
+# except the cases about the default and RUN_SCRIPT_TESTS_JOBS themselves;
+# an outer run's setting is not inherited.
+unset RUN_SCRIPT_TESTS_JOBS
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run_script_tests.sh"
 PASS=0
@@ -61,7 +74,7 @@ exit 0
 EOF
 chmod +x "$CASE_A/test_synthetic.sh"
 
-out=$("$RUNNER" "$CASE_A" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_A" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ -f "$MARKER_A" ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(a) discovers and runs a synthetic test_*.sh fixture via glob"
 else
@@ -77,7 +90,7 @@ exit 0
 EOF
 chmod +x "$CASE_B/test_other.sh"
 
-out=$("$RUNNER" "$CASE_B" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_B" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qi 'test_checkpoint_269.sh'; then
     pass "(b) fails loudly when test_checkpoint_269.sh is absent from the discovered set"
 else
@@ -108,7 +121,7 @@ exit 0
 EOF
 chmod +x "$CASE_C"/test_*.sh
 
-out=$("$RUNNER" "$CASE_C" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_C" 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && [ ! -f "$MARKER_C_LATER" ] \
     && printf '%s' "$out" | grep -q 'FAILED at test_b_fail.sh' \
     && ! printf '%s' "$out" | grep -q 'test_z_never'; then
@@ -142,7 +155,7 @@ chmod +x "$CASE_D/test_synthetic.sh"
 for t in bash date basename dirname env python3; do
     p=$(command -v "$t") && ln -s "$p" "$TMPD/bin_nojq/$t"
 done
-out=$(PATH="$TMPD/bin_nojq" "$RUNNER" "$CASE_D" 2>&1); rc=$?
+out=$(PATH="$TMPD/bin_nojq" "$RUNNER" -j 1 "$CASE_D" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_D" ] && printf '%s' "$out" | grep -q "'jq' not found"; then
     pass "(d) missing jq is named by the preflight and no suite runs"
 else
@@ -164,7 +177,7 @@ exit 0
 EOF
 chmod +x "$CASE_E/test_aaa_leaker.sh"
 
-out=$("$RUNNER" "$CASE_E" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_E" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_leaker.sh' \
     && printf '%s' "$out" | grep -q 'leaked_by_fixture'; then
     pass "(e) a suite leaking into TMPDIR fails the run with exit 2, naming the suite"
@@ -188,7 +201,7 @@ exit 0
 EOF
 chmod +x "$CASE_F/test_tidy.sh"
 
-out=$("$RUNNER" "$CASE_F" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_F" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(f) a suite that cleans up its own TMPDIR files still passes"
 else
@@ -207,7 +220,7 @@ mkdir -p "$CASE_G" "$CALLER_TMPDIR"
 write_checkpoint_stub "$CASE_G"
 cp "$CASE_E/test_aaa_leaker.sh" "$CASE_G/test_aaa_leaker.sh"
 
-out=$(TMPDIR="$CALLER_TMPDIR" "$RUNNER" "$CASE_G" 2>&1); rc=$?
+out=$(TMPDIR="$CALLER_TMPDIR" "$RUNNER" -j 1 "$CASE_G" 2>&1); rc=$?
 caller_leftovers=$(find "$CALLER_TMPDIR" -mindepth 1 2>/dev/null)
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_leaker.sh' \
     && [ -z "$caller_leftovers" ]; then
@@ -237,7 +250,7 @@ exit 0
 EOF
 chmod +x "$CASE_H"/test_*.sh
 
-out=$("$RUNNER" "$CASE_H" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_H" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_H" ] \
     && printf '%s' "$out" | grep -q 'test_absolute_template.sh'; then
     pass "(h) the preflight lint names an absolute-/tmp template and exits 1 before any suite runs"
@@ -271,7 +284,7 @@ EOF
     chmod +x "$dir"/test_*.sh
 
     local out rc
-    out=$("$RUNNER" "$dir" 2>&1); rc=$?
+    out=$("$RUNNER" -j 1 "$dir" 2>&1); rc=$?
     if [ "$rc" -eq 1 ] && [ ! -f "$marker" ] \
         && printf '%s' "$out" | grep -q "test_absolute_${label}.sh"; then
         pass "(i) the lint rejects the $label spelling before any suite runs"
@@ -309,7 +322,7 @@ exit 0
 EOF
 chmod +x "$CASE_J/test_nested_tmp_path.sh"
 
-out=$("$RUNNER" "$CASE_J" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_J" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(j) a non-root .../tmp/ path is not a lint hit"
 else
@@ -332,7 +345,7 @@ printf '#!/usr/bin/env bash\n# mktemp is never handed %sfile.XXXXXX as a templat
     "$ABS_TMP_ROOT" "$ABS_TMP_ROOT" > "$CASE_J2/test_tmpfile_sibling.sh"
 chmod +x "$CASE_J2/test_tmpfile_sibling.sh"
 
-out=$("$RUNNER" "$CASE_J2" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_J2" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(j2) a /tmp-prefixed sibling name is not a lint hit"
 else
@@ -353,7 +366,7 @@ exit 0
 EOF
 chmod +x "$CASE_K/test_aaa_nested_leaker.sh"
 
-out=$("$RUNNER" "$CASE_K" 2>&1); rc=$?
+out=$("$RUNNER" -j 1 "$CASE_K" 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_nested_leaker.sh' \
     && printf '%s' "$out" | grep -q 'sandbox/deeper/telltale_file'; then
     pass "(k) the leak message lists the leaked tree recursively"
@@ -798,7 +811,7 @@ ran() { (cd "$1" && ls | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'); }
 
 # --- Case (m): the runner in --files mode runs only the chosen suites. ---
 M_MARKS="$TMPD/m_marks"
-out=$(run_syn "$M_MARKS" "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
+out=$(run_syn "$M_MARKS" -j 1 "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
 if [[ $rc -eq 0 && "$(ran "$M_MARKS")" == "test_alpha.sh test_always.sh test_checkpoint_269.sh test_noref.sh" ]] \
         && printf '%s' "$out" | grep -q "scoped run, 4 of $SYN_N suites"; then
     pass "(m) --files runs only the selected suites and says so"
@@ -810,7 +823,7 @@ fi
 check_full() {  # <label> <runner args>...
     local label="$1" out rc
     shift
-    out=$(run_syn "$TMPD/n_marks" "$SYN_T" "$@"); rc=$?
+    out=$(run_syn "$TMPD/n_marks" -j 1 "$SYN_T" "$@"); rc=$?
     local n_ran
     n_ran=$(find "$TMPD/n_marks" -mindepth 1 | wc -l | tr -d ' ')
     if [[ $rc -eq 0 && "$n_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q "all $SYN_N suites passed"; then
@@ -837,7 +850,7 @@ hook_case() {
     rm -rf "$r" "$hooks" "$log"
     make_syn_repo "$r" || { fail "(o) $label: could not build the repository"; return; }
     mkdir -p "$hooks"
-    printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+    printf '#!/usr/bin/env bash\nbash %q -j 1 %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
         "$RUNNER" "$r/.agent/scripts/tests" "$log" > "$hooks/pre-commit"
     chmod +x "$hooks/pre-commit"
     sgit -C "$r" config core.hooksPath "$hooks"
@@ -878,7 +891,7 @@ make_syn_repo "$P" && sgit -C "$P" rm -q .agent/scripts/other.sh && sgit -C "$P"
 p_run() {
     rm -rf "$TMPD/p_marks" && mkdir -p "$TMPD/p_marks"
     (cd "$P" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/p_marks" \
-        "$RUNNER" "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
+        "$RUNNER" -j 1 "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
 }
 out=$(p_run); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "other.sh' is deleted"; then
@@ -896,7 +909,7 @@ else
 fi
 P_HOOKS="$TMPD/p_hooks" P_LOG="$TMPD/p_hook.log"
 mkdir -p "$P_HOOKS" "$TMPD/p_marks"
-printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+printf '#!/usr/bin/env bash\nbash %q -j 1 %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
     "$RUNNER" "$P/.agent/scripts/tests" "$P_LOG" > "$P_HOOKS/pre-commit"
 chmod +x "$P_HOOKS/pre-commit"
 sgit -C "$P" config core.hooksPath "$P_HOOKS"
@@ -917,7 +930,7 @@ make_syn_repo "$Q" && sgit -C "$Q" checkout -q main \
     && sgit -C "$Q" checkout -q -B feature && sgit -C "$Q" rm -q "$CAFE" && sgit -C "$Q" commit -q -m "delete café"
 rm -rf "$TMPD/q_marks" && mkdir -p "$TMPD/q_marks"
 out=$(cd "$Q" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/q_marks" \
-    "$RUNNER" "$Q/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+    "$RUNNER" -j 1 "$Q/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "café.sh' is deleted"; then
     pass "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run"
 else
@@ -931,7 +944,7 @@ R="$TMPD/syn_r"
 make_syn_repo "$R" && sgit -C "$R" branch -q -D main
 rm -rf "$TMPD/r_marks" && mkdir -p "$TMPD/r_marks"
 out=$(cd "$R" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/r_marks" \
-    "$RUNNER" "$R/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+    "$RUNNER" -j 1 "$R/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
 r_ran=$(find "$TMPD/r_marks" -mindepth 1 | wc -l | tr -d ' ')
 if [[ $rc -eq 0 && "$r_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q 'full run.*no default branch available here' \
         && ! printf '%s' "$out" | grep -q 'ERROR'; then
@@ -939,6 +952,776 @@ if [[ $rc -eq 0 && "$r_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q 'full 
 else
     fail "(r) no default branch: a branch run runs all $SYN_N suites, with a plain reason line (rc=$rc, ran=$r_ran, out=$out)"
 fi
+
+# ===================================================================
+# Issue #444: the contract a one-job run keeps. Written against the
+# serial runner before the job pool existed, so every later change is
+# checked against this fixed point: the exit codes, the header and
+# per-suite lines, the stop at the first failure, the leak charged to the
+# suite that left it, and output streamed live in list order.
+# ===================================================================
+
+# make_stub <dir> <name> <body>: a suite with <body> as its text.
+make_stub() {
+    printf '#!/usr/bin/env bash\n%s\n' "$3" > "$1/$2"
+    chmod +x "$1/$2"
+}
+# running_lines <output>: the "=== running X ===" names, one line.
+running_lines() {
+    printf '%s\n' "$1" | sed -n 's/^=== run_script_tests: running \(.*\) ===$/\1/p' | tr '\n' ' ' | sed 's/ $//'
+}
+
+# --- Case (s1): all pass: exit 0, the header line, one running line per
+#     suite in list order, each suite's output under its own running line,
+#     and the closing line. ---
+S1="$TMPD/case_s1"
+mkdir -p "$S1"
+write_checkpoint_stub "$S1"
+make_stub "$S1" test_a_pass.sh 'echo "a-says-hi"'
+make_stub "$S1" test_m_pass.sh 'echo "m-says-hi"'
+out=$("$RUNNER" -j 1 "$S1" 2>&1); rc=$?
+s1_first=$(printf '%s\n' "$out" | head -n 1)
+s1_last=$(printf '%s\n' "$out" | tail -n 1)
+s1_a_block=$(printf '%s\n' "$out" | sed -n '/^=== run_script_tests: running test_a_pass.sh ===$/,/^=== run_script_tests: running /p')
+if [[ $rc -eq 0 && "$s1_first" == "run_script_tests: full run, all 3 suites: no --files given" \
+        && "$(running_lines "$out")" == "test_a_pass.sh test_checkpoint_269.sh test_m_pass.sh" \
+        && "$s1_a_block" == *"a-says-hi"* && "$s1_a_block" != *"m-says-hi"* ]] \
+        && [[ "$s1_last" =~ ^run_script_tests:\ all\ 3\ suites\ passed\ in\ [0-9]+s$ ]]; then
+    pass "(s1) one job, all pass: exit 0, header, running lines in list order, output in place, closing line"
+else
+    fail "(s1) one job, all pass: exit 0, header, running lines in list order, output in place, closing line (rc=$rc, out=$out)"
+fi
+
+# --- Case (s2): a failure stops the run with exit 1 and today's line. ---
+S2="$TMPD/case_s2"
+S2_LATER="$TMPD/case_s2_later"
+mkdir -p "$S2"
+write_checkpoint_stub "$S2"
+make_stub "$S2" test_a_pass.sh 'exit 0'
+make_stub "$S2" test_b_fail.sh 'echo "b-failing"; exit 3'
+make_stub "$S2" test_z_later.sh "touch '$S2_LATER'"
+out=$("$RUNNER" -j 1 "$S2" 2>&1); rc=$?
+if [[ $rc -eq 1 && ! -e "$S2_LATER" && "$(running_lines "$out")" == "test_a_pass.sh test_b_fail.sh" ]] \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_fail\.sh \(suite 2 of 4\) after [0-9]+s — stopping, remaining suites not run$' \
+        && printf '%s\n' "$out" | grep -q '^b-failing$'; then
+    pass "(s2) one job: the first failure stops the run with exit 1 and names the suite and its position"
+else
+    fail "(s2) one job: the first failure stops the run with exit 1 (rc=$rc, later_ran=$([[ -e "$S2_LATER" ]] && echo yes || echo no), out=$out)"
+fi
+
+# --- Case (s3): a leak is charged to the suite that left it, not to the
+#     suite before or after it, and stops the run with exit 2. ---
+S3="$TMPD/case_s3"
+S3_LATER="$TMPD/case_s3_later"
+mkdir -p "$S3"
+write_checkpoint_stub "$S3"
+make_stub "$S3" test_a_clean.sh 'd=$(mktemp -d); rm -rf "$d"'
+make_stub "$S3" test_b_leaks.sh ': > "${TMPDIR:?}/left_by_b"'
+make_stub "$S3" test_z_later.sh "touch '$S3_LATER'"
+out=$("$RUNNER" -j 1 "$S3" 2>&1); rc=$?
+if [[ $rc -eq 2 && ! -e "$S3_LATER" ]] \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_leaks\.sh \(suite 2 of 4\) after [0-9]+s — it left 1 entry behind in TMPDIR \(' \
+        && printf '%s\n' "$out" | grep -q '/left_by_b$' \
+        && printf '%s\n' "$out" | grep -q '^Every suite must clean up what it creates' \
+        && ! printf '%s\n' "$out" | grep -q 'FAILED at test_a_clean'; then
+    pass "(s3) one job: a leak is charged to the suite that left it and stops the run with exit 2"
+else
+    fail "(s3) one job: a leak is charged to the suite that left it and stops the run with exit 2 (rc=$rc, out=$out)"
+fi
+
+# --- Case (s4): output streams live. The suite prints a line, then waits
+#     for a go-file the test creates only once that line has reached the
+#     runner's output; a runner that held the output until the suite ended
+#     would never show it, and the suite would give up and fail. ---
+S4="$TMPD/case_s4"
+S4_GO="$TMPD/case_s4_go"
+S4_LOG="$TMPD/case_s4.log"
+mkdir -p "$S4"
+write_checkpoint_stub "$S4"
+make_stub "$S4" test_live.sh "echo 's4-live-line'
+for _ in \$(seq 1 100); do [ -e '$S4_GO' ] && exit 0; sleep 0.1; done
+echo 's4: never released'; exit 1"
+"$RUNNER" -j 1 "$S4" > "$S4_LOG" 2>&1 &
+s4_pid=$!
+s4_seen=no
+for _ in $(seq 1 100); do
+    if grep -q '^s4-live-line$' "$S4_LOG" 2>/dev/null; then s4_seen=yes; touch "$S4_GO"; break; fi
+    sleep 0.1
+done
+wait "$s4_pid"; rc=$?
+if [[ $s4_seen == yes && $rc -eq 0 ]]; then
+    pass "(s4) one job: a suite's output reaches the runner's output while the suite still runs"
+else
+    fail "(s4) one job: a suite's output reaches the runner's output while the suite still runs (seen=$s4_seen, rc=$rc, out=$(cat "$S4_LOG"))"
+fi
+
+# --- Case (t1): a late leak. Each suite has its own TMPDIR, kept until
+#     every suite has finished and then swept again: a process a passing
+#     suite left running that writes into its TMPDIR after the suite exited
+#     is caught by that second sweep and charged to that suite, not to the
+#     suite running when the write happened. ---
+# late_leak_dir <dir>: the fixture, shared with the parallel case (u5).
+late_leak_dir() {
+    mkdir -p "$1"
+    write_checkpoint_stub "$1"
+    make_stub "$1" test_a_late.sh '( sleep 1; : > "${TMPDIR:?}/late_by_a" ) </dev/null >/dev/null 2>&1 &'
+    make_stub "$1" test_b_slow.sh 'sleep 2'
+}
+# check_late_leak <label> <output> <rc>
+check_late_leak() {
+    if [[ $3 -eq 2 ]] \
+            && printf '%s\n' "$2" | grep -Eq '^run_script_tests: FAILED at test_a_late\.sh \(suite 1 of 3\) — after every suite had finished, its TMPDIR \(.*/test_a_late\.sh\) held 1 entry' \
+            && printf '%s\n' "$2" | grep -q '/late_by_a$' \
+            && ! printf '%s\n' "$2" | grep -q 'FAILED at test_b_slow'; then
+        pass "$1"
+    else
+        fail "$1 (rc=$3, out=$2)"
+    fi
+}
+T1="$TMPD/case_t1"
+late_leak_dir "$T1"
+out=$("$RUNNER" -j 1 "$T1" 2>&1); rc=$?
+check_late_leak "(t1) one job: a write after its suite exited is caught at the end, charged to that suite, exit 2" "$out" "$rc"
+
+# ===================================================================
+# Issue #444: more than one job. Every selected suite runs; each suite's
+# output is captured and printed whole, failures first, in list order;
+# the exit code is the one a one-job run gives for the first failing
+# suite in list order.
+# ===================================================================
+
+# --- Case (u1): the job count and the argument order. ---
+U1="$TMPD/case_u1"
+mkdir -p "$U1"
+write_checkpoint_stub "$U1"
+make_stub "$U1" test_env.sh 'echo "inner-jobs=${RUN_SCRIPT_TESTS_JOBS-unset}"'
+# jobs_case <label> <expected rc> <expected line or ''> <env assignment or ''> <runner args>...
+jobs_case() {
+    local label="$1" want_rc="$2" want_line="$3" envset="$4" out rc
+    shift 4
+    if [[ -n "$envset" ]]; then
+        out=$(env "$envset" "$RUNNER" "$@" 2>&1); rc=$?
+    else
+        out=$("$RUNNER" "$@" 2>&1); rc=$?
+    fi
+    if [[ $rc -eq $want_rc ]] && { [[ -z "$want_line" ]] || printf '%s\n' "$out" | grep -qxF -- "$want_line"; } \
+            && { [[ $want_rc -eq 0 ]] || ! printf '%s\n' "$out" | grep -q '^=== run_script_tests: running '; }; then
+        pass "(u1) $label"
+    else
+        fail "(u1) $label (rc=$rc, out=$out)"
+    fi
+}
+# The default is one job; its line names the count the machine suits, a
+# quarter of its CPUs, at least 2, at most 6, never more than it has. A
+# stub nproc first on PATH sets the CPU count.
+U1_BIN="$TMPD/u1_bin"
+mkdir -p "$U1_BIN"
+for cpus_want in "16 4" "40 6" "4 2" "1 1"; do
+    read -r u1_cpus u1_want <<<"$cpus_want"
+    printf '#!/bin/sh\necho %s\n' "$u1_cpus" > "$U1_BIN/nproc"
+    chmod +x "$U1_BIN/nproc"
+    out=$(PATH="$U1_BIN:$PATH" "$RUNNER" "$U1" 2>&1); rc=$?
+    if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qxF "run_script_tests: running with 1 job (default; -j $u1_want suits this machine's $u1_cpus CPUs)"; then
+        pass "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs"
+    else
+        fail "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs (rc=$rc, out=$out)"
+    fi
+done
+jobs_case "-j 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j 3 "$U1"
+jobs_case "-j3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j3 "$U1"
+jobs_case "--jobs 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" --jobs 3 "$U1"
+jobs_case "--jobs=3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" --jobs=3 "$U1"
+jobs_case "RUN_SCRIPT_TESTS_JOBS=2 runs with 2 jobs" 0 "run_script_tests: running with 2 jobs (RUN_SCRIPT_TESTS_JOBS)" RUN_SCRIPT_TESTS_JOBS=2 "$U1"
+jobs_case "-j beats RUN_SCRIPT_TESTS_JOBS" 0 "run_script_tests: running with 3 jobs (-j)" RUN_SCRIPT_TESTS_JOBS=2 -j 3 "$U1"
+jobs_case "-j 99 runs with the cap of 8 and says what was asked" 0 "run_script_tests: running with 8 jobs (-j asked for 99; the cap is 8)" "" -j 99 "$U1"
+jobs_case "-j 0 is refused before any suite runs" 1 "" "" -j 0 "$U1"
+jobs_case "-j abc is refused before any suite runs" 1 "" "" -j abc "$U1"
+jobs_case "-j with no count is refused" 1 "" "" -j
+jobs_case "an empty -j \"\" is refused, not taken for no -j" 1 "" "" -j "" "$U1"
+jobs_case "an empty --jobs= is refused, not taken for no -j" 1 "" "" --jobs= "$U1"
+jobs_case "an empty --jobs= is refused also with RUN_SCRIPT_TESTS_JOBS set" 1 "" RUN_SCRIPT_TESTS_JOBS=2 --jobs= "$U1"
+jobs_case "RUN_SCRIPT_TESTS_JOBS=abc is refused before any suite runs" 1 "" RUN_SCRIPT_TESTS_JOBS=abc "$U1"
+jobs_case "an unknown option is refused" 1 "" "" --bogus "$U1"
+jobs_case "an option after the tests directory is refused, naming the order" 1 "" "" "$U1" -j 2
+out=$("$RUNNER" "$U1" -j 2 2>&1)
+if printf '%s' "$out" | grep -q 'options go before the tests directory, --files last'; then
+    pass "(u1) the refusal of an option after the tests directory names the order"
+else
+    fail "(u1) the refusal of an option after the tests directory names the order (out=$out)"
+fi
+out=$(RUN_SCRIPT_TESTS_JOBS=2 "$RUNNER" --show-passed "$U1" 2>&1)
+if printf '%s\n' "$out" | grep -qx 'inner-jobs=unset'; then
+    pass "(u1) a suite does not inherit RUN_SCRIPT_TESTS_JOBS"
+else
+    fail "(u1) a suite does not inherit RUN_SCRIPT_TESTS_JOBS (out=$out)"
+fi
+# Options, then the tests directory, then --files and the files: the
+# order the hook's entry (which ends in --files) and a by-hand run share.
+out=$(run_syn "$TMPD/u1_marks" -j 2 "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
+if [[ $rc -eq 0 && "$(ran "$TMPD/u1_marks")" == "test_alpha.sh test_always.sh test_checkpoint_269.sh test_noref.sh" ]] \
+        && printf '%s\n' "$out" | grep -qx 'run_script_tests: running with 2 jobs (-j)' \
+        && printf '%s' "$out" | grep -q "scoped run, 4 of $SYN_N suites"; then
+    pass "(u1) '-j 2 <tests-dir> --files <file>' parses: a scoped run with 2 jobs"
+else
+    fail "(u1) '-j 2 <tests-dir> --files <file>' parses: a scoped run with 2 jobs (rc=$rc, ran=$(ran "$TMPD/u1_marks"), out=$out)"
+fi
+
+# --- Case (u2): all pass at -j 3: every suite runs once, the closing line
+#     is the one-job run's, and a passing suite's output is not printed
+#     unless --show-passed asks for it. ---
+U2="$TMPD/case_u2"
+U2_MARKS="$TMPD/case_u2_marks"
+mkdir -p "$U2" "$U2_MARKS"
+write_checkpoint_stub "$U2"
+for n in a b c d e; do
+    make_stub "$U2" "test_$n.sh" "echo 'u2-output-$n'; sleep 0.2; touch '$U2_MARKS/$n'"
+done
+out=$("$RUNNER" -j 3 "$U2" 2>&1); rc=$?
+if [[ $rc -eq 0 && "$(ran "$U2_MARKS")" == "a b c d e" \
+        && "$(running_lines "$out" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" == "test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh" ]] \
+        && ! printf '%s' "$out" | grep -q 'u2-output-' \
+        && [[ "$(printf '%s\n' "$out" | tail -n 1)" =~ ^run_script_tests:\ all\ 6\ suites\ passed\ in\ [0-9]+s$ ]] \
+        && printf '%s\n' "$out" | grep -q '^run_script_tests: suite times, slowest first:$'; then
+    pass "(u2) -j 3, all pass: every suite runs once, passing output hidden, today's closing line"
+else
+    fail "(u2) -j 3, all pass: every suite runs once, passing output hidden, today's closing line (rc=$rc, ran=$(ran "$U2_MARKS"), out=$out)"
+fi
+u2_rows=$(printf '%s\n' "$out" | sed -n '/^run_script_tests: suite times, slowest first:$/,/^$/p' \
+    | sed -n 's/^ *[0-9][0-9]*s  pass   \(test_[^ ]*\)$/\1/p' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')
+if [[ "$u2_rows" == "test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh" ]]; then
+    pass "(u2) the suite times list every suite once, with its seconds and status"
+else
+    fail "(u2) the suite times list every suite once, with its seconds and status (rows=$u2_rows, out=$out)"
+fi
+out=$("$RUNNER" -j 3 --show-passed "$U2" 2>&1); rc=$?
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qx '===== passed: test_c.sh =====' \
+        && printf '%s\n' "$out" | grep -A1 -x '===== passed: test_c.sh =====' | grep -qx 'u2-output-c'; then
+    pass "(u2) --show-passed prints a passing suite's output under its name"
+else
+    fail "(u2) --show-passed prints a passing suite's output under its name (rc=$rc, out=$out)"
+fi
+
+# --- Case (u3): a failing suite's output is not interleaved with
+#     another's. Two suites print 200 numbered lines each, slowly enough to
+#     overlap, and both fail; each block must come out whole. Run five times. ---
+U3="$TMPD/case_u3"
+mkdir -p "$U3"
+write_checkpoint_stub "$U3"
+for tag in A B; do
+    make_stub "$U3" "test_$tag.sh" "for i in \$(seq 1 200); do echo '$tag-'\$i; sleep 0.01; done; exit 1"
+done
+# contiguous <output> <tag>: the tag's 200 lines appear in order, together.
+contiguous() {
+    local want got
+    want="$(seq 1 200 | sed "s/^/$2-/")"
+    got="$(printf '%s\n' "$1" | grep -E '^[AB]-[0-9]+$' | sed -n "/^$2-1\$/,/^$2-200\$/p")"
+    [[ "$got" == "$want" ]]
+}
+for round in 1 2 3 4 5; do
+    out=$("$RUNNER" -j 2 "$U3" 2>&1); rc=$?
+    if [[ $rc -eq 1 ]] && contiguous "$out" A && contiguous "$out" B \
+            && printf '%s\n' "$out" | grep -qx '===== FAILED: test_A.sh =====' \
+            && printf '%s\n' "$out" | grep -qx '===== FAILED: test_B.sh ====='; then
+        pass "(u3) round $round: two failing suites' outputs are printed whole, not interleaved"
+    else
+        fail "(u3) round $round: two failing suites' outputs are printed whole, not interleaved (rc=$rc, out=$out)"
+    fi
+done
+
+# --- Case (u4): every suite runs after a failure; failures are printed
+#     first, in list order whatever order they finished in; the exit code is
+#     the first failing suite's in list order (1 for a failure, 2 for a
+#     leak), not the first to finish. Each run makes the two disagree: in
+#     the first, a failure is listed first and a leak finishes first (1, not
+#     2); in the second, a leak is listed first and a failure finishes first
+#     (2, not 1). ---
+U4="$TMPD/case_u4"
+U4_MARK="$TMPD/case_u4_later"
+mkdir -p "$U4"
+write_checkpoint_stub "$U4"
+# The finish order does not rest on sleeps racing each other: each suite
+# records its pid, and the next one waits until that suite is gone (reaped
+# by the runner: a zombie still answers kill -0), then one second more, so
+# the runner has seen one finish before the next comes. 30 s caps each
+# wait, so a broken chain fails the case rather than hanging it.
+# u4_pid <name>: shell text recording this suite's pid as <name>.
+u4_pid() { printf 'echo $$ > %q.tmp && mv %q.tmp %q' "$TMPD/u4_pid_$1" "$TMPD/u4_pid_$1" "$TMPD/u4_pid_$1"; }
+# u4_after <name>: shell text waiting until suite <name> is gone, then 1 s.
+u4_after() {
+    printf 'f=%q; for _ in $(seq 1 300); do [[ -s "$f" ]] && break; sleep 0.1; done; p=$(cat "$f" 2>/dev/null); for _ in $(seq 1 300); do [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null || break; sleep 0.1; done; sleep 1' "$TMPD/u4_pid_$1"
+}
+make_stub "$U4" test_a_slowfail.sh "echo 'a-out'; $(u4_after c); exit 1"
+make_stub "$U4" test_b_leak.sh "$(u4_pid b); echo 'b-out'; : > \"\${TMPDIR:?}/left_by_b\""
+make_stub "$U4" test_c_fail.sh "$(u4_pid c); echo 'c-out'; $(u4_after b); exit 4"
+make_stub "$U4" test_z_later.sh "sleep 0.2; touch '$U4_MARK'"
+rm -f "$TMPD"/u4_pid_*
+out=$("$RUNNER" -j 4 "$U4" 2>&1); rc=$?
+u4_a=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_a_slowfail.sh =====' | cut -d: -f1)
+u4_b=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_b_leak.sh =====' | cut -d: -f1)
+u4_c=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_c_fail.sh =====' | cut -d: -f1)
+u4_t=$(printf '%s\n' "$out" | grep -nx 'run_script_tests: suite times, slowest first:' | cut -d: -f1)
+# The order the suites finished in, from the runner's "--- <suite> ..." lines.
+u4_done=$(printf '%s\n' "$out" | sed -n 's/^--- run_script_tests: \(test_[abc]_[a-z]*\.sh\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')
+if [[ $rc -eq 1 && -e "$U4_MARK" && -n "$u4_a" && -n "$u4_b" && -n "$u4_c" && -n "$u4_t" ]] \
+        && [[ "$u4_done" == "test_b_leak.sh test_c_fail.sh test_a_slowfail.sh" ]] \
+        && (( u4_a < u4_b && u4_b < u4_c && u4_c < u4_t )) \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_c_fail\.sh \(suite 3 of 5\) after [0-9]+s, exit 4$' \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_leak\.sh \(suite 2 of 5\) after [0-9]+s — it left 1 entry behind in TMPDIR \(.*/test_b_leak\.sh\):$' \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: 3 of 5 suites failed in [0-9]+s: test_a_slowfail\.sh, test_b_leak\.sh, test_c_fail\.sh$' \
+        && ! printf '%s' "$out" | grep -q 'remaining suites not run'; then
+    pass "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the failure listed first, though a leak finished first"
+else
+    fail "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the failure listed first, though a leak finished first (rc=$rc, finished=$u4_done, later_ran=$([[ -e "$U4_MARK" ]] && echo yes || echo no), out=$out)"
+fi
+# The second run: the leak listed first now finishes last, the failure
+# listed after it fails at once.
+rm -f "$U4/test_a_slowfail.sh" "$U4_MARK"
+make_stub "$U4" test_b_leak.sh 'echo "b-out"; sleep 0.5; : > "${TMPDIR:?}/left_by_b"'
+make_stub "$U4" test_c_fail.sh 'echo "c-out"; exit 4'
+out=$("$RUNNER" -j 4 "$U4" 2>&1); rc=$?
+if [[ $rc -eq 2 && -e "$U4_MARK" ]]; then
+    pass "(u4) -j 4: a leak listed before a failure gives exit 2, though the failure finished first"
+else
+    fail "(u4) -j 4: a leak listed before a failure gives exit 2, though the failure finished first (rc=$rc, out=$out)"
+fi
+
+# --- Case (v): --shuffle[=SEED]. The seed is printed; the same seed gives
+#     the same start order, at one job and at two; another seed gives
+#     another order; the exit code of a parallel run stays the first
+#     failing suite's in list order whatever the shuffle. ---
+V="$TMPD/case_v"
+mkdir -p "$V"
+write_checkpoint_stub "$V"
+for n in a b c d e f g h; do make_stub "$V" "test_$n.sh" ':'; done
+v7a=$("$RUNNER" -j 1 --shuffle=7 "$V" 2>&1); rc=$?
+v7b=$("$RUNNER" -j 1 --shuffle=7 "$V" 2>&1)
+v7j=$("$RUNNER" -j 2 --shuffle=7 "$V" 2>&1)
+v8=$("$RUNNER" -j 1 --shuffle=8 "$V" 2>&1)
+sorted_order="test_a.sh test_b.sh test_c.sh test_checkpoint_269.sh test_d.sh test_e.sh test_f.sh test_g.sh test_h.sh"
+if [[ $rc -eq 0 ]] && printf '%s\n' "$v7a" | grep -qx 'run_script_tests: shuffle seed 7 (this order again: --shuffle=7)' \
+        && [[ "$(running_lines "$v7a")" == "$(running_lines "$v7b")" && "$(running_lines "$v7a")" == "$(running_lines "$v7j")" ]] \
+        && [[ "$(running_lines "$v7a")" != "$sorted_order" && "$(running_lines "$v7a")" != "$(running_lines "$v8")" ]] \
+        && [[ "$(running_lines "$v7a" | tr ' ' '\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" == "$sorted_order" ]]; then
+    pass "(v) --shuffle=7 prints its seed and starts the same order twice and at -j 2; --shuffle=8 differs"
+else
+    fail "(v) --shuffle=7 prints its seed and starts the same order twice and at -j 2; --shuffle=8 differs (7: $(running_lines "$v7a") | 7 again: $(running_lines "$v7b") | 7 at -j 2: $(running_lines "$v7j") | 8: $(running_lines "$v8"))"
+fi
+out=$("$RUNNER" -j 1 --shuffle "$V" 2>&1); rc=$?
+v_seed=$(printf '%s\n' "$out" | sed -n 's/^run_script_tests: shuffle seed \([0-9][0-9]*\) (this order again: --shuffle=[0-9]*)$/\1/p')
+if [[ $rc -eq 0 && -n "$v_seed" ]] \
+        && [[ "$(running_lines "$out")" == "$(running_lines "$("$RUNNER" -j 1 --shuffle="$v_seed" "$V" 2>&1)")" ]]; then
+    pass "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order"
+else
+    fail "(v) --shuffle with no seed prints the seed it drew, and that seed repeats the order (seed=$v_seed, out=$out)"
+fi
+jobs_case "--shuffle=x is refused before any suite runs" 1 "" "" --shuffle=x "$V"
+jobs_case "an empty --shuffle= is refused, not given a random seed" 1 "" "" --shuffle= "$V"
+# U4 now holds test_b_leak.sh (listed first, finishes last) and
+# test_c_fail.sh (fails at once).
+v_codes=""
+for seed in 1 2 3; do
+    "$RUNNER" -j 4 --shuffle=$seed "$U4" >/dev/null 2>&1
+    v_codes+="$? "
+done
+if [[ "$v_codes" == "2 2 2 " ]]; then
+    pass "(v) -j 4 under three shuffles: the exit code is the first failing suite's in list order (2, the leak)"
+else
+    fail "(v) -j 4 under three shuffles: the exit code is the first failing suite's in list order (2, the leak): got $v_codes"
+fi
+
+# --- Case (u5): the late leak of (t1), at two jobs. ---
+U5="$TMPD/case_u5"
+late_leak_dir "$U5"
+out=$("$RUNNER" -j 2 "$U5" 2>&1); rc=$?
+check_late_leak "(u5) -j 2: a write after its suite exited is caught at the end, charged to that suite, exit 2" "$out" "$rc"
+
+# --- Case (u6): leak attribution while suites overlap. X keeps a file in
+#     its TMPDIR for a second while Y starts and finishes; neither is
+#     charged. Z leaks, and only Z is named. ---
+U6="$TMPD/case_u6"
+mkdir -p "$U6"
+write_checkpoint_stub "$U6"
+make_stub "$U6" test_x_holds.sh 'f=$(mktemp); sleep 1; rm -f "$f"'
+make_stub "$U6" test_y_quick.sh 'sleep 0.2'
+make_stub "$U6" test_z_leaks.sh 'sleep 0.3; : > "${TMPDIR:?}/left_by_z"'
+out=$("$RUNNER" -j 4 "$U6" 2>&1); rc=$?
+if [[ $rc -eq 2 ]] && printf '%s\n' "$out" | grep -q '^run_script_tests: FAILED at test_z_leaks\.sh ' \
+        && ! printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_(x_holds|y_quick)\.sh' \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: 1 of 4 suites failed in [0-9]+s: test_z_leaks\.sh$'; then
+    pass "(u6) -j 4: a live file in one suite's TMPDIR is not charged to another; only the leaking suite is named"
+else
+    fail "(u6) -j 4: a live file in one suite's TMPDIR is not charged to another; only the leaking suite is named (rc=$rc, out=$out)"
+fi
+
+# --- Case (u7): a suite can trap SIGINT and SIGQUIT at -j 2 as it can at
+#     -j 1. Without job control bash starts a background job with both
+#     ignored, and a signal ignored on entry cannot be trapped. The runner
+#     is started with both at their defaults (python3 resets them; the
+#     environment running this suite may ignore them), so a difference
+#     between the job counts is the runner's own. ---
+U7="$TMPD/case_u7"
+mkdir -p "$U7"
+write_checkpoint_stub "$U7"
+make_stub "$U7" test_traps.sh 'got=""
+trap "got+=I" INT
+trap "got+=Q" QUIT
+kill -INT $$
+kill -QUIT $$
+echo "traps-got=$got"
+[[ "$got" == IQ ]]'
+# with_default_signals <cmd>...: run <cmd> with SIGINT and SIGQUIT at their
+# defaults. exec keeps one pid from the caller's `$!` to <cmd>, so a signal
+# sent to that pid reaches <cmd> itself.
+with_default_signals() {
+    exec python3 -c 'import os, signal, sys
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+signal.signal(signal.SIGQUIT, signal.SIG_DFL)
+os.execvp(sys.argv[1], sys.argv[1:])' "$@"
+}
+for j in 1 2; do
+    out=$(with_default_signals "$RUNNER" -j "$j" --show-passed "$U7" 2>&1); rc=$?
+    if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qx 'traps-got=IQ'; then
+        pass "(u7) -j $j: a suite traps SIGINT and SIGQUIT"
+    else
+        fail "(u7) -j $j: a suite traps SIGINT and SIGQUIT (rc=$rc, out=$out)"
+    fi
+done
+
+# --- Case (u8): an interrupt (SIGINT, as Ctrl-C, and SIGTERM) stops every
+#     running suite's whole process group, the suite and what it started,
+#     and leaves no directory of this run behind. Checked by the processes
+#     and the directory this run recorded, never by name: other runs of
+#     this runner on the machine have the same names. ---
+U8="$TMPD/case_u8"
+mkdir -p "$U8"
+write_checkpoint_stub "$U8"
+for n in p q; do
+    make_stub "$U8" "test_$n.sh" "sleep 30 &
+echo \"\$\$ \$! \$TMPDIR\" > '$TMPD/u8_info_$n.tmp' && mv '$TMPD/u8_info_$n.tmp' '$TMPD/u8_info_$n'
+wait"
+done
+for sig in INT TERM; do
+    rm -f "$TMPD"/u8_info_*
+    # The runner gets a process group of its own (job control) and SIGINT
+    # at its default, as at a terminal, also when this suite was started
+    # with SIGINT ignored (python3 resets it; bash could not).
+    set -m
+    with_default_signals "$RUNNER" -j 2 "$U8" > "$TMPD/u8.log" 2>&1 &
+    u8_runner=$!
+    set +m
+    for _ in $(seq 1 100); do
+        [[ -e "$TMPD/u8_info_p" && -e "$TMPD/u8_info_q" ]] && break
+        sleep 0.1
+    done
+    u8_pids=()
+    u8_root=""
+    for n in p q; do
+        if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8_info_$n" 2>/dev/null; then
+            u8_pids+=("$u8_suite" "$u8_sleep")
+            u8_root="$(dirname "$(dirname "$u8_tmp")")"
+        fi
+    done
+    u8_t0=$(date +%s)
+    kill -s "$sig" "$u8_runner"
+    wait "$u8_runner"; rc=$?
+    # The runner's own bound is 5 seconds before KILL; the suites would
+    # otherwise sleep for 30. At SIGINT the sleeps, started with `&`,
+    # ignore it, so that run takes the 5 seconds.
+    u8_secs=$(( $(date +%s) - u8_t0 ))
+    u8_alive=""
+    for _ in $(seq 1 50); do
+        u8_alive=""
+        for p in "${u8_pids[@]}"; do kill -0 "$p" 2>/dev/null && u8_alive+="$p "; done
+        [[ -z "$u8_alive" ]] && break
+        sleep 0.1
+    done
+    if [[ ${#u8_pids[@]} -eq 4 && -z "$u8_alive" && -n "$u8_root" && ! -e "$u8_root" && $u8_secs -le 10 ]] \
+            && [[ "$u8_root" == */run-script-tests.* ]] \
+            && { [[ $sig == INT && $rc -eq 130 ]] || [[ $sig == TERM && $rc -eq 143 ]]; }; then
+        pass "(u8) SIG$sig at -j 2 stops both suites and the processes they started, and removes the run's directory (${u8_secs}s)"
+    else
+        fail "(u8) SIG$sig at -j 2 stops both suites and the processes they started, and removes the run's directory (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fi
+    for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+done
+
+# u8_start <dir> <info-file>: start the runner at -j 2 on <dir> in a group
+# of its own with SIGINT at its default, as above, and wait up to 10
+# seconds for the suite to write <info-file>. Sets u8_runner.
+u8_start() {
+    rm -f "$2"
+    set -m
+    with_default_signals "$RUNNER" -j 2 "$1" > "$TMPD/u8.log" 2>&1 &
+    u8_runner=$!
+    set +m
+    for _ in $(seq 1 100); do
+        [[ -e "$2" ]] && break
+        sleep 0.1
+    done
+}
+# u8_alive_of <pid>...: those of the pids still running, after up to 5
+# seconds for them to go.
+u8_alive_of() {
+    local p alive=""
+    for _ in $(seq 1 50); do
+        alive=""
+        for p in "$@"; do kill -0 "$p" 2>/dev/null && alive+="$p "; done
+        [[ -z "$alive" ]] && break
+        sleep 0.1
+    done
+    printf '%s' "$alive"
+}
+# ms_now: the time in milliseconds, from EPOCHREALTIME (whole seconds are
+# too coarse to tell 1 s of cleanup from the 5 s backstop under load).
+ms_now() { local us="${EPOCHREALTIME//[!0-9]/}"; printf '%s' "$(( 10#$us / 1000 ))"; }
+
+# --- Case (u8), the KILL backstop: a suite that ignores SIGTERM, and the
+#     sleep it waits on (which inherits the ignore), are KILLed 5 seconds
+#     after the signal, not before, and the run still ends. ---
+U8B="$TMPD/case_u8b"
+mkdir -p "$U8B"
+write_checkpoint_stub "$U8B"
+make_stub "$U8B" test_deaf.sh "trap '' TERM
+sleep 30 &
+echo \"\$\$ \$! \$TMPDIR\" > '$TMPD/u8b_info.tmp' && mv '$TMPD/u8b_info.tmp' '$TMPD/u8b_info'
+wait"
+u8_start "$U8B" "$TMPD/u8b_info"
+u8_pids=()
+u8_root=""
+if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8b_info" 2>/dev/null; then
+    u8_pids=("$u8_suite" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+# Timed from before the signal is sent, so a runner that keeps the
+# 5-second deadline measures at least 5000 ms.
+u8_t0=$(ms_now)
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_ms=$(( $(ms_now) - u8_t0 ))
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -eq 143 && $u8_ms -ge 4900 && $u8_ms -le 10000 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (${u8_ms} ms), and the run's directory is removed"
+else
+    fail "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (rc=$rc, ${u8_ms} ms to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), cleanup time: the suite exits on SIGTERM at once; a
+#     process it started takes a second over its own cleanup. That process
+#     is not KILLed when the suite exits: its cleanup finishes, and the run
+#     ends without waiting out the full 5 seconds. ---
+U8C="$TMPD/case_u8c"
+U8C_DONE="$TMPD/u8c_cleaned"
+mkdir -p "$U8C"
+write_checkpoint_stub "$U8C"
+make_stub "$U8C" test_slowclean.sh "trap 'exit 0' TERM
+(
+    trap 'sleep 1; touch \"$U8C_DONE\"; exit 0' TERM
+    sleep 30 &
+    echo \"\$\$ \$BASHPID \$! \$TMPDIR\" > '$TMPD/u8c_info.tmp' && mv '$TMPD/u8c_info.tmp' '$TMPD/u8c_info'
+    wait
+) &
+wait"
+rm -f "$U8C_DONE"
+u8_start "$U8C" "$TMPD/u8c_info"
+u8_pids=()
+u8_root=""
+if read -r u8_suite u8_child u8_sleep u8_tmp < "$TMPD/u8c_info" 2>/dev/null; then
+    u8_pids=("$u8_suite" "$u8_child" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+# Bounded just below the backstop, in milliseconds: a runner that waited
+# out the 5 s deadline measures at least 5000 ms, and the 1 s cleanup has
+# 3.8 s of slack for a loaded machine.
+u8_t0=$(ms_now)
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_ms=$(( $(ms_now) - u8_t0 ))
+# Checked as the runner exits: the cleanup must have finished by then.
+u8_cleaned=no
+[[ -e "$U8C_DONE" ]] && u8_cleaned=yes
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 3 && $u8_cleaned == yes && -z "$u8_alive" && $rc -eq 143 && $u8_ms -lt 4800 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (${u8_ms} ms)"
+else
+    fail "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (rc=$rc, cleaned=$u8_cleaned, ${u8_ms} ms to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), another exit: SIGUSR1, which the runner does not trap,
+#     ends it while two suites run. The EXIT trap still stops both suites
+#     and what they started before it removes the run's directory, as it
+#     would after an internal error. (The suites of the first u8 case.) ---
+rm -f "$TMPD"/u8_info_*
+u8_start "$U8" "$TMPD/u8_info_q"
+for _ in $(seq 1 50); do
+    [[ -e "$TMPD/u8_info_p" ]] && break
+    sleep 0.1
+done
+u8_pids=()
+u8_root=""
+for n in p q; do
+    if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8_info_$n" 2>/dev/null; then
+        u8_pids+=("$u8_suite" "$u8_sleep")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+done
+u8_t0=$(date +%s)
+kill -s USR1 "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_secs=$(( $(date +%s) - u8_t0 ))
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 4 && -z "$u8_alive" && $rc -ne 0 && $u8_secs -le 10 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (${u8_secs}s)"
+else
+    fail "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), a second signal: during the 5-second stop, a second
+#     SIGTERM to the runner, or a second Ctrl-C to its process group, KILLs
+#     what is left at once instead of starting another 5-second stop. The
+#     suite of the backstop case ignores SIGTERM; at SIGINT its sleep
+#     (started with `&`) ignores it. Either way the first stop would last
+#     the 5 seconds. Timed from the second signal, sent 0.5 s after the
+#     first: a runner that waits out a deadline measures 4500 ms or more. ---
+for sig in TERM INT; do
+    u8_start "$U8B" "$TMPD/u8b_info"
+    u8_pids=()
+    u8_root=""
+    if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8b_info" 2>/dev/null; then
+        u8_pids=("$u8_suite" "$u8_sleep")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+    if [[ $sig == TERM ]]; then
+        kill -s TERM "$u8_runner"; sleep 0.5
+        u8_t0=$(ms_now); kill -s TERM "$u8_runner"
+    else
+        kill -s INT -- "-$u8_runner"; sleep 0.5
+        u8_t0=$(ms_now); kill -s INT -- "-$u8_runner"
+    fi
+    wait "$u8_runner"; rc=$?
+    u8_ms=$(( $(ms_now) - u8_t0 ))
+    u8_alive=$(u8_alive_of "${u8_pids[@]}")
+    if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -ne 0 && $u8_ms -lt 3000 ]] \
+            && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]] \
+            && grep -q '^run_script_tests: stop cut short; KILLing ' "$TMPD/u8.log"; then
+        pass "(u8) a second SIG$sig during the stop KILLs what is left at once (${u8_ms} ms after it)"
+    else
+        fail "(u8) a second SIG$sig during the stop KILLs what is left at once (rc=$rc, ${u8_ms} ms after it, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fi
+    for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+done
+
+# --- Case (u8), a group left behind: test_leaves.sh exits at once and
+#     leaves a sleep running in its process group. Once the runner has
+#     reaped the suite, a SIGTERM to the runner still stops that sleep, as
+#     it stops the suite that is still running. ---
+U8L="$TMPD/case_u8l"
+mkdir -p "$U8L"
+write_checkpoint_stub "$U8L"
+make_stub "$U8L" test_leaves.sh "sleep 30 &
+echo \"\$!\" > '$TMPD/u8l_left.tmp' && mv '$TMPD/u8l_left.tmp' '$TMPD/u8l_left'"
+make_stub "$U8L" test_holds.sh "sleep 30 &
+echo \"\$\$ \$! \$TMPDIR\" > '$TMPD/u8l_info.tmp' && mv '$TMPD/u8l_info.tmp' '$TMPD/u8l_info'
+wait"
+rm -f "$TMPD/u8l_left"
+u8_start "$U8L" "$TMPD/u8l_info"
+# Until the runner has reaped test_leaves.sh (its "---" line).
+for _ in $(seq 1 100); do
+    grep -q '^--- run_script_tests: test_leaves\.sh passed' "$TMPD/u8.log" && break
+    sleep 0.1
+done
+u8_reaped=no
+grep -q '^--- run_script_tests: test_leaves\.sh passed' "$TMPD/u8.log" && u8_reaped=yes
+u8_pids=()
+u8_root=""
+read -r u8_left < "$TMPD/u8l_left" 2>/dev/null && u8_pids+=("$u8_left")
+if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8l_info" 2>/dev/null; then
+    u8_pids+=("$u8_suite" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ $u8_reaped == yes && ${#u8_pids[@]} -eq 3 && -z "$u8_alive" && $rc -eq 143 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) SIGTERM also stops a process a finished suite left running in its group"
+else
+    fail "(u8) SIGTERM also stops a process a finished suite left running in its group (rc=$rc, reaped=$u8_reaped, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), a group left behind at the end: the run ends normally
+#     while test_leaves.sh's sleep still runs; the runner stops it before it
+#     removes the run's directory, and says so. ---
+U8N="$TMPD/case_u8n"
+mkdir -p "$U8N"
+write_checkpoint_stub "$U8N"
+cp "$U8L/test_leaves.sh" "$U8N/"
+rm -f "$TMPD/u8l_left"
+out=$("$RUNNER" -j 2 "$U8N" 2>&1); rc=$?
+u8_pids=()
+read -r u8_left < "$TMPD/u8l_left" 2>/dev/null && u8_pids+=("$u8_left")
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ $rc -eq 0 && ${#u8_pids[@]} -eq 1 && -z "$u8_alive" ]] \
+        && printf '%s\n' "$out" | grep -qx 'run_script_tests: stopping 1 process group(s) of this run still running at exit'; then
+    pass "(u8) at the end of a run, a process a suite left running is stopped, and the runner says so"
+else
+    fail "(u8) at the end of a run, a process a suite left running is stopped, and the runner says so (rc=$rc, recorded=${u8_pids[*]}, alive=$u8_alive, out=$out)"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), a signal during that end-of-run stop: the process left
+#     running ignores SIGTERM, so the stop would take the 5 seconds. A
+#     SIGTERM to the runner, or a Ctrl-C to its process group, after the
+#     "still running at exit" line KILLs it at once and still removes the
+#     run's directory. Timed from the signal: a runner that waits out the
+#     deadline measures 4500 ms or more. ---
+U8E="$TMPD/case_u8e"
+mkdir -p "$U8E"
+write_checkpoint_stub "$U8E"
+make_stub "$U8E" test_deaf_left.sh "trap '' TERM
+sleep 30 &
+echo \"\$! \$TMPDIR\" > '$TMPD/u8e_info.tmp' && mv '$TMPD/u8e_info.tmp' '$TMPD/u8e_info'"
+for sig in TERM INT; do
+    u8_start "$U8E" "$TMPD/u8e_info"
+    u8_pids=()
+    u8_root=""
+    if read -r u8_left u8_tmp < "$TMPD/u8e_info" 2>/dev/null; then
+        u8_pids=("$u8_left")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+    for _ in $(seq 1 100); do
+        grep -q 'still running at exit$' "$TMPD/u8.log" && break
+        sleep 0.1
+    done
+    u8_stopping=no
+    grep -q 'still running at exit$' "$TMPD/u8.log" && u8_stopping=yes
+    u8_t0=$(ms_now)
+    if [[ $sig == TERM ]]; then
+        kill -s TERM "$u8_runner"
+    else
+        kill -s INT -- "-$u8_runner"
+    fi
+    wait "$u8_runner"; rc=$?
+    u8_ms=$(( $(ms_now) - u8_t0 ))
+    u8_alive=$(u8_alive_of "${u8_pids[@]}")
+    if [[ $u8_stopping == yes && ${#u8_pids[@]} -eq 1 && -z "$u8_alive" && $u8_ms -lt 3000 ]] \
+            && { [[ $sig == INT && $rc -eq 130 ]] || [[ $sig == TERM && $rc -eq 143 ]]; } \
+            && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]] \
+            && grep -q '^run_script_tests: stop cut short; KILLing 1 ' "$TMPD/u8.log"; then
+        pass "(u8) SIG$sig during the end-of-run stop KILLs what is left at once and removes the run's directory (${u8_ms} ms after it)"
+    else
+        fail "(u8) SIG$sig during the end-of-run stop KILLs what is left at once and removes the run's directory (rc=$rc, stopping=$u8_stopping, ${u8_ms} ms after it, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fi
+    for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+    # A runner without the fix leaves the directory: do not leave it too.
+    [[ "$u8_root" != */run-script-tests.* ]] || rm -rf "$u8_root"
+done
 
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"

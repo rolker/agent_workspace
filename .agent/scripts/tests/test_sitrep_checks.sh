@@ -726,6 +726,18 @@ running() {
     [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null || return 1
     [[ "$(ps -o stat= -p "$1" 2>/dev/null)" != Z* ]]
 }
+# gone_within_5s <pid>: true once <pid> is no longer running, polled for
+# up to 5 seconds. A killed check can take more than a moment to go when
+# the machine is busy (seen once in a parallel run of the suites, issue
+# #444); a bounded poll costs nothing when it goes at once.
+gone_within_5s() {
+    local _
+    for _ in $(seq 50); do
+        running "$1" || return 0
+        sleep 0.1
+    done
+    ! running "$1"
+}
 echo "TEST: an interrupted run kills the running check at once"
 # The check records its pid and sleeps far past the test's patience; a
 # signal must end the run and the check within a few seconds, not when the
@@ -751,8 +763,7 @@ for how in "TERM pid" "INT pid" "INT group"; do
     took=$((SECONDS - start))
     slow="$(cat "$SB/slow.pid" 2>/dev/null)"
     alive=no
-    sleep 0.2
-    running "$slow" && alive=yes
+    gone_within_5s "$slow" || alive=yes
     if [[ $RC -eq 99 ]]; then
         pass "(interrupt now) $how skipped: $sig is ignored in this environment"
     else
@@ -853,9 +864,8 @@ RC=0
   kill -TERM "$bpid"
   wait "$bpid" ) || RC=$?
 took=$((SECONDS - start))
-sleep 0.2
 slow="$(cat "$SB/slow.pid" 2>/dev/null)"
-alive=no; running "$slow" && alive=yes
+alive=no; gone_within_5s "$slow" || alive=yes
 [[ $RC -eq 143 && -n "$slow" && $alive == no && $took -lt 8 && -z "$(ls -A "$SB/t1c")" \
     && "$(cat "$SB/step1.out")" != *rows_file=* ]] \
     && pass "(skill 1) TERM: exit 143 in ${took}s, check gone, rows file removed" \

@@ -89,7 +89,10 @@ repos:
       #   .venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
       # CI (`make lint`) runs it on all files as the backstop; that file list
       # includes the runner, so CI runs every suite. require_serial keeps the
-      # list in one process. --no-verify is never allowed.
+      # list in one process; how many suites run at once is the runner's
+      # own job count (its default, or RUN_SCRIPT_TESTS_JOBS: the entry
+      # ends in --files, so it passes no -j; issue #444). --no-verify is
+      # never allowed.
       - id: validate-script-tests
         name: "Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)"
         entry: bash .agent/scripts/tests/run_script_tests.sh --files
