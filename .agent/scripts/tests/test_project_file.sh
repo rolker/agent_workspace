@@ -1702,8 +1702,12 @@ test_source_keys() {
         $'source=https://e.invalid/m.git\nsource_ref=a..b|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=x.lock|source_ref must be a branch, tag or commit' \
         $'source=https://e.invalid/m.git\nsource_ref=HEAD|source_ref must be a branch, tag or commit, not HEAD' \
-        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=/etc/m.yaml|source_path must be a relative path' \
-        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a/../../m.yaml|source_path must be a relative path'; do
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=/etc/m.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a/../../m.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=.|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=sub/|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a//b.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=./m.yaml|source_path must be the relative path of a file'; do
         printf '%s\n' "${v%%|*}" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         v="${v//$'\n'/ }"

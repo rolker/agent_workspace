@@ -1208,7 +1208,7 @@ Round-2 findings: all ten addressed as described in the Implementation entry at 
 - [x] (suggestion) Without flock, pinning makes readers worse off: a concurrent sync removes the pinned directory at once, so setup fails on a missing repos file and sync skips the layer silently (reproduced); pin only with flock, or never remove at the swap without it — `.agent/project_types/ros2_colcon/adapter.sh:140`
 - [x] (suggestion) A failed mv probe (mktemp error) silently takes the non-atomic remove-then-rename path on GNU, and a failure after its `rm` reports "nothing changed" with no link left — `.agent/project_types/ros2_colcon/adapter.sh:959`
 - [x] (suggestion) fd 8 reaches every child (a long-lived one, such as git auto gc or a ROS daemon, keeps that directory from the sweep), and where flock on a directory fails nothing is ever removed: one `gen-*` per sync accumulates unwarned — `.agent/project_types/ros2_colcon/adapter.sh:116`
-- [ ] (suggestion) The registry accepts directory-like `source_path` values (`.`, `sub/`, `a//b`), refused only after a clone and fetch (Gemini) — `.agent/scripts/_project_registry.sh:831`
+- [x] (suggestion) The registry accepts directory-like `source_path` values (`.`, `sub/`, `a//b`), refused only after a clone and fetch (Gemini) — `.agent/scripts/_project_registry.sh:831`
 - [x] (suggestion) An assertion still checks the loose prefix `configs/manifest-resolved.`; tighten it to `.gen-` — `.agent/scripts/tests/test_ros2_colcon.sh:2535`
 
 ## Checkpoint

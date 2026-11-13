@@ -831,16 +831,19 @@ _project_file_value_error() {
         source_path)
             local comp bad=0
             local -a comps=()
-            if [[ "$value" == /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
+            # A file, never a directory: no '.' or empty component, no
+            # trailing '/'.
+            if [[ "$value" == /* ]] || [[ "$value" == */ ]] || [[ "$value" == *//* ]] \
+                || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
                 bad=1
             else
                 IFS='/' read -r -a comps <<< "$value"
                 for comp in "${comps[@]}"; do
-                    [ "$comp" = ".." ] && bad=1
+                    case "$comp" in ..|.|'') bad=1 ;; esac
                 done
             fi
             if [ "$bad" -eq 1 ]; then
-                echo "source_path must be a relative path inside the source repository, with no '..' component, no leading '/' and no blanks, got '$value'"
+                echo "source_path must be the relative path of a file inside the source repository: no '..' or '.' component, no leading or trailing '/', no '//' and no blanks, got '$value'"
                 return 1
             fi
             ;;
