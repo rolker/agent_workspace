@@ -260,3 +260,32 @@ Dismissed: Codex's lock race (round 1's judged limit (a), not in the fix diff; e
 **Decision**: publish
 
 Read: the round 2 Local Review (Pre-Push) at 5b9887f5 and its report; the full pass output. Open suggestions for triage: SKILL.md:149 re-run the dry run with the exact --set arguments before asking the yes; SKILL.md:165 show a kept settings file's commands in the question; register_session_root.sh:171 share the name rule with register_project.sh through one function.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 12:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #469 at `53c1635`
+**Sources**: 2 (Local Review (Pre-Push) R2 @ `2212c07` (covers `53c1635` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (Copilot's automatic review is off for this repository, owner 2026-11-12). Round 1's three findings are closed (Implementation at `fb6630db`, confirmed by round 2). The round-2 review at `2212c07` covers the head: everything after it changes progress.md only. The host's full pre-commit pass on `2212c07b` (every hook and suite, no SKIP) exited 0. CI at `53c1635`: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass in both runs; Lint (pre-commit) still running in both.
+
+All three round-2 suggestions are confirmed by reading the code at the head. None can write something the owner did not agree to; two make the skill's yes less exact than it says it is.
+
+Recommendation: fix findings 1 and 2 in this pull request, together. They are the same paragraph of the skill (SKILL.md 139-177), skill text only, one light re-review. Finding 2 contradicts the skill's own claim "the text question and the prompt both show what is written", which is the claim this change's permission design rests on. Finding 3 goes to a follow-up issue: the rule is already copied in four places, and doing it properly covers all of them. That is the owner's call.
+
+Fix plan for 1 and 2, in `.claude/skills/onboard-project/SKILL.md`, `STATUS=dry-run` bullet:
+- Pass the value after `build=` / `test=` only, without the dry run's parenthesised source note.
+- When the dry run says `settings file kept as it is: <path>`, read that file and show its contents with the question, and pass its build= and test= as --set like detected commands. If a key is missing, ask for it.
+- Once the --set list is complete, re-run `register_session_root.sh --dry-run` with exactly those arguments. Show that output and ask the yes on it. A refusal there stops before the yes.
+- Update any pinned phrase in `test_skill_paths.sh`.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`, covers via bookkeeping) Valid. The yes is asked before the exact --set arguments are checked. The dry-run line is `    build=make    (detected (Makefile))`. The skill says to pass the lines "as printed", which invites copying the note, and `_project_file_value_error` refuses `(` `)`. A user's command such as `make && make install` is refused the same way. Either one is caught only after the yes: `register_project.sh` validates before writing, ends `STATUS=refused` and writes nothing. Owner impact: a wasted yes, a confusing refusal and a re-run, never a wrong write. Likelihood: moderate for the copied note, because the wording invites it. Fix in this pull request (plan above) — `.claude/skills/onboard-project/SKILL.md:149`
+- [ ] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`, covers via bookkeeping) Valid, and weighed as security-relevant. When a settings file already exists under the folder's name (`register_project.sh --remove --keep-settings` keeps it), `register_project.sh` sets SETTINGS_EXISTED=1 and skips detection. The dry run prints only `settings file kept as it is: <path>`, with no build=, no test= and no note: lines. The skill then names no commands in the question and passes no --set, and the registration activates the kept file's build, test and any other keys unseen. That makes "the text question and the prompt both show what is written" untrue there. Bound on the harm: an untrusted session cannot plant that file. Writing it needs a registered root (`project_setting.sh` calls registry_require_root and writes only its own project's file), or a write into the workspace checkout, which raises its own permission prompt. So the file is one the owner once wrote. It may belong to an earlier, unrelated folder with the same name. Nothing runs at registration (`--skip-run`). Likelihood: low, since it needs a prior remove with --keep-settings under the same folder name. Fix in this pull request (plan above) — `.claude/skills/onboard-project/SKILL.md:165`
+- [ ] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`, covers via bookkeeping) Valid, low impact. The name rule at `register_session_root.sh:171` is a copy of `register_project.sh:581`. The same base rule is also copied at `_project_registry.sh` 150, 192 and 491, without the `.sh` clause, so the duplication was there before this change. If the copies drift, `register_project.sh` stays the authority under its lock, so the worst case is a misleading refusal message (round 1's `NEXT=choose a name with --name`) or a needless refusal, never a wrong write. Likelihood: low, because the rule rarely changes. Recommend a follow-up issue that puts all five copies into one helper in `_project_registry.sh`; deferring is the owner's call — `.agent/scripts/register_session_root.sh:171`
+
+### False positives
