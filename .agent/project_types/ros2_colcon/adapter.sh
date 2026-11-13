@@ -914,18 +914,16 @@ adapter_worktree_env() {
     # `set -e` with no install present) rather than trusting this comment.
 }
 
-# The kind of a pinned ref, judged in the package checkout at $1 (which may
-# not exist yet): branch, tag, commit or unknown. Online, origin decides:
-# refs/heads/<ref> is a branch, refs/tags/<ref> a tag (branch first, since a
-# same-named tag does not stop a branch being a base), and a stale
-# remote-tracking ref is not enough. When origin cannot be asked (offline,
-# or the repo is not cloned), the local refs decide and a NOTE on stderr says
-# the answer is unverified. A 40- or 64-hex ref nobody names is a commit.
-# What YAML makes of an unquoted (plain) version: value other than a
-# string, or nothing when it stays a string. vcstool reads .repos with
-# PyYAML's yaml.safe_load (YAML 1.1 implicit resolvers) and checks out
-# str() of the value, so these forms do not round-trip. The patterns are
-# PyYAML's resolvers, written out:
+# How YAML's reading changes an unquoted (plain) version: value, or
+# nothing when the import tool checks out the text as written. vcstool
+# reads .repos with PyYAML's yaml.safe_load (YAML 1.1 implicit resolvers)
+# and checks out str() of the value, so a value is refused only when
+# YAML's reading changes the text. Prints "<phrase>\t<what str() gives>",
+# the second field empty when the shell cannot work it out exactly:
+# "the number 1.1\t1.1", "the bool True\tTrue", "a float\t" (a float of
+# more digits than this check works out, which may or may not round-trip,
+# is refused too, as the rule below keeps only what surely does).
+# The patterns are PyYAML's resolvers, written out:
 #   bool   yes/no/true/false/on/off, each lower, Capitalised or UPPER
 #   null   ~, null/Null/NULL (an empty value is refused before this)
 #   int    [-+]0b binary, [-+]0 octal, [-+] decimal, [-+]0x hex and
@@ -934,31 +932,102 @@ adapter_worktree_env() {
 #   indicator  a first character YAML reads as syntax, not text:
 #          ! & * | > % @ ` [ ] { } ,  (a tag, anchor, alias, block or flow
 #          scalar, directive, reserved, or flow collection)
+# Kept, because str() gives the text back: an int written
+# ^(0|-?[1-9][0-9]*)$ (Python ints are exact: 2024, -5, an all-digit sha)
+# and a float written ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ with at most 15
+# significant digits, an integer part of at most 16 digits and no
+# "0.0000" start (repr's shortest form is then the text: 2.0, 1.5, 0.3;
+# not 1.10, which is 1.1). Any other int or float is refused.
 # A timestamp with a time part also changes under str(), but it holds a
 # ":" no git ref can, so it is never a branch anyway; a date alone
 # (2024-01-01) round-trips. No YAML library: the shell path stays plain.
-_rc_yaml_plain_type() {
-    local v="$1"
+_rc_yaml_plain_reading() {
+    local v="$1" body ip fp digits n
     case "$v" in
-        [\!\&\*\|\>%@\`\[\]\{\},]*) echo "a YAML indicator ('${v:0:1}' starts it)"; return 0 ;;
+        [\!\&\*\|\>%@\`\[\]\{\},]*) printf '%s\t\n' "YAML syntax, not text ('${v:0:1}' starts it)"; return 0 ;;
     esac
-    if [[ "$v" =~ ^(yes|Yes|YES|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$ ]]; then
-        echo "a bool"
+    if [[ "$v" =~ ^(yes|Yes|YES|true|True|TRUE|on|On|ON)$ ]]; then
+        printf '%s\t%s\n' "the bool True" True
+    elif [[ "$v" =~ ^(no|No|NO|false|False|FALSE|off|Off|OFF)$ ]]; then
+        printf '%s\t%s\n' "the bool False" False
     elif [[ "$v" =~ ^(~|null|Null|NULL)$ ]]; then
-        echo "null"
+        printf '%s\t%s\n' "null" None
+    elif [[ "$v" =~ ^(0|-?[1-9][0-9]*)$ ]]; then
+        :  # an int str() gives back unchanged
     elif [[ "$v" =~ ^[-+]?0b[01_]+$ ]] || [[ "$v" =~ ^[-+]?0[0-7_]+$ ]] \
         || [[ "$v" =~ ^[-+]?(0|[1-9][0-9_]*)$ ]] || [[ "$v" =~ ^[-+]?0x[0-9a-fA-F_]+$ ]] \
         || [[ "$v" =~ ^[-+]?[1-9][0-9_]*(:[0-5]?[0-9])+$ ]]; then
-        echo "an int"
+        # Its value, when bash can work it out exactly; else just "an int".
+        body="${v//_/}"
+        body="${body#+}"
+        n=""
+        if [[ "$body" =~ ^-?(0b[01]{1,62}|0x[0-9a-fA-F]{1,15}|0[0-7]{1,20}|[1-9][0-9]{0,17}|0)$ ]]; then
+            local sign=""
+            [ "${body:0:1}" = "-" ] && { sign="-"; body="${body#-}"; }
+            case "$body" in
+                0b*) n=$((2#${body#0b})) ;;
+                0x*) n=$((16#${body#0x})) ;;
+                0?*) n=$((8#${body#0})) ;;
+                *) n=$((10#$body)) ;;
+            esac
+            [ "$n" = 0 ] && sign=""
+            n="$sign$n"
+        fi
+        if [ -n "$n" ]; then
+            printf '%s\t%s\n' "the number $n" "$n"
+        else
+            printf '%s\t\n' "an int"
+        fi
+    elif [[ "$v" =~ ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ ]] \
+        && ip="${v#-}" && ip="${ip%%.*}" && fp="${v#*.}" \
+        && [ "${#ip}" -le 16 ] && [[ "$v" != 0.0000* && "$v" != -0.0000* ]] \
+        && digits="$ip" && { [ "$fp" = 0 ] || digits="$ip$fp"; } \
+        && digits="${digits#"${digits%%[!0]*}"}" && [ "${#digits}" -le 15 ]; then
+        :  # a float whose shortest repr is the text
     elif [[ "$v" =~ ^[-+]?[0-9][0-9_]*\.[0-9_]*([eE][-+][0-9]+)?$ ]] \
         || [[ "$v" =~ ^\.[0-9_]+([eE][-+][0-9]+)?$ ]] \
         || [[ "$v" =~ ^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+\.[0-9_]*$ ]] \
         || [[ "$v" =~ ^[-+]?\.(inf|Inf|INF)$ ]] || [[ "$v" =~ ^\.(nan|NaN|NAN)$ ]]; then
-        echo "a float"
+        # A plain decimal within the limits: its repr, trailing zeros off
+        # and leading ones (1.10 -> 1.1, +01.50 -> 1.5); else "a float".
+        if [[ "$v" =~ ^([-+]?)([0-9]+)\.([0-9]*)$ ]]; then
+            local sg="${BASH_REMATCH[1]}"
+            ip="${BASH_REMATCH[2]}"
+            fp="${BASH_REMATCH[3]}"
+            [ "$sg" = "+" ] && sg=""
+            ip="${ip#"${ip%%[!0]*}"}"
+            ip="${ip:-0}"
+            fp="${fp%"${fp##*[!0]}"}"
+            fp="${fp:-0}"
+            body="$sg$ip.$fp"
+            if [[ "$body" =~ ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ ]] \
+                && [ "${#ip}" -le 16 ] && [[ "$body" != 0.0000* && "$body" != -0.0000* ]]; then
+                digits="$ip"
+                [ "$fp" = 0 ] || digits="$ip$fp"
+                digits="${digits#"${digits%%[!0]*}"}"
+                if [ "${#digits}" -le 15 ]; then
+                    printf '%s\t%s\n' "the number $body" "$body"
+                    return 0
+                fi
+            fi
+        fi
+        case "$v" in
+            .inf|.Inf|.INF|+.inf|+.Inf|+.INF) printf '%s\t%s\n' "the float inf" inf ;;
+            -.inf|-.Inf|-.INF) printf '%s\t%s\n' "the float -inf" -inf ;;
+            .nan|.NaN|.NAN) printf '%s\t%s\n' "the float nan" nan ;;
+            *) printf '%s\t\n' "a float" ;;
+        esac
     fi
     return 0
 }
 
+# The kind of a pinned ref, judged in the package checkout at $1 (which may
+# not exist yet): branch, tag, commit or unknown. Online, origin decides:
+# refs/heads/<ref> is a branch, refs/tags/<ref> a tag (branch first, since a
+# same-named tag does not stop a branch being a base), and a stale
+# remote-tracking ref is not enough. When origin cannot be asked (offline,
+# or the repo is not cloned), the local refs decide and a NOTE on stderr says
+# the answer is unverified. A 40- or 64-hex ref nobody names is a commit.
 _rc_pin_kind() {
     local dir="$1" ref="$2" out kind="" toplevel dir_real
     local is_hex=false
@@ -1116,12 +1185,21 @@ adapter_repo_pin() {
     # vcstool checks out str() of the YAML value, so an unquoted pin YAML
     # types as something other than a string is not the ref written
     # (version: 1.10 is the float 1.1). Every layer pinning it is checked.
-    local i ytype
+    local i ytype got
     for i in "${!hits[@]}"; do
         [ "${forms[$i]}" = plain ] || continue
-        ytype="$(_rc_yaml_plain_type "$ref")"
+        ytype="$(_rc_yaml_plain_reading "$ref")"
         if [ -n "$ytype" ]; then
-            echo "ERROR: repo_pin: '$repo' has version: $ref in layer '${hits[$i]%%$'\t'*}' unquoted, which YAML reads as $ytype, so vcstool would not check out '$ref'; quote it: version: \"$ref\"" >&2
+            got="${ytype#*$'\t'}"
+            ytype="${ytype%%$'\t'*}"
+            if [ -n "$got" ]; then
+                got="so vcstool would check out '$got', not '$ref'"
+            elif [[ "$ytype" == "YAML syntax"* ]]; then
+                got="so vcstool would not read '$ref' as a ref"
+            else
+                got="so vcstool would check out str() of that value, which this check cannot confirm is '$ref'"
+            fi
+            echo "ERROR: repo_pin: '$repo' has version: $ref in layer '${hits[$i]%%$'\t'*}' unquoted, which YAML reads as $ytype, $got; quote it: version: \"$ref\"" >&2
             return 1
         fi
     done

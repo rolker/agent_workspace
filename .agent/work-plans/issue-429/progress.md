@@ -1277,7 +1277,7 @@ Scope: the three triage findings and the fix diff (d4a7750b, 7127cc81, 942a442c)
 **Backslash:** a double-quoted value holding `\` is passed raw, and the guard now includes `\`. That holds.
 
 ### Findings
-- [ ] (must-fix) False refusal: every plain value YAML types as an int or float is refused, including those whose `str()` is the text itself. vcstool checks those out exactly as written, yet the error claims "vcstool would not check out '<ref>'". Affected forms:
+- [x] (must-fix) False refusal: every plain value YAML types as an int or float is refused, including those whose `str()` is the text itself. vcstool checks those out exactly as written, yet the error claims "vcstool would not check out '<ref>'". Affected forms:
   - floats `2.0`, `1.0`, `1.5`, `0.3`;
   - ints `2024`, `0`, `-5`;
   - an all-digit sha or sha prefix (verified against PyYAML).

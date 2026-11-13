@@ -1680,34 +1680,66 @@ test_repo_pin_reads_version_as_yaml() {
 }
 
 test_repo_pin_refuses_yaml_typed_plain_pins() {
-    echo "TEST: repo_pin refuses an unquoted pin YAML reads as a non-string, and accepts it quoted"
-    local sb out rc proj dir f pair val what
+    echo "TEST: repo_pin refuses an unquoted pin only when YAML's reading changes the text"
+    local sb out rc proj dir f row val what got
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_colcon_project "$sb")"
     make_pin_pkg "$sb" "$proj" l1 pkg_a >/dev/null
     dir="$proj/layers/main/l1_ws/src/pkg_a"
     git -C "$dir" tag 1.10
-    git -C "$dir" push --quiet origin refs/tags/1.10
+    git -C "$dir" branch --quiet 2.0
+    git -C "$dir" push --quiet origin refs/tags/1.10 2.0
     f="$proj/configs/manifest/repos/l1.repos"
-    # vcstool would check out str(1.1) for an unquoted 1.10.
-    for pair in '1.10|a float' '.inf|a float' '1e+5|' 'yes|a bool' 'Off|a bool' '~|null' \
-        'Null|null' '0x1F|an int' '017|an int' '42|an int' '1_000|an int' \
-        '!tag|a YAML indicator' '&anchor|a YAML indicator' '@x|a YAML indicator'; do
-        val="${pair%%|*}"
-        what="${pair#*|}"
+    # value|what YAML reads it as|what vcstool (str() of it) checks out;
+    # an empty "checks out" means the shell cannot work it out exactly.
+    local -a refused=(
+        '1.10|the number 1.1|1.1'
+        '1.50|the number 1.5|1.5'
+        '017|the number 15|15'
+        '+5|the number 5|5'
+        '1_000|the number 1000|1000'
+        '0x1F|the number 31|31'
+        'yes|the bool True|True'
+        'Off|the bool False|False'
+        '~|null|None'
+        'Null|null|None'
+        '.inf|the float inf|inf'
+        '1.5e+3|a float|'
+        '0.00001|a float|'
+        "!tag|YAML syntax, not text ('!' starts it)|"
+        "&anchor|YAML syntax, not text ('&' starts it)|"
+        "@x|YAML syntax, not text ('@' starts it)|"
+    )
+    for row in "${refused[@]}"; do
+        val="${row%%|*}"
+        what="${row#*|}"
+        got="${what#*|}"
+        what="${what%|*}"
         write_pin_repos "$f" "pkg_a=$val"
         rc=0
         out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
-        if [ -z "$what" ]; then
-            # 1e+5 has no dot: PyYAML 1.1 keeps it a string.
-            assert_eq "[$val]: a string, exit 0" "0" "$rc"
-            continue
-        fi
         assert_eq "[$val]: exit 1" "1" "$rc"
-        assert_contains "[$val]: names the type" "unquoted, which YAML reads as $what" "$out"
+        assert_contains "[$val]: says what YAML reads" "unquoted, which YAML reads as $what," "$out"
+        if [ -n "$got" ]; then
+            assert_contains "[$val]: says what vcstool checks out" \
+                "so vcstool would check out '$got', not '$val'" "$out"
+        fi
         assert_contains "[$val]: asks for quotes" "quote it: version: \"$val\"" "$out"
     done
+    # str() gives these back as written, so vcstool checks out the text:
+    # accepted unquoted. 1e+5 has no dot, so PyYAML keeps it a string.
+    local -a kept=(2.0 1.0 1.5 0.3 2024 0 -5 1e+5 1234567890123456789012345678901234567890)
+    for val in "${kept[@]}"; do
+        write_pin_repos "$f" "pkg_a=$val"
+        rc=0
+        out="$(run_adapter "$sb" repo_pin pkg_a 2>&1)" || rc=$?
+        assert_eq "[$val]: exit 0" "0" "$rc"
+        assert_eq "[$val]: the ref as written" "$val" "${out%%$'\t'*}"
+    done
+    write_pin_repos "$f" "pkg_a=2.0"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "an unquoted release branch 2.0 is that branch" "2.0	branch" "$out"
     for val in '"1.10"' "'1.10'"; do
         write_pin_repos "$f" "pkg_a=$val"
         rc=0
@@ -1771,6 +1803,10 @@ test_repos_entries_parser_table() {
         ' .inf|.inf|plain'
         ' !tag|!tag|plain'
         ' 2024-01-01|2024-01-01|plain'
+        ' 2.0|2.0|plain'
+        ' 2024|2024|plain'
+        ' 1.50|1.50|plain'
+        ' 017|017|plain'
     )
     {
         echo "repositories:"
