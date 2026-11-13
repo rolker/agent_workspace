@@ -747,8 +747,11 @@ _rc_source_fetch() {
 # remove the previous one. A failure (the resolver's, or a role and distro
 # that select nothing) leaves the previous directory and link as they are;
 # the new directory and the resolver's cache are removed on every exit,
-# an interrupt included. Sets _RC_LAYERS_CHANGED (1 when layers.txt
-# changed).
+# an interrupt included, unless the link already points at the new
+# directory (an interrupt just after the swap). Holding the source lock,
+# it first sweeps what a killed run (SIGKILL, a power cut) left: every
+# generated directory, cache and link the live link does not point at.
+# Sets _RC_LAYERS_CHANGED (1 when layers.txt changed).
 _rc_manifest_resolve() {
     local root configs link bin role distro tmp rc=0 err count prev old_layers new_layers
     _RC_LAYERS_CHANGED=0
@@ -763,9 +766,11 @@ _rc_manifest_resolve() {
         echo "ERROR: $link is not the link the adapter writes (a directory or file is there); move it aside and rerun" >&2
         return 1
     fi
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] && _rc_resolve_sweep "$configs"
+    _RC_RESOLVE_LINK="$link"
     tmp="$(mktemp -d "$configs/manifest-resolved.XXXXXX")" || return 1
     _RC_RESOLVE_TMP="$tmp"
-    trap 'rm -rf -- "${_RC_RESOLVE_TMP:-/nonexistent}" "${_RC_RESOLVE_TMP:-/nonexistent}.cache" "${_RC_RESOLVE_TMP:-/nonexistent}.link"' EXIT
+    trap '_rc_resolve_cleanup' EXIT
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
@@ -811,8 +816,10 @@ _rc_manifest_resolve() {
         _rc_resolve_cleanup
         return 1
     fi
-    if ! mv -T "$tmp.link" "$link" 2>/dev/null; then
-        # No mv -T (BSD): remove, then rename; not atomic, still correct.
+    # GNU mv -T, else BSD mv -h (both rename(2) the link over the old one,
+    # never into the directory it points at); only when neither exists is
+    # the old link removed first, leaving a moment with no link.
+    if ! mv -T "$tmp.link" "$link" 2>/dev/null && ! mv -fh "$tmp.link" "$link" 2>/dev/null; then
         rm -f -- "$link"
         mv "$tmp.link" "$link" || { _rc_resolve_cleanup; return 1; }
     fi
@@ -826,10 +833,34 @@ _rc_manifest_resolve() {
     echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
 }
 
+# Remove the new generated directory, its cache and its link, keeping the
+# directory when the live link already points at it (the swap happened).
 _rc_resolve_cleanup() {
-    rm -rf -- "${_RC_RESOLVE_TMP:-/nonexistent}" "${_RC_RESOLVE_TMP:-/nonexistent}.cache" "${_RC_RESOLVE_TMP:-/nonexistent}.link"
+    local tmp="${_RC_RESOLVE_TMP:-}"
+    if [ -n "$tmp" ]; then
+        rm -rf -- "$tmp.cache" "$tmp.link"
+        if [ "$(readlink -- "${_RC_RESOLVE_LINK:-/nonexistent}" 2>/dev/null)" != "$(basename "$tmp")" ]; then
+            rm -rf -- "$tmp"
+        fi
+    fi
     _RC_RESOLVE_TMP=""
     trap - EXIT HUP INT TERM
+}
+
+# Remove configs/manifest-resolved.XXXXXX directories, caches and links
+# the live link does not point at: only a killed run leaves them, so this
+# runs only while the source lock is held (a concurrent run's are never
+# taken for leftovers).
+_rc_resolve_sweep() {
+    local configs="$1" live="" e n
+    [ -L "$configs/manifest-resolved" ] && live="$(readlink -- "$configs/manifest-resolved")"
+    for e in "$configs"/manifest-resolved.*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        n="$(basename "$e")"
+        [[ "$n" =~ ^manifest-resolved\.[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
+        [ -n "$live" ] && [ "$n" = "$live" ] && continue
+        rm -rf -- "$e"
+    done
 }
 
 # Everything the manifest route checks before it contacts any remote, then

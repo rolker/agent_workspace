@@ -3106,6 +3106,57 @@ test_mr_source_lock() {
     assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
 }
 
+test_mr_swap_interrupt_and_sweep() {
+    echo "TEST: manifest route: an interrupt just after the link swap keeps the new directory; BSD mv -h swaps; a killed run's leftovers are swept"
+    local sb rc gen realmv cfg live
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_one
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    realmv="$(command -v mv)"
+    mkdir -p "$sb/mvbin"
+    # An mv that does the swap, then has its caller sent TERM.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "\"$realmv\" \"\$@\"; rc=\$?" \
+        'case " $* " in *" -T "*) kill -TERM "$PPID" ;; esac' \
+        'exit $rc' > "$sb/mvbin/mv"
+    chmod +x "$sb/mvbin/mv"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_two
+    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "TERM after the swap: exit 143" "143" "$rc"
+    live="$(readlink "$gen")"
+    assert_eq "TERM after the swap: the link's target kept" "yes" "$([ -d "$cfg/$live" ] && echo yes || echo no)"
+    assert_contains "TERM after the swap: the new result is live" "mark_two" "$(cat "$gen/repos/core.repos")"
+    # The previous directory is a leftover; the next sync sweeps it.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "after TERM: sync exit 0" "0" "$rc"
+    assert_eq "after TERM: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.* | wc -l | tr -d ' ')"
+    # A BSD mv: no -T, but -h renames over the link.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in' \
+        '    *" -T "*) echo "mv: illegal option -- T" >&2; exit 64 ;;' \
+        "    *\" -fh \"*) shift; echo BSD_MV_H >> \"$sb/mv.log\"; exec \"$realmv\" -fT \"\$@\" ;;" \
+        'esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_three
+    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "BSD mv: sync exit 0" "0" "$rc"
+    assert_contains "BSD mv: mv -fh used" "BSD_MV_H" "$(cat "$sb/mv.log" 2>/dev/null)"
+    assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
+    assert_contains "BSD mv: the new result is live" "mark_three" "$(cat "$gen/repos/core.repos")"
+    # What a SIGKILLed run leaves: a directory, a cache and a link.
+    mkdir -p "$cfg/manifest-resolved.Ab12Cd/repos" "$cfg/manifest-resolved.Ab12Cd.cache/clone"
+    ln -s manifest-resolved.Ab12Cd "$cfg/manifest-resolved.Ab12Cd.link"
+    mkdir -p "$cfg/manifest-resolved.notmine-keep"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "leftovers: sync exit 0" "0" "$rc"
+    assert_eq "leftovers: swept" "" "$(cd "$cfg" && ls -d -- manifest-resolved.Ab12Cd* 2>/dev/null || true)"
+    assert_eq "leftovers: a name the adapter never makes is kept" "yes" "$([ -d "$cfg/manifest-resolved.notmine-keep" ] && echo yes || echo no)"
+    assert_contains "leftovers: the live result intact" "mark_three" "$(cat "$gen/repos/core.repos")"
+}
+
 test_mr_preflight_before_any_fetch() {
     echo "TEST: manifest route: missing vcs, role= or distro= is reported before any remote is contacted"
     local sb out rc tool url
@@ -3296,6 +3347,7 @@ mr_test test_mr_validate_source_state_warnings
 mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up
+mr_test test_mr_swap_interrupt_and_sweep
 mr_test test_mr_preflight_before_any_fetch
 mr_test test_mr_source_lock
 mr_test test_mr_one_source_only
