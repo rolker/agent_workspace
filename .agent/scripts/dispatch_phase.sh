@@ -123,7 +123,9 @@
 # Exit codes:
 #   next:        0 action decided; 2 usage (including no worktree for
 #                --issue, a --progress path that does not exist, or one the
-#                records gate refuses); 3 the
+#                records gate refuses; with --pr none the no-worktree error
+#                also says a run is over after its own merge and the next
+#                part starts with a fresh /run-issue <N>); 3 the
 #                timeline could not be parsed (progress_read.py's message
 #                stays on stderr).
 #   handoff /
@@ -911,7 +913,21 @@ cmd_next() {
         [[ -n "$issue" ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
         local ref="$issue" wt resolved rc=0
         issue=$(parse_issue_ref "$ref" next) || exit 2
-        resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || { rc=$?; report_resolve_failure next "$rc" "$type" "$ref"; }
+        resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 0) || {
+            rc=$?
+            # No worktree with --pr none is what a run that asks `next` again
+            # after its own merge sees: merge_pr.sh removed the worktree, and
+            # an issue still open probes as none (issue 459). That run is
+            # over; say what to do instead of only that nothing was found.
+            if [[ "$rc" -eq 1 && "$pr" == "none" ]]; then
+                local shown="$ref"
+                [[ "$shown" =~ ^[0-9]+$ ]] && shown="#$shown"
+                echo "error: next: no $type worktree found for issue $shown" >&2
+                echo "  If a pull request of this issue just merged, this run is over (the merge removed the worktree; run-issue step 11): run /run-issue $ref to start the next part, or nothing if the issue is closed." >&2
+                exit 2
+            fi
+            report_resolve_failure next "$rc" "$type" "$ref"
+        }
         wt=$(sed -n 1p <<< "$resolved")
         progress="$wt/.agent/work-plans/issue-$issue/progress.md"
     fi

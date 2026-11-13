@@ -155,6 +155,12 @@ out=$(bash "$DP" next --pr none --progress "$TMPD/does_not_exist.md" 2>&1); rc=$
 SB0="$(mk_sandbox 9)"
 out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr none --issue 42 2>&1); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* ]] && pass "next: no worktree for --issue is rc 2" || fail "next no worktree (rc=$rc out=$out)"
+[[ "$out" == *"this run is over"*"run /run-issue 42 to start the next part, or nothing if the issue is closed"* ]] \
+    && pass "next: no worktree with --pr none (a run asking again after its own merge) says what to do: /run-issue <N> for the next part (issue 459)" \
+    || fail "next no worktree hint (out=$out)"
+out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr open --issue 42 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* && "$out" != *"this run is over"* ]] \
+    && pass "next: no worktree with --pr open is the plain rc-2 error (no merge hint)" || fail "next no worktree --pr open (rc=$rc out=$out)"
 out=$(cd "$SB0" && bash .agent/scripts/dispatch_phase.sh next --pr none --issue 9 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" == "action=review-issue"* ]] && pass "next: a missing progress.md in an EXISTING worktree is an empty timeline (row 4), not an error" || fail "next missing file in worktree (rc=$rc out=$out)"
 out=$(run_next none $'## Implementation\n```\nunterminated fence'); rc=$?
