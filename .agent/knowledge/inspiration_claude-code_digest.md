@@ -1,8 +1,106 @@
 # Inspiration Digest: claude-code
 
 Type: inspiration
-Last checked: 2026-09-22
-Repo: anthropics/claude-code @ 56f36532530f88b572854538d685fcf781141e8 (CHANGELOG.md head, version 2.1.280)
+Last checked: 2026-11-13
+Repo: anthropics/claude-code @ 14bb83918b8682ca5ef2fb2f2add778eb745ee62 (CHANGELOG.md head, version 2.1.323)
+Previously checked: 2026-09-22 @ 56f3653 (version 2.1.280; the SHA was
+recorded with its last character missing as `...781141e8`, the full SHA
+is `56f36532530f88b572854538d685fcf781141e8c`)
+
+## Changelog (2026-09-22 → 2026-11-13)
+
+Compare `56f3653...14bb839`: 118 commits (complete), file list truncated
+at 300 files. Of the 118 commits, 40 are "Update CHANGELOG.md" and 39 are
+"Update mods/" — the public repo is a mirror that publishes the changelog,
+plugins and the source of the built-in "mods"; it does not show the CLI's
+own source. So the **`CHANGELOG.md` in the clone is the real source**: 43
+versions, 2.1.281 → 2.1.323 (about 2,980 bullet lines; `gh release list`
+latest is v2.1.323, 2026-11-12). I did not read every bullet: I searched
+the bullets by the registry's interest areas (workflow, worktree, hook,
+memory, schedule, skill, plugin, subagent, auto mode, code-review,
+cross-session) and read the matches. `claude --version` on this host is
+2.1.323, matching the clone head. Survey question remains "what can we
+retire".
+
+What the new facts say about the capability map above:
+
+- **Worktrees (interest area: worktree isolation)**: v2.1.323 changes the
+  macOS/Linux Bash sandbox so `git worktree add`, `move` and `remove` fail
+  read-only, as do commits in a worktree the session was not started in or
+  given, even one inside the project; worktree creation also refuses
+  checkouts whose `.git` is a link or holds hard links. 2.1.319 fixed a
+  sandbox escape on worktree creation; 2.1.314 fixed sandbox protections
+  not applying to a worktree entered by `--resume`/`--continue`; 2.1.305
+  fixed new worktrees in a bare repository starting from local HEAD.
+  The sandbox is a setting; `~/.claude/settings.json` on this host has
+  `"sandbox": {"enabled": false}`, so these only bite where it is on
+  (not checked: whether any other host or the cloud runs this workspace
+  with the sandbox on). The "keep worktree scripts" verdict stands, but the
+  `cd`-into-a-worktree pattern is exactly the case the new commit rule
+  targets.
+- **Workflows**: 2.1.305 fixed Workflow resume re-running completed
+  `pipeline()`/`parallel()` agents (now served from the run's journal);
+  2.1.318 fixed re-running finished agents after a usage limit; 2.1.296
+  added `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` (one model for every workflow
+  agent, other subagents keep theirs); 2.1.323 pauses workflows at a usage
+  limit in the desktop app and stops telling the agent to do the work
+  itself after safeguards stop a workflow agent. 2.1.323 also adds **Code
+  Mode** (experimental, Claude writes JavaScript to call tools; not
+  evaluated). These remove resume and model-tier gaps that the
+  `run-issue` dispatcher reasoning leaned on; the durable `progress.md`
+  point is unchanged.
+- **Sub-agents and messaging**: `SendMessage` to a running background agent
+  now arrives earlier (2.1.317); 2.1.319 adds an "Earlier in this session"
+  row in `/tasks` to reopen and message finished subagents; 2.1.302 made
+  fork subagents (`subagent_type: "fork"`) default-on in `-p`, SDK, desktop
+  and VS Code; 2.1.292 added an `effort` parameter to the Agent tool and
+  2.1.316 `CLAUDE_CODE_SUBAGENT_EFFORT`; subagent frontmatter gained
+  `autoCompactWindow` (2.1.296). No change to `ListAgents` itself in the
+  changelog; the open issue list shows the desktop app's cross-session
+  tools (`get_session`, `start_session`, `delete_session`) being extended
+  by requests, and a bug about offline Remote Control sessions persisting
+  in `ListAgents` (issue 109652).
+- **Hooks and permissions**: 2.1.319 adds `permissions.denyInsteadOfPrompting`
+  (a call that would wait on a permission prompt is denied and the turn
+  continues, in terminal sessions, subagents and teammates); 2.1.323 changes
+  what happens when a permission check fails after a `PreToolUse` hook said
+  "allow" (decided as if no hook answered) and when a `PermissionRequest`
+  hook rewrote the input; 2.1.317 adds `onFailure: "block"` for SDK hook
+  callbacks; 2.1.299 runs `UserPromptSubmit` hooks before skill/command
+  expansion.
+- **Mods (new surface)**: a "mod" is a plugin whose behaviour is a
+  TypeScript hooks module hooking engine events (`mods/README.md` in the
+  clone). Five ship built in (`sec-default`, `diff`, `telemetry`,
+  `agents-md`, `privacy`). Tooling: `claude plugin validate`
+  (type-checks the hooks module as of 2.1.323), `claude plugin test`,
+  the built-in `plugin-authoring` skill, `engines["claude-code"]` in
+  `plugin.json` (2.1.323), `claude plugin install --marketplace`
+  (2.1.292). Relevant to the open packaging question recorded above.
+- **`AGENTS.md`**: the built-in `agents-md` mod reads `AGENTS.md` where a
+  project has no `CLAUDE.md`, or beside it under the option
+  `claude-md-and-agents-md` (`mods/agents-md/README.md`). Whether that
+  option is user-settable on the installed CLI was not checked.
+- **Prompt audit**: `/doctor prompt-audit` (2.1.283) audits CLAUDE.md files,
+  skills, agents and commands for prompting patterns written for older
+  models.
+- **Scheduling**: only routine/cloud-session UI changes and `/loop` fixes
+  (self-paced `/loop` now ends if a turn does not reschedule, 2.1.319); no
+  change that moves the `make sync` verdict.
+- **Persistent memory**: nothing relevant beyond Auto-memory being blocked
+  from background sessions (2.1.285) and stale MEMORY.md/CLAUDE.md after
+  compaction fixed (2.1.311); the "keep `progress.md`" verdict stands.
+- **Code review**: `/code-review` gained effort levels (first argument),
+  `--max-findings` (2.1.288), cleanup/CLAUDE.md-convention findings at
+  medium effort (2.1.290); `/ultrareview` got trust checks and upload
+  restrictions. No change to the `review-code` "keep for now — revisit"
+  verdict beyond more native review surface to compare against.
+- **Skill size after compaction**: the superpowers digest (2026-11-13)
+  cites a Claude Code behaviour that skills are cut off at 20,000
+  characters when re-attached after compaction. This changelog does not
+  state that: the only compaction/skills entry found is 2.1.304
+  ("compaction sends Claude the skill list again; `/reload-skills`
+  sends only new or changed skills"). So the 20,000-character claim is
+  not confirmed here.
 
 ## Survey Summary
 
@@ -57,6 +155,16 @@ is native capabilities that make hand-rolled workspace tooling redundant.
 
 ## Activity Snapshot
 
+- **2026-11-13**: 16,517 open issues and 639 open PRs (GitHub search API);
+  4 PRs merged since 2026-10-14 (the public repo is a mirror). The 40 most
+  recent open issues are mostly desktop/Cowork/Remote Control bugs and
+  desktop "Code tab" cross-session tool requests (`get_session`,
+  `start_session`, `set_session_directory`); one auto-mode classifier
+  report (issue 109636) and one report that CLAUDE.md rules are ignored in
+  long rule-heavy sessions (issue 109619). Open PRs are mostly small
+  plugin fixes (plugin-dev, pr-review-toolkit, code-review plugin
+  confidence scoring).
+- *Earlier snapshot (2026-09-22):*
 - 11,510 open issues, 704 open PRs (GitHub search API, 2026-09-22)
 - 51 PRs merged/closed in the last 30 days as of survey date
 - Notable open items surfaced during this survey: subagent idle/notification
@@ -65,6 +173,37 @@ is native capabilities that make hand-rolled workspace tooling redundant.
   also relies on.
 
 ## Pending Review
+
+- `cc-1` `sandbox-worktree-commit-rule` — v2.1.323 sandbox: `git worktree
+  add/move/remove` read-only and no commits in a worktree the session was
+  not started in or given. Matters if the sandbox is ever turned on for
+  sessions that create worktrees and `cd` into them (it is off in this
+  host's user settings); the worktree scripts and `/start-task` `cd`
+  pattern are the affected case (2026-11-13)
+- `cc-2` `deny-instead-of-prompting-for-background-agents` —
+  `permissions.denyInsteadOfPrompting` (2.1.319) denies a call that would
+  wait on a permission prompt instead of stalling; may suit background
+  phase agents dispatched by `run-issue` that otherwise wait for an
+  absent owner (2026-11-13)
+- `cc-3` `doctor-prompt-audit` — `/doctor prompt-audit` (2.1.283) audits
+  CLAUDE.md, skills, agents and commands for patterns written for older
+  models; possible overlap or input for `/audit-workspace` (2026-11-13)
+- `cc-4` `mods-and-plugin-engines` — mods (TypeScript hooks plugins),
+  `claude plugin validate/test`, and `engines["claude-code"]` in
+  `plugin.json`; bears on the plugin-packaging format question left open
+  above and on whether shell hooks should stay shell (2026-11-13)
+- `cc-5` `workflow-resume-and-model-env` — Workflow resume now serves
+  finished agents from the run's journal (2.1.305, 2.1.318) and
+  `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` sets one model for workflow
+  agents; strengthens the existing `dispatcher-to-workflow-and-agent-files`
+  item rather than adding a new one (2026-11-13)
+- `cc-6` `native-agents-md` — built-in `agents-md` mod loads `AGENTS.md`
+  where no `CLAUDE.md` exists, or beside it under an option; may let the
+  `@AGENTS.md` import shim in `CLAUDE.md` be reconsidered, but only if the
+  option is settable on the installed CLI (not checked) and the
+  Claude-specific setup content in `CLAUDE.md` is kept (2026-11-13)
+
+Carried over from 2026-09-22 (still pending):
 
 - `retire-bash-tool-mapping-hook` — the hook fights auto mode's own
   dedicated-tool guidance and fired repeatedly during this survey run
