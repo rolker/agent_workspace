@@ -19,13 +19,28 @@
 #     layer (rendered from AGENTS.md by a pinned heading list) and the
 #     project layer.
 #
-# This hook does not deliver the workspace SKILLS. In a project session they
-# come from the agent-workspace Claude Code plugin, which user_tier_install.sh
-# enables per registered root (ADR-0018), and are namespaced
-# /agent-workspace:<skill> so a project's own same-named skill keeps its
-# bare name. The skills' own text still names each other by bare slash
-# command, so the header says which form to invoke -- that line is for the
-# model, which never sees this comment.
+# This hook does not deliver the workspace SKILLS. They come from the
+# agent-workspace Claude Code plugin, which user_tier_install.sh enables
+# once, at user scope (ADR-0018), so it reaches every session on the
+# machine, namespaced /agent-workspace:<skill> so a project's own
+# same-named skill keeps its bare name. The skills' own text still names
+# each other by bare slash command, so the header says which form to
+# invoke -- that line is for the model, which never sees this comment.
+# What is true where (live suite, claude 2.1.323, 2026-11-12):
+#   - a registered root, or a git repository nested in one (a package
+#     repository under src/): the plugin's names, /agent-workspace:<skill>,
+#     unless the project sets the plugin to false in its own settings;
+#   - an unregistered folder: the plugin's names too, but this hook is
+#     silent there (no workspace root is registered for it);
+#   - the workspace checkout's repository: the checkout's tracked
+#     .claude/settings.json sets the plugin to false, so a session at the
+#     checkout's root or in a worktree of it lists each shipped skill once,
+#     bare (this hook is silent there: no registered root). A session
+#     started in a subdirectory of the checkout -- a plain subdirectory, or
+#     a registered root inside its tree with no .git of its own, where this
+#     hook does print -- lists each shipped skill under both names, bare
+#     and /agent-workspace:<skill>; both run the same skill. The owner
+#     accepted that doubling on 2026-11-12, and the note below says so.
 #
 # What this hook deliberately does NOT print: any `KEY=value` line meant for
 # a script to parse. SessionStart stdout is context text for the model; it
@@ -104,28 +119,32 @@ echo ""
 
 # --- how workspace skills are named here (ADR-0018) ---------------------
 # The same location rule run-issue uses (skill_prefix.sh), applied to the
-# session's cwd, not the registered root's: a git repository nested in a
-# root (a package repo under src/) is its own project root and does not see
-# the root's plugin (live case G). Whether it sees the workspace's bare
-# skills, for a root inside the workspace tree, has not been checked, so
-# the note says no rule applies rather than that neither form reaches it.
+# session's cwd, not the registered root's.
 _sp_script="$WS_ROOT/.agent/scripts/skill_prefix.sh"
 # One run: stdout carries the verdict on success, stderr the reason on
 # failure, and the script writes nothing else.
 _sp="$(bash "$_sp_script" --dir "$CWD" 2>&1)"; _sp_rc=$?
-if [[ "$_sp_rc" -eq 0 && ( "$_sp" == "skill_prefix=" || "$_sp" == "skill_prefix=agent-workspace:" ) ]]; then
-    if [[ "$_sp" == "skill_prefix=" ]]; then
-        echo "Workspace skills: this session is in the workspace checkout's repository,"
-        echo "so they load under their bare names (/review-code, /run-issue, ...)."
-    else
-        echo "Workspace skills: they reach this session through the agent-workspace"
-        echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
-        echo "Where a skill's text names another skill by its bare slash command, invoke"
-        echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
-        echo "skill of the same name. If no agent-workspace: skills are listed, the"
-        echo "plugin is not enabled for this root: run the workspace's"
-        echo ".agent/scripts/user_tier_install.sh."
+if [[ "$_sp_rc" -eq 0 && "$_sp" == "skill_prefix=" ]]; then
+    echo "Workspace skills: this session is in the workspace checkout's repository,"
+    echo "so they load under their bare names (/review-code, /run-issue, ...)."
+    # Below the root of the checkout (or of a worktree of it) the plugin's
+    # copy is listed too (header).
+    _top="$(cd "$CWD" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)" || _top=""
+    _here="$(cd "$CWD" 2>/dev/null && pwd -P)" || _here="$CWD"
+    if [[ -z "$_top" || "$(cd "$_top" 2>/dev/null && pwd -P)" != "$_here" ]]; then
+        echo "Started below the checkout's root, this session also lists each of them as"
+        echo "/agent-workspace:<skill> (the user-scope plugin); both names run the same"
+        echo "skill. Use the bare name."
     fi
+elif [[ "$_sp_rc" -eq 0 && "$_sp" == "skill_prefix=agent-workspace:" ]]; then
+    echo "Workspace skills: they reach this session through the agent-workspace"
+    echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
+    echo "Where a skill's text names another skill by its bare slash command, invoke"
+    echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
+    echo "skill of the same name. If no agent-workspace: skills are listed, the"
+    echo "user-tier plugin is not installed (run the workspace's"
+    echo ".agent/scripts/user_tier_install.sh), or this project sets it to false in"
+    echo "its own settings."
 else
     echo "Workspace skills: no rule says how they are named in this session."
     echo "${_sp#skill_prefix: }"

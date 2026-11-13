@@ -66,9 +66,10 @@ bare. Every dispatched task line must use the name *this* session has.
 session was launched in, which is where it still is before step 1 (and the
 session never leaves its root, above). Read it there, once, and keep the
 value for the run. Never re-read it after step 1: inside a package
-repository's checkout `skill_prefix.sh` and `session_root.sh` both refuse
-(a session there does not read that root's local settings), and nothing
-in the phase skills calls them.
+repository's checkout `session_root.sh` refuses (a multi-repo project's
+root is its hosting directory, never a package repository nested in it)
+and `skill_prefix.sh` would answer for the package repository instead of
+the root, and nothing in the phase skills calls them.
 
 Find out **once, before step 1**, by running:
 
@@ -80,19 +81,21 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 It decides by location, not by anything this session has to copy or
 interpret: `skill_prefix=` (bare) when the session is in the workspace
 checkout's git repository (the checkout, a worktree of it, or a root like
-`p11-jazzy` inside it), `skill_prefix=agent-workspace:` when it is in a
-registered project root. The installer never enables the plugin in the
-workspace, because the plugin's source is the workspace's own
-`.claude/skills`: enabling it there would load every shipped skill twice.
+`p11-jazzy` inside it), `skill_prefix=agent-workspace:` anywhere else (a
+registered project root, for this skill). The plugin is enabled once, at
+user scope; the workspace checkout's tracked `.claude/settings.json` sets
+it to false, so a session at the checkout's root or in a worktree of it
+lists each shipped skill once, bare. A session started in a subdirectory
+of the checkout (a root like `p11-jazzy`) lists each shipped skill under
+both names, bare and `/agent-workspace:<skill>`; both run the same skill
+(accepted by the owner, 2026-11-12), and the bare name is the one to use.
 Remember the printed value for the whole run and pass it on every handoff
 call in step 4 as `--skill-prefix agent-workspace:` (omit the flag when it
 printed empty). Where this skill's text names another workspace skill by
 its bare slash command, invoke the prefixed form in a plugin session too.
 
-If it exits non-zero (an unregistered location, or a repository nested in
-a root, which the root's plugin does not reach), **stop and report its
-message**.
-Do not guess a prefix.
+If it exits non-zero (only for a directory that does not exist), **stop
+and report its message**. Do not guess a prefix.
 
 **The `|| echo .` fallback is required, not decoration.** The user tier is
 optional — `--check` and ADR-0016 both say so — and on a machine without it
