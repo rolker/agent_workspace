@@ -2157,3 +2157,49 @@ Open question decided: option 1, as the review's step 2b.7 gives it. The issue's
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `a68a3d74`
 
 Revision after the plan review (needs-work) and the host's revise: added step 2b.7 (base of the pre-push review and the behind-check), narrowed the two acceptance rows, dropped the git branch -d case, fixed the two line citations, updated the Files table and Estimated Scope.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 06:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `a68a3d74`
+**Branch**: `feature/issue-429`
+
+Scope: convergence review of the revision after the plan review of 06:07 and the host's revise checkpoint of 06:09. Checked against main at `03d0bbfa` (origin/main; the branch adds only plan and progress commits on top).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 2b is now about 12 files; 2b.7 adds about 5 files. Still one pull request |
+| Issue alignment | Good | Every checkpoint item is applied: 2b.7 added with (i)-(v) and both tests as decided; "Needed 3" row narrowed to the pre-push review and behind-check only (PR mode met by 445); Acceptance 1 now names what is testable (steps 1-4, 7, 9-11, and 8 plus the pre-push base via 2b.7) and what is not; `git branch -d` case dropped in 2b.3 with the reason; citations fixed (sibling `gh pr list -R` at 1612; design 476-478 noted as already off, 898/924). Open question withdrawn, Open Questions says none. Serves line, as checked: "Workspace goal `README.md#easy-to-use` ... `README.md#light-touch-on-projects` ... `README.md#flexibility` ... Design: `docs/design.md#worktrees` (Records) and `docs/design.md#review-loop-and-timeline` (pull request 2: `docs/design.md#merge-gate`)" (unchanged since the last review, anchors confirmed then) |
+| File targeting | Good | Files table gains the 2b.7 row (`dispatch_phase.sh`, `check_branch_updates.sh`, review-code and run-issue SKILLs, `script_reference.md` rows 34 and 51, a test suite) |
+| Consequences | Good | One nit (finding 1). `docs/design.md` names neither `check_branch_updates.sh` nor the pre-push base, so 2b.7 changes no design section |
+| Principle alignment | Good | "Test what breaks": the task-line assertion and the extracted step-8 block run in A pin both halves; a bare call is asserted unchanged |
+| ADR compliance | Good | Nothing new triggered |
+| ROS conventions | N/A | Workspace plan |
+
+### 2b.7 tested against the code on main
+
+- **Task line and base**: `skill_task_line` builds `/review-code --branch --issue $issue` (`dispatch_phase.sh` 435), called at 516; the recorded base is read only at 531 (`pkg_base` from the header) and printed at 565. So (i) needs the base read before 516 or the task rewritten after 531; the plan's "Read" cites both lines, enough for the implementer.
+- **Round 3**: the convergence suffix is appended to `$task` after `--issue N` (540-552), so the line becomes `/review-code --branch origin/pinned --issue 7 (round 3: ...; no cross-model reviewers)`: well-formed; review-code step 2 keys only on the words "no cross-model reviewers" (SKILL 189-204), and round 3 skips 5e, so the base is used only for the diff.
+- **review-code accepts the form**: usage `--branch [<base-ref>] [--issue <N>]` (SKILL 43); step 1b uses the given value as `$BASE` and diffs `"$BASE"...HEAD` (134-151).
+- **cross_model_review.sh accepts it**: `--branch` takes an optional value (405-412); `git rev-parse --verify origin/pinned` hits at 851, so `BASE_REF=origin/pinned` (the `origin/$BRANCH_BASE` fallback at 853 is not reached). SKILL 402 already shows `--branch <base>`; (iv) adds only the "same base" sentence.
+- **check_branch_updates.sh**: `$1 == --strict` only (27); default from origin/HEAD (38-43); the branch is used in the shortcut (47), fetch (61, 66), counts (73-78) and messages (98-153), the places (ii) lists. Its other callers pass no argument: `worktree_enter.sh` 458-460 and `.agent/hooks/check-branch-updates.py` (`subprocess.run([str(check_script)])`). No test suite exists for it; the plan's test runs it via step 8's block.
+- **Workspace issue unchanged**: (i) only when a base is recorded; (iii) keeps `main` for every other issue. The existing package assertion `task=/review-code --branch --issue 7 (round 3:` (`test_package_issue_loop.sh` 225) uses worktree C, whose `base=` is stripped at 176-180, so it stays valid; `test_dispatch_phase.sh` 458-696 use workspace worktrees and stay valid.
+- **Step 8 block extraction**: `check_branch_updates.sh` appears in one bash block of run-issue SKILL (767; 274 is prose), so the 815-831 extraction pattern works.
+
+### Findings
+
+1. **[Consequences] (nit)** run-issue SKILL line 237 says "Keep the branch after `base=` as `<base>` for the run (step 7 needs it)"; with 2b.7 step 8 needs it too, and the step 8 heading "Merge-from-main" (760) and its echoes at 481 and 843 say "main". Update them with (iii) so the host is not told the base is used only at publish.
+
+### Summary
+
+The revision applies every checkpoint item as decided, and 2b.7's wording matches the code: both review-code and `cross_model_review.sh` accept `--branch origin/<base>`, the round-3 line stays well-formed, the no-argument callers of `check_branch_updates.sh` are named, and workspace issues are unchanged. Nothing confirmed earlier has regressed. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] With 2b.7 (iii), update run-issue SKILL 237 ("step 7 needs it" to steps 7 and 8) and the "merge-from-main" wording at 481, 760 and 843 (finding 1)
