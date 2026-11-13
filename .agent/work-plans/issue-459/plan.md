@@ -24,11 +24,14 @@ Atomic commits, after rebasing on 461 once it merges:
    or `findings`) arms; a later checkpoint with After `merge`, `findings` or
    `merge-refused` and a non-merge answer disarms; the first start entry while
    armed (`## Plan Authored`, or an `## Implementation` with no `**Addressed**`
-   that is not PR-correlated: `**Branch**`, or no correlation line on a failed
-   pass) is the boundary, whatever its Status; a restart checkpoint sets the start and
+   that is `**Branch**`-correlated, or carries a `**PR**` number other than the
+   merged pull request's (the newest PR-correlated entry's before the merge
+   answer; unknown → not a start), or has no correlation line and is not
+   complete; first fix round) is the boundary; a restart checkpoint sets the
+   round start (not the pull-request start `sources` reads; first fix round) and
    clears the armed state. A `## Merge (...)` record neither arms nor disarms
    (`merge_pr.sh` writes it at the gate, before the merge, whether or not it
-   lands). PR-correlated entries do not disarm. It relies on ADR-0013's
+   lands). Entries that are not start entries do not disarm. It relies on ADR-0013's
    correlation table (`**Branch**` only "if no PR exists yet"). Both inline `-c`
    scripts get the script directory through the environment and a plain
    `from pr_start import pr_start` (so `suites_for_files.sh` maps it);
