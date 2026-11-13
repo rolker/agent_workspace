@@ -543,3 +543,13 @@ Carry into part 2 of the issue: if another signal-handling point turns up in the
 **Decision**: merge
 
 The owner's answer, verbatim: "merge 468 if ci is gree". He had been told: reviews and triage are finished with nothing open; the pull request adds the parallel runner, the default stays one job, and it is part 1 of 2 that does not close issue 444; CI's full run on the final commit was still running. The host merges only when every check on 8e21c771 has passed, and stops and reports if any fails.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 12:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+CI failed, so the earlier conditional answer ("merge 468 if ci is gree") did not merge. Shown to the owner: the push runs (the branch alone) pass; the pull_request runs (the branch combined with main) have failed six times in a row since pull request 461 merged at 2026-11-13 16:43Z, every time at the same case of test_merge_pr_gate.sh: "FAIL: (hang-1) origin silent (reap=reached elapsed=4s ..." / "elapsed=5s", in "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT", then "run_script_tests: FAILED at test_merge_pr_gate.sh (suite 16 of 48)". Main's own CI passes that test at 8161b57d. Asked: "Send pull request 468 (parallel test suites) back to find and fix its CI failure against main?" The owner's answer, verbatim: "yes to both".
