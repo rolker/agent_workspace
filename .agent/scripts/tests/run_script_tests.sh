@@ -712,6 +712,11 @@ if (( jobs > 1 )); then
             sleep 0.1
         done
         kill -s KILL -- "-$stop_watchdog" 2>/dev/null
+        # Reaped and forgotten, so kill_now never KILLs its id again: by
+        # then the number may belong to another process group. Reaped
+        # first, because live_groups skips it only while it is named here.
+        wait "$stop_watchdog" 2>/dev/null
+        stop_watchdog=""
         # The deadline has passed for whatever is still there.
         for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
     }
