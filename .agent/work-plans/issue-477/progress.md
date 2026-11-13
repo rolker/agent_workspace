@@ -155,3 +155,90 @@ Read: the Plan Review at 12bf95f0 and its report. Direction for the revised plan
 **Plan**: `.agent/work-plans/issue-477/plan.md` at `ece64fd5`
 
 Revised at the host's checkpoint: part 1 now also carries the sit-rep marking Path 3 (recognised by the README line's opening words, "A safeguard has to earn its cost", in the newest complete Issue Review's Serves line; review-issue's Serves rule says to write it), the closing question and "serves neither" wording for three paths, the first-sentence pattern accepting a closing quotation mark, and the two test files. Part 2 loses its item 6.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 14:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ac07052333263a795, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #477 — Path 3, less waiting for the same care: the roadmap path, the README goal line, and what sits under it
+**Plan**: `.agent/work-plans/issue-477/plan.md` at `ece64fd5`
+**Branch**: `feature/issue-477`
+
+Second review. It covers only what the revision added: plan items 5 to 11, the stop condition, and "Entries already written". The two approved texts and their edits were checked in the first review and are not re-reviewed here.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request: the texts plus the sit-rep part and its two test files. The stop condition names the files that stay untouched. |
+| Issue alignment | Good | The issue asks what makes work Path 3 and for the smallest sit-rep change. Items 5 and 6 answer both. Serves line unchanged: README "Quality of the work" and the new line; `docs/design.md#review-loop-and-timeline`. |
+| File targeting | Good | Reading `sitrep_checks.sh` and `sitrep_root.sh` confirms they do not need to change: step 3's own awk block is the only reader of the Serves text. |
+| Consequences | Good | The first review's notes 1 and 2 are now covered: the closing question, "serves neither", and the path-word lists. `docs/design.md` line 105 stays accepted. |
+| Principle alignment | Good | Each changed behaviour has a test that fails without it: case 32, the closing-question grep, and the `."` paths case. Cases 33 and 34 and the project row pass today; they guard the order of the checks, which is their job. |
+| ADR compliance | Good | ADR-0013 entries. The two skill files are not instruction files. |
+| ROS conventions | N/A | Workspace plan |
+
+### Recognition by the README line's opening words
+
+The rule is to match the phrase "A safeguard has to earn its cost", case-insensitive, in the newest complete Issue Review's Serves line. It is sound. Each risk I checked:
+- **A Serves line of `none` that quotes the phrase.** The existing `none` test runs first, and the plan keeps that order, so the line reads `no path`.
+- **A Serves line that quotes the phrase while saying the work does not serve it.** It would misfire as Path 3. Real Serves lines do carry commentary. Issue 253's says "Direction (`docs/roadmap.md`, Path 1) does not name #253", and issue 386's argues about anchors. But a review naming this line in order to deny it is unlikely, and the cost is one wrong path word. This is a note, not a must-fix.
+- **review-issue paraphrasing the line.** The match silently never fires, and the work reads Path 2, which is what it read before this change. Serves lines already quote README wording verbatim in quotation marks ("Work is easy to come back to"). With item 5's sentence, paraphrase is the less likely outcome.
+- **The phrase wrapped across two lines.** The `serves=` awk keeps only the `**Serves**:` line itself. A wrapped value is cut today, which is harmless for `goal` and `none` but would hide the phrase. review-issue's rule already says "in one line", and all 23 Serves lines I read across 19 progress files are single lines. Low risk.
+- **The README side changes but review-issue does not.** The planned README assertion catches a change on the README side only. Nothing catches review-issue's sentence or the sit-rep's literal drifting from it. See note 1.
+- **A fixed token such as `Path 3` instead.** This would be less robust. Serves lines already mention path numbers in commentary (issue 253's "Path 1 ... does not name"), so a number token would misfire on exactly that kind of text. It would also tie review-issue, which runs in project sessions too, to the workspace roadmap's numbering. The phrase ties the match to the goal, which is where the Serves rule already points.
+
+### Precedence chain walk (`wpath`, step 3)
+
+| Case | Result |
+|---|---|
+| No Paths paragraph | empty |
+| `named` empty | path unknown (steps not checked) |
+| `named` is `yes`, with or without the phrase | Path 1 (case 34) |
+| `goal` or `path3`, and the worktree or the session is a project | no path (serves a project goal) |
+| `path3` in a workspace worktree, workspace session | Path 3 (case 32) |
+| `goal` | Path 2 (case 33: an older review has the phrase, the newest is plain) |
+| `none` (the phrase may follow) | no path |
+| `unstated` or `unreviewed` | their unknown labels |
+
+Every branch is reachable, and none shadows another wrongly. In a project session the project test comes first, so a project roadmap's own Path 3, if it has one, is never claimed by the workspace's phrase.
+
+### First-sentence pattern, scratch run (since deleted)
+
+Run with `(.+?\.\x22?)(?:\s|$)` on the roadmap with the approved edits, plus three probe paragraphs:
+
+```
+Path 1  In the owner's words (2026-11-10): "I also want to move project11 to this workspace".      (unchanged)
+Path 2  Implementing the missing pieces to make this workspace reflect the goals we set.            (unchanged)
+Path 3  In the owner's words (2026-11-13): "We have a lot of safeguards to make sure we don't produce slop, but I fear we may be over cautious."
+probe "See e.g. the list."          -> "See e.g."                    (same as the old pattern; an existing limit, not new)
+probe 'He said "stop." and left.'   -> 'He said "stop."'             (new: the old pattern gave 'He said "stop." and left.')
+probe "It is 'done.' Then."         -> "It is 'done.' Then."         (single quote not handled; same as old)
+```
+
+Path 1 and Path 2 print the same as before. The only output that changes is a quoted full stop in the middle of a sentence, which now ends the extract. For Path 3 that is the intended result.
+
+### Findings
+
+No must-fix. Notes for the implementer, applied without a re-plan:
+
+1. **[Principle alignment]** Pin the phrase in all three places, not only the README: `README.md`, `.claude/skills/review-issue/SKILL.md` (item 5's sentence), and `.claude/skills/sitrep/SKILL.md` (the awk literal). Use one `grep -qiF` per file in `test_skill_paths.sh`, which already reads the real skill texts. Then rewording any one of them fails a test, and a silent never-fire cannot happen.
+2. **[Approach]** In the awk, match with `index(tolower(s), "a safeguard has to earn its cost")` rather than `~`, so the phrase is matched as plain text.
+3. **[Tests]** Add one case: a Serves line of `none` that also carries the phrase, expected `no path`. It pins the `none`-first order, the one order the chain walk depends on that no planned case covers.
+4. **[Verification]** The implement pass runs only `test_sitrep_checks.sh` and `test_skill_paths.sh`, each on its own, and reports their new totals. Drop the plan's step that runs `suites_for_files.sh`, which printed `ALL`. Under the owner's interim rule, the host makes the one full local run before publishing. No other suite reads the real `README.md`, review-issue's skill or the sit-rep skill. The other suites that name `roadmap.md` or `README.md` (`test_sitrep_root.sh`, `test_update_roadmap.sh`, `test_real_case_path.sh`) build sandbox copies, so they are unaffected.
+5. **[Generic]** `test_skill_paths.sh` requiring `**Path 3,` is acceptable: that check reads only the workspace's own `docs/roadmap.md`, never a project's, and the sit-rep skill hard-codes Path 3 the same way it already hard-codes Path 2. Keep the skill prose and `test_sitrep_checks.sh`'s sandboxes generic about how many paths a root has. The closing question's wording, "one of the paths step 3 printed, or several", already is.
+6. **[Consequences]** "Entries already written": it is acceptable for issues 465 and 477 to read Path 2 until they are re-reviewed. The timeline is append-only, the mark was Path 2 before this change, and the PR description says so (item 11b). No other matching is worth adding for two lines.
+
+### Summary
+
+The revision is ready. The phrase is a sound marker, sounder than a path-number token. The precedence chain is correct for every case. The pattern change leaves Path 1 and Path 2 untouched. The planned tests fail without the change where they should. The notes tighten the tests and narrow the implement pass's suite runs to the two touched suites.
+
+### Recommended Actions
+
+- [ ] Assert the phrase in `README.md`, review-issue's skill and the sit-rep skill (note 1).
+- [ ] Match the phrase with `index()` in the awk (note 2).
+- [ ] Add the `none` plus phrase case (note 3).
+- [ ] Run only the two touched suites in the implement pass; the host makes the full run (note 4).
