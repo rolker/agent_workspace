@@ -26,6 +26,11 @@ PASS=0
 FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
+tail_of() {  # <text> <n>: the last n characters (all of a shorter text)
+    local t="$1" n="$2"
+    (( ${#t} > n )) && t="${t:${#t}-n}"
+    printf '%s' "$t"
+}
 # One sandbox for the whole run, created at top level (not inside $()) so
 # the trap actually fires — see issue #297. make_sandbox() carves per-test
 # directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
@@ -497,6 +502,53 @@ else
     fail "PR comment fallback (out=${out:0:300})"
 fi
 
+echo "TEST: with no timeline, the duplicate check compares with the newest record comment of either type"
+# The same no-worktree sandbox: the PR's comments are the only store. The
+# conditions A are the ones the run above posted. Each case sets the PR's
+# comments, runs once, and says whether a new record comment was posted.
+sb="$(make_sandbox "$STALE" with_summary)"
+git -C "$sb" worktree remove --force "$sb/worktrees/workspace/issue-workspace-7" >/dev/null 2>&1
+run_merge "$sb" --report-only >/dev/null 2>&1 || true
+cond_a=$(grep -m1 '^\*\*Conditions\*\*: ' "$sb/gh_fixtures/comments_posted.md" | sed 's/^\*\*Conditions\*\*: //')
+ws_fixture="$sb/gh_fixtures/pr_view_$(printf '%s' "${sb}.remote.git" | tr '/' '_')_${PR}.json"
+rec_body() {  # <type> <conditions>
+    printf '## %s\n**Status**: complete\n**When**: 2026-11-13 08:00 -05:00\n**By**: merge_pr.sh (t)\n\n**PR**: #%s at `abc1234`\n**Mode**: m\n**Scope**: workspace\n**Conditions**: %s\n\n---\n**Authored-By**: `t`\n' "$1" "$PR" "$2"
+}
+dedup_case() {  # <label> <flag> <expect: skips|records> <comment body>...
+    local label="$1" flag="$2" expect="$3" b args='[]' out n
+    shift 3
+    args=$(jq -n '[{"body":"## Decision summary\n\n**What changed**: x"}]')
+    for b in "$@"; do args=$(jq --arg b "$b" '. + [{"body": $b}]' <<<"$args"); done
+    jq --argjson c "$args" '.comments = $c' "$ws_fixture" > "$ws_fixture.tmp" && mv "$ws_fixture.tmp" "$ws_fixture"
+    : > "$sb/gh_fixtures/comments_posted.md"
+    out="$(run_merge "$sb" "$flag" 2>&1)" || true
+    n=$(grep -c '^## Merge (' "$sb/gh_fixtures/comments_posted.md")
+    if [[ "$expect" == skips && "$n" -eq 0 && "$out" == *"already recorded (as a PR comment), same conditions"* ]] \
+        || [[ "$expect" == records && "$n" -eq 1 && "$out" != *"already recorded"* ]]; then
+        pass "(dedup-c $label) $expect"
+    else
+        fail "(dedup-c $label) expected $expect (posted=$n out=$(tail_of "$out" 500))"
+    fi
+}
+if [[ -n "$cond_a" ]]; then
+    dedup_case "unreviewed A, then report-only A; --force-unreviewed with A" --force-unreviewed records \
+        "$(rec_body 'Merge (unreviewed)' "$cond_a")" "$(rec_body 'Merge (report-only)' "$cond_a")"
+    dedup_case "report-only A, then unreviewed A; --report-only with A" --report-only records \
+        "$(rec_body 'Merge (report-only)' "$cond_a")" "$(rec_body 'Merge (unreviewed)' "$cond_a")"
+    dedup_case "last comment unreviewed A; --force-unreviewed with A" --force-unreviewed skips \
+        "$(rec_body 'Merge (unreviewed)' "$cond_a")"
+    dedup_case "last comment unreviewed with other conditions; --force-unreviewed with A" --force-unreviewed records \
+        "$(rec_body 'Merge (unreviewed)' "something else")"
+    dedup_case "last comment report-only A; --force-unreviewed with A" --force-unreviewed records \
+        "$(rec_body 'Merge (report-only)' "$cond_a")"
+    dedup_case "no record comment; --force-unreviewed" --force-unreviewed records
+    dedup_case "unreviewed A, then a comment quoting a report-only heading mid-body; --force-unreviewed with A" --force-unreviewed skips \
+        "$(rec_body 'Merge (unreviewed)' "$cond_a")" "A note quoting a record:
+$(rec_body 'Merge (report-only)' "$cond_a")"
+else
+    fail "(dedup-c) could not read the conditions the calibration run posted"
+fi
+
 # ================================================= package worktree (issue 429 part 2) =====
 # A package worktree: a container (no repository) nested inside the workspace
 # checkout, holding the owning checkout A (pkg_a on feature/issue-901, the
@@ -557,11 +609,6 @@ run_pkg_merge() {  # <sb> <owner/repo#N> [args...]
         "$sb/.agent/scripts/merge_pr.sh" --pr "$ref" --no-wait --no-roadmap-update "$@" 2>&1)
 }
 pkg_progress() { cat "$1/l1_ws/src/pkg_a/.agent/work-plans/issue-901/progress.md" 2>/dev/null; }
-tail_of() {  # <text> <n>: the last n characters (all of a shorter text)
-    local t="$1" n="$2"
-    (( ${#t} > n )) && t="${t:${#t}-n}"
-    printf '%s' "$t"
-}
 # The gh stub writes posted comments to comments_posted.md; GitHub would show
 # them on the next `pr view`. Copy them into pkg_a#901's fixture.
 pkg_comments_to_fixture() {  # <sb>

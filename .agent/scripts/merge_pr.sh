@@ -1285,10 +1285,17 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         fi
         return 1
     elif [[ -n "$_gate_json" ]]; then
-        latest=$(jq -r --arg h "## ${etype}" \
-            '[.comments[]? | .body // ""] | map(select(startswith($h))) | last // empty' \
+        # No timeline read: the PR's comments are the store. The newest
+        # record of either type is the one compared (a body that starts with
+        # its heading; a heading quoted inside a body is not a record), and
+        # it matches only when it is of the requested type with the same
+        # conditions: a report-only record after an unreviewed one is the
+        # newest state, and a later --force-unreviewed run records again.
+        latest=$(jq -r \
+            '[.comments[]? | .body // ""] | map(select(startswith("## Merge (report-only)") or startswith("## Merge (unreviewed)"))) | last // empty' \
             <<<"$_gate_json" 2>/dev/null || echo "")
         [[ -z "$latest" ]] && return 1
+        [[ "$(head -n1 <<<"$latest" | sed 's/^## //; s/[[:space:]]*$//')" == "$etype" ]] || return 1
         l_cond=$(grep -m1 '^\*\*Conditions\*\*: ' <<<"$latest" | sed 's/^\*\*Conditions\*\*: //')
         if [[ "$l_cond" == "$why" ]]; then
             echo "  ℹ️  already recorded (as a PR comment), same conditions — skipping a duplicate ${etype} entry"
