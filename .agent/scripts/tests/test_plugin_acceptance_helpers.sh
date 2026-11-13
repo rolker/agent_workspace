@@ -12,7 +12,8 @@
 # timed-out, failed or silent session as a failure, never as "not reached".
 # And cleanup(), which deletes under the real ~/.claude when the live suite
 # runs: only the suite's own plugin cache entry and the session directories
-# named from its own sandbox path.
+# named from its own sandbox path, and, after a user-scope enable, only this
+# run's two user-scope entries. And the user-scope cases' judging helpers.
 #
 # Run: bash .agent/scripts/tests/test_plugin_acceptance_helpers.sh
 
@@ -41,12 +42,13 @@ export PATH
 MODEL=stub
 
 # The two definition blocks: session()/session_said() (up to the setup
-# marker) and probe()/probe_said() (up to case A's marker).
+# marker) and probe()/probe_said() (up to the per-root cases' marker, which
+# opens an `if` block the extract must not take half of).
 helpers="$(awk '
     /^SESSION_OUT=""/ { on = 1 }
     /^# -+ setup ---/ { on = 0 }
     /^PROBE_REACHED=0/ { on = 1 }
-    /^# -+ A: collision ---/ { on = 0 }
+    /^# =+ per-root cases ===/ { on = 0 }
     on
 ' "$SUITE")"
 if [[ "$helpers" != *"probe() {"* || "$helpers" != *"session() {"* ]]; then
@@ -197,6 +199,141 @@ direct="$(grep -n 'bash "\$W/.agent/scripts/user_tier_install.sh"' "$SUITE" | gr
 [[ -z "$direct" ]] \
     && pass "the live suite runs the copy's installer only through sandbox_install" \
     || fail "the live suite runs the installer directly: $direct"
+
+# cleanup()'s user-scope removal: when the run enabled its test plugin at
+# user scope (USER_ENABLED=1), cleanup runs exactly the two --scope user
+# removals for THIS run's name, from a directory in no git repository,
+# leaves the real agent-workspace entries alone, and removes the plugin
+# cache; when the removal does not take, it says so and prints the two
+# hand-removal commands.
+real_def="$(awk '/^REAL_SETTINGS=/ { on = 1 } /^if \[\[ "\$RUN_USER" == 1 \]\]; then/ { on = 0 } on' "$SUITE")"
+if [[ "$real_def" != *"user_removal_lines() {"* || "$cleanup_def" != *"user_scope_remove() {"* ]]; then
+    fail "could not find REAL_SETTINGS/user_removal_lines() or user_scope_remove() in $SUITE (section markers moved?)"
+else
+    usw="$SANDBOX/us-work"
+    for takes in yes no; do
+        rm -rf "$usw"
+        mkdir -p "$usw/bin" "$usw/home/.claude/plugins/cache/aw-accept-4242/x" "$usw/home/.claude/plugins/cache/aw-accept-42" \
+            "$usw/aw-plugin-accept.us1"
+        jq -n '{enabledPlugins: {"agent-workspace@agent-workspace": true, "aw-accept-4242@aw-accept-4242": true},
+            extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: "/real"}},
+                                     "aw-accept-4242": {source: {source: "directory", path: "/copy"}}}}' \
+            > "$usw/home/.claude/settings.json"
+        cat > "$usw/bin/claude" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$PWD" "$*" >> "$US_LOG"
+[[ "$US_TAKES" == yes ]] || exit 0
+f="$HOME/.claude/settings.json"
+case "$1 $2 $3" in
+    "plugin uninstall "*) jq --arg id "$3" 'del(.enabledPlugins[$id])' "$f" > "$f.tmp" && mv "$f.tmp" "$f" ;;
+    "plugin marketplace remove") jq --arg m "$4" 'del(.extraKnownMarketplaces[$m])' "$f" > "$f.tmp" && mv "$f.tmp" "$f" ;;
+esac
+STUBEOF
+        chmod +x "$usw/bin/claude"
+        : > "$usw/cli.log"
+        out="$(cd "$usw" && HOME="$usw/home" PATH="$usw/bin:$PATH" US_LOG="$usw/cli.log" US_TAKES="$takes" \
+            NAME=aw-accept-4242 SANDBOX="$usw/aw-plugin-accept.us1" \
+            bash -c "unset CLAUDE_CONFIG_DIR; $real_def"$'\n'"$cleanup_def"$'\n''ENABLED_ROOTS=(); USER_ENABLED=1; USER_TOUCHED=1; cleanup' 2>&1)"
+        calls="$(cut -d'|' -f2 "$usw/cli.log" | tr '\n' ';')"
+        cwds="$(cut -d'|' -f1 "$usw/cli.log" | sort -u)"
+        if [[ "$takes" == yes ]]; then
+            [[ "$calls" == "plugin uninstall aw-accept-4242@aw-accept-4242 --scope user;plugin marketplace remove aw-accept-4242 --scope user;" ]] \
+                && pass "cleanup removes this run's user-scope enable with exactly the two --scope user calls, for its own name" \
+                || fail "cleanup's user-scope removal called: '$calls'"
+            [[ "$cwds" == "$usw/aw-plugin-accept.us1" || "$cwds" == "/" ]] \
+                && pass "...from a directory in no git repository (the sandbox)" \
+                || fail "...from '$cwds'"
+            jq -e '(.enabledPlugins | has("aw-accept-4242@aw-accept-4242") | not) and (.extraKnownMarketplaces | has("aw-accept-4242") | not)
+                   and .enabledPlugins["agent-workspace@agent-workspace"] == true and .extraKnownMarketplaces["agent-workspace"].source.path == "/real"' \
+                "$usw/home/.claude/settings.json" >/dev/null \
+                && pass "...leaving neither of its entries, and the real agent-workspace entries as they were" \
+                || fail "...user settings after cleanup: $(jq -c . "$usw/home/.claude/settings.json")"
+            [[ ! -e "$usw/home/.claude/plugins/cache/aw-accept-4242" && -d "$usw/home/.claude/plugins/cache/aw-accept-42" && "$out" != *WARNING* ]] \
+                && pass "...and removes its own plugin cache (not another run's), with no warning" \
+                || fail "...cache or warning after a user-scope cleanup (out=$out; cache: $(ls "$usw/home/.claude/plugins/cache"))"
+        else
+            [[ "$out" == *"WARNING: $usw/home/.claude/settings.json still has this run's entries"* \
+               && "$out" == *"claude plugin uninstall aw-accept-4242@aw-accept-4242 --scope user"* \
+               && "$out" == *"claude plugin marketplace remove aw-accept-4242 --scope user"* ]] \
+                && pass "cleanup whose user-scope removal does not take warns and prints both hand-removal commands" \
+                || fail "cleanup when the user-scope removal does not take (out=$out)"
+        fi
+    done
+    rm -rf "$usw"
+fi
+
+# The user-scope cases' judging helpers (#446): a case is judged from the
+# session's init command list when there is one, and from the probes only
+# when there is none; a stop condition is clear, FIRES or UNDECIDED.
+judge_def="$(awk '/^# us_no_list <listed>:/ { on = 1 } /^# us_finish: / { on = 0 } on' "$SUITE")"
+if [[ "$judge_def" != *"us_got() {"* || "$judge_def" != *"us_verdict() {"* || "$judge_def" != *"us_expect() {"* ]]; then
+    fail "could not find us_got()/us_expect()/us_verdict() in $SUITE (section markers moved?)"
+else
+    # shellcheck disable=SC2034  # NAME and the U_* arrays are read by the eval'd helpers
+    got="$(
+        NAME=aw-accept-4242
+        PROBE_REACHED=0 PROBE_NOT_REACHED=1 PROBE_SESSION_FAILED=2
+        declare -A U_BARE=() U_PLUG=() U_BARE_SAID=() U_PLUG_SAID=() U_LISTED=()
+        eval "$judge_def"
+        # Both listed, though the prefixed probe was "not reached" (U4, 2026-11-12).
+        U_LISTED[A]="zz-probe,aw-accept-4242:zz-probe"; U_BARE[A]=0; U_PLUG[A]=1
+        # Only the prefixed name listed, though the bare probe "reached" (U5).
+        U_LISTED[B]="aw-accept-4242:zz-probe"; U_BARE[B]=0; U_PLUG[B]=0
+        # An empty list: evidence of "not listed".
+        U_LISTED[C]="<none>"; U_BARE[C]=2; U_PLUG[C]=2
+        # No init line: the probes decide; a failed one is unknown.
+        U_LISTED[D]="<no init line>"; U_BARE[D]=0; U_PLUG[D]=2
+        # Slash-prefixed entries count too.
+        U_LISTED[E]="/zz-probe"; U_BARE[E]=1; U_PLUG[E]=1
+        for id in A B C D E; do printf '%s=%s,%s ' "$id" "$(us_got "$id" bare)" "$(us_got "$id" plug)"; done
+        printf '| %s | %s | %s' "$(us_verdict yes yes no no)" "$(us_verdict yes no unknown no)" "$(us_verdict unknown yes yes yes)"
+        pass() { printf ' P:%s' "$1"; }
+        fail() { printf ' F:%s' "$1"; }
+        us_expect A yes yes "a" >/dev/null; us_expect A yes yes "a"; us_expect B - no "b"
+    )"
+    [[ "$got" == "A=yes,yes B=no,yes C=no,no D=yes,unknown E=yes,no | clear | FIRES | UNDECIDED"*" P:A: a F:B: wanted bare zz-probe listed - and aw-accept-4242:zz-probe listed no; got no and yes (init command list: aw-accept-4242:zz-probe)" ]] \
+        && pass "the user-scope cases are judged from the init command list, the probes only without one; stop checks clear / FIRES / UNDECIDED" \
+        || fail "user-scope judging helpers: $got"
+    # An empty list is a list: counted as 0, never "could not tell"; no
+    # list at all counts as nothing (U7's UNDECIDED).
+    # shellcheck disable=SC2034
+    got="$(
+        declare -A U_LISTED=()
+        eval "$judge_def"
+        U_LISTED[A]="<none>"; U_LISTED[B]="aw-accept-4242:zz-probe,/aw-accept-4242:zz-probe"
+        U_LISTED[C]="<no init line>"; U_LISTED[D]="<init line without slash_commands>"; U_LISTED[E]="zz-probe"
+        for id in A B C D E; do printf '%s=[%s] ' "$id" "$(us_count "$id" aw-accept-4242:zz-probe)"; done
+    )"
+    [[ "$got" == "A=[0] B=[2] C=[] D=[] E=[0] " ]] \
+        && pass "us_count: an empty list counts 0, a missing one nothing, slash-prefixed entries count" \
+        || fail "us_count on synthetic lists: $got"
+fi
+
+# us_case keeps the first session's list unless it had none: an empty list
+# ("<none>") is kept, never replaced by the second session's missing one.
+case_def="$(awk '/^us_case\(\) \{/ { on = 1 } on { print } on && /^}/ { exit }' "$SUITE")"
+if [[ "$case_def" != *"us_case() {"* || "$judge_def" != *"us_no_list() {"* ]]; then
+    fail "could not find us_case()/us_no_list() in $SUITE (section markers moved?)"
+else
+    # shellcheck disable=SC2034
+    got="$(
+        NAME=aw-accept-4242
+        declare -A U_BARE=() U_PLUG=() U_BARE_SAID=() U_PLUG_SAID=() U_LISTED=()
+        eval "$judge_def"
+        eval "$case_def"
+        LISTS=()
+        us_probe() { SESSION_LISTED="${LISTS[0]}"; LISTS=("${LISTS[@]:1}"); return 0; }
+        probe_said() { echo said; }
+        probe_word() { echo word; }
+        LISTS=("<none>" "<no init line>"); us_case A "a" /x >/dev/null
+        LISTS=("<no init line>" "aw-accept-4242:zz-probe"); us_case B "b" /x >/dev/null
+        LISTS=("zz-probe" "<none>"); us_case C "c" /x >/dev/null
+        printf '%s|%s|%s' "${U_LISTED[A]}" "${U_LISTED[B]}" "${U_LISTED[C]}"
+    )"
+    [[ "$got" == "<none>|aw-accept-4242:zz-probe|zz-probe" ]] \
+        && pass "us_case keeps an empty first list, and replaces only a missing one" \
+        || fail "us_case list choice: $got"
+fi
 
 # The encoding itself, pinned to literal names rather than re-derived with
 # the implementation's own sed: every character but [A-Za-z0-9] becomes

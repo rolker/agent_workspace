@@ -52,8 +52,10 @@ started in.
 
 **Lifecycle position**: Utility. Adding a project is two steps (#332 D1):
 **register** from the workspace (`register_project.sh <path>`, in a workspace
-session; it writes the registry line and the project's settings file and
-enables the plugin at the root, and writes nothing into the project), then
+session; it writes the registry line and the project's settings file,
+writes nothing into the project, and enables nothing per root: the
+workspace plugin is enabled once, at user scope, by the user-tier
+installer), then
 **onboard** from the project, here, in a session at the project root with
 the project's own instructions loaded.
 

@@ -3,7 +3,7 @@
 # (issue #332, PR 2): registering a project in one call, adoption of a
 # hand-registered one, idempotence, --dry-run, the static gate (a missing
 # or shared-fallback command refused), rollback of a failed registration
-# (validate, build, test, the installer, an interrupt), the ros2_colcon
+# (validate, build, test, the user-tier check, an interrupt), the ros2_colcon
 # setup that keeps the directory it created, --remove, --detect, and the
 # refusals (a linked worktree, a type without registration.conf, a
 # rewrite of a registered line).
@@ -11,8 +11,9 @@
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types and user-tier files), sandbox
 # projects built here, HOME redirected to the sandbox, and a stub `claude`
-# that records its argv and edits settings.local.json the way the real CLI
-# does. No real checkout, registry, ~/.claude or network is touched.
+# that records its argv and edits the sandbox user settings the way the
+# real CLI does. No real checkout, registry, ~/.claude or network is
+# touched.
 #
 # Run: bash .agent/scripts/tests/test_register_project.sh
 
@@ -41,9 +42,11 @@ gitq() { git -c user.name=t -c user.email=t@example.invalid -c init.defaultBranc
 
 # ------------------------------------------------------------ fixtures ---
 
-# The claude stub: records "<cwd>|<argv>" and edits the cwd's
-# .claude/settings.local.json as `claude plugin ... --scope local` would,
-# and the machine-level record as `marketplace add` does.
+# The claude stub: records "<cwd>|<argv>" and edits the sandbox user
+# settings (--scope user) or the cwd's .claude/settings.local.json (local
+# scope) as `claude plugin` would, the machine-level record as
+# `marketplace add` does, and the CLI's record of a user-scope install
+# (plugins/installed_plugins.json) as `install` and `uninstall` do.
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -52,8 +55,15 @@ cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "$PWD" "$*" >> "$STUB_LOG"
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
-f=.claude/settings.local.json
-mkdir -p .claude
+scope=local prev=""
+for a in "$@"; do [[ "$prev" == --scope ]] && scope="$a"; prev="$a"; done
+if [[ "$scope" == user ]]; then
+    f="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+    mkdir -p "$(dirname "$f")"
+else
+    f=.claude/settings.local.json
+    mkdir -p .claude
+fi
 [[ -f "$f" ]] || echo '{}' > "$f"
 case "$1 $2 ${3:-}" in
     "plugin marketplace add")    filter='.extraKnownMarketplaces["agent-workspace"] = {source: {source: "directory", path: $a}}'; arg="$4" ;;
@@ -68,6 +78,16 @@ if [[ "$2 $3" == "marketplace add" ]]; then
     mkdir -p "$(dirname "$km")"
     [[ -f "$km" ]] || echo '{}' > "$km"
     jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" && mv "$km.tmp" "$km"
+fi
+if [[ "$scope" == user && ( "$2" == install || "$2" == uninstall ) ]]; then
+    ip="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
+    mkdir -p "$(dirname "$ip")"
+    [[ -f "$ip" ]] || echo '{"version": 2, "plugins": {}}' > "$ip"
+    if [[ "$2" == install ]]; then
+        jq --arg id "$3" '.plugins[$id] = ([(.plugins[$id] // [])[] | select(.scope != "user")] + [{scope: "user"}])' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    else
+        jq --arg id "$3" '.plugins[$id] = [(.plugins[$id] // [])[] | select(.scope != "user")]' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+    fi
 fi
 STUBEOF
 chmod +x "$STUB"
@@ -179,7 +199,6 @@ line_of() { grep -E "^$2[[:space:]]" "$1/.agent/projects.local" 2>/dev/null; }
 pfile() { echo "$1/.agent/projects.d/$2"; }
 status_of() { sed -n 's/^STATUS=//p' <<< "$1" | tail -1; }
 SLJ=.claude/settings.local.json
-enabled_in() { jq -e '.enabledPlugins["agent-workspace@agent-workspace"] == true' "$1/$SLJ" >/dev/null 2>&1; }
 
 # ---------------------------------------------------------------- detect ---
 echo "TEST: --detect proposes only a single correct command"
@@ -484,7 +503,7 @@ check "a directory: registry unchanged, the directory kept, nothing ran" \
 rmdir "$(pfile "$WS" sdang)"
 
 # ---------------------------------------------- failures roll back ---
-echo "TEST: a failing validate, build or test leaves no line, no file and no plugin enable"
+echo "TEST: a failing validate, build or test leaves no line, no file, and runs no CLI"
 install_ut "$WS" >/dev/null || fail "installing the sandbox user tier"
 PV="$SANDBOX/notgit/eta"
 mkdir -p "$PV"
@@ -496,50 +515,42 @@ for case in "validate:$PV" "build:$(make_proj theta 1 1 0)" "test:$(make_proj io
     check "$what fails: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
     check "$what fails: no registry line, no settings file" \
         bash -c '! grep -q "^$3 " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" "$nm")" "$nm"
-    check "$what fails: the installer never ran (no CLI call, no enable)" \
+    check "$what fails: no CLI call, nothing in the root" \
         bash -c '[ ! -s "$1" ] && [ ! -e "$2/.claude/settings.local.json" ]' _ "$STUB_LOG" "$dir"
 done
 
-echo "TEST: an installer failure after a passing build disables the root and rolls back"
-# Another registered root whose settings.local.json is not JSON makes the
-# installer fail after it has enabled the new root.
-PBAD="$(make_proj broken)"
-printf 'broken  single_project  %s\n' "$PBAD" >> "$WS/.agent/projects.local"
-printf 'build=make\ntest=make test\n' > "$(pfile "$WS" broken)"
-mkdir -p "$PBAD/.claude" && printf '{not json' > "$PBAD/$SLJ"
-PK="$(make_proj kappa)"
-: > "$STUB_LOG"
-out="$(reg "$WS" "$PK")"; rc=$?
-check "exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
-check "the root was enabled, then disabled by --disable-root" \
-    bash -c 'grep -qxF "$1|plugin install agent-workspace@agent-workspace --scope local" "$2" && grep -qxF "$1|plugin uninstall agent-workspace@agent-workspace --scope local" "$2"' _ "$PK" "$STUB_LOG"
-check "no enable left in the root" bash -c '! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$1" >/dev/null 2>&1' _ "$PK/$SLJ"
-check "no registry line, no settings file; the other root's line kept" \
-    bash -c '! grep -q "^kappa " "$1" && [ ! -e "$2" ] && grep -q "^broken " "$1"' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappa)"
-echo "TEST: the rollback leaves a plugin the root had enabled before the run"
-PKE="$(make_proj kappae)"
-mkdir -p "$PKE/.claude"
-jq -n --arg p "$(cd "$WS" && pwd -P)" '{enabledPlugins: {"agent-workspace@agent-workspace": true}, extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$PKE/$SLJ"
-cp "$PKE/$SLJ" "$SANDBOX/slj.before"
-: > "$STUB_LOG"
-out="$(reg "$WS" "$PKE")"; rc=$?
-check "exit 1, STATUS=refused, saying the plugin is left as it was" \
-    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"left the workspace plugin at $3 enabled: it was enabled there from this checkout before this run"* ]]' _ "$rc" "$out" "$PKE"
-check "no uninstall in that root; its settings.local.json is byte for byte the same" \
-    bash -c '! grep -qF "$1|plugin uninstall" "$2" && cmp -s "$1/$3" "$4"' _ "$PKE" "$STUB_LOG" "$SLJ" "$SANDBOX/slj.before"
-check "no registry line, no settings file" \
-    bash -c '! grep -q "^kappae " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappae)"
-rm -f "$PBAD/$SLJ"
-reg "$WS" --remove broken >/dev/null
-
-echo "TEST: with the user tier installed, registration enables the plugin and verifies it"
+echo "TEST: with the user tier installed, registration runs no installer and no CLI, writes nothing in the root, and verifies the user tier"
 PL="$(make_proj lambda)"
 : > "$STUB_LOG"
+cp "$HOMEDIR/.claude/settings.json" "$SANDBOX/user-settings.before"
 out="$(reg "$WS" "$PL")"; rc=$?
 check "exit 0, STATUS=registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
-check "the plugin is enabled at the root" enabled_in "$PL"
-check "the user-tier check ran and passed" bash -c '[[ "$1" == *"registration_verify.sh lambda --user-tier"* && "$1" == *"a session started at $2 has root '"'"'lambda'"'"'"* ]]' _ "$out" "$PL"
+check "no installer run and no claude CLI call" \
+    bash -c '[[ "$1" != *"== user_tier_install.sh"* ]] && [ ! -s "$2" ]' _ "$out" "$STUB_LOG"
+check "nothing written into the root: no settings.local.json, a clean tree" \
+    bash -c '[ ! -e "$1/$2" ] && [ -z "$(git -C "$1" status --porcelain)" ]' _ "$PL" "$SLJ"
+check "the user settings are byte for byte the same" cmp -s "$HOMEDIR/.claude/settings.json" "$SANDBOX/user-settings.before"
+check "the user-tier check ran and passed" bash -c '[[ "$1" == *"registration_verify.sh lambda --user-tier"* && "$1" == *"user tier installed and current"* && "$1" == *"a session started at $2 has root '"'"'lambda'"'"'"* ]]' _ "$out" "$PL"
 check "NEXT names the onboarding step" has "$out" "NEXT=start a Claude Code session at $PL and run /agent-workspace:onboard-project"
+rm -f "$SANDBOX/user-settings.before"
+
+echo "TEST: a user tier that is out of date fails the user-tier check and rolls the registration back"
+jq 'del(.enabledPlugins["agent-workspace@agent-workspace"])' "$HOMEDIR/.claude/settings.json" > "$SANDBOX/s.json" \
+    && mv "$SANDBOX/s.json" "$HOMEDIR/.claude/settings.json"
+PNU="$(make_proj nu2)"
+: > "$STUB_LOG"
+out="$(reg "$WS" "$PNU")"; rc=$?
+check "exit 1, STATUS=refused, the check's drift shown, the repair named" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"not enabled at user scope"* && "$2" == *"repaired by .agent/scripts/user_tier_install.sh"* ]]' _ "$rc" "$out"
+check "no registry line, no settings file, no CLI call" \
+    bash -c '! grep -q "^nu2 " "$1" && [ ! -e "$2" ] && [ ! -s "$3" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" nu2)" "$STUB_LOG"
+echo "TEST: --install-user-tier runs the installer first, which repairs it"
+out="$(reg "$WS" "$PNU" --install-user-tier)"; rc=$?
+check "exit 0, STATUS=registered, the installer ran before the check" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"STATUS=registered"* && "$2" == *"== user_tier_install.sh"*"== registration_verify.sh nu2 --user-tier"* ]]' _ "$rc" "$out"
+check "its CLI calls are at user scope only, none in the root" \
+    bash -c 'grep -q -- "--scope user$" "$1" && ! grep -q -- "--scope local" "$1" && [ ! -e "$2/$3" ]' _ "$STUB_LOG" "$PNU" "$SLJ"
+reg "$WS" --remove nu2 >/dev/null
 
 echo "TEST: a user tier installed for another checkout is not touched"
 cp "$HOMEDIR/.claude/agent-workspace-root" "$SANDBOX/root-file.saved"
@@ -703,8 +714,8 @@ rmdir "$PL/worktrees/issue-lambda-7" "$PL/worktrees"
 : > "$STUB_LOG"
 out="$(reg "$WS" --remove lambda)"; rc=$?
 check "exit 0, STATUS=removed" [ "$rc" -eq 0 -a "$(status_of "$out")" = removed ]
-check "the plugin is disabled in the root first" \
-    bash -c 'grep -qxF "$1|plugin uninstall agent-workspace@agent-workspace --scope local" "$2" && ! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$1/$3" >/dev/null 2>&1' _ "$PL" "$STUB_LOG" "$SLJ"
+check "no claude CLI call, and nothing written in the root" \
+    bash -c '[ ! -s "$1" ] && [ ! -e "$2/$3" ] && [ -z "$(git -C "$2" status --porcelain)" ]' _ "$STUB_LOG" "$PL" "$SLJ"
 check "the line and the settings file are gone; the content was printed" \
     bash -c '! grep -q "^lambda " "$1" && [ ! -e "$2" ] && [[ "$3" == *"    build=make"* ]]' _ "$WS/.agent/projects.local" "$(pfile "$WS" lambda)" "$out"
 check "the project is left alone, and the output says so" \
@@ -907,16 +918,17 @@ check "no line; the settings file is there, as reported" \
     bash -c '! grep -q "^rmfa " "$1" && [ -f "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" rmfa)"
 rm -f "$(pfile "$WS" rmfa)"
 
-echo "TEST: --remove reports a settings file it could not remove, and a line it could not remove after the plugin went"
+echo "TEST: --remove reports a settings file it could not remove, and a line it could not remove"
 PRM="$(make_proj rmset)"
 reg "$WS" "$PRM" >/dev/null
-check "registered with the plugin enabled" enabled_in "$PRM"
+check "registered" grep -q "^rmset " "$WS/.agent/projects.local"
 cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+: > "$STUB_LOG"
 out="$(faulty mv projects.local "$WS" --remove rmset)"; rc=$?
-check "the line cannot be written: refused, saying the plugin is already disabled" \
-    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"The workspace plugin is already removed from $3"* && "$2" == *"NEXT=remove its line from"*"(the plugin is already disabled at $3)"* ]]' _ "$rc" "$out" "$PRM"
-check "the line and the settings file are kept, the plugin is gone" \
-    bash -c 'cmp -s "$1" "$2" && [ -f "$3" ] && ! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$4/.claude/settings.local.json" >/dev/null 2>&1' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" rmset)" "$PRM"
+check "the line cannot be written: refused, naming the hand removal" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"could not write the registry without"* && "$2" == *"NEXT=remove its line from"* && "$2" != *plugin* ]]' _ "$rc" "$out"
+check "the line and the settings file are kept; no CLI call, nothing in the root" \
+    bash -c 'cmp -s "$1" "$2" && [ -f "$3" ] && [ ! -s "$4" ] && [ ! -e "$5/.claude" ]' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" rmset)" "$STUB_LOG" "$PRM"
 out="$(faulty rm "projects.d/rmset" "$WS" --remove rmset)"; rc=$?
 check "the settings file cannot be removed: exit 1, never STATUS=removed or 'removed the settings file'" \
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=removed, settings file left"* && "$2" == *"could not remove the settings file"* && "$2" != *"removed the settings file"* && "$2" != *$'"'"'\nSTATUS=removed\n'"'"'* ]]' _ "$rc" "$out"
