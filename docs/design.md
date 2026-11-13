@@ -344,8 +344,12 @@ Status: `decided`
   when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
   whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
   unset. The adapters say on stderr when a registered project falls through to the shared file.
-- Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
-  type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
+- Behaviour that differs per project shape sits behind a 13-verb adapter contract, one `adapter.sh` per
+  type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12 and by
+  ADR-0019 to 13). The 13th, `repo_pin <repo> [--layer <l>]`, prints the ref the project pins a
+  repository at and its kind (`branch`, `tag`, `commit` or `unknown`, judged by origin, from local refs
+  and marked unverified when origin cannot be asked): `ros2_colcon` reads the `.repos` files, and
+  `single_project` answers its default branch from `origin/HEAD` (#429).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
   every type implements every verb, in pre-commit and in CI. Beside the contract, each type has a
   `registration.conf` (#332): the commands a project of the type must have of its own, whether
@@ -389,7 +393,7 @@ the cwd's git top level, through the records gate, lines 138-140 and 340-350), `
 93-94 and 107-108),
 `_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
 
-*Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
+*Table 2: the 13 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
 needs logic of its own; "thin wrapper" means a script or target that already exists does the work;
 "no-op" means the `adapter` header allows doing nothing.
 
@@ -407,8 +411,9 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 | `scope_for_pr` | real, small | Origin URL to `owner/repo`; `single_project`'s verb already does this generically |
 | `worktree_repos` | real, trivial | One line `<root>`, `.`, `feature/issue-<N>`; `worktree_create.sh` does not call it for the workspace today |
 | `worktree_env` | no-op | No per-worktree environment |
+| `repo_pin` | real, small | Its default branch; `single_project`'s verb already reads it from `origin/HEAD` generically (#429, 2026-11-12) |
 
-Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; that is the #295 decision.
+Tally: 3 no-op, 5 thin wrapper, 5 real. No conclusion is drawn from it here; that is the #295 decision.
 
 **Target**
 
@@ -748,7 +753,7 @@ no section of this file carries that ADR.
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 12 | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 13 (ADR-0019) | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
@@ -756,6 +761,7 @@ no section of this file carries that ADR.
 | [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
 | [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-27 |
+| [0019](decisions/0019-repo-pin-verb.md) | The `repo_pin` adapter verb: the ref a repository is pinned at and whether it is a branch, tag, commit or unknown, so a base never comes from the forge's default branch | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-11-12 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -858,6 +864,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Registry and adapters, Worktrees | Review fix (issue 437): the Records bullet states the write rule as one statement, the file a write changes, every symlink resolved, sits at the place its path names in the issue's own checkout, after a file symlink and a records folder linked to a main-checkout folder got past the checkout test; the cited `progress_append.sh` gate lines are refreshed. Worktrees grows by one line and stays past the 60-line prompt: the mechanics stay in the gate's header | #437 | 903 |
 | 2026-11-12 | Sessions and roots, Registry and adapters | A fresh clone works with no project (#295, first pull request; part of #265): a Sessions and roots Now bullet says a workspace with no registered project and no `project/` validates, sets up without a prompt, shows its dashboard and syncs, and that the `gh_create_*` repo-safety check accepts every registered root's repository; Table 1's `gh_create_pr.sh` row says registered roots are consulted (lines refreshed); Table 2's `setup` row names the stamps `make setup` depends on now (`git-bug` and `ros-manifest`, no `project`) and the Makefile lines of `setup` and `user-tier-install` are refreshed; Table 1's `worktree_create.sh` line citations are refreshed after this change moved them; the ADR-0007 register row names the setup stamps as they are now. Sessions and roots is 121 lines and Registry and adapters 125, past the 60-line prompt: the bullet names the test and the helper that hold the detail, so no detail moves | #295 | 910 |
 | 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
+| 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
 
 ## Glossary
 

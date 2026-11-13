@@ -275,6 +275,57 @@ adapter_worktree_env() {
     :
 }
 
+adapter_repo_pin() {
+    # <repo>: a single repository pins nothing, so its base is its default
+    # branch: "<branch>\tbranch" (ADR-0019). <repo> must be the name
+    # adapter_repos prints. The default branch is origin/HEAD as git
+    # recorded it, else what origin says HEAD points at; never a guess.
+    local repo=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --layer) echo "ERROR: single_project does not support --layer (no layers)" >&2; return 1 ;;
+            -*) echo "ERROR: repo_pin: unknown argument '$1'" >&2; return 1 ;;
+            *)
+                if [ -n "$repo" ]; then
+                    echo "ERROR: repo_pin: one repository name only (got '$repo' and '$1')" >&2
+                    return 1
+                fi
+                repo="$1"; shift ;;
+        esac
+    done
+    if [ -z "$repo" ]; then
+        echo "ERROR: repo_pin requires a repository name: repo_pin <repo>" >&2
+        return 1
+    fi
+    local line name root
+    line="$(adapter_repos)" || return 1
+    name="${line%%:*}"
+    root="${line#*:}"
+    if [ "$repo" != "$name" ]; then
+        echo "ERROR: repo_pin: no repository '$repo' in this project (known: $name)" >&2
+        return 1
+    fi
+    local branch="" symref rc=0 why="origin did not name its HEAD"
+    if symref="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null)"; then
+        branch="${symref#refs/remotes/origin/}"
+    else
+        # Bounded (#323): a prompt or a stalled host must not hang the caller.
+        symref="$(_adapter_bounded_git -C "$root" ls-remote --symref origin HEAD 2>/dev/null)" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            branch="$(awk -F'\t' '$1 ~ /^ref: refs\/heads\// && $2 == "HEAD" { sub(/^ref: refs\/heads\//, "", $1); print $1; exit }' <<< "$symref")"
+        elif [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            why="origin did not answer within $(_adapter_git_limit)s"
+        else
+            why="origin could not be asked (git ls-remote exited $rc)"
+        fi
+    fi
+    if [ -z "$branch" ]; then
+        echo "ERROR: repo_pin: cannot determine the default branch of $root: origin/HEAD is not set and $why" >&2
+        return 1
+    fi
+    printf '%s\tbranch\n' "$branch"
+}
+
 adapter_scope_for_pr() {
     local path="${1:-}"
     if [ -z "$path" ]; then

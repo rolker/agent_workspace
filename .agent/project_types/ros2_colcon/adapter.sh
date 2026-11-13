@@ -211,21 +211,68 @@ _rc_underlay() {
 
 # Parse a vcstool .repos file: emit "<name>\t<version>" per repository.
 # Format: two-space-indented "name:" entries under "repositories:", with
-# four-space-indented keys (type/url/version).
+# four-space-indented keys (type/url/version). The version is the rest of
+# its line: a CRLF line end is dropped; a "#" starts a comment only right
+# after the key or after whitespace, as in YAML ("fix#12" is a ref); a
+# quoted scalar followed by nothing but a comment is emitted unquoted (a
+# "#" inside it is part of the ref). Any other quoting ("main" extra,
+# 'a''b', and a double-quoted value holding a backslash escape such as
+# "x\"y" or "v\x31.0", which this parser does not decode) is emitted raw,
+# quotes left in, so a caller can refuse a value that holds a quote rather
+# than act on part of it.
+# With --detail, each line is "<name>\t<version>\t<form>": form is
+# "quoted" (a quoted scalar, unquoted above), "plain" (the text as
+# written, which YAML may type as a number, bool or null) or "none" (no
+# version: key, version empty: vcstool checks out the default branch, and
+# such entries are emitted only with --detail).
 _rc_repos_entries() {
-    local repos_file="$1"
+    local repos_file="$1" detail=0
+    [ "${2:-}" = "--detail" ] && detail=1
     [ -f "$repos_file" ] || return 0
-    awk '
+    awk -v detail="$detail" '
+        function flush() {
+            if (name != "" && detail) printf "%s\t\tnone\n", name
+            name = ""
+        }
         /^[[:space:]]*#/ { next }
         /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
-            name = $1; sub(/:$/, "", name)
+            flush()
+            name = $1; sub(/\r$/, "", name); sub(/:$/, "", name)
             next
         }
         /^    version:/ && name != "" {
-            version = $2; sub(/#.*/, "", version)
-            printf "%s\t%s\n", name, version
+            v = $0
+            sub(/\r$/, "", v)
+            sub(/^    version:/, "", v)
+            # A comment right after the key leaves the value empty
+            # ("version:  # TODO", "version: #main").
+            if (v ~ /^[ \t]*#/) v = ""
+            sub(/^[ \t]+/, "", v)
+            q = substr(v, 1, 1)
+            e = 0
+            if (q == "\"" || q == "\047") e = index(substr(v, 2), q)
+            rest = (e > 0) ? substr(v, e + 2) : ""
+            # A double-quoted scalar with a backslash holds an escape
+            # ("a\" #b", "v\x31.0") this parser does not decode: raw.
+            if (q == "\"" && index(substr(v, 1, e + 1), "\\") > 0) e = 0
+            if (e > 0 && (rest ~ /^[ \t]*$/ || rest ~ /^[ \t]+#/)) {
+                # A quoted scalar with nothing after it but a comment: its
+                # content, unquoted.
+                v = substr(v, 2, e - 1)
+                form = "quoted"
+            } else {
+                form = "plain"
+                # Plain, or a quote that does not close the value cleanly
+                # ("main" extra, x"y, an escaped quote): the raw text,
+                # quotes and all, for the caller to refuse.
+                sub(/[ \t]+#.*$/, "", v)
+                sub(/[ \t]+$/, "", v)
+            }
+            if (detail) printf "%s\t%s\t%s\n", name, v, form
+            else printf "%s\t%s\n", name, v
             name = ""
         }
+        END { flush() }
     ' "$repos_file"
 }
 
@@ -569,7 +616,9 @@ adapter_sync() {
                 continue
             fi
             branch="$(git -C "$repo_dir" branch --show-current 2>/dev/null)"
-            if [ "$branch" = "$version" ]; then
+            # A detached checkout has no branch; an empty pin must not
+            # match it and send it down the pull path.
+            if [ -n "$branch" ] && [ "$branch" = "$version" ]; then
                 echo "  $layer/$name: on '$branch' — pulling..."
                 if ! git -C "$repo_dir" pull --rebase 2>/dev/null; then
                     # Abort a wedged rebase so the checkout stays usable.
@@ -863,6 +912,312 @@ adapter_worktree_env() {
     # guarantee; test_worktree_env_last_line_never_fails_under_set_e below
     # exercises it end to end (source the real generated output under
     # `set -e` with no install present) rather than trusting this comment.
+}
+
+# How YAML's reading changes an unquoted (plain) version: value, or
+# nothing when the import tool checks out the text as written. vcstool
+# reads .repos with PyYAML's yaml.safe_load (YAML 1.1 implicit resolvers)
+# and checks out str() of the value, so a value is refused only when
+# YAML's reading changes the text. Prints "<phrase>\t<what str() gives>",
+# the second field empty when the shell cannot work it out exactly:
+# "the number 1.1\t1.1", "the bool True\tTrue", "a float\t" (a float of
+# more digits than this check works out, which may or may not round-trip,
+# is refused too, as the rule below keeps only what surely does).
+# The patterns are PyYAML's resolvers, written out:
+#   bool   yes/no/true/false/on/off, each lower, Capitalised or UPPER;
+#          True and False are kept, as str() of the bool is the text
+#   null   ~, null/Null/NULL (an empty value is refused before this)
+#   int    [-+]0b binary, [-+]0 octal, [-+] decimal, [-+]0x hex and
+#          [-+] sexagesimal (1:30), all allowing "_"
+#   float  [-+]1.5 / 1. / 1.5e+3, .5, sexagesimal 1:30.5, [-+].inf, .nan
+#   indicator  a first character YAML reads as syntax, not text:
+#          ! & * | > % @ ` [ ] { } ,  (a tag, anchor, alias, block or flow
+#          scalar, directive, reserved, or flow collection)
+# Kept, because str() gives the text back: an int written
+# ^(0|-?[1-9][0-9]*)$ (Python ints are exact: 2024, -5, an all-digit sha)
+# and a float written ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ with at most 15
+# significant digits, an integer part of at most 16 digits and no
+# "0.0000" start (repr's shortest form is then the text: 2.0, 1.5, 0.3;
+# not 1.10, which is 1.1). Any other int or float is refused.
+# A timestamp with a time part also changes under str(), but it holds a
+# ":" no git ref can, so it is never a branch anyway; a date alone
+# (2024-01-01) round-trips. No YAML library: the shell path stays plain.
+_rc_yaml_plain_reading() {
+    local v="$1" body ip fp digits n
+    case "$v" in
+        [\!\&\*\|\>%@\`\[\]\{\},]*) printf '%s\t\n' "YAML syntax, not text ('${v:0:1}' starts it)"; return 0 ;;
+    esac
+    if [[ "$v" =~ ^(yes|Yes|YES|true|TRUE|on|On|ON)$ ]]; then
+        printf '%s\t%s\n' "the bool True" True
+    elif [[ "$v" =~ ^(no|No|NO|false|FALSE|off|Off|OFF)$ ]]; then
+        printf '%s\t%s\n' "the bool False" False
+    elif [[ "$v" =~ ^(~|null|Null|NULL)$ ]]; then
+        printf '%s\t%s\n' "null" None
+    elif [[ "$v" =~ ^(0|-?[1-9][0-9]*)$ ]]; then
+        :  # an int str() gives back unchanged
+    elif [[ "$v" =~ ^[-+]?0b[01_]+$ ]] || [[ "$v" =~ ^[-+]?0[0-7_]+$ ]] \
+        || [[ "$v" =~ ^[-+]?(0|[1-9][0-9_]*)$ ]] || [[ "$v" =~ ^[-+]?0x[0-9a-fA-F_]+$ ]] \
+        || [[ "$v" =~ ^[-+]?[1-9][0-9_]*(:[0-5]?[0-9])+$ ]]; then
+        # Its value, when bash can work it out exactly; else just "an int".
+        body="${v//_/}"
+        body="${body#+}"
+        n=""
+        if [[ "$body" =~ ^-?(0b[01]{1,62}|0x[0-9a-fA-F]{1,15}|0[0-7]{1,20}|[1-9][0-9]{0,17}|0)$ ]]; then
+            local sign=""
+            [ "${body:0:1}" = "-" ] && { sign="-"; body="${body#-}"; }
+            case "$body" in
+                0b*) n=$((2#${body#0b})) ;;
+                0x*) n=$((16#${body#0x})) ;;
+                0?*) n=$((8#${body#0})) ;;
+                *) n=$((10#$body)) ;;
+            esac
+            [ "$n" = 0 ] && sign=""
+            n="$sign$n"
+        fi
+        if [ -n "$n" ]; then
+            printf '%s\t%s\n' "the number $n" "$n"
+        else
+            printf '%s\t\n' "an int"
+        fi
+    elif [[ "$v" =~ ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ ]] \
+        && ip="${v#-}" && ip="${ip%%.*}" && fp="${v#*.}" \
+        && [ "${#ip}" -le 16 ] && [[ "$v" != 0.0000* && "$v" != -0.0000* ]] \
+        && digits="$ip" && { [ "$fp" = 0 ] || digits="$ip$fp"; } \
+        && digits="${digits#"${digits%%[!0]*}"}" && [ "${#digits}" -le 15 ]; then
+        :  # a float whose shortest repr is the text
+    elif [[ "$v" =~ ^[-+]?[0-9][0-9_]*\.[0-9_]*([eE][-+][0-9]+)?$ ]] \
+        || [[ "$v" =~ ^\.[0-9_]+([eE][-+][0-9]+)?$ ]] \
+        || [[ "$v" =~ ^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+\.[0-9_]*$ ]] \
+        || [[ "$v" =~ ^[-+]?\.(inf|Inf|INF)$ ]] || [[ "$v" =~ ^\.(nan|NaN|NAN)$ ]]; then
+        # A plain decimal within the limits: its repr, trailing zeros off
+        # and leading ones (1.10 -> 1.1, +01.50 -> 1.5); else "a float".
+        if [[ "$v" =~ ^([-+]?)([0-9]+)\.([0-9]*)$ ]]; then
+            local sg="${BASH_REMATCH[1]}"
+            ip="${BASH_REMATCH[2]}"
+            fp="${BASH_REMATCH[3]}"
+            [ "$sg" = "+" ] && sg=""
+            ip="${ip#"${ip%%[!0]*}"}"
+            ip="${ip:-0}"
+            fp="${fp%"${fp##*[!0]}"}"
+            fp="${fp:-0}"
+            body="$sg$ip.$fp"
+            if [[ "$body" =~ ^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$ ]] \
+                && [ "${#ip}" -le 16 ] && [[ "$body" != 0.0000* && "$body" != -0.0000* ]]; then
+                digits="$ip"
+                [ "$fp" = 0 ] || digits="$ip$fp"
+                digits="${digits#"${digits%%[!0]*}"}"
+                if [ "${#digits}" -le 15 ]; then
+                    printf '%s\t%s\n' "the number $body" "$body"
+                    return 0
+                fi
+            fi
+        fi
+        case "$v" in
+            .inf|.Inf|.INF|+.inf|+.Inf|+.INF) printf '%s\t%s\n' "the float inf" inf ;;
+            -.inf|-.Inf|-.INF) printf '%s\t%s\n' "the float -inf" -inf ;;
+            .nan|.NaN|.NAN) printf '%s\t%s\n' "the float nan" nan ;;
+            *) printf '%s\t\n' "a float" ;;
+        esac
+    fi
+    return 0
+}
+
+# The kind of a pinned ref, judged in the package checkout at $1 (which may
+# not exist yet): branch, tag, commit or unknown. Online, origin decides:
+# refs/heads/<ref> is a branch, refs/tags/<ref> a tag (branch first, since a
+# same-named tag does not stop a branch being a base), and a stale
+# remote-tracking ref is not enough. When origin cannot be asked (offline,
+# or the repo is not cloned), the local refs decide and a NOTE on stderr says
+# the answer is unverified. A 40- or 64-hex ref nobody names is a commit.
+_rc_pin_kind() {
+    local dir="$1" ref="$2" out kind="" toplevel dir_real
+    local is_hex=false
+    # Either case: git reads an object name case-insensitively.
+    [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] && is_hex=true
+    # A ref git cannot name as a branch or tag is never asked about.
+    if ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
+        if [ "$is_hex" = true ]; then echo commit; else echo unknown; fi
+        return 0
+    fi
+    toplevel=""
+    dir_real=""
+    if [ -d "$dir" ]; then
+        toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        dir_real="$(cd "$dir" && pwd -P)"
+    fi
+    local cloned=false rc=1 why="could not be reached"
+    [ -n "$toplevel" ] && [ "$toplevel" = "$dir_real" ] && cloned=true
+    if [ "$cloned" = true ]; then
+        # Bounded (#323): a prompt or a stalled host must not hang the
+        # caller; a timeout falls to the local answer below.
+        rc=0
+        out="$(_adapter_bounded_git -C "$dir" ls-remote origin \
+            "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)" || rc=$?
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+            why="did not answer within $(_adapter_git_limit)s"
+        fi
+    fi
+    if [ "$cloned" = true ] && [ "$rc" -eq 0 ]; then
+        if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$out"; then
+            kind=branch
+        elif awk -F'\t' -v r="refs/tags/$ref" '$2 == r || $2 == r "^{}" { f = 1 } END { exit !f }' <<< "$out"; then
+            kind=tag
+        fi
+    elif [ "$cloned" = true ]; then
+        echo "NOTE: repo_pin: origin of $dir $why; the kind of '$ref' comes from local refs (unverified)" >&2
+        if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+            kind=branch
+        elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
+            kind=tag
+        fi
+    else
+        echo "NOTE: repo_pin: $dir is not a cloned repository; the kind of '$ref' is not checked against origin (unverified)" >&2
+    fi
+    if [ -z "$kind" ]; then
+        if [ "$is_hex" = true ]; then kind=commit; else kind=unknown; fi
+    fi
+    echo "$kind"
+}
+
+adapter_repo_pin() {
+    # <repo> [--layer <l>]: the version: <repo> is pinned at in the
+    # manifest's repos/<layer>.repos files, as "<ref>\t<kind>" (ADR-0019).
+    # A repo pinned in more than one layer at different refs needs --layer;
+    # the same ref in several layers is one answer.
+    local repo="" layer=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --layer)
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    echo "ERROR: repo_pin: --layer requires a layer name" >&2
+                    return 1
+                fi
+                layer="$2"; shift 2 ;;
+            -*) echo "ERROR: repo_pin: unknown argument '$1'" >&2; return 1 ;;
+            *)
+                if [ -n "$repo" ]; then
+                    echo "ERROR: repo_pin: one repository name only (got '$repo' and '$1')" >&2
+                    return 1
+                fi
+                repo="$1"; shift ;;
+        esac
+    done
+    if [ -z "$repo" ]; then
+        echo "ERROR: repo_pin requires a repository name: repo_pin <repo> [--layer <l>]" >&2
+        return 1
+    fi
+    _rc_require_manifest || return 1
+    if [ -n "$layer" ]; then
+        local l found=0
+        while IFS= read -r l; do
+            [ "$l" = "$layer" ] && found=1
+        done < <(_rc_layers)
+        if [ "$found" -ne 1 ]; then
+            echo "ERROR: repo_pin: layer '$layer' is not defined in layers.txt" >&2
+            return 1
+        fi
+    fi
+    local mdir l entry name version form
+    local -a hits=() known=() forms=()
+    # Stands for an entry with no version: key (vcstool then checks out
+    # origin's default branch); no ref can hold this byte.
+    local nov=$'\x1f'
+    mdir="$(_rc_manifest_dir)"
+    while IFS= read -r l; do
+        [ -n "$layer" ] && [ "$l" != "$layer" ] && continue
+        while IFS= read -r entry; do
+            [ -z "$entry" ] && continue
+            name="${entry%%$'\t'*}"
+            form="${entry##*$'\t'}"
+            version="${entry#*$'\t'}"
+            version="${version%$'\t'*}"
+            [ "$form" = none ] && version="$nov"
+            known+=("$name")
+            if [ "$name" = "$repo" ]; then
+                hits+=("$l"$'\t'"$version")
+                forms+=("$form")
+            fi
+        done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --detail)
+    done < <(_rc_layers)
+    local where="the manifest"
+    [ -n "$layer" ] && where="layer '$layer' of the manifest"
+    if [ "${#hits[@]}" -eq 0 ]; then
+        local list
+        list="$(printf '%s\n' ${known[@]+"${known[@]}"} | sort -u | tr '\n' ' ')"
+        list="${list% }"
+        echo "ERROR: repo_pin: no repository '$repo' pinned in $where (known: ${list:-none})" >&2
+        return 1
+    fi
+    local hit ref="" hit_layer="" differ=false
+    for hit in "${hits[@]}"; do
+        if [ -z "$hit_layer" ]; then
+            hit_layer="${hit%%$'\t'*}"
+            ref="${hit#*$'\t'}"
+        elif [ "${hit#*$'\t'}" != "$ref" ]; then
+            differ=true
+        fi
+    done
+    if [ "$differ" = true ]; then
+        local named="" v
+        for hit in "${hits[@]}"; do
+            v="${hit#*$'\t'}"
+            [ "$v" = "$nov" ] && v="no version:"
+            named="${named:+$named, }${hit%%$'\t'*} ($v)"
+        done
+        echo "ERROR: repo_pin: '$repo' is pinned in more than one layer at different refs: $named; pass --layer <l>" >&2
+        return 1
+    fi
+    if [ "$ref" = "$nov" ]; then
+        echo "ERROR: repo_pin: '$repo' has no version: key in layer '$hit_layer', so vcstool checks out origin's default branch; repo_pin reports only a pinned ref (add a version: to pin one)" >&2
+        return 1
+    fi
+    if [ -z "$ref" ]; then
+        echo "ERROR: repo_pin: '$repo' has an empty version: in layer '$hit_layer'" >&2
+        return 1
+    fi
+    # A quote, backslash or carriage return left in the ref means the line
+    # was not read as YAML would read it (an unclosed quote, an escape the
+    # parser does not decode, a stray CR): refuse it rather than print a
+    # ref nobody pinned.
+    if [[ "$ref" == *[\"\'\\$'\r']* ]]; then
+        echo "ERROR: repo_pin: '$repo' has a version: in layer '$hit_layer' that cannot be read as a ref (a stray quote, a backslash escape or a carriage return): '$ref'" >&2
+        return 1
+    fi
+    # vcstool checks out str() of the YAML value, so an unquoted pin YAML
+    # types as something other than a string is not the ref written
+    # (version: 1.10 is the float 1.1). Every layer pinning it is checked.
+    local i ytype got
+    for i in "${!hits[@]}"; do
+        [ "${forms[$i]}" = plain ] || continue
+        ytype="$(_rc_yaml_plain_reading "$ref")"
+        if [ -n "$ytype" ]; then
+            got="${ytype#*$'\t'}"
+            ytype="${ytype%%$'\t'*}"
+            if [ -n "$got" ]; then
+                got="so vcstool would check out '$got', not '$ref'"
+            elif [[ "$ytype" == "YAML syntax"* ]]; then
+                got="so vcstool would not read '$ref' as a ref"
+            else
+                got="so vcstool would check out str() of that value, which this check cannot confirm is '$ref'"
+            fi
+            echo "ERROR: repo_pin: '$repo' has version: $ref in layer '${hits[$i]%%$'\t'*}' unquoted, which YAML reads as $ytype, $got; quote it: version: \"$ref\"" >&2
+            return 1
+        fi
+    done
+    # The same ref pinned in several layers: judge it in the first of them
+    # whose checkout is cloned, not merely the first, so a layer not set up
+    # yet does not turn a known branch into an unverified unknown.
+    local kind check_dir d
+    check_dir="$(_rc_layer_dir "$hit_layer")/src/$repo"
+    for hit in "${hits[@]}"; do
+        d="$(_rc_layer_dir "${hit%%$'\t'*}")/src/$repo"
+        if [ -e "$d/.git" ]; then
+            check_dir="$d"
+            break
+        fi
+    done
+    kind="$(_rc_pin_kind "$check_dir" "$ref")"
+    printf '%s\t%s\n' "$ref" "$kind"
 }
 
 adapter_scope_for_pr() {
