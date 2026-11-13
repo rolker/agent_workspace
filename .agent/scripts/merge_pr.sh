@@ -831,7 +831,7 @@ else
             if [[ -z "$_ci_wt" ]]; then
                 _gate_stale_why="no local worktree to verify ancestry"
             else
-                (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin "$PR_BRANCH") 2>/dev/null || true
+                (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin -- "+refs/heads/$PR_BRANCH:refs/remotes/origin/$PR_BRANCH") 2>/dev/null || true
                 _gate_r_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_r_sha}^{commit}" 2>/dev/null || echo "")
                 _gate_h_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_head}^{commit}" 2>/dev/null || echo "")
                 if [[ -z "$_gate_r_full" ]]; then
@@ -1083,7 +1083,11 @@ CI_TARGET_SHA=""
 # alongside the gate above, since both use it.)
 
 HEAD_NOW=""
-if [[ -n "$_ci_wt" ]] && (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin "$PR_BRANCH") 2>/dev/null; then
+# An explicit refspec, as wt_fetch_named_branch uses: a --single-branch or
+# narrowed clone's configured refspec need not cover the PR branch, and a
+# plain `fetch origin <b>` there writes FETCH_HEAD only, leaving a stale
+# origin/<b> to become the CI target.
+if [[ -n "$_ci_wt" ]] && (cd "$_ci_wt" && wt_bounded_git fetch --quiet origin -- "+refs/heads/$PR_BRANCH:refs/remotes/origin/$PR_BRANCH") 2>/dev/null; then
     HEAD_NOW=$(git -C "$_ci_wt" rev-parse "origin/$PR_BRANCH" 2>/dev/null || echo "")
 fi
 if [[ -z "$HEAD_NOW" ]]; then

@@ -707,6 +707,28 @@ if [[ "$out" == *"the timeline commit could not be pushed to origin (undone loca
 else
     fail "(pkg-11) push refused (out=${out:0:600} status=$(git -C "$A" status --porcelain))"
 fi
+echo "TEST: the CI-target fetch in a narrowed owning clone still refreshes origin/<PR branch>"
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "")"
+A="$cont/l1_ws/src/pkg_a"
+stale=$(git -C "$A" rev-parse origin/feature/issue-901)
+git -C "$A" config remote.origin.fetch '+refs/heads/main:refs/remotes/origin/main'
+git clone -q --branch feature/issue-901 "$sb/fake_remotes/github.com/owner/pkg_a.git" "$sb/other_a"
+echo change > "$sb/other_a/code.txt"
+git -C "$sb/other_a" add code.txt
+git -C "$sb/other_a" -c user.name=t -c user.email=t@t commit -q -m "a code change pushed from elsewhere"
+git -C "$sb/other_a" push -q origin feature/issue-901
+newhead=$(git -C "$sb/other_a" rev-parse HEAD)
+printf '{"state":"OPEN","headRefName":"feature/issue-901","title":"Pkg PR","headRefOid":"%s","comments":[],"body":""}\n' "$newhead" \
+    > "$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$(git -C "$A" rev-parse origin/feature/issue-901)" == "$newhead" ]] && [[ "$out" != *"${stale:0:7}"* ]] \
+    && [[ "$out" != *"CI target: new head"* ]]; then
+    pass "(pkg-15) narrowed owning clone: origin/feature/issue-901 is refreshed to the PR head, the stale SHA is never the CI target"
+else
+    fail "(pkg-15) narrowed clone CI target (stale=${stale:0:7} new=${newhead:0:7} now=$(git -C "$A" rev-parse --short origin/feature/issue-901) out=${out:0:700})"
+fi
+
 
 # ================================================= main tree on the PR branch =====
 echo "TEST: the main tree checked out on the PR branch never receives the record commit"
