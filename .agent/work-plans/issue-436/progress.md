@@ -1228,3 +1228,37 @@ The option he chose, as worded to him: "Simplify the rule (Recommended)": the cl
 He first asked "What does editing the manifest inside the adapter's clone mean?" and was told: the adapter clones a git-hosted source into `<project root>/configs/source-clone/`; the plan made editing the manifest there, and committing there, a supported working style, which is why the adapter had to preserve uncommitted files, local commits, detached heads, half-made clones and rewritten remotes; the path form (`source=/path/to/manifest.yaml`) does the same job from a checkout he controls. What is given up is editing in place under `configs/`.
 
 This changes the plan's rule in "One concern: a stale manifest" ("A dirty clone is never forced ... the owner editing the manifest in the clone is a supported working style, not an error"): a modified clone is now refused, never resolved and never reconciled. The other answers offered were: keep the rule and fix again; publish as it is; stop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 17:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 2 of 3)
+
+**Branch**: feature/issue-436 at `d8b05733`
+**Addressed**: Local Review (Pre-Push) at `c1642c68` (2026-11-13 16:50 -05:00), under the owner's Checkpoint (After: rounds, Decision: address, "Simplify")
+**Commits**: 94437a33, 742be1f5, 441106e7, 980428d0, d8b05733
+
+### The rule change (owner, 2026-11-13)
+The source clone is the adapter's own (94437a33). The adapter leaves it detached at the fetched commit and records it in `.git/ros2-colcon-adapter-commit`. An untouched clone (git clone of `source`, index, record, HEAD detached at the record, `git --no-optional-locks status --untracked-files=all --ignored=matching` empty) is fetched and moved to the ref's commit. Any other state is refused by setup, sync and validate with nothing changed, a recovery and the path form. Only a clone this run created (`created_here`) is removed on failure. A commit ref must be held by a remote ref or tag.
+Removed: the detached-commit guards and warnings, `source-state` (the field is gone from `.resolved-from`), resolving a dirty working tree, the rewrite rule (`_rc_head_is_last_resolved`, `reset --hard`), the half-made-clone re-checkout, and their tests (test_mr_stale_leaf_branch, test_mr_stale_leaf_commit_and_tag, test_mr_remote_rewrite_followed, test_mr_interrupted_first_clone_and_head_ref, test_mr_validate_source_state_warnings).
+Replaced by: test_mr_clone_refused_when_modified (9 states: uncommitted, untracked with `status.showUntrackedFiles=no`, ignored, HEAD moved, local branch with a commit, other origin, no index, no record, not a git clone; for setup and sync each: exit 1, the message names the state, recovery and path form, the clone byte for byte untouched by tree fingerprint, link and live result unchanged; validate fails with the same message; removing the clone recovers), test_mr_clone_follows_remote (moved branch, force-pushed branch, moved tag, commit ref, a commit origin does not hold refused, deleted tag an error with the checkout unchanged, `source_ref=HEAD` refused), test_mr_clone_removed_only_when_created_here (new clone removed on a bad ref; an existing clone kept on a bad ref and offline; a no-index clone refused, never removed). The fingerprint was checked to catch an index refresh: without `--no-optional-locks` four assertions fail.
+Line counts: adapter.sh 2044 before, 1998 after the rule change (94437a33), 2054 at the end (the suggestion-6/7/8 fixes in 441106e7 added 56). test_ros2_colcon.sh 3632 before, 3587 after the rule change, 3714 at the end.
+
+### Actions
+- [x] (must-fix 1) A no-index clone taken as fresh and wiped: removed with its code; `created_here` is its own fact, and a no-index clone not made by this run is refused and never removed (test_mr_clone_removed_only_when_created_here, test_mr_clone_refused_when_modified `no_index`) — 94437a33
+- [x] (must-fix 2) A commit only the clone holds orphaned: removed with its code (no orphan guard or last-resolved rule remain); a commit ref must be held by a remote ref or tag, and HEAD elsewhere or on a branch is refused (tests `a commit origin does not hold`, `head_moved`, `local_branch`) — 94437a33
+- [x] (must-fix 3) `reset --hard` over an untracked file hidden by `status.showUntrackedFiles=no`: removed with its code; untracked and ignored files are asked for explicitly and refused (test `untracked` sets `status.showUntrackedFiles=no`) — 94437a33
+- [x] (must-fix 4) Machine-wide `pgrep`: replaced by a `flock` wrapper on the second sync's own PATH that writes a file when that sync requests the lock, then a 1 s check that it is still blocked; no process search, no pgrep. With the lock disabled 3 assertions fail, checked — 742be1f5 — `.agent/scripts/tests/test_ros2_colcon.sh:3237`
+- [x] (suggestion 5) The rewrite rule after a failed resolve: removed with its code; an untouched clone is moved to origin's commit whatever happened before (test_mr_clone_follows_remote) — 94437a33
+- [x] (suggestion 6) Without flock a swap no longer removes the directory it replaces; only older ones go, so at most two remain (header says so); test: three unlocked syncs, the replaced dir kept and two dirs each time — 441106e7
+- [x] (suggestion 7) A failed mv probe is an error with nothing changed; with neither -T nor -h, a failed rename after removing the old link says the link is gone and never "nothing changed"; tests with stub mktemp and mv — 441106e7
+- [x] (suggestion 8) git, vcs, colcon and the resolver run through `_rc_nofd` (fds 8 and 9 closed); a directory flock cannot lock is left and said once per run; tests: fd-8 wrappers for vcs, colcon and git across setup, sync and build; a stub flock failing on directories (one warning, nothing removed, the sweep removes them once locking works) — 441106e7
+- [x] (suggestion 9) Directory-like `source_path` (`.`, `sub/`, `a//b.yaml`, `./m.yaml`) refused at the registry, with refused-value rows — 980428d0
+- [x] (suggestion 10) The cache-dir assertion checks the `.gen-` prefix — 94437a33
+- [x] Documents: plan "One concern: a stale manifest" states the new rule with the dated owner line, and its other old-rule phrases are corrected; design.md sentence and change-log row; projects.local.example; registry header — d8b05733
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1044 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 150 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
+- Not verified: BSD/macOS (`mv -h`, no flock, `stat -c` in the test's fingerprint helper is GNU); a run killed between the checkout and the record leaves a clone that is refused (stated in the header; not tested).
