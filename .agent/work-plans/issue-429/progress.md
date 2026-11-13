@@ -2491,7 +2491,7 @@ Host question on the repeated comment: there is a real input. It is a regression
   - Package PRs are report-only, so this is a false pass and a missing record, not a blocked merge. Workspace PRs are unaffected, because their worktree is found by branch.
   - Fix: run the same on-branch check before the read, and give a gate reason when it fails ("the owning checkout is on X / detached, not <PR branch>; its timeline is not read").
   - `.agent/scripts/merge_pr.sh:767-776`
-- [ ] (must-fix) The `docs/design.md` line citations into `merge_pr.sh` are stale after the fix commits.
+- [x] (must-fix) The `docs/design.md` line citations into `merge_pr.sh` are stale after the fix commits.
   - Examples: the sibling reason is now at 812, cited as 789-796. The sibling comment is at 1080, cited as 964-965. `_gate_record` starts at 959, cited as 889-977. Also stale: the main-tree guard 926, the report-only lines 1040/1053, and Table 1's row.
   - The anchors hook does not check line numbers.
   - Found by gemini.
@@ -2510,7 +2510,7 @@ Host question on the repeated comment: there is a real input. It is a regression
   - Fix: after a failed push, compare a bounded `ls-remote origin refs/heads/<PR branch>` with `rec_sha` and treat equality as pushed.
   - Found by codex.
   - `.agent/scripts/merge_pr.sh:1023-1044`
-- [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. This is the owner's call at the merge checkpoint, carried from round 1.
+- [x] (suggestion) The two follow-up issues drafted in plan.md are still not filed. This is the owner's call at the merge checkpoint, carried from round 1. (deferred: the owner's call (host checkpoint 2026-11-13 07:23): raised at the merge checkpoint; no issue opened)
   - `.agent/work-plans/issue-429/plan.md:192,562`
 
 ## Checkpoint
