@@ -760,9 +760,12 @@ if [[ "$_GATE_PKG_ROLE" == "owning" ]]; then
     fi
 fi
 # A sound owning checkout's timeline is the PR branch's only when the
-# checkout has that branch checked out and contains origin's copy of it.
-# Otherwise its progress.md may be another branch's, or an older one that
-# lacks a newer review, and a stale approval there must not pass the gate.
+# checkout has that branch checked out and its HEAD equals origin's copy of
+# it. Otherwise its progress.md may be another branch's, an older one that
+# lacks a newer review (behind or diverged), or hold entries origin does not
+# have (ahead: unpushed commits), and none of those may pass the gate.
+# _gate_record commits the record there only under the same condition, so
+# the record push never carries unpushed commits to the PR branch.
 # _GATE_OWN_NOREAD says why the timeline is not read (empty: it is read);
 # the repository itself stays usable for the ancestry check and the CI
 # target (_ci_wt), and the record goes on the PR. Origin is asked with a
@@ -787,6 +790,14 @@ if [[ "$_GATE_PKG_ROLE" == "owning" && -z "$_GATE_OWN_PROBLEM" ]]; then
                 _GATE_OWN_NOREAD="the fetch of $PR_BRANCH in the owning checkout $_gate_wt wrote no origin/$PR_BRANCH, so it is not known to be current"
             elif ! git -C "$_gate_wt" merge-base --is-ancestor "$_gate_own_origin" HEAD 2>/dev/null; then
                 _GATE_OWN_NOREAD="the owning checkout $_gate_wt does not contain origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
+            elif [[ "$(git -C "$_gate_wt" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != "$_gate_own_origin" ]]; then
+                # Ahead of origin: unpushed commits. Their timeline may hold
+                # entries origin does not have, and a record committed on
+                # top would push them to the PR branch with it.
+                _gate_own_ahead=$(git -C "$_gate_wt" rev-list --count "$_gate_own_origin..HEAD" 2>/dev/null || echo '?')
+                _gate_own_plural="s"
+                [[ "$_gate_own_ahead" == 1 ]] && _gate_own_plural=""
+                _GATE_OWN_NOREAD="the owning checkout $_gate_wt has $_gate_own_ahead commit${_gate_own_plural} not on origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
             fi
         fi
     fi

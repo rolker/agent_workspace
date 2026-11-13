@@ -1057,6 +1057,69 @@ else
     fail "(pkg-15) narrowed clone CI target (stale=${stale:0:7} new=${newhead:0:7} now=$(git -C "$A" rev-parse --short origin/feature/issue-901) out=$(tail_of "$out" 700))"
 fi
 
+echo "TEST: an owning checkout ahead of origin (unpushed commits): not read, nothing pushed, the record on the PR once"
+# wip: the triage's input, an unpushed code commit on a stale timeline.
+# Before the fix the record was committed on top and pushed, taking the WIP
+# commit to origin's branch. approval: an unpushed commit that adds an
+# approved review at the head; before the fix it was read and passed.
+for shape in wip approval; do
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    if [[ "$shape" == wip ]]; then
+        pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+        echo "work in progress" > "$A/wip_code.txt"
+        git -C "$A" add wip_code.txt
+        git -C "$A" -c user.name=t -c user.email=t@t commit -q -m "WIP: unpushed developer commit"
+    else
+        pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+        printf '\n%s\n' "$APPROVED_AT_HEAD" >> "$A/.agent/work-plans/issue-901/progress.md"
+        git -C "$A" -c user.name=t -c user.email=t@t commit -q -am "progress: an approval not pushed"
+    fi
+    origin_tip=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
+    a_before=$(git -C "$A" rev-parse HEAD); p_before=$(pkg_progress "$cont")
+    want="the owning checkout $A has 1 commit not on origin's feature/issue-901 at ${origin_tip:0:7} (local ${a_before:0:7})"
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    pkg_comments_to_fixture "$sb"
+    out2="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    ok=true
+    [[ "$out" == *"would have refused — $want; its timeline is not read for issue #901"* ]] || ok=false
+    [[ "$out" == *"$want; the record is not committed there — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] || ok=false
+    [[ "$out" != *"approved review at head"* && "$out" != *"and pushed"* ]] || ok=false
+    [[ "$out2" == *"already recorded (as a PR comment), same conditions"* && "$out2" != *"posted as a comment"* ]] || ok=false
+    [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$origin_tip" ]] || ok=false
+    ! git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" merge-base --is-ancestor "$a_before" feature/issue-901 2>/dev/null || ok=false
+    [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" && -z "$(git -C "$A" status --porcelain)" && "$(pkg_progress "$cont")" == "$p_before" ]] || ok=false
+    [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]] || ok=false
+    if [[ "$ok" == true ]]; then
+        pass "(pkg-19 $shape) owning checkout one unpushed commit ahead: not read, origin's branch unchanged, the commit still local only; one comment across two runs, with a true reason"
+    else
+        fail "(pkg-19 $shape) ahead of origin (origin=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse --short feature/issue-901) out=$(tail_of "$out" 900) out2=$(tail_of "$out2" 300))"
+    fi
+done
+# Diverged (a local commit and a different one on origin): the neighbour of
+# behind, with the same reason, and nothing pushed.
+sb="$(make_sandbox "" "")"
+cont="$(make_pkg_container "$sb" demo "$STALE")"
+A="$cont/l1_ws/src/pkg_a"
+pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+git clone -q --branch feature/issue-901 "$sb/fake_remotes/github.com/owner/pkg_a.git" "$sb/other_a"
+echo there > "$sb/other_a/there.txt"; git -C "$sb/other_a" add there.txt
+git -C "$sb/other_a" -c user.name=t -c user.email=t@t commit -q -m "pushed from elsewhere"
+git -C "$sb/other_a" push -q origin feature/issue-901
+echo here > "$A/here.txt"; git -C "$A" add here.txt
+git -C "$A" -c user.name=t -c user.email=t@t commit -q -m "local only"
+origin_tip=$(git -C "$sb/other_a" rev-parse HEAD); a_before=$(git -C "$A" rev-parse HEAD)
+out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+if [[ "$out" == *"would have refused — the owning checkout $A does not contain origin's feature/issue-901 at ${origin_tip:0:7} (local ${a_before:0:7}); its timeline is not read"* ]] \
+    && [[ "$out" != *"and pushed"* ]] && [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$origin_tip" ]] \
+    && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] \
+    && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]]; then
+    pass "(pkg-19 diverged) owning checkout diverged from origin: not read, nothing pushed, the record on the PR"
+else
+    fail "(pkg-19 diverged) (out=$(tail_of "$out" 900))"
+fi
+
 echo "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT"
 # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt with
 # no agent, or a stalled host, would. Only WT_FETCH_TIMEOUT (2s) can end
