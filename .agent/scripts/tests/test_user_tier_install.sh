@@ -12,7 +12,8 @@
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
 # COPY of the workspace checkout -- with the machine's own registry
-# (.agent/projects.local) removed from the copy -- so the test can add and
+# (.agent/projects.local) and local settings (.claude/settings.local.json)
+# removed from the copy -- so the test can add and
 # remove skills and registered roots without touching the real ones. The
 # claude CLI is NEVER run: every invocation points AGENT_WORKSPACE_CLAUDE_BIN
 # at a stub that records its argv and edits the sandbox user settings or a
@@ -46,6 +47,10 @@ cp -r "$WS_ROOT/.claude-plugin" "$WSC/.claude-plugin"
 # The machine's own registry must never reach the copy: the installer would
 # otherwise enable the plugin in the owner's real project roots.
 rm -f "$WSC/.agent/projects.local"
+# Nor the machine's own local settings: the copy is the "checkout" place
+# the installer reads, and must start without them (as the other two
+# suites' copies do).
+rm -f "$WSC/.claude/settings.local.json"
 INSTALL="$WSC/.agent/scripts/user_tier_install.sh"
 
 HOMEDIR="$SANDBOX/home"
