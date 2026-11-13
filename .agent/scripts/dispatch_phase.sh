@@ -930,6 +930,7 @@ cmd_next() {
 
     printf '%s' "$json" | PR_STATE="$pr" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
 from pr_start import pr_start, merge_armed
 

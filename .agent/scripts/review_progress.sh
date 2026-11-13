@@ -164,6 +164,7 @@ cmd_round() {
     # reads the same pr_start.py.
     printf '%s' "$json" | BRANCH="$branch" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
 from pr_start import pr_start
 entries = json.load(sys.stdin)["entries"]
@@ -440,6 +441,7 @@ cmd_sources() {
     printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" PROGRESS="$progress" \
         BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, re, subprocess, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
 from pr_start import is_lgtm_placeholder, pr_start
 head = os.environ["HEAD"]
@@ -625,6 +627,7 @@ cmd_findings() {
         echo "error: findings: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
     printf '%s' "$json" | PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
 from pr_start import is_lgtm_placeholder
 data = json.load(sys.stdin)
