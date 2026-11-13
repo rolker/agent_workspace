@@ -4,7 +4,8 @@
 # branch the owning repository's feature/issue-<N> branch starts from and
 # its pull request targets. The owner's rule (issue 429, 2026-11-10): it
 # comes from the project's pin of that repository, never from the forge's
-# default branch. Sourced by dispatch_phase.sh (`base`).
+# default branch. Sourced by dispatch_phase.sh (`base`) and worktree_create.sh
+# (a package worktree created without --base).
 #
 # Source it from bash:
 #   source "$SCRIPT_DIR/_pr_base.sh"
@@ -23,8 +24,14 @@
 #       3. Otherwise `adapter repo_pin <name> [--layer <l>]` (ADR-0019), the
 #          type's own reading of its pin, prints "<ref>\t<kind>":
 #            branch                 -> <ref> is the base;
-#            tag, commit, unknown   -> refused, naming it: only a branch
+#            tag, commit            -> refused, naming it: only a branch
 #                                      can be a base;
+#            unknown                -> refused, saying why the kind is not
+#                                      known: origin not asked or not
+#                                      answering (the adapter's NOTE
+#                                      "(unverified)"; retry or --base), a
+#                                      name no branch can have, or origin
+#                                      has no branch or tag of that name;
 #            exit 1                 -> refused; the adapter's own message
 #                                      (on stderr already) says why.
 #          Nothing is guessed: not the forge's default branch, not
@@ -78,8 +85,15 @@ pr_base_for() {
     [ -n "$project" ] && args+=(--project "$project")
     args+=(repo_pin "$repo")
     [ -n "$layer" ] && args+=(--layer "$layer")
-    local out rc=0
-    out="$("$_PR_BASE_DIR/adapter" "${args[@]}")" || rc=$?
+    # The adapter's stderr is passed through as it is, and also kept: its
+    # NOTE "(unverified)" says origin was not asked or did not answer, which
+    # is what an `unknown` kind's message must say.
+    local out rc=0 errf unverified=false
+    errf="$(mktemp)" || { echo "error: pr_base_for: could not create a temporary file for the adapter's messages" >&2; return 2; }
+    out="$("$_PR_BASE_DIR/adapter" "${args[@]}" 2>"$errf")" || rc=$?
+    cat "$errf" >&2
+    grep -q '(unverified)' "$errf" && unverified=true
+    rm -f "$errf"
     if [ "$rc" -ne 0 ]; then
         echo "error: the project's pin of $repo could not be read (adapter repo_pin exited $rc; its message is above), so there is no base; none is guessed. Fix the pin, or pass --base <branch>." >&2
         return 2
@@ -100,8 +114,21 @@ pr_base_for() {
             printf '%s\n' "$ref"
             return 0
             ;;
-        tag|commit|unknown)
+        tag|commit)
             echo "error: $repo is pinned at $ref ($kind); only a branch can be a base. Pass --base <branch>." >&2
+            return 2
+            ;;
+        unknown)
+            # Three causes, each said as it is: origin not asked or not
+            # answering (the adapter's NOTE), a name no branch can have, or
+            # origin answering with no branch or tag of that name.
+            if [ "$unverified" = true ]; then
+                echo "error: $repo is pinned at $ref, and whether that is a branch could not be established: origin was not asked or did not answer (the NOTE above), and no local ref of origin's names it. Retry when origin answers, or pass --base <branch>." >&2
+            elif ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
+                echo "error: $repo is pinned at $ref, which no branch can be named (and it is no commit id), so it is no base. Pass --base <branch>." >&2
+            else
+                echo "error: $repo is pinned at $ref, and origin, asked, has no branch or tag of that name (and it is no commit id), so it is no base. Pass --base <branch>, or fix the pin." >&2
+            fi
             return 2
             ;;
         *)
