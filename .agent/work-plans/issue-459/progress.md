@@ -323,3 +323,56 @@ The six decisions are applied and consistent with the code; Rule 1 replays corre
 Adopt, proceed (Recommended)
 
 Put to him as a design question on its own: R1 where a pull request ends (after a merge answer, the next new work starts the next pull request and earlier reviews stop counting; a refused or failed merge does not count; a hand merge with no merge answer leaves no boundary and the host records it); R2 after a merge (the run ends when the issue is closed, stops when the state cannot be read, otherwise raises the plan checkpoint when no pull request is open: revise plans, proceed implements and is offered only when the plan is unchanged since its last review and names a part not yet delivered; the loop never closes an issue); R3 no new entry type; R4 the third review's must-fix, handed to the implementer as specified: the new routing row fires only when the newest entry is a checkpoint with Decision merge (any After) or a Merge record, and is checked after rows 2 and 3, with tests for both looping sequences; also the review's two extra table rows (the issue-307 shape followed by a next part; a failed start entry while armed, which counts whatever its Status) and one clause in the owner's section on the stop when the old worktree survived the merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-459 at `180794da`
+
+### Commits
+- `0ad48b9b` pr_start: one boundary rule (`.agent/scripts/pr_start.py`); `restart_start()` and the `cmd_round` loop removed; `round_count()`, `skill_for()` and `review_progress.sh round` read it through a plain `from pr_start import ...` (directory via `PR_START_DIR`)
+- `da7a3093` dispatch_phase next row 3a (post-merge `checkpoint:plan`, with the newest-entry guard, after rows 2 and 3); plan text corrected (Approach 2, two Tests rows, the surviving-worktree clause in the owner's section)
+- `5a9925b7` findings and check read a post-publish `## Local Review`; one LGTM-placeholder predicate (`is_lgtm_placeholder`) used by findings and sources; address-findings SKILL.md names the new source
+- `6c4a5f5a` sources reads the whole timeline and keeps review entries from `pr_start` (stale boxes of a merged part no longer listed)
+- `99b7e892` run-issue step 2 (issue state first; merged PR on an open issue is an earlier part; surviving-worktree stop) and new step 13; design.md, review_loop_lifecycle.md, script_reference.md; test_skill_paths pins the prose and runs the issue-state block against a stub gh
+- `180794da` loaders set `sys.dont_write_bytecode` (the first full pre-commit run failed test_records_write_gate "the reads changed nothing": `__pycache__/` written beside the scripts)
+
+### Deviations from the plan
+- Start entry: an `## Implementation` with no `**Addressed**` that is **not PR-correlated** (plan said "with `**Branch**`"), so a failed first implement that never wrote a correlation line is still the boundary; plan.md updated in `0ad48b9b`, tested.
+- Not rebased on pull request 461 (still open): built on main `03d0bbfa`.
+- Not done: a one-line note in `/orchestrator`'s checkpoint table that a host `proceed` after a merge needs step 13's conditions (the edit was refused by the permission classifier as an instruction-file change outside the plan); run-issue step 13 states the condition.
+
+### Decision table walk (row 3a in; every existing fixture in test_dispatch_phase.sh unchanged, 148 of them pass as before)
+| State | --pr | Answer (row) |
+|---|---|---|
+| 1 armed, newest the merge answer | none | checkpoint:plan (3a; was merge) |
+| 2 armed, newest a Merge record (landed) | none | checkpoint:plan (3a; was merge-refused) |
+| 3 armed, newest a Merge record | open | checkpoint:merge-refused (23) |
+| 4 not armed (merge-refused/address), newest a Merge record | none | checkpoint:merge-refused (23) |
+| 5 armed | merged | done (1) |
+| 6 stop at merge, or stop at the post-merge plan checkpoint | none | done (2) |
+| 7 armed, then Plan Authored newest | none | review-plan (8) |
+| armed, newest the merge answer | open / draft | merge (21) |
+| issue-307 shape (merge, record, merge-refused/merge) | none / open | checkpoint:plan (3a) / checkpoint:unexpected (28) |
+| merge-refused/merge with no earlier arm | none | checkpoint:unexpected (28) |
+| armed, newest a PR-correlated fix | none | review-code (12) |
+| armed, newest failed Plan Authored | none | checkpoint:phase-failed phase=plan-task (3) |
+| armed, plan revise / proceed | none | plan-task (11) / implement (10) |
+| armed, revise, phase-failed retry / takeover plan-task | none | plan-task (26) / plan-task mode=inline (27) |
+| armed, proceed, failed first implement; its retry | none | phase-failed phase=implement (3); implement (26) |
+Both looping sequences fail on an unguarded row 3a (checked: 9 failures) and on the code without row 3a (9 failures); the commit-1 tests fail on main's scripts (8 in test_dispatch_phase, 2 in test_review_code_convergence); commit-3/4 tests fail on the previous review_progress.sh (4 + 1, then 2).
+
+### Boundary (pr_start) cases tested
+All 12 rows of the plan's Tests table plus the issue-307-shape-plus-part, the failed start entry (with and without a correlation line), Merge record newest (armed), restart clearing the arm, After findings arming, plan answers keeping the arm; real timelines: 429 (25P 50P, armed), 332 (67I 81I, armed), 451/455/354/307 (none, armed).
+
+### Acceptance
+- Round 1 with outside reviewers for the next diff, no checkpoint:rounds before its own third round: test_dispatch_phase "round_count: part 1 had three reviews ..." (round=1), "part 2 reaches MAX_ROUNDS only on its own third review", handoff "after a merge, the next pull request's first pre-push review is round 1 -- ... no \"no cross-model reviewers\""; test_review_code_convergence round cases.
+- next after a merge checkpoint, issue open, no PR, does not answer merge: test_dispatch_phase "acceptance: next after a merge checkpoint with no pull request does not answer merge" and walk 1/2.
+- Synthetic-timeline tests in test_dispatch_phase.sh: yes (above).
+
+### Verification
+`/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: first run failed (test_records_write_gate 67/1, fixed in `180794da`); second run on the final tree passed every hook, validate-script-tests over all suites. Suites run directly: test_dispatch_phase 211/0, test_review_code_convergence 38/0, test_address_findings 21/0, test_triage_reviews_integration 64/0, test_skill_paths 142/0, test_records_write_gate 68/0, test_design_anchors 47/0.
+
+### Pull request 461
+`git merge-tree` of this head with 461's head `7ef2a6a2`: one conflict, docs/design.md change-log rows (both append a row at the table's end). dispatch_phase.sh, run-issue SKILL.md and script_reference.md merge cleanly (this change keeps out of `cmd_handoff`, `base`, step 11 and the script_reference rows 461 edits). After 461 merges, the 429 real-timeline test still holds (it checks the first two boundaries; 461's head adds 71P).
