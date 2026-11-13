@@ -1366,3 +1366,32 @@ Text after `    version:` → value (default output, read by sync), the form `--
 
 ### Checks
 - Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #456 at `33cbccd7`
+**Depth**: Deep (reason: fix-round re-review; the whole-diff tier is unchanged, the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the one finding of the Local Review at `6807c9f4` and its fix, e361588d (`_rc_yaml_plain_reading`, its caller `adapter_repo_pin`, `test_repo_pin_refuses_yaml_typed_plain_pins`, the parser table rows, ADR-0019). The handoff said no cross-model reviewers, so none were dispatched. Governance and plan drift were checked inline.
+
+**Checks:**
+- test_ros2_colcon: 479 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck was not run because it is not installed on this machine.
+
+**`_rc_yaml_plain_reading` against PyYAML 6.0.3 (system python3):** 459,445 plain values were run through `yaml.safe_load('v: <x>')` + `str()` and through the extracted function. The values covered random strings over `0-9._-+eExXbBoO:abf` up to 6 characters, random decimals with up to 17 integer digits and up to 8 fraction digits (with signs and leading zeros), and named cases.
+- **Accepted values `str()` changes:** only `2024-01-01T00:00:00Z`. It holds a `:` that no git ref can hold, and the helper's comment says so.
+- **Accepted values PyYAML cannot load:** values ending in `:`, `-`, `?`, `=` and `<<`. vcstool fails on the manifest for these, so nothing is silently checked out. The earlier review already noted `=` and `<<`.
+- **"would check out X" claims:** none differs from PyYAML's `str()`, with one exception, `True`/`False`, covered by the finding below.
+- **False refusals, apart from floats of more than 15 significant digits (refused by design):**
+  - `._<digits>`: PyYAML 6's resolver is `\.[0-9][0-9_]*`, not `\.[0-9_]+`. A ref component cannot start with `.`, so no real ref is affected.
+  - `True` and `False`: the finding below.
+- **Common refs accepted:** `main`, `rolling`, `humble`, `v1.10`, `1.10.x`, `3.0.0`, `1.0.0`, `2.0`, `10.0`, `0.1`, `2024`, `0123456` (refused as octal, correctly), `1234567`.
+
+### Findings
+- [ ] (must-fix) `version: True` and `version: False` (unquoted) are refused, though PyYAML gives the bool `True`/`False` and `str()` turns it back into the same text, so vcstool checks out the ref as written. That breaks the stated rule. Run through the real verb, with a branch `True` on origin, the error says something false: `... which YAML reads as the bool True, so vcstool would check out 'True', not 'True'; quote it`. ADR-0019 line 52 also lists "a bool" among the values whose reading changes the text. Fix: accept exactly `True` and `False`, or exclude them from the bool branch, and add both to the test's kept list and the ADR wording. Other spellings (`true`, `TRUE`, `yes`, ...) stay refused. — `.agent/project_types/ros2_colcon/adapter.sh:949-952`, `docs/decisions/0019-repo-pin-verb.md:52`
