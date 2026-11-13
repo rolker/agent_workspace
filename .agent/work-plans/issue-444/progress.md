@@ -428,3 +428,22 @@ Read: the Integrated Review at f1ecdb34 and its report. S1 run_script_tests.sh:5
 ### Checks
 - Full pre-commit pass and the full script suite skipped on the owner's direction (2026-11-13: one local run before a pull request, already made at 3880add0); CI on the push is the check. Both commits used `SKIP=validate-script-tests`; every other hook ran and passed (shellcheck included).
 - `test_run_script_tests.sh` three times in a row on the final tree (loaded machine): 163 passed, 0 failed in 47 s; 163/0 in 47 s; 163/0 in 46 s. No new /tmp/run-script-tests.* directory after the three runs.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 11:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #468 at `c327c009`
+**Depth**: Deep (reason: narrow re-review of the post-publish fix pass per handoff, the owner's rule of 2026-11-13; whole-diff tier is Deep)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the fix diff `git diff e852068b..0f6b78d8 -- .agent/scripts/tests/` (6b4da8f2 S1, 0f6b78d8 S2); c327c009 changes progress.md only. Cross-model: skipped (narrow fix-pass check, per handoff; the skill's round-3 trigger does not apply here, PR-mode round 1, but the owner's rule of 2026-11-13 named in the handoff does). Governance and plan drift: no change in scope since round 3 (two-hunk fix inside the runner and one test case).
+
+Both triage findings are fixed. S1: cleanup_run traps INT/TERM/HUP before `stop_suites TERM`; the handler cannot loop: bash marks the EXIT trap in progress and does not run it again on the handler's `exit`, a second signal of the same kind is not re-entered, and one of another kind only repeats kill_now and the rm. `rm -rf "$RUN_ROOT"` cannot see an empty value: RUN_ROOT is assigned once (:520) from mktemp, the script exits before `trap cleanup_run EXIT` (:566) if that fails, and nothing reassigns it. S2: `wait "$stop_watchdog"` cannot block: the watchdog is this shell's own background child (same shell in both the on_interrupt and EXIT-trap paths) and its group was just KILLed; if it already exited, wait returns its status at once, and if bash no longer knows it, wait returns 127 at once (stderr discarded). The runner uses `set -uo pipefail`, no `-e`, so the non-zero status is harmless, and `stop_watchdog` is set from `$!` at :699 so `-u` cannot trip. After the wait the job is gone from `jobs -p`, so clearing the id does not let live_groups count it. Test timing: the success path measured 2 and 46 ms; the 3 s bound sits between that and the ~4.9 s a runner waiting out the deadline would take, so load alone will not flip it.
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 163 passed, 0 failed, 46 s (both new u8 cases pass: SIGTERM 46 ms, SIGINT 2 ms). shellcheck --severity=warning (pre-commit's binary) on both changed files: clean.
+
+### Findings
+- [ ] (suggestion) The "still running at exit" line is printed before the new traps are installed, so a signal in the few microseconds between them takes the default action and leaves /tmp/run-script-tests.* behind; the new test signals as soon as it sees that line, so a runner descheduled right after the write would fail the test (a rare flake). Move the echo after the three `trap` lines — `.agent/scripts/tests/run_script_tests.sh:552`
