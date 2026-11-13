@@ -2669,3 +2669,70 @@ The round-2 findings hold, except where noted:
 Fix all three (Recommended)
 
 The three, as put to him: F1 (must-fix) a record push that times out with origin then unreachable is never published and the pull request still merges: route that outcome to the undo-and-comment path, accepting a possible duplicate, and update docs/design.md's Merge gate bullet and script_reference.md row 38; F2 the after-timeout check tests ancestry, not equality, so a push made on top is recognised as containing the record; F3 the duplicate check compares against the newest record across both stores (the timeline and the pull request's comments), so a superseded comment is not matched. Then a narrow check of that fix only, then publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 08:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 2 of 3)
+
+**Branch**: feature/issue-429 at `7aa3bc6d`
+**Addressed**: Local Review (Pre-Push) at `8eb34cd0` (2026-11-13 07:58 -05:00), as the owner's Checkpoint of 08:07 decided ("Fix all three")
+**Commits**: `2d4950c4`, `7bd51a18`, `7aa3bc6d`
+
+### Actions
+- [x] (must-fix, F1) After a push that timed out (124 or 137), a bounded fetch of the branch by explicit refspec decides. When origin's branch contains the record commit, it is kept and reported as pushed. In every other case the commit is undone and `progress.md` is put back, and the record is posted as a PR comment:
+  - origin answers without the commit: "the timeline commit was not pushed: the push timed out after Ns and origin's B does not contain it (undone locally)";
+  - origin cannot be asked: "... was not known to be pushed: the push timed out after Ns and origin could not be asked afterwards (<why>) (undone locally); if origin took it, this comment is a second copy";
+  - the fetch wrote no origin/B: the same, with that reason.
+  So no outcome leaves the record only in a local commit. If the comment post fails too, the existing path is kept unchanged: "⚠️ <type> record could not be written anywhere (<why>; PR comment failed)" on stderr, and the script goes on to the merge.
+  - The code is shared, so workspace PRs under `--report-only` and `--force-unreviewed` get the same behaviour. Their verdicts are unchanged; only the hang outcome differs.
+  - Tests:
+    - hang-4 rewritten: the commit is undone, origin is unchanged, and one comment is posted with the message above. On the next run, with origin answering and the comment shown on the PR, it prints "already recorded (as a PR comment)" and never "already recorded at" (no timeline record is claimed); HEAD is unchanged and there is still one comment.
+    - hang-ws `--report-only` and `--force-unreviewed`: a workspace sandbox with an ssh origin served by the shim. The worktree commit is undone, the worktree's `progress.md` is as it was, origin is unchanged, and there is one comment of the right type.
+    - All three fail on `8eb34cd0`.
+  - The Merge gate bullet, the comment-fallback list and `script_reference.md` row 38 are updated — `7bd51a18`, `7aa3bc6d`
+- [x] (suggestion, F2) "Has the record" now means `merge-base --is-ancestor <record> origin/<B>` after the fetch, not equality with the tip. Test hang-3 applied-ontop: the shim applies the push, then puts another commit on top in the bare repository, then stalls. The commit is kept and reported as pushed ("origin's feature/issue-901 contains the record commit"), with no comment. It fails on `8eb34cd0`, which undid it. hang-3 applied (tip equal) still passes — `7bd51a18`
+- [x] (suggestion, F3) For an owning package PR, the newest record is taken across the owning timeline (its newest Merge entry for this PR) and the PR's comments (the newest comment headed `## Merge (report-only)` or `## Merge (unreviewed)`), then compared on type and `**Conditions**`.
+  - "Newest" is decided by each entry's own `**When**` field. Both stores carry the same entry text, and the comment's `**When**` is written when the record is made. GitHub's comment time is not used.
+  - The time is parsed as `%Y-%m-%d %H:%M %z`. A tie, which is possible because the field has minute resolution, or a value that does not parse, counts as doubt. On doubt the script prints "cannot be told apart — recording rather than skipping on doubt" and records.
+  - If only one store has a record, that record is the one compared.
+  - Workspace and project PRs are unchanged: the timeline alone, or with no timeline the comments, as on main.
+  - Test pkg-18 runs the review's X1, X2, X1 sequence (X1 as a comment after a refused push, X2 committed in the timeline, then X1 again). The comment's `**When**` is then set against the timeline's:
+    - older: the third run records;
+    - tie: it records, with the doubt note;
+    - unreadable: it records, with the doubt note;
+    - newer: it skips, "already recorded (as a PR comment)".
+  - older, tie and unreadable fail on `8eb34cd0`; newer passes there too (a neighbour) — `2d4950c4`
+- [x] (suggestion) The follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call; the owner's checkpoint of 08:07 decided only the three fixes; no issue opened)
+- Citations into `merge_pr.sh` in `docs/design.md` were refreshed last, after all code edits, and checked line by line:
+  - Table 1 row: `818 and 1056, 1309 and 1322, 2111-2131`.
+  - Records bullet: `1174-1175`, `1309`/`1322`.
+  - Mechanism 1: `719-807, 1019-1189`.
+  - Unchanged: 243-287, 391-436, 535-558, 608, 719-743, 741, 744-793, 839-846.
+  - A change-log row was added (983 lines).
+
+### Record inputs and results: changed rows (CHANGED / NEW = this pass); every other row as in the previous entry
+| Checkout state | Before | Event | Result | Test |
+|---|---|---|---|---|
+| owning on branch, current | present | push times out, origin answers, branch lacks the commit | undone; "was not pushed: ... does not contain it"; one comment | hang-2 (CHANGED text) |
+| owning on branch, current | present | push times out after origin took it (tip = record) | kept, "and pushed (... contains the record commit)", no comment | hang-3 applied (CHANGED text) |
+| owning on branch, current | present | push times out, origin took it, another commit on top | kept, reported pushed, no comment | hang-3 applied-ontop NEW |
+| owning on branch, current | present | push times out, origin cannot be asked | undone, record posted as a comment ("a second copy if origin took it"); next run: "already recorded (as a PR comment)", no timeline claim, nothing added | hang-4 CHANGED |
+| workspace PR worktree, `--report-only` / `--force-unreviewed` | present | push times out, origin cannot be asked | undone, one comment of the right type, origin unchanged | hang-ws NEW |
+| owning, X1 comment then X2 timeline | present | X1 again; comment older / tie / unreadable / newer | records / records (doubt) / records (doubt) / skips | pkg-18 NEW |
+| any | - | comment post also fails | "record could not be written anywhere (...; PR comment failed)", merge goes on (unchanged from main) | not tested (the stub's `pr comment` always succeeds) |
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 158/0.
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 220/0.
+  - No `sleep 300` process was left.
+- Against `8eb34cd0`'s `merge_pr.sh` the gate suite gave 149/9. These failed:
+  - pkg-18 older, tie and unreadable;
+  - hang-2 (text);
+  - hang-3 applied (text) and applied-ontop;
+  - hang-4;
+  - hang-ws ×2.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`. The run outlasted the tool's 600 s foreground limit, was moved to the background, and was waited for to its exit (rc 0) before this entry.
