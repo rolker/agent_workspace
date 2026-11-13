@@ -206,27 +206,12 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check (ids are stable for triage):
 
-- `harness-1` `durable-submission-api-now-primary` — v0.7.0 made
-  workflow-runtime submissions (declarative workflow definitions, intake
-  bindings, durable replay transcripts, `/proof` and `/artifacts` read
-  surfaces) the only durable-work API. Sharpens the earlier
-  `submission-object-for-durable-dispatch` item below: there is now a
-  concrete record shape with proof/artifacts to compare against
-  `dispatch_phase.sh` and `progress.md`. (2026-11-13)
 - `harness-2` `operator-attention-queue-and-stop-conditions` — open issues
   #2170 (attention queue with actionable human-intervention reasons) and
   #2171 (supervised recurring loops with explicit mandates and stop
   conditions) are design discussions of the same problem this workspace's
   checkpoint dialogs and `/run-issue` stop rules address. Worth reading the
   issue text for the vocabulary; nothing shipped yet. (2026-11-13)
-- `harness-3` `fail-closed-defaults-and-unknown-spend` — v0.7.0 fail-closed
-  auth and v0.7.1 "unknown spend stops the run instead of counting as zero"
-  are both instances of failing on missing evidence. Possible checklist
-  input for this workspace's scripts and review rules (silent-failure
-  concerns in the quality standard). (2026-11-13)
-- `harness-4` `prebuilt-binary-release-with-checksums` — v0.7.2 attaches
-  prebuilt binaries with per-archive `.sha256` and `SHA256SUMS`. Low
-  relevance unless this workspace ever ships a tool binary. (2026-11-13)
 
 Carried from 2026-09-22, still undecided (the Starlark, cross-review and
 sandbox-tier items were not changed by the commits read; the submission
@@ -259,13 +244,19 @@ item is sharpened by `harness-1`):
 
 ## Roadmapped
 
-(none — first-run survey; items above are pending review, not yet
-triaged into roadmap/skip/defer)
+(none)
 
 ## Skipped
 
-(none)
+- `harness-3` `fail-closed-defaults-and-unknown-spend` — informational: two
+  instances of failing on missing evidence, no change to workspace tooling
+  (2026-11-13)
+- `harness-4` `prebuilt-binary-release-with-checksums` — applies only to
+  shipping a tool binary, which this workspace does not do (2026-11-13)
 
 ## Deferred
 
-(none)
+- `harness-1` `durable-submission-api-now-primary` — the concrete part is
+  covered by the roadmapped `gstack-2` (progress entries record their
+  commit); the rest is a comparison with a database-backed design the
+  workspace does not follow (2026-11-13)
