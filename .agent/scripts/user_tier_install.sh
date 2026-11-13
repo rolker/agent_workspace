@@ -34,10 +34,12 @@
 #      directory source, and the CLI's machine-level record
 #      (plugins/known_marketplaces.json) names this checkout, and the CLI's
 #      record of installs (plugins/installed_plugins.json) lists a
-#      user-scope install. Repointing another checkout's declaration
-#      re-runs the install. The settings and the machine-level record are
-#      read back after the calls; a run that finds all three current makes
-#      no CLI call.
+#      user-scope install. Taking over from another checkout (the
+#      declaration or the machine-level record names it) first runs
+#      `claude plugin uninstall --scope user`, so a failure part way leaves
+#      no install record and the next run installs. All three are read
+#      back after the calls; a run that finds them current makes no CLI
+#      call.
 #      Nothing is written into any project root. The workspace checkout's
 #      own tracked .claude/settings.json sets the plugin to false, so a
 #      session at the checkout's root or in a worktree of it lists each
@@ -809,28 +811,40 @@ cli_user() {  # <claude plugin args...>
 
 # Enable the plugin at user scope from this checkout: `marketplace add`
 # unless the declaration and the machine-level record already name this
-# checkout; `install` unless it is already enabled, the CLI's record lists
-# a user-scope install, and the declaration was this checkout's before
-# this call; then both read back. A second user-scope `marketplace add` of
-# the same name from another path repoints both records (checked on claude
-# 2.1.322), so another checkout's declaration needs no separate takeover.
-# A repoint re-runs `install` because the enable and the CLI's install
-# record and cache are the other checkout's. Whether the real CLI's
-# `install` of a plugin already enabled at user scope refreshes that
-# record and cache from the repointed marketplace, or exits non-zero, is
-# not verified (no live case covers it); a failure is reported as one.
+# checkout; `install` unless it is already enabled and the CLI's record
+# lists a user-scope install; then the read-back. A second user-scope
+# `marketplace add` of the same name from another path repoints both
+# records (checked on claude 2.1.322), so another checkout's declaration
+# needs no separate takeover.
+# A take-over -- the declaration or the machine-level record names another
+# checkout -- first removes the user-scope install (its record and cache
+# are that checkout's), then repoints, then installs. The order is what
+# makes a failure or an interrupt safe: from the first call on, the CLI's
+# record lists no user-scope install, so the next run cannot take the
+# no-call shortcut and runs `install`, and --check reports drift until it
+# does. The real CLI's `uninstall --scope user` removing that record is
+# not verified by a live case; the read-back requires the record again.
 # Returns 1, with the reason on stderr.
 enable_user_scope() {
-    local src repointed=false
+    local src km_src takeover=false
     src="$(user_plugin_source)"
-    [[ -n "$src" ]] && ! is_this_checkout "$src" && repointed=true
+    km_src="$(machine_record_source)"
+    { [[ -n "$src" ]] && ! is_this_checkout "$src"; } && takeover=true
+    { [[ -n "$km_src" ]] && ! is_this_checkout "$km_src"; } && takeover=true
+    if [[ "$takeover" == true ]] && { [[ "$(user_install_record)" != absent ]] \
+        || jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$CLI_SETTINGS" >/dev/null 2>&1; }; then
+        cli_user uninstall "$PLUGIN_ID" --scope user || {
+            echo "  ERROR: \`claude plugin uninstall $PLUGIN_ID --scope user\` failed (removing another checkout's user-scope install before taking it over); nothing was repointed" >&2
+            return 1
+        }
+    fi
     if ! { [[ -n "$src" ]] && is_this_checkout "$src" && machine_record_ours; }; then
         cli_user marketplace add "$WS_PHYS" --scope user || {
             echo "  ERROR: \`claude plugin marketplace add $WS_PHYS --scope user\` failed" >&2
             return 1
         }
     fi
-    if [[ "$repointed" == true || "$(user_install_record)" == absent ]] \
+    if [[ "$(user_install_record)" == absent ]] \
         || ! jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$CLI_SETTINGS" >/dev/null 2>&1; then
         cli_user install "$PLUGIN_ID" --scope user || {
             echo "  ERROR: \`claude plugin install $PLUGIN_ID --scope user\` failed" >&2
@@ -841,7 +855,10 @@ enable_user_scope() {
 }
 
 # The read-back after any CLI call that may change the user-scope entries
-# or the machine-level record: both must name this checkout.
+# or the machine-level record: both must name this checkout, and the CLI's
+# record must list a user-scope install (the same three things the no-call
+# shortcut and --check require; a record that does not parse cannot say,
+# and is reported on its own).
 user_scope_readback() {  # <what came before, for the message>
     if [[ "$(user_scope_state)" != ours ]]; then
         echo "  ERROR: $1, but $CLI_SETTINGS does not show $PLUGIN_ID enabled with the $MARKETPLACE_NAME marketplace declared from $WS_PHYS" >&2
@@ -849,6 +866,10 @@ user_scope_readback() {  # <what came before, for the message>
     fi
     if ! machine_record_ours; then
         echo "  ERROR: $1, but the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout" >&2
+        return 1
+    fi
+    if [[ "$(user_install_record)" == absent ]]; then
+        echo "  ERROR: $1, but the claude CLI's record of plugin installs ($INSTALLED_PLUGINS) lists no user-scope install of $PLUGIN_ID" >&2
         return 1
     fi
 }

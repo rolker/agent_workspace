@@ -78,6 +78,10 @@ mkdir -p "$HOMEDIR"
 # local calls reach further than their scope); STUB_LOCAL_NOOP=1 makes
 # every local-scope call exit 0 having written nothing. STUB_ADD_SLEEP=<s>
 # makes `marketplace add` sleep first (time to interrupt the installer).
+# STUB_INSTALL_FAIL=1 makes `install` alone exit 1 having written nothing;
+# STUB_NO_USER_RECORD=1 makes a user-scope `install` enable the plugin but
+# record no install; STUB_LOCAL_DROPS_USER_RECORD=1 makes a local
+# `uninstall` also drop the user-scope install record.
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -91,6 +95,7 @@ fi
 [[ -n "${STUB_ADD_SLEEP:-}" && "$2 ${3:-}" == "marketplace add" ]] && sleep "$STUB_ADD_SLEEP"
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
 [[ -n "${STUB_ADD_FAIL:-}" && "$2 ${3:-}" == "marketplace add" ]] && exit 1
+[[ -n "${STUB_INSTALL_FAIL:-}" && "$2" == install ]] && exit 1
 [[ -n "${STUB_NOOP:-}" ]] && exit 0
 scope=local prev=""
 for a in "$@"; do [[ "$prev" == --scope ]] && scope="$a"; prev="$a"; done
@@ -115,6 +120,7 @@ jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 ip="$cfg/plugins/installed_plugins.json"
 case "$2" in
     install|uninstall)
+        [[ "$2" == install && "$scope" == user && -n "${STUB_NO_USER_RECORD:-}" ]] && exit 0
         mkdir -p "$(dirname "$ip")"
         [[ -f "$ip" ]] || echo '{"version": 2, "plugins": {}}' > "$ip"
         pp=""; [[ "$scope" == local ]] && pp="$PWD"
@@ -129,6 +135,9 @@ case "$2" in
                 "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
         fi ;;
 esac
+if [[ "$scope" == local && "$2" == uninstall && -n "${STUB_LOCAL_DROPS_USER_RECORD:-}" ]]; then
+    jq --arg id "$3" '.plugins[$id] = [(.plugins[$id] // [])[] | select(.scope != "user")]' "$ip" > "$ip.tmp" && mv "$ip.tmp" "$ip"
+fi
 if [[ "$scope" == local && "$2" == uninstall && -n "${STUB_LOCAL_DROPS_USER:-}" ]]; then
     jq 'del(.enabledPlugins["agent-workspace@agent-workspace"])' "$cfg/settings.json" > "$cfg/settings.json.tmp" \
         && mv "$cfg/settings.json.tmp" "$cfg/settings.json"
@@ -1558,9 +1567,9 @@ out="$(run --check)"; rc=$?
 n0="$(n_log)"
 out="$(run)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"repointing it here"* \
-   && "$(log_since "$n0" | cut -d'|' -f2 | tr '\n' ';')" == "plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
+   && "$(log_since "$n0" | cut -d'|' -f2 | tr '\n' ';')" == "plugin uninstall $PID --scope user;plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
     && user_on && km_ours \
-    && pass "...and install repoints it with marketplace add (no separate takeover), then re-runs install (the install record was the other checkout's)" \
+    && pass "...and install takes it over: removes the user-scope install (the other checkout's), repoints with marketplace add, installs" \
     || fail "...install over a foreign declaration (rc=$rc calls: $(log_since "$n0") out=${out:0:300})"
 n0="$(n_log)"
 out="$(run)"; rc=$?
@@ -1591,6 +1600,48 @@ out="$(run)"; rc=$?
 [[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin marketplace add $WSC_PHYS --scope user" ]] && km_ours \
     && pass "...and a re-run with the settings right calls marketplace add alone and repairs it" \
     || fail "...repair of the machine record (rc=$rc calls: $(log_since "$n0"))"
+
+# A take-over whose install fails: the user-scope install was removed
+# first, so the next run cannot take the no-call shortcut; --check reports
+# drift until a re-run installs, and that re-run ends current.
+jq --arg p "$OTHER_WS" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+jq --arg p "$OTHER_WS" '.["agent-workspace"].source.path = $p' "$KM_FILE" > "$tmp" && mv "$tmp" "$KM_FILE"
+n0="$(n_log)"
+out="$(STUB_INSTALL_FAIL=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"claude plugin install $PID --scope user\` failed"* \
+   && "$(log_since "$n0" | cut -d'|' -f2 | tr '\n' ';')" == "plugin uninstall $PID --scope user;plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
+    && pass "a take-over whose install fails exits 1, after removing the other checkout's user-scope install and repointing" \
+    || fail "take-over, install fails (rc=$rc calls: $(log_since "$n0") out=${out:0:400})"
+n0="$(n_log)"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT"* && "$out" != *"installed and current"* ]] \
+    && pass "...--check then reports drift, not current" \
+    || fail "...--check after a failed take-over (rc=$rc out=$out)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2)" == "plugin install $PID --scope user" ]] && user_on && km_ours \
+    && jq -e --arg id "$PID" '[.plugins[$id][] | select(.scope == "user")] | length == 1' "$IP_FILE" >/dev/null \
+    && pass "...and the re-run calls install, never the no-call shortcut, and ends current" \
+    || fail "...re-run after a failed take-over (rc=$rc calls: $(log_since "$n0") out=${out:0:400})"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "...after which --check is clean" || fail "...--check after the re-run (rc=$rc out=$out)"
+# Only the machine-level record names another checkout: a take-over too.
+jq --arg p "$OTHER_WS" '.["agent-workspace"].source.path = $p' "$KM_FILE" > "$tmp" && mv "$tmp" "$KM_FILE"
+n0="$(n_log)"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(log_since "$n0" | cut -d'|' -f2 | tr '\n' ';')" == "plugin uninstall $PID --scope user;plugin marketplace add $WSC_PHYS --scope user;plugin install $PID --scope user;" ]] \
+    && user_on && km_ours \
+    && pass "a machine-level record naming another checkout, the settings right, is taken over the same way" \
+    || fail "machine-record-only take-over (rc=$rc calls: $(log_since "$n0") out=${out:0:400})"
+# The read-back requires the user-scope install record: a CLI that enables
+# the plugin but records no install fails the install, naming it.
+jq --arg id "$PID" 'del(.enabledPlugins[$id])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+jq --arg id "$PID" '.plugins[$id] |= map(select(.scope != "user"))' "$IP_FILE" > "$tmp" && mv "$tmp" "$IP_FILE"
+out="$(STUB_NO_USER_RECORD=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"reported success, but the claude CLI's record of plugin installs ($IP_FILE) lists no user-scope install of $PID"* ]] \
+    && pass "the read-back after an install requires the CLI's user-scope install record" \
+    || fail "read-back, no user-scope record (rc=$rc out=${out:0:400})"
+run >/dev/null
 
 # A CLI that claims success but writes nothing: install fails, naming it,
 # and touches no project root.
@@ -1814,6 +1865,13 @@ out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
     && pass "the machine-level record is read back after migrating; its loss fails the run" \
     || fail "read-back after migration, record lost (rc=$rc out=${out:0:500})"
 run >/dev/null && km_ours && pass "...and a re-run restores it" || fail "...re-run after a lost record"
+legacy_enable "$ROOTS/a"
+out="$(STUB_LOCAL_DROPS_USER_RECORD=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"after moving per-root entries to user scope, but the claude CLI's record of plugin installs ($IP_FILE) lists no user-scope install"* ]] \
+    && pass "the user-scope install record is read back after migrating; its loss fails the run" \
+    || fail "read-back after migration, install record lost (rc=$rc out=${out:0:500})"
+run >/dev/null && [[ "$(jq --arg id "$PID" '[.plugins[$id][] | select(.scope == "user")] | length' "$IP_FILE")" -eq 1 ]] \
+    && pass "...and a re-run restores it" || fail "...re-run after a lost install record"
 # A CLI that runs in the root but leaves the entry: an error naming it.
 legacy_enable "$ROOTS/a"
 out="$(STUB_LOCAL_NOOP=1 run)"; rc=$?

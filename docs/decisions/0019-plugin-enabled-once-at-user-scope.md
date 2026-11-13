@@ -72,11 +72,13 @@ answered "Q1 accept it".
 --scope user`, from a throwaway directory in no git repository, only when
 the records do not already show the plugin enabled from this checkout,
 the machine-level record naming it, and a user-scope install in the CLI's
-`installed_plugins.json`; it reads the first two back. A re-run that finds
-them current makes no CLI call. Another checkout's user-scope declaration
-is repointed by the same `marketplace add` (the user tier is already
-singular), and `install` is run again after it; there is no separate
-machine-record takeover.
+`installed_plugins.json`; it reads all three back. A re-run that finds
+them current makes no CLI call. Another checkout's user-scope declaration,
+or a machine-level record naming another checkout, is taken over by
+removing the user-scope install, repointing with the same `marketplace
+add` (the user tier is already singular), and installing again, in that
+order, so a failure part way leaves no install record and the next run
+installs; there is no separate machine-record takeover.
 
 ### 2. Nothing is written into a project checkout
 
