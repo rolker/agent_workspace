@@ -533,3 +533,13 @@ Carry into part 2 of the issue: if another signal-handling point turns up in the
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, verbatim: "merge 468 if ci is gree". He had been told: reviews and triage are finished with nothing open; the pull request adds the parallel runner, the default stays one job, and it is part 1 of 2 that does not close issue 444; CI's full run on the final commit was still running. The host merges only when every check on 8e21c771 has passed, and stops and reports if any fails.
