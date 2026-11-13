@@ -80,7 +80,7 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 It decides by location, not by anything this session has to copy or
 interpret: `skill_prefix=` (bare) when the session is in the workspace
 checkout's git repository (the checkout, a worktree of it, or a root like
-`p11-jazzy` inside it), `skill_prefix=agent-workspace:` when it is in a
+`demo-jazzy` inside it), `skill_prefix=agent-workspace:` when it is in a
 registered project root. The installer never enables the plugin in the
 workspace, because the plugin's source is the workspace's own
 `.claude/skills`: enabling it there would load every shipped skill twice.
@@ -234,8 +234,8 @@ B="$($WS_ROOT/.agent/scripts/dispatch_phase.sh base --issue <ref> --type <type> 
 echo "${B:-no package base}"
 ```
 
-Keep the branch after `base=` as `<base>` for the run (step 7 needs it); no
-line means the issue has no package base.
+Keep the branch after `base=` as `<base>` for the run (steps 7 and 8 need
+it); no line means the issue has no package base.
 
 Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <ref> --type <type>` (and `--layer`, `--package-repos` when
@@ -478,8 +478,9 @@ that sub-review never resumes. Round 1 is never reused (see below), so the
 first read of any branch is always cold.
 
 **Never reuse**: round 1 of any phase; an agent from a different issue; an
-agent already resumed 3 times; or any agent from before a merge-from-main
-landed on the branch (its view of the diff is stale). A resumed agent is
+agent already resumed 3 times; or any agent from before a merge of the base
+(step 8: `main`, or a package issue's `<base>`) landed on the branch (its
+view of the diff is stale). A resumed agent is
 held to the *same* exit contract and the same `--check-exit` check as a
 fresh one — nothing about the contract relaxes.
 
@@ -757,19 +758,31 @@ gh pr ready <M>
 `gh_create_pr.sh` injects the AI signature on create; `gh pr edit` does
 not, so append it to the body file yourself before this call.
 
-### 8. Merge-from-main before the final pre-push review
+### 8. Merge the base before the final pre-push review
 
 Before every `review-code --branch` dispatch (row 12, `--pr none`), check
-whether the branch is behind:
+whether the branch is behind its base: `main` for a workspace or
+single-repository issue, `<base>` (step 1) for a package issue:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/check_branch_updates.sh
+$WS_ROOT/.agent/scripts/check_branch_updates.sh [--base <base>]
 ```
 
-If behind, merge main into the branch first, so the SHA `review-code`
-reviews is the SHA that gets pushed — a merge-from-main after the review
-would leave the review stale at the merge checkpoint.
+Pass `--base <base>` for a package issue (step 1 stops a package issue
+that has no base, so every one reaching here has it); with no `--base` the
+script compares with the repository's default branch, which for a package
+need not be the branch the project pins and the feature branch started
+from.
+
+If behind, merge the branch the script compared with into the branch
+first: `git merge origin/main`, or `git merge origin/<base>` for a package
+issue (never the default branch into a branch started from another one:
+that puts unrelated commits into the package pull request). Then the SHA
+`review-code` reviews is the SHA that gets pushed — a merge of the base
+after the review would leave the review stale at the merge checkpoint. The
+`review-code --branch` handoff of a package issue with a recorded base
+already names `origin/<base>` as the branch to diff against.
 
 ### 9. Waiting for reviews
 
@@ -840,8 +853,8 @@ Dispatched phases never push — the exit contract in every handoff says so.
 The host pushes: at publish (step 7), after every `## Implementation`
 written while a PR exists (before the next `review-code <M>` or
 `triage-reviews` dispatch, so the head those phases correlate on contains
-the fix), and before `review-code --branch` when a merge-from-main just
-landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
+the fix), and before `review-code --branch` when a merge of the base
+(`main`, or a package issue's `<base>`) just landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
 (...)` record commit from inside its own gate — that is the merge script's
 contract, not a phase's, and `run-issue` leaves it alone.
 
@@ -869,12 +882,12 @@ cd "<root>"
 
 then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`, or
 `--pr <owner/repo#M>` for a package issue, so the script targets the
-package repository and finds the package worktree. Until the merge gate
-reads a package issue's timeline (the second pull request of issue 429),
-its record for a package pull request says the worktree "carries no issue
-timeline" and is posted as a pull-request comment; it stays report-only. The gate
-enforces by default on workspace PRs (#300): a gap refuses with exit 1 and
-no entry. Only the owner says skip — `--report-only` (record and proceed),
+package repository and finds the package worktree. For the owning
+repository's pull request the gate reads the review in the owning
+checkout's timeline and commits and pushes its record there; it stays
+report-only for every package pull request (a gap is recorded, the merge
+goes ahead). The gate enforces by default on workspace PRs (#300): a gap
+refuses with exit 1 and no entry. Only the owner says skip — `--report-only` (record and proceed),
 `--no-wait` (skip the CI wait) and `--allow-pending-review` (merge under a
 review check-run that is still running) are passed only on the owner's
 explicit answer for that merge, never on the host's judgment. If the merge
@@ -953,8 +966,9 @@ unexpected type rather than guessing at what happened.
 
 ## Scope
 
-What this loop deliberately does not cover, per the owner's own notes on
-the plan for issue #276 and the plan for issue 429:
+What this loop covers at its edges, and what it deliberately leaves out,
+per the owner's own notes on the plan for issue #276 and the plan for
+issue 429:
 
 - **Field mode** (#208/#209) — the publish and merge steps here are
   GitHub-only; a non-GitHub publish path is a separate, later change to
@@ -963,16 +977,23 @@ the plan for issue #276 and the plan for issue 429:
   `--type project` runs end to end with the records in the repository the
   issue belongs to (the default setting). A records location outside the
   repository, or untracked records, is the records lookup of issue 393.
-- **More than one owning repository per issue.** An ADR-0012 package
-  issue (`owner/repo#N`) is driven in the checkout of the one repository
-  that owns it; sibling repositories in the package worktree are for
-  building against. The records gate (`records_path` in
-  `_resolve_work_plans_dir.sh`) refuses them, and the worktree's top
-  folder, for every records read and write a script makes:
+- **One owning repository per issue (supported); more than one is not.**
+  An ADR-0012 package issue (`owner/repo#N`) is driven end to end in the
+  checkout of the one repository that owns it: its branch starts from the
+  base (the project's pin of that repository, or the owner's `--base`;
+  step 1), the pre-push review diffs against `origin/<base>` and step 8
+  merges it, publish targets that repository and base, and the merge gate
+  reads the review in that checkout's timeline and commits its record
+  there. Package pull requests stay report-only at the gate (enforcement
+  is for workspace pull requests). Sibling repositories in the package
+  worktree are for building against: a sibling's own pull request is
+  merged with `--pr <owner/sibling#M>`, its gate reads no timeline and its
+  record goes on that pull request. The records gate (`records_path` in
+  `_resolve_work_plans_dir.sh`) refuses the siblings, and the worktree's
+  top folder, for every records read and write a script makes:
   `progress_append.sh`, every `review_progress.sh` subcommand that takes
-  a path (`findings` and `check` included), the resolver and
-  `dispatch_phase.sh`. It does not guard a write from outside any
-  worktree, which commits on that checkout's own branch. Composition stays
-  the adapter's (ADR-0012): `run-issue` passes `--layer` and
-  `--package-repos` through and reads only the worktree's
-  `.worktree-repos` manifest, through `dispatch_phase.sh`.
+  a path (`findings` and `check` included), the resolver,
+  `dispatch_phase.sh` and the merge gate. Composition stays the adapter's
+  (ADR-0012): `run-issue` passes `--layer` and `--package-repos` through
+  and reads only the worktree's `.worktree-repos` manifest, through
+  `dispatch_phase.sh`.

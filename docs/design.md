@@ -381,8 +381,8 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 394-433, 577, 694, 721 and 858, 966 and 979, 1732-1748 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 635, 723, 755, 894 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 768 and 926, 1040 and 1053, 1838-1858 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 216, 277-326, 501, 643, 731, 763, 902 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
@@ -473,15 +473,19 @@ Status: `decided`
   rule, which `progress_append.sh`, `review_progress.sh persist` and `check` state, refuses a main
   checkout on its default branch and another issue's worktree (header of `_resolve_work_plans_dir.sh`).
   Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
-  changes nothing for them. `merge_pr.sh` does not read that timeline yet and posts its gate record for a
-  package pull request on the pull request (lines 871 and 925). `progress_append.sh` lines 107-108 write
+  changes nothing for them. `merge_pr.sh`'s gate reads the owning repository's pull request
+  (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
+  entry's path travels with the match (`PKG_OWN_REL`, lines 535-558) and becomes the gate's worktree
+  (lines 719-743). A sibling repository's pull request reads no timeline there; its reason names the
+  owning checkout and its record goes on its own pull request (lines 789-796 and 964-965). Package pull
+  requests stay report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
   registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 596 and
-  713), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 740 and 890). The gate is still report-only for project pull requests (lines 998 and
-  1011).
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 608 and
+  741), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 768 and 926). The gate is still report-only for project pull requests (lines 1040 and
+  1053).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
   branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
@@ -505,7 +509,9 @@ Status: `decided`
   refuses, saying which. The one exception is creation with `--parent-issue` (where `--base` is refused):
   an owning branch that already exists is accepted, no `base=` is recorded and a note says so, and
   `dispatch_phase.sh base --base <branch>` records one later. `run-issue` passes it to
-  `gh_create_pr.sh --base`; `merge_pr.sh` reports an owning pull request whose base differs from it
+  `gh_create_pr.sh --base`, diffs the pre-push review against `origin/<base>` (the `review-code`
+  handoff from `dispatch_phase.sh`) and checks and merges it before that review
+  (`check_branch_updates.sh --base`, `run-issue` step 8); `merge_pr.sh` reports an owning pull request whose base differs from it
   (report-only, like every package reason) and, at cleanup, fast-forwards the owning repository's own
   checkout from origin's base by name (never the branch's configured upstream) only when it is clean
   and on that base, fetching only otherwise.
@@ -549,8 +555,8 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   541, 587, 589, 651, 912: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (708-729, 854-935: the gate's lookup and its `Merge`
+   549, 595, 597, 659, 920: the round count, the exit contract, `--check-exit` and `next`, which is
+   what a resumed session reads), `merge_pr.sh` (719-757, 889-977: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -596,7 +602,8 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   `merge` writes one only when the gate finds a gap and does not refuse it (a relaxing flag, or a project
   pull request); a gate that passes records nothing (`merge_pr.sh`, Step 1.5; `run-issue/SKILL.md` step
   11). When no worktree on the pull request's branch can commit and push that entry (none open, a
-  package worktree, the main tree, no agent identity, the commit or push refused), it is posted as a
+  sibling repository's pull request in a package worktree, the main tree, no agent identity, the commit
+  or push refused), it is posted as a
   comment on the pull request instead (`_gate_record` in `merge_pr.sh`). The directory sits in the
   repository that owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records).
   Entries have a fixed vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an
@@ -678,7 +685,9 @@ Status: `decided`
   refuses at the CI grace deadline rather than merge past a review it never saw.
 - The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
   Project and package pull requests are report-only: the gap is printed and recorded as a
-  `## Merge (report-only)` entry and the merge goes ahead. `--force-unreviewed` bypasses both conditions
+  `## Merge (report-only)` entry and the merge goes ahead. For a package issue the gate reads and records
+  the owning repository's pull request in the owning checkout's timeline; a sibling repository's pull
+  request reads none, and its record goes on that pull request ([Worktrees](#worktrees), Records). `--force-unreviewed` bypasses both conditions
   with a banner and a `## Merge (unreviewed)` entry. A merge that does not end merged after one of
   those entries goes to the `merge-refused` checkpoint.
 - The gate is local only. A Merge click on GitHub bypasses it, and the server-side complement, a required
@@ -893,6 +902,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
 | 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
 | 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's pre-push reviews: creation of a new owning branch always resolves a base (`--base`, else the pin; with `--parent-issue` the parent's branch), a branch this workspace did not start gets `base=` only from a named `--base` that origin has and that shares history with it, the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
+| 2026-11-13 | Worktrees, Review loop and timeline, Merge gate, Registry and adapters | The merge gate reads and records a package issue in its owning checkout (issue 429, part 2, last pull request): the Records bullet no longer says `merge_pr.sh` does not read that timeline, and says the owning repository's pull request is gated and recorded there while a sibling repository's reads none and records on its own pull request; the Base branch bullet adds that the pre-push review diffs against `origin/<base>` and `run-issue` step 8 checks and merges that base (`check_branch_updates.sh --base`); the Review loop's comment-fallback list and a Merge gate bullet say the same; Table 1's `merge_pr.sh` and `dispatch_phase.sh` line numbers, the Records bullet's and the Target's mechanism 1 citations are refreshed. Worktrees grows by six lines and stays past the 60-line prompt: the bullets name the variables and lines that hold the rule, so no detail moves | #429 | 959 |
 
 ## Glossary
 
