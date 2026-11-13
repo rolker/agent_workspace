@@ -571,3 +571,28 @@ Round 1's findings: both must-fix fixed (ADR status lines and register/guide row
 - [x] (suggestion) The hand removal for a root the CLI is not run in names only settings.local.json; when the CLI's record lists a local install there, also name its `installed_plugins.json` object, or a later deleted root leaves a note on every run — `.agent/scripts/user_tier_install.sh:943`
 - [x] (suggestion) With the workspace in no git repository, the fallback answers bare for a git repository nested under it; guard it with an empty `dir_repo` — `.agent/scripts/skill_prefix.sh:94`
 - [x] (suggestion) Live suite: `us_case` replaces a valid empty list (`<none>`) from the first session with the second session's `<no init line>`, and U7 treats `<none>` as "no init line" (UNDECIDED wording instead of "0 times") — `.agent/scripts/tests/live/plugin_acceptance.sh:635`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 21:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent afce6a3db90432d7a, resume 1 of 3)
+
+**Branch**: feature/issue-446 at `bfd1c72d`
+**Addressed**: Local Review (Pre-Push) at `f3dccb33` (2026-11-12 20:52 -05:00)
+**Commits**: e5308e65, c07d082a, dd010fee, b712b7a6, bfd1c72d
+
+### Actions
+- [x] (must-fix) A take-over (the settings declaration or the machine-level record names another checkout) runs uninstall --scope user, then marketplace add, then install, so a failure part way leaves no user-scope install record and the next run installs; ADR-0019 decision 1 and the installer header follow; tests: failed take-over then re-run, machine-record-only take-over — `.agent/scripts/user_tier_install.sh` enable_user_scope (e5308e65)
+- [x] (must-fix) user_scope_readback also requires the user-scope install record when the record parses; tests on the install and migration paths — `.agent/scripts/user_tier_install.sh` user_scope_readback (e5308e65, one commit with the must-fix above: they share the read-back and the stub)
+- [x] (suggestion) --check gives install's advice for a local true in the checkout's own settings.local.json: a note with the removal by hand without the CLI, the removal by hand in drift for a refused root or a hand-written entry — `.agent/scripts/user_tier_install.sh` check loop (c07d082a)
+- [x] (suggestion) A hand-written local true repeats two local CLI calls on each install — `.agent/scripts/user_tier_install.sh` migrate_legacy_root (deferred: costs two harmless local CLI calls per install in a state the installer already reports with its hand removal; skipping them needs a record of the CLI's earlier failure, more than this round's narrow fix)
+- [x] (suggestion) Every hand removal also names the installed_plugins.json local-install object when the CLI's record lists one there — `.agent/scripts/user_tier_install.sh` hand_removal (c07d082a, one commit with the --check advice: they share the hand-removal helpers)
+- [x] (suggestion) skill_prefix.sh: a git repository nested in a checkout that is in no git repository takes the prefix (fixed, not deferred: a one-line guard with an existing test harness) — `.agent/scripts/skill_prefix.sh:94` (b712b7a6)
+- [x] (suggestion) Live suite: us_case keeps an empty first list, and U7 counts an empty list as 0 (us_no_list, us_count; helper tests on synthetic lists) — `.agent/scripts/tests/live/plugin_acceptance.sh:635` (dd010fee)
+
+### Checks
+- test_user_tier_install.sh: 276 passed, 0 failed; test_plugin_acceptance_helpers.sh: 31 passed, 0 failed; test_skill_prefix.sh: 25 passed, 0 failed
+- `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree before this entry: exit 0, validate-script-tests Passed
+- Not run: the live suite, any claude CLI call, the installer against the real HOME (per the handoff)
+- Not verified on the real CLI: that `uninstall --scope user` removes the user-scope install record (the take-over's safety rests on it; the read-back requires the record again after install)
