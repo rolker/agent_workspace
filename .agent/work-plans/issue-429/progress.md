@@ -2362,3 +2362,13 @@ Verdicts on workspace pull requests are unchanged except on a hang. `_GATE_PKG_R
 - [ ] (suggestion) The new bounded calls have no test. Add one gate case with a hanging origin (expect a refusal reason, never a pass) and one record push that times out (expect the commit undone and a comment). — `.agent/scripts/tests/test_merge_pr_gate.sh`
 - [ ] (suggestion) The behaviour change of `wt_bounded_git` for workspace pull requests is not documented. Through `timeout` with `GIT_TERMINAL_PROMPT=0`, an SSH passphrase or host-key prompt with no agent now waits out the limit and fails, where `git -C ... fetch` used to prompt. The gate then refuses unless the review is at the head, which is the safe direction. Add one line to `docs/design.md` (Merge gate) or `script_reference.md`. — `docs/design.md`
 - [ ] (suggestion) This PR closes issue 429, but the two follow-up issues drafted in plan.md have not been filed: compatibility-mode persistence, and the real-name fixtures in six other suites. That is an owner call: file them, or allow them to be filed, before the merge so nothing is lost. — `.agent/work-plans/issue-429/plan.md:192,562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first review of 2b's diff, two must-fix, both mechanical; the round limit is reached only because the counter carries the merged pull requests' reviews, issue 459; first host address for this pull request, the owner's merge of pull request 460 having come between)
+**After**: rounds
+**Decision**: address
+
+Fix both must-fix and suggestions 1 to 5 as the review states them: an explicit refspec for the --base fetch in check_branch_updates.sh and for the CI-target fetch; the owning checkout's progress.md restored when a hook refuses the record commit; the record is committed and pushed only when the owning checkout is on the pull request's branch (check first; refuse to record there and fall back to the pull-request comment otherwise, with a true reason); the owning path must be its repository's top folder; tests for a hanging origin at the gate and a record push that times out, with a blocking fixture and a generous ceiling, no wall-clock tuning; one line documenting that an SSH passphrase prompt now fails at the time limit. Suggestion 6 (two follow-up issues drafted in plan.md, not filed) is the owner's call and is raised to him at the merge checkpoint; nothing is opened by the loop.
