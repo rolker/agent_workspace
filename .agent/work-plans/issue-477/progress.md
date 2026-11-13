@@ -67,3 +67,11 @@ Read: the Issue Review at ab84c2ad and its report. The owner's words that starte
 ### Decisions made (owner may veto)
 - The first pull request is the two approved texts only, plus "Two paths" becoming three and one clause in Path 2's "any other work" so the paths do not overlap; work serving the new README line reads "Path 2" in the sit-rep's per-issue mark until a later pull request teaches it Path 3 — undoing it: add the sit-rep change to this pull request.
 - Later pull requests in the review's order, the host's first: records pushed once with the merge; a CI failure at the merge checkpoint fixed and re-run, not asked; review_progress.sh reading a pull-request-mode review. The owner's, each asked by name at its own merge: dropping the change log's line-count column in docs/design.md; a stop after two fix rounds after publishing.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 14:43 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-477/plan.md` at `160b7adf`
+
+Part 1 is two text edits (roadmap: "Three paths", one clause in Path 2, the approved Path 3 paragraph; README: one bullet after the first Quality bullet), verified safe against test_skill_paths.sh and the sit-rep; part 2 outlines the review's seven later PRs with who decides. Open: design.md line 105 says "the two paths".
