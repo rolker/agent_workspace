@@ -1968,6 +1968,18 @@ out="$(run --uninstall)"; rc=$?
     && [[ "$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path' "$SETTINGS")" == "$OTHER_WS" ]] \
     && pass "--uninstall leaves another checkout's user-scope declaration alone" \
     || fail "--uninstall over a foreign user-scope declaration (rc=$rc out=${out:0:400})"
+# A user-scope enable with no marketplace declaration names no checkout:
+# --uninstall reports it with the removal by hand, runs no user-scope CLI
+# call, and leaves it.
+run >/dev/null
+jq 'del(.extraKnownMarketplaces["agent-workspace"])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+n0="$(n_log)"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"NOTE: $SETTINGS enables the agent-workspace plugin at user scope with no agent-workspace marketplace declaration, so nothing ties it to this checkout"*"delete \"$PID\" from enabledPlugins in $SETTINGS"* ]] \
+    && ! log_since "$n0" | grep -q -- '--scope user' \
+    && jq -e --arg id "$PID" '.enabledPlugins[$id] == true' "$SETTINGS" >/dev/null \
+    && pass "--uninstall leaves a user-scope enable with no declaration, naming the hand removal, with no user-scope CLI call" \
+    || fail "--uninstall over an undeclared user-scope enable (rc=$rc out=${out:0:500} calls: $(log_since "$n0"))"
 
 # A registry that does not parse stops install, --check and --uninstall
 # before anything changes.

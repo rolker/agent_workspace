@@ -1148,14 +1148,20 @@ if [[ "$MODE" == "uninstall" ]]; then
     done
     # The plugin: every per-root entry of this checkout's (an entry the CLI
     # cannot remove is an error naming the removal by hand), then the
-    # user-scope enable, when this checkout declared it.
+    # user-scope enable, when this checkout declared it. An enable with no
+    # marketplace declaration beside it names no checkout: nothing ties it
+    # to this one, so it is reported with the removal by hand and left.
     uninstall_rc=0
     migrate_legacy_roots strict || uninstall_rc=1
     if [[ "$(installed_plugins_state)" == unparseable ]]; then
         echo "  ERROR: $(installed_plugins_unreadable)" >&2
         uninstall_rc=1
     fi
-    case "$(user_scope_state)" in
+    uninstall_us="$(user_scope_state)"
+    [[ "$uninstall_us" == partial && -z "$(user_plugin_source)" ]] && uninstall_us=undeclared
+    case "$uninstall_us" in
+        undeclared)
+            echo "  NOTE: $CLI_SETTINGS enables the $PLUGIN_NAME plugin at user scope with no $MARKETPLACE_NAME marketplace declaration, so nothing ties it to this checkout -- left as it is; to remove it by hand: delete \"$PLUGIN_ID\" from enabledPlugins in $CLI_SETTINGS" ;;
         ours|partial)
             if ! have_claude; then
                 echo "  ERROR: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin at user scope; run \`claude plugin uninstall $PLUGIN_ID --scope user\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope user\`" >&2
