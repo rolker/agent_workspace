@@ -1768,7 +1768,8 @@ test_source_keys() {
         rc=0; out="$(ps_run "$sb" set alpha "$v" 2>&1)" || rc=$?
         assert_eq "single_project set ${v%%=*}: exit 1" "1" "$rc"
         assert_contains "single_project set ${v%%=*}: says why" "nothing resolves a source for it (a source for every type is issue #473)" "$out"
-        assert_contains "single_project set ${v%%=*}: names the type to use" "register it as type ros2_colcon (give the type ros2_colcon when registering)" "$out"
+        assert_contains "single_project set ${v%%=*}: names the type to use" "register it as type ros2_colcon" "$out"
+        assert_not_contains "single_project set ${v%%=*}: says it once" "give the type ros2_colcon" "$out"
     done
 
     # The dispatcher hands the keys to the adapter.
