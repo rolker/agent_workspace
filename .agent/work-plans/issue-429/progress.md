@@ -2372,3 +2372,71 @@ Verdicts on workspace pull requests are unchanged except on a hang. `_GATE_PKG_R
 **Decision**: address
 
 Fix both must-fix and suggestions 1 to 5 as the review states them: an explicit refspec for the --base fetch in check_branch_updates.sh and for the CI-target fetch; the owning checkout's progress.md restored when a hook refuses the record commit; the record is committed and pushed only when the owning checkout is on the pull request's branch (check first; refuse to record there and fall back to the pull-request comment otherwise, with a true reason); the owning path must be its repository's top folder; tests for a hanging origin at the gate and a record push that times out, with a blocking fixture and a generous ceiling, no wall-clock tuning; one line documenting that an SSH passphrase prompt now fails at the time limit. Suggestion 6 (two follow-up issues drafted in plan.md, not filed) is the owner's call and is raised to him at the merge checkpoint; nothing is opened by the loop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 07:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-429 at `df029cd7`
+**Addressed**: Local Review (Pre-Push) at `43a724a8` (2026-11-13 06:50 -05:00), as the host's Checkpoint of 06:51 decided
+**Commits**: `2fae2ba3`, `367e8414`, `7388b8dd`, `855f2efe`, `df029cd7`
+
+### Actions
+- [x] (must-fix 1) `check_branch_updates.sh` fetches `+refs/heads/<b>:refs/remotes/origin/<b>`, with or without `--base`. After a fetch that reports success, a missing `origin/<b>` exits 2; it never counts as 0 behind. On a failed fetch, `ls-remote --exit-code` tells the cases apart. Exit 2 means origin answered and has no such branch: "origin has no branch '<b>'; nothing to compare with", exit 2. Any other failure is "Could not fetch '<b>' from origin; not compared", exit 0. A timeout is "origin did not answer within Ns; not compared with <b>", exit 0. Also fixed: an empty default-branch name when origin is unreachable and has no `origin/HEAD` (it falls back to `main`). Tests in `test_package_issue_loop.sh` case 14: a single-branch clone of main with origin's pinned 3 ahead reports behind by 3 and `--strict` exits 1; a missing base exits 2, also with `--strict`; an unreachable origin exits 0; a hanging origin (ssh shim, `CHECK_BRANCH_UPDATES_TIMEOUT=1`, killed, none left). All four fail on `43a724a8`'s script. `script_reference.md` row 34 updated — `2fae2ba3`
+- [x] (must-fix 2) Before the record, `_gate_record` snapshots `progress.md`: its working copy, its index entry and the folders that did not exist (`_gate_rec_snapshot`). On any `progress_append.sh` failure with HEAD unmoved, `_gate_rec_restore` puts all three back and checks that `git status` for the path matches what it was. It then falls back to the comment with a literal reason. Exit 3 gives "the timeline commit in <A> was refused (progress_append.sh exit 3: a git failure such as a commit hook), and the entry was taken back out". Other exits give "progress_append.sh refused the timeline entry (exit N)". An undone push uses the same restore. Tests pkg-12 absent and present: a failing `pre-commit` hook in pkg_a's repository. After each of two runs, A has the same HEAD, a clean tree and the same `progress.md` (no `.agent` left when it was absent), and origin is untouched. Each run posts one comment, so the count is 1 and then 2. The second run prints no "already recorded" and behaves as the first. Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 1) The record is committed only when `symbolic-ref --short HEAD` in the checkout equals the PR branch. Otherwise it goes to the comment: "the checkout <A> is on <b>, not <PR branch>, so the record is not committed there", or "... has a detached HEAD, not <PR branch> ...". "and pushed" is never printed. The check applies to every PR; a workspace or project `_gate_wt` comes from `find_worktree_for_branch`, so it holds there by construction. Tests pkg-13 other-branch and detached: no commit, origin unchanged, one comment. Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 2) `_GATE_OWN_PROBLEM` (owning role only) says either "the owning checkout <A> does not exist" or "... is not a git checkout's top folder" (`rev-parse --show-toplevel` unequal after `pwd -P`). When it is set, no timeline is read (the gate reason is "<problem>, so no timeline is read for issue #N"), `_ci_wt` stays empty, and the record goes on the PR with that reason. Tests pkg-14:
+  - no-checkout: A's `.git` is removed inside an enclosing repository at `l1_ws` that is on `feature/issue-901` and has pkg_a's origin. A keeps an approved review at the head. The gate does not pass, the enclosing repository's refs and HEAD are unchanged, and no CI-target line is printed.
+  - missing.
+  Both fail on `43a724a8` — `7388b8dd`
+- [x] (suggestion 3) The gate's ancestry fetch and the CI-target fetch name `+refs/heads/<PR branch>:refs/remotes/origin/<PR branch>`. Test pkg-15: A's fetch refspec is narrowed to main, and origin's head moves from another clone. Afterwards `origin/feature/issue-901` in A is the PR head and the stale SHA is never printed as the CI target. It fails on `43a724a8` — `367e8414`
+- [x] (suggestion 4) `test_merge_pr_gate.sh` hang-1, hang-1 control and hang-2 use an ssh origin whose shim records its pid and `exec sleep 300`, with `WT_FETCH_TIMEOUT=2`, a 120 s ceiling and no wall-clock tuning. After each run every shim pid is killed and checked gone; `ps` showed no `sleep 300` left after the suites.
+  - hang-1: the review is at R in A, and origin's head is R plus a `progress.md` commit that A lacks. The gate refuses ("head ... is not present locally") and never prints a pass. The timed-out record push is undone (A has the same HEAD, a clean tree and the same `progress.md`) and a comment is posted (6 s).
+  - hang-1 control: the same fixture with origin answering passes the gate ("covers head").
+  - hang-2: only `pushurl` is silent, and the push takes the undo path, with one comment (2 s).
+  These pass on `43a724a8` because the bounding was built there. On main the unbounded calls would block for the shim's 300 s and break the 120 s ceiling. That is reasoning: they were not run against main — `855f2efe`
+- [x] (suggestion 5) `docs/design.md` Merge gate:
+  - A bullet: the gate's calls to origin (its fetch, the CI-target fetch, the record push) are limited by `WT_FETCH_TIMEOUT` with no terminal prompt, so an SSH passphrase or host-key prompt with no agent fails at the limit. The gate then judges from the commits already present locally: a head that is not there is a reason, never a pass.
+  - A bullet on when the record is committed in a checkout.
+  - The Review loop's comment-fallback list gains the new cases.
+  - A change-log row (968 lines).
+  - `script_reference.md` row 38 says the same.
+  `df029cd7`
+- [x] (suggestion 6) Two follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call per the host checkpoint of 06:51; raised at the merge checkpoint; no issue opened)
+
+### Record inputs and results (owning package PR unless named; each asserted)
+| Checkout | Before the record | What happens | Result | Test |
+|---|---|---|---|---|
+| owning, on branch | `progress.md` absent | commit and push succeed | committed and pushed in A, no comment | pkg-1 |
+| owning, on branch | absent | push refused by origin | commit undone, `.agent` removed, A clean; one comment | pkg-11 |
+| owning, on branch | present | push refused by origin | commit undone, `progress.md` as it was; one comment | pkg-11b (passes on `43a724a8` too: a neighbour) |
+| owning, on branch | present | push times out | undone, as it was; one comment | hang-2 |
+| owning, on branch | absent | gate fetch, CI fetch and push all time out | gate reason, never a pass; push undone; one comment | hang-1 |
+| owning, on branch | absent | hook refuses the commit | entry taken back out, A clean, no `.agent`; one comment per run; run 2 the same as run 1 | pkg-12 absent |
+| owning, on branch | present | hook refuses the commit | `progress.md` as it was; one comment per run; run 2 the same as run 1 | pkg-12 present |
+| owning, other branch | present | no commit attempted | "is on feature/issue-901-old, not feature/issue-901"; one comment; origin untouched | pkg-13 other-branch |
+| owning, detached | present | no commit attempted | "has a detached HEAD"; one comment | pkg-13 detached |
+| owning, not a top folder (inside an enclosing repository on the PR branch) | approved review in A | no read, no `_ci_wt`, no commit | gate reason, no pass; enclosing repository untouched; one comment | pkg-14 no-checkout |
+| owning, missing | - | the same | "does not exist"; one comment | pkg-14 missing |
+| owning, narrowed refspec | - | CI-target fetch | `origin/<PR branch>` refreshed, stale SHA never the target | pkg-15 |
+| sibling | - | unchanged | comment on the sibling's PR | pkg-5, pkg-6 |
+| workspace PR (every existing case) | - | unchanged | verdicts unchanged; hang behaviour as in the design bullet | gate suite 142/0 |
+
+`check_branch_updates.sh` inputs: on the base; behind; up to date; single-branch clone; base missing on origin (exit 2); origin unreachable (exit 0, warning); origin silent (exit 0, warning); bad arguments (exit 2). Tests: loop case 14.
+
+### Observations, not changed
+- When A has a timeline, the duplicate check reads only A's `progress.md` (the existing #284 design), so a record that keeps going to the comment (a hook that always refuses, or A off the branch) posts one comment per run. The host's decision said "a second run behaves as a first", and that is what was built and tested. Checking the PR's comments as well would stop the repeats; that is the host's call.
+- The gate still reads A's timeline when A is on another branch or detached. Suggestion 1 is about the record. A review there passes only if its SHA covers the PR head through the ancestry check.
+
+### Commit layout
+Must-fix 2 and suggestions 1 and 2 share `_gate_record`'s body (the fallback reason for the owning problem lives in the same branch as the restore), so they are one commit, `7388b8dd`. Suggestion 3 (`367e8414`) and the hang tests (`855f2efe`) are separate.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 142/0 (131 before, plus pkg-11b, pkg-12 ×2, pkg-13 ×2, pkg-14 ×2, pkg-15, hang-1, hang-1 control, hang-2).
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 218/0 (214 plus 4).
+- Against `43a724a8`'s scripts: the gate suite gave 135/7 (pkg-12 ×2, pkg-13 ×2, pkg-14 ×2 and pkg-15 fail) and the loop suite 214/4 (the four new checks fail).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+- Removed the reviewer's `cbu.P6au/`, `cbu.sh`, `hang.sh` and `mainco.MClj/` from the session scratchpad.
