@@ -463,13 +463,21 @@ if [[ -f "$ONB" ]]; then
         '"$WS_ROOT/.agent/scripts/session_root.sh"' 'register_project.sh <path>' \
         'Onboarding runs in a session started at the project'"'"'s root'
     # #466 (ADR-0021): an unregistered folder is offered registration from
-    # here, the dry run captured with its stderr notes, one yes asked in
-    # text before the real call (its permission prompt is not guaranteed,
-    # so it is a second gate, never the yes), and the no-git gap named.
+    # here, the dry run captured with its stderr notes, the commands passed
+    # as --set without the dry run's notes and checked by a second dry run,
+    # a kept settings file shown in full, one yes asked in text on that
+    # second dry run before the real call (its permission prompt is not
+    # guaranteed, so it is a second gate, never the yes), and the no-git
+    # gap named.
     has "$ONB" "onboard-project: an unregistered folder is offered registration through register_session_root.sh" \
         '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run 2>&1' \
-        '"$WS_ROOT/.agent/scripts/register_session_root.sh" 2>&1' \
-        'Then ask one yes in text, for this write alone' \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1' \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1' \
+        'The note is never part of the value' \
+        'no yes is asked on a refused list' \
+        'Then ask one yes in text, for this write alone, on that second dry run' \
+        'the file'"'"'s full contents as read, saying that every key in it takes effect' \
+        'so the question is the only place they are shown' \
         'that prompt is not guaranteed' \
         'is a second gate after the yes in text' \
         'Pass the detected ones too' \

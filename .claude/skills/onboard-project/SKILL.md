@@ -141,36 +141,69 @@ the rest of the run.
     commands it would write, and that the build and test are not run. Say
     what registration is: one line in the workspace's per-machine registry
     and the folder's settings file in the workspace checkout, nothing
-    written into the folder. When a `note:` line says no build (or test)
-    command was detected, or several build systems disagree, ask for the
-    command, or `none`, before the real run. Under this skill's
-    `--dry-run`, stop here.
+    written into the folder. Under this skill's `--dry-run`, stop here.
 
-    Then ask one yes in text, for this write alone: register this folder,
-    with the registry line the dry run showed and the build and test
-    commands the real call will pass (below), named in the question. A no
+    Then make the `--set` list the real call will pass: one
+    `--set "build=<command>"` and one `--set "test=<command>"`, each one
+    quoted argument; `build=` and `test=` are the only keys it takes. Pass
+    the detected ones too: without `--set`, the real call detects them
+    again from the folder's files at that run, so its permission prompt
+    would not show them and the folder could have changed since the dry
+    run. Each command comes from one of these:
+
+    - **A line `would write <settings file>:`** lists the commands
+      detected, one per line, as `    build=make    (detected (Makefile))`.
+      Pass only the command, the text after `build=` (or `test=`) and
+      before the spaces and the parenthesised note: `build=make`. The note
+      is never part of the value.
+    - **A line `settings file kept as it is: <path>`** means a settings
+      file under this folder's name is already there (from an earlier
+      registration removed with `--keep-settings`, perhaps for another
+      folder) and nothing is detected: registering turns every key in it
+      on. Read that file and keep its contents, every line, to show with
+      the question. Pass its `build=` and `test=` values.
+    - **No command for a key**: a `note:` line says no build (or test)
+      command was detected, or several build systems disagree, or a kept
+      file has no `build=` (or `test=`) line. Ask the user for the command,
+      or `none`.
+
+    When the list is complete, run the dry run again with exactly those
+    arguments:
+
+    ```bash
+    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1
+    ```
+
+    It checks the commands as the real call will. When it refuses (exit 1,
+    `STATUS=refused`, a command register_project.sh does not take, say
+    one with `&&`), show the refusal and ask for another command (a script
+    path, when it needs a shell) or stop, and run this dry run again; no
+    yes is asked on a refused list.
+
+    Then ask one yes in text, for this write alone, on that second dry
+    run: show its output as printed (the registry line and the build and
+    test commands it would set), and, for a kept settings file, the file's
+    full contents as read, saying that every key in it takes effect. A no
     stops the run. Ask it even though the real call raises a permission
     prompt: that prompt is not guaranteed. A "Yes, and don't ask again" on
     the dry run's prompt allows the same command, so the real call can run
     with no prompt, and auto mode or a broader allow rule removes both
     prompts.
 
-    On the yes, run it:
+    On the yes, run it with the same `--set` arguments as the second dry
+    run, and no others:
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-    "$WS_ROOT/.agent/scripts/register_session_root.sh" 2>&1
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1
     ```
 
-    adding `--set "build=<command>"` and `--set "test=<command>"`, each as
-    one quoted argument, for every build and test command the dry run's
-    settings file lists (its `build=` and `test=` lines, as printed) and
-    every one the user gave in its place (or `none`); `build=` and `test=`
-    are the only keys it takes. Pass the detected ones too: without
-    `--set`, the real call detects them again from the folder's files at
-    that run, so its permission prompt would not show them and the folder
-    could have changed since the dry run. With them, the text question and
-    the prompt both show what is written.
+    The text question shows everything that is written: the registry line,
+    the build and test commands, and a kept file in full. The permission
+    prompt shows the build and test commands only: a kept file's other keys
+    can never appear in it, since the script takes no other key, so the
+    question is the only place they are shown.
 
     The permission prompt for this call, when it appears, shows the full
     command and is a second gate after the yes in text: a no there also
