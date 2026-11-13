@@ -1,12 +1,103 @@
 # Inspiration Digest: project-codeguard
 
 Type: inspiration
-Last checked: 2026-09-14
-Repo: cosai-oasis/project-codeguard @ d6a04cc5bfee65fc400a931fcaff5926d2d9bfe8
+Last checked: 2026-11-13
+Repo: cosai-oasis/project-codeguard @ 41160d54980bab0618165485ade3cfd2ade93288
+Previously checked: 2026-09-14 @ d6a04cc5bfee65fc400a931fcaff5926d2d9bfe8
 
 Registry interest areas: secure-by-default rule design for agent workflows;
 rule packaging and distribution format; integration with review pipelines;
 model-agnostic enforcement mechanisms.
+
+## Changelog (2026-09-14 → 2026-11-13)
+
+16 commits, 81 files changed, `d6a04cc...41160d5` with status `ahead`
+(0 behind) on the GitHub compare API; complete, not truncated (16 commits
+listed of 16 reported; 81 files is under the API's file cap). The clone was
+moved to `41160d5` with `git fetch --depth=1 origin` and `git reset --hard
+origin/main` (git reported a forced update of the shallow ref, a side effect
+of the shallow history; the compare API confirms the old SHA is an ancestor).
+Several listed commits carry dates before 2026-09-14 because they are branch
+commits that were merged after that date.
+
+Merged since the last check: #123 (MCP server publish address configurable,
+default `127.0.0.1`), #109 (Devin host support alongside Windsurf), #128
+(SecurityEval isolation and generation controls), #124 (ADR 0001 accepted),
+#126 (narrower `languages:` in 12 core rules), #131 (dependency updates for
+Dependabot alerts), #133 (v1.5.0 release prep), #137 (SecurityEval reporting
+plus published 1.4.0 results). Closed issues: #121, #94, #61, #37.
+
+What bears on the interest areas:
+
+- **Release line.** v1.5.0 (published 2026-09-29) is stated in release issue
+  #132 to be "the last release of the rule-file version of CodeGuard":
+  "2.0 moves to the portable skill (#125), and 1.x continues on a
+  `release/1.x` branch for security fixes only". The `release/1.x` branch
+  step was still unchecked in #132 when read. #125 ("Track CodeGuard skill
+  modernization and validation") is the 2.0 tracker and was marked stale by
+  the bot on 2026-10-31. PRs #112 (agent-skill security rule) and #113 (APM
+  install path) were "held as input for 2.0" / "to be reshaped for the 2.0
+  skill" per #132, and are still open.
+- **Over-targeting fix landed (#126, resolves #121).** The generated
+  `skills/codeguard/SKILL.md` language table now maps `javascript` to 16 rule
+  files (it listed 18 in 1.4.0; counted from the file diff; with the 3
+  always-apply rules that is 19 of 23, against the 21 of 23 reported in
+  #121), `c` from 14 to 9, `xml` from 6 to 3, `yaml` from 11 to 6; the `d`, `matlab`, `perl` and
+  `vlang` rows were removed. The skill's `description` and "When to Use"
+  section were not changed: they still say to use it when "writing new code
+  in any language". #117 (skill fails to activate, "too broad") is therefore
+  still open with its cause untouched; it was marked stale on 2026-10-10 and
+  has 1 comment.
+- **First published effect numbers (#137, `docs/results/2026-09-codeguard-1.4.0/`).**
+  SecurityEval, 121 cases, Semgrep findings (not confirmed vulnerabilities).
+  Model "GPT-5.6 Sol" (111 shared cases): baseline 42 findings / 17 high+medium
+  at $10.55 total; a plain "secure prompt" 22 / 4 at +19.4% cost; CodeGuard
+  1.4.0 26 / 6 at +187.6% cost, 162.4K tokens per case vs 42.7K, 9 of 121
+  attempts unfinished (baseline 1). Model "GPT-5.6 Luna" (116 shared
+  cases): baseline 47 / 18; secure prompt 30 / 8 (+24.4%); CodeGuard 35 / 11
+  (+65.1%). So in these runs a short secure prompt cut findings about as much
+  as, or more than, the skill, at a fraction of the token cost. The page
+  itself says harness snapshots differ between runs and that findings are
+  scanner results only. Cost figures are the project's own estimates; not
+  independently checked.
+- **Consumer-update workflow hardening (`update-codeguard-rules.yml`).** It now
+  reads the vendored version from `SKILL.md` (`codeguard-version:`) for
+  Agent Skill bundles, reports `mixed` when detected formats disagree,
+  validates the downloaded archive before deleting existing files, and also
+  refreshes `SKILL.md` along with the rules. Adds the `.devin` format.
+- **MCP server default.** #123 makes the Docker published port bind to
+  `127.0.0.1` by default (`CODEGUARD_PUBLISH_ADDRESS`) and documents that a
+  reverse proxy must provide TLS and authentication. Same lesson as the
+  diffx loopback note; no action here.
+- **Governance.** ADR 0001 (guidance vs runtime and scanning) went from
+  Proposed to Accepted (#124). New open issue #139 asks for a versioning
+  policy ADR; a maintainer proposal in the thread treats changes to
+  activation, rule-selection strategy or required review steps as *major*
+  releases even when the install keeps working.
+- **Open PR #135** (2026-11-10 update): pinned Prettier + markdownlint over
+  `sources/` and generated output, `.editorconfig`/`.gitattributes`, Ruff and
+  Pylint/Pyright in CI, and a CI rule that each top-level `src/*.py` module's
+  own test file covers at least 95% of its statements. Prompted by issue
+  #134, a downstream user reporting thousands of markdownlint violations in
+  the shipped rules (MD013 line length 3,564; MD041 207 because the converter
+  puts `rule_id:` before the first heading; and others).
+- **Not read in detail:** the 727-line `samples.csv`, the evaluation harness
+  code changes (`export_results.py`, `results_report.py`), #136 (local-model
+  evaluation at 4K and 8K contexts), #140 (CyberSecEval), #138 (firmware
+  rules), #141 (rewritten logging rule, read only the PR description).
+
+Corrections to the 2026-09-14 survey above:
+
+- "#37 (precedence between CodeGuard and other skills/MCP tools — open,
+  unanswered)" — #37 closed 2026-10-06 (completed). The outcome was not read.
+- "Fix PR #126 (open) narrows the frontmatter in 12 rules" and the "JavaScript
+  task loads 21 of 23 rules" statement — #126 merged 2026-09-29; JavaScript
+  now maps to 16 table rules plus the 3 always-apply rules (19 of 23; 21
+  before).
+- "Lightweight ADR practice ... status Proposed" — ADR 0001 is Accepted
+  (2026-09-29).
+- Activity Snapshot "last release v1.4.0" — now v1.5.0 (see below).
+- Survey line "Governance ... nothing to port" for ADRs stands.
 
 ## Survey Summary (first run, 2026-09-14)
 
@@ -142,25 +233,70 @@ direction:
    grow into if the workspace ever emits Codex/Copilot surfaces from one
    source rather than maintaining them by hand.
 
-## Activity Snapshot
+## Activity Snapshot (2026-11-13)
 
-- 15 open issues, 9 open PRs; 7 PRs merged and 9 issues closed in the
-  last 60 days. Last release v1.4.0 (2026-06-29); last push 2026-09-08.
-- Cadence: a standards-body project — a handful of merges per month, a
-  long tail of contributor PRs waiting on maintainers (several open since
-  June/August), and a late-August design/triage wave (install CLI,
-  context-cost measurement, SDD-phase coverage, local-model evaluation,
-  decision records) mostly closed as discussion rather than shipped.
-- Notable for our interest areas: #117 / #121 / PR #126 (skill
-  activation and over-targeting), PR #112 (agent-skill security rule),
-  PR #119 merged (Inspect eval harness), #37 (precedence between
-  CodeGuard and other skills/MCP tools — open, unanswered), #115 / PR
-  #113 (APM as an additional distribution path), #35 (release artifact
-  signing — open).
+- 19 open issues, 6 open PRs (#141, #136, #135, #113, #112, #82); 371 stars,
+  75 forks (2026-09-14: 336 stars, 63 forks). Last release v1.5.0
+  (2026-09-29); last commit on `main` 2026-10-12 (merge of #137); repo push
+  timestamp 2026-10-27 (not matched to a commit on `main`; not checked).
+- Four issues closed since 2026-09-14 (#121, #94, #61, #37); 8 PRs merged.
+- Cadence: slowed. Direction is a rewrite: rule files are frozen after 1.5.0
+  and effort moves to a 2.0 portable skill (#125). Open issues #117, #125 and
+  others were marked stale by the bot between 2026-10-10 and 2026-10-31.
+  Contributor and downstream-user activity is still coming in (#134, #138,
+  #139, #140, PR #141).
+- Notable for our interest areas: #117 (still open, cause untouched), #125
+  (2.0 tracker), PR #112 (agent-skill security rule, held for 2.0, 5
+  comments, updated 2026-11-03), the published SecurityEval numbers above,
+  #139 (versioning policy), PR #135 (lint and coverage gates).
+
+(2026-09-14 snapshot, kept: 15 open issues, 9 open PRs; 7 PRs merged and 9
+issues closed in the previous 60 days; v1.4.0 (2026-06-29); last push
+2026-09-08; #37 open.)
 
 ## Pending Review
 
-(none — 2026-09-14 round triaged)
+(2026-09-14 items are decided below. New this round, 2026-11-13:)
+
+- **codeguard-1.** `rule-files-frozen-skill-2.0-direction` — upstream says
+  v1.5.0 is the last rule-file release and 2.0 is a portable skill, with 1.x
+  on security-fix-only. Bears on two decided items: the roadmapped
+  `manifest-carried-rule-packs` (built on the per-host rule-file update
+  workflow, which is now in maintenance) and the deferred
+  `single-source-multi-host-emission` (the multi-host converter is the 1.x
+  design; 2.0 may drop it). Relevant to this workspace as a re-check of those
+  two entries once 2.0's shape is visible. (2026-11-13)
+- **codeguard-2.** `secure-prompt-vs-skill-effect-numbers` — the first
+  published three-condition result: a short prompt matched or beat the full
+  skill on finding reduction at far lower token cost (Sol: 22 findings at
+  44.9K tokens per case, +19% cost, vs 26 findings at 162.4K, +188%). Direct evidence for the
+  roadmapped skill-authoring guidance and for the deferred
+  `skill-efficacy-eval-harness`: measure the cost of loading a skill and
+  compare against a plain instruction before adding bulk. Caveat: scanner
+  findings on 121 generation tasks, upstream's own estimates, snapshots
+  differ. (2026-11-13)
+- **codeguard-3.** `activation-fix-incomplete` — update to the roadmapped
+  `skill-activation-and-targeting-evidence`: the rule-table half (#121) was
+  fixed (JavaScript 18 to 16 table rules; 21 to 19 of 23 with the always-apply rules); the activation half (#117, the
+  "too broad" `description`) was not, and the skill's description is
+  unchanged. Evidence strengthens the lesson that narrowing the loaded
+  content does not by itself make an agent choose a skill. (2026-11-13)
+- **codeguard-4.** `consumer-update-workflow-validate-then-replace` — the
+  vendored-rules refresh job now validates the downloaded archive before
+  deleting existing files and detects mixed versions. A small, concrete
+  pattern for the roadmapped `manifest-carried-rule-packs` (never delete
+  before the replacement is verified). (2026-11-13)
+- **codeguard-5.** `behaviour-change-is-a-major-version` — issue #139's
+  proposal that changes to activation, selection or required steps are major
+  releases even if installs keep working, because an agent-facing skill can
+  change workflow without breaking. Possible input to how this workspace
+  versions or announces changes to its own skills; discussion only, no
+  decision upstream yet. (2026-11-13)
+- **codeguard-6.** `source-lint-and-per-module-coverage-gate` — PR #135:
+  lint and format tooling for authored Markdown sources plus a CI rule that
+  each module has a matching test file covering at least 95% of its
+  statements. Overlaps the roadmapped `skill-source-schema-and-version-gate`
+  only in spirit; open, unmerged, and mostly Python tooling. (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 
