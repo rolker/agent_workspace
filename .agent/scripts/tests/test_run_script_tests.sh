@@ -1528,6 +1528,37 @@ else
 fi
 for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 
+# --- Case (u8), another exit: SIGUSR1, which the runner does not trap,
+#     ends it while two suites run. The EXIT trap still stops both suites
+#     and what they started before it removes the run's directory, as it
+#     would after an internal error. (The suites of the first u8 case.) ---
+rm -f "$TMPD"/u8_info_*
+u8_start "$U8" "$TMPD/u8_info_q"
+for _ in $(seq 1 50); do
+    [[ -e "$TMPD/u8_info_p" ]] && break
+    sleep 0.1
+done
+u8_pids=()
+u8_root=""
+for n in p q; do
+    if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8_info_$n" 2>/dev/null; then
+        u8_pids+=("$u8_suite" "$u8_sleep")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+done
+u8_t0=$(date +%s)
+kill -s USR1 "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_secs=$(( $(date +%s) - u8_t0 ))
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ ${#u8_pids[@]} -eq 4 && -z "$u8_alive" && $rc -ne 0 && $u8_secs -le 10 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (${u8_secs}s)"
+else
+    fail "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

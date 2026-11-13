@@ -42,6 +42,9 @@
 # short the cleanup of a process it started), and removes the run's
 # directory. A process left that ignores the signal waits out the 5
 # seconds: a suite's `cmd &` ignores SIGINT, so Ctrl-C can take that long.
+# Any other exit while suites run (an internal error, a fatal signal the
+# runner does not trap) stops them the same way, with SIGTERM, before the
+# run's directory is removed.
 # Needs bash 5.1 (`wait -n -p`); an older bash is refused with a message.
 #
 # Usage: run_script_tests.sh [options] [tests-dir] [--files <file>...]
@@ -516,8 +519,19 @@ RUN_ROOT=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
     exit 1
 }
 # Unconditional cleanup on every exit path after this point — all suites
-# passed, a suite failed, a leak was detected, or an interrupt.
-trap 'rm -rf "$RUN_ROOT"' EXIT
+# passed, a suite failed, a leak was detected, or an interrupt. In a
+# parallel run it first stops any suite still running (stop_suites, below,
+# with SIGTERM): an exit from the parallel section other than through
+# on_interrupt (an internal error, a `set -u` abort, a fatal signal the
+# runner does not trap) would otherwise remove $RUN_ROOT from under suites
+# still writing to it, and leave them running. After on_interrupt there is
+# nothing left to stop.
+parallel=0
+cleanup_run() {
+    (( ! parallel )) || stop_suites TERM
+    rm -rf "$RUN_ROOT"
+}
+trap cleanup_run EXIT
 mkdir -p "$RUN_ROOT/tmp" "$RUN_ROOT/out" "$RUN_ROOT/runner" || {
     echo "error: could not create the guard's directories under $RUN_ROOT" >&2
     exit 1
@@ -609,9 +623,14 @@ if (( jobs > 1 )); then
     # before: a suite that has exited may leave a child still cleaning up
     # in its group, and that child is given the same 5 seconds. A watchdog
     # sends the KILL while the runner waits for a suite that ignores <sig>.
+    # The suites are those the loop tracks (job_of) and any background job
+    # bash still lists (`jobs -p`): a signal can land between a suite's `&`
+    # and its job_of entry. Only groups that still exist are signalled.
     stop_suites() {
         local sig="$1" pids=() p watchdog t_end left
-        for p in "${!job_of[@]}"; do
+        # shellcheck disable=SC2046  # pids: one word each
+        for p in "${!job_of[@]}" $(jobs -p); do
+            [[ " ${pids[*]} " != *" $p "* ]] || continue
             kill -0 -- "-$p" 2>/dev/null && pids+=("$p")
         done
         (( ${#pids[@]} )) || return 0
@@ -650,6 +669,8 @@ if (( jobs > 1 )); then
         stop_suites "$sig"
         exit "$code"
     }
+    # From here the EXIT trap stops any suite still running.
+    parallel=1
     trap 'on_interrupt INT 130' INT
     trap 'on_interrupt TERM 143' TERM
     trap 'on_interrupt HUP 129' HUP
