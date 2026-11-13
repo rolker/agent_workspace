@@ -2865,3 +2865,23 @@ Fix in pull request 461, as triage states it: in the comments-only duplicate che
   - `test_merge_pr_gate.sh` 165/0. Against the previous `merge_pr.sh` it gave 163/2: the two sequence rows.
   - `test_merge_pr.sh` 150/0.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. It was waited for to its exit. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 09:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #461 at `208ab98`
+**Depth**: Standard (reason: fix-round re-review of the triage finding at `7836be6`, scoped by the handoff to commit `2f5a8392`; whole-diff tier keeps cross-model)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Scope: the one finding of the Integrated Review at `7836be6` and its fix `2f5a8392` (the comments-only branch of `_gate_already_recorded`, `merge_pr.sh:1287-1304`; test `dedup-c`; one sentence each in `docs/design.md` and `script_reference.md`; `tail_of` moved). Read the whole function with its three stores.
+
+Verified: `git show 2f5a8392` changes only the `elif [[ -n "$_gate_json" ]]` branch; the workspace/project timeline path (1242-1249) and the owning-package path (1250-1286) are byte-identical, and the callers (1309-1333) are untouched, so the gate's verdict is unchanged (the check only decides whether a record is written). All seven dedup-c rows pass and assert both the posted count and the skip message; run against `2f5a8392^`'s `merge_pr.sh` with the new test, rows 1 and 2 fail (posted=0) and the other five pass, as the Implementation table says. Records are recognised by `startswith` on the body; `_gate_record` posts bodies that begin with `## <type>`; a heading quoted mid-body is not selected. `gh pr view --json comments` (gh 2.104.0) paginates every comment (`shared.preloadPrComments`), oldest first, so `last` is the newest. `tail_of` is identical, moved above its first use (line 530); its other uses (811-1146) are unchanged. design.md citations (1316, 1329, 2118-2138) and the 986-line count match the file. shellcheck --severity=warning clean on both shell files. Suites: test_merge_pr_gate 165 passed, 0 failed; test_merge_pr 150 passed, 0 failed.
+
+Outside reviewers: gemini (agy) complete, no issues; codex complete, two findings on the owning-checkout timeline path (`merge_pr.sh:788`, `:1087`), outside this commit's scope and not verified here; Copilot skipped (disabled for quota).
+
+### Findings
+- [ ] (suggestion) Comments-only branch: the `**Conditions**` value is not stripped of trailing whitespace/CR as the heading now is; a record comment edited into CRLF (`"## Merge (unreviewed)\r\n**Conditions**: A\r\n"`) gives `l_cond=$'A\r'` and a duplicate record is written (fail-safe; line unchanged by this commit; reproduced) — `.agent/scripts/merge_pr.sh:1299`
+- [ ] (suggestion) A comment starting with a record heading plus extra text (`"## Merge (unreviewed) — why we forced\n..."`) after a real unreviewed-A record is selected as newest, fails the exact type check, and a duplicate is written (fail-safe; the pre-fix code also wrote one) — `.agent/scripts/merge_pr.sh:1294-1298`
