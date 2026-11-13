@@ -1229,31 +1229,41 @@ done
 # --- Case (u4): every suite runs after a failure; failures are printed
 #     first, in list order whatever order they finished in; the exit code is
 #     the first failing suite's in list order (1 for a failure, 2 for a
-#     leak), not the first to finish. ---
+#     leak), not the first to finish. Each run makes the two disagree: in
+#     the first, a failure is listed first and a leak finishes first (1, not
+#     2); in the second, a leak is listed first and a failure finishes first
+#     (2, not 1). ---
 U4="$TMPD/case_u4"
 U4_MARK="$TMPD/case_u4_later"
 mkdir -p "$U4"
 write_checkpoint_stub "$U4"
 make_stub "$U4" test_a_slowfail.sh 'echo "a-out"; sleep 1; exit 1'
-make_stub "$U4" test_b_leak.sh 'echo "b-out"; sleep 0.5; : > "${TMPDIR:?}/left_by_b"'
-make_stub "$U4" test_c_fastfail.sh 'echo "c-out"; exit 4'
+make_stub "$U4" test_b_leak.sh 'echo "b-out"; : > "${TMPDIR:?}/left_by_b"'
+make_stub "$U4" test_c_fail.sh 'echo "c-out"; sleep 0.5; exit 4'
 make_stub "$U4" test_z_later.sh "sleep 0.2; touch '$U4_MARK'"
 out=$("$RUNNER" -j 4 "$U4" 2>&1); rc=$?
 u4_a=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_a_slowfail.sh =====' | cut -d: -f1)
 u4_b=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_b_leak.sh =====' | cut -d: -f1)
-u4_c=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_c_fastfail.sh =====' | cut -d: -f1)
+u4_c=$(printf '%s\n' "$out" | grep -nx '===== FAILED: test_c_fail.sh =====' | cut -d: -f1)
 u4_t=$(printf '%s\n' "$out" | grep -nx 'run_script_tests: suite times, slowest first:' | cut -d: -f1)
+# The order the suites finished in, from the runner's "--- <suite> ..." lines.
+u4_done=$(printf '%s\n' "$out" | sed -n 's/^--- run_script_tests: \(test_[abc]_[a-z]*\.sh\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')
 if [[ $rc -eq 1 && -e "$U4_MARK" && -n "$u4_a" && -n "$u4_b" && -n "$u4_c" && -n "$u4_t" ]] \
+        && [[ "$u4_done" == "test_b_leak.sh test_c_fail.sh test_a_slowfail.sh" ]] \
         && (( u4_a < u4_b && u4_b < u4_c && u4_c < u4_t )) \
-        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_c_fastfail\.sh \(suite 3 of 5\) after [0-9]+s, exit 4$' \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_c_fail\.sh \(suite 3 of 5\) after [0-9]+s, exit 4$' \
         && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_leak\.sh \(suite 2 of 5\) after [0-9]+s — it left 1 entry behind in TMPDIR \(.*/test_b_leak\.sh\):$' \
-        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: 3 of 5 suites failed in [0-9]+s: test_a_slowfail\.sh, test_b_leak\.sh, test_c_fastfail\.sh$' \
+        && printf '%s\n' "$out" | grep -Eq '^run_script_tests: 3 of 5 suites failed in [0-9]+s: test_a_slowfail\.sh, test_b_leak\.sh, test_c_fail\.sh$' \
         && ! printf '%s' "$out" | grep -q 'remaining suites not run'; then
-    pass "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the first failing suite in list order"
+    pass "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the failure listed first, though a leak finished first"
 else
-    fail "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the first failing suite in list order (rc=$rc, later_ran=$([[ -e "$U4_MARK" ]] && echo yes || echo no), out=$out)"
+    fail "(u4) -j 4: every suite runs, failures first in list order, exit 1 from the failure listed first, though a leak finished first (rc=$rc, finished=$u4_done, later_ran=$([[ -e "$U4_MARK" ]] && echo yes || echo no), out=$out)"
 fi
+# The second run: the leak listed first now finishes last, the failure
+# listed after it fails at once.
 rm -f "$U4/test_a_slowfail.sh" "$U4_MARK"
+make_stub "$U4" test_b_leak.sh 'echo "b-out"; sleep 0.5; : > "${TMPDIR:?}/left_by_b"'
+make_stub "$U4" test_c_fail.sh 'echo "c-out"; exit 4'
 out=$("$RUNNER" -j 4 "$U4" 2>&1); rc=$?
 if [[ $rc -eq 2 && -e "$U4_MARK" ]]; then
     pass "(u4) -j 4: a leak listed before a failure gives exit 2, though the failure finished first"
@@ -1293,7 +1303,7 @@ fi
 jobs_case "--shuffle=x is refused before any suite runs" 1 "" "" --shuffle=x "$V"
 jobs_case "an empty --shuffle= is refused, not given a random seed" 1 "" "" --shuffle= "$V"
 # U4 now holds test_b_leak.sh (listed first, finishes last) and
-# test_c_fastfail.sh (fails at once).
+# test_c_fail.sh (fails at once).
 v_codes=""
 for seed in 1 2 3; do
     "$RUNNER" -j 4 --shuffle=$seed "$U4" >/dev/null 2>&1
