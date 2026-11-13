@@ -1,9 +1,164 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-09-14
-Repo: garrytan/gstack @ 71f6048e8ada25180e61438abc1d98cb151fe9a7
-Previously checked: 2026-07-14 @ 7c9df1c; 2026-05-07 @ 443bde0; 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+Last checked: 2026-11-13
+Repo: garrytan/gstack @ 1d3c63c53d17faf0456c564bc5950f18b370d0ef (VERSION 1.99.3.0)
+Previously checked: 2026-09-14 @ 71f6048; 2026-07-14 @ 7c9df1c; 2026-05-07 @ 443bde0; 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+
+## Changelog (2026-09-14 → 2026-11-13)
+
+**Compare was truncated**: `71f6048...1d3c63c` is 786 commits, but the
+GitHub compare API returned only 250 commits and 300 files. Fallback:
+`CHANGELOG.md` in the clone, which lists 542 entries from v1.84.1.0 to
+v1.99.3.0 (1.99.3.0 is dated 2026-11-13 and not yet a GitHub release;
+`gh release list` latest is v1.99.2.0), plus the clone's current tree
+against the old tree (top-level directories via the git trees API). I did
+not read all 542 entries: I extracted the bold lead sentence of each (about
+2,080) and read in full the entries that matched the registry's interest
+areas (planning, review/anti-skip, context/session, safety hooks, friction).
+Most entries are per-PR version stamps; the minor releases are v1.85–v1.99.
+
+Direction of the period: gstack grew into a **factory for running a crew of
+coding agents** ("Captain"/"crew"/"Capy" — a hosted agent runtime):
+`/captain` runs lanes that send READY blocks and never merge; a controller
+merges through trains or, new in v1.95, **directly at each PR's own green
+head** (`merge: direct`); `/ship` produces signed receipts bound to the
+reviewed tree; a sealed-output guard, pregate, fix-check and owner-grant
+machinery decide whether an unattended run may finish. Much of the volume
+is hardening that machinery. `/captain` is installed only on Capy machines
+as of v1.99. Most of that is out of scope for this workspace; the
+portable parts are listed below.
+
+New top-level skill directories since 2026-09-14 (listing diff):
+`captain`, `capy`, `claude-code`, `crew`, `deslop-shared-libs`,
+`eval-plan`, `modernize`, `qm`, `runaway-stopper`, `test-audit`, `verify`,
+`write-skill`, `design-motion`, `connect-chrome`, `modules`, `ubicloud`.
+Removed: `investigate` (cut in v1.98, GST-1717), `claude`, `.github`.
+
+### Skills cut on evidence (v1.98.0.0, v1.91.x QM edition) — the "retire" counter-example
+
+v1.98.0.0 cut `/plan-eng-review` as a standalone skill (its method stays
+byte for byte as `/autoplan` Phase 3) because "two evals found no gain":
+plain Opus 5.5 with no gstack found the planted engineering flaws in 15 of
+16 reviews, built 22 of 22 planned features correctly, and a session told
+to use the skill cost 7.1 times a plain one. `./setup` removes the
+gstack-owned entry on the next run and leaves a same-named skill the user
+wrote alone; the retirement goes through a `disabled_skills` path that
+cannot be re-enabled. `/investigate` was cut in the same release. Separately,
+the QM edition dropped `gstack-review` after a benchmark found it "flagged
+too many problems without making the reviewed work any better".
+
+- **Workspace relevance**: High as a method. Same question as the
+  claude-code survey ("what can we retire"), answered with measurements:
+  skills are removed when a model without them does as well at lower cost.
+  The workspace has no stated criterion for retiring a skill other than
+  native overlap.
+
+### Per-model "lite" loadouts (v1.9x, GSTA-161)
+
+Skills render from modules; `modules/loadouts.json` maps a model id
+(only `claude-opus-5-5` so far) to a `lite` loadout that drops eleven
+coaching sections of the shared preamble (about 10.7 KB less on one
+skill). Unknown models get the full skill; the start line names the model
+and flags a mismatch. Also a committed context-budget fixture
+(`test/fixtures/context-budget.json`) and a context-bill tool exist
+(already roadmapped 2026-09-14 as `context-budget-ratchet`).
+
+- **Workspace relevance**: Low to medium. Same cost lever as the
+  roadmapped context-budget work, applied per model. Related to the
+  superpowers finding that over-long skills get truncated after
+  compaction.
+
+### Checkpoint saves record the commit (v1.91.224, `/context-restore`)
+
+`/context-save` now stamps `head:` (the commit the save describes) next to
+branch, worktree and project root; `/context-restore` compares it with
+`HEAD` and, if commits landed since, lists them (up to ten) and moves every
+Remaining Work item under "Verify first"; a saved commit absent from this
+checkout (rebased, reset, other branch) is reported the same way. Ported
+from an outside PR; the test runs the real blocks, including a hostile
+`head:` value that must never execute.
+
+- **Workspace relevance**: Medium. Progress-timeline checkpoint entries and
+  handoffs in this workspace name an issue but I did not check whether they
+  record the commit they describe, so a resumed phase cannot tell whether
+  finished steps are still listed as remaining.
+
+### Crew-lane context habits (v1.97.0.0, `crew/docs/captain.md`)
+
+New "Lane context" rules: a lane expecting a wait under ~30 minutes checks
+in every 240 seconds so the prompt cache stays warm (a cold restart after
+five idle minutes costs about eight times a warm step), longer waits sleep,
+independent reads go in one parallel program with each call returning 4k
+characters or less and long output going to files, and a lane past twice the
+crew's median spend writes `handoffs/<code>/next.md` and the controller
+decides continue / rotate / park. `/runaway-stopper` and
+`gstack-runaway scan` find and rotate runaway threads. The v1.98 note
+that a run handed to a successor thread "keeps one budget" is the same
+theme.
+
+- **Workspace relevance**: Medium. The workspace runs long background
+  phases and review waits; the cache numbers are a concrete cost model for
+  poll-vs-sleep decisions. Not verified: the 8x figure (taken from the
+  changelog).
+
+### Merge at the reviewed head (v1.95.0.0)
+
+`gstack-ship-queue land --pr <n> --pin <sha>` merges one READY PR with
+`--squash --match-head-commit`, refusing unless the review receipt and
+READY note are bound to the pin, every check is green, GitHub reports the PR
+mergeable, and afterwards main's tree equals the pin merged onto its
+parent. A later fix (v1.99.x) makes `ready` refuse when its note never
+reached origin. I grepped `.agent/scripts/*.sh` in this workspace for
+`match-head-commit`: no hits (the merge script may guard this another way;
+not checked).
+
+- **Workspace relevance**: Medium. Closes the gap between "reviewed this
+  head" and "merged this head" if a push lands during the merge decision.
+
+### Friction visible per skill (v1.92.26.0, `/retro`)
+
+`gstack-retro-metrics` prints `FRICTION:` lines: the top three skills by
+questions asked, errors and aborts in the retro window, from the project's
+timeline log (written on every run), with an explicit "questions not
+tracked" instead of zero when the question log is off, and a single
+`FRICTION: unavailable` line when the helper fails. `/retro` shows a
+"Friction by skill" row. Matches the registry's "agent friction reporting"
+interest area; the 2026-04-19 digest already covered the earlier /retro.
+
+- **Workspace relevance**: Medium. The orchestrator friction log is
+  hand-kept; this shows a mechanical per-skill count from run records.
+
+### Smaller items (informational)
+
+- `/modernize` (new): bring an aging PR onto its current base, prove the
+  rebase with `range-diff`, then decide MODERNIZE / REWORK / CLOSE; never
+  closes on its own.
+- `/write-skill` (new): edit ladder (fix the tool first, edit the line that
+  already covers the idea), drift and size checks, "diet" for bloated skills.
+- `/freeze` boundary check now resolves whole paths including
+  non-existent folders, symlinks at any depth, `~`, and Windows forms
+  (v1.92.9.0, #3623): a worked example of hook-based path boundaries
+  failing open.
+- v1.99.0.0: "An agent's own words no longer settle a user challenge at the
+  /autoplan gate"; "/autoplan no longer gets stuck between phases after
+  Claude Code 2.1.317 compacts a long session" (compaction breaking a
+  multi-phase driver).
+- `gstack-clean` (v1.93.0.0): dry-run-by-default cleaner for the repo's
+  `.gstack/` scratch with many refusal conditions.
+- Open PR 4273 title: "Make gstack agents lead every report with what
+  failed, what's unverified and what else changed" — title read only, not
+  the body.
+- Setup changes: new installs follow the stable channel; upgrades refuse to
+  move a checkout under a live session lease (v1.9x).
+
+### Activity Snapshot (2026-11-13)
+
+- 94 open issues and 29 open PRs (GitHub search API); 699 PRs merged since
+  2026-10-14, against 38 recorded for the previous two months, (the source of the volume was not checked). The 25 most
+  recent open issues are mostly crew/Captain tooling gaps and gbrain
+  wiring; the 20 most recent open PRs are small fixes. Releases ship
+  roughly daily (v1.99.2.0 latest on GitHub, 2026-11-12).
 
 ## Changelog (2026-07-14 → 2026-09-14)
 
@@ -269,6 +424,46 @@ CI, but not a tracked item).
   600000 ms silently lowered, inverting the wrapper invariant).
 - 38 merged PRs since 2026-07-14; all consolidated into the wave
   releases above.
+
+## Pending Review (2026-11-13 round)
+
+(none pending from this round)
+
+## Roadmapped (2026-11-13 decisions)
+
+- `gstack-1` `retire-skills-on-measured-no-gain` — a retirement criterion
+  for skills and review phases: keep one only if it finds things a plain
+  model does not, measured on a known case. Gstack cut a review skill after
+  a plain model found 15 of 16 planted flaws without it and the skill cost
+  7.1x (their numbers, not verified). Added to docs/roadmap.md (2026-11-13)
+- `gstack-2` `checkpoint-records-commit` — every progress entry records the
+  commit it describes, and a resuming phase states the commits landed since
+  before acting. Owner's note: "this seems like it could be useful". Added
+  to docs/roadmap.md (2026-11-13)
+- `gstack-5` `friction-by-skill-metric` — a small reader that counts, per
+  skill or phase, questions to the owner, refusals and review rounds from
+  existing records (transcripts, progress records), printing "not tracked"
+  where there is no data; feeds the friction log and the `gstack-1`
+  retirement criterion. Added to docs/roadmap.md (2026-11-13)
+
+## Deferred (2026-11-13 decisions)
+
+- `gstack-3` `merge-at-reviewed-head` — owner's reason: "I typically don't
+  have multiple agents working on the same PR". Fact recorded with it:
+  `merge_pr.sh` already captures the reviewed head and targets CI at it;
+  only the final `gh pr merge --merge` call is not pinned with
+  `--match-head-commit` (2026-11-13)
+- `gstack-4` `lane-wait-and-spend-rules` — warm-wait check-ins to keep the
+  prompt cache, parallel reads capped at 4k characters per call, and a
+  spend threshold that triggers a written handoff. No recorded spend or wait
+  problem it would fix (2026-11-13)
+- `gstack-6` `per-model-skill-loadouts` — render a smaller skill for a named
+  model, full for unknown ones, with a mismatch warning. Overlaps the
+  roadmapped context-budget item and the effort to streamline instructions
+  (2026-11-13)
+- `gstack-7` `modernize-aging-pr-skill` — range-diff-proven rebase of an old
+  PR and an explicit modernize/rework/close verdict, never closing on its
+  own. No aging pull requests here today (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
