@@ -215,6 +215,31 @@ out=$("$RP" sources --progress "$TMPD/parts_ext.md" --head "$HEAD" --reviews "$T
 [[ "$(printf '%s' "$out" | jq -r '.local_findings[0].entry_type')" == "External Review" && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 ]] \
     && pass "sources: an External Review after the boundary is still read (the predecessor --type gave before)" \
     || fail "sources: External Review after the slice (out=$out)"
+# A restart cuts the round count, not the pull request (issue 459 host
+# decision): a restart recorded while the pull request is open keeps the
+# reviews before it, open boxes included, in triage input, as on main.
+{ open_review "Local Review" '**PR**: #70 at `abc1234`' "before the restart"
+  part_checkpoint rounds restart
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "after the restart"; } > "$TMPD/restart.md"
+out=$("$RP" sources --progress "$TMPD/restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) before the restart — `scripts/x.sh:3`","(must-fix) after the restart — `scripts/x.sh:3`"]' ]] \
+    && pass "sources: a restart while the pull request is open keeps that pull request's earlier reviews, open boxes included" \
+    || fail "sources: restart keeps the open pull request's reviews (out=$out)"
+# A merge boundary still cuts after a restart: merge answer, restart, next
+# part's plan -- the restart clears the arm, so the plan is no boundary and
+# the earlier pull request's entry stays (the documented limitation); a
+# merge answer, the next part's plan, then a restart cuts at the plan.
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 before the restart"
+  part_checkpoint rounds restart
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 after the restart"; } > "$TMPD/parts_restart.md"
+out=$("$RP" sources --progress "$TMPD/parts_restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 2 ]] \
+    && pass "sources: a restart in the next part keeps that part's earlier reviews and still cuts the merged pull request's" \
+    || fail "sources: restart after a merge boundary (out=$out)"
 
 # ============================================ sources: coverage (#309) =====
 # Real git histories. A review recorded at R still covers head H when R is an

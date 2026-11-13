@@ -88,8 +88,8 @@
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #     A pre-push review-code task line at round 3 or later (as
 #     `review_progress.sh round` counts it: complete reviews on the branch
-#     from the start of the current pull request's work, pr_start.py, the
-#     same rule as `next`) ends with its scope and the words "no
+#     from the round start, pr_start.py round_start, the same rule as
+#     `next`) ends with its scope and the words "no
 #     cross-model reviewers" (issue 321, the round-3 exception). The first
 #     review of the next pull request of an issue is round 1 (issue 459).
 #
@@ -932,7 +932,7 @@ cmd_next() {
 import json, os, sys
 sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
-from pr_start import pr_start, merge_armed
+from pr_start import round_start, merge_armed
 
 MAX_ROUNDS = 3
 PR = os.environ["PR_STATE"]
@@ -978,12 +978,12 @@ TYPE_TO_SKILL = {
 }
 
 
-# The first entry of the work of the current pull request: after the newest
-# **Decision**: restart checkpoint, or at the first start entry after a
-# merge answer (pr_start.py holds the one rule, shared with
-# review_progress.sh round and sources; issue 459). round_count() counts
-# reviews from it and skill_for() names phases from it.
-START = pr_start(entries)
+# The first entry the rounds count from: after the newest **Decision**:
+# restart checkpoint, or at the first start entry after a merge answer,
+# whichever is newer (pr_start.py round_start holds the one rule, shared
+# with review_progress.sh round; issue 459). round_count() counts reviews
+# from it and skill_for() names phases from it.
+START = round_start(entries)
 
 
 def skill_for(entry):

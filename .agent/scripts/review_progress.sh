@@ -14,13 +14,15 @@
 # round    Prints two lines: "round=<R>" and "prev_must_fix=<P|->". R is the
 #          count of prior "## Local Review (Pre-Push)" entries whose
 #          **Branch** correlation names <name> and whose **Status** is
-#          complete, plus 1; only entries from the start of the current
-#          pull request's work count (pr_start.py, issue 459): after the
-#          newest "## Checkpoint" with **Decision**: restart (a restart
-#          starts the rounds over), or from the first Plan Authored or
-#          not-PR-correlated, Addressed-less Implementation after a merge
-#          answer (the next pull request of the issue). A partial or failed
-#          review was not a round (issue 321).
+#          complete, plus 1; only entries from the round start count
+#          (pr_start.py round_start, issue 459): after the newest
+#          "## Checkpoint" with **Decision**: restart (a restart starts the
+#          rounds over), or from the first start entry after a merge answer
+#          (the next pull request of the issue: a Plan Authored, or an
+#          Addressed-less Implementation that is Branch-correlated, carries
+#          another pull request's number, or has no correlation line and is
+#          not complete), whichever is newer. A partial or failed review
+#          was not a round (issue 321).
 #          P is the must-fix finding count of the most recent counted entry
 #          ("-" when none). dispatch_phase.sh's `next` counts rounds by the
 #          same rule. Reads the file via progress_read.py; a missing file
@@ -61,8 +63,9 @@
 #          bookkeeping changes since -- _bookkeeping.sh, #309), the entries
 #          dropped and why, GitHub inline comments, and candidate cross-source
 #          confirmations (same file, comment at the head) as JSON. Only the
-#          review entries of the current pull request count (pr_start.py,
-#          issue 459). Run it from the PR worktree. See cmd_sources.
+#          review entries of the current pull request count (pr_start.py
+#          pr_start, issue 459; a restart does not cut them). Run it from
+#          the PR worktree. See cmd_sources.
 #
 # plan-sha The plan-commit SHA (last commit touching plan.md) for the
 #          **Plan** correlation field of Plan Authored / Plan Review
@@ -156,19 +159,19 @@ cmd_round() {
     json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
         echo "error: round: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
     # Prior COMPLETE entries for THIS branch, from the start of the current
-    # pull request's work (pr_start.py: after the newest restart checkpoint,
-    # or the first new work after a merge answer; issue 459); the newest is
-    # the last in file order. The whole timeline is read (not --type)
-    # because the boundary is drawn from Checkpoint, Plan Authored and
-    # Implementation entries. round_count() in dispatch_phase.sh `next`
-    # reads the same pr_start.py.
+    # pull request's work (pr_start.py round_start: after the newest restart
+    # checkpoint, or the first new work after a merge answer, whichever is
+    # newer; issue 459); the newest is the last in file order. The whole
+    # timeline is read (not --type) because the boundary is drawn from
+    # Checkpoint, Plan Authored and Implementation entries. round_count() in
+    # dispatch_phase.sh `next` reads the same round_start.
     printf '%s' "$json" | BRANCH="$branch" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
 sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
-from pr_start import pr_start
+from pr_start import round_start
 entries = json.load(sys.stdin)["entries"]
-mine = [e for e in entries[pr_start(entries):]
+mine = [e for e in entries[round_start(entries):]
         if e.get("base_type") == "Local Review (Pre-Push)"
         and (e.get("status") or "").strip().lower() == "complete"
         and (e.get("correlation") or {}).get("kind") == "branch"
@@ -406,9 +409,11 @@ _persist_impl() {
 # entry with no parseable PR/Branch correlation SHA; also warned on stderr). A covering entry with a NEWER covering Integrated Review is
 # dropped with reason "superseded" (owner decision "Only triage supersedes",
 # #309); newer Local Reviews supersede nothing. Only entries from the start
-# of the current pull request's work count (pr_start.py, issue 459): the
-# reviews of an earlier merged pull request of the issue, or of the work
-# before a restart checkpoint, are neither findings nor dropped entries.
+# of the current pull request count (pr_start.py pr_start, issue 459): the
+# reviews of an earlier merged pull request of the issue are neither
+# findings nor dropped entries. A restart does not cut them: a restart
+# recorded while the pull request is open keeps its earlier reviews, open
+# boxes included (the round count still starts over there).
 # Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
@@ -448,7 +453,8 @@ head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 # Only the review entries of the current pull request (issue 459): from
 # pr_start, so the open boxes of an earlier merged pull request of the
-# issue, or of the work before a restart, are not listed as stale. The
+# issue are not listed as stale. A restart does not move pr_start: the
+# reviews of the open pull request before it stay in. The
 # types are the ones --type gave before: Local Review, Local Review
 # (Pre-Push), Integrated Review and its predecessor, External Review.
 everything = data.get("entries", [])
