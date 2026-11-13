@@ -285,3 +285,28 @@ Dismissed, with evidence: "the EXIT trap does not run on an untrapped INT/TERM/H
 - `bash .agent/scripts/tests/test_run_script_tests.sh` alone, after each change: 154, 156, then 157 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, with no SKIP, on `f499f06f`: exit 0 in 834 s. Every hook passed, `validate-script-tests` among them (every suite, because the branch touches the runner, at the hook's default of one job).
 - Each fix commit used `SKIP=validate-script-tests` (owner direction for this pass); every other hook ran.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 11:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ae06b08c73314a845, resume 1 of 3)
+
+**Branch**: feature/issue-444 at `b0e658f0`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff over 200 lines; `.pre-commit-config.yaml` is an override trigger; fix round classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1's four findings are fixed (b88b2db2, 4f0f789c, 475c53d2, f499f06f): the 5 s KILL now holds as the header says, and (u8b) fails if the backstop is removed or moved earlier; the EXIT trap stops running suites, `$(jobs -p)` checked to list the parent's `set -m` jobs inside a command substitution; empty `-j ""`, `--jobs=`, `--shuffle=` are refused; (u4)'s first run now separates list order from finish order. Accepted: the 5 s a SIGINT stop now takes when a suite's `cmd &` ignores SIGINT (stated in the header); `test_run_script_tests.sh` alone took 52 s, 157 passed, against 58 s for the round-1 version inside a full run, so the added cases cost little. Accepted with no test: the gap between a suite's `&` and its `job_of` entry, since it cannot be hit on demand and `jobs -p` now covers it.
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone (157 passed, 0 failed, 52 s, load average 12); cross-model on the whole diff (`cross_model_review.sh --branch origin/main --agents gemini,codex`, both EXIT=0, as the fix-round rule requires at Deep); a fresh Claude adversarial sub-review of the fix diff. Not run, per the host: the full suite (the fix pass ran full pre-commit on f499f06f, exit 0, 834 s).
+
+Dismissed, with evidence: the "wait -n misses children" and "late leak should give exit 2" findings again (codex; see round 1: 400 rounds without a miss, and exit 1 is what one job gives); "the second stop_suites after on_interrupt re-enters a 5 s wait" (gemini) — the SIGTERM (u8) run ends in 0 s, so it does not; "total is unused" (gemini) — read at :860 and :862; plan items `--timings`, `# serial:`, `sleep_arg` (gemini, codex) — dropped by the plan review's checkpoint.
+
+### Findings
+- [ ] (suggestion) A second signal during the stop does not hurry it: `on_interrupt` resets the traps, so a second TERM or Ctrl-C makes the EXIT trap call `stop_suites TERM` again with a new 5 s deadline (the adversarial reviewer measured 6.0 s for a second TERM at 1 s); when a stop is already under way, KILL at once — `.agent/scripts/tests/run_script_tests.sh:530`
+- [ ] (suggestion) A suite reaped by `wait -n` leaves `job_of`, so a process it left running in its own group is not stopped by a later interrupt or the EXIT cleanup (not a regression; the second sweep catches it only if it writes to TMPDIR); keep every launched group for `stop_suites` — `.agent/scripts/tests/run_script_tests.sh:712`
+- [ ] (suggestion) (u4)'s finish-order check relies on 0.5 s gaps between three suites that start one after another; under load or on a 4-vCPU runner b and c can swap and fail a correct runner; widen the gaps (about 1 s and 2.5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1252`
+- [ ] (suggestion) (u8c) bounds a 1 s cleanup by `u8_secs -le 4` measured with whole-second `date +%s` against a 5 s backstop; a 1 to 2 s stall under load fails it; measure with EPOCHREALTIME or bound against the backstop (under 5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1523`
