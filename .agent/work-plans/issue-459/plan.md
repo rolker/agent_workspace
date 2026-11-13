@@ -34,15 +34,23 @@ Atomic commits, after rebasing on 461 once it merges:
    `from pr_start import pr_start` (so `suites_for_files.sh` maps it);
    `restart_start()` and the `cmd_round` loop go; `round_count()` and
    `skill_for()` use it. Tests: see "Tests".
-2. **Post-merge route** — a `next` row, before row 23 and the `merge` rows: armed
-   at the end of the timeline and `--pr none` answers `checkpoint:plan`
-   (`proceed` to `implement`, `revise` to `plan-task`). It keys on armed state, so
-   a newest `## Merge (...)` record after a landed merge raises it too. Row 23
-   (newest Merge record, `--pr open`) is unchanged: with the pull request still
-   open it keeps answering `checkpoint:merge-refused`. `--pr none` with a Merge
-   record and no armed state (a disarmed refusal) also stays row 23. `merge`
-   and `merge-refused` answers are unchanged. Tests for each, both Merge-record
-   cases included.
+2. **Post-merge route** — a `next` row 3a, checked after rows 2 and 3 and
+   before the base-type rows: it fires only when the timeline is armed at its
+   end, `--pr none`, AND the newest entry is a checkpoint with `Decision:
+   merge` (any `After`, which covers a `merge-refused` checkpoint answered
+   `merge`) or a `## Merge (...)` record; it answers `checkpoint:plan`
+   (`proceed` to `implement`, `revise` to `plan-task`). Without the newest-entry
+   guard it would shadow the plan proceed/revise rows and the phase-failed
+   retry/takeover rows (the timeline stays armed until the first start entry)
+   and repeat `checkpoint:plan` forever. Row 23 (newest Merge record, `--pr
+   open`) is unchanged: with the pull request still open it keeps answering
+   `checkpoint:merge-refused`. `--pr none` with a Merge record and no armed
+   state (a disarmed refusal) also stays row 23. `merge` and `merge-refused`
+   answers are unchanged. Tests: each row of the decision table keeps its
+   answer (the existing fixtures), the seven-state walk, both Merge-record
+   cases, and both looping sequences (merge, `checkpoint:plan`, `revise` →
+   `plan-task`; `revise`, plan-task writes nothing, phase-failed `retry` → the
+   retry).
 3. **`findings` and `check` read a post-publish `## Local Review`** (own commit,
    the two stay in step), with one shared predicate for the "No issues found.
    LGTM." placeholder of an approved review in `pr_start.py`, used by `findings`
@@ -101,6 +109,8 @@ timelines (0-based entry index) and synthetic sequences:
 | merge, PR-correlated fix, merge, Plan Authored | the Plan Authored | no |
 | merge, restart, Plan Authored, merge, Plan Authored | the last Plan Authored | no |
 | hand merge: review, Branch Implementation, no merge checkpoint | none (known limitation) | no |
+| merge, record, merge-refused answered `merge`, Plan Authored (issue-307 shape plus a part) | the Plan Authored | no |
+| merge, plan `proceed`, FAILED Branch Implementation (a start entry counts whatever its Status) | the Implementation; its retry dispatches `implement` | no |
 
 ## Files to Change
 
@@ -184,7 +194,9 @@ refusals, timing, offline use or a new entry type.
 **Rule 2, after a merge.** A merged pull request on an open issue is treated as an
 earlier part, not as the end. The run first asks GitHub whether the issue is
 closed and ends if so; if it cannot read the state it stops, never guessing. If
-the issue is open and no pull request is open, the plan checkpoint is asked:
+the issue is open and the old worktree survived the merge (still at the merged
+pull request's head), the run stops and says so instead of routing. If the
+issue is open and no pull request is open, the plan checkpoint is asked:
 `revise` plans the next part; `proceed` goes straight to implementing and is
 offered only when the plan is unchanged since its last review and names a part
 not yet delivered. The dialog shows the pull request just merged, why the issue

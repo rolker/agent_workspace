@@ -108,7 +108,10 @@
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
 #                      [--type workspace|project] [--project <name>]
 #                      [--progress <file>]
-#     The run-issue decision table (28 rows; see the plan for #276 PR 2).
+#     The run-issue decision table (28 rows; see the plan for #276 PR 2),
+#     plus row 3a (issue 459): after a merge answer with no pull request
+#     open (--pr none), when the newest entry is that answer or a Merge
+#     record, `checkpoint:plan` for the issue's next pull request.
 #     Prints `action=<token>`, `reason=<one line>`, then `round=<n>` when
 #     the action concerns the pre-push review loop, `phase=<skill>` when a
 #     checkpoint:phase-failed / retry / takeover names a failed phase, and
@@ -928,7 +931,7 @@ cmd_next() {
     printf '%s' "$json" | PR_STATE="$pr" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, sys
 sys.path.insert(0, os.environ["PR_START_DIR"])
-from pr_start import pr_start
+from pr_start import pr_start, merge_armed
 
 MAX_ROUNDS = 3
 PR = os.environ["PR_STATE"]
@@ -1070,6 +1073,32 @@ if status in ("partial", "failed"):
     if phase:
         emit("checkpoint:phase-failed", reason, phase=phase)
     emit("checkpoint:phase-failed", reason)
+
+# Row 3a (issue 459) -- after a merge, with the issue still open and no
+# pull request: the merged pull request was an earlier part, and the plan
+# checkpoint is asked for the next one (proceed -> implement, revise ->
+# plan-task: rows 10/11). It fires only when all three hold:
+#   - --pr none (an open or draft pull request keeps rows 21/23 below:
+#     a merge answer is still a merge to make, a Merge record a refusal);
+#   - the timeline is armed at its end (pr_start.py: a merge answer at
+#     merge/findings with no start entry after it and no non-merge answer
+#     at merge/findings/merge-refused);
+#   - the newest entry is a Checkpoint answered merge (any After, so the
+#     merge-refused checkpoint answered merge counts) or a Merge record
+#     (written at the gate before a merge that then landed).
+# The last guard keeps it from shadowing anything the host records after
+# it: the plan checkpoint answer, a phase-failed retry or takeover, or a
+# stop all leave the timeline armed until the first start entry, and they
+# route by their own rows (2, 10, 11, 26, 27). It sits after rows 2 and 3.
+# run-issue reaches it only for an open issue (the issue state is asked
+# first; a closed issue ends the run), and a merged pull request on the
+# branch is probed as none, not merged (row 1).
+if PR == "none" and merge_armed(entries) and (
+        (base == "Checkpoint" and (fields.get("Decision") or "").strip().lower() == "merge")
+        or base in ("Merge (report-only)", "Merge (unreviewed)")):
+    emit("checkpoint:plan",
+         "a pull request of this issue merged and none is open -- plan the next part "
+         "(proceed implements the reviewed plan, revise refreshes it)")
 
 # Rows 5-27, dispatched on the newest entrys base_type (Checkpoint rows
 # dispatch again on **After**/**Decision**). Exactly one of these blocks can

@@ -2,7 +2,8 @@
 # .agent/scripts/tests/test_dispatch_phase.sh
 # Tests for dispatch_phase.sh (issue #276 PR 2): the handoff block, the
 # --check-exit exit-outcome check, and the `next` decision table (28 rows,
-# one fixture per row plus five end-to-end timelines). Hermetic: mktemp -d
+# one fixture per row plus five end-to-end timelines; row 3a and the
+# pr_start.py boundary of issue 459 with their own fixtures and timelines). Hermetic: mktemp -d
 # sandboxes and --progress fixture files only; no `gh` involved (`next`
 # never calls it).
 # Run: bash .agent/scripts/tests/test_dispatch_phase.sh
@@ -68,6 +69,20 @@ assert_next() {
     done
     [[ "$ok" -eq 1 ]] && pass "$label" || fail "$label (missing pattern in: $out)"
 }
+
+# step <file> <pr> <want-action> [want-pattern...] -- one step of a growing
+# timeline file; append <file> <entry> adds the next entry to it.
+step() {  # <file> <pr> <want-action> [want-pattern...]
+    local f="$1" pr="$2" want="$3"; shift 3
+    local out rc ok=1 pat
+    out=$(bash "$DP" next --pr "$pr" --progress "$f" 2>&1); rc=$?
+    if [[ "$rc" -ne 0 || "$out" != "action=$want"* ]]; then
+        fail "timeline step expected action=$want (rc=$rc out=${out:0:200})"; TIMELINE_OK=0; return
+    fi
+    for pat in "$@"; do [[ "$out" == *"$pat"* ]] || ok=0; done
+    [[ "$ok" -eq 1 ]] || { fail "timeline step action=$want missing pattern (out=$out)"; TIMELINE_OK=0; }
+}
+append() { local f="$1"; shift; printf '%s\n\n' "$*" >> "$f"; }
 
 # ----------------------------------------------------------- entry builders ---
 issue_review() {  # <status> <actions-open 0|1>
@@ -483,6 +498,114 @@ $(implementation complete "")
 $(local_review_prepush complete changes-requested feature/issue-9 ddd4444)
 $(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
 
+echo "TEST: next -- row 3a, after a merge with no pull request open (issue 459)"
+# The state walk from the issue-459 plan's third review: which row answers
+# each state once row 3a is in.
+MERGED="$PART1"   # ... Integrated Review, Checkpoint merge/merge (armed)
+assert_next "walk 1: armed, newest the merge answer, --pr none -> checkpoint:plan (row 3a; was merge, issue 459 acceptance)" none \
+    "$MERGED" checkpoint:plan "merged"
+out=$(run_next none "$MERGED")
+[[ "$out" != "action=merge"* ]] && pass "acceptance: next after a merge checkpoint with no pull request does not answer merge" || fail "acceptance: merge again (out=$out)"
+assert_next "walk 2: armed, newest a Merge record (written at the gate, then the merge landed), --pr none -> checkpoint:plan (row 3a, not row 23)" none \
+    "$MERGED
+$(merge_record report-only)" checkpoint:plan
+assert_next "walk 3: armed, newest a Merge record, --pr open (refused) -> checkpoint:merge-refused (row 23 unchanged)" open \
+    "$MERGED
+$(merge_record report-only)" checkpoint:merge-refused
+assert_next "walk 4: not armed (merge-refused answered address), newest a Merge record, --pr none -> row 23 unchanged" none \
+    "$MERGED
+$(checkpoint merge-refused address)
+$(merge_record unreviewed)" checkpoint:merge-refused
+assert_next "walk 4b: no merge answer at all, newest a Merge record, --pr none -> row 23 unchanged" none \
+    "$(merge_record report-only)" checkpoint:merge-refused
+out=$(bash "$DP" next --pr merged --progress "$TMPD/never_read.md" 2>&1)
+[[ "$out" == "action=done"* ]] && pass "walk 5: armed, --pr merged given -> row 1, done (before any read)" || fail "walk 5 (out=$out)"
+assert_next "walk 6: a stop at the merge checkpoint after a merge answer -> row 2, done" none \
+    "$MERGED
+$(checkpoint merge stop)" "done"
+assert_next "walk 6b: a stop at the post-merge plan checkpoint (still armed) -> row 2, done" none \
+    "$MERGED
+$(checkpoint plan stop)" "done"
+assert_next "walk 7: armed, then the next part's Plan Authored newest -> row 8, review-plan" none \
+    "$MERGED
+$(plan_authored complete)" review-plan
+assert_next "row 21 unchanged: armed, newest the merge answer, --pr open -> merge" open \
+    "$MERGED" merge
+assert_next "row 21 unchanged: armed, newest the merge answer, --pr draft -> merge" draft \
+    "$MERGED" merge
+assert_next "row 3a: After findings answered merge, merge landed, --pr none -> checkpoint:plan" none \
+    "$(integrated_review complete open)
+$(checkpoint findings merge)" checkpoint:plan
+assert_next "row 3a: the issue-307 shape (merge, record, merge-refused answered merge), --pr none -> checkpoint:plan" none \
+    "$MERGED
+$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:plan
+assert_next "row 28 unchanged: the issue-307 shape with the pull request still open -> checkpoint:unexpected" open \
+    "$MERGED
+$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:unexpected
+assert_next "row 28 unchanged: merge-refused answered merge with no earlier merge answer (not armed), --pr none -> checkpoint:unexpected" none \
+    "$(merge_record report-only)
+$(checkpoint merge-refused merge)" checkpoint:unexpected
+assert_next "row 3a needs the newest entry: armed, newest a PR-correlated fix, --pr none -> row 12, review-code" none \
+    "$MERGED
+$(implementation_pr complete)" review-code
+assert_next "row 3a needs --pr none: a failed newest entry while armed is still row 3" none \
+    "$MERGED
+$(plan_authored failed)" checkpoint:phase-failed "phase=plan-task"
+
+echo "TEST: next -- row 3a does not loop on the plan checkpoint it raises (issue 459)"
+# Sequence 1: merge lands, checkpoint:plan, revise recorded -> plan-task;
+# the plan checkpoint answer leaves the timeline armed, so a row 3a keyed
+# on the armed state alone would raise checkpoint:plan again, forever.
+TL="$TMPD/timeline_postmerge_revise.md"; TIMELINE_OK=1
+printf '%s\n\n' "$MERGED" > "$TL"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan revise)"
+step "$TL" none plan-task
+append "$TL" "$(plan_authored complete)"
+step "$TL" none review-plan
+append "$TL" "$(plan_review complete)"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan proceed)"
+step "$TL" none implement
+append "$TL" "$(implementation complete "")"
+step "$TL" none review-code pre-push
+append "$TL" "$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)"
+step "$TL" none address-findings round=1
+[[ "$TIMELINE_OK" -eq 1 ]] && pass "timeline F: merge, checkpoint:plan, revise -> plan-task, then the next part's own loop from round 1" || fail "timeline F had a mismatch (see above)"
+# proceed straight to implement after the merge.
+assert_next "row 3a: the post-merge checkpoint answered proceed -> implement (row 10)" none \
+    "$MERGED
+$(checkpoint plan proceed)" implement
+# Sequence 2: revise, plan-task writes no entry (check-exit MISSING), the
+# phase-failed checkpoint is answered retry or takeover: rows 26/27, not 3a.
+assert_next "row 3a: revise, plan-task wrote nothing, phase-failed answered retry -> plan-task (row 26)" none \
+    "$MERGED
+$(checkpoint plan revise)
+$(checkpoint phase-failed retry plan-task)" plan-task
+assert_next "row 3a: the same answered takeover -> plan-task, mode=inline (row 27)" none \
+    "$MERGED
+$(checkpoint plan revise)
+$(checkpoint phase-failed takeover plan-task)" plan-task "mode=inline"
+assert_next "row 3a: proceed, implement wrote nothing, phase-failed answered retry -> implement (row 26)" none \
+    "$MERGED
+$(checkpoint plan proceed)
+$(checkpoint phase-failed retry implement)" implement
+# A failed first implement of the next part is its start entry: the retry
+# dispatches implement, not address-findings (part 1's complete
+# Implementations are before the boundary).
+TL="$TMPD/timeline_postmerge_failed.md"; TIMELINE_OK=1
+printf '%s\n\n' "$MERGED" > "$TL"
+step "$TL" none checkpoint:plan
+append "$TL" "$(checkpoint plan proceed)"
+step "$TL" none implement
+append "$TL" "$(implementation failed "")"
+step "$TL" none checkpoint:phase-failed phase=implement
+append "$TL" "$(checkpoint phase-failed retry implement)"
+step "$TL" none implement
+[[ "$TIMELINE_OK" -eq 1 ]] && pass "timeline G: merge, proceed, a failed first implement of the next part -> phase=implement, retry -> implement" || fail "timeline G had a mismatch (see above)"
+
 echo "TEST: next -- a restart checkpoint as the newest entry (orchestrator recipe (a))"
 assert_next "restart: a restart checkpoint with no entry after it routes to row 28, checkpoint:unexpected (the host then dispatches review-issue)" none \
     "$TWO_ROUNDS
@@ -555,17 +678,6 @@ echo "TEST: next -- five end-to-end timelines (must never hit row 28)"
 
 # (A) clean run to merge
 TL="$TMPD/timeline_a.md"
-step() {  # <file> <pr> <want-action> [want-pattern...]
-    local f="$1" pr="$2" want="$3"; shift 3
-    local out rc ok=1 pat
-    out=$(bash "$DP" next --pr "$pr" --progress "$f" 2>&1); rc=$?
-    if [[ "$rc" -ne 0 || "$out" != "action=$want"* ]]; then
-        fail "timeline step expected action=$want (rc=$rc out=${out:0:200})"; TIMELINE_OK=0; return
-    fi
-    for pat in "$@"; do [[ "$out" == *"$pat"* ]] || ok=0; done
-    [[ "$ok" -eq 1 ]] || { fail "timeline step action=$want missing pattern (out=$out)"; TIMELINE_OK=0; }
-}
-append() { local f="$1"; shift; printf '%s\n\n' "$*" >> "$f"; }
 
 : > "$TL"
 TIMELINE_OK=1
