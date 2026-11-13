@@ -631,11 +631,25 @@ us_case() {
     U_LISTED[$1]="$SESSION_LISTED"
     us_probe "$3" "/$NAME:zz-probe"; p=$?
     U_PLUG_SAID[$1]="$(probe_said "$p")"
-    # The first session's list, unless it had none and the second did.
-    [[ "${U_LISTED[$1]}" == "<"* ]] && U_LISTED[$1]="$SESSION_LISTED"
+    # The first session's list, unless it had none and the second did. An
+    # empty list ("<none>") is a list: only a missing one is replaced.
+    us_no_list "${U_LISTED[$1]}" && U_LISTED[$1]="$SESSION_LISTED"
     U_BARE[$1]=$b
     U_PLUG[$1]=$p
     echo "  FACT: $1 $2: bare /zz-probe $(probe_word "$b"); /$NAME:zz-probe $(probe_word "$p"); init command list: ${U_LISTED[$1]}${4:+; $4}"
+}
+# us_no_list <listed>: true when the session printed no command list at
+# all (no init line, or one without slash_commands). "<none>" is an empty
+# list, which is evidence, not a missing one.
+us_no_list() { [[ "$1" == "<"* && "$1" != "<none>" ]]; }
+# us_count <id> <name>: how many times the case's init command list names
+# <name> (bare or slash-prefixed), 0 for an empty list; nothing when there
+# is no list.
+us_count() {
+    local l="${U_LISTED[$1]:-<no init line>}"
+    us_no_list "$l" && return 0
+    [[ "$l" == "<none>" ]] && { echo 0; return 0; }
+    tr ',' '\n' <<< "$l" | grep -cxF -e "$2" -e "/$2" || true
 }
 # us_got <id> bare|plug: yes, no or unknown -- is that name in the case's
 # init command list? From the list when the CLI printed one (an empty list
@@ -663,7 +677,7 @@ us_expect() {
     local gb gp how="init command list: ${U_LISTED[$1]}"
     gb="$(us_got "$1" bare)"
     gp="$(us_got "$1" plug)"
-    [[ "${U_LISTED[$1]}" == "<"* && "${U_LISTED[$1]}" != "<none>" ]] \
+    us_no_list "${U_LISTED[$1]}" \
         && how="no init command list, judged by the probes: bare ${U_BARE_SAID[$1]}; prefixed ${U_PLUG_SAID[$1]}"
     if [[ ( "$2" == - || "$gb" == "$2" ) && ( "$3" == - || "$gp" == "$3" ) ]]; then
         pass "$1: $4"
@@ -811,11 +825,10 @@ user_scope_cases() {
     us_case U7 "local true plus user true" "$us_both"
     us_expect U7 - yes \
         "a session in a root enabled at both local and user scope lists $NAME:zz-probe"
-    if [[ "${U_LISTED[U7]}" == "<"* ]]; then
-        n=""
+    n="$(us_count U7 "$NAME:zz-probe")"
+    if [[ -z "$n" ]]; then
         fail "U7: could not tell how many times $NAME:zz-probe is listed (${U_LISTED[U7]}): the suite's assumption about the stream-json init line does not hold on this CLI"
     else
-        n="$(tr ',' '\n' <<< "${U_LISTED[U7]}" | grep -cE "^/?$NAME:zz-probe\$")"
         [[ "$n" -eq 1 ]] \
             && pass "U7: local true plus user true lists $NAME:zz-probe once" \
             || fail "U7: local true plus user true lists $NAME:zz-probe $n times (${U_LISTED[U7]})"

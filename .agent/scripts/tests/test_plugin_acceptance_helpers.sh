@@ -265,7 +265,7 @@ fi
 # The user-scope cases' judging helpers (#446): a case is judged from the
 # session's init command list when there is one, and from the probes only
 # when there is none; a stop condition is clear, FIRES or UNDECIDED.
-judge_def="$(awk '/^# us_got <id> bare\|plug:/ { on = 1 } /^# us_finish: / { on = 0 } on' "$SUITE")"
+judge_def="$(awk '/^# us_no_list <listed>:/ { on = 1 } /^# us_finish: / { on = 0 } on' "$SUITE")"
 if [[ "$judge_def" != *"us_got() {"* || "$judge_def" != *"us_verdict() {"* || "$judge_def" != *"us_expect() {"* ]]; then
     fail "could not find us_got()/us_expect()/us_verdict() in $SUITE (section markers moved?)"
 else
@@ -294,6 +294,45 @@ else
     [[ "$got" == "A=yes,yes B=no,yes C=no,no D=yes,unknown E=yes,no | clear | FIRES | UNDECIDED"*" P:A: a F:B: wanted bare zz-probe listed - and aw-accept-4242:zz-probe listed no; got no and yes (init command list: aw-accept-4242:zz-probe)" ]] \
         && pass "the user-scope cases are judged from the init command list, the probes only without one; stop checks clear / FIRES / UNDECIDED" \
         || fail "user-scope judging helpers: $got"
+    # An empty list is a list: counted as 0, never "could not tell"; no
+    # list at all counts as nothing (U7's UNDECIDED).
+    # shellcheck disable=SC2034
+    got="$(
+        declare -A U_LISTED=()
+        eval "$judge_def"
+        U_LISTED[A]="<none>"; U_LISTED[B]="aw-accept-4242:zz-probe,/aw-accept-4242:zz-probe"
+        U_LISTED[C]="<no init line>"; U_LISTED[D]="<init line without slash_commands>"; U_LISTED[E]="zz-probe"
+        for id in A B C D E; do printf '%s=[%s] ' "$id" "$(us_count "$id" aw-accept-4242:zz-probe)"; done
+    )"
+    [[ "$got" == "A=[0] B=[2] C=[] D=[] E=[0] " ]] \
+        && pass "us_count: an empty list counts 0, a missing one nothing, slash-prefixed entries count" \
+        || fail "us_count on synthetic lists: $got"
+fi
+
+# us_case keeps the first session's list unless it had none: an empty list
+# ("<none>") is kept, never replaced by the second session's missing one.
+case_def="$(awk '/^us_case\(\) \{/ { on = 1 } on { print } on && /^}/ { exit }' "$SUITE")"
+if [[ "$case_def" != *"us_case() {"* || "$judge_def" != *"us_no_list() {"* ]]; then
+    fail "could not find us_case()/us_no_list() in $SUITE (section markers moved?)"
+else
+    # shellcheck disable=SC2034
+    got="$(
+        NAME=aw-accept-4242
+        declare -A U_BARE=() U_PLUG=() U_BARE_SAID=() U_PLUG_SAID=() U_LISTED=()
+        eval "$judge_def"
+        eval "$case_def"
+        LISTS=()
+        us_probe() { SESSION_LISTED="${LISTS[0]}"; LISTS=("${LISTS[@]:1}"); return 0; }
+        probe_said() { echo said; }
+        probe_word() { echo word; }
+        LISTS=("<none>" "<no init line>"); us_case A "a" /x >/dev/null
+        LISTS=("<no init line>" "aw-accept-4242:zz-probe"); us_case B "b" /x >/dev/null
+        LISTS=("zz-probe" "<none>"); us_case C "c" /x >/dev/null
+        printf '%s|%s|%s' "${U_LISTED[A]}" "${U_LISTED[B]}" "${U_LISTED[C]}"
+    )"
+    [[ "$got" == "<none>|aw-accept-4242:zz-probe|zz-probe" ]] \
+        && pass "us_case keeps an empty first list, and replaces only a missing one" \
+        || fail "us_case list choice: $got"
 fi
 
 # The encoding itself, pinned to literal names rather than re-derived with
