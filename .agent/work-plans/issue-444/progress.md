@@ -644,3 +644,11 @@ Asked: "Merge pull request 468 once CI is green on the combined code, with F1 ca
 **Decision**: revise
 
 The owner's direction for the next part, verbatim (2026-11-13): "Add a small PR to switch it on. I'm not sure we need to record before and after times now. Don't we have enough before times?" So the next pull request only turns the parallel job count on by default; no new before/after measurement runs; the slow-suite work (the issue's P2), the run-time wording in AGENTS.md and the other texts, and the carried test point (a raw-byte owning path in test_merge_pr_gate.sh, deferred from pull request 468) are left for later. Before times in hand: one job 680 to 694 s (2026-11-12), 824 to 1069 s on a loaded machine (2026-11-13), CI's lint job 11 to 13.5 min; parallel 163 to 320 s (2026-11-12).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 13:32 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `b50c8813`
+
+Part 2a refresh: one small pull request that turns the parallel default on (the suited count, 1 when the CPU count is unreadable or bash is older than 5.1; `-j 1` and RUN_SCRIPT_TESTS_JOBS=1 keep one job), updates every text and test that states the default, and checks suite independence with two shuffled parallel full runs; no before/after timing runs (owner, 2026-11-13). Does not close issue 444.
