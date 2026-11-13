@@ -1260,6 +1260,19 @@ else:
     print("a" if a > b else "b" if b > a else "doubt")
 PY
 }
+# A PR comment is a record only when its first line, with trailing blanks
+# and a carriage return trimmed, is exactly one of the two headings: a
+# heading quoted inside a body, or a first line that is a heading plus more
+# text, is not one. Prints the newest such body (jq filter).
+_GATE_REC_COMMENT_JQ='[.comments[]? | .body // ""]
+    | map(select((split("\n")[0] | sub("\\s+$"; "")) as $h
+        | $h == "## Merge (report-only)" or $h == "## Merge (unreviewed)"))
+    | last // empty'
+# The value of a record field in a comment body, trailing blanks and a
+# carriage return trimmed (a body edited into CRLF still matches).
+_gate_rec_field() {  # <body> <field name>
+    grep -m1 "^\*\*$2\*\*: " <<<"$1" | sed "s/^\*\*$2\*\*: //; s/[[:space:]]*\$//" || true
+}
 _gate_already_recorded() {  # <entry type> <conditions text>
     local etype="$1" why="$2" read_json rc=0 latest l_cond
     local t_type="" t_cond="" t_when="" t_sha="" c_body="" c_type="" c_cond="" c_when="" newer=""
@@ -1292,12 +1305,12 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         # doubt records again rather than skip.
         local c_json="${_gate_json:-}"
         [[ -n "$c_json" ]] || c_json='{}'
-        c_body=$(jq -r '[.comments[]? | .body // ""] | map(select(startswith("## Merge (report-only)") or startswith("## Merge (unreviewed)"))) | last // empty' \
+        c_body=$(jq -r "$_GATE_REC_COMMENT_JQ" \
             <<<"$c_json" 2>/dev/null || echo "")
         if [[ -n "$c_body" ]]; then
-            c_type=$(head -n1 <<<"$c_body" | sed 's/^## //')
-            c_cond=$(grep -m1 '^\*\*Conditions\*\*: ' <<<"$c_body" | sed 's/^\*\*Conditions\*\*: //')
-            c_when=$(grep -m1 '^\*\*When\*\*: ' <<<"$c_body" | sed 's/^\*\*When\*\*: //')
+            c_type=$(head -n1 <<<"$c_body" | sed 's/^## //; s/[[:space:]]*$//')
+            c_cond=$(_gate_rec_field "$c_body" Conditions)
+            c_when=$(_gate_rec_field "$c_body" When)
         fi
         if [[ -z "$t_type" && -z "$c_type" ]]; then
             return 1
@@ -1328,11 +1341,11 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         # conditions: a report-only record after an unreviewed one is the
         # newest state, and a later --force-unreviewed run records again.
         latest=$(jq -r \
-            '[.comments[]? | .body // ""] | map(select(startswith("## Merge (report-only)") or startswith("## Merge (unreviewed)"))) | last // empty' \
+            "$_GATE_REC_COMMENT_JQ" \
             <<<"$_gate_json" 2>/dev/null || echo "")
         [[ -z "$latest" ]] && return 1
         [[ "$(head -n1 <<<"$latest" | sed 's/^## //; s/[[:space:]]*$//')" == "$etype" ]] || return 1
-        l_cond=$(grep -m1 '^\*\*Conditions\*\*: ' <<<"$latest" | sed 's/^\*\*Conditions\*\*: //')
+        l_cond=$(_gate_rec_field "$latest" Conditions)
         if [[ "$l_cond" == "$why" ]]; then
             echo "  ℹ️  already recorded (as a PR comment), same conditions — skipping a duplicate ${etype} entry"
             return 0

@@ -545,6 +545,14 @@ if [[ -n "$cond_a" ]]; then
     dedup_case "unreviewed A, then a comment quoting a report-only heading mid-body; --force-unreviewed with A" --force-unreviewed skips \
         "$(rec_body 'Merge (unreviewed)' "$cond_a")" "A note quoting a record:
 $(rec_body 'Merge (report-only)' "$cond_a")"
+    dedup_case "report-only A with CRLF line ends; --report-only with A" --report-only skips \
+        "$(rec_body 'Merge (report-only)' "$cond_a" | sed 's/$/\r/')"
+    dedup_case "report-only A with trailing blanks after the conditions; --report-only with A" --report-only skips \
+        "$(rec_body 'Merge (report-only)' "$cond_a  ")"
+    dedup_case "report-only A, then a comment whose first line is the heading plus text; --report-only with A" --report-only skips \
+        "$(rec_body 'Merge (report-only)' "$cond_a")" "$(rec_body 'Merge (report-only) — why we forced' "something else")"
+    dedup_case "only a comment whose first line is the heading plus text, conditions A; --report-only with A" --report-only records \
+        "$(rec_body 'Merge (report-only) — why we forced' "$cond_a")"
 else
     fail "(dedup-c) could not read the conditions the calibration run posted"
 fi
@@ -1155,6 +1163,34 @@ for shape in unstaged staged staged-and-unstaged untracked deleted; do
         pass "(pkg-20 $shape) progress.md $shape: nothing committed or pushed, status and file byte-identical, one comment with a true reason"
     else
         fail "(pkg-20 $shape) (out=$(tail_of "$out" 900) status now: $(git -C "$A" status --porcelain))"
+    fi
+done
+
+echo "TEST: an owning PR's duplicate check: a CRLF record comment matches, a heading-plus-text comment is not a record"
+# Run 1: the push is refused, so the record (conditions X) is a PR comment
+# and the timeline has no record. The comments are then reshaped and run 2
+# (push still refused) must find X as the newest record and post nothing.
+for variant in crlf heading-plus-text; do
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    F="$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+    hook="$sb/fake_remotes/github.com/owner/pkg_a.git/hooks/pre-receive"
+    printf '#!/bin/sh\nexit 1\n' > "$hook"; chmod +x "$hook"
+    out1="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    pkg_comments_to_fixture "$sb"
+    if [[ "$variant" == crlf ]]; then
+        jq '.comments |= map(.body |= gsub("\n"; "\r\n"))' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+    else
+        jq '.comments += [{"body": "## Merge (report-only) — why we forced\n**When**: 2099-01-01 00:00 +00:00\n**Conditions**: something else\n"}]' "$F" > "$F.tmp" && mv "$F.tmp" "$F"
+    fi
+    : > "$sb/gh_fixtures/comments_posted.md"
+    out2="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    if [[ "$out1" == *"could not be pushed to origin (undone locally) — Merge (report-only) record posted as a comment"* ]] \
+        && [[ "$out2" == *"already recorded (as a PR comment), same conditions"* ]] && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
+        pass "(pkg-21 $variant) owning PR, record comment $variant: the real record is the newest and matches, nothing posted"
+    else
+        fail "(pkg-21 $variant) (out1=$(tail_of "$out1" 300) out2=$(tail_of "$out2" 600))"
     fi
 done
 
