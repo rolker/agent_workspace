@@ -2213,3 +2213,118 @@ The revision applies every checkpoint item as decided, and 2b.7's wording matche
 **Decision**: proceed
 
 Proceed with pull request 2b (steps 2b.1 to 2b.7), the last of the issue. The implementer also applies the review's nit: run-issue SKILL.md's note that the host keeps the base names step 8 as well as step 7, and the step 8 heading and its mentions no longer say "main" where a package issue uses its base.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 06:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-429 at `8f65dd0b`
+
+Pull request 2b, steps 2b.1 to 2b.7 of plan.md ("Revision of 2026-11-13"), with the plan review's nit. This is the last pull request of issue 429.
+
+### Commits
+- `a7aeb521` merge_pr: the gate reads and records a package issue in the owning checkout (2b.1, 2b.2, 2b.4 for `test_merge_pr_gate.sh` and the `merge_pr.sh` comment)
+- `9cf3bb78` Pre-push review and behind-check use a package issue's base (2b.7 (i), (ii))
+- `6f32c946` Texts for a package issue's merge gate and base (2b.6; 2b.7 (iii) to (v); the nit; 2b.4 for run-issue SKILL.md)
+- `8f65dd0b` test_package_issue_loop: one package issue end to end, case 14 (2b.5; the 2b.7 tests)
+
+### What changed
+- **2b.1** `merge_pr.sh`: the `_PKG_MATCHES` record has a fifth field, `PKG_OWN_REL`: the matched entry's relative path when its branch is `feature/issue-<N>`, else `-`. It is read back with the other fields and added to the `unset`. `_GATE_PKG_ROLE` is `owning`, `sibling` or empty. For `owning`, `_gate_wt` is `$PKG_WT_DIR/$PKG_OWN_REL`, or the worktree itself for a lone `.` entry. `records_path` is unchanged. The two guards that required an empty `PKG_WT_DIR` (`_ci_wt` and `_gate_record`'s repo test) now exclude only `sibling`. So the ancestry check, the CI target, the idempotency read and the record commit (`progress_append.sh -C`) plus its push all run in A.
+  - The old reason "carries no issue timeline" is split in two:
+    - Owning, no `progress.md`: the existing "no progress.md for issue #N in an open worktree (looked for <A>)".
+    - Sibling: "a sibling repository's pull request: this issue's records are in <A>, and a sibling's gate is not read there", with A taken from `issue_checkout_of`. When the manifest has no single owning entry, it says so instead.
+  - The record comment fallback has its own reasons: one for a sibling, and one for an owning checkout that is no git top folder.
+  - The gate's two fetches and the record push now go through `wt_bounded_git` and run from inside the checkout (`(cd <dir> && wt_bounded_git ...)`). The first attempt, `wt_bounded_git -C <dir>`, broke `test_merge_pr_gate.sh` g17/g17c, whose worktree path holds 0xff/ESC bytes. On this machine `timeout` evidently does not pass such an argument through intact.
+- **2b.2** Report-only stays. Package `WORKTREE_TYPE` is empty, so only the existing workspace enforcement applies. Asserted by pkg-10.
+- **2b.3** No cleanup case added, as the plan says. The `git branch -d` case was dropped because it duplicates `test_sweep_reports_unmerged_local_branch`.
+- **2b.4** `p11` became `demo`:
+  - `test_merge_pr_gate.sh`: the two def-pkg lines. The other two fixture lines were replaced by the new package fixture, which uses `demo`.
+  - The `merge_pr.sh` comment.
+  - run-issue SKILL.md: `p11-jazzy` became `demo-jazzy`.
+- **2b.5** See Tests.
+- **2b.6** Texts:
+  - run-issue SKILL.md: step 11 drops "until the merge gate reads ..." and says what the gate does for a package PR. The Scope intro is reworded. The package entry says what is supported and drops the false sentence about writes from outside any worktree.
+  - `docs/design.md`:
+    - Records bullet (the "does not read that timeline yet" sentence replaced).
+    - Base branch bullet (pre-push base, step 8).
+    - The comment-fallback list in Review loop.
+    - A Merge gate bullet.
+    - Table 1's `merge_pr.sh` row lines (already stale on main) and `dispatch_phase.sh` row lines, mechanism-1 citations for both scripts (`dispatch_phase.sh` shifted by 8).
+    - Change-log row.
+  - `script_reference.md` rows 34, 38 and 51.
+- **2b.7**
+  - `dispatch_phase.sh`: `/review-code --branch origin/<base> --issue N` for review-code, no `--pr` and a recorded base. Otherwise unchanged. The round-3 suffix still follows.
+  - `check_branch_updates.sh [--strict] [--base <b>]`. With no argument it behaves as before.
+  - run-issue step 8.
+  - review-code SKILL.md: one paragraph saying `cross_model_review.sh --branch "$BASE"` takes step 1b's base.
+  - `script_reference.md`.
+- **Nit:** SKILL.md "steps 7 and 8 need it". The step 8 heading is now "Merge the base before the final pre-push review". The never-reuse list and step 10 say "a merge of the base (`main`, or a package issue's `<base>`)".
+
+### Gate inputs and results (each asserted; tests named)
+| Input | Timeline read | Record goes to | Mode | Test |
+|---|---|---|---|---|
+| owning `feature/issue-N`, no `progress.md` in A | none; reason "no progress.md ... (looked for A)" | committed and pushed in A; main tree, container, B untouched; no comment | report-only, merge reached | gate pkg-1 |
+| owning, approved review at head in A + summary | A; gate passes | nothing | - | gate pkg-2 |
+| owning, stale review in A | A; reason "... does not resolve to one commit in A" (ancestry in A) | A | report-only | gate pkg-3 |
+| owning, same conditions again | A (idempotency) | nothing new | - | gate pkg-4 |
+| owning, review then bookkeeping commits, PR base `main` vs recorded `pinned` | A; review covers head via ancestry; exactly one reason (the base) | A, pushed; WS, B, hosted checkouts, other worktrees, pkg_b origin untouched | report-only | loop e2e "owning PR targeting main" |
+| owning, PR base = recorded base | A; gate passes | nothing; merged, worktree removed | - | loop e2e "owning PR on its base" |
+| owning, record push refused by origin | A | commit undone in A (clean), record as PR comment | report-only | gate pkg-11 |
+| sibling `feature/<repo>-issue-N`, A has an approved review | none (A's review not used); sibling reason names A | comment on the sibling's PR (`-R owner/pkg_b`); A and its origin untouched | report-only | gate pkg-5, loop e2e sibling |
+| sibling, manifest has no owning entry | none; "no single checkout on feature/issue-N" | comment on the sibling's PR | report-only | gate pkg-6 |
+| same owning branch in two projects, no `--project` | - | refused exit 2, nothing merged (unchanged) | - | gate pkg-7 |
+| `--project demo2` / `--project demo` | that project's A only | that project's A only | report-only | gate pkg-8, pkg-9 |
+| owning, `--enforce` | A | A | report-only (package) | gate pkg-10 |
+| workspace PR (every existing case) | unchanged | unchanged | enforce | gate suite, 131/0 |
+
+Not covered by a test: an owning manifest entry `.` (a legacy single-repository manifest) maps to the worktree itself, which `issue_checkout_of` already treats the same way. The owning checkout missing from disk falls through to "no progress.md ... (looked for A)" plus a comment saying it is no git checkout's top folder (code path, no test).
+
+### Tests (new and flipped; each fails on main's scripts)
+- `test_merge_pr_gate.sh` pkg-1 to pkg-11 replace the old package case, whose assertion "carries no issue timeline" is flipped. Run against main's `merge_pr.sh`, 10 of the 11 fail. pkg-7 passes on main: that ambiguity refusal is existing behaviour, kept as a neighbour.
+- `test_package_issue_loop.sh` case 14, run against main's `merge_pr.sh`, `dispatch_phase.sh`, `check_branch_updates.sh` and run-issue SKILL.md: 12 fail.
+  - Task line `origin/pinned` (also with a prefix and at round 3).
+  - The step-8 block takes `[--base <base>]`; behind `pinned` by 2; the refusals; up to date after `git merge origin/pinned`.
+  - The sibling case, the base-mismatch case, and the merge on the base.
+  - The `--strict` check was strengthened to count against `pinned` after it first passed on main.
+- Unchanged on purpose: line 225 (a package worktree with no recorded base keeps the bare `--branch`) and the `test_dispatch_phase.sh` workspace lines.
+- No wall-clock tuning. No processes left behind: the merges are stubbed, and fetches are local.
+
+### Acceptance (issue 429 "What is needed" and Acceptance, plan's table)
+- **Needed 1** (`/run-issue` on a package issue from the project root; creation, dispatch, review, publish and merge act on that repository):
+  - Pull requests 445, 456 and 460 covered creation, dispatch, `where`, publish `-R --base` and `merge --pr owner/repo#M`.
+  - This PR: the merge gate and record in A (2b.1). The cleanup is pinned by existing tests (2b.3). The whole run in one case: loop case 14.
+- **Needed 2** (one place says where the records live; the merge gate finds them there): `issue_checkout_of` and the records gate since 445. The gate now reads and records there: gate pkg-1 to pkg-4, loop e2e.
+- **Needed 3** (the pull request targets the package repository): `gh_create_pr.sh -R` (445) and `--base` (460). Asserted again in loop case 12 and e2e publish.
+- **Needed 3** (the review reads the package's diff):
+  - PR-mode review, triage and `fetch_pr_reviews.sh` read the package's pull request through `gh` in A (445). e2e asserts the `repos/owner/pkg_a/...` reads from A.
+  - Pre-push review: `origin/<base>` task line (2b.7 (i)). The cross-model call takes the same base (2b.7 (iv)).
+  - Behind-check and merge of the base: 2b.7 (ii) and (iii), loop case 14.
+- **Needed 4** (a synthetic multi-repository sandbox, no real project): `test_package_issue_loop.sh` (the `demo` project, pkg_a and pkg_b with stubbed `gh` and ssh) and the gate fixtures, renamed to `demo`. The follow-up issue for the other suites' real-name fixtures stays drafted in plan.md, not opened.
+- **Acceptance 1** (reaches the merge checkpoint without hand steps):
+  - Every script step and SKILL block that a package issue goes through is walked in tests: steps 1 to 4, 7, 8 (the step-8 block extracted from SKILL.md), 9, 10 and 11.
+  - Not testable: the Agent tool's working directory and how a sub-agent reads prose (plan, Estimated Scope).
+- **Acceptance 2** (the "out of scope" entries for package worktrees and `--type project` are rewritten to say what is supported):
+  - The package entry now opens "One owning repository per issue (supported); more than one is not", says what is supported and drops the false sentence. The section intro is reworded.
+  - The `--type project` entry was rewritten in 445 and is unchanged.
+
+### Deviations from the plan
+- **2b.1** The plan says `PKG_OWN_REL` is the matched `_m_rel`. Built: the matched entry's `_m_rel` only when that entry is on `feature/issue-<N>`, else `-`.
+  - Why: a sibling's own relative path would not name A.
+  - The sibling reason finds A through `issue_checkout_of` instead of parsing the manifest again.
+  - The planned reason text is used as written, plus a second text for a manifest without an owning entry.
+- **Bounding calls to origin.** The gate's fetch, the CI-target fetch and the record push are now bounded for workspace pull requests too. The plan did not list this. The behaviour changes only on a hang.
+  - `check_branch_updates.sh` bounds its own fetches the same way, through a local helper with the same shape as `wt_bounded_git`. It sources no helper.
+  - Left unbounded and untouched: other origin calls in `merge_pr.sh`, among them the Step 1 roadmap push (never run for a package) and existing Step 4/5 calls.
+- **`check_branch_updates.sh` arguments.** An unknown argument now exits 2. Before, it was ignored. No caller passes one.
+- **2b.4 split across two commits.** The fixture rename landed in the same commit as the gate change, because the renamed fixture block is the one the commit rewrites. There is no separate rename commit.
+
+### Checks
+- Suites run directly, final tree:
+  - `test_merge_pr_gate.sh` 131/0
+  - `test_package_issue_loop.sh` 214/0
+  - `test_merge_pr.sh` 150/0
+  - `test_dispatch_phase.sh` 148/0
+  - `test_records_write_gate.sh` 68/0
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`: identity sourced, no SKIP, rc 0.
+  - Every hook passed, or was skipped for having no files.
+  - That includes `validate-script-tests` (the suites the changed files reach), `check-design-anchors` and `shellcheck`.
