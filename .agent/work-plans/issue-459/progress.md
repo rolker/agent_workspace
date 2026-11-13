@@ -614,6 +614,6 @@ PR body, two sentences the timeline does not support (not edited):
 Pull request 461 (`origin/feature/issue-429` at `0c6dc2d3`, already includes main): `git merge-tree` conflicts in `docs/design.md` only (both append change-log rows; also the Lines value). `dispatch_phase.sh`, run-issue and review-code SKILL.md, script_reference.md auto-merge. In the merged `cmd_handoff`, 461's `task=... --branch origin/$pkg_base` override runs first and this branch's round-3 block appends to `$task` after it, reading the per-pull-request `review_progress.sh round`: no semantic collision. No `dispatch_phase.sh:<line>` citations exist in design.md or the knowledge files.
 
 ### Findings
-- [ ] (suggestion, triage) PR body: reword or drop "Gemini and Codex ran on rounds 1 and 2" (unsupported for Gemini and for round 2's reviewers) and qualify the 1,084-state comparison as made at the round-2 head, or re-run it on the final head — PR #467 body
+- [x] (suggestion, triage) PR body: reword or drop "Gemini and Codex ran on rounds 1 and 2" (unsupported for Gemini and for round 2's reviewers) and qualify the 1,084-state comparison as made at the round-2 head, or re-run it on the final head — PR #467 body
 
 ### False positives
