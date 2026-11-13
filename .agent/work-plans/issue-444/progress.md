@@ -718,3 +718,38 @@ Read: the Plan Review at d624d289 and its report. The implement handoff carries 
 
 ### Decisions made (owner may veto)
 - The pass makes two shuffled parallel full runs as the check that the suites are independent, and the host makes the one full pre-commit pass before publishing, which is the first run of the parallel default through pre-commit itself: three local full runs for this pull request, where the owner's rule is one, because turning parallel on is the change — undoing it: drop the two shuffled runs and rely on the host's pass and CI.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 14:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-444 at `aa386a35`
+
+Part 2a: the suites now run in parallel by default. Follows the plan's "PR 2a" section with the eight notes of the Plan Review at d624d289. Part of #444; does not close it.
+
+**Commits**: e93b2b39 (the default, its texts and its tests), aa386a35 (the plan notes)
+
+### What changed
+- `.agent/scripts/tests/run_script_tests.sh`: `JOBS_DEFAULT=1` deleted. The default is `"${jobs_suited:-1}"`. `jobs_suited` is cleared, and the run falls back to one job, when the CPU count can't be read or bash is older than 5.1. That bash test is now one variable, `bash_too_old`, which the refusal of an explicit `-j` above 1 also uses. The default's note reads `default; suits this machine's N CPUs`, or `default; the CPU count could not be read`, or `default; bash older than 5.1`. The header now states the default and that `-j 1` / `RUN_SCRIPT_TESTS_JOBS=1` gives the one-job run. The usage text and the hook paragraph (CI: 2 jobs on its 4-CPU runner) say the same. Note 3: the header says a parallel run prints a `running <suite>` line as each suite starts and a `--- <suite> passed in Ns (k of n done)` line (or FAILED) as each finishes.
+- `.agent/scripts/tests/test_run_script_tests.sh`: the (u1) default loop now expects the suited count: 16 CPUs give 4 jobs, 40 give 6, 4 give 2, 1 gives 1. New cases: `-j 1`, `RUN_SCRIPT_TESTS_JOBS=1`, and an unreadable CPU count, where stubs of both `nproc` and `getconf` fail (note 8). Each must print its `running with 1 job (...)` line, start the suites in list order and stop at the first failure (case s2's fixture). The header comment now names these cases.
+- `.pre-commit-config.yaml`: the comment above the hook states the default (2 on CI) and that `RUN_SCRIPT_TESTS_JOBS=1` gives the one-job run. It still names `RUN_SCRIPT_TESTS_JOBS`.
+- `.agent/knowledge/script_reference.md`: the runner row states the new default, its fallback to 1, and `-j 1` / `RUN_SCRIPT_TESTS_JOBS=1` for one job.
+- `.agent/work-plans/issue-444/plan.md`: note 1 (`dispatch_phase.sh:618` and `address-findings/SKILL.md:199` added to the "left for later" list, both unchanged), note 6 (the one-job loop citation is now 905-915, line 912), and note 3 in step 4's text.
+- Not touched: `.github/workflows`, `AGENTS.md`, `CLAUDE.md`, `dispatch_phase.sh`, the skills.
+
+### Runs
+- `test_run_script_tests.sh` alone: 166 passed, 0 failed (163 before, plus the 3 new cases), 56 s.
+- `test_script_tests_hook_scope.sh` alone: 328 passed, 0 failed, 72 s.
+- shellcheck --severity=warning on both changed scripts: clean (the main checkout's `.venv/bin/shellcheck`).
+- Independence check: two full runs through the runner, one after the other, with no `-j`. Both printed `running with 4 jobs (default; suits this machine's 16 CPUs)`. Before each run `pgrep -f tests/run_script_tests.sh` was empty. Before run 1, I waited about 20 minutes for another session's one-job run in the inspiration-tracker worktree to finish.
+  - Run 1: `--shuffle=4441 --show-passed`, load average at start 13.31 / 12.60 / 10.66. The load was from other work on the machine (`import_bag` processes), not suite runs. 13:57:28 to 14:02:15, exit 0, 287 s, "all 49 suites passed".
+  - Run 2: `--shuffle=1113 --show-passed`, load average at start 1.35 / 4.00 / 7.37. 14:07:36 to 14:12:16, exit 0, 280 s, "all 49 suites passed".
+  - After each run: no leak; the run's own `/tmp/run-script-tests.*` root was removed; no new `run-script-tests.*` directory; `git status --porcelain` empty. No process of either run was left: I scanned the environments of my processes for a run TMPDIR. The only hits belonged to another session's run (root `2X0CY7`, inspiration-tracker worktree), which started at 14:16:00, after run 2 ended.
+  - Per-suite `PASS:`/`FAIL:` line counts: identical between the two runs for all 49 suites, 5957 PASS lines each. The only `FAIL:` lines are the `FAIL: 0` summary lines of `test_gh_create_issue.sh`, `test_gh_create_pr.sh` and `test_worktree_create.sh`, as part 1 noted.
+  - Note 5: part 1's progress entries keep only "matches baseline" per run, not per-suite counts, so a per-suite comparison with the one-job baseline is not possible from the record. `git diff --stat 90ad6aa3 HEAD -- .agent/scripts/tests/` lists 34 changed files, including 4 new suites (`test_commit_identity.sh`, `test_fresh_clone_no_project.sh`, `test_records_write_gate.sh`, `test_register_session_root.sh`). The suite count is 49 now, against 45 then. The check here is that the two shuffled runs agree, and every suite passes.
+  - Slowest suites: `test_cross_model_review.sh` 143 / 133 s, `test_merge_pr_gate.sh` 142 / 122 s, `test_project_integration_audit.sh` 92 / 81 s.
+- Note 2: the host still makes the final full pre-commit pass on this branch before publishing. It is a full run, because the branch changes the runner and `.pre-commit-config.yaml`, and it is the first run of the parallel default through pre-commit itself. With the two runs above, that makes three local full runs for this pull request.
+- Not run, as the handoff asked: `pre-commit run --files ...` and `pre-commit run --all-files`. Commits used `SKIP=validate-script-tests`. Nothing was pushed.
+
+### For the pull request body (note 4)
+If a failure shows up only in parallel runs after this merges: locally, set `RUN_SCRIPT_TESTS_JOBS=1` until it is fixed. That gives the old one-job run, which streams live and stops at the first failure. In CI there are two ways back, and either needs the owner's choice. One is to set `RUN_SCRIPT_TESTS_JOBS=1` as a workflow variable; that is a CI change and needs the owner's yes. The other is to revert this pull request on its own. It holds only the default switch, its texts and tests, so the revert brings back the one-job default and leaves part 1's runner as it is.
