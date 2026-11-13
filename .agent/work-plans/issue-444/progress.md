@@ -774,3 +774,13 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone, 166 passed, 0 f
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 of this pull request's review is approved with no must-fix and no suggestions; the host's one full pre-commit pass on 04aaa5d7, every hook and every suite with no SKIP and the parallel default in effect, exited 0 in 240 s; the commit after it changes progress.md only)
+**After**: publish
+**Decision**: publish
+
+Read: the Local Review (Pre-Push) at 7b9a57ad and its report; the full pass output. The review ran the static check and one fresh adversarial sub-review; the host set that depth and left the cross-model reviewers out for a default switch whose plan was reviewed against the merged code the same hour.
