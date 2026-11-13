@@ -423,3 +423,13 @@ Confirmed from the code at the head (`.claude/skills/onboard-project/SKILL.md`, 
 - [x] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`; F3 of the Integrated Review @ `53c1635`) The project-name rule at `register_session_root.sh:171` is one of five copies (`register_project.sh:581`, `_project_registry.sh` 150, 192, 491). Drift cannot cause a wrong write; the worst case is a misleading refusal — `.agent/scripts/register_session_root.sh:171` (deferred: owner, 2026-11-13: "open the follow up issue about the valid project definition"; tracked as issue #470, "State the valid project-name rule once: five copies across the registration scripts and the registry")
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 12:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Asked: "Merge pull request 469 once its CI is green? I check that its combined-with-main run passes, since that is the run that failed on the other pull request." The owner's answer, verbatim: "yes to both" (the other question was about pull request 468). He had been shown what the pull request does, what the reviews caught, the three limits left as they are, and that ADR-0021's Decision section is byte-identical to what he approved. The host merges only when every check on f1aa9688, the pull_request run included, has passed, with no relaxing flag, and stops and reports otherwise. F3 is deferred to issue #470 on his word.
