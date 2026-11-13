@@ -2139,3 +2139,13 @@ The 2b refresh is accurate against main: every line and every "done by 460" clai
 - [ ] Restate the acceptance rows for "Needed 3" and "Acceptance 1" per findings 2 and 4
 - [ ] Drop the `git branch -d` cleanup case as a duplicate of `test_sweep_reports_unmerged_local_branch` (finding 3)
 - [ ] Fix the 2b.3 sibling-check citation (finding 5)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 06:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work: one missing step; first revise at this checkpoint since the last proceed)
+**After**: plan
+**Decision**: revise
+
+Open question decided: option 1, as the review's step 2b.7 gives it. The issue's own text asks that the review read the package's diff, and run-issue step 8 as written would merge the default branch into a branch started from the pin. So: (i) dispatch_phase.sh emits "/review-code --branch origin/<base> --issue N" for a pre-push review of a package issue with a recorded base, unchanged otherwise; (ii) check_branch_updates.sh takes [--strict] [--base <b>], with no argument behaving as now for its other callers; (iii) run-issue step 8 uses the base for a package issue and merges origin/<base>; (iv) review-code's SKILL says the cross_model_review.sh --branch call takes the base step 1b resolved; (v) script_reference.md; with the two tests the review names. Also: narrow the acceptance row to what is really unmet (only the pre-push review and the behind-check, only when the pin is not the default branch); drop the planned git branch -d case (already asserted); say in acceptance line 1 what is testable; fix the two line citations.
