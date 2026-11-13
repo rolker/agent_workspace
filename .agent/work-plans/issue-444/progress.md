@@ -561,7 +561,7 @@ CI failed, so the earlier conditional answer ("merge 468 if ci is gree") did not
 
 **PR**: #468 at `7938e59f`
 **Addressed**: Checkpoint (After: merge, Decision: address) at 2026-11-13 12:29 -05:00 — the CI failure of the pull_request runs (branch merged with main): test_merge_pr_gate.sh case hang-1
-**Commits**: e5c228b3 (merge of origin/main, no conflicts), 7938e59f (the fix and its test)
+**Commits**: e5c228b3 (merge of origin/main, no conflicts), 7938e59f (the fix and its test), then the docs commit that adds this note (made after this entry)
 
 ### Cause
 Not a signal, process group or stdin difference: the hang-1 run ended on time (reap=reached, 4-5 s). Its reason sentence was cut short. merge_pr.sh passed the owning checkout's whole reason sentence (_GATE_OWN_NOREAD / _GATE_OWN_PROBLEM, with the checkout's path inside) through _bk_display, whose 256-byte cap then cut the sentence to "so it is not...(+20 bytes)". The test looks for "so it is not known to be current". This branch's per-suite TMPDIR (/tmp/run-script-tests.X/tmp/test_merge_pr_gate.sh/...) is 26 bytes longer than main's per-run one, enough to push the sentence over the cap; on main the sentence was about 6 bytes under it. Reproduced without the runner: test_merge_pr_gate.sh on its own with a long TMPDIR (the session scratchpad) fails 9 cases this way (pkg-13 x2, pkg-16 x3, pkg-19 x3, hang-1). Reproduced through the runner at one job: the same hang-1 failure as CI. The defect is in merge_pr.sh from pull request 461. The test is right to expect the whole sentence, and the runner needs no change.
@@ -569,6 +569,7 @@ Not a signal, process group or stdin difference: the hang-1 run ended on time (r
 ### Actions
 - [x] Each value in the owning checkout's reason goes through _bk_display as the sentence is built, and the gate reasons quote the sentence unchanged, so the cap applies to a path, never to the sentence — `.agent/scripts/merge_pr.sh:751-806, :906-908`
 - [x] New case (pkg-13 long-path): the checkout's path is padded to about 240 bytes, under the cap, while its reason sentence goes over it (310 bytes). It fails without the fix at the normal short TMPDIR, so it does not depend on where the suite runs — `.agent/scripts/tests/test_merge_pr_gate.sh` (after the pkg-13 block)
+- [x] The fix's six-line comment moved every `merge_pr.sh` line after 750 by six: design.md's citations of it (Table 1's `merge_pr.sh` row, the Records bullet, the Target's mechanism 1) are refreshed and checked line by line against the new file, with a change-log row. Found after this entry was committed; a reset to put the docs commit before it was refused by the permission checker, so it follows the entry — `docs/design.md:400, :496-513, :584, :985`
 
 ### Runs
 - Unfixed, test_merge_pr_gate.sh alone, long TMPDIR: 9 failed (191 passed), 137 s
