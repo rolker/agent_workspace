@@ -753,3 +753,24 @@ Part 2a: the suites now run in parallel by default. Follows the plan's "PR 2a" s
 
 ### For the pull request body (note 4)
 If a failure shows up only in parallel runs after this merges: locally, set `RUN_SCRIPT_TESTS_JOBS=1` until it is fixed. That gives the old one-job run, which streams live and stops at the first failure. In CI there are two ways back, and either needs the owner's choice. One is to set `RUN_SCRIPT_TESTS_JOBS=1` as a workflow variable; that is a CI change and needs the owner's yes. The other is to revert this pull request on its own. It holds only the default switch, its texts and tests, so the revert brings back the one-job default and leaves part 1's runner as it is.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 14:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-444 at `04aaa5d7`
+**Base**: origin/main
+**Depth**: Standard, limited by the host (reason: host's limit for this pass: a default switch whose plan was reviewed against the merged code an hour earlier; static check and one fresh Claude adversarial sub-review only; cross-model reviewers not run, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Scope: code commit e93b2b39 (runner default, its header and usage texts, hook comment, reference row, test_run_script_tests.sh). Checked: the switch matches plan "PR 2a" steps 1-3 and nothing else changed in behaviour; `-j 1` and `RUN_SCRIPT_TESTS_JOBS=1` reach the one-job path; empty and invalid values meet the unchanged refusal; nproc failing falls to getconf, unreadable or 0 output gives 1 job with "the CPU count could not be read", 1 CPU gives 1 job, bash older than 5.1 gives 1 job with its own note and still refuses an explicit count above 1; the default never reaches the cap of 8, so the printed note is true in each case; every nested runner call in the test file pins its count except the default cases themselves; the diff touches only the four files named. The (u1) default-count loop fails if the default went back to 1; the three new cases pin the one-job path and the fallback, and would still pass at a default of 1 (that is their purpose, not a gap).
+
+Considered and not listed (would not hold this up): in a container with a CPU quota, nproc reports the CPUs the process may use, not the quota, so the default can be up to 6 jobs there (slower, not failing; `RUN_SCRIPT_TESTS_JOBS=1` is the answer); a reflow leaves one short header line ("banner, then (only with").
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone, 166 passed, 0 failed, 48 s; yamllint on `.pre-commit-config.yaml`, clean; shellcheck not installed here, so the shell static check was by reading only. Not run: full suite and full pre-commit (host's), cross-model reviewers (host's limit). One stub-nproc experiment was refused by the permission checker and not retried.
+
+### Findings
+- [ ] No issues found. LGTM.
