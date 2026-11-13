@@ -388,9 +388,15 @@ unchanged.
    [As built after the first pre-push review (host decision, checkpoint of 2026-11-12 22:18): creating
    the owning branch of a package worktree **always** resolves a base, `--base` or else the pin through
    `pr_base_for`; neither giving a branch refuses before anything is made, so a package worktree is never
-   started from origin's default branch by omission. An owning branch that already exists (locally or on
-   origin) is not restarted; `base=` is written for it only after `wt_base_foreign_history` (below, step
-   6) finds no foreign history, else creation refuses and rolls back. Siblings get no base.]
+   started from origin's default branch by omission. Siblings get no base. After the second pre-push
+   review (host decision, checkpoint of 2026-11-12 22:51): this holds for a NEW owning branch. An owning
+   branch that already exists (locally or on origin) is not restarted, and the pin is never recorded for
+   it: `--base` must name where it started, recorded after `wt_check_named_base` (origin has it, bounded;
+   the branch shares history with origin/<base>), else creation refuses and rolls back. With
+   `--parent-issue` the pin is not read: the branch starts from the parent's branch as before, and
+   `base=` records the parent's branch when it is found (the branch a sub-issue's draft PR targets).
+   `--branch` with `--layer` is refused (the adapter names a package worktree's branches). A `--base`
+   value is validated with `check-ref-format --branch` and as `refs/heads/<b>`; an empty one is refused.]
    Tests in `test_worktree_create.sh`: (i) a base absent on origin refuses and rolls back; (ii) an
    unreachable origin refuses, also with `--allow-unverified-branch`; (iii) a local `<base>` carrying an
    unpushed commit: the new branch does not contain it, and has no upstream; (iv) siblings unchanged;
@@ -410,15 +416,14 @@ unchanged.
    writes `base=<branch>` into the header's first line (a new helper `wt_set_manifest_base` beside
    `wt_write_manifest`, `_worktree_helpers.sh` 416-422); absent or unknown on origin: it refuses and writes
    nothing. A `--base` given on resume is checked on origin the same way; one that differs from a recorded
-   `base=` is refused as before. [As built after the first pre-push review (host decision): an origin
-   check of the base alone let a branch started from origin's default branch be recorded against the pin.
-   The candidate base is now recorded only after `wt_base_foreign_history` (`_worktree_helpers.sh`): one
-   bounded fetch of every origin branch into a private ref namespace, removed again; a commit in
-   `origin/<base>..feature/issue-N` that another origin branch (not the base, not the issue branch) also
-   has is foreign; any foreign commit refuses, naming the count and the branches, and writes nothing.
-   `--package-repos` given for an existing worktree must equal its manifest's repositories (as a set), and
-   the header's `project=` goes to the adapter only when it is a registered project (a legacy header says
-   `project=project`).] **For an issue with no package base** (a workspace issue, a single-repository
+   `base=` is refused as before. [As built after the pre-push reviews (host decisions of 2026-11-12): an
+   origin check of the pin alone let a branch started from origin's default branch be recorded against
+   the pin, and a history heuristic tried in between guessed wrong both ways and was withdrawn. Now a
+   worktree with no `base=` never gets the pin: without `--base` the resume refuses, saying the worktree
+   predates base recording so its start cannot be known, and writes nothing; with `--base` the named
+   branch is recorded after `wt_check_named_base` (origin has it, bounded; the owning branch shares
+   history with origin/<base>). `--package-repos` given for an existing worktree must equal its
+   manifest's repositories (as a set).] **For an issue with no package base** (a workspace issue, a single-repository
    project issue, any worktree with no `.worktree-repos` manifest or only a lone `.` entry, a bare number)
    `base` prints nothing and exits 0; the handoff has no `base=` line; `/run-issue` calls it for every issue
    and treats empty output as "no base" (it passes no `--base` to publish). [As built, after the plan

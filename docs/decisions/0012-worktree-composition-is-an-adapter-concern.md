@@ -6,10 +6,11 @@ Accepted. Extends [ADR-0011](0011-project-type-adapter-contract.md)'s
 adapter contract with two verbs. Cross-reference (2026-11-12, issue 429):
 the `.worktree-repos` header has since gained a `base=` field, the base
 branch of the owning repository's pull request, from which its new branch
-starts; creating a package worktree's owning branch always resolves one
-(the owner's `--base`, else the pin), and a branch not started there is
-recorded only after a check that it carries no other origin branch's
-commits beyond it. This is described in
+starts; creating a package worktree's new owning branch always resolves
+one (the owner's `--base`, else the pin; with `--parent-issue` the
+parent's branch), and for a branch the workspace did not start only a
+base the owner names is recorded, after checks that origin has it and
+that the branch shares history with it. This is described in
 [`docs/design.md#worktrees`](../design.md#worktrees), and the pin it comes
 from is [ADR-0019](0019-repo-pin-verb.md)'s `repo_pin`.
 
