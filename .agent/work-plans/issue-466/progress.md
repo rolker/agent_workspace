@@ -76,3 +76,16 @@ What the plan must settle (grounded in the code):
 - [ ] Give the guard test an explicit, named exception form for this one entry rather than weakening the "refuses from an unregistered sandbox" assertion for the others.
 - [ ] Accept a no-git folder only if `register_project.sh` already registers one (prove by test); otherwise state the gap in the skill and design.md and leave the fix to its own issue.
 - [ ] Plan to finish the guard test first: it is the riskiest part for the hour budget; if it grows, split the skill wiring into a second small PR rather than widening this one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review keeps the issue's goal and scope; its seven actions are about how the change is built: one guarded script that registers only the session's own unregistered root and delegates to register_project.sh, a named exception in the guard test, the design.md edits; none adds or drops a behaviour the owner's words ask for)
+**After**: issue-actions
+**Decision**: proceed
+
+Read: the Issue Review at 7395390f and its report. The one action that is the owner's, the decision record (a new ADR superseding ADR-0016 decision 5, with a pointer on ADR-0016), is put to him by name in the session before it is written; the plan may describe it, the implement pass writes it only after his yes.
+
+### Decisions made (owner may veto)
+- Proceed to planning with the review's narrow shape (one new guarded script, no interface change to session_root.sh, registry_require_root or register_project.sh) — undoing it: revise the plan at its checkpoint.
