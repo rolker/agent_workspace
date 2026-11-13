@@ -514,3 +514,22 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 163 passed
 
 ### Findings
 None.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6a6f8f253de032f0, resume 2 of 3)
+
+**PR**: #468 at `fd09c223`
+**Sources**: 2 (Local Review @ `d2916a3c` (covers fd09c223 via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub: 0 reviews, 0 inline comments, 0 conversation comments (Copilot's automatic review is off). CI at fd09c223: all four checks (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests) still running in both workflow runs. The one finding of the Integrated Review at 5d9de7ef is fixed in 33b83ab7: the "still running at exit" echo now follows the three `trap` lines in cleanup_run (read at :551-560). The Local Review at d2916a3c is approved with no findings; the earlier entries are stale. Nothing is open.
+
+Carry into part 2 of the issue: if another signal-handling point turns up in the runner, replace the trap resets and re-installs (:728, :801, cleanup_run) with one handler installed once for the whole parallel section and its cleanup, deciding by `stop_underway`.
+
+### Findings
+
+### False positives
