@@ -213,33 +213,11 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check:
 
-- `worktrunk-1` `copy-ignored-matured-and-source-available` — v0.81.0
-  hardened `wt step copy-ignored` (mtime preserved on Linux so cargo does not
-  rebuild, EPERM fallback to copy, `.worktreeinclude` directory patterns).
-  Strengthens the existing `cow-build-cache-sharing-for-project-worktrees`
-  item below: the mechanism is real and tested at scale, and the source is now
-  cloned for the read that item required. (2026-11-13)
-- `worktrunk-2` `claude-worktree-hooks-and-cross-repo-entry` — the plugin's
-  `WorktreeCreate`/`WorktreeRemove` hooks and `wt-switch-create` skill (enter
-  a worktree, including in another repository, then read its `CLAUDE.md` and
-  `AGENTS.md`) address the same problem as this workspace's `/start-task`
-  `cd` approach and the native `EnterWorktree` limits for project worktrees.
-  Also documents a known gap (issue #4776: desktop app skips these hooks).
-  Worth a read of `plugins/worktrunk/skills/wt-switch-create/rationale.md`.
-  (2026-11-13)
 - `worktrunk-3` `hook-semantics-lessons` — v0.81.0 hook changes (foreground
   hooks can prompt; context passed by template args not stdin JSON) and open
   issue #4143 (recovery after a failed `pre-start` reports success on an
   unusable worktree) are concrete failure modes for any lifecycle-hook design.
   Refines the existing `worktree-lifecycle-hooks` item below. (2026-11-13)
-- `worktrunk-4` `merge-safety-backups` — failed squash leaves the branch
-  untouched; squash backups under `refs/wt-backup/<branch>` with a printed
-  restore command. Possible hardening ideas for `merge_pr.sh` / local merge
-  paths; relevant only if a local squash path is ever added (see
-  `local-squash-merge-one-shot` below). (2026-11-13)
-- `worktrunk-5` `agents-md-trim-reference` — an agent-instruction file cut from
-  2,763 to 382 lines (121 now) and shared across Claude Code and Codex.
-  Informational comparison point for the `AGENTS.md` line budget. (2026-11-13)
 
 Carried from 2026-09-22, still undecided:
 
@@ -268,15 +246,27 @@ Carried from 2026-09-22, still undecided:
   — though per this skill's own workflow, they still go through a PR).
   (2026-09-22)
 
-## Roadmapped
+## Roadmapped (2026-11-13 decisions)
 
-(none — first-run survey; items above are pending review, not yet
-triaged into roadmap/skip/defer)
+- `worktrunk-2` `claude-worktree-hooks-and-cross-repo-entry` — read
+  worktrunk's `plugins/worktrunk/skills/wt-switch-create/rationale.md` in
+  full and try its sequence once (leave the current worktree session, `cd`
+  into the other repository, enter the worktree by path with the native
+  tool) to decide whether `/start-task` should use native entry instead of
+  `cd`. Note beside it: the session-root rule (a session only changes the
+  root it was launched in) may shrink the gain. Added to docs/roadmap.md
+  (2026-11-13)
 
 ## Skipped
 
-(none)
+- `worktrunk-4` `merge-safety-backups` — informational: relevant only if a
+  local squash path is ever added to this workspace (2026-11-13)
+- `worktrunk-5` `agents-md-trim-reference` — informational comparison point
+  for the `AGENTS.md` line budget (2026-11-13)
 
 ## Deferred
 
-(none)
+- `worktrunk-1` `copy-ignored-matured-and-source-available` — this
+  machine's disk is ext4 (no reflinks, so a plain copy), and copied build
+  output may break for build systems that record absolute paths; revisit
+  when a slow first build in a project worktree hurts (2026-11-13)
