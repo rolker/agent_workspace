@@ -78,3 +78,58 @@ Proceed to the plan. For the plan: (2) define the "a pull request ended here" bo
 **Plan**: `.agent/work-plans/issue-459/plan.md` at `f6b9c537`
 
 One shared boundary: a merge-decision checkpoint, then the first Plan Authored or Branch-correlated Implementation after it; used by dispatch_phase.sh and review_progress.sh. After a merge with no PR, next answers plan-task; the host writes a plan/proceed checkpoint to go straight to implement. The design question (i)/(ii) goes to the owner at the plan checkpoint.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 09:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #459 — dispatch_phase: multi-PR issue routing
+**Plan**: `.agent/work-plans/issue-459/plan.md` at `f6b9c537`
+**Branch**: `feature/issue-459`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One root cause, five atomic commits; 3 and 4 separable. |
+| Issue alignment | Needs work | Serves: "Keep work moving without the owner (the review loop driven by `/run-issue`) — `docs/design.md#review-loop-and-timeline`" (checked). Both acceptance items are covered; the post-merge route (ii) and its probe rule break the end of every single-pull-request issue (finding 1). |
+| File targeting | Good | Right files. `cmd_sources` must switch from a `--type`-filtered read to the whole timeline to slice (the plan says so). |
+| Consequences | Needs work | Missing: what decides `done` once `--pr merged` no longer fires; the hand-merge limitation; the package-issue close path. |
+| Principle alignment | Needs work | "Enforce what matters, as simply as possible": the boundary depends on correlation discipline that real timelines break (findings 2, 3). "Test what breaks": add the real 332 sequence and a handoff test for the acceptance's "with outside reviewers". |
+| ADR compliance | Good | 0013: no new type or field; deriving meaning from order has precedent (the restart rule lives in script headers and `docs/design.md`, not in ADR-0013), so no ADR edit is needed, but the plan should cite the invariant it relies on: ADR-0013's correlation table, `**Branch**` only "if no PR exists yet". 0014, 0017 fine. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Replay of the boundary rule (throwaway Python over `progress_read.py`)
+
+- 429 (main, PRs 445/456/460) and 429 at pull request 461's head (fourth PR): boundaries at entries 25, 50, 71, each the `## Plan Authored` right after the `merge` checkpoint. Correct. Every pre-push and PR-mode fix entry carries `**Addressed**`; PR-mode fixes carry `**PR**`. Part 4's first pre-push review (entry 78) counts as round 1.
+- 455, 451, 437, 425 (single PR): no boundary; each ends on an armed `merge` checkpoint with nothing after. Harmless for counting.
+- 332 (four PRs): boundaries at 67 and 81, correct, including entry 63 (`merge`) → 64 a host merge-from-main `## Implementation` with no `**Addressed**` (PR-correlated) → re-review → merged with no second checkpoint → 67. But PR 403's merge has no `merge` checkpoint at all: part 2 starts at entry 42 with no boundary (finding 2). 276 and 335 are multi-PR with no merge checkpoints either.
+- 354: `After: findings`, `Decision: merge` arms (correct, single PR). Its entry 12 is a `**Branch**`-correlated, `**Addressed**`-less `## Implementation` written while PR 355 was open (finding 3).
+- Adversarial sequences: refused merge (no entry) → `merge`/`address` checkpoint → PR-correlated address → second `merge` → landed → Plan Authored: one boundary, at Plan Authored. Correct. Restart after merge, merge after restart: compose. `stop`/`--resume`: a `stop` is not a merge decision, no arm. Takeover `**Mode**: inline` Implementation: either it is the start (correct) or a failed implement before it already was.
+
+### Findings
+
+1. **[Issue alignment / Consequences]** must-fix: the probe rule plus the new row turns a finished single-PR issue into `plan-task`. Sequence: issue 451 (merged, timeline ends at a `merge` checkpoint) → `/run-issue 451` (resume) → step 1 recreates `feature/issue-451` from main → today the `--state all` probe finds MERGED → `--pr merged` → `done`. With "MERGED counts only when `headRefOid` == HEAD" the probe gives `none` (a merge commit never equals the PR head) → new row → `plan-task` on a closed issue. The same for 455, 437, 425. The "is the issue still open" check is in the multi-PR section only; it has to be a general step before the probe (closed → `done`), and row 1 is then effectively dead (it fires only when the worktree survived at the PR head, which is also when an owner's hand-merge mid-issue would end the run with parts left). And issue-open is not a reliable "parts remain" signal for a package issue: `Closes #N` closes only on a merge into the default branch, so a package PR on a pinned non-default base never closes the workspace issue, and the last part would route to `plan-task`. Say what closes it (host `gh issue close` after the owner confirms the last part, or the owner).
+2. **[Principle alignment]** should-fix: a merge done without a `merge` checkpoint leaves no boundary. Real: 332, PR 403's Integrated Review (entry 41) is followed directly by part 2's `**Branch**` Implementation (42); the rule keeps start=0, so part 2's first pre-push review (43) counts part 1's reviews and raises `checkpoint:rounds`, the bug this issue fixes. Name the limitation and the remedy in the multi-PR section (the host records the owner's merge as a `merge` checkpoint, `Decided-by: owner`, before the next part, or a `restart`), and add it as a test.
+3. **[Principle alignment]** should-fix: the rule reads any `**Branch**`-correlated, `**Addressed**`-less Implementation after an armed checkpoint as a boundary, and that shape is written while a PR is still open (354 entry 12) and host fixes after a `merge` decision are written without `**Addressed**` (332 entry 64). Sequence: `merge` → merge blocked (no entry) → host merges main in and writes `## Implementation` with `**Branch**` (run-issue step 8's pre-push form) → false boundary: the round count resets and a later failed fix pass maps to `implement`. Harden: disarm on a `Merge (…)` record or on a later Checkpoint at `merge`/`findings`/`merge-refused` with a non-`merge` answer (re-armed by the next `merge`). Replayed, this keeps 332's real boundary at 67 (no checkpoint between 63 and 67). Do not disarm on PR-correlated entries: that loses 332's 67. Test 332's sequence and the false-boundary sequence.
+4. **[Issue alignment]** should-fix: (ii) should answer `checkpoint:plan`, not `plan-task` plus a host-written plan checkpoint. The plan's shortcut has the host write an answer (`After: plan`, `proceed`) to a checkpoint `next` never raised; run-issue routes on the printed token and writes a checkpoint only when one was raised ("No auto-chaining"). `checkpoint:plan` is existing vocabulary: `proceed` → `implement`, `revise` → `plan-task`; `/orchestrator`'s table already lets the host answer both (and caps two host `revise` answers), so wall-clock is kept when the plan covers the next part; without `/orchestrator` the owner gets one question, where `plan-task` → `review-plan` would reach the same checkpoint after a plan cycle anyway.
+5. **[Consequences]** suggestion: the LGTM placeholder. `findings` does not filter it for Pre-Push today, so "mirror Pre-Push" means no filter; an approved review is never an address source in practice (rows 22a/14 route on the verdict). The repeated noise on 429 (triage lines on the "No issues found. LGTM." box) comes from `sources` and the triage reading. `sitrep` already filters it (`startswith("No issues found")`). Put one predicate (approved verdict and that text) in the shared module, used by `sources` and `findings`, instead of a third or fourth copy; or leave it out and say so.
+6. **[Scope]** suggestion: the plan is 207 lines against plan-task's 30 to 80. Move the alternatives-rejected list and the "For the owner" block into the owner's question (they are its content, not the implementer's), and shrink "Sequencing with 461" to the file list; keep the rule, the row, the commit list and the tests.
+7. **[File targeting]** suggestion: in both inline `-c` scripts, pass the script directory through the environment (single-quoted `-c` cannot interpolate) and use a plain `from pr_start import pr_start`: `suites_for_files.sh` maps Python imports in shell `-c` text, so `pr_start.py` reaches `test_dispatch_phase.sh` and `test_review_code_convergence.sh` through the derived closure with no `# covers:` line; `importlib` or `__import__` would not be mapped. A short direct test of `pr_start` against the 429 and 332 timelines is cheap.
+8. **[Principle alignment]** suggestion: add a handoff test (`dispatch_phase.sh --skill review-code`, part 2's first pre-push review) asserting the task line carries no "no cross-model reviewers": the acceptance says "with outside reviewers", and the plan tests only `next` and `round`.
+9. **[Context]** nit: main holds three merged PRs of 429 (445, 456, 460); the fourth is pull request 461, which also appends 854 lines to 429's `progress.md` and adds 8 lines to `cmd_handoff` just above the round-3 block (lines 529-537). Model the four-PR fixture on 461's head.
+
+### Summary
+
+The boundary rule (i) is right on every real multi-PR timeline that has its merge checkpoints (429 at 461's head, 332's later parts), with two gaps to close before it goes to the owner: hand merges with no checkpoint, and a false boundary from `**Branch**`-correlated Addressed-less entries while the PR is open. The post-merge route (ii) is not ready: the probe rule sends every finished single-PR issue to `plan-task` on resume, the package close path is unaddressed, and `checkpoint:plan` is a better answer than `plan-task` plus an unraised host checkpoint.
+
+### Recommended Actions
+
+- [ ] Make "issue closed → `done`" a general step before the probe, say what closes a package issue on a non-default base, and test a finished single-PR issue on a recreated branch (finding 1).
+- [ ] Name the hand-merge limitation and its host remedy; add 332's PR 403 shape as a test (finding 2).
+- [ ] Disarm on a Merge record or a non-`merge` answer at `merge`/`findings`/`merge-refused`; test 332's real sequence and the merge-from-main false boundary (finding 3).
+- [ ] Route merge-checkpoint-newest with `--pr none` to `checkpoint:plan`; drop the off-table host write (finding 4).
+- [ ] Decide the placeholder predicate once, in the shared module, or leave it out explicitly (finding 5).
+- [ ] Cut the plan to the guideline (finding 6); import mechanics, handoff test, 461 fixture (findings 7 to 9).
