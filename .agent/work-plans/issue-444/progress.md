@@ -634,3 +634,181 @@ Read for this entry: the fix commit 7938e59f, `merge_pr.sh` 748-908 and 1165-132
 **Decision**: merge
 
 Asked: "Merge pull request 468 once CI is green on the combined code, with F1 carried into part 2 and F2 left for issue 462?", with F1 (test_merge_pr_gate.sh:890: no case checks that escaping happens exactly once; triage: carry into part 2 of this issue) and F2 (merge_pr.sh:1197-1297, main's code from pull request 461: other record-step messages print the checkout path, branch names and the fetch error line raw, to the terminal only; triage: belongs with issue 462), and with what changed since his earlier conditional answer: the 26-line fix in merge_pr.sh (the 256-byte cap applies to each value, never to the whole sentence), its new test, and two merges of main. The owner's answer, verbatim: "yes on q1 and open the issue about limits and safeguards". The host merges only when every check on the reviewed head f068ca67 has passed, the pull_request run included, with no relaxing flag, and stops and reports otherwise. F1 and F2 are deferred on that answer.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 13:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pull request 468, part 1, merged; the plan's part 2 is an outline and the owner has cut it down, so the plan is refreshed before anything is implemented; first host revise at this checkpoint since the merge)
+**After**: plan
+**Decision**: revise
+
+The owner's direction for the next part, verbatim (2026-11-13): "Add a small PR to switch it on. I'm not sure we need to record before and after times now. Don't we have enough before times?" So the next pull request only turns the parallel job count on by default; no new before/after measurement runs; the slow-suite work (the issue's P2), the run-time wording in AGENTS.md and the other texts, and the carried test point (a raw-byte owning path in test_merge_pr_gate.sh, deferred from pull request 468) are left for later. Before times in hand: one job 680 to 694 s (2026-11-12), 824 to 1069 s on a loaded machine (2026-11-13), CI's lint job 11 to 13.5 min; parallel 163 to 320 s (2026-11-12).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 13:32 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `b50c8813`
+
+Part 2a refresh: one small pull request that turns the parallel default on (the suited count, 1 when the CPU count is unreadable or bash is older than 5.1; `-j 1` and RUN_SCRIPT_TESTS_JOBS=1 keep one job), updates every text and test that states the default, and checks suite independence with two shuffled parallel full runs; no before/after timing runs (owner, 2026-11-13). Does not close issue 444.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 13:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #444 — Run the script test suites in parallel, and speed up the slowest
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `b50c8813`
+**Branch**: `feature/issue-444`
+
+Scope of this review: the "PR 2a" section and what `b50c8813` changed around it; part 1's text is the record of merged work and was not re-reviewed. Owner's direction checked against: "Add a small PR to switch it on. I'm not sure we need to record before and after times now. Don't we have enough before times?"
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One small pull request: the default flip with its two fallbacks, the texts that state the default (runner header, usage, hook comment, reference row), the default-pinning test cases. No before/after timing runs. Nothing beyond the owner's direction. |
+| Issue alignment | Good | Part of issue 444, not closing it. Left for later and listed: the slow-suite fixture work (P2, and whether to split `test_cross_model_review.sh`), the run-time wording in `AGENTS.md` and the other "about 12 minutes" texts, the carried test point from pull request 468 (`test_merge_pr_gate.sh` near 890), issue 465 (when the suites run), issue 472 (the cap of 8). Serves line, as checked: "Easy to use (`README.md#workspace-goals` ...) under `docs/design.md#registry-and-adapters`". |
+| File targeting | Good | Checked against the code as merged: `JOBS_DEFAULT=1` is line 166, `jobs_suited` is computed at 171-179 unconditionally, before argument parsing, so it exists in every path that reaches 238; `jobs_asked="$JOBS_DEFAULT"` is 238; `jobs_note` 246-249; the bash 5.1 refusal 256. Every nested runner call in `test_run_script_tests.sh` names a job count except 1103/1105 (`jobs_case`, given `-j` or the variable), 1123 (the default case being changed) and 1152 (`RUN_SCRIPT_TESTS_JOBS=2`); `check_full` and both generated hook scripts pass `-j 1`. `test_script_tests_hook_scope.sh` pins only the absence of `-j` in the entry and the word `RUN_SCRIPT_TESTS_JOBS` in the comment. One citation is off: the one-job loop is near 905-915 (its "remaining suites not run" line is 912), not 895, which is blank. |
+| Consequences | Good | Callers checked in the code: the hook passes no `-j`; CI reaches it through `make lint`; no text in `AGENTS.md`, the skills or `dispatch_phase.sh` relies on stop-at-first-failure. The run-time texts are deferred (notes 1 and 2). |
+| Principle alignment | Good | Only what's needed (one line flipped, two fallbacks); test what breaks (default cases plus `-j 1`, environment 1 and unreadable-CPU cases); reversible alone (D9). |
+| ADR compliance | Good | ADR-0013 (this entry). No `.github/workflows` or branch protection change; `AGENTS.md` untouched (Ask First, deferred). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checks made for this review
+
+- The flip cannot turn a working run into an error: `jobs_suited` is always computed first; empty CPU count gives 1; capped at the CPU count (1 CPU gives 1 job, the one-job path); a bash older than 5.1 gives 1 by the planned clear; an explicit count still meets the refusal. A machine whose bash lacks job control or whose `nproc` reports host CPUs inside a CPU-limited container would run slower, not fail.
+- Parallel at a terminal and as a background job at a terminal (not covered by part 1's runs, which ran each in its own session with no terminal): run here under `script` with a 4-stub tests directory at `-j 2`, in the foreground and as `cmd &` from an interactive shell. Both exit 0, no stop on SIGTTOU/SIGTTIN; `set -m` is only on around each `&` (runner 768-771), so no foreground command takes the terminal.
+- Shared resources between suites, searched in all 49 suites: the suites that write under a home set `HOME` to their sandbox (`test_package_issue_loop.sh:43`, `test_records_write_gate.sh:46`, `test_register_*`, `test_user_tier_install.sh` per call); `test_package_issue_loop.sh:40` sets `GIT_CONFIG_GLOBAL`; the locks (`test_capture.sh:244`, `test_register_project.sh:959`, `test_project_file.sh:858,925`) are on sandbox files; no port, no `pkill`/`killall`, no host-wide `pgrep` (only `pgrep -P` on a known parent, `test_register_project.sh:997`). `test_gh_create_issue.sh:88` and `test_plugin_manifest.sh:133` run in the real checkout but only read it (a stubbed `gh`; `claude plugin validate`). No clash found.
+- Memory and load: 31 GB and 16 CPUs here; CI 4 vCPUs at 2 jobs. Nothing in the suites is memory-heavy. Load across concurrent drives grows (each full run now 4 jobs, not 1); the per-run bound is the only limit (D8, already on the owner's veto list).
+- The 600 s tool-call timeout: a one-job full run today (680 to 1069 s) already exceeds it; at 4 jobs (163 to 355 s measured) it fits. The flip improves this.
+
+### Findings
+
+No must-fix. Notes for the implementer, each applicable without a re-plan:
+
+1. **[Consequences]** The later part's run-time list omits two texts that quote a full run's length and tell agents the tool timeout: `.agent/scripts/dispatch_phase.sh:618` ("about 2 minutes for a typical fix, about 7 when every suite runs ... up to 600000 ms") and `.claude/skills/address-findings/SKILL.md:199` ("about 7 when every suite runs"). Leave them unchanged in this pull request (owner: no new times) but name them in the pull request's "left for later" list beside `AGENTS.md` and the issue 419/399/410 texts.
+2. **[Scope]** Step 6 calls the final branch pre-commit run "scoped", but this branch changes `run_script_tests.sh` and `.pre-commit-config.yaml`, both full-run triggers, so that run is a full run at the new default, under pre-commit. Plan for three local full runs (two shuffled plus the pre-commit one), not "the one place this pull request runs the full suite". That third run is useful: it is the only check of the parallel default through pre-commit itself. Say so in the progress entry and the pull request body, since the owner's rule of 2026-11-13 is one local run before a pull request.
+3. **[Consequences]** Step 4's caller text for the pull request body: a parallel run at a terminal also prints a `--- <suite> passed in Ns (k of n done)` line as each suite finishes, not only `running X` lines. Under pre-commit nothing shows until the hook ends at any job count, because pre-commit holds a hook's output until it exits, so the parallel default makes that silent stretch shorter, not longer.
+4. **[Issue alignment]** Two shuffled runs only catch frequent clashes (part 1 needed 10 runs to see its one flake). That fits a small pull request, because every pre-commit and CI run afterwards is parallel. The pull request body should say what to do about a failure that shows only in parallel after merge: `RUN_SCRIPT_TESTS_JOBS=1` locally while it is fixed; for CI, either the workflow variable (a CI change, owner's yes) or reverting this pull request alone (D9).
+5. **[File targeting]** Step 5's list of suites changed since part 1's independence runs (`90ad6aa3`) is incomplete: `test_user_tier_install.sh` (about 2,360 lines changed), `test_ros2_colcon.sh` (+808), `test_adapter.sh`, `test_cross_model_review.sh`, `test_project_registry.sh`, `test_merge_pr.sh` and others also changed (`git diff --stat 90ad6aa3 HEAD -- .agent/scripts/tests/`). The check runs every suite, so nothing is missed. When comparing PASS counts with the last one-job baseline, use that diff and not the plan's list.
+6. **[File targeting]** Fix the citation "the one-job loop at 895" to the loop near 905-915 when writing the pull request text.
+7. **[Principle alignment]** Step 5 runs on a quiet machine. Record the load average at each run's start, as part 1 did, so that a later flake under load can be compared with these runs.
+8. **[File targeting]** The new unreadable-CPU case has to shadow both `nproc` and `getconf` with failing stubs first on `PATH` (runner 172 falls back from one to the other). A stub `nproc` alone leaves the real `getconf` answering.
+
+### Summary
+
+The plan does exactly what the owner asked, as one small pull request. The flip is safe in every path checked: the CPU count is read first, the two fallbacks to one job are complete, and parallel mode works at a terminal and in the background. No suite was found sharing a path, home, git configuration, port, lock or process match with another. Ready for implementation. The notes are wording and bookkeeping for the pull request text.
+
+### Recommended Actions
+
+- [ ] Implement as planned, applying notes 1 to 8 in the pull request text and the tests.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 13:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready with no must-fix; it checked the switch against the merged code, ran the runner under a terminal at two jobs, and searched all 49 suites for clashes; its eight notes are each a bounded instruction for the implement pass)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at d624d289 and its report. The implement handoff carries the eight notes. The plan stays inside the owner's direction ("Add a small PR to switch it on."); the pull request says "Part of #444".
+
+### Decisions made (owner may veto)
+- The pass makes two shuffled parallel full runs as the check that the suites are independent, and the host makes the one full pre-commit pass before publishing, which is the first run of the parallel default through pre-commit itself: three local full runs for this pull request, where the owner's rule is one, because turning parallel on is the change — undoing it: drop the two shuffled runs and rely on the host's pass and CI.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 14:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-444 at `aa386a35`
+
+Part 2a: the suites now run in parallel by default. Follows the plan's "PR 2a" section with the eight notes of the Plan Review at d624d289. Part of #444; does not close it.
+
+**Commits**: e93b2b39 (the default, its texts and its tests), aa386a35 (the plan notes)
+
+### What changed
+- `.agent/scripts/tests/run_script_tests.sh`: `JOBS_DEFAULT=1` deleted. The default is `"${jobs_suited:-1}"`. `jobs_suited` is cleared, and the run falls back to one job, when the CPU count can't be read or bash is older than 5.1. That bash test is now one variable, `bash_too_old`, which the refusal of an explicit `-j` above 1 also uses. The default's note reads `default; suits this machine's N CPUs`, or `default; the CPU count could not be read`, or `default; bash older than 5.1`. The header now states the default and that `-j 1` / `RUN_SCRIPT_TESTS_JOBS=1` gives the one-job run. The usage text and the hook paragraph (CI: 2 jobs on its 4-CPU runner) say the same. Note 3: the header says a parallel run prints a `running <suite>` line as each suite starts and a `--- <suite> passed in Ns (k of n done)` line (or FAILED) as each finishes.
+- `.agent/scripts/tests/test_run_script_tests.sh`: the (u1) default loop now expects the suited count: 16 CPUs give 4 jobs, 40 give 6, 4 give 2, 1 gives 1. New cases: `-j 1`, `RUN_SCRIPT_TESTS_JOBS=1`, and an unreadable CPU count, where stubs of both `nproc` and `getconf` fail (note 8). Each must print its `running with 1 job (...)` line, start the suites in list order and stop at the first failure (case s2's fixture). The header comment now names these cases.
+- `.pre-commit-config.yaml`: the comment above the hook states the default (2 on CI) and that `RUN_SCRIPT_TESTS_JOBS=1` gives the one-job run. It still names `RUN_SCRIPT_TESTS_JOBS`.
+- `.agent/knowledge/script_reference.md`: the runner row states the new default, its fallback to 1, and `-j 1` / `RUN_SCRIPT_TESTS_JOBS=1` for one job.
+- `.agent/work-plans/issue-444/plan.md`: note 1 (`dispatch_phase.sh:618` and `address-findings/SKILL.md:199` added to the "left for later" list, both unchanged), note 6 (the one-job loop citation is now 905-915, line 912), and note 3 in step 4's text.
+- Not touched: `.github/workflows`, `AGENTS.md`, `CLAUDE.md`, `dispatch_phase.sh`, the skills.
+
+### Runs
+- `test_run_script_tests.sh` alone: 166 passed, 0 failed (163 before, plus the 3 new cases), 56 s.
+- `test_script_tests_hook_scope.sh` alone: 328 passed, 0 failed, 72 s.
+- shellcheck --severity=warning on both changed scripts: clean (the main checkout's `.venv/bin/shellcheck`).
+- Independence check: two full runs through the runner, one after the other, with no `-j`. Both printed `running with 4 jobs (default; suits this machine's 16 CPUs)`. Before each run `pgrep -f tests/run_script_tests.sh` was empty. Before run 1, I waited about 20 minutes for another session's one-job run in the inspiration-tracker worktree to finish.
+  - Run 1: `--shuffle=4441 --show-passed`, load average at start 13.31 / 12.60 / 10.66. The load was from other work on the machine (`import_bag` processes), not suite runs. 13:57:28 to 14:02:15, exit 0, 287 s, "all 49 suites passed".
+  - Run 2: `--shuffle=1113 --show-passed`, load average at start 1.35 / 4.00 / 7.37. 14:07:36 to 14:12:16, exit 0, 280 s, "all 49 suites passed".
+  - After each run: no leak; the run's own `/tmp/run-script-tests.*` root was removed; no new `run-script-tests.*` directory; `git status --porcelain` empty. No process of either run was left: I scanned the environments of my processes for a run TMPDIR. The only hits belonged to another session's run (root `2X0CY7`, inspiration-tracker worktree), which started at 14:16:00, after run 2 ended.
+  - Per-suite `PASS:`/`FAIL:` line counts: identical between the two runs for all 49 suites, 5957 PASS lines each. The only `FAIL:` lines are the `FAIL: 0` summary lines of `test_gh_create_issue.sh`, `test_gh_create_pr.sh` and `test_worktree_create.sh`, as part 1 noted.
+  - Note 5: part 1's progress entries keep only "matches baseline" per run, not per-suite counts, so a per-suite comparison with the one-job baseline is not possible from the record. `git diff --stat 90ad6aa3 HEAD -- .agent/scripts/tests/` lists 34 changed files, including 4 new suites (`test_commit_identity.sh`, `test_fresh_clone_no_project.sh`, `test_records_write_gate.sh`, `test_register_session_root.sh`). The suite count is 49 now, against 45 then. The check here is that the two shuffled runs agree, and every suite passes.
+  - Slowest suites: `test_cross_model_review.sh` 143 / 133 s, `test_merge_pr_gate.sh` 142 / 122 s, `test_project_integration_audit.sh` 92 / 81 s.
+- Note 2: the host still makes the final full pre-commit pass on this branch before publishing. It is a full run, because the branch changes the runner and `.pre-commit-config.yaml`, and it is the first run of the parallel default through pre-commit itself. With the two runs above, that makes three local full runs for this pull request.
+- Not run, as the handoff asked: `pre-commit run --files ...` and `pre-commit run --all-files`. Commits used `SKIP=validate-script-tests`. Nothing was pushed.
+
+### For the pull request body (note 4)
+If a failure shows up only in parallel runs after this merges: locally, set `RUN_SCRIPT_TESTS_JOBS=1` until it is fixed. That gives the old one-job run, which streams live and stops at the first failure. In CI there are two ways back, and either needs the owner's choice. One is to set `RUN_SCRIPT_TESTS_JOBS=1` as a workflow variable; that is a CI change and needs the owner's yes. The other is to revert this pull request on its own. It holds only the default switch, its texts and tests, so the revert brings back the one-job default and leaves part 1's runner as it is.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 14:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-444 at `04aaa5d7`
+**Base**: origin/main
+**Depth**: Standard, limited by the host (reason: host's limit for this pass: a default switch whose plan was reviewed against the merged code an hour earlier; static check and one fresh Claude adversarial sub-review only; cross-model reviewers not run, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Scope: code commit e93b2b39 (runner default, its header and usage texts, hook comment, reference row, test_run_script_tests.sh). Checked: the switch matches plan "PR 2a" steps 1-3 and nothing else changed in behaviour; `-j 1` and `RUN_SCRIPT_TESTS_JOBS=1` reach the one-job path; empty and invalid values meet the unchanged refusal; nproc failing falls to getconf, unreadable or 0 output gives 1 job with "the CPU count could not be read", 1 CPU gives 1 job, bash older than 5.1 gives 1 job with its own note and still refuses an explicit count above 1; the default never reaches the cap of 8, so the printed note is true in each case; every nested runner call in the test file pins its count except the default cases themselves; the diff touches only the four files named. The (u1) default-count loop fails if the default went back to 1; the three new cases pin the one-job path and the fallback, and would still pass at a default of 1 (that is their purpose, not a gap).
+
+Considered and not listed (would not hold this up): in a container with a CPU quota, nproc reports the CPUs the process may use, not the quota, so the default can be up to 6 jobs there (slower, not failing; `RUN_SCRIPT_TESTS_JOBS=1` is the answer); a reflow leaves one short header line ("banner, then (only with").
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone, 166 passed, 0 failed, 48 s; yamllint on `.pre-commit-config.yaml`, clean; shellcheck not installed here, so the shell static check was by reading only. Not run: full suite and full pre-commit (host's), cross-model reviewers (host's limit). One stub-nproc experiment was refused by the permission checker and not retried.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 of this pull request's review is approved with no must-fix and no suggestions; the host's one full pre-commit pass on 04aaa5d7, every hook and every suite with no SKIP and the parallel default in effect, exited 0 in 240 s; the commit after it changes progress.md only)
+**After**: publish
+**Decision**: publish
+
+Read: the Local Review (Pre-Push) at 7b9a57ad and its report; the full pass output. The review ran the static check and one fresh adversarial sub-review; the host set that depth and left the cross-model reviewers out for a default switch whose plan was reviewed against the merged code the same hour.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 14:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #474 at `0874396e`
+**Sources**: 4 (Plan Review @ `d624d289` (ready), Local Review (Pre-Push) @ `7b9a57ad` (covers `0874396e` via bookkeeping; approved, no findings), GitHub: 0 reviews, 0 inline comments, 0 conversation comments, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+None. The pre-push review left no open finding, GitHub carries no review or comment (Copilot's automatic review is off), and the `sources` helper reports no local findings, no candidates and no dropped entries at this head.
+
+CI at triage time: Validate Documentation and ros-manifest tests passed; Lint (pre-commit) and Validate Adapter Contract still running. This is the first CI run with the parallel default (2 jobs on the runner); `merge_pr.sh` gates the merge on it.
+
+### False positives
+- None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, verbatim (2026-11-13, given once the code review had approved the change with no findings and before the pull request was published): "merge it when ci turns green". He had been told what the pull request does (the parallel job count on by default, 4 jobs on this machine, 2 on CI's runner; issue 444 stays open), that two shuffled full runs passed, and that the host left the cross-model reviewers out of this review. The host merges pull request 474 only when every check on 0874396e has passed, the pull_request run included, with no relaxing flag, and stops and reports otherwise.

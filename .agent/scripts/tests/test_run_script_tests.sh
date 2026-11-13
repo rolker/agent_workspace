@@ -18,7 +18,8 @@
 # pin what a one-job run keeps (issue #444): exit codes, header and running
 # lines, the stop at the first failure, leak attribution, live output.
 # (t1) and (u5) cover the late leak caught by the second sweep; (u1)–(u8)
-# and (v) the job pool: the job count and the argument order, hidden and
+# and (v) the job pool: the job count (the default the machine suits, its
+# fallback to one job, -j 1) and the argument order, hidden and
 # shown output, unmixed failure output, every suite run and the exit code
 # by list order, attribution while suites overlap, trappable SIGINT and
 # SIGQUIT, the interrupt with its 5-second KILL backstop, a second signal
@@ -1111,9 +1112,9 @@ jobs_case() {
         fail "(u1) $label (rc=$rc, out=$out)"
     fi
 }
-# The default is one job; its line names the count the machine suits, a
-# quarter of its CPUs, at least 2, at most 6, never more than it has. A
-# stub nproc first on PATH sets the CPU count.
+# The default is the count the machine suits: a quarter of its CPUs, at
+# least 2, at most 6, never more than it has (1 CPU gives one job). A stub
+# nproc first on PATH sets the CPU count.
 U1_BIN="$TMPD/u1_bin"
 mkdir -p "$U1_BIN"
 for cpus_want in "16 4" "40 6" "4 2" "1 1"; do
@@ -1121,12 +1122,44 @@ for cpus_want in "16 4" "40 6" "4 2" "1 1"; do
     printf '#!/bin/sh\necho %s\n' "$u1_cpus" > "$U1_BIN/nproc"
     chmod +x "$U1_BIN/nproc"
     out=$(PATH="$U1_BIN:$PATH" "$RUNNER" "$U1" 2>&1); rc=$?
-    if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qxF "run_script_tests: running with 1 job (default; -j $u1_want suits this machine's $u1_cpus CPUs)"; then
-        pass "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs"
+    if (( u1_want == 1 )); then u1_line="running with 1 job"; else u1_line="running with $u1_want jobs"; fi
+    if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -qxF "run_script_tests: $u1_line (default; suits this machine's $u1_cpus CPUs)"; then
+        pass "(u1) the default for $u1_cpus CPUs is $u1_want job(s)"
     else
-        fail "(u1) the default is one job, and names -j $u1_want for $u1_cpus CPUs (rc=$rc, out=$out)"
+        fail "(u1) the default for $u1_cpus CPUs is $u1_want job(s) (rc=$rc, out=$out)"
     fi
 done
+# The one-job run is still there when asked for, and is the default when
+# the CPU count cannot be read (nproc and getconf, the runner's two ways
+# to read it, both fail): the line names where the count came from, the
+# suites start in list order and the first failure stops the run. The
+# fixture is case (s2)'s: test_a_pass.sh, test_b_fail.sh (exit 3),
+# test_checkpoint_269.sh, test_z_later.sh (touches $S2_LATER).
+U1_NOCPU="$TMPD/u1_nocpu_bin"
+mkdir -p "$U1_NOCPU"
+printf '#!/bin/sh\nexit 1\n' > "$U1_NOCPU/nproc"
+printf '#!/bin/sh\nexit 1\n' > "$U1_NOCPU/getconf"
+chmod +x "$U1_NOCPU/nproc" "$U1_NOCPU/getconf"
+# one_job_case <label> <expected note> <command>...
+one_job_case() {
+    local label="$1" note="$2" out rc
+    shift 2
+    rm -f "$S2_LATER"
+    out=$("$@" 2>&1); rc=$?
+    if [[ $rc -eq 1 && ! -e "$S2_LATER" && "$(running_lines "$out")" == "test_a_pass.sh test_b_fail.sh" ]] \
+            && printf '%s\n' "$out" | grep -qxF "run_script_tests: running with 1 job ($note)" \
+            && printf '%s\n' "$out" | grep -Eq '^run_script_tests: FAILED at test_b_fail\.sh \(suite 2 of 4\) after [0-9]+s — stopping, remaining suites not run$'; then
+        pass "(u1) $label"
+    else
+        fail "(u1) $label (rc=$rc, later_ran=$([[ -e "$S2_LATER" ]] && echo yes || echo no), out=$out)"
+    fi
+}
+one_job_case "-j 1 gives the one-job run: list order, stop at the first failure" "-j" \
+    "$RUNNER" -j 1 "$S2"
+one_job_case "RUN_SCRIPT_TESTS_JOBS=1 gives the one-job run: list order, stop at the first failure" "RUN_SCRIPT_TESTS_JOBS" \
+    env RUN_SCRIPT_TESTS_JOBS=1 "$RUNNER" "$S2"
+one_job_case "an unreadable CPU count gives the one-job run by default, and says why" "default; the CPU count could not be read" \
+    env PATH="$U1_NOCPU:$PATH" "$RUNNER" "$S2"
 jobs_case "-j 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j 3 "$U1"
 jobs_case "-j3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" -j3 "$U1"
 jobs_case "--jobs 3 runs with 3 jobs" 0 "run_script_tests: running with 3 jobs (-j)" "" --jobs 3 "$U1"
