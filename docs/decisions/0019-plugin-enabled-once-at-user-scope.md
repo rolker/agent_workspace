@@ -3,8 +3,10 @@
 ## Status
 
 **Accepted** (2026-11-12, #446). Supersedes decisions 3 and 4 of
-[ADR-0018](0018-plugin-based-skill-delivery.md), and its rejected
-alternative "Enable the plugin at user scope"; the rest of ADR-0018 stands.
+[ADR-0018](0018-plugin-based-skill-delivery.md), its decision 6's
+paragraph on how `run-issue` decides the prefix (`skill_prefix.sh`; by
+decisions 3 and 6 here), and its rejected alternative "Enable the plugin
+at user scope"; the rest of ADR-0018 stands.
 Withdraws the scoped exception to
 [ADR-0016](0016-session-roots-and-the-user-tier.md) decision 2 that
 ADR-0018 decision 4 recorded.
