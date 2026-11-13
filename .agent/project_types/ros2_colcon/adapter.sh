@@ -870,6 +870,7 @@ _rc_validate_manifest_route() {
         echo $((issues + 1))
         return 0
     fi
+    local source_changed=0
     for key in source source_ref source_path; do
         case "$key" in
             source) want="${ACTIVE_PROJECT_SOURCE:-}" ;;
@@ -880,6 +881,7 @@ _rc_validate_manifest_route() {
         if [ "$got" != "$want" ]; then
             echo "❌ the resolved manifest is from $key='$got' but the settings file says $key='$want' (run: .agent/scripts/adapter --project $name sync)" >&2
             issues=$((issues + 1))
+            [ "$key" = source ] && source_changed=1
         fi
     done
     for key in role distro; do
@@ -897,12 +899,25 @@ _rc_validate_manifest_route() {
     if [ "$(_rc_resolved_from "$rf" source-state)" = local ]; then
         echo "⚠️  WARNING: the resolved manifest was made from local changes in the manifest clone (uncommitted, or commits not on the remote), not from what the source holds (commit and push them, or discard them, then run: .agent/scripts/adapter --project $name sync)" >&2
     fi
-    if _rc_source_is_url; then
+    # The checks against the source's current state apply only while the
+    # resolved manifest is from that source (a changed source is the ❌
+    # above, and what it holds says nothing about the old one).
+    if [ "$source_changed" -eq 1 ]; then
+        :
+    elif _rc_source_is_url; then
         clone="$(_rc_root)/configs/source-clone"
-        head="$(git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
-        got="$(_rc_resolved_from "$rf" commit)"
-        if [ -n "$head" ] && [ -n "$got" ] && [ "$head" != "$got" ]; then
-            echo "⚠️  WARNING: the manifest clone $clone is at ${head:0:12}, the resolved manifest is from ${got:0:12} (run: .agent/scripts/adapter --project $name sync)" >&2
+        if [ ! -d "$clone" ]; then
+            echo "⚠️  WARNING: the manifest clone $clone is missing; the resolved manifest is kept, and the next sync clones $ACTIVE_PROJECT_SOURCE again (run: .agent/scripts/adapter --project $name sync)" >&2
+        else
+            head="$(git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
+            got="$(_rc_resolved_from "$rf" commit)"
+            if [ -n "$head" ] && [ -n "$got" ] && [ "$head" != "$got" ]; then
+                echo "⚠️  WARNING: the manifest clone $clone is at ${head:0:12}, the resolved manifest is from ${got:0:12} (run: .agent/scripts/adapter --project $name sync)" >&2
+            fi
+            if [ "$(_rc_resolved_from "$rf" source-state)" != local ] \
+                && [ -n "$(git -C "$clone" status --porcelain 2>/dev/null)" ]; then
+                echo "⚠️  WARNING: the manifest clone $clone has uncommitted changes made since it was resolved; they are not in the resolved manifest (commit or discard them, then run: .agent/scripts/adapter --project $name sync)" >&2
+            fi
         fi
     elif [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
         stamp="$(_rc_file_stamp "$ACTIVE_PROJECT_SOURCE" || true)"

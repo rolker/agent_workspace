@@ -2855,6 +2855,47 @@ test_mr_sync_names_a_new_layer() {
     assert_not_contains "after setup: no notice" "not checked out yet" "$out"
 }
 
+test_mr_validate_source_state_warnings() {
+    echo "TEST: manifest route: validate warns on a clone edited after sync or missing; no stale-source warning once source itself changed"
+    local sb url out rc clone
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" setup >/dev/null 2>&1
+    clone="$sb/projects/p11/configs/source-clone"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "clean: exit 0" "0" "$rc"
+    assert_not_contains "clean: no warning" "WARNING" "$out"
+    # Edited after sync: HEAD unchanged, state clean.
+    echo "# edit" >> "$clone/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "edited after sync: exit 0" "0" "$rc"
+    assert_contains "edited after sync: warned" "has uncommitted changes made since it was resolved; they are not in the resolved manifest" "$out"
+    git -C "$clone" checkout --quiet -- manifest.yaml
+    # Missing clone.
+    rm -rf "$clone"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "missing clone: exit 0" "0" "$rc"
+    assert_contains "missing clone: warned" "the manifest clone $clone is missing; the resolved manifest is kept" "$out"
+    run_mr "$sb" sync >/dev/null 2>&1
+    # source changed to a path: the mismatch is the error; no "file changed" warning.
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "source changed to a path: exit 1" "1" "$rc"
+    assert_contains "source changed to a path: named" "the resolved manifest is from source='$url'" "$out"
+    assert_not_contains "source changed to a path: no file-changed warning" "has changed (modification time or size)" "$out"
+    # And back from a path to a URL: no clone warning either.
+    run_mr "$sb" sync >/dev/null 2>&1
+    rm -rf "$clone"
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "source changed to a URL: exit 1" "1" "$rc"
+    assert_not_contains "source changed to a URL: no clone warning" "the manifest clone" "$out"
+}
+
 test_mr_validate_link_missing_and_path_changed() {
     echo "TEST: manifest route: validate fails with no resolved manifest; warns when a path source changed"
     local sb out rc
@@ -3180,6 +3221,7 @@ mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
 mr_test test_mr_sync_names_a_new_layer
 mr_test test_mr_validate_link_missing_and_path_changed
+mr_test test_mr_validate_source_state_warnings
 mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up
