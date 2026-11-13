@@ -981,6 +981,26 @@ _gate_rec_unsafe() {  # <checkout>
         echo ".agent/work-plans/issue-${ISSUE_NUM}/progress.md in $wt is not a regular file"
     fi
 }
+# Prints why progress.md in <checkout> is not as committed, or nothing:
+# untracked, or changed in the index, the working tree or both (an edit, a
+# deletion). The record commit would take any of these with it.
+_gate_rec_dirty() {  # <checkout>
+    local wt="$1" rel st x y what=""
+    rel=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+    st=$(git -C "$wt" status --porcelain=v1 --untracked-files=all -- "$rel" 2>/dev/null) || { echo "git status could not be read for $rel in $wt"; return 0; }
+    [[ -z "$st" ]] && return 0
+    x="${st:0:1}" y="${st:1:1}"
+    if [[ "$x$y" == "??" ]]; then
+        what="is untracked"
+    elif [[ "$x" != " " && "$y" != " " ]]; then
+        what="has staged and unstaged changes"
+    elif [[ "$x" != " " ]]; then
+        what="has staged changes"
+    else
+        what="has unstaged changes"
+    fi
+    echo "$rel in $wt $what"
+}
 _gate_rec_snapshot() {  # <checkout>
     local wt="$1" d
     _GS_REL=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
@@ -1091,6 +1111,11 @@ _gate_record() {  # <entry type> <one-line why>
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
         elif unsafe=$(_gate_rec_unsafe "$_gate_wt") && [[ -n "$unsafe" ]]; then
             why_comment="${unsafe}, so the record is not written there (left as found)"
+        elif [[ "$_GATE_PKG_ROLE" == "owning" ]] && unsafe=$(_gate_rec_dirty "$_gate_wt") && [[ -n "$unsafe" ]]; then
+            # The owning checkout can be someone's own clone: the record
+            # commit would take their uncommitted progress.md text with it
+            # and push it. The workspace path keeps main's behaviour.
+            why_comment="${unsafe}, so the record is not committed there (left as found)"
         else
             local head_before append_rc=0 rec_sha="" push_rc=0
             head_before=$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")

@@ -1120,6 +1120,44 @@ else
     fail "(pkg-19 diverged) (out=$(tail_of "$out" 900))"
 fi
 
+echo "TEST: an owning checkout whose progress.md is not as committed: no record commit, the file left as found, the record on the PR"
+# Before the fix the record commit took the uncommitted text with it and
+# pushed it. clean and absent are pkg-3 and pkg-1 (committed and pushed).
+for shape in unstaged staged staged-and-unstaged untracked deleted; do
+    sb="$(make_sandbox "" "")"
+    if [[ "$shape" == untracked ]]; then cont="$(make_pkg_container "$sb" demo "")"; else cont="$(make_pkg_container "$sb" demo "$STALE")"; fi
+    A="$cont/l1_ws/src/pkg_a"
+    P="$A/.agent/work-plans/issue-901/progress.md"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    note="DEV-UNCOMMITTED-NOTE"
+    case "$shape" in
+        unstaged) echo "$note" >> "$P"; what="has unstaged changes" ;;
+        staged) echo "$note" >> "$P"; git -C "$A" add "$P"; what="has staged changes" ;;
+        staged-and-unstaged) echo "$note" >> "$P"; git -C "$A" add "$P"; echo "$note 2" >> "$P"; what="has staged and unstaged changes" ;;
+        untracked) mkdir -p "$(dirname "$P")"; printf -- '---\nissue: 901\n---\n\n%s\n\n%s\n' "$STALE" "$note" > "$P"; what="is untracked" ;;
+        deleted) rm "$P"; what="has unstaged changes" ;;
+    esac
+    st_before=$(git -C "$A" status --porcelain=v1 --untracked-files=all | od -c)
+    f_before=$(od -c "$P" 2>/dev/null || echo absent)
+    a_before=$(git -C "$A" rev-parse HEAD)
+    origin_tip=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    ok=true
+    [[ "$out" == *".agent/work-plans/issue-901/progress.md in $A $what, so the record is not committed there (left as found) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] || ok=false
+    [[ "$out" != *"and pushed"* ]] || ok=false
+    [[ "$(git -C "$A" status --porcelain=v1 --untracked-files=all | od -c)" == "$st_before" ]] || ok=false
+    [[ "$(od -c "$P" 2>/dev/null || echo absent)" == "$f_before" ]] || ok=false
+    [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] || ok=false
+    [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$origin_tip" ]] || ok=false
+    ! git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" grep -q "$note" feature/issue-901 2>/dev/null || ok=false
+    [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]] || ok=false
+    if [[ "$ok" == true ]]; then
+        pass "(pkg-20 $shape) progress.md $shape: nothing committed or pushed, status and file byte-identical, one comment with a true reason"
+    else
+        fail "(pkg-20 $shape) (out=$(tail_of "$out" 900) status now: $(git -C "$A" status --porcelain))"
+    fi
+done
+
 echo "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT"
 # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt with
 # no agent, or a stalled host, would. Only WT_FETCH_TIMEOUT (2s) can end
