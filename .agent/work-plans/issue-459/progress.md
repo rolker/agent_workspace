@@ -311,3 +311,15 @@ The six decisions are applied and consistent with the code; Rule 1 replays corre
 - [ ] Approach 2: the row fires only when armed, `--pr none`, and the newest entry is a `Decision: merge` checkpoint or a Merge record; after rows 2-3; tests for plan `revise` and phase-failed `retry` while armed (finding 1).
 - [ ] Tests table: 307 shape plus a part; failed start entry while armed (finding 2).
 - [ ] Owner's section: one clause on the surviving-worktree stop.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 09:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Adopt, proceed (Recommended)
+
+Put to him as a design question on its own: R1 where a pull request ends (after a merge answer, the next new work starts the next pull request and earlier reviews stop counting; a refused or failed merge does not count; a hand merge with no merge answer leaves no boundary and the host records it); R2 after a merge (the run ends when the issue is closed, stops when the state cannot be read, otherwise raises the plan checkpoint when no pull request is open: revise plans, proceed implements and is offered only when the plan is unchanged since its last review and names a part not yet delivered; the loop never closes an issue); R3 no new entry type; R4 the third review's must-fix, handed to the implementer as specified: the new routing row fires only when the newest entry is a checkpoint with Decision merge (any After) or a Merge record, and is checked after rows 2 and 3, with tests for both looping sequences; also the review's two extra table rows (the issue-307 shape followed by a next part; a failed start entry while armed, which counts whatever its Status) and one clause in the owner's section on the stop when the old worktree survived the merge.
