@@ -1,12 +1,117 @@
 # Inspiration Digest: superpowers
 
 Type: inspiration
-Last checked: 2026-09-14
+Last checked: 2026-11-13
 Repo: obra/superpowers
-- main @ b36e0829c6d0140e93cfef2ca599b1b07d4a7797 (= v6.3.0, released 2026-08-12)
-- dev  @ d3d9d2b (142 ahead / 0 behind main — large unreleased backlog)
-- Previously checked: main @ d884ae04edebef577e82ff7c4e143debd0bbec99
-  (post-v6.1.1), dev @ 92164e2 on 2026-07-14
+- main @ 22f0b463e7a5e579904dd6211a520321035526f7 (= v7.0.2, released 2026-11-03)
+- dev branch: not checked this run (the clone is main only)
+- Previously checked (2026-09-14): main @ b36e0829c6d0140e93cfef2ca599b1b07d4a7797
+  (= v6.3.0), dev @ d3d9d2b; (2026-07-14): main @ d884ae04edebef577e82ff7c4e143debd0bbec99
+  (post-v6.1.1), dev @ 92164e2
+
+## Changelog (2026-09-14 → 2026-11-13)
+
+6 commits on main (`b36e082...22f0b46`), 155 files; GitHub compare was
+complete (6/6 commits). Each commit is a squashed release: **v6.4.1**
+(2026-09-19; v6.4.0 was never shipped), **v6.4.2** (2026-09-25),
+**v7.0.0** (2026-10-10), **v7.0.1** (2026-10-21), **v7.0.2** (2026-11-03),
+plus one template commit (2026-10-20). Detail comes from
+`RELEASE-NOTES.md` in the clone. The dev backlog the last digest noted
+(`diagnosing-superpowers`, intent-preserving brainstorming/writing-plans)
+has landed on main. Activity: ~30 recent open issues, ~20 open PRs
+(sampled with `--limit 30` and `--limit 20`; the GitHub API reports 346
+open issues + PRs combined), about two dozen PRs merged since mid-October (most recent 30 merged PRs listed, not counted exactly).
+Maintainer posture unchanged and now written into the templates: no
+agent-written PRs fixing someone else's issue unless a maintainer asked.
+`.github/workflows/` does not exist in the clone; two open items propose
+CI (issue #2670, PR #2680).
+
+### `diagnosing-superpowers` released (v6.4.1) — resolves the deferred item
+
+The dev-branch skill the 2026-09-14 digest deferred
+(`session-diagnosis-skill`) is now on main: when a session goes wrong
+(repeated work, ignored plan, a skill that did not fire, surprising bill)
+the agent pins the problem down with the user, reads transcripts on disk,
+reports findings with `path:line` evidence, and on request builds a
+scrubbed bundle or drafts an issue for approval. `skills/diagnosing-superpowers/SKILL.md`
+is 6,941 bytes. v7.0.1 adds the human-summary requirement to the issues it
+drafts and refuses to file while the summary is a placeholder.
+
+- **Workspace relevance**: Medium. Still no workspace equivalent for
+  "why did that agent session go wrong"; the nearest things are the
+  review loop's progress timeline and friction capture. The deferral
+  condition (released to main) is met.
+
+### Skills must fit the post-compaction re-attach limit (v7.0.1)
+
+Release notes state Claude Code re-attaches each skill after compaction cut
+off at 20,000 characters, so anything past that is lost for the rest of the
+session; a reported session lost the five-round limit of
+`subagent-driven-development` and ran 18 fix rounds. The fix moved
+situational guidance into `references/` files read from disk at the step
+that needs them (three skills trimmed) and added
+`tests/skill-size/test-skill-size.sh`, which fails when any `SKILL.md`
+reaches 20,000 bytes. v7.0.2 additionally dropped trigger-only "When to
+Use" sections to save about 1,462 tokens per skill load (PR #2632 is
+open, not merged, as of this check).
+
+- **Workspace relevance**: High, checked here. `wc -c` on this workspace's
+  `.claude/skills/*/SKILL.md` (2026-11-13): sitrep 64,934 bytes, run-issue
+  52,000, review-code 37,180, audit-project 24,489, onboard-project
+  24,446 — five skills over 20,000 bytes. Bytes are not characters, and
+  I did not verify the 20,000-character claim against Claude Code itself
+  (the claude-code digest's changelog section is the place to look), so
+  treat this as a lead to confirm before acting.
+
+### Brainstorming rebuilt, then retuned twice (v6.4.1, v7.0.0, v7.0.1, v7.0.2)
+
+v7.0.0 rebuilt brainstorming: ask why first, play back what it heard,
+size the work after understanding it (do it / agree in chat / design
+doc), and replace the spec-document reviewer with a **builder check** (a
+fresh subagent reads the design as the implementer and lists what it
+would still need to ask; brainstorming answers what it can, marks its own
+minor calls, and brings the rest in one round). v7.0.1 and v7.0.2 tuned it
+after users found the questions formulaic: read the project before
+asking, ask only when the answer changes what is built and nothing
+already answers it, show options with a recommendation when a choice can
+be named, and report tuning with blind-graded counts (filler questions 41
+to 23). v6.4.2 reworked `writing-plans`: plans record decisions
+(signatures, test assertions, spec values) rather than transcribing code,
+with a self-review that compares plan length to spec length; the reported
+result is about a quarter of the time and a third of the tokens.
+
+- **Workspace relevance**: Medium. Overlaps the previously roadmapped
+  `brainstorm-three-path-router`; the builder check and the "ask only if
+  it changes what is built" rule are new and map to `/plan-task` and the
+  review-issue gate. Not checked: the workspace's own `/brainstorm`
+  behaviour against these rules.
+
+### SDD / executing-plans hardening (v6.4.1, v7.0.2)
+
+`executing-plans` rebuilt as **Native** inline execution (one whole-branch
+review at the end on the most capable model), offered beside
+subagent-driven with a stated cost and recommendation. SDD helper
+scripts now act on the current directory's repo like `git` and take
+`-C DIR`; skills tell agents to run helpers by absolute path from the
+working tree; `review-package` rejects empty or non-descendant ranges;
+`task-brief` refuses a brief swallowed by an unclosed code fence;
+workspaces no longer collide for plans with the same basename. Open
+issues (not merged) propose: required per-unit commits so a dead subagent
+leaves recoverable work (#2696), and verifying that a "launch rejected"
+may already have run (#2691).
+
+- **Workspace relevance**: Low to medium. The failure modes (helper run
+  against the wrong repository, dead subagent leaving unrecoverable work,
+  a rejected launch that actually ran) are ones `dispatch_phase.sh` and
+  the worktree scripts could also have. Not checked: whether they do.
+
+### Harness bootstrap fixes (v6.4.1–v7.0.2) — informational
+
+New harness support: OpenCode 2.0, Muse, Qwen Code, Antigravity
+(native manifest, bootstrap through skill-description discovery), plus
+many bootstrap/hook fixes (Windows PowerShell, no child processes in the
+SessionStart hook, zsh fallback). Confirms the adapter-contract shape
+already roadmapped on 2026-09-14; nothing new to port.
 
 ## Changelog (2026-07-14 → 2026-09-14)
 
@@ -234,6 +339,28 @@ not diagnose superpowers".
 - `iron-law-pattern` — v6.2.0's fold-don't-delete eval result is the
   first hard evidence that rationalization tables carry behaviour.
   Stays deferred, note strengthened.
+
+## Pending Review (2026-11-13 round)
+
+- `superpowers-1` `skill-size-compaction-limit` — skills over ~20,000
+  characters are truncated when Claude Code re-attaches them after
+  compaction; upstream moved guidance to `references/` and added a size
+  test. Five workspace skills are over 20,000 bytes (see changelog), so
+  rules at the end of those files (for example run-issue's) may be lost
+  after compaction (2026-11-13)
+- `superpowers-2` `session-diagnosis-skill` (deferred earlier) —
+  `diagnosing-superpowers` is now released on main: transcript forensics
+  with `path:line` evidence, scrubbed bundle, drafted issue. The
+  deferral condition is met (2026-11-13)
+- `superpowers-3` `brainstorm-builder-check` — a fresh subagent reads a
+  design as the implementer and lists what it would still need to ask,
+  plus the "ask only when the answer changes what gets built" rule;
+  possible input to `/plan-task` and `/review-issue` (2026-11-13)
+- `superpowers-4` `plans-record-decisions-not-code` — `writing-plans` now
+  has plans carry signatures, assertions and spec values rather than
+  code, with a plan-length-versus-spec-length self-review; reported
+  large time and token savings. Possible input to `/plan-task`
+  (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
@@ -576,7 +703,9 @@ process as mandatory workflow rather than optional suggestions.
 
 ## Activity Snapshot
 
-- ~60 open issues, ~30 open PRs (sampled). Very active.
+- **2026-11-13**: see the 2026-09-14 → 2026-11-13 changelog above (v7.0.2 latest;
+  ~30 recent open issues and ~20 open PRs sampled; no CI workflow in the repo).
+- *Earlier (2026-05-07):* ~60 open issues, ~30 open PRs (sampled). Very active.
 - v5.1.0 released 2026-05-04 (PR #1468); dev branch already 21 commits ahead.
 - Big themes since last check: native Codex plugin, worktree rototill, drill/evals
   harness, deprecated shim removal, lifecycle hooks, adversarial review patterns.
