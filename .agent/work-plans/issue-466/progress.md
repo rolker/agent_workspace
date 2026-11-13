@@ -289,3 +289,13 @@ Fix plan for 1 and 2, in `.claude/skills/onboard-project/SKILL.md`, `STATUS=dry-
 - [ ] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`, covers via bookkeeping) Valid, low impact. The name rule at `register_session_root.sh:171` is a copy of `register_project.sh:581`. The same base rule is also copied at `_project_registry.sh` 150, 192 and 491, without the `.sh` clause, so the duplication was there before this change. If the copies drift, `register_project.sh` stays the authority under its lock, so the worst case is a misleading refusal message (round 1's `NEXT=choose a name with --name`) or a needless refusal, never a wrong write. Likelihood: low, because the rule rarely changes. Recommend a follow-up issue that puts all five copies into one helper in `_project_registry.sh`; deferring is the owner's call — `.agent/scripts/register_session_root.sh:171`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 12:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified all three open findings valid; F1 and F2 are text in one paragraph of the skill and F2 makes a security-relevant claim in the skill untrue, so both are fixed in this pull request; F3, sharing the name rule across five copies, is wider than this pull request and is left open for the owner to defer at the merge checkpoint; first host address at this checkpoint)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 0c82bb99 and its report. The fix pass works F1 and F2 only and leaves F3's box open.
