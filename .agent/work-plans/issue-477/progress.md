@@ -326,3 +326,13 @@ path	Path 3	less waiting for the same care	In the owner's words (2026-11-13): "W
 - `test_skill_paths.sh`: 149 passed, 0 failed.
 - `test_sitrep_checks.sh`: 211 passed, 0 failed.
 - Not run, on the owner's rule of 2026-11-13: the full suite and the full pre-commit pass (the host's one run).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 15:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 is approved with no must-fix and no suggestions; Gemini and Codex ran, one suggestion from Gemini not carried because the plan review had weighed that case; the host's one full pre-commit pass ran after the approval, on 395f1bb4, the head that is pushed, every hook and every suite with no SKIP: exit 0 in 219 s)
+**After**: publish
+**Decision**: publish
+
+Read: the Local Review (Pre-Push) at 395f1bb4 and its report; the full pass output. The owner is shutting the machine down; the pull request is published so it is safe on GitHub, and the drive parks here: triage and the merge checkpoint are for the next session.
