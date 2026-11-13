@@ -197,6 +197,9 @@ declare -A ROOT_READERS=(
     # .claude/ (covered); .github/PULL_REQUEST_TEMPLATE.md is the one path
     # outside those prefixes, so it is declared here as a real prefix.
     [test_checkpoint_269.sh]="git-history:.agent/work-plans .github/PULL_REQUEST_TEMPLATE.md"
+    # Runs the real identity scripts, the shared helper and the
+    # commit-identity hook in place against temp repos (issue #455).
+    [test_commit_identity.sh]=".agent/scripts .agent/hooks"
     # Real read is `git -C "$SCRIPT_DIR" rev-parse --git-common-dir` then
     # `${...%/.git}/.venv/bin/python3` -- a real repo root, but .venv/ is
     # git-ignored (never part of a commit diff), so there is nothing a

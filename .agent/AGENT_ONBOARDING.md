@@ -11,11 +11,13 @@ For agents without a framework-specific instruction file.
 ## Setup
 
 ```bash
-# 1. Configure git identity
+# 1. Configure git identity (the email derives from this checkout's git
+#    user.email as <local>+<framework>@<domain>; source it in the checkout
+#    you commit in)
 # Host-based (shared workspace):
-source .agent/scripts/set_git_identity_env.sh "<Agent Name>" "<email>"
+source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 # Container/isolated:
-.agent/scripts/configure_git_identity.sh "<Agent Name>" "<email>"
+.agent/scripts/configure_git_identity.sh --agent <framework>
 
 # 2. Check workspace status
 .agent/scripts/dashboard.sh --quick
