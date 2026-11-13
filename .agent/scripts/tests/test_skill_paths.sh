@@ -691,6 +691,10 @@ has "$RI" "run-issue step 13: what closes the issue, the post-merge plan checkpo
     'The loop never closes an issue itself.' \
     '`proceed` (→ `implement`) is offered only when `plan.md` is unchanged since that review and the plan names a part not yet delivered; otherwise the answer is `revise`' \
     '`**Decided-by**: owner`, his words in the body), or a `restart` when he restates the goal'
+has "$RI" "run-issue steps 11 and 13: a landed merge ends the run; the next part is a fresh /run-issue (issue 459)" \
+    '**A landed merge ends the run.** When `merge_pr.sh` reports the pull request merged, the run is `done`: the host reports the merge and does not call `next` again.' \
+    'The next part of the issue, if any, starts with a fresh `/run-issue <N>` (step 13).' \
+    'and the run that made the merge ends there (step 11): it never calls `next` again. The next part starts with a fresh `/run-issue <N>`'
 # The issue-state block itself, run against a stub gh: a failing gh stops
 # with a non-zero exit; CLOSED and OPEN are printed for the host to route.
 STATE_BLOCK="$(python3 - "$RI" <<'PYSTATE'

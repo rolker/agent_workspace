@@ -60,15 +60,20 @@ entries on the branch from the start of the current pull request's work,
 `skill_for()` looks for an earlier complete `## Implementation` from that
 same start to tell a failed address-findings pass from a failed implement
 pass, and row 3a asks whether a `merge` answer stands with no new work
-after it. The work starts after the newest `**Decision**: restart`
+after it. The rounds start after the newest `**Decision**: restart`
 checkpoint (a restart begins the new work at round 1), or, for an issue
-delivered in several pull requests, at the first `## Plan Authored` or
-`**Addressed**`-less, not PR-correlated `## Implementation` after a `merge`
-answer (the next part's first review is round 1). A non-`merge` answer at
-`merge`, `findings` or `merge-refused` withdraws the `merge` answer; a
-`## Merge (...)` record changes nothing; a merge by hand with no `merge`
-answer leaves no boundary until the host records one (`run-issue` step
-13). `review_progress.sh round` and `sources` read the same rule. The
+delivered in several pull requests, at the pull-request boundary, whichever
+is newer. The boundary is the first start entry after a `merge` answer: a
+`## Plan Authored`, or an `**Addressed**`-less `## Implementation` that is
+`**Branch**`-correlated, carries a `**PR**` number other than the merged
+pull request's, or has no correlation line and is not complete (the next
+part's first review is round 1; `pr_start.py`'s docstring has the cases
+that are not starts). A non-`merge` answer at `merge`, `findings` or
+`merge-refused` withdraws the `merge` answer; a `## Merge (...)` record
+changes nothing; a merge by hand with no `merge` answer leaves no boundary
+until the host records one (`run-issue` step 13). `review_progress.sh
+round` reads the same round start; `sources` cuts at the boundary only, so
+a restart keeps the open pull request's earlier reviews. The
 routing key is the entry's `base_type` and its fields — never adjacency to
 the entry before it. Three routing rules worth remembering because they
 read as exceptions:
@@ -77,9 +82,10 @@ read as exceptions:
   (row 3a): when the timeline still holds a `merge` answer and the newest
   entry is that answer (any `**After**`) or a `## Merge (...)` record,
   `next --pr none` answers `checkpoint:plan` for the issue's next part
-  instead of `merge`. `run-issue` reaches it only for an open issue: it
-  asks the issue's state first, and probes a merged pull request as an
-  earlier part (`--pr none`), never as `--pr merged`.
+  instead of `merge`. `run-issue` reaches it only in a fresh run for an
+  open issue (a landed merge ends the run that made it): it asks the
+  issue's state first, and probes a merged pull request as an earlier part
+  (`--pr none`), never as `--pr merged`.
 
 - **`## Local Review` and `## Local Review (Pre-Push)` route on
   `**Verdict**` alone** (`approved` vs. not), never on open findings —

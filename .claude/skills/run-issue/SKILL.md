@@ -334,7 +334,8 @@ A closed-not-merged PR with no open one is outside this loop's action-token
 vocabulary; stop and hand it to the user. Keep the PR number `<M>` for
 every `--pr <M>` call below. `--pr merged` (row 1, `done`) is no longer a
 probe answer: it is given only by hand, for a run that should end on a
-merged pull request.
+merged pull request. Nor is it how a run ends after its own merge: that run
+ends when the merge lands, without asking `next` again (step 11).
 
 ### 3. Ask `next` what happens next
 
@@ -918,9 +919,16 @@ the script's error text and ask the owner at the merge checkpoint.
 Bookkeeping-only commits after the reviewed head (progress.md, work plans,
 roadmap) need no new review and no new CI wait: the gate and the CI target
 both walk back over them.
-`--pr merged` short-circuits
-`next` to `action=done` before any worktree or progress resolution is
-attempted (row 1) — the worktree may already be gone.
+
+**A landed merge ends the run.** When `merge_pr.sh` reports the pull
+request merged, the run is `done`: the host reports the merge and does not
+call `next` again. The worktree is gone, and on an issue that is still open
+(an earlier part, a non-default base, or an auto-close not yet visible)
+step 2's probe answers `--pr none`, not `merged`, so `next` would find no
+worktree (it then exits 2 and says the run is over). The next part of the
+issue, if any, starts with a fresh `/run-issue <N>` (step 13). `--pr
+merged`, given by hand, still short-circuits `next` to `action=done` before
+any worktree or progress resolution is attempted (row 1).
 
 One precondition belongs to step 9, not here: if the latest `## Integrated
 Review` recorded `**CI**: pending`, CI is re-checked *before* the merge
@@ -957,12 +965,15 @@ stays open and why, and the owner closes it when the last part is in. The
 loop never closes an issue itself.
 
 **After each merge.** `merge_pr.sh` removes the worktree and deletes the
-branch. The next part starts with `/run-issue <N>` again: step 1 recreates
-the worktree and `feature/issue-<N>` from the base, step 2 asks the issue's
-state (closed → done) and finds no open pull request (the merged one is an
-earlier part) → `--pr none`. `next` then answers `checkpoint:plan` (row
-3a: the newest entry is the `merge` answer, or the `## Merge (...)` record
-the gate wrote before a merge that landed, and the timeline is armed).
+branch, and the run that made the merge ends there (step 11): it never
+calls `next` again. The next part starts with a fresh `/run-issue <N>`:
+step 1 recreates the worktree and `feature/issue-<N>` from the base; step 2
+asks the issue's state first (closed → `done`, nothing to do; unreadable →
+stop), then probes the pull requests: the merged one is an earlier part, an
+open one is taken, a draft one or none gives `--pr none`. `next` then
+answers `checkpoint:plan` (row 3a: the newest entry is the `merge` answer,
+or the `## Merge (...)` record the gate wrote before a merge that landed,
+and the timeline is armed).
 
 **The post-merge plan checkpoint** shows, in the dialog: the pull request
 just merged; that the issue is still open and why it can be (more parts to
@@ -976,11 +987,21 @@ delivered; otherwise the answer is `revise` (→ `plan-task`, then
 `review-plan`). `stop` ends the run as anywhere else.
 
 **Where a pull request ends** (`pr_start.py`, read by `next`, `round` and
-`sources`). After a `merge` answer, the next new work, the part's `## Plan
-Authored` or its first `## Implementation` with no `**Addressed**` and no
-`**PR**` correlation (whatever its status), starts the next pull request:
-its first pre-push review is round 1 with outside reviewers, and a failed
-first implement is retried as `implement`. A refused or failed merge is no
+`sources`). After a `merge` answer, the next new work starts the next pull
+request: the part's `## Plan Authored`, or its first `## Implementation`
+with no `**Addressed**` that is `**Branch**`-correlated, or carries a
+`**PR**` number other than the merged pull request's (a draft of the next
+part that existed before it; the merged number is the newest PR-correlated
+entry's before the `merge` answer), or has no correlation line and is not
+`complete`, whatever the status otherwise. Its first pre-push review is
+round 1 with outside reviewers, and a failed first implement is retried as
+`implement`. Not a start: a fix on the merged pull request's own number, a
+`**PR**` Implementation when the merged number is unknown (no boundary is
+guessed: a missed one only brings the rounds checkpoint early), and a
+complete Implementation with no correlation line. The rounds count from
+the newer of this boundary and a `restart`; `sources` cuts only at the
+boundary, so a restart while a pull request is open keeps its earlier
+reviews in triage input. A refused or failed merge is no
 boundary: the `merge-refused`, `merge` or `findings` checkpoint answered
 anything but `merge` disarms it, and a `## Merge (...)` record does nothing
 either way. A merge made by hand with no `merge` answer recorded leaves no

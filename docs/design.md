@@ -610,14 +610,14 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   It makes no `gh` call and returns one action from a 28-row table plus row 3a (`dispatch_phase.sh`
   header). A partial or failed newest entry is always a `phase-failed` checkpoint, never a silent retry.
 - **An issue can be delivered in several pull requests** (owner decision 2026-11-13, #459). Where a pull
-  request's work starts is one rule in `pr_start.py`, read by `next`, `review_progress.sh round` and
-  `sources`: after the newest `**Decision**: restart` checkpoint, or at the first `## Plan Authored` or
-  `**Addressed**`-less, not PR-correlated `## Implementation` after a `merge` answer; a non-`merge`
-  answer at `merge`, `findings` or `merge-refused` withdraws that answer, a `## Merge (...)` record does
-  nothing either way, and a merge by hand with no `merge` answer leaves no boundary until the host
-  records one. So each pull request counts its own review rounds. After a merge, `/run-issue` asks the
-  issue's state first (closed ends the run; an unreadable state stops it); on an open issue a merged pull
-  request is an earlier part, and with none open `next` raises the `plan` checkpoint (row 3a), where
+  request starts is one rule in `pr_start.py`: after a `merge` answer, the first `## Plan Authored`, or
+  `**Addressed**`-less `## Implementation` on the branch or on another pull request than the merged one
+  (a fix on the merged one is none); a non-`merge` answer at `merge`, `findings` or `merge-refused`
+  withdraws it, a `## Merge (...)` record does nothing, and a hand merge with no `merge` answer leaves no
+  boundary until the host records one. Rounds (`next`, `review_progress.sh round`) count from the newer
+  of it and a `restart`; `sources` cuts only at it. A landed merge ends the run; the next part is a fresh
+  `/run-issue`, which asks the issue's state first (closed ends it; unreadable stops it), takes a merged
+  pull request as an earlier part, and with none open gets the `plan` checkpoint (row 3a), where
   `proceed` is offered only for a plan unchanged since its review that names a part not yet delivered.
   `--pr merged` (row 1, `done`) is given only by hand. The last part's `Closes #N` closes the issue on
   the default branch; elsewhere the owner closes it; the loop never does (`run-issue/SKILL.md` step 13).
