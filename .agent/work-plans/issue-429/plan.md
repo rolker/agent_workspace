@@ -407,7 +407,11 @@ unchanged.
    `base=` is refused as before. **For an issue with no package base** (a workspace issue, a single-repository
    project issue, any worktree with no `.worktree-repos` manifest or only a lone `.` entry, a bare number)
    `base` prints nothing and exits 0; the handoff has no `base=` line; `/run-issue` calls it for every issue
-   and treats empty output as "no base" (it passes no `--base` to publish).
+   and treats empty output as "no base" (it passes no `--base` to publish). [As built, after the plan
+   review of 2026-11-12, note 3: "no package base" is decided by the worktree the ref resolves to (no
+   manifest, or a lone `.` entry), not by how the ref is written, since a unique bare number can resolve
+   to a package worktree and then gets its base; before the worktree exists, a bare number without
+   `--layer` has none, and a qualified ref without `--layer`/`--package-repos` is refused.]
 7. **The merge cross-check** (moved here from the gate): `_head_json` gains `baseRefName` (the same `gh pr
    view`, no new request); a reason "targets <x>; this worktree's recorded base is <y>" joins the gate
    reasons. Report-only like every package reason; silent without `base=`. **Cleanup pull rule (host decision),
@@ -419,18 +423,26 @@ unchanged.
    `baseRefName` also means fetch only. A failed pull in the pulling case, or a failed fetch, still marks the
    cleanup incomplete. This is the rule `adapter_sync` already follows (pull only when clean and on the pinned
    branch). The generic `git pull --ff-only` for workspace and project pull requests (1742) is untouched.
+   [As built, note 2: after a fetch-only cleanup the final banner says "merged and cleaned up; <repo>'s
+   checkout was fetched only, not fast-forwarded (<why>)", not "merged, cleaned up, and synced". A detached
+   HEAD is its own reason, "detached HEAD, not the base <y>".]
 8. **Tests and suites.** `test_package_issue_loop.sh`: the sandbox's pkg_a has default branch `main` and
    pin `pinned`; `base` with and without `--base`; tag, commit and unknown refuse (the sandbox's real
    `.repos` pins, rewritten per case; no stub adapter type); the repository name comes from the owning entry and differs from the forge
    name; gh log shows `pr create -R owner/pkg_a --base pinned`; resume: a worktree with no `base=` gets it
    written, a base absent on origin refuses and writes nothing, a `--base` on resume is checked on origin.
    `test_dispatch_phase.sh` gains a case: `base` on a workspace worktree and on a single-repository project
-   worktree prints nothing, exits 0, and the handoff has no `base=` line. One case in `test_merge_pr_gate.sh`
-   for the cleanup pull rule: clean on the base pulls; dirty, other branch, detached or empty base fetches
-   only and is not incomplete. Unchanged suites that prove workspace and
-   single-repository issues: `test_worktree_create.sh` (existing cases), `test_dispatch_phase.sh`,
-   `test_gh_create_pr.sh`, `test_resolve_work_plans_dir.sh`, `test_progress_append.sh`, `test_adapter.sh`,
-   `test_ros2_colcon.sh` (existing cases).
+   worktree prints nothing, exits 0, and the handoff has no `base=` line. The cleanup pull rule is tested in
+   `test_merge_pr.sh` (corrected after the plan review of 2026-11-12, note 1: that suite tests Step 4's
+   package cleanup, and `test_merge_pr_gate.sh` stops its runs at the merge): clean on the base pulls;
+   dirty, other branch, detached or empty base fetches only, is not incomplete, and the banner says so.
+   `write_pr_view_fixture` gains a `baseRefName` (default `main`, the sandbox origin's branch), so
+   `test_own_repo_sync_failure_is_reported` still pins a failed pull on the base. The base cross-check is
+   tested there too. Unchanged suites that prove workspace and single-repository issues:
+   `test_gh_create_pr.sh`, `test_resolve_work_plans_dir.sh`, `test_progress_append.sh`,
+   `test_merge_pr_gate.sh` (its fixtures carry no `baseRefName` and no `base=`, so the cross-check stays
+   silent there). `test_adapter.sh` and `test_ros2_colcon.sh` are not edited: their `repo_pin` cases
+   merged in pull request 456.
 
 ### Pull request 2b: the gate, the end-to-end test, the Scope text
 
@@ -555,11 +567,11 @@ fallback to a pull-request comment. Rows with "none today" are the input to the 
 | `.agent/scripts/_pr_base.sh` (new, sourced), `.agent/scripts/dispatch_phase.sh` | `pr_base_for`; `base` subcommand; `base=` in the handoff | 2a |
 | `.agent/scripts/worktree_create.sh`, `.agent/scripts/_worktree_helpers.sh` | `--base`; strict start path in `_wt_add_repo`; `base=` header; un-anchored `layer=` reader; `WT_MANIFEST_BASE` | 2a |
 | `.agent/scripts/merge_pr.sh` | Base cross-check reason (`baseRefName`, `base=` in the `_PKG_MATCHES` record); cleanup pull only when clean and on the base | 2a |
-| `.claude/skills/run-issue/SKILL.md` | `--base`, step 1 `base`, publish `--base` | 2a |
-| `.agent/scripts/tests/test_adapter.sh`, `test_ros2_colcon.sh`, `test_worktree_create.sh`, `test_package_issue_loop.sh` | Verb, strict path, header and base cases (no new suite file) | 2a |
+| `.claude/skills/run-issue/SKILL.md`, `.claude/skills/start-task/SKILL.md` | `--base`, step 1 `base`, publish `--base`; start-task's argument note lists `--base` as creation-only | 2a |
+| `.agent/scripts/tests/test_worktree_create.sh`, `test_package_issue_loop.sh`, `test_dispatch_phase.sh`, `test_merge_pr.sh` | Strict path and header cases; `base` before and after creation, resume and publish; no package base; the cleanup pull rule and the cross-check (no new suite file; the verb's cases in `test_adapter.sh` and `test_ros2_colcon.sh` merged in 456) | 2a |
 | `docs/design.md`, `.agent/knowledge/script_reference.md`; `docs/decisions/0012-*.md` (cross-reference addendum only) | `base=` and the start-point rule in `docs/design.md#worktrees`, rows, change log; ADR-0012 addendum | 2a |
 | `.agent/scripts/merge_pr.sh` | Gate reads and records in the owning checkout (`PKG_OWN_REL` carried in the `_PKG_MATCHES` record); sibling reason | 2b |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` | Flip the package expectation; owning, sibling and cleanup cases (a to d); rename the fixture project to `demo` | 2b |
+| `.agent/scripts/tests/test_merge_pr_gate.sh` | Flip the package expectation; owning and sibling cases; rename the fixture project to `demo`. The cleanup cases (a) to (d) belong in `test_merge_pr.sh`, beside its existing sibling and sweep cases (plan review of 2026-11-12, note 1; check for duplicates first) | 2b |
 | `.agent/scripts/tests/test_package_issue_loop.sh` | End-to-end case from creation to the merge call | 2b |
 | `.claude/skills/run-issue/SKILL.md`, `docs/design.md`, `.agent/knowledge/script_reference.md` | Scope, step 11, Records and Merge gate text, `merge_pr.sh` row, change log | 2b |
 
