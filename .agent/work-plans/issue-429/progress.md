@@ -2029,3 +2029,26 @@ Fix in pull request 460: state the --parent-issue exception to "an existing owni
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran the suites the branch's changed files reach.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 23:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a3be5b1d6eca4c5d8, resume 3 of 3)
+
+**PR**: #460 at `7b85fe7d`
+**Depth**: Deep (reason: whole-diff classification; fix round scoped by the handoff to the one documentation suggestion and the text-only fix 9bc5f3ee)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Fix-round re-review of the round-3 suggestion (the `--parent-issue` exception to the existing-branch rule). Cross-model: skipped per handoff (text and usage text only, no behaviour).
+
+- **The exception, in each of the six places changed** (`docs/design.md#worktrees`, start-task SKILL.md, `WORKTREE_GUIDE.md`, `script_reference.md`, `worktree_create.sh`'s `--base` usage text and its manifest-write comment): each says an existing owning branch is accepted, no `base=` is recorded, a note says so, and `dispatch_phase.sh base --base <branch>` records one later. That matches `worktree_create.sh`'s manifest write, the `elif [ -n "$PARENT_BRANCH" ]` branch with its Note, and the refusal of `--base` with `--parent-issue`.
+- **No behaviour changed:** inside `worktree_create.sh`, the diff of 9bc5f3ee touches only `echo` lines of `show_usage` and a comment block; `bash -n` passes.
+- **Places left as they are:**
+  - run-issue SKILL.md never passes `--parent-issue` (0 occurrences), so its rule needs no exception.
+  - The ADR-0012 addendum still holds ("for a branch the workspace did not start only a base the owner names is recorded": the exception records nothing). It defers the detail to design.md.
+- **Suites rerun at 7b85fe7d:** test_ros2_colcon 558/0, test_worktree_create 0 failed, test_package_issue_loop 194/0, test_dispatch_phase 148/0, test_merge_pr 150/0.
+
+### Findings
+- [ ] No issues found. LGTM.
