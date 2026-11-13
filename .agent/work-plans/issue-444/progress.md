@@ -624,3 +624,13 @@ Read for this entry: the fix commit 7938e59f, `merge_pr.sh` 748-908 and 1165-132
 - [ ] (suggestion, Local Review @ `f068ca6`) Valid, outside this pull request (main's code from pull request 461). The record step's other reasons (`merge_pr.sh` 1197, 1200, 1255, 1258, 1261, 1286, 1290, 1297, and the lines at 1229/1251) put `_gate_wt`, `PR_BRANCH`, `cur_branch` and the fetch's first stderr line in raw. How it would go wrong: odd bytes printed raw to the operator's own terminal only, never to the pull request comment (the comment body is the entry alone, 1313). Likelihood low: git refuses control characters in branch names, so it takes a checkout path with control bytes in it, or a fetch error line carrying them. Recommendation: no fix here and not part 2 (which does not touch `merge_pr.sh`); no new issue: it belongs with issue 462 (the record step publishing unpushed commits and uncommitted edits), which edits the same function and is owned by the other machine's session, already told — `.agent/scripts/merge_pr.sh:1197-1297`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 13:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Asked: "Merge pull request 468 once CI is green on the combined code, with F1 carried into part 2 and F2 left for issue 462?", with F1 (test_merge_pr_gate.sh:890: no case checks that escaping happens exactly once; triage: carry into part 2 of this issue) and F2 (merge_pr.sh:1197-1297, main's code from pull request 461: other record-step messages print the checkout path, branch names and the fetch error line raw, to the terminal only; triage: belongs with issue 462), and with what changed since his earlier conditional answer: the 26-line fix in merge_pr.sh (the 256-byte cap applies to each value, never to the whole sentence), its new test, and two merges of main. The owner's answer, verbatim: "yes on q1 and open the issue about limits and safeguards". The host merges only when every check on the reviewed head f068ca67 has passed, the pull_request run included, with no relaxing flag, and stops and reports otherwise. F1 and F2 are deferred on that answer.
