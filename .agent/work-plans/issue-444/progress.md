@@ -323,3 +323,29 @@ Read: the round 2 Local Review (Pre-Push) at f1bf7501 and its reviewer's report.
 
 ### Decisions made (owner may veto)
 - Address the four suggestions before publishing rather than publish as approved — undoing it: none needed before the push; the branch can be published at f1bf7501 instead.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abfc89607fe23254d, resume 1 of 3)
+
+**Branch**: feature/issue-444 at `f48e2101`
+**Addressed**: Local Review (Pre-Push) at `b0e658f0` (2026-11-13 11:02 -05:00)
+**Commits**: ddb035fd, cb3371e9, f48e2101
+
+### Actions
+- [x] (suggestion) S1: a second signal during the stop now KILLs at once. `on_interrupt` marks a stop under way, and the EXIT trap then calls `kill_now`, which KILLs every live group and the stop's watchdog, instead of starting a second 5 s stop. Its message ("stop cut short; KILLing N process group(s) at once") goes to a copy of the runner's stderr (`runner_err`, closed in the suites and the watchdog). Without the copy the line was lost: a second TERM lands in `wait ... 2>/dev/null`, and the EXIT trap runs with that redirection in place (found by tracing; the KILL itself did happen). New (u8) tests: a second SIGTERM, and a second Ctrl-C to the runner's group, sent 0.5 s into a stop that would last 5 s, end the run in 4 to 8 ms. The runner from before this pass took 5009 ms — `.agent/scripts/tests/run_script_tests.sh:545`, `:713`
+- [x] (suggestion) S2: a group a reaped suite leaves with a process still in it is kept in `lingering`. It is dropped once empty, on every reap and in `live_groups`, because an empty group's number can be reused. `stop_suites` and `kill_now` reach these groups through `live_groups`. At the end of a normal run, the EXIT trap stops them after the second sweep and prints a line. Both new (u8) tests are deterministic. In the first, SIGTERM stops a sleep left by a suite the runner has already reaped; the test waits for the suite's "---" line, so the reap is certain. In the second, a run that ends normally stops such a sleep and says so. The runner from before this pass left that sleep alive — `.agent/scripts/tests/run_script_tests.sh:656`, `:783`
+- [x] (suggestion) S3: (u4)'s finish order no longer depends on sleeps racing each other. Each suite records its pid. The next waits until that suite is gone (reaped by the runner, since a zombie still answers kill -0), then one more second. Each wait is capped at 30 s, so a broken chain fails the case rather than hanging it — `.agent/scripts/tests/test_run_script_tests.sh:1231`
+- [x] (suggestion) S4: (u8c) and (u8b) are now timed in milliseconds with EPOCHREALTIME (`ms_now`), from before the signal. (u8c) must end under 4800 ms, against 5000 ms or more for a runner that waits out the deadline; that leaves 3.8 s of slack for its 1 s cleanup. (u8b) must end between 4900 and 10000 ms. The SIGINT/SIGTERM and SIGUSR1 (u8) cases keep their loose whole-second upper bound of 10 s — `.agent/scripts/tests/test_run_script_tests.sh:1476`
+
+### Verification
+- `bash .agent/scripts/tests/test_run_script_tests.sh` alone, three times in a row on `f48e2101`, load average 13 to 14:
+  - run 1: 161 passed, 0 failed, 52 s;
+  - run 2: 161 passed, 0 failed, 54 s;
+  - run 3: 161 passed, 0 failed, 55 s.
+  (u8c) measured 1032 to 1039 ms.
+- On the owner's direction, the full `pre-commit run --files ...` pass and the full suite were skipped. `test_run_script_tests.sh` is the only suite run; the host runs the full pass before publishing.
+- Every commit used `SKIP=validate-script-tests`; every other hook ran, shellcheck included, and passed.
+- The behaviour of the runner from before this pass was checked with a small scratchpad script, deleted afterwards.
