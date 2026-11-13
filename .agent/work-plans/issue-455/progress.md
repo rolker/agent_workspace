@@ -443,3 +443,29 @@ Fix in pull request 457: when git var fails (user.useConfigOnly=true with no use
 ### Checks
 - `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, including the `.agent/scripts/tests/` suite hook (Passed).
 - `test_commit_identity.sh`: 93 passed, 0 failed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent afbf6f45826febd3e, resume 3 of 3)
+
+**PR**: #457 at `85e74304`
+**Depth**: Deep (reason: fix-round re-review of the identity hook; scope narrowed to the triage finding and fix commit f61c1834 per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the one triage finding (unresolvable ident reported as "not set") and fix commit `f61c1834`.
+
+Cross-model: skipped per the handoff. Note that the skill's own rule runs cross-model on a PR-mode fix round below round 3, and this is the PR's first `## Local Review`. The host decided otherwise.
+
+Checks:
+- `ident_email` now returns `(email, error)`. Its only caller is the hook (`check-commit-identity.py:48`), which unpacks both values.
+- The new unresolved-ident path always ends in `return 1`; no branch lets the commit through.
+- If git succeeds but prints no `<...>`, the error string is filled in, so that case also stops on the unresolved path.
+- "(empty)" now appears only for an ident that resolved to an empty address. Every unresolved case goes to the new path, so "(empty)" is correct there and "not set" no longer appears.
+- The new test fails on the old code: run against `f61c1834^`, it gives "92 passed, 1 failed (unresolved ident)". On the new code it gives 93 passed, 0 failed.
+- flake8 and shellcheck: clean.
+
+### Findings
+- [ ] No issues found. LGTM.
