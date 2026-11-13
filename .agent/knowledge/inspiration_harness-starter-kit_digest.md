@@ -1,8 +1,10 @@
 # Inspiration Digest: harness-starter-kit
 
 Type: inspiration
-Last checked: 2026-09-14
+Last checked: 2026-11-13
 Repo: harnessworks/harness-starter-kit @ 62437bec264b2deed83353e8209660d645e86828
+Previously checked: 2026-09-14 @ 62437bec264b2deed83353e8209660d645e86828
+(same SHA: nothing has changed)
 
 First-run survey. Registry interest areas: enforcement-backed instruction
 design, safety guardrails for agent workflows, harness bootstrap /
@@ -196,7 +198,29 @@ The kit's gate-placement classification (normal / focused / manual) could
 become an adapter-level concept: `adapter test` is the normal gate; focused
 and manual checks need a home in the manifest's `.project_config`.
 
+## Changelog (2026-09-14 → 2026-11-13)
+
+No changes. The shallow clone (`.agent/scratchpad/inspiration/harness-starter-kit/`
+in the main checkout) was fetched and reset to the upstream default branch
+head: HEAD is still 62437be (commit date 2026-06-18). The GitHub compare
+API from the last-checked SHA to `main` returned `status: identical`,
+`ahead_by: 0`. `gh release list` shows v0.1.16 (2026-06-18) as latest;
+no new release, commit or PR since. Repository is not archived.
+
+Because nothing changed, the survey sections above (governance, skills,
+isolation, CI/CD, documentation, relevance) need no correction.
+
 ## Activity Snapshot
+
+Snapshot 2026-11-13 (supersedes the 2026-09-14 snapshot below for counts):
+
+- 114 stars (was 113), not archived, `pushedAt` 2026-06-18T11:35Z, i.e. 148
+  days without a push. Open issues and PRs by `gh`: 14 open issues, 0 open
+  PRs; no issue was updated after 2026-06-23.
+- Issue #56 (the enforceability-ladder proposal) still has 0 comments, so
+  no maintainer response in about five months.
+
+Snapshot 2026-09-14 (kept for history):
 
 - 113 stars, 8 forks, MIT. Created 2026-05-26; v0.1.7 → v0.1.16 in three
   weeks (2026-06-02 → 2026-06-18), then **no commits, PRs, or releases since
@@ -221,6 +245,16 @@ and manual checks need a home in the manifest's `.project_config`.
   (no commits since 2026-06-18) at the next check, move it to the
   "watched, not tracked" block in `inspiration_registry.yml` instead of
   running another survey.
+
+## Pending Review (2026-11-13 round)
+
+- `starter-1` `dormant-source-move-to-watched` — the 2026-09-14 tracking
+  status said: if the repo is still dormant (no commits since 2026-06-18) at
+  the next check, move it to the "watched, not tracked" block in
+  `inspiration_registry.yml` instead of running another survey. That
+  condition now holds (no commits since 2026-06-18, 148 days; no new
+  releases, PRs or maintainer replies). Decision for the owner; this run
+  did not edit the registry. (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
