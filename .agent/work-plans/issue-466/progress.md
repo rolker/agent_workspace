@@ -201,3 +201,29 @@ ADR-0021's Decision section stays within what the owner agreed: decision 1 is th
 - [x] (must-fix) The real registration's only yes is its permission prompt ("Do not also ask for a yes in text"), and a prompt is not guaranteed: picking "Yes, and don't ask again" on the harmless-looking dry-run prompt (same command prefix), auto mode, or a broader allow rule lets the registration run with no yes at all. Ask one yes in text after showing the dry run, keep the prompt as the second gate; update the write-list wording, ADR-0021's Consequences bullet, design.md's onboarding bullet and the pinned phrase in test_skill_paths.sh (Gemini and Codex both, confirmed by reading) — `.claude/skills/onboard-project/SKILL.md:159`
 - [x] (suggestion) With no --set, the real call's prompt shows no build or test command; register_project.sh re-detects them from the folder's files at that run, so the prompt does not show what is written and the folder can change between the dry run and the real run. Have the skill pass the dry run's detected commands as explicit --set build=/test= so the prompt carries them (Claude adversarial) — `.claude/skills/onboard-project/SKILL.md:149`, `.agent/scripts/register_session_root.sh:52`
 - [x] (suggestion) A folder whose name is not a valid registry name (e.g. one with a space) passes the pre-checks and register_project.sh answers `NEXT=choose a name with --name`, an option this script refuses; pre-check it like the registered-name case and point at register_project.sh --name from the workspace (sandbox probe) — `.agent/scripts/register_session_root.sh:160`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-466 at `fb6630db`
+**Addressed**: Local Review (Pre-Push) at `092368bb` (2026-11-13 11:43 -05:00)
+**Commits**: c2449b32, 6ab8ce86, fb6630db
+
+### Actions
+- [x] (must-fix) The registration's only yes was its permission prompt, which is not guaranteed. onboard-project now shows the dry run and asks one yes in text before the real call; the real call's prompt, when it appears, is a second gate. Same wording in the skill's write list, ADR-0021 (Context and Consequences only; Decision untouched), design.md's onboarding bullet and its change-log row (line counts 149 for Sessions and roots, 989 for the file), register_session_root.sh's header, the principles guide row, and test_skill_paths.sh's pinned phrases, plus a check that "Do not also ask for a yes in text" is gone — `.claude/skills/onboard-project/SKILL.md:149` (c2449b32)
+- [x] (suggestion) The skill now passes every build= and test= the dry run listed (or the user gave) as --set on the real call and names them in the text question, so the question and the prompt show what is written; the script header says why. New test: the dry run's commands, passed back as --set after the folder's build system changed (Makefile replaced by Cargo.toml), are what is written — `.claude/skills/onboard-project/SKILL.md:164`, `.agent/scripts/register_session_root.sh:16` (6ab8ce86)
+- [x] (suggestion) register_session_root.sh refuses a folder name that is not a valid project name (register_project.sh's rule) before handing over, pointing at register_project.sh --name from a workspace session. Tests: sandbox folders 'sp ace' and 'tool.sh'. Refusal lists in the skill, design.md, script reference and principles guide updated — `.agent/scripts/register_session_root.sh:164` (fb6630db)
+
+### ADR-0021 wording changed (Context and Consequences only)
+- Context, before: "That prompt is the owner's yes: a session in a folder he does not trust cannot register the folder, and so make its own build command runnable, without him seeing the command." After: "That prompt is the owner's gate, unless he has allowed the command: a session in a folder he does not trust cannot register the folder, and so make its own build command runnable, without him seeing the command."
+- Consequences, first bullet, before: "shows the registration's dry run and, on the permission prompt's yes, registers the folder and carries on." After: "shows the registration's dry run, asks one yes in text and, on that yes, registers the folder and carries on."
+- Consequences, second bullet, before: "**Two permission prompts per registration from a project session**, the dry run's and the real call's. The skill shows the dry run and does not ask a third time in text." After: "**A yes in text, and the permission prompts as a second gate.** The dry run and the real call each ask for permission, but a prompt is not guaranteed: \"Yes, and don't ask again\" on the dry run's prompt allows the real call too, and auto mode or a broader allow rule removes both. So the skill asks one yes in text after showing the dry run, before the real call, and the real call's prompt, when it appears, is a second gate."
+
+### Checks
+- test_register_session_root.sh: 60 passed, 0 failed (was 53; +7 new)
+- test_skill_paths.sh: 139 passed, 0 failed
+- test_script_tests_hook_scope.sh: 326 passed, 0 failed
+- check_design_anchors.sh: exit 0
+- The full pre-commit pass and the full suite were skipped on the owner's direction (2026-11-13, "yes, one local run before a pr"): the host runs the one full pass before publishing. Every commit used SKIP=validate-script-tests; no --no-verify.
