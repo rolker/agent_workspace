@@ -1634,3 +1634,13 @@ All six checkpoint decisions are in the plan as decided and agree with each othe
 - [ ] State the final banner after a fetch-only cleanup (finding 2)
 - [ ] Key "no package base" on the resolved worktree, not on a bare number (finding 3)
 - [ ] Correct the 2a tests row and step 8's suite list (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict ready; its four notes are text edits the review says to make as 2a starts)
+**After**: plan
+**Decision**: proceed
+
+Proceed with 2a's remaining steps (the base-branch mechanism), then 2b as its own pull request. The implementer applies the review's four notes: the pull-rule test goes in test_merge_pr.sh with a baseRefName in write_pr_view_fixture (not test_merge_pr_gate.sh); the final banner says what happened after a fetch-only cleanup; "no base" is decided by the worktree a ref resolves to, not by how the ref is written; the Files table and step 8 are corrected.
