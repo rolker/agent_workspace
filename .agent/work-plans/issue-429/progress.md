@@ -2655,7 +2655,7 @@ The round-2 findings hold, except where noted:
   - Result: "already recorded (as a PR comment)" is printed and no record is made, although the latest record says X2.
   - Fix: compare against the newest record across both stores.
   - `.agent/scripts/merge_pr.sh:1222-1239`
-- [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. That is the owner's call at the merge checkpoint, carried over from round 1.
+- [x] (suggestion) The two follow-up issues drafted in plan.md are still not filed. That is the owner's call at the merge checkpoint, carried over from round 1. (deferred: the owner's call; the owner's checkpoint of 08:07 decided only the three fixes; no issue opened)
   - `.agent/work-plans/issue-429/plan.md:192,562`
 
 ## Checkpoint
