@@ -707,12 +707,19 @@ _rc_source_fetch() {
         else
             sha="$(git -C "$clone" rev-parse "$ref^{commit}")"
         fi
-        if ! git -C "$clone" checkout --quiet --detach "$sha"; then
+        # Commits made on a detached HEAD and on no branch or tag would be
+        # orphaned by the checkout below: kept and warned, as local
+        # commits on a branch are.
+        if [ "$fresh" -eq 0 ] && ! git -C "$clone" symbolic-ref -q HEAD >/dev/null 2>&1 \
+            && [ "$(git -C "$clone" rev-parse HEAD)" != "$sha" ] \
+            && [ -n "$(git -C "$clone" rev-list -n 1 HEAD --not --branches --tags --remotes 2>/dev/null)" ]; then
+            echo "WARNING: source: the manifest clone $clone has commits on a detached HEAD that are on no branch or tag; resolved what is checked out, not $kind '$ref' (put them on a branch and push them, or drop them, then run sync)" >&2
+            _RC_SRC_STATE=local
+        elif ! git -C "$clone" checkout --quiet --detach "$sha"; then
             [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
             echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
             return 1
-        fi
-        if [ "$kind" = tag ]; then
+        elif [ "$kind" = tag ]; then
             echo "source: $ref -> ${sha:0:12}"
         else
             echo "source: pinned ${sha:0:12}"

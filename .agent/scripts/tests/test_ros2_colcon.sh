@@ -2726,6 +2726,33 @@ test_mr_stale_leaf_commit_and_tag() {
     assert_contains "moved tag: followed" "source: rel -> ${c2:0:12}" "$out"
     assert_contains "moved tag: the new commit resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
 
+    # Commits on the clone's detached HEAD, on no branch or tag, are kept
+    # and warned (state local), for a tag and for a commit pin alike.
+    local clone local_c
+    clone="$sb/projects/p11/configs/source-clone"
+    write_mr_manifest "$clone/manifest.yaml" mark_detached
+    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet -am detached-local
+    local_c="$(git -C "$clone" rev-parse HEAD)"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "detached local commit, tag: exit 0" "0" "$rc"
+    assert_contains "detached local commit, tag: warned" "has commits on a detached HEAD that are on no branch or tag; resolved what is checked out, not tag 'rel'" "$out"
+    assert_eq "detached local commit, tag: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "detached local commit, tag: resolved" "mark_detached" "$(cat "$gen/repos/core.repos")"
+    assert_contains "detached local commit, tag: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
+    assert_contains "detached local commit, tag: its commit recorded" "commit=$local_c" "$(cat "$gen/.resolved-from")"
+    mr_settings "$sb" "source=$url" "source_ref=$c1"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_contains "detached local commit, commit pin: warned" "not commit '$c1'" "$out"
+    assert_eq "detached local commit, commit pin: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
+    # Once the commit is on a branch, the pin is checked out again.
+    git -C "$clone" branch keep-local "$local_c"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_not_contains "on a branch: no warning" "WARNING" "$out"
+    assert_eq "on a branch: the pin checked out" "$c1" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "on a branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+    mr_settings "$sb" "source=$url" "source_ref=rel"
+    run_mr "$sb" sync >/dev/null 2>&1
+
     # A tag deleted on the remote is pruned, so it is no longer resolved.
     git -C "$sb/mwork/leaf" push --quiet origin :refs/tags/rel
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
