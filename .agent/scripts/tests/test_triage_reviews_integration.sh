@@ -157,6 +157,25 @@ if [[ "$c_first" -eq 1 && "$c_suffix" -eq 0 && "$c_checked" -eq 0 && "$n_open" -
 else
     fail "sources: matching rules (first=$c_first suffix=$c_suffix checked=$c_checked open=$n_open)"
 fi
+# An approved review's unchecked "No issues found. LGTM." box is not an open
+# finding (pr_start.py is_lgtm_placeholder, shared with findings; issue
+# 459): at the head it is no local finding, at another head it is no
+# dropped entry and no warning. A changes-requested review's box with the
+# same words still counts.
+lgtm_entry() {  # <verdict> <sha>
+    printf '## Local Review\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: %s\n\n**PR**: #70 at `%s`\n\n### Findings\n- [ ] No issues found. LGTM.\n\n' "$1" "$2"
+}
+{ lgtm_entry approved 0ld0000; lgtm_entry approved abc1234; } > "$TMPD/lgtm.md"
+out=$("$RP" sources --progress "$TMPD/lgtm.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>"$TMPD/lgtm.err"); rc=$?
+[[ "$rc" -eq 0 && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 && ! -s "$TMPD/lgtm.err" ]] \
+    && pass "sources: an approved review's LGTM placeholder is neither a local finding at the head nor a dropped entry at another head" \
+    || fail "sources: LGTM placeholder (rc=$rc out=$out err=$(<"$TMPD/lgtm.err"))"
+lgtm_entry changes-requested abc1234 > "$TMPD/lgtm_cr.md"
+out=$("$RP" sources --progress "$TMPD/lgtm_cr.md" --head "$HEAD" --reviews "$TMPD/rules.json")
+[[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+    && pass "sources: the same box on a changes-requested review is still a local finding" \
+    || fail "sources: changes-requested box (out=$out)"
 
 # ============================================ sources: coverage (#309) =====
 # Real git histories. A review recorded at R still covers head H when R is an

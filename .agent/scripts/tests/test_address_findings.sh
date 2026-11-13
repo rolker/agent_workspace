@@ -2,8 +2,9 @@
 # .agent/scripts/tests/test_address_findings.sh
 # Tests for the address-findings mechanics (issue #269 PR D):
 #   review_progress.sh findings — selects the single latest Integrated Review
-#     / Local Review (Pre-Push) entry (never a legacy External Review, never
-#     the post-PR Local Review) and lists its open findings with indexes
+#     / Local Review (Pre-Push) / post-publish Local Review entry (never a
+#     legacy External Review; issue 459 added the Local Review) and lists its
+#     open findings with indexes, never an approved review's LGTM placeholder
 #   review_progress.sh check — flips exactly one box, optionally with a
 #     (deferred: reason) annotation; refuses re-checks and bad indexes
 #   the closing ## Implementation entry, written through persist, carries
@@ -181,6 +182,42 @@ crlf=$(grep -c $'\r$' "$CR"); flipped=$(grep -c $'^- \[x\] two — `y:2` (deferr
 # --deferred "" is an error, not a silent plain check
 "$RP" check --progress "$TRAP" --index 1 --deferred "" >/dev/null 2>&1; rc=$?
 [[ "$rc" -eq 2 ]] && grep -q '^- \[ \] (suggestion) real finding B' "$TRAP" && pass "check: --deferred with an empty reason is refused (rc 2), box untouched" || fail "check: empty deferred (rc=$rc)"
+
+# ---- a post-publish Local Review is the source of the fix pass after it (issue 459) ----
+# The PR-mode re-review is written after the Integrated Review; the fix pass
+# that follows it must find its boxes and tick them with check, not by hand.
+LR="$REPO/.agent/work-plans/issue-7/lr.md"
+cp "$TMPD/with_ir.md" "$LR"
+printf '\n## Local Review\n**Status**: complete\n**When**: 2026-09-18 09:00 -04:00\n**By**: t (m)\n**Verdict**: changes-requested\n\n**PR**: #70 at `9999999`\n\n### Findings\n- [x] (must-fix) settled already — `c.sh:1`\n- [ ] (must-fix) PR-mode re-review finding — `c.sh:7`\n' >> "$LR"
+out=$("$RP" findings --progress "$LR"); rc=$?
+[[ "$rc" -eq 0 && "$(printf '%s' "$out" | jq -r '.source.type')" == "Local Review" \
+    && "$(printf '%s' "$out" | jq -r '.source.correlation.sha')" == "9999999" \
+    && "$(printf '%s' "$out" | jq -c '[.open[].index]')" == "[1]" ]] \
+    && pass "findings: a post-publish Local Review newer than the Integrated Review is the source (sha 9999999), open index 1" \
+    || fail "findings: post-publish Local Review (rc=$rc out=$out)"
+line=$("$RP" check --progress "$LR" --index 1); rc=$?
+[[ "$rc" -eq 0 && "$line" == "- [x] (must-fix) PR-mode re-review finding — \`c.sh:7\`" ]] \
+    && [[ "$(grep -c '^- \[ \] (cross-confirmed) the redirect' "$LR")" -eq 1 ]] \
+    && pass "check: flips the post-publish Local Review's box; the older Integrated Review is untouched" \
+    || fail "check: post-publish Local Review (rc=$rc line=$line)"
+rm -f "$LR"
+# An approved review's "No issues found. LGTM." box is not an open finding,
+# for a Local Review and a Local Review (Pre-Push) alike; a changes-requested
+# review's box with the same words is (only the approved placeholder is).
+for t in "Local Review|**PR**: #70 at \`aaaaaaa\`" "Local Review (Pre-Push)|**Branch**: feature/issue-7 at \`aaaaaaa\`"; do
+    ty="${t%%|*}"; corr="${t#*|}"
+    cp "$TMPD/with_ir.md" "$TMPD/lgtm.md"
+    printf '\n## %s\n**Status**: complete\n**When**: 2026-09-18 10:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n%s\n\n### Findings\n- [ ] No issues found. LGTM.\n' "$ty" "$corr" >> "$TMPD/lgtm.md"
+    out=$("$RP" findings --progress "$TMPD/lgtm.md")
+    [[ "$(printf '%s' "$out" | jq -r '.source.type')" == "$ty" && "$(printf '%s' "$out" | jq '.open|length')" -eq 0 ]] \
+        && pass "findings: an approved $ty is the source with no open finding (its LGTM placeholder is not one)" \
+        || fail "findings: approved $ty placeholder (out=$out)"
+    sed -i 's/^\*\*Verdict\*\*: approved$/**Verdict**: changes-requested/' "$TMPD/lgtm.md"
+    out=$("$RP" findings --progress "$TMPD/lgtm.md")
+    [[ "$(printf '%s' "$out" | jq '.open|length')" -eq 1 ]] \
+        && pass "findings: the same box on a changes-requested $ty stays open (only an approved review's placeholder is filtered)" \
+        || fail "findings: changes-requested $ty box (out=$out)"
+done
 
 git -C "$REPO" add -A && git -C "$REPO" -c user.name=t -c user.email=t@t commit -q -m "fix: findings"
 ENTRY_FILE="$TMPD/impl_entry.md"

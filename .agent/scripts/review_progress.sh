@@ -69,8 +69,10 @@
 #          persist --soft: any failure becomes a printed notice, exit 0
 #          (review-plan's non-fatal step 6).
 #
-# findings The address-findings source entry (latest Integrated Review or
-#          Local Review (Pre-Push)) and its open findings with indexes.
+# findings The address-findings source entry (latest Integrated Review,
+#          Local Review (Pre-Push) or post-publish Local Review) and its open
+#          findings with indexes; an approved review's "No issues found.
+#          LGTM." placeholder is not one.
 # check    Flip one of that entry's checkboxes to [x], optionally with a
 #          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
 #
@@ -429,8 +431,10 @@ cmd_sources() {
         echo "error: sources: reviews file is not valid JSON: $reviews (truncated fetch_pr_reviews.sh output?)" >&2; exit 2
     fi
     printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" PROGRESS="$progress" \
-        BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" "$PYTHON" -c '
+        BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, re, subprocess, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import is_lgtm_placeholder
 head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
@@ -507,7 +511,8 @@ loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 # to check: its open findings are listed as "unverifiable" below and
 # warned about, never silently skipped.
 open_of = lambda e: [f for f in e.get("findings", [])
-                     if f.get("section") != "False positives" and not f.get("checked")]
+                     if f.get("section") != "False positives" and not f.get("checked")
+                     and not is_lgtm_placeholder(e, f)]
 reviews_in = [e for e in data.get("entries", [])
               if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
 uncorrelated = [e for e in data.get("entries", [])
@@ -578,11 +583,16 @@ print()
 
 # ------------------------------------------------------------- findings ---
 # findings --progress <file>
-# The address-findings source: the SINGLE latest `## Integrated Review` or
-# `## Local Review (Pre-Push)` entry (by base_type, so a legacy External
-# Review never qualifies), with its open (unchecked) findings and their
-# index among the entry's checkbox lines — the index `check` flips.
-# Exit 0 with "source": null when no qualifying entry exists.
+# The address-findings source: the SINGLE latest `## Integrated Review`,
+# `## Local Review (Pre-Push)` or `## Local Review` entry (by base_type, so
+# a legacy External Review never qualifies; a post-publish PR-mode
+# re-review is the source of the fix pass after it, issue 459), with its
+# open (unchecked) findings and their index among the entry's checkbox
+# lines — the index `check` flips. The "No issues found. LGTM." box an
+# approved review leaves unchecked is not an open finding (pr_start.py
+# is_lgtm_placeholder, the predicate `sources` uses too). Exit 0 with
+# "source": null when no qualifying entry exists. `check` selects the same
+# entry.
 cmd_findings() {
     local progress=""
     while [[ $# -gt 0 ]]; do
@@ -595,16 +605,19 @@ cmd_findings() {
     records_path "$progress" >/dev/null || { echo "error: findings: the records gate refused $progress — see above" >&2; exit 4; }
     [[ -f "$progress" ]] || { echo "error: findings: progress file not found: $progress" >&2; exit 2; }
     local json
-    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)" --type "Local Review") || {
         echo "error: findings: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
-    printf '%s' "$json" | "$PYTHON" -c '
-import json, sys
+    printf '%s' "$json" | PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
+import json, os, sys
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import is_lgtm_placeholder
 data = json.load(sys.stdin)
-ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)")]
+ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)", "Local Review")]
 if not ok:
     json.dump({"source": None, "open": []}, sys.stdout, indent=2); print(); sys.exit(0)
 src = ok[-1]  # file order is chronological; the last one is the latest review
-opens = [dict(f, index=i) for i, f in enumerate(src["findings"]) if not f.get("checked")]
+opens = [dict(f, index=i) for i, f in enumerate(src["findings"])
+         if not f.get("checked") and not is_lgtm_placeholder(src, f)]
 json.dump({"source": {"type": src["type"], "when": src.get("when"), "correlation": src.get("correlation"),
                       "ordinal": len(ok) - 1, "total_findings": len(src["findings"])},
            "open": opens}, sys.stdout, indent=2)
@@ -615,7 +628,8 @@ print()
 # ---------------------------------------------------------------- check ---
 # check --progress <file> --index <i> [--deferred "<reason>"]
 # Flip the i-th checkbox (0-based, in file order) of the latest source
-# review entry from `- [ ]` to `- [x]`, appending " (deferred: <reason>)"
+# review entry (the one `findings` selects: Integrated Review, Local Review
+# (Pre-Push) or Local Review) from `- [ ]` to `- [x]`, appending " (deferred: <reason>)"
 # when --deferred is given. Refuses (exit 2) if the box is already checked
 # or the index is out of range. Rewrites only that one line.
 cmd_check() {
@@ -643,15 +657,15 @@ cmd_check() {
     # on fenced, indented, and header-area lines). check only rewrites the
     # line the reader named, after confirming it is still an unchecked box.
     local json
-    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)" --type "Local Review") || {
         echo "error: check: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
     printf '%s' "$json" | PROGRESS="$progress" INDEX="$index" DEFERRED="$deferred" "$PYTHON" -c '
 import json, os, re, sys
 path, index, deferred = os.environ["PROGRESS"], int(os.environ["INDEX"]), os.environ["DEFERRED"]
 data = json.load(sys.stdin)
-ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)")]
+ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)", "Local Review")]
 if not ok:
-    print("error: check: no Integrated Review / Local Review (Pre-Push) entry to check a box in", file=sys.stderr); sys.exit(2)
+    print("error: check: no Integrated Review / Local Review (Pre-Push) / Local Review entry to check a box in", file=sys.stderr); sys.exit(2)
 src = ok[-1]
 if index >= len(src["findings"]):
     print("error: check: index %d out of range (%d findings in the latest %s entry)" % (index, len(src["findings"]), src["type"]), file=sys.stderr); sys.exit(2)

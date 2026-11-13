@@ -1,6 +1,6 @@
 ---
 name: address-findings
-description: Work through the open action items from the latest review entry in progress.md — a ## Integrated Review (post-PR) or a ## Local Review (Pre-Push) (pre-push) — make each fix, commit atomically with pre-commit hooks, check the box, and record a ## Implementation entry. The close-the-loop phase between a review and its re-review.
+description: Work through the open action items from the latest review entry in progress.md — a ## Integrated Review (post-PR), a ## Local Review (post-PR re-review) or a ## Local Review (Pre-Push) (pre-push) — make each fix, commit atomically with pre-commit hooks, check the box, and record a ## Implementation entry. The close-the-loop phase between a review and its re-review.
 session_scope: both
 ---
 
@@ -40,7 +40,8 @@ workspace session behaves exactly as it did before this idiom existed.
 ```
 
 Run from the issue's worktree (or pass `--issue <N>`). Operates on the
-**latest review entry** — a `## Integrated Review` (post-PR triage) or a
+**latest review entry** — a `## Integrated Review` (post-PR triage), a
+`## Local Review` (a PR-mode `review-code` re-review) or a
 `## Local Review (Pre-Push)` (pre-push `review-code`) — in that issue's
 `$WS_ROOT/.agent/work-plans/issue-<N>/progress.md`. `--strict-progress` and
 `--no-progress` control step 5's persistence exactly as in `review-code`.
@@ -49,11 +50,13 @@ Run from the issue's worktree (or pass `--issue <N>`). Operates on the
 
 **Lifecycle position**:
 - post-PR: triage-reviews → **address-findings** → review-code (re-review)
+- post-PR re-review: review-code (PR mode, changes-requested) → **address-findings** → review-code
 - pre-push: review-code (changes-requested) → **address-findings** → review-code (re-review)
 
 A review phase produces the *source review entry* — `triage-reviews` a
-`## Integrated Review` (post-PR), or pre-push `review-code` a `## Local Review
-(Pre-Push)` (changes-requested). Either is a fix plan of `- [ ]` checkbox
+`## Integrated Review` (post-PR), PR-mode `review-code` a `## Local Review`
+(changes-requested re-review), or pre-push `review-code` a `## Local Review
+(Pre-Push)` (changes-requested). Each is a fix plan of `- [ ]` checkbox
 actions (must-fix and suggestions), plus plain-bullet false positives that are
 *dismissals, not actions*. This skill consumes that entry — it works each open
 action, commits the fix atomically, checks the box, and writes one closing
@@ -80,10 +83,11 @@ doesn't exist, stop with an error — there's no review to address.
 ### 2. Read the latest review entry
 
 One call selects the source entry and lists what is open. It picks the
-single latest `## Integrated Review` or `## Local Review (Pre-Push)` by
-canonical type (a legacy `## External Review` never qualifies; the post-PR
-`## Local Review` is not a source either), in file order — never merges
-findings across entries, never falls back to an older one:
+single latest `## Integrated Review`, `## Local Review (Pre-Push)` or
+`## Local Review` by canonical type (a legacy `## External Review` never
+qualifies), in file order — never merges findings across entries, never falls
+back to an older one. The `No issues found. LGTM.` box an approved review
+leaves unchecked is not listed as open:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
