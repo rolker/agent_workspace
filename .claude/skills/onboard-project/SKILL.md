@@ -129,7 +129,7 @@ the rest of the run.
   - **It refuses** (exit 1, nothing handed over: the folder is already
     registered, lies inside or over a registered root or the workspace, is
     not the top of its git repository, is a linked worktree, or its name is
-    registered): stop and report `session_root.sh`'s message and the
+    not a valid project name or is registered): stop and report `session_root.sh`'s message and the
     refusal, as printed. A folder under a registered root is onboarded
     from a session started at that root. Registering under another name, or
     with options this script does not take, is done from a workspace

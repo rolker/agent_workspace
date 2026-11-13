@@ -32,7 +32,8 @@
 #     the home directory, say);
 #   - it is in a git repository but not at its top (start the session at
 #     the top), or it is a linked worktree (register the main checkout);
-#   - its name is already registered (register it from the workspace with
+#   - its name is not a valid project name (register_project.sh's rule) or
+#     is already registered (register it from the workspace with
 #     register_project.sh --name).
 # Exit 2: a usage error, or a registry that does not parse.
 #
@@ -163,9 +164,13 @@ if top="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null)" && [[ -n "$top"
     fi
 fi
 
-# Its name, the folder's own: register_project.sh's refusal would point at
-# --name, which this script does not take.
+# Its name, the folder's own: register_project.sh's refusals would point at
+# --name, which this script does not take. The name rule is
+# register_project.sh's.
 NAME="$(basename "$HERE")"
+if ! [[ "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$NAME" == *..* ]] || [[ "$NAME" == *.[sS][hH] ]]; then
+    refuse "its name '$NAME' is not a valid project name ([A-Za-z0-9][A-Za-z0-9._-]*, no '..', not ending in .sh); register it under another name from a workspace session: $WS_ROOT/.agent/scripts/register_project.sh $HERE --name <name>"
+fi
 if other="$(registry_lookup "$WS_ROOT" "$NAME" 2>/dev/null)"; then
     refuse "the name '$NAME' is already registered, at $(cut -f2 <<< "$other"); register this folder under another name from a workspace session: $WS_ROOT/.agent/scripts/register_project.sh $HERE --name <name>"
 fi

@@ -355,9 +355,9 @@ Status: `decided`
   holds the order and the output lines. From a session in a folder that is not registered,
   `register_session_root.sh` registers that folder alone (#466, ADR-0021): it takes no path and only
   `--dry-run` and `--set build=`/`test=`, refuses a folder already registered (before handing over,
-  since `register_project.sh` would adopt it and write the `--set` keys), inside or over a registered
-  root or the workspace, not its repository's top, a linked worktree or a registered name, then runs
-  `register_project.sh <folder> --skip-run`, never `--install-user-tier`. Registration needs a git
+  since `register_project.sh` would adopt it and write the `--set` keys), inside or over a registered root
+  or the workspace, not its repository's top, a linked worktree or an invalid or registered name, then
+  runs `register_project.sh <folder> --skip-run`, never `--install-user-tier`. Registration needs a git
   repository today (`adapter validate`), although any registered folder is a project (owner,
   2026-11-12): a folder in no git repository is refused and rolled back, a named gap.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,

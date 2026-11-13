@@ -6,11 +6,11 @@
 # in the folder, no build or test run, ~/.claude untouched), the dry run,
 # each refusal (already registered, with --set; inside a registered root;
 # over a registered root; inside or over the workspace; not the top of
-# its repository; a linked worktree; a name already registered; usage),
-# a folder with no build command (refused until --set), the dry run's
-# commands passed back as --set (written even after the folder changes),
-# a folder in no git
-# repository (the named gap: refused and rolled back), a copy of the
+# its repository; a linked worktree; a name already registered; a name
+# that is not a valid project name; usage), a folder with no build command
+# (refused until --set), the dry run's commands passed back as --set
+# (written even after the folder changes), a folder in no git repository
+# (the named gap: refused and rolled back), a copy of the
 # script in a linked worktree of the workspace (it registers in the main
 # checkout), and that the script is not promoted to the user tier.
 #
@@ -204,6 +204,16 @@ DUP="$(make_proj "$SANDBOX/other" alpha)"
 out="$(rsr "$DUP")"; rc=$?
 check "exit 1, naming the registered path and register_project.sh --name" \
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"the name '"'"'alpha'"'"' is already registered, at $3"* && "$2" == *"register_project.sh $4 --name <name>"* ]]' _ "$rc" "$out" "$ALPHA" "$DUP"
+check "the registry is unchanged" [ "$(reg_snapshot)" = "$snap" ]
+
+echo "TEST: a folder whose name is not a valid project name is refused, pointing at registration from the workspace"
+for bad in "sp ace" "tool.sh"; do
+    BAD="$(make_proj "$SANDBOX/other" "$bad")"
+    out="$(rsr "$BAD")"; rc=$?
+    check "'$bad': exit 1, naming the name rule and register_project.sh --name" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"its name '"'"'$3'"'"' is not a valid project name"* && "$2" == *"register_project.sh $4 --name <name>"* ]]' _ "$rc" "$out" "$bad" "$BAD"
+    check "'$bad': register_project.sh was never reached (no STATUS line)" bash -c '! grep -q "^STATUS=" <<< "$1"' _ "$out"
+done
 check "the registry is unchanged" [ "$(reg_snapshot)" = "$snap" ]
 
 echo "TEST: usage errors write nothing"
