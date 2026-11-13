@@ -3334,3 +3334,35 @@ Checked: `git merge-tree --write-tree 28e62e45 2809fcef` conflicts in exactly `d
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #461 at `72cf2c6`
+**Sources**: 2 (Local Review @ `2019f5a` (covers `72cf2c6` via bookkeeping: only this issue's `progress.md` changed since); GitHub reviews: none, Copilot skipped (disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: entries after the Integrated Review at `979a076`. Stale boxes of PRs 445, 456 and 460 stay out of scope. The PR-mode Local Review boxes cannot be ticked by `review_progress.sh findings` (issue 459 fixes that); they are accounted for here from the Implementation entry's Actions.
+
+CI at triage, on `72cf2c6` (two runs, 8 check-runs): Validate Documentation and ros-manifest tests (#267 prototype) passed in both runs; Lint (pre-commit) and Validate Adapter Contract had not concluded in either run (pending). Not waited for. The fix agents skipped the full local pre-commit pass on the owner's direction (2026-11-13), so the Lint (pre-commit) result on this head is still unknown.
+
+Accounted for:
+- The Integrated Review at `979a076`, its one open suggestion (record step compared blob contents only, not mode, not git's line-ending rule): fixed in `de98769d`, not deferred, by the host's Checkpoint of 11:09. `_gate_rec_not_committed` now decides with `git diff --cached --quiet --no-ext-diff --no-textconv <sha> -- <rel>` and `git diff --quiet --no-ext-diff --no-textconv -- <rel>` (`merge_pr.sh:1072,1078`); an exit other than 0 or 1 is a stated reason. Test pkg-23 (chmod-unstaged, chmod-staged, crlf-autocrlf) fails on `0c76ff3e` and passes now; the Local Review at `2019f5a` verified this (test_merge_pr_gate 200/0). Its box in that entry is left as written.
+- That entry's five set-aside items: same-minute identical record and directory-at-path need nothing; the rollback without a HEAD check (still `merge_pr.sh:1263-1264`) belongs on issue 462; the partial-clone fetch and the ignored `.agent/` reason are listed as known gaps in the PR body. All still accurate against the code at this head.
+- The merge of main (`0c76ff3e`): three conflicts, each verified by the Local Review at `2019f5a` (merge-tree comparison, design.md counts, `check_design_anchors.sh` exit 0).
+- Local Review at `2019f5a`: approved, 0 must-fix, 0 suggestions. Its "No issues found" box is not an action item.
+
+PR body against the code at `72cf2c6` (for the host; this triage does not edit the body):
+- Known gap 1, "The record step compares file contents only ... To be fixed with #462": no longer true; fixed in `de98769d`. Remove it.
+- Review paragraph, "Gemini and Codex ran ... on every pull-request round": no longer true; the fifth PR-mode round (`2019f5a`) ran without cross-model reviewers, per handoff.
+- Tests paragraph, "`test_merge_pr_gate.sh` 197 passed": stale; the last review ran it at 200/0 on `2019f5a` (test_merge_pr 150/0, test_package_issue_loop 220/0 unchanged).
+- The Decision summary still holds; its record bullet ("only when the working copy's `progress.md` is the committed one") is now checked in content and mode, which the sentence still describes truly. The other four known gaps still hold.
+
+### Findings
+- None open.
+
+### False positives
+- None.
