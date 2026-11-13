@@ -236,3 +236,78 @@ Revise for all six findings. (1) On an open issue a merged pull request counts a
 **Plan**: `.agent/work-plans/issue-459/plan.md` at `58b39d0d`
 
 Second revision applying the six decisions: a merged pull request on an open issue is an earlier part (probe takes an open or draft PR, else none; stop if the old worktree survived); a Merge record neither arms nor disarms and the post-merge route keys on the armed state with no PR (row 23 unchanged for an open PR); issue-state check stops on gh failure and asks the package repository; proceed offered only for an unchanged reviewed plan; corrected merge-from-main test; replay table in the Tests section; owner section corrected.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 09:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #459 — dispatch_phase: an issue delivered in several pull requests is routed wrongly after the first merge (round count carries over; next answers merge)
+**Plan**: `.agent/work-plans/issue-459/plan.md` at `58b39d0d`
+**Branch**: `feature/issue-459`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: five commits, 3 and 4 separable. |
+| Issue alignment | Needs work | Serves: "Keep work moving without the owner (the review loop driven by `/run-issue`) — `docs/design.md#review-loop-and-timeline`" (checked). Rule 1 is right on every real and synthetic timeline. Rule 2's row has no guard on the newest entry and shadows rows 7/8 and 26/27 (finding 1). |
+| File targeting | Good | Unchanged. |
+| Consequences | Good | Issue-state failure path, `-R owner/repo`, row 1 reachable only by an explicit `--pr merged`, all stated. |
+| Principle alignment | Good | One shared rule; tests for each shape. |
+| ADR compliance | Good | 0013 (no new type; relies on `**Branch**` only before a PR), 0014, 0017. |
+| ROS conventions | N/A | Workspace plan. |
+
+### The six checkpoint decisions in plan.md
+
+1. Merged pull request on an open issue is an earlier part; probe takes open/draft else `none`; stop when the old worktree survived: applied (Approach 5, third bullet). Consistent with run-issue step 2 (`SKILL.md:300-312`, `--head <branch> --state all`), which is the text being changed; row 1 (`dispatch_phase.sh:896-901`) is left for an explicit `--pr merged` (Approach 5 lead-in).
+2. Merge record neither arms nor disarms; Rule 2 keys on armed state and `--pr none`; row 23 unchanged for an open PR: applied (Approach 1, 2). Matches `merge_pr.sh:997`/`:1013` (record written at the gate, before `gh pr merge`) and row 23 at `dispatch_phase.sh:1164-1166`. The row's placement is the problem (finding 1).
+3. Issue-state check stops on a `gh` failure; package issue asks `-R owner/repo`: applied (Approach 5, first bullet; owner's Rule 2).
+4. `proceed` only for an unchanged reviewed plan naming an undelivered part; the dialog's contents: applied (Approach 5, fourth bullet; owner's Rule 2).
+5. Merge-from-main test with an `address` checkpoint between: applied (Tests row 8), and the other order stated as a boundary (row 9).
+6. Owner's section: merged PR as an earlier part, what a Merge record does, "fewer rounds, which is the point", the stop on an unreadable state, what `proceed` relies on: all present.
+
+Not regressed: one rule replacing `restart_start()` (`dispatch_phase.sh:974-984`) and the `cmd_round` loop (`review_progress.sh:151-161`); PR-correlated entries never disarm; `skill_for()` and `round_count()` both read from it; placeholder predicate shared by `findings` and `sources`; the 461 merge notes.
+
+### Rule 1 replay (throwaway Python over `progress_read.py` output, timelines from `origin/main` at `03d0bbfa`)
+
+- 429: boundaries 25, 50; armed at end. 332: 67, 81; armed. 307, 354, 451: none; armed. All match the Tests table.
+- Every synthetic row of the Tests table gives the table's result (rows 4-12).
+- The 307 shape followed by a next part (arm, `## Merge (report-only)`, `merge-refused`/`merge` checkpoint, Plan Authored) is **not** a row of the table; the author's "was wrong" row (row 5) is the report-only-landed shape, the other one. Replayed: boundary at the Plan Authored, not armed at the end. Correct under the final rule (a `merge` answer at `merge-refused` neither arms nor disarms; the earlier arm stands). Add it as a test row.
+- Post-merge `checkpoint:plan` answered `revise`, `proceed` or `stop`: still armed (After `plan` disarms nothing) until the Plan Authored / Branch Implementation, which is the boundary. A start entry must count whatever its **Status**: if a failed part-2 Implementation were not the boundary, `skill_for()` would find part 1's complete Implementations and name `address-findings` for its retry (the issue 321 shape). The plan's wording has no status filter; keep it so and test it.
+
+### Rule 2 walk (assuming the row is guarded as in finding 1)
+
+| State | Row that answers |
+|---|---|
+| Armed, newest the `merge` checkpoint, `--pr none` | new row: `checkpoint:plan` (today row 21 would re-dispatch `merge`) |
+| Armed, newest a Merge record, `--pr none` (landed) | new row: `checkpoint:plan` |
+| Armed, newest a Merge record, `--pr open` (refused) | row 23: `checkpoint:merge-refused` |
+| Not armed, newest a Merge record, `--pr none` | row 23 (unchanged) |
+| Armed, `--pr merged` given | row 1: `done` (before any read) |
+| `stop` newest after a merge checkpoint | row 2: `done` (After `merge` stop disarms; After `plan` stop stays armed but row 2 precedes) |
+| Armed, then next part's Plan Authored newest | disarmed by the boundary; row 9: `review-plan` |
+
+### Findings
+
+1. **[Issue alignment]** must-fix: the new row's predicate ("armed at the end of the timeline and `--pr none`") does not name the newest entry, and the timeline stays armed from the merge through the post-merge checkpoint until the first start entry. As a guard checked ahead of the base-type blocks, it shadows rows 7/8 and 26/27. Sequence: `merge` checkpoint → merge lands → `next --pr none` → `checkpoint:plan` → host records After `plan`/`revise` → `next --pr none`: still armed → `checkpoint:plan` again, forever; same for `proceed`. And: `revise` → plan-task writes no entry (`--check-exit` MISSING, `SKILL.md:400-404`) → phase-failed checkpoint `retry`/`takeover`, `Phase: plan-task` → `next --pr none`: armed → `checkpoint:plan` instead of row 26/27. Fix in Approach 2: the row fires only when, in addition, the newest entry is a Checkpoint with `Decision: merge` (any After, which also covers 307's `merge-refused`/`merge`, otherwise row 28) or a `## Merge (...)` record; it is checked after rows 2-3. Add tests: armed + plan `revise` → `plan-task`; armed + phase-failed `retry` → the phase.
+2. **[Test what breaks]** suggestion: add the 307-shape-plus-part row and a failed-start-entry row (armed, plan `proceed`, failed Branch Implementation → boundary; retry names `implement`) to the Tests table.
+
+### Host-side prose (issue-state check, merged-PR probe, surviving-worktree stop)
+
+Acceptable as prose for this pull request: step 2's probe is prose today, and the rows that act on its answer are tested. But the previous round's must-fix was in exactly this prose, and nothing would catch a regression there. The smallest owner: a `dispatch_phase.sh probe --issue <ref>` subcommand that runs `gh issue view` and `gh pr list --head <branch> --state all` and prints `action=done` (closed), `action=stop reason=...` (gh failure, old worktree survived, closed-not-merged) or `pr=none|<M>`, tested with a stub `gh` on `PATH`. A follow-up, not a blocker.
+
+### Owner's question
+
+Every sentence matches the plan's steps. Rule 1 and Rule 2 can go to the owner as written; finding 1 is mechanism inside Approach 2 and changes nothing the owner reads. One small omission: the stop when the old worktree survived the merge is not mentioned; one clause would do.
+
+### Summary
+
+The six decisions are applied and consistent with the code; Rule 1 replays correctly on 429, 332, 307, 354, 451 and every Tests row. One must-fix remains: the post-merge row needs a guard on the newest entry (a `merge` answer or a Merge record), or it loops on the plan checkpoint it raises. That is a one-sentence change to Approach 2 plus two tests; the owner's rules can go forward unchanged.
+
+### Recommended Actions
+
+- [ ] Approach 2: the row fires only when armed, `--pr none`, and the newest entry is a `Decision: merge` checkpoint or a Merge record; after rows 2-3; tests for plan `revise` and phase-failed `retry` while armed (finding 1).
+- [ ] Tests table: 307 shape plus a part; failed start entry while armed (finding 2).
+- [ ] Owner's section: one clause on the surviving-worktree stop.
