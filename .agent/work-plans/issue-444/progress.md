@@ -652,3 +652,56 @@ The owner's direction for the next part, verbatim (2026-11-13): "Add a small PR 
 **Plan**: `.agent/work-plans/issue-444/plan.md` at `b50c8813`
 
 Part 2a refresh: one small pull request that turns the parallel default on (the suited count, 1 when the CPU count is unreadable or bash is older than 5.1; `-j 1` and RUN_SCRIPT_TESTS_JOBS=1 keep one job), updates every text and test that states the default, and checks suite independence with two shuffled parallel full runs; no before/after timing runs (owner, 2026-11-13). Does not close issue 444.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 13:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #444 — Run the script test suites in parallel, and speed up the slowest
+**Plan**: `.agent/work-plans/issue-444/plan.md` at `b50c8813`
+**Branch**: `feature/issue-444`
+
+Scope of this review: the "PR 2a" section and what `b50c8813` changed around it; part 1's text is the record of merged work and was not re-reviewed. Owner's direction checked against: "Add a small PR to switch it on. I'm not sure we need to record before and after times now. Don't we have enough before times?"
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One small pull request: the default flip with its two fallbacks, the texts that state the default (runner header, usage, hook comment, reference row), the default-pinning test cases. No before/after timing runs. Nothing beyond the owner's direction. |
+| Issue alignment | Good | Part of issue 444, not closing it. Left for later and listed: the slow-suite fixture work (P2, and whether to split `test_cross_model_review.sh`), the run-time wording in `AGENTS.md` and the other "about 12 minutes" texts, the carried test point from pull request 468 (`test_merge_pr_gate.sh` near 890), issue 465 (when the suites run), issue 472 (the cap of 8). Serves line, as checked: "Easy to use (`README.md#workspace-goals` ...) under `docs/design.md#registry-and-adapters`". |
+| File targeting | Good | Checked against the code as merged: `JOBS_DEFAULT=1` is line 166, `jobs_suited` is computed at 171-179 unconditionally, before argument parsing, so it exists in every path that reaches 238; `jobs_asked="$JOBS_DEFAULT"` is 238; `jobs_note` 246-249; the bash 5.1 refusal 256. Every nested runner call in `test_run_script_tests.sh` names a job count except 1103/1105 (`jobs_case`, given `-j` or the variable), 1123 (the default case being changed) and 1152 (`RUN_SCRIPT_TESTS_JOBS=2`); `check_full` and both generated hook scripts pass `-j 1`. `test_script_tests_hook_scope.sh` pins only the absence of `-j` in the entry and the word `RUN_SCRIPT_TESTS_JOBS` in the comment. One citation is off: the one-job loop is near 905-915 (its "remaining suites not run" line is 912), not 895, which is blank. |
+| Consequences | Good | Callers checked in the code: the hook passes no `-j`; CI reaches it through `make lint`; no text in `AGENTS.md`, the skills or `dispatch_phase.sh` relies on stop-at-first-failure. The run-time texts are deferred (notes 1 and 2). |
+| Principle alignment | Good | Only what's needed (one line flipped, two fallbacks); test what breaks (default cases plus `-j 1`, environment 1 and unreadable-CPU cases); reversible alone (D9). |
+| ADR compliance | Good | ADR-0013 (this entry). No `.github/workflows` or branch protection change; `AGENTS.md` untouched (Ask First, deferred). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checks made for this review
+
+- The flip cannot turn a working run into an error: `jobs_suited` is always computed first; empty CPU count gives 1; capped at the CPU count (1 CPU gives 1 job, the one-job path); a bash older than 5.1 gives 1 by the planned clear; an explicit count still meets the refusal. A machine whose bash lacks job control or whose `nproc` reports host CPUs inside a CPU-limited container would run slower, not fail.
+- Parallel at a terminal and as a background job at a terminal (not covered by part 1's runs, which ran each in its own session with no terminal): run here under `script` with a 4-stub tests directory at `-j 2`, in the foreground and as `cmd &` from an interactive shell. Both exit 0, no stop on SIGTTOU/SIGTTIN; `set -m` is only on around each `&` (runner 768-771), so no foreground command takes the terminal.
+- Shared resources between suites, searched in all 49 suites: the suites that write under a home set `HOME` to their sandbox (`test_package_issue_loop.sh:43`, `test_records_write_gate.sh:46`, `test_register_*`, `test_user_tier_install.sh` per call); `test_package_issue_loop.sh:40` sets `GIT_CONFIG_GLOBAL`; the locks (`test_capture.sh:244`, `test_register_project.sh:959`, `test_project_file.sh:858,925`) are on sandbox files; no port, no `pkill`/`killall`, no host-wide `pgrep` (only `pgrep -P` on a known parent, `test_register_project.sh:997`). `test_gh_create_issue.sh:88` and `test_plugin_manifest.sh:133` run in the real checkout but only read it (a stubbed `gh`; `claude plugin validate`). No clash found.
+- Memory and load: 31 GB and 16 CPUs here; CI 4 vCPUs at 2 jobs. Nothing in the suites is memory-heavy. Load across concurrent drives grows (each full run now 4 jobs, not 1); the per-run bound is the only limit (D8, already on the owner's veto list).
+- The 600 s tool-call timeout: a one-job full run today (680 to 1069 s) already exceeds it; at 4 jobs (163 to 355 s measured) it fits. The flip improves this.
+
+### Findings
+
+No must-fix. Notes for the implementer, each applicable without a re-plan:
+
+1. **[Consequences]** The later part's run-time list omits two texts that quote a full run's length and tell agents the tool timeout: `.agent/scripts/dispatch_phase.sh:618` ("about 2 minutes for a typical fix, about 7 when every suite runs ... up to 600000 ms") and `.claude/skills/address-findings/SKILL.md:199` ("about 7 when every suite runs"). Leave them unchanged in this pull request (owner: no new times) but name them in the pull request's "left for later" list beside `AGENTS.md` and the issue 419/399/410 texts.
+2. **[Scope]** Step 6 calls the final branch pre-commit run "scoped", but this branch changes `run_script_tests.sh` and `.pre-commit-config.yaml`, both full-run triggers, so that run is a full run at the new default, under pre-commit. Plan for three local full runs (two shuffled plus the pre-commit one), not "the one place this pull request runs the full suite". That third run is useful: it is the only check of the parallel default through pre-commit itself. Say so in the progress entry and the pull request body, since the owner's rule of 2026-11-13 is one local run before a pull request.
+3. **[Consequences]** Step 4's caller text for the pull request body: a parallel run at a terminal also prints a `--- <suite> passed in Ns (k of n done)` line as each suite finishes, not only `running X` lines. Under pre-commit nothing shows until the hook ends at any job count, because pre-commit holds a hook's output until it exits, so the parallel default makes that silent stretch shorter, not longer.
+4. **[Issue alignment]** Two shuffled runs only catch frequent clashes (part 1 needed 10 runs to see its one flake). That fits a small pull request, because every pre-commit and CI run afterwards is parallel. The pull request body should say what to do about a failure that shows only in parallel after merge: `RUN_SCRIPT_TESTS_JOBS=1` locally while it is fixed; for CI, either the workflow variable (a CI change, owner's yes) or reverting this pull request alone (D9).
+5. **[File targeting]** Step 5's list of suites changed since part 1's independence runs (`90ad6aa3`) is incomplete: `test_user_tier_install.sh` (about 2,360 lines changed), `test_ros2_colcon.sh` (+808), `test_adapter.sh`, `test_cross_model_review.sh`, `test_project_registry.sh`, `test_merge_pr.sh` and others also changed (`git diff --stat 90ad6aa3 HEAD -- .agent/scripts/tests/`). The check runs every suite, so nothing is missed. When comparing PASS counts with the last one-job baseline, use that diff and not the plan's list.
+6. **[File targeting]** Fix the citation "the one-job loop at 895" to the loop near 905-915 when writing the pull request text.
+7. **[Principle alignment]** Step 5 runs on a quiet machine. Record the load average at each run's start, as part 1 did, so that a later flake under load can be compared with these runs.
+8. **[File targeting]** The new unreadable-CPU case has to shadow both `nproc` and `getconf` with failing stubs first on `PATH` (runner 172 falls back from one to the other). A stub `nproc` alone leaves the real `getconf` answering.
+
+### Summary
+
+The plan does exactly what the owner asked, as one small pull request. The flip is safe in every path checked: the CPU count is read first, the two fallbacks to one job are complete, and parallel mode works at a terminal and in the background. No suite was found sharing a path, home, git configuration, port, lock or process match with another. Ready for implementation. The notes are wording and bookkeeping for the pull request text.
+
+### Recommended Actions
+
+- [ ] Implement as planned, applying notes 1 to 8 in the pull request text and the tests.
