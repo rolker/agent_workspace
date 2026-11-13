@@ -3319,3 +3319,18 @@ The branch took main: `GIT_EDITOR=true git merge --no-edit origin/main` brought 
 Workspace path: unchanged. `_gate_rec_not_committed` runs only for an owning package PR, and the workspace gate rows pass with unchanged assertions.
 
 Tests, run directly: `test_merge_pr_gate.sh` 200 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the e2e owning case still commits and pushes in A); `test_dispatch_phase.sh` 148 passed, 0 failed; `test_skill_paths.sh` 136 passed, 0 failed; `test_design_anchors.sh` 47 passed, 0 failed. No script was changed on both sides, so no further suite applies. The full `pre-commit run --files ...` pass was skipped on the owner's direction (2026-11-13). Every commit, the merge and this entry included, ran the other hooks with `SKIP=validate-script-tests`; CI on the pull request is the check for the rest.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 11:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #461 at `2019f5aa`
+**Depth**: Standard (reason: fix round after the merge of main; scope narrowed by handoff to the merge resolution at 0c76ff3e and the mode-aware record check de98769d / dead77be). Cross-model: skipped per handoff ("no cross-model reviewers"): the diff is a merge resolution in three text files plus one small check
+**Must-fix**: 0 | **Suggestions**: 0
+
+Checked: `git merge-tree --write-tree 28e62e45 2809fcef` conflicts in exactly `docs/design.md`, `.claude/skills/run-issue/SKILL.md`, `.agent/knowledge/script_reference.md`, which are also the only files both sides changed, and 0c76ff3e differs from that tree only in their conflict regions. Every line either side added survives except the intended ones (branch's `dispatch_phase.sh` row kept, main's `skill_prefix.sh` / `session_root.sh` rows taken; main's run-issue paragraph taken with `p11-jazzy` -> `demo-jazzy` twice, and no `p11` left in the file). design.md: change-log counts 928 (#446's branch at its row), 959-1003 (this branch), 1022 = `wc -l` at 0c76ff3e, 1023 = `wc -l` at HEAD; 20 register rows with 0020; `check_design_anchors.sh` exit 0; every `merge_pr.sh` and `dispatch_phase.sh` line citation read against the files and true. Mode fix: pkg-23's three shapes fail on 0c76ff3e's `merge_pr.sh` (197 passed, 3 failed) and pass at HEAD; a probe of `_gate_rec_not_committed` gave a stated reason for a corrupt index (`git diff --cached` exit 128), a deleted, an unreadable and a `rm --cached` file, and a textconv + `diff.external` config that hides an edit; clean gives nothing; create case covered by pkg-1. Workspace gate path untouched by the fix (owning role only, line 1203). Suites: test_merge_pr_gate 200/0, test_merge_pr 150/0, test_package_issue_loop 220/0, test_dispatch_phase 148/0, test_skill_paths 136/0, test_design_anchors 47/0, test_skill_prefix 25/0, test_session_root 71/0; shellcheck (warning) clean on the two changed scripts. Full pre-commit not run (owner's direction; CI is the check).
+
+### Findings
+- [ ] No issues found. LGTM.
