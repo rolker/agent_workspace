@@ -1580,3 +1580,11 @@ The refresh is accurate: every "what changed" claim and line citation checked ou
 **Decision**: revise
 
 Revise the plan for the review's five findings, with these host decisions: (1) the base= field and the start-point rule are recorded in docs/design.md#worktrees with a cross-reference addendum in ADR-0012, not by editing ADR-0012's decision text and not as a new ADR; (2) remove the stale "ADR-0011 amended", stub-adapter and size statements; (3) PKG_OWN_REL and the header's base= travel inside the _PKG_MATCHES record; (4) a worktree with no base= gets the field written on resume, and a --base given on resume is checked on origin; (5) say what dispatch_phase.sh base prints for a workspace or single-repository issue, with a test. Open question decided: change the merge cleanup's pull. Pull --ff-only only when the owning checkout is clean and on the pull request's base branch; otherwise fetch and print "fetched only" without marking the cleanup incomplete; an empty base also means fetch only. It goes in 2a next to the cross-check step, and 2b's cleanup test pins the new behaviour.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-12 21:43 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+
+Revision for the plan review (needs-work) and the host's checkpoint. The header field and start-point rule are recorded in the design (Worktrees) with an ADR-0012 cross-reference addendum only; stale ADR-0011, stub-adapter and size statements are corrected; the owning-checkout path and the header base travel in the `_PKG_MATCHES` record; a worktree with no base gets it written on resume after an origin check; `dispatch_phase.sh base` prints nothing for an issue with no package base, with a test; and the cleanup pull runs only when the owning checkout is clean and on the pull request's base (otherwise fetch only), in 2a, pinned by 2b's case (d).
