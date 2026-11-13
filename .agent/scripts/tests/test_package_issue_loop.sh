@@ -163,6 +163,21 @@ checkpoint_entry() {
 check "setup: a package worktree records a manifest; the owning entry is on feature/issue-7" \
     "$([[ -f "$C/.worktree-repos" && "$(git -C "$A" branch --show-current)" == feature/issue-7 \
           && "$(git -C "$B" branch --show-current)" == feature/pkg_a-issue-7 ]]; echo $?)"
+# Creation without --base takes the pin of the owning repository (main for
+# both here) as the base and records it (issue 429); a worktree with no
+# owning entry (C9: pkg_b only, for an issue of pkg_a) has none.
+check "setup: creation without --base records the owning repository's pin as base=" \
+    "$([[ "$(head -n1 "$C/.worktree-repos")" == "# project=demo issue=owner/pkg_a#7 layer=l1 base=main" \
+          && "$(head -n1 "$C2/.worktree-repos")" == "# project=demo issue=owner/pkg_b#7 layer=l1 base=main" \
+          && "$(head -n1 "$C9/.worktree-repos")" == "# project=demo issue=owner/pkg_a#9 layer=l1" ]]; echo $?)" \
+    "$(head -qn1 "$C/.worktree-repos" "$C2/.worktree-repos" "$C9/.worktree-repos")"
+# C stands in for a worktree made before base= existed (pull request 445's
+# worktrees): its header loses the field, and case 13 records it on resume.
+strip_base() {  # <worktree>: the header without base=
+    local m="$1/.worktree-repos"
+    { head -n1 "$m" | sed 's/ base=[^ ]*//'; tail -n +2 "$m"; } > "$m.new" && mv "$m.new" "$m"
+}
+strip_base "$C"
 
 # ------------------------------------------------------------------ case 1
 echo "TEST: from the session root, owner/pkg_a#7 names the owning checkout A everywhere"
@@ -711,7 +726,7 @@ out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
 check "pin at a branch: base=pinned" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
 out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}" --base main)
 check "--base overrides the pin" "$([[ "$out" == "base=main"$'\n'"rc=0" ]]; echo $?)" "$out"
-for kind in "v1 tag" "$PINNED_SHA commit" "nosuch unknown"; do
+for kind in "v1 tag" "$PINNED_SHA commit"; do
     ref="${kind% *}"; k="${kind#* }"
     pin_a "$ref"
     out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
@@ -719,6 +734,23 @@ for kind in "v1 tag" "$PINNED_SHA commit" "nosuch unknown"; do
         "$([[ "$out" == *"error: pkg_a is pinned at $ref ($k); only a branch can be a base. Pass --base <branch>."* \
               && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 done
+# A pin of kind unknown says why the kind is not known, each cause as it is.
+pin_a nosuch
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+check "pin unknown, origin answered: origin has no branch or tag of that name" \
+    "$([[ "$out" == *"error: pkg_a is pinned at nosuch, and origin, asked, has no branch or tag of that name (and it is no commit id), so it is no base. Pass --base <branch>, or fix the pin."* \
+          && "$out" != *"(unknown)"* && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+printf '#!/usr/bin/env bash\necho "ssh: connect to host github.com: Network is unreachable" >&2\nexit 255\n' > "$STUB/deadssh"
+chmod +x "$STUB/deadssh"
+out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+check "pin unknown, origin not answering: the kind could not be established; retry or --base" \
+    "$([[ "$out" == *"(unverified)"* && "$out" == *"error: pkg_a is pinned at nosuch, and whether that is a branch could not be established: origin was not asked or did not answer"*"Retry when origin answers, or pass --base <branch>."* \
+          && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+pin_a "'bad..name'"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+check "pin unknown, a name no branch can have: said so" \
+    "$([[ "$out" == *"error: pkg_a is pinned at bad..name, which no branch can be named (and it is no commit id), so it is no base."* \
+          && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}" --base pinned)
 check "a pin that is no branch, with --base: the override is the base" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
 pin_a ""
@@ -823,11 +855,9 @@ check "a pin that is a tag: refused, nothing recorded" \
     "$([[ "$out" == *"pkg_a is pinned at v1 (tag)"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
 pin_a pinned
 GOOD_SSH="$GIT_SSH_COMMAND"
-printf '#!/usr/bin/env bash\necho "ssh: connect to host github.com: Network is unreachable" >&2\nexit 255\n' > "$STUB/deadssh"
-chmod +x "$STUB/deadssh"
-out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#7' --type project)
-check "origin unreachable: the pin is unverified, the origin check fails, nothing recorded" \
-    "$([[ "$out" == *"(unverified)"* && "$out" == *"could not ask origin of $A whether it has 'pinned'"*"Network is unreachable"* \
+out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#7' --type project --base pinned)
+check "origin unreachable: the origin check fails, nothing recorded" \
+    "$([[ "$out" == *"could not check whether feature/issue-7 in $A started from origin's 'pinned'"*"Network is unreachable"* \
           && "$out" == *"nothing was recorded"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
 export GIT_SSH_COMMAND="$GOOD_SSH"
 out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
@@ -837,6 +867,47 @@ check "origin has the pinned branch: base=pinned, and the header now records it,
           && "$(tail -n +2 "$C/.worktree-repos")" == "$(tail -n +2 <<< "$hdr_before")" ]]; echo $?)" "$out"
 out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base main)
 check "after that, a different --base is refused" "$([[ "$out" == *"records base=pinned"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+# That record is right: A started from origin's main before pinned, and
+# main is an ancestor of pinned, so A carries no commit pinned lacks that
+# another origin branch has.
+
+# The reported case: a worktree made from origin's main after main moved
+# past the pin (one commit pinned lacks), header without base=, the pin a
+# branch. The resume refuses, naming the commit's count and its branch,
+# and writes nothing; with the --base it really started from, it records.
+git -C "$PIN_SEED" checkout -q main
+git -C "$PIN_SEED" pull -q origin main
+git -C "$PIN_SEED" commit -q --allow-empty -m "main moves past pinned"
+git -C "$PIN_SEED" push -q origin main
+create --issue owner/pkg_a#14 --type project --project demo --layer l1 --package-repos pkg_a,pkg_b --base main \
+    || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#14 with --base main"; }
+C14="$H/worktrees/issue-demo-owner-pkg_a-14"
+A14="$C14/l1_ws/src/pkg_a"
+git -C "$A14" commit -q --allow-empty -m "own work on 14"
+git -C "$A14" push -q origin feature/issue-14
+# Its header as a legacy layout writes it (project=project, finding 3 of the
+# review): base passes the adapter no unregistered project name.
+{ printf '# project=project issue=owner/pkg_a#14 layer=l1\n'; tail -n +2 "$C14/.worktree-repos"; } > "$C14/hdr.new" && mv "$C14/hdr.new" "$C14/.worktree-repos"
+hdr14=$(cat "$C14/.worktree-repos")
+out=$(dp "$H" base --issue 'owner/pkg_a#14' --type project)
+check "started from main, pin pinned: refused, naming 1 commit from origin's main and how to proceed; nothing recorded" \
+    "$([[ "$out" == *"error: base: feature/issue-14 in $A14 carries 1 commit(s) that origin's 'pinned' does not have and origin's main (1) has: it did not start from 'pinned'"* \
+          && "$out" == *"Recreate the worktree"*"or pass the --base it was started from."* \
+          && "$out" != *"not registered"* && "$out" == *"rc=2" && "$(cat "$C14/.worktree-repos")" == "$hdr14" ]]; echo $?)" "$out"
+check "the check leaves no refs behind in A14's repository" \
+    "$([[ -z "$(git -C "$A14" for-each-ref refs/wt-base-check/)" ]]; echo $?)"
+out=$(dp "$H" base --issue 'owner/pkg_a#14' --type project --base main)
+check "the same with the --base it started from (its own commits pushed to origin): recorded" \
+    "$([[ "$out" == *"base=main"$'\n'"rc=0" && "$(head -n1 "$C14/.worktree-repos")" == "# project=project issue=owner/pkg_a#14 layer=l1 base=main" ]]; echo $?)" "$out"
+
+# --package-repos on an existing package worktree must be the set it was
+# made with (C11: pkg_a,pkg_b); a --layer, the header's layer.
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project --layer l1 --package-repos pkg_b,pkg_a)
+check "--package-repos naming the manifest's repositories, in another order: the recorded base" \
+    "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project --layer l1 --package-repos pkg_a)
+check "--package-repos that differs from the manifest: refused, naming both" \
+    "$([[ "$out" == *"was made with the repositories pkg_a,pkg_b, not --package-repos pkg_a"* && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 out=$(dp "$H" where --issue 'owner/pkg_a#7' --type project)
 check "where still prints A with base= in the header" "$([[ "$out" == "$A"$'\n'"rc=0" ]]; echo $?)" "$out"
 
