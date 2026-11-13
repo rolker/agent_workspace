@@ -2522,3 +2522,77 @@ Host question on the repeated comment: there is a real input. It is a regression
 **Decision**: address
 
 Fix the three must-fix and suggestions 1 to 3. (1) The restore never deletes or rewrites something it did not snapshot: a progress.md that is a symlink (dangling or not), or anything not a regular file, is left exactly as found; if the record cannot be made safely there, fall back to the pull-request comment with a true reason. (2) The on-branch check applies before the gate READS the owning checkout's timeline too: off the pull request's branch or detached, no timeline is read, the gate gives a reason saying so, and it cannot pass on another branch's entries. (3) docs/design.md citations into merge_pr.sh made true, after all code edits. Suggestion 1: the host's earlier decision to leave repeated comments is withdrawn, since it is a regression from main for package pull requests: when the timeline has no matching record, the duplicate check also looks at the pull request's comments, so a record that falls back to the comment is posted once. Suggestion 2: check_branch_updates.sh with no --base keeps main's behaviour (a warning, exit 0) for a stale origin/HEAD or an unknown default branch; exit 2 is for --base only. Suggestion 3: after a record push that times out, a bounded ls-remote decides: if origin has the record commit, keep it and say it was pushed; undo only if origin does not have it; if origin cannot be asked, say so truthfully and leave a defined state. Suggestion 4 stays the owner's.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 07:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `24f9b8eb`
+**Addressed**: Local Review (Pre-Push) at `2d17b3b2` (2026-11-13 07:22 -05:00), as the host's Checkpoint of 07:23 decided
+**Commits**: `957a7c4e`, `2241a5fd`, `24f9b8eb`
+
+### Actions
+- [x] (must-fix 1) `_gate_rec_unsafe` runs before anything is written. If `progress.md`, or `.agent`, `.agent/work-plans` or the issue folder, is a symlink (dangling or not) or the wrong kind of file, the path is not written, snapshotted or restored. The record goes on the PR with "<path> in <A> is a symlink / is not a regular file / is not a folder, so the record is not written there (left as found)". This applies to every PR; on main such a path reached `progress_append.sh` exit 4 and also went to a comment. The restore now runs only after exit 3, and it removes only a regular, non-symlink file the record created. Exit 2 and 4 touch nothing. Test pkg-17 covers a dangling symlink, a symlink to a real file and a directory: `git status --porcelain=v1 -uall | od -c` is byte-identical before and after, the link target, target content and directory content are unchanged, and there is one comment. All three fail on `df029cd7` — `2241a5fd`
+- [x] (must-fix 2) `_GATE_OWN_NOREAD` (owning role, sound checkout) is decided before the read:
+  - A detached HEAD gives "has a detached HEAD, not B".
+  - Another branch gives "is on X, not B".
+  - Otherwise a bounded fetch by explicit refspec runs. A failed or timed-out fetch gives "origin's B could not be fetched in the owning checkout A (<why>), so it is not known to be current". No origin/B after the fetch gives "wrote no origin/B". If origin/B is not an ancestor of HEAD, the reason is "does not contain origin's B at <y> (local <x>)".
+  The gate reason is "<that>; its timeline is not read for issue #N". `_ci_wt` stays (the repository still answers ancestry and the CI target). The record goes on the PR with "<that>; the record is not committed there". Test pkg-16 uses the review's input: H, then R1 approved at H, then R2 changes-requested, with origin and head at R2. In the detached, other-branch and behind cases there is no "approved review at head" and no "covers head", and the reason is exact. The control case (A, origin and head all at R1) passes. All three fail on `df029cd7`. Before this fix, the behind case passed on the stale approval: the ancestry fetch found only `progress.md` changed between H and R2. — `2241a5fd`
+- [x] (must-fix 3) Done last, after every code edit, and checked line by line against the final `merge_pr.sh`:
+  - Table 1 row: `243-287, 391-436, 608, 741, 818 and 1056, 1251 and 1264, 2053-2073`.
+  - Records bullet: 535-558, 719-743, new 744-793 (the owning checks), 839-846 and 1166-1167, 287, 608, 741, 818, 1056, 1251, 1264.
+  - Mechanism 1: `719-807, 1019-1181`.
+  The Merge gate bullet, the comment-fallback list, `script_reference.md` row 38 and a change-log row (979 lines) describe the new rules — `24f9b8eb`
+- [x] (suggestion 1) When the timeline holds no matching record and the role is `owning`, `_gate_already_recorded` also reads the PR's comments. Workspace and project PRs stop after the timeline, as on main. pkg-12 (absent, present) and pkg-13 (other-branch, detached) post one comment across two runs, with the comment copied into the stub fixture as GitHub would show it; run 2 prints "already recorded (as a PR comment)". pkg-12 present and pkg-13 fail on `df029cd7`. pkg-12 absent passes there, because with no timeline the comment path already existed — `2241a5fd`
+- [x] (suggestion 2) With no `--base`, `check_branch_updates.sh` warns and exits 0 in three cases:
+  - origin has no such branch: "origin has no branch 'master' (the default branch origin/HEAD names here; run 'git remote set-head origin --auto' if it is stale); not compared";
+  - origin names no default branch: "origin does not name its default branch; not compared";
+  - origin/<b> is missing after a successful fetch.
+  Main printed "Warning: Could not fetch from remote", rc 0, for both no-argument cases (run by hand against `main`'s script in a scratch sandbox). Exit 2 stays for `--base` only. Loop case 14 tests both no-argument cases; both fail on `df029cd7` with rc 2 — `957a7c4e`
+- [x] (suggestion 3) After a push that timed out (124 or 137), a bounded `ls-remote origin refs/heads/<B>` decides:
+  - Its sha equals the record commit: kept, "recorded ... and pushed (the push timed out after Ns; origin has the record commit)", no comment.
+  - rc 0 with another sha: undone, "the timeline commit was not pushed: the push timed out after Ns and origin does not have it (undone locally)", comment.
+  - rc non-zero: the defined state is that the commit stays in A (counted as this run's), with no comment and a warning naming its sha. The next run reads A, which contains origin's branch and is one ahead, finds the record ("already recorded at"), adds none and posts nothing. The branch's next push publishes it.
+  A push refused outright is undone as before. Tests use a shim that serves the ssh origin from the local bare repository:
+  - hang-2: a silent pushurl; ls-remote answers without the commit, so the commit is undone.
+  - hang-3: origin applies the push, then stalls; the commit is kept, origin holds it, no comment.
+  - hang-4: the push stalls and origin is silent afterwards; the commit is kept in A, origin is unchanged, no comment. The next run, with origin answering, prints "already recorded at" and leaves HEAD unchanged: one record in A, zero comments.
+  hang-2 to hang-4 fail on `df029cd7` — `2241a5fd`
+- [x] (suggestion 4) Follow-up issues drafted in plan.md — `.agent/work-plans/issue-429/plan.md:192,562` (deferred: the owner's call per the host checkpoint of 07:23; no issue opened)
+
+### Record and read inputs and results (owning package PR unless named; NEW = this pass)
+| Checkout state | Before | Event | Result | Test |
+|---|---|---|---|---|
+| on branch, current | absent | commit and push succeed | committed and pushed in A, no comment | pkg-1 |
+| on branch, current | absent / present | push refused by origin | undone, as it was; one comment | pkg-11 / pkg-11b |
+| on branch, current | present | push times out, origin answers without it | undone; "was not pushed: ... does not have it"; one comment | hang-2 (NEW text) |
+| on branch, current | present | push times out after origin took it | kept, "and pushed (... origin has the record commit)", no comment | hang-3 NEW |
+| on branch, current | present | push times out, origin cannot be asked | kept in A, warning, no comment; next run: "already recorded", nothing added | hang-4 NEW |
+| on branch, current | absent / present | hook refuses the commit | taken back out, A clean; one comment across two runs | pkg-12 (NEW: one across two) |
+| on branch | `progress.md` a dangling symlink / a symlink to a file / a directory | record attempted | left as found, status byte-identical; one comment | pkg-17 NEW |
+| other branch / detached | present | gate reads | not read, reason; no commit; one comment across two runs | pkg-13 (NEW: not read; one across two) |
+| detached at R1 / local branch at R1, PR at R2 | R1 approved, R2 changes-requested | gate reads | not read, no pass | pkg-16 NEW |
+| on branch at R1, origin at R2 (behind) | same | gate reads | "does not contain origin's ... at R2 (local R1)", no pass | pkg-16 behind NEW |
+| on branch, origin at R1 (current) | R1 approved | gate reads | passes | pkg-16 control NEW |
+| on branch, origin silent at the gate's fetch | approved | gate reads | "could not be fetched ... (timed out after 2s)", no pass, no commit, comment | hang-1 (NEW reason); control passes |
+| on branch, narrowed refspec, origin ahead | - | gate and CI target | origin ref refreshed; not read (behind); stale SHA never the CI target | pkg-15 (NEW reason) |
+| two projects on one origin | - | `--project` | each reads its own checkout once origin holds its branch | pkg-8, pkg-9 (fixture now pushes per run) |
+| not a top folder / missing | - | - | no read, no `_ci_wt`, comment | pkg-14 |
+| sibling | - | - | comment on the sibling's PR | pkg-5, pkg-6 |
+| workspace PR (every existing case) | - | - | verdicts and record unchanged except on a hang; the duplicate check reads only the timeline, as on main | gate suite |
+
+### Observations
+- One commit, `2241a5fd`, holds must-fix 1 and 2 and suggestions 1 and 3. They share `_gate_record`'s body and the gate's read guards, and the reworked tests (pkg-15, hang-1) depend on more than one of them.
+- Exposure kept on purpose: a workspace PR whose `progress.md` is a symlink now gets the reason "is a symlink, so the record is not written there". Before, the record went to a comment with "progress_append.sh refused (exit 4)". Same destination, truer reason.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 151/0.
+  - `test_merge_pr.sh` 150/0.
+  - `test_package_issue_loop.sh` 220/0.
+  - No `sleep 300` process was left.
+- Against `df029cd7`'s `merge_pr.sh`: the gate suite gave 137/14. These failed: pkg-12 present, pkg-13 ×2, pkg-16 ×3, pkg-17 ×3, pkg-15, hang-1 to hang-4.
+- Against `df029cd7`'s `check_branch_updates.sh`: the loop suite gave 218/2.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
