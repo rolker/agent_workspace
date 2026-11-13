@@ -3260,3 +3260,13 @@ Set-aside items (raised by sub-reviewers, set aside by the lead reviewer), check
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (main moved while CI ran: pull request 458 for issue 446 merged and pull request 461 now conflicts in three text files, so the branch must take main and be re-reviewed anyway; the one open suggestion is fixed in the same pass, not deferred)
+**After**: findings
+**Decision**: address
+
+CI was green on 79b79c9a, but GitHub reports the pull request as conflicting with main (docs/design.md, .claude/skills/run-issue/SKILL.md, .agent/knowledge/script_reference.md) after pull request 458 merged. This pass: merge origin/main into the branch and resolve the three conflicts keeping both sides' content; then fix the open suggestion (the record step compares mode as well as content: decide "staged" with git diff --cached --quiet <sha> -- <rel> and "unstaged" with git diff --quiet -- <rel>, with a chmod test row). Triage had recommended deferring that suggestion to issue 462; since a fix pass and a re-review are needed for the merge in any case, it is fixed here.
