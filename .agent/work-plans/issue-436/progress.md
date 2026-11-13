@@ -1044,3 +1044,17 @@ The plan is ready: the rename is applied consistently, the three items the plann
 - [ ] Use a sibling cache dir removed on every exit (finding 3); count non-comment layers (finding 4).
 - [ ] Place the registration end-to-end case where `register_project.sh` can run (finding 5).
 - [ ] Cross-key messages name the multi-key unset; test it (finding 6); state warn-vs-fail for a changed path source (finding 7).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Q1 "Proceed (Recommended)"; Q2 "Hard error, clearer message (Recommended)".
+
+Q1 as put to him: proceed to implementation with F1 to F7 handed to the implementer as requirements? The plan is `plan.md` at `e0cae07f`, reviewed "ready" in the Plan Review at `24dce8d9`. F1 to F7 are that review's findings, quoted to him by their headings: F1 `tools/ros-manifest/` can't be mapped to a suite (drop the mapping edit, name the CI adapter job as the coverage); F2 the test resolver wrapper could test the wrong code or skip silently (run the branch's resolver source, a skip must not pass quietly); F3 the `extends` cache location is stated two ways (beside the temporary directory, removed on every exit); F4 the empty-result check must count real lines; F5 the registration end-to-end test belongs in `test_register_project.sh`; F6 unsetting `source` alone will be refused (messages give the multi-key unset command, with a test); F7 warn or fail is unstated for a changed path-form source (the reviewer suggests a warning).
+
+Q2 as put to him: when `source` is set and an old bootstrap source is also present, what should the adapter do? The reviewer had questioned plan decision 2 because `configs/project_bootstrap.url` may be tracked in the project's own repository. His answer keeps the plan's rule, one source only and never a silent choice, with a message that names the old source found and how to remove it.
