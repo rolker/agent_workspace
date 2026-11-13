@@ -218,3 +218,13 @@ All nine decisions are in the plan, and the boundary is still right on 429, 332 
 - [ ] Post-merge `checkpoint:plan`: what it shows, and no `proceed` on a plan changed since its review (finding 4).
 - [ ] Fix the merge-from-main test description (finding 5).
 - [ ] Correct the owner's section (finding 6).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 09:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review verdict needs-work, two must-fix in the routing; second host revise in a row, so the next answer at this checkpoint is the owner's, which is also where the design question goes)
+**After**: plan
+**Decision**: revise
+
+Revise for all six findings. (1) On an open issue a merged pull request counts as an earlier part: run-issue's probe takes an open or draft pull request if there is one, otherwise none; if the old worktree survived the merge (local HEAD equals a merged pull request's head), stop and say so instead of routing. (2) A Merge record neither arms nor disarms the boundary (it is written at the gate before the merge, whether or not the merge lands); the disarm stays for a later merge, findings or merge-refused checkpoint with a non-merge answer; the post-merge route keys on "armed at the end of the timeline and no pull request", so a Merge record as the newest entry after a landed merge does not raise merge-refused. (3) The issue-state check stops the run when gh fails or is offline, never reading that as open or closed; a package issue asks its own repository. (4) At the post-merge plan checkpoint, proceed is offered only when plan.md is unchanged since its newest Plan Review and the plan names a part not yet delivered; the dialog shows the pull request just merged, that the issue is still open and why it can be, which parts are delivered, and the reviewed plan's commit against the current one. (5) Correct the merge-from-main test so it has an address checkpoint between the refused merge and the Implementation. (6) Correct the owner's section: say plainly that a merged pull request on an open issue is treated as an earlier part; say what a Merge record does; drop "old timelines read the same" (multi-pull-request timelines count fewer rounds, which is the point); mention the stop when the issue state cannot be read and what proceed relies on.
