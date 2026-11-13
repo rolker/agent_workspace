@@ -527,3 +527,19 @@ The full `pre-commit run --files ...` pass was SKIPPED on the owner's direction 
 You do it (takeover)
 
 Put to him: the fix pass ended partial only because the permission system twice refused the sub-agent's edit of the one line he had approved ("yes, add it in 459's pull request") in .claude/skills/orchestrator/SKILL.md, the plan row of the checkpoint table. The host makes that one edit, commits it, and writes the pass's entry as complete; nothing else in the file changes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+
+**Branch**: feature/issue-459 at `a437af53`
+**Addressed**: Local Review (Pre-Push) at `7d11a8d9` (2026-11-13 10:55 -05:00)
+**Commits**: `a437af53`
+
+Written by the host on the owner's takeover answer (the phase-failed checkpoint above), finishing the fix pass whose previous entry was partial for one reason only.
+
+- Must-fix 1, owner-directed ("yes, add it in 459's pull request"): `.claude/skills/orchestrator/SKILL.md`, the checkpoint table's `plan` row now reads: `proceed`, `revise`; at the plan checkpoint raised after a merge, `proceed` only under run-issue step 13's conditions (the plan unchanged since its last review, and naming a part not yet delivered), otherwise `revise`. One cell; nothing else in the file changed. The permission system had twice refused a dispatched agent's edit of this file; the owner then answered "You do it (takeover)".
+- Everything else in this fix pass is in the previous (partial) entry: must-fix 2 and 3 and the three suggestions, commits `4971bb6c` `6f1cd32d` `d9390180` `6efbf2c6` `7d31e57a`.
+
+Checks: `test_skill_paths.sh` 143 passed, 0 failed, run after the edit. The full pre-commit pass was not run, on the owner's direction (2026-11-13: one full run per pull request, by the host, before publishing).
