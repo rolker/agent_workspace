@@ -265,3 +265,23 @@ Dismissed, with evidence: "the EXIT trap does not run on an untrapped INT/TERM/H
 - [x] (suggestion) Exits from the parallel section other than on_interrupt (a `set -u` abort, the "lost track" exit 1 at :651, a signal landing between `&` and `job_of[$!]=` at :636-638) remove RUN_ROOT under suites that keep running; have the EXIT cleanup kill the groups of `jobs -p` too — `.agent/scripts/tests/run_script_tests.sh:512`
 - [x] (suggestion) An empty count or seed (`-j ""`, `--jobs=`, `--shuffle=`) falls back to the default or a random seed instead of being refused like `-j 0` — `.agent/scripts/tests/run_script_tests.sh:217`
 - [x] (suggestion) (u4)'s first run cannot tell "first failing in list order" from "first to finish": both give exit 1; make the first-listed failure a leak there (the second run and (v) cover it today) — `.agent/scripts/tests/test_run_script_tests.sh:1234`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-444 at `f499f06f`
+**Addressed**: Local Review (Pre-Push) at `c323b709` (2026-11-13 10:32 -05:00)
+**Commits**: b88b2db2, 4f0f789c, 475c53d2, f499f06f
+
+### Actions
+- [x] (must-fix) The 5-second KILL now holds as the header says. The interrupt path (now `stop_suites`) no longer KILLs every suite's group as soon as the suites have exited. It waits until their groups are empty or 5 seconds have passed since the signal, then KILLs what is left. The header now says what this costs: a process that ignores the signal waits out the 5 seconds, and a suite's `cmd &` ignores SIGINT, so the SIGINT (u8) run now takes 5 s where it took 0. Two new (u8) tests: a suite that ignores SIGTERM is KILLed by the backstop at 5 s; a child that takes a second over its own cleanup after its suite exits finishes it (1 s, before the backstop). Checked against the runner before the fix: the child's cleanup was cut short (rc 143, 0 s, no marker) — `.agent/scripts/tests/run_script_tests.sh:39`, `:619`
+- [x] (suggestion) The EXIT trap (`cleanup_run`) now calls `stop_suites TERM` in a parallel run before removing the run's directory, and `stop_suites` also takes the pids `jobs -p` lists, so a suite started but not yet in `job_of` is stopped too. New (u8) test: SIGUSR1, which the runner does not trap, ends it while two suites run; both suites and their sleeps are gone and the directory is removed. Against the runner before the fix the sleeps were left running. The `&`-to-`job_of` window has no test of its own, because it cannot be hit on demand — `.agent/scripts/tests/run_script_tests.sh:530`
+- [x] (suggestion) `-j ""`, `--jobs=` and `--shuffle=` are now refused (exit 1, before any suite runs) like `-j 0` or `--shuffle=x`. An empty RUN_SCRIPT_TESTS_JOBS still counts as unset. Four new `jobs_case` lines — `.agent/scripts/tests/run_script_tests.sh:228`, `:258`
+- [x] (suggestion) In (u4)'s first run a failure is listed first and a leak finishes first, and the case asserts the finish order, so exit 1 can only come from list order. The second run keeps the other direction (leak listed first, failure finishing first, exit 2). This differs a little from the literal suggestion, which would have repeated the second run's direction. — `.agent/scripts/tests/test_run_script_tests.sh:1226`
+
+### Verification
+- `bash .agent/scripts/tests/test_run_script_tests.sh` alone, after each change: 154, 156, then 157 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, with no SKIP, on `f499f06f`: exit 0 in 834 s. Every hook passed, `validate-script-tests` among them (every suite, because the branch touches the runner, at the hook's default of one job).
+- Each fix commit used `SKIP=validate-script-tests` (owner direction for this pass); every other hook ran.
