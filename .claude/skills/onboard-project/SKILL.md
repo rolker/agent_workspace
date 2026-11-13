@@ -147,7 +147,8 @@ the rest of the run.
     `--dry-run`, stop here.
 
     Then ask one yes in text, for this write alone: register this folder,
-    with the registry line and the settings file the dry run showed. A no
+    with the registry line the dry run showed and the build and test
+    commands the real call will pass (below), named in the question. A no
     stops the run. Ask it even though the real call raises a permission
     prompt: that prompt is not guaranteed. A "Yes, and don't ask again" on
     the dry run's prompt allows the same command, so the real call can run
@@ -161,9 +162,15 @@ the rest of the run.
     "$WS_ROOT/.agent/scripts/register_session_root.sh" 2>&1
     ```
 
-    adding `--set "build=<command>"` and `--set "test=<command>"` only for
-    the commands the user gave, each as one quoted argument; `build=` and
-    `test=` are the only keys it takes.
+    adding `--set "build=<command>"` and `--set "test=<command>"`, each as
+    one quoted argument, for every build and test command the dry run's
+    settings file lists (its `build=` and `test=` lines, as printed) and
+    every one the user gave in its place (or `none`); `build=` and `test=`
+    are the only keys it takes. Pass the detected ones too: without
+    `--set`, the real call detects them again from the folder's files at
+    that run, so its permission prompt would not show them and the folder
+    could have changed since the dry run. With them, the text question and
+    the prompt both show what is written.
 
     The permission prompt for this call, when it appears, shows the full
     command and is a second gate after the yes in text: a no there also

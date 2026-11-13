@@ -472,6 +472,7 @@ if [[ -f "$ONB" ]]; then
         'Then ask one yes in text, for this write alone' \
         'that prompt is not guaranteed' \
         'is a second gate after the yes in text' \
+        'Pass the detected ones too' \
         'registration needs a git repository today, a known gap'
     if grep -qF 'Do not also ask for a yes in text' "$ONB"; then
         fail "onboard-project still takes the registration's permission prompt as its only yes"

@@ -7,7 +7,9 @@
 # each refusal (already registered, with --set; inside a registered root;
 # over a registered root; inside or over the workspace; not the top of
 # its repository; a linked worktree; a name already registered; usage),
-# a folder with no build command (refused until --set), a folder in no git
+# a folder with no build command (refused until --set), the dry run's
+# commands passed back as --set (written even after the folder changes),
+# a folder in no git
 # repository (the named gap: refused and rolled back), a copy of the
 # script in a linked worktree of the workspace (it registers in the main
 # checkout), and that the script is not promoted to the user tier.
@@ -230,6 +232,21 @@ DELTA="$(make_proj "$P" delta 0)"
 out="$(rsr "$DELTA" --set "build=make all" --set "test=make test")"; rc=$?
 check "registered, the command kept whole" \
     bash -c '[ "$1" -eq 0 ] && grep -qx "build=make all" "$2"' _ "$rc" "$(pfile delta)"
+
+echo "TEST: the dry run's commands passed as --set are what the real run writes, whatever the folder holds by then"
+ZETA="$(make_proj "$P" zeta)"
+out="$(rsr "$ZETA" --dry-run)"; rc=$?
+# Each line is "    <key>=<command>    (detected (<file>))".
+zb="$(sed -n 's/^    build=\(.*\)    (detected .*$/\1/p' <<< "$out")"
+zt="$(sed -n 's/^    test=\(.*\)    (detected .*$/\1/p' <<< "$out")"
+check "the dry run lists build= and test= lines to copy" [ "$rc" -eq 0 -a "$zb" = "make" -a "$zt" = "make test" ]
+# The folder changes between the dry run and the real run: detection
+# would now propose cargo build and cargo test.
+printf '[package]\nname = "zeta"\n' > "$ZETA/Cargo.toml"
+rm "$ZETA/Makefile"
+out="$(rsr "$ZETA" --set "build=$zb" --set "test=$zt")"; rc=$?
+check "registered, with exactly the dry run's commands" \
+    bash -c '[ "$1" -eq 0 ] && grep -qx "build=make" "$2" && grep -qx "test=make test" "$2"' _ "$rc" "$(pfile zeta)"
 
 # ------------------------------------------------------------- no git ---
 echo "TEST: a folder in no git repository: the dry run looks clean, the real run is refused and rolled back (the named gap)"

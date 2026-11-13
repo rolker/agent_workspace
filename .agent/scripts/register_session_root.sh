@@ -14,7 +14,11 @@
 #
 #   The folder is the current directory (its pwd -P form): there is no
 #   path argument, and no other option. --set takes only build= and test=,
-#   each at most once; register_project.sh validates the values.
+#   each at most once; register_project.sh validates the values. A key
+#   with no --set is detected from the folder's files at this run, so
+#   onboard-project passes the commands its dry run showed as --set on the
+#   real call: the permission prompt then shows what is written, and a
+#   folder changed since the dry run cannot change it.
 #   --dry-run prints what registration would write and writes nothing.
 #
 # Refused, exit 1, before anything is handed over (nothing written):
