@@ -1030,6 +1030,8 @@ hang_reap() {  # <sb>: kills every blocked shim; prints "reached" and the pids s
 # path is its absolute path), so a test can make only some calls block:
 # HANG_MODE=applied: a push is applied, then the shim blocks (origin took
 #   the record, then stalled); every other call is served.
+# HANG_MODE=applied-ontop: as applied, and another commit lands on top of
+#   the pushed branch before the shim blocks (a push by someone else).
 # HANG_MODE=silent: a push blocks without applying, and every call after it
 #   blocks too (origin cannot be asked about it).
 serve_shim() {  # <sb>
@@ -1039,8 +1041,15 @@ cmd="\${@: -1}"
 pids="$1/hang-ssh.pids"; marker="$1/push-started"
 case "\$cmd" in
     git-receive-pack*)
-        if [ "\$HANG_MODE" = applied ]; then
+        if [ "\$HANG_MODE" = applied ] || [ "\$HANG_MODE" = applied-ontop ]; then
             sh -c "\$cmd"
+            if [ "\$HANG_MODE" = applied-ontop ]; then
+                bare="\$HANG_BARE"
+                tip=\$(git --git-dir="\$bare" rev-parse "refs/heads/\$HANG_BRANCH")
+                new=\$(GIT_AUTHOR_NAME=o GIT_AUTHOR_EMAIL=o@o GIT_COMMITTER_NAME=o GIT_COMMITTER_EMAIL=o@o \
+                    git --git-dir="\$bare" commit-tree "\$tip^{tree}" -p "\$tip" -m "pushed on top")
+                git --git-dir="\$bare" update-ref "refs/heads/\$HANG_BRANCH" "\$new"
+            fi
         else
             : > "\$marker"
         fi
@@ -1116,7 +1125,7 @@ if command -v timeout >/dev/null 2>&1; then
     elapsed=$((SECONDS - started))
     reap="$(hang_reap "$sb")"
     if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
-        && [[ "$out" == *"the timeline commit was not pushed: the push timed out after 2s and origin does not have it (undone locally) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] \
+        && [[ "$out" == *"the timeline commit was not pushed: the push timed out after 2s and origin's feature/issue-901 does not contain it (undone locally) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] \
         && [[ "$out" != *"and pushed"* ]] \
         && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
         && [[ "$(pkg_progress "$cont")" == "$p_before" ]] \
@@ -1127,62 +1136,102 @@ if command -v timeout >/dev/null 2>&1; then
         fail "(hang-2) push times out (reap=$reap elapsed=${elapsed}s out=$(tail_of "$out" 700))"
     fi
 
-    # Origin applies the push, then stalls: the ls-remote finds the record
-    # commit there, so it is kept and reported pushed, and no comment.
-    sb="$(make_sandbox "" "")"
-    cont="$(make_pkg_container "$sb" demo "$STALE")"
-    A="$cont/l1_ws/src/pkg_a"
-    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
-    serve_shim "$sb"
-    git -C "$A" remote set-url origin "ssh://git@github.com$sb/fake_remotes/github.com/owner/pkg_a.git"
-    a_before=$(git -C "$A" rev-parse HEAD)
-    started=$SECONDS
-    out="$(GIT_SSH_COMMAND="$sb/serve-ssh" GIT_SSH_VARIANT=simple HANG_MODE=applied WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
-    elapsed=$((SECONDS - started))
-    reap="$(hang_reap "$sb")"
-    if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
-        && [[ "$out" == *"Merge (report-only) entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed (the push timed out after 2s; origin has the record commit)"* ]] \
-        && [[ "$(git -C "$A" rev-parse HEAD^)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
-        && [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$(git -C "$A" rev-parse HEAD)" ]] \
-        && pkg_progress "$cont" | grep -q '^## Merge (report-only)$' && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
-        pass "(hang-3) origin takes the record push, then stalls (${elapsed}s): ls-remote finds it, the commit is kept and reported pushed, no comment; no shim left"
-    else
-        fail "(hang-3) push applied then stalled (reap=$reap elapsed=${elapsed}s out=$(tail_of "$out" 700))"
-    fi
+    # Origin applies the push, then stalls: the fetch after the timeout
+    # finds the record commit on origin's branch, so it is kept and reported
+    # pushed, and no comment. ontop: another commit lands on top before the
+    # check, so origin's tip is not the record commit but contains it.
+    for mode in applied applied-ontop; do
+        sb="$(make_sandbox "" "")"
+        cont="$(make_pkg_container "$sb" demo "$STALE")"
+        A="$cont/l1_ws/src/pkg_a"
+        pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+        serve_shim "$sb"
+        git -C "$A" remote set-url origin "ssh://git@github.com$sb/fake_remotes/github.com/owner/pkg_a.git"
+        a_before=$(git -C "$A" rev-parse HEAD)
+        started=$SECONDS
+        out="$(GIT_SSH_COMMAND="$sb/serve-ssh" GIT_SSH_VARIANT=simple HANG_MODE=$mode HANG_BRANCH=feature/issue-901 HANG_BARE="$sb/fake_remotes/github.com/owner/pkg_a.git" WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
+        elapsed=$((SECONDS - started))
+        reap="$(hang_reap "$sb")"
+        tip=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
+        rec=$(git -C "$A" rev-parse HEAD)
+        tip_ok=false
+        if [[ "$mode" == applied ]]; then [[ "$tip" == "$rec" ]] && tip_ok=true
+        else [[ "$tip" != "$rec" && "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse "$tip^")" == "$rec" ]] && tip_ok=true; fi
+        if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] && [[ "$tip_ok" == true ]] \
+            && [[ "$out" == *"Merge (report-only) entry recorded in $A/.agent/work-plans/issue-901/progress.md and pushed (the push timed out after 2s; origin's feature/issue-901 contains the record commit)"* ]] \
+            && [[ "$(git -C "$A" rev-parse HEAD^)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+            && pkg_progress "$cont" | grep -q '^## Merge (report-only)$' && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
+            pass "(hang-3 $mode) origin takes the record push, then stalls (${elapsed}s): its branch contains the commit, which is kept and reported pushed, no comment; no shim left"
+        else
+            fail "(hang-3 $mode) push applied then stalled (reap=$reap elapsed=${elapsed}s tip_ok=$tip_ok out=$(tail_of "$out" 700))"
+        fi
+    done
 
-    # Origin stalls on the push and cannot be asked afterwards: the commit
-    # is kept in A (unpushed as far as is known), no comment is posted, and
-    # the message says so. The next run, origin answering, reads the record
-    # in A's timeline (A contains origin's branch, one commit ahead) and
-    # adds none: one record.
+    # Origin stalls on the push and cannot be asked afterwards: whether it
+    # took the commit is unknown, so it is undone in A and the record is
+    # posted on the PR (a second copy if origin did take it), never left
+    # only in a local commit. The next run, origin answering, finds the
+    # record on the PR's comments, not in A's timeline, and adds none.
     sb="$(make_sandbox "" "")"
     cont="$(make_pkg_container "$sb" demo "$STALE")"
     A="$cont/l1_ws/src/pkg_a"
     pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
     serve_shim "$sb"
     git -C "$A" remote set-url origin "ssh://git@github.com$sb/fake_remotes/github.com/owner/pkg_a.git"
-    a_before=$(git -C "$A" rev-parse HEAD)
+    a_before=$(git -C "$A" rev-parse HEAD); p_before=$(pkg_progress "$cont")
     a_remote_before=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
     started=$SECONDS
     out="$(GIT_SSH_COMMAND="$sb/serve-ssh" GIT_SSH_VARIANT=simple HANG_MODE=silent WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
     elapsed=$((SECONDS - started))
     reap="$(hang_reap "$sb")"
-    rec=$(git -C "$A" rev-parse HEAD)
     git -C "$A" remote set-url origin "$sb/fake_remotes/github.com/owner/pkg_a.git"
+    pkg_comments_to_fixture "$sb"
     out2="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
     if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
-        && [[ "$out" == *"Merge (report-only) entry committed in $A/.agent/work-plans/issue-901/progress.md as \`${rec:0:7}\`, but the push timed out after 2s and origin could not be asked whether it has it: the commit is kept there, unpushed as far as is known, and no PR comment is posted; the next push of feature/issue-901 publishes it"* ]] \
-        && [[ "$out" != *"and pushed"* ]] && [[ "$(git -C "$A" rev-parse HEAD^)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+        && [[ "$out" == *"the timeline commit was not known to be pushed: the push timed out after 2s and origin could not be asked afterwards (timed out after 2s) (undone locally); if origin took it, this comment is a second copy — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] \
+        && [[ "$out" != *"and pushed"* ]] && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] && [[ -z "$(git -C "$A" status --porcelain)" ]] \
+        && [[ "$(pkg_progress "$cont")" == "$p_before" ]] \
         && [[ "$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)" == "$a_remote_before" ]] \
-        && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]] \
-        && [[ "$out2" == *"already recorded at"*"same conditions"* ]] && [[ "$(git -C "$A" rev-parse HEAD)" == "$rec" ]] \
-        && [[ "$(pkg_progress "$cont" | grep -c '^## Merge (report-only)$')" -eq 1 ]] && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
-        pass "(hang-4) push stalls and origin cannot be asked (${elapsed}s): the commit is kept in A, no comment, said so; the next run finds it and adds none; no shim left"
+        && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]] \
+        && [[ "$out2" == *"already recorded (as a PR comment), same conditions"* ]] && [[ "$out2" != *"already recorded at"* ]] \
+        && [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] \
+        && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]]; then
+        pass "(hang-4) push stalls and origin cannot be asked (${elapsed}s): the commit is undone, the record posted on the PR and said so; the next run finds that comment, claims no timeline record, adds none; no shim left"
     else
         fail "(hang-4) push stalls, origin silent (reap=$reap elapsed=${elapsed}s out=$(tail_of "$out" 700) out2=$(tail_of "$out2" 500))"
     fi
+
+    # The same outcome for a workspace PR under --report-only and
+    # --force-unreviewed: the record commit in the PR's worktree is undone
+    # and the record is posted on the PR, never left only in a local commit.
+    for flag in --report-only --force-unreviewed; do
+        sb="$(make_sandbox "$STALE" with_summary)"
+        wt="$sb/worktrees/workspace/issue-workspace-7"
+        bare="${sb}.remote.git"
+        serve_shim "$sb"
+        ssh_url="ssh://git@github.com$bare"
+        git -C "$sb" remote set-url origin "$ssh_url"
+        cp "$sb/gh_fixtures/pr_view_$(printf '%s' "$bare" | tr '/' '_')_${PR}.json" \
+            "$sb/gh_fixtures/pr_view_$(printf '%s' "$ssh_url" | tr '/' '_')_${PR}.json"
+        etype="Merge (report-only)"; [[ "$flag" == --force-unreviewed ]] && etype="Merge (unreviewed)"
+        w_before=$(git -C "$wt" rev-parse HEAD); p_before=$(progress_of "$sb")
+        o_before=$(git --git-dir="$bare" rev-parse feature/issue-7)
+        started=$SECONDS
+        out="$(GIT_SSH_COMMAND="$sb/serve-ssh" GIT_SSH_VARIANT=simple HANG_MODE=silent WT_FETCH_TIMEOUT=2 run_merge "$sb" "$flag" 2>&1)" || true
+        elapsed=$((SECONDS - started))
+        reap="$(hang_reap "$sb")"
+        if [[ "$reap" == reached ]] && [[ "$elapsed" -lt 120 ]] \
+            && [[ "$out" == *"the timeline commit was not known to be pushed: the push timed out after 2s and origin could not be asked afterwards (timed out after 2s) (undone locally); if origin took it, this comment is a second copy — $etype record posted as a comment"* ]] \
+            && [[ "$(git -C "$wt" rev-parse HEAD)" == "$w_before" ]] && [[ -z "$(git -C "$wt" status --porcelain)" ]] \
+            && [[ "$(progress_of "$sb")" == "$p_before" ]] && [[ "$(git --git-dir="$bare" rev-parse feature/issue-7)" == "$o_before" ]] \
+            && [[ "$(grep -c "^## $etype\$" "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]]; then
+            pass "(hang-ws $flag) a workspace PR's record push stalls and origin cannot be asked (${elapsed}s): the commit is undone, the record posted on the PR; no shim left"
+        else
+            fail "(hang-ws $flag) (reap=$reap elapsed=${elapsed}s out=$(tail_of "$out" 900))"
+        fi
+    done
 else
-    echo "  SKIP: no timeout command (hang-1 to hang-4)"
+    echo "  SKIP: no timeout command (hang-1 to hang-4, hang-ws)"
 fi
 
 # ================================================= main tree on the PR branch =====

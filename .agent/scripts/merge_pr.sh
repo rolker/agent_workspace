@@ -1081,7 +1081,7 @@ _gate_record() {  # <entry type> <one-line why>
         elif unsafe=$(_gate_rec_unsafe "$_gate_wt") && [[ -n "$unsafe" ]]; then
             why_comment="${unsafe}, so the record is not written there (left as found)"
         else
-            local head_before append_rc=0 rec_sha="" push_rc=0 remote_line="" ls_rc=0
+            local head_before append_rc=0 rec_sha="" push_rc=0
             head_before=$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")
             _gate_rec_snapshot "$_gate_wt"
             printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1 || append_rc=$?
@@ -1099,25 +1099,35 @@ _gate_record() {  # <entry type> <one-line why>
                     return 0
                 fi
                 # A push that timed out may have reached origin before it
-                # stalled: a bounded ls-remote decides. Origin has the record
-                # commit: it was pushed, keep it. Origin cannot be asked: keep
-                # the commit in the checkout and post no comment (one record,
-                # in the timeline, which the next run's duplicate check reads
-                # and the branch's next push publishes). Origin answers
-                # without it, or the push was refused outright: undo below.
+                # stalled: a bounded fetch of the branch (explicit refspec)
+                # decides. Origin's branch contains the record commit (it is
+                # the tip, or an ancestor of it when another push landed on
+                # top): it was pushed, keep it. Otherwise, whether origin
+                # answers without it or cannot be asked at all, undo it and
+                # post the record as a PR comment below: the record is then
+                # on the PR, at worst twice, and never only in a local commit
+                # that nothing would push before the merge.
+                local after_why="" dup_note=""
                 if [[ "$push_rc" -eq 124 || "$push_rc" -eq 137 ]]; then
-                    remote_line=$( (cd "$_gate_wt" && wt_bounded_git ls-remote origin "refs/heads/$PR_BRANCH") 2>/dev/null ) || ls_rc=$?
-                    if [[ "$ls_rc" -eq 0 && -n "$rec_sha" && "${remote_line%%[[:space:]]*}" == "$rec_sha" ]]; then
+                    local fetch_rc=0 fetch_err="" origin_tip=""
+                    fetch_err=$( (cd "$_gate_wt" && wt_bounded_git fetch --quiet origin -- "+refs/heads/$PR_BRANCH:refs/remotes/origin/$PR_BRANCH") 2>&1 >/dev/null ) || fetch_rc=$?
+                    if [[ "$fetch_rc" -eq 0 ]]; then
+                        origin_tip=$(git -C "$_gate_wt" rev-parse -q --verify "refs/remotes/origin/$PR_BRANCH^{commit}" 2>/dev/null || true)
+                    fi
+                    if [[ -n "$origin_tip" && -n "$rec_sha" ]] && git -C "$_gate_wt" merge-base --is-ancestor "$rec_sha" "$origin_tip" 2>/dev/null; then
                         _gate_rec_snapshot_drop
                         _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-                        echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed (the push timed out after $(wt_fetch_limit)s; origin has the record commit)"
+                        echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed (the push timed out after $(wt_fetch_limit)s; origin's $PR_BRANCH contains the record commit)"
                         return 0
                     fi
-                    if [[ "$ls_rc" -ne 0 ]]; then
-                        _gate_rec_snapshot_drop
-                        _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-                        echo "  ⚠️  ${etype} entry committed in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md as \`${rec_sha:0:7}\`, but the push timed out after $(wt_fetch_limit)s and origin could not be asked whether it has it: the commit is kept there, unpushed as far as is known, and no PR comment is posted; the next push of $PR_BRANCH publishes it" >&2
-                        return 0
+                    if [[ "$fetch_rc" -ne 0 ]]; then
+                        after_why="was not known to be pushed: the push timed out after $(wt_fetch_limit)s and origin could not be asked afterwards ($(wt_fetch_why "$fetch_rc" "$fetch_err"))"
+                        dup_note="; if origin took it, this comment is a second copy"
+                    elif [[ -z "$origin_tip" ]]; then
+                        after_why="was not known to be pushed: the push timed out after $(wt_fetch_limit)s and the fetch wrote no origin/$PR_BRANCH"
+                        dup_note="; if origin took it, this comment is a second copy"
+                    else
+                        after_why="was not pushed: the push timed out after $(wt_fetch_limit)s and origin's $PR_BRANCH does not contain it"
                     fi
                 fi
                 # Push refused, or timed out and origin answers without the
@@ -1137,14 +1147,12 @@ _gate_record() {  # <entry type> <one-line why>
                     _RUN_COMMITTED_SHAS=(${kept[@]+"${kept[@]}"})
                 fi
                 local push_what="could not be pushed to origin"
-                if [[ "$push_rc" -eq 124 || "$push_rc" -eq 137 ]]; then
-                    push_what="was not pushed: the push timed out after $(wt_fetch_limit)s and origin does not have it"
-                fi
+                [[ -n "$after_why" ]] && push_what="$after_why"
                 if [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" == "$head_before" ]] \
                         && _gate_rec_restore "$_gate_wt"; then
-                    why_comment="the timeline commit ${push_what} (undone locally)"
+                    why_comment="the timeline commit ${push_what} (undone locally)${dup_note}"
                 else
-                    why_comment="the timeline commit ${push_what}, and undoing it in $_gate_wt did not leave progress.md as it was"
+                    why_comment="the timeline commit ${push_what}, and undoing it in $_gate_wt did not leave progress.md as it was${dup_note}"
                 fi
             elif [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" != "$head_before" ]]; then
                 # Not expected: progress_append.sh fails before its commit.

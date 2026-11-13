@@ -2635,14 +2635,14 @@ The round-2 findings hold, except where noted:
 - **Timed-out push.** Origin has the commit: kept. Origin answers without it: undone, with a comment. Origin cannot be asked: see the must-fix.
 
 ### Findings
-- [ ] (must-fix) A record push that times out while origin cannot be asked is never published, and the PR still merges.
+- [x] (must-fix) A record push that times out while origin cannot be asked is never published, and the PR still merges.
   - Input (observed by the sub-review on the hang-4 fixture): run 1 has `HANG_MODE=silent`. The commit is kept in A, with no comment.
   - Run 2 has origin answering. It prints "already recorded at ..., same conditions" and calls `gh pr merge`. Origin's branch does not have the record commit, and no comment exists.
   - The same happens in one run when git-over-ssh hangs but gh's HTTPS API works, for a workspace PR under `--report-only` or `--force-unreviewed` (from reading the code; not run): the PR merges with its record only in a local, unpushed commit.
   - "The next push of B publishes it" never happens, because nothing pushes after the merge.
   - Fix: let this outcome take the undo-and-comment path, accepting a possible duplicate, and update the design.md Merge gate bullet (line 708) and script_reference row 38 to match.
   - `.agent/scripts/merge_pr.sh:1116-1121`
-- [ ] (suggestion) A timed-out push is undone even when origin has the record commit, if the host pushed on top of it before ls-remote ran.
+- [x] (suggestion) A timed-out push is undone even when origin has the record commit, if the host pushed on top of it before ls-remote ran.
   - Input: the push lands, the host pushes on top, and ls-remote then shows another sha that has the record commit as an ancestor.
   - Result: A is reset and a comment is posted. The record exists twice, and the next run finds A not containing origin.
   - Fix: test ancestry, not equality. This is a narrow race.
