@@ -657,3 +657,31 @@ Suites: test_dispatch_phase 233, test_review_code_convergence 38, test_address_f
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #467 at `ee8f7b7`
+**Sources**: 2 (Local Review @ `41b1ea7a` (covers `ee8f7b7` via bookkeeping), CI rollup); GitHub reviews and conversation comments: none (Copilot review disabled for quota: skipped)
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit): pending; Validate Adapter Contract: pending; Validate Documentation: pass; ros-manifest tests (#267 prototype): pass; each in two runs, 43467288113 and 43467274951)
+
+Nothing open. The three pre-push rounds (8 + 6 boxes, and round 3's placeholder), the earlier Integrated Review at `be62d33` (1 box, ticked) and the PR-mode Local Review at `41b1ea7a` (approved, 0 | 0, placeholder only) leave no open finding. The partial Implementation's one open box (orchestrator cell) is closed by the host's complete Implementation at `a437af53` after the owner's takeover checkpoint. The unticked boxes in the Issue Review and the three Plan Reviews are pre-implementation findings answered by the following Plan Authored revisions and the owner's plan checkpoint; they are not code-review findings and `sources` does not read them.
+
+Helper output from this worktree: `review_progress.sh sources --head ee8f7b76` gives `local_findings: []`, `dropped_entries: []`, `candidates: []`. `findings` picks the PR-mode `## Local Review` at `41b1ea7a` (ordinal 4) with `total_findings: 1`, `open: []`: correct, the one box is the approved review's "No issues found. LGTM." placeholder with counts 0 | 0, so it is not listed.
+
+Checked here: issue 429's timeline through `pr_start.scan` on each prefix gives boundaries 25, 50, 71 and final `Scan(71, 71, armed=True)`, as the Implementation and Local Review entries say.
+
+PR body, sentences no longer true or missing (not edited):
+- "Single-pull-request issues behave as before. In review rounds 1 and 2 ... 1,084 timeline states on six real timelines ... not repeated after round 2's fixes ...; round 3 re-checked ... 41 reviews": the comparison was repeated after the merge of #461 (Local Review at `41b1ea7a`): 7 timelines, 1,352 states, 72 differences, all intended (15 at `--pr none` after a merge answer or Merge record: main `merge`/`merge-refused`/`unexpected`, branch `checkpoint:plan`; 57 next-part round counts from 1 on #429 and #332); `next` and `round` agree on 45 pre-push reviews.
+- Review: "round 3 ... after the branch took main" names only the first merge of main (`6ecbcbd0`, #458); add the second (`91967144`, #461, conflict in `docs/design.md` change log only, `dispatch_phase.sh` citations refreshed) and the PR-mode Local Review at `41b1ea7a` that approved it with 0 must-fix, 0 suggestions.
+- Tests: "issue #429 gives boundaries at entries 25 and 50" is now 25, 50 and 71; "agree on all 41 pre-push reviews" is now 45.
+- Tests: "the full pre-commit pass ran once ... on the reviewed head" was before the merge of #461; the merged tree's first full run is CI's Lint job (pending at this triage). Directly affected suites after the merge also include `test_package_issue_loop.sh` 220/0 and `test_merge_pr_gate.sh` 200/0.
+- "After the merge" (#461 edits the same documents; whichever merges second takes main first): past; this branch took main with #461 at `91967144`. Drop it or restate it as done.
+
+### Findings
+- [ ] (suggestion, triage) PR body: update the five places above (1,352-state comparison after the merge, second merge of main and its PR-mode review, 429 boundaries 25/50/71 and 45 reviews, the full-run statement vs CI, the past "After the merge" section) — PR #467 body
+
+### False positives
