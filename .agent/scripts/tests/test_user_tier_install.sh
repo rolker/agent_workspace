@@ -1747,6 +1747,30 @@ out="$(run --check)"; rc=$?
     && pass "...and --check notes it, not as drift" || fail "...--check over a gone projectPath (rc=$rc out=$out)"
 jq --arg id "$PID" '.plugins[$id] |= map(select(.scope != "local"))' "$IP_FILE" > "$tmp" && mv "$tmp" "$IP_FILE"
 
+# A CLI record that does not parse: the roots it would list are not looked
+# at, so every mode says so; --uninstall does not report a clean removal.
+cp "$IP_FILE" "$SANDBOX/ip-good.json"
+echo '{not json' > "$IP_FILE"
+ip_msg="$IP_FILE (the claude CLI's record of plugin installs) is not valid JSON"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"NOTE: $ip_msg"*"were not looked at"* ]] \
+    && pass "an installed_plugins.json that does not parse is a note on install" \
+    || fail "install over an unparseable CLI record (rc=$rc out=${out:0:500})"
+out="$(run --check)"; rc=$?
+[[ "$out" == *"note: $ip_msg"* ]] \
+    && pass "...and on --check" || fail "...--check over an unparseable CLI record (rc=$rc out=$out)"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"ERROR: $ip_msg"* && "$out" != *"agent_workspace user tier removed."* ]] \
+    && pass "...and --uninstall exits 1 naming it, never reporting a clean removal" \
+    || fail "...--uninstall over an unparseable CLI record (rc=$rc out=${out:0:500})"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"ERROR: $ip_msg"* && "$out" != *"nothing installed"* ]] \
+    && pass "...even once the rest is gone (not \"nothing installed\")" \
+    || fail "...second --uninstall over an unparseable CLI record (rc=$rc out=${out:0:500})"
+cp "$SANDBOX/ip-good.json" "$IP_FILE"
+rm -f "$SANDBOX/ip-good.json"
+run >/dev/null
+
 # The read-back after migrating: a local call that costs the user-scope
 # enable (or the machine-level record) fails the run, naming it; a re-run
 # restores it.

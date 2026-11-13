@@ -846,7 +846,8 @@ user_scope_readback() {  # <what came before, for the message>
 # local-scope install of the plugin (cli-record), so a root unregistered
 # by hand, or moved, is still found. Each place once, by its physical path
 # when it is on disk. A registry that does not parse returns 2 (the parser
-# has named the line on stderr).
+# has named the line on stderr). A CLI record that does not parse adds no
+# place; every mode reports it (installed_plugins_unreadable).
 legacy_places() {
     local entries name _type path _fields parse_rc=0 p key
     local -A seen=()
@@ -933,6 +934,11 @@ hand_removal() {  # <settings.local.json>
 installed_plugins_state() {
     [[ -f "$INSTALLED_PLUGINS" ]] || { echo absent; return 0; }
     if jq empty "$INSTALLED_PLUGINS" >/dev/null 2>&1; then echo ok; else echo unparseable; fi
+}
+# What an unparseable record costs, for a message: legacy_places reads the
+# roots it lists, and drops them all when it cannot.
+installed_plugins_unreadable() {
+    echo "$INSTALLED_PLUGINS (the claude CLI's record of plugin installs) is not valid JSON, so the roots it lists as local-scope installs of $PLUGIN_ID, which may hold per-root entries, were not looked at (fix it: jq . \"$INSTALLED_PLUGINS\")"
 }
 
 # Does the CLI's record list a local-scope install of the plugin in <root>
@@ -1045,6 +1051,8 @@ fi
 plugin_anywhere() {
     local _kind _label path
     case "$(user_scope_state)" in ours|partial|unparseable) return 0 ;; esac
+    # Roots the CLI's record lists were not looked at.
+    [[ "$(installed_plugins_state)" == unparseable ]] && return 0
     while IFS=$'\t' read -r _kind _label path; do
         [[ -n "$path" && -d "$path" ]] || continue
         case "$(legacy_state "$path")" in ours|unparseable) return 0 ;; esac
@@ -1113,6 +1121,10 @@ if [[ "$MODE" == "uninstall" ]]; then
     # user-scope enable, when this checkout declared it.
     uninstall_rc=0
     migrate_legacy_roots strict || uninstall_rc=1
+    if [[ "$(installed_plugins_state)" == unparseable ]]; then
+        echo "  ERROR: $(installed_plugins_unreadable)" >&2
+        uninstall_rc=1
+    fi
     case "$(user_scope_state)" in
         ours|partial)
             if ! have_claude; then
@@ -1400,6 +1412,7 @@ if [[ "$MODE" == "check" ]]; then
                 echo "  note: $f ($label) is not valid JSON -- cannot tell whether it holds a per-root $PLUGIN_NAME entry" ;;
         esac
     done <<< "$LEGACY_PLACES"
+    [[ "$(installed_plugins_state)" == unparseable ]] && echo "  note: $(installed_plugins_unreadable)"
 
     if [[ "$drift" -eq 0 ]]; then
         echo "agent_workspace user tier: installed and current ($WS_ROOT)"
@@ -1630,6 +1643,7 @@ fi
 
 plugin_rc=0
 migrate_legacy_roots || plugin_rc=1
+[[ "$(installed_plugins_state)" == unparseable ]] && echo "  NOTE: $(installed_plugins_unreadable)"
 # The read-back: a local-scope remove must not have cost the user-scope
 # enable or the machine-level record (not established on the CLI; this is
 # the guard). A re-run repairs either.
