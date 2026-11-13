@@ -759,11 +759,43 @@ if [[ "$_GATE_PKG_ROLE" == "owning" ]]; then
         fi
     fi
 fi
+# Prints why progress.md in <checkout> is not as committed, or nothing:
+# untracked, or changed in the index, the working tree or both (an edit, a
+# deletion). The owning checkout's read guard uses it: such a timeline may
+# hold entries origin does not have, and a record commit there would take
+# the uncommitted text with it.
+_gate_rec_dirty() {  # <checkout>
+    local wt="$1" rel st x y what=""
+    rel=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+    # A symlink or a non-file there is _gate_rec_unsafe's case (left as
+    # found, its own reason), not this one.
+    [[ -L "$wt/$rel" || ( -e "$wt/$rel" && ! -f "$wt/$rel" ) ]] && return 0
+    # assume-unchanged (tag in lower case) or skip-worktree (S, s): git
+    # status hides the file's changes and git add takes none of them, so
+    # the record commit would be empty while its append stays behind.
+    case "$(git -C "$wt" ls-files -v -- "$rel" 2>/dev/null | cut -c1)" in
+        [[:lower:]]|S) echo "$rel in $wt is marked assume-unchanged or skip-worktree in the index, so its changes are not known"; return 0 ;;
+    esac
+    st=$(git -C "$wt" status --porcelain=v1 --untracked-files=all -- "$rel" 2>/dev/null) || { echo "git status could not be read for $rel in $wt"; return 0; }
+    [[ -z "$st" ]] && return 0
+    x="${st:0:1}" y="${st:1:1}"
+    if [[ "$x$y" == "??" ]]; then
+        what="is untracked"
+    elif [[ "$x" != " " && "$y" != " " ]]; then
+        what="has staged and unstaged changes"
+    elif [[ "$x" != " " ]]; then
+        what="has staged changes"
+    else
+        what="has unstaged changes"
+    fi
+    echo "$rel in $wt $what"
+}
 # A sound owning checkout's timeline is the PR branch's only when the
 # checkout has that branch checked out and its HEAD equals origin's copy of
 # it. Otherwise its progress.md may be another branch's, an older one that
 # lacks a newer review (behind or diverged), or hold entries origin does not
-# have (ahead: unpushed commits), and none of those may pass the gate.
+# have (ahead: unpushed commits; or progress.md itself untracked, staged or
+# edited), and none of those may pass the gate.
 # _gate_record commits the record there only under the same condition, so
 # the record push never carries unpushed commits to the PR branch.
 # _GATE_OWN_NOREAD says why the timeline is not read (empty: it is read);
@@ -798,6 +830,10 @@ if [[ "$_GATE_PKG_ROLE" == "owning" && -z "$_GATE_OWN_PROBLEM" ]]; then
                 _gate_own_plural="s"
                 [[ "$_gate_own_ahead" == 1 ]] && _gate_own_plural=""
                 _GATE_OWN_NOREAD="the owning checkout $_gate_wt has $_gate_own_ahead commit${_gate_own_plural} not on origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
+            else
+                # Equal to origin, but progress.md not as committed: the
+                # same rule, an uncommitted entry is one origin does not have.
+                _GATE_OWN_NOREAD=$(_gate_rec_dirty "$_gate_wt")
             fi
         fi
     fi
@@ -981,26 +1017,6 @@ _gate_rec_unsafe() {  # <checkout>
         echo ".agent/work-plans/issue-${ISSUE_NUM}/progress.md in $wt is not a regular file"
     fi
 }
-# Prints why progress.md in <checkout> is not as committed, or nothing:
-# untracked, or changed in the index, the working tree or both (an edit, a
-# deletion). The record commit would take any of these with it.
-_gate_rec_dirty() {  # <checkout>
-    local wt="$1" rel st x y what=""
-    rel=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-    st=$(git -C "$wt" status --porcelain=v1 --untracked-files=all -- "$rel" 2>/dev/null) || { echo "git status could not be read for $rel in $wt"; return 0; }
-    [[ -z "$st" ]] && return 0
-    x="${st:0:1}" y="${st:1:1}"
-    if [[ "$x$y" == "??" ]]; then
-        what="is untracked"
-    elif [[ "$x" != " " && "$y" != " " ]]; then
-        what="has staged and unstaged changes"
-    elif [[ "$x" != " " ]]; then
-        what="has staged changes"
-    else
-        what="has unstaged changes"
-    fi
-    echo "$rel in $wt $what"
-}
 _gate_rec_snapshot() {  # <checkout>
     local wt="$1" d
     _GS_REL=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
@@ -1111,11 +1127,6 @@ _gate_record() {  # <entry type> <one-line why>
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
         elif unsafe=$(_gate_rec_unsafe "$_gate_wt") && [[ -n "$unsafe" ]]; then
             why_comment="${unsafe}, so the record is not written there (left as found)"
-        elif [[ "$_GATE_PKG_ROLE" == "owning" ]] && unsafe=$(_gate_rec_dirty "$_gate_wt") && [[ -n "$unsafe" ]]; then
-            # The owning checkout can be someone's own clone: the record
-            # commit would take their uncommitted progress.md text with it
-            # and push it. The workspace path keeps main's behaviour.
-            why_comment="${unsafe}, so the record is not committed there (left as found)"
         else
             local head_before append_rc=0 rec_sha="" push_rc=0
             head_before=$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")

@@ -1128,10 +1128,12 @@ else
     fail "(pkg-19 diverged) (out=$(tail_of "$out" 900))"
 fi
 
-echo "TEST: an owning checkout whose progress.md is not as committed: no record commit, the file left as found, the record on the PR"
+echo "TEST: an owning checkout whose progress.md is not as committed: not read, no record commit, the file left as found, the record on the PR"
 # Before the fix the record commit took the uncommitted text with it and
 # pushed it. clean and absent are pkg-3 and pkg-1 (committed and pushed).
-for shape in unstaged staged staged-and-unstaged untracked deleted; do
+# assume-unchanged and skip-worktree hide the edit from git status; before
+# the fix the run said "recorded ... and pushed" with no commit made.
+for shape in unstaged staged staged-and-unstaged untracked deleted assume-unchanged skip-worktree; do
     sb="$(make_sandbox "" "")"
     if [[ "$shape" == untracked ]]; then cont="$(make_pkg_container "$sb" demo "")"; else cont="$(make_pkg_container "$sb" demo "$STALE")"; fi
     A="$cont/l1_ws/src/pkg_a"
@@ -1144,6 +1146,8 @@ for shape in unstaged staged staged-and-unstaged untracked deleted; do
         staged-and-unstaged) echo "$note" >> "$P"; git -C "$A" add "$P"; echo "$note 2" >> "$P"; what="has staged and unstaged changes" ;;
         untracked) mkdir -p "$(dirname "$P")"; printf -- '---\nissue: 901\n---\n\n%s\n\n%s\n' "$STALE" "$note" > "$P"; what="is untracked" ;;
         deleted) rm "$P"; what="has unstaged changes" ;;
+        assume-unchanged|skip-worktree) git -C "$A" update-index "--$shape" "$P"; echo "$note" >> "$P"
+            what="is marked assume-unchanged or skip-worktree in the index, so its changes are not known" ;;
     esac
     st_before=$(git -C "$A" status --porcelain=v1 --untracked-files=all | od -c)
     f_before=$(od -c "$P" 2>/dev/null || echo absent)
@@ -1151,8 +1155,9 @@ for shape in unstaged staged staged-and-unstaged untracked deleted; do
     origin_tip=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
     out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
     ok=true
-    [[ "$out" == *".agent/work-plans/issue-901/progress.md in $A $what, so the record is not committed there (left as found) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] || ok=false
-    [[ "$out" != *"and pushed"* ]] || ok=false
+    [[ "$out" == *"would have refused — "*"; its timeline is not read for issue #901"* ]] || ok=false
+    [[ "$out" == *".agent/work-plans/issue-901/progress.md in $A $what; the record is not committed there — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] || ok=false
+    [[ "$out" != *"and pushed"* && "$out" != *"does not resolve"* ]] || ok=false
     [[ "$(git -C "$A" status --porcelain=v1 --untracked-files=all | od -c)" == "$st_before" ]] || ok=false
     [[ "$(od -c "$P" 2>/dev/null || echo absent)" == "$f_before" ]] || ok=false
     [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] || ok=false
@@ -1163,6 +1168,38 @@ for shape in unstaged staged staged-and-unstaged untracked deleted; do
         pass "(pkg-20 $shape) progress.md $shape: nothing committed or pushed, status and file byte-identical, one comment with a true reason"
     else
         fail "(pkg-20 $shape) (out=$(tail_of "$out" 900) status now: $(git -C "$A" status --porcelain))"
+    fi
+done
+# The read side: an approval that is only in the working copy never passes.
+# uncommitted-approval: the review's input (a committed stale review, an
+# approved review at the head appended uncommitted). unrelated-note: a
+# committed approval at the head and an unrelated uncommitted line, not read
+# by the same rule. clean: the same committed approval, read and passed.
+for shape in uncommitted-approval unrelated-note clean; do
+    sb="$(make_sandbox "" "")"
+    if [[ "$shape" == uncommitted-approval ]]; then cont="$(make_pkg_container "$sb" demo "$STALE")"; else cont="$(make_pkg_container "$sb" demo "$APPROVED_AT_HEAD")"; fi
+    A="$cont/l1_ws/src/pkg_a"
+    P="$A/.agent/work-plans/issue-901/progress.md"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 with_summary
+    case "$shape" in
+        uncommitted-approval) printf '\n%s\n' "$APPROVED_AT_HEAD" >> "$P" ;;
+        unrelated-note) echo "DEV-UNCOMMITTED-NOTE" >> "$P" ;;
+    esac
+    f_before=$(od -c "$P")
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    if [[ "$shape" == clean ]]; then
+        if [[ "$out" == *"Review gate: approved review at head \`abc1234\`"* && "$out" != *"would have refused"* && ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
+            pass "(pkg-20 read $shape) committed approval, progress.md clean: read, the gate passes"
+        else
+            fail "(pkg-20 read $shape) (out=$(tail_of "$out" 700))"
+        fi
+    elif [[ "$out" != *"approved review at head"* ]] \
+        && [[ "$out" == *"would have refused — "*"; its timeline is not read for issue #901"* ]] \
+        && [[ "$out" == *".agent/work-plans/issue-901/progress.md in $A has unstaged changes; the record is not committed there — Merge (report-only) record posted as a comment"* ]] \
+        && [[ "$(od -c "$P")" == "$f_before" && "$(git -C "$A" status --porcelain)" == " M .agent/work-plans/issue-901/progress.md" ]]; then
+        pass "(pkg-20 read $shape) progress.md with an uncommitted change: not read, no pass, the file left as found, the record on the PR"
+    else
+        fail "(pkg-20 read $shape) (out=$(tail_of "$out" 900))"
     fi
 done
 
