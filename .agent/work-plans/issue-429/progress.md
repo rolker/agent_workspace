@@ -2923,3 +2923,13 @@ Sandbox runs for the codex items: the gate suite's own fixtures (`make_sandbox`,
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 09:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage verified both Codex items in a sandbox and classified all four open items fix-here)
+**After**: findings
+**Decision**: address
+
+Fix all four in pull request 461, with this scope decision by the host. Items (a) and (b) are also true of the workspace path on main (the record push publishes unpushed commits in the worktree; the record commit takes uncommitted progress.md edits with it). This pull request fixes them for the OWNING PACKAGE checkout, the path it adds, where the checkout can be a developer's own clone: the record is committed there only when the checkout's HEAD equals origin's pull-request branch (after the bounded fetch the read guard already makes) and progress.md has no uncommitted change; otherwise the record goes on the pull request as a comment with a true reason, and the checkout is left as found. The gate's READ guard for the owning checkout becomes the same equality (a checkout ahead of origin with unpushed commits is not read: its timeline may hold entries origin does not have). The workspace path keeps main's behaviour unchanged in this pull request, so the enforcing gate is not altered beyond what was reviewed; the same two points on the workspace path are raised to the owner as a follow-up. Items 3 and 4 (trim the Conditions value; match only a first line that is exactly one of the two headings) are fixed in both the comments-only and the owning checks.
