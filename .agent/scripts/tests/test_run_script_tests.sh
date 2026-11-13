@@ -21,7 +21,9 @@
 # and (v) the job pool: the job count and the argument order, hidden and
 # shown output, unmixed failure output, every suite run and the exit code
 # by list order, attribution while suites overlap, trappable SIGINT and
-# SIGQUIT, the interrupt with its 5-second KILL backstop, and --shuffle.
+# SIGQUIT, the interrupt with its 5-second KILL backstop, a second signal
+# cutting the stop short, processes a finished suite left running, and
+# --shuffle.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -1576,6 +1578,100 @@ if [[ ${#u8_pids[@]} -eq 4 && -z "$u8_alive" && $rc -ne 0 && $u8_secs -le 10 ]] 
     pass "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (${u8_secs}s)"
 else
     fail "(u8) an untrapped fatal signal (SIGUSR1) still stops both suites and what they started before the run's directory is removed (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), a second signal: during the 5-second stop, a second
+#     SIGTERM to the runner, or a second Ctrl-C to its process group, KILLs
+#     what is left at once instead of starting another 5-second stop. The
+#     suite of the backstop case ignores SIGTERM; at SIGINT its sleep
+#     (started with `&`) ignores it. Either way the first stop would last
+#     the 5 seconds. Timed from the second signal, sent 0.5 s after the
+#     first: a runner that waits out a deadline measures 4500 ms or more. ---
+for sig in TERM INT; do
+    u8_start "$U8B" "$TMPD/u8b_info"
+    u8_pids=()
+    u8_root=""
+    if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8b_info" 2>/dev/null; then
+        u8_pids=("$u8_suite" "$u8_sleep")
+        u8_root="$(dirname "$(dirname "$u8_tmp")")"
+    fi
+    if [[ $sig == TERM ]]; then
+        kill -s TERM "$u8_runner"; sleep 0.5
+        u8_t0=$(ms_now); kill -s TERM "$u8_runner"
+    else
+        kill -s INT -- "-$u8_runner"; sleep 0.5
+        u8_t0=$(ms_now); kill -s INT -- "-$u8_runner"
+    fi
+    wait "$u8_runner"; rc=$?
+    u8_ms=$(( $(ms_now) - u8_t0 ))
+    u8_alive=$(u8_alive_of "${u8_pids[@]}")
+    if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -ne 0 && $u8_ms -lt 3000 ]] \
+            && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]] \
+            && grep -q '^run_script_tests: stop cut short; KILLing ' "$TMPD/u8.log"; then
+        pass "(u8) a second SIG$sig during the stop KILLs what is left at once (${u8_ms} ms after it)"
+    else
+        fail "(u8) a second SIG$sig during the stop KILLs what is left at once (rc=$rc, ${u8_ms} ms after it, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fi
+    for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+done
+
+# --- Case (u8), a group left behind: test_leaves.sh exits at once and
+#     leaves a sleep running in its process group. Once the runner has
+#     reaped the suite, a SIGTERM to the runner still stops that sleep, as
+#     it stops the suite that is still running. ---
+U8L="$TMPD/case_u8l"
+mkdir -p "$U8L"
+write_checkpoint_stub "$U8L"
+make_stub "$U8L" test_leaves.sh "sleep 30 &
+echo \"\$!\" > '$TMPD/u8l_left.tmp' && mv '$TMPD/u8l_left.tmp' '$TMPD/u8l_left'"
+make_stub "$U8L" test_holds.sh "sleep 30 &
+echo \"\$\$ \$! \$TMPDIR\" > '$TMPD/u8l_info.tmp' && mv '$TMPD/u8l_info.tmp' '$TMPD/u8l_info'
+wait"
+rm -f "$TMPD/u8l_left"
+u8_start "$U8L" "$TMPD/u8l_info"
+# Until the runner has reaped test_leaves.sh (its "---" line).
+for _ in $(seq 1 100); do
+    grep -q '^--- run_script_tests: test_leaves\.sh passed' "$TMPD/u8.log" && break
+    sleep 0.1
+done
+u8_reaped=no
+grep -q '^--- run_script_tests: test_leaves\.sh passed' "$TMPD/u8.log" && u8_reaped=yes
+u8_pids=()
+u8_root=""
+read -r u8_left < "$TMPD/u8l_left" 2>/dev/null && u8_pids+=("$u8_left")
+if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8l_info" 2>/dev/null; then
+    u8_pids+=("$u8_suite" "$u8_sleep")
+    u8_root="$(dirname "$(dirname "$u8_tmp")")"
+fi
+kill -s TERM "$u8_runner"
+wait "$u8_runner"; rc=$?
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ $u8_reaped == yes && ${#u8_pids[@]} -eq 3 && -z "$u8_alive" && $rc -eq 143 ]] \
+        && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
+    pass "(u8) SIGTERM also stops a process a finished suite left running in its group"
+else
+    fail "(u8) SIGTERM also stops a process a finished suite left running in its group (rc=$rc, reaped=$u8_reaped, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+fi
+for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
+
+# --- Case (u8), a group left behind at the end: the run ends normally
+#     while test_leaves.sh's sleep still runs; the runner stops it before it
+#     removes the run's directory, and says so. ---
+U8N="$TMPD/case_u8n"
+mkdir -p "$U8N"
+write_checkpoint_stub "$U8N"
+cp "$U8L/test_leaves.sh" "$U8N/"
+rm -f "$TMPD/u8l_left"
+out=$("$RUNNER" -j 2 "$U8N" 2>&1); rc=$?
+u8_pids=()
+read -r u8_left < "$TMPD/u8l_left" 2>/dev/null && u8_pids+=("$u8_left")
+u8_alive=$(u8_alive_of "${u8_pids[@]}")
+if [[ $rc -eq 0 && ${#u8_pids[@]} -eq 1 && -z "$u8_alive" ]] \
+        && printf '%s\n' "$out" | grep -qx 'run_script_tests: stopping 1 process group(s) of this run still running at exit'; then
+    pass "(u8) at the end of a run, a process a suite left running is stopped, and the runner says so"
+else
+    fail "(u8) at the end of a run, a process a suite left running is stopped, and the runner says so (rc=$rc, recorded=${u8_pids[*]}, alive=$u8_alive, out=$out)"
 fi
 for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 

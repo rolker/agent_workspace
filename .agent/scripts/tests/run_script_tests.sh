@@ -37,14 +37,17 @@
 # (a background job started without job control has both ignored, and
 # bash cannot trap a signal ignored on entry), stdin from /dev/null.
 # SIGINT (Ctrl-C), SIGTERM or SIGHUP to the runner sends the same signal to
-# every running suite's whole process group, KILL to whatever is left in
-# those groups 5 seconds later (a suite that exits sooner does not cut
-# short the cleanup of a process it started), and removes the run's
+# every running suite's whole process group, and to the group of any
+# finished suite that left a process running in it, KILL to whatever is
+# left in those groups 5 seconds later (a suite that exits sooner does not
+# cut short the cleanup of a process it started), and removes the run's
 # directory. A process left that ignores the signal waits out the 5
 # seconds: a suite's `cmd &` ignores SIGINT, so Ctrl-C can take that long.
-# Any other exit while suites run (an internal error, a fatal signal the
-# runner does not trap) stops them the same way, with SIGTERM, before the
-# run's directory is removed.
+# A second signal during those 5 seconds KILLs what is left at once. Any
+# other exit while something of the run is still running (an internal
+# error, a fatal signal the runner does not trap, or the end of the run
+# with a process a suite left running) stops it the same way, with
+# SIGTERM, before the run's directory is removed, and says so.
 # Needs bash 5.1 (`wait -n -p`); an older bash is refused with a message.
 #
 # Usage: run_script_tests.sh [options] [tests-dir] [--files <file>...]
@@ -520,15 +523,36 @@ RUN_ROOT=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
 }
 # Unconditional cleanup on every exit path after this point — all suites
 # passed, a suite failed, a leak was detected, or an interrupt. In a
-# parallel run it first stops any suite still running (stop_suites, below,
-# with SIGTERM): an exit from the parallel section other than through
-# on_interrupt (an internal error, a `set -u` abort, a fatal signal the
-# runner does not trap) would otherwise remove $RUN_ROOT from under suites
-# still writing to it, and leave them running. After on_interrupt there is
-# nothing left to stop.
+# parallel run it first stops whatever of the run is still running: a
+# suite, or a process a suite left running in its group (stop_suites,
+# below, with SIGTERM). An exit from the parallel section other than
+# through on_interrupt (an internal error, a `set -u` abort, a fatal signal
+# the runner does not trap) would otherwise remove $RUN_ROOT from under
+# suites still writing to it, and leave them running. When a stop is
+# already under way, the exit is a second signal cutting it short (or the
+# end of on_interrupt, with nothing left): KILL at once (kill_now), not a
+# second 5-second stop.
 parallel=0
+# A stop is under way (on_interrupt or stop_suites has begun); its KILL
+# watchdog.
+stop_underway=0
+stop_watchdog=""
+# The runner's own stderr, for the messages of cleanup_run and kill_now: a
+# signal that ends the runner during a builtin such as `wait ... 2>/dev/null`
+# runs the EXIT trap with that redirection still in place. A parallel run
+# keeps a copy of it on a descriptor of its own (closed in the suites).
+runner_err=2
 cleanup_run() {
-    (( ! parallel )) || stop_suites TERM
+    local live=()
+    if (( parallel && stop_underway )); then
+        kill_now
+    elif (( parallel )); then
+        live_groups
+        if (( ${#live[@]} )); then
+            echo "run_script_tests: stopping ${#live[@]} process group(s) of this run still running at exit" >&"$runner_err"
+            stop_suites TERM
+        fi
+    fi
     rm -rf "$RUN_ROOT"
 }
 trap cleanup_run EXIT
@@ -616,23 +640,46 @@ if (( jobs > 1 )); then
     # whatever the locale's decimal separator).
     now_us() { printf '%s' "${EPOCHREALTIME//[!0-9]/}"; }
 
-    # stop_suites <sig>: stop every running suite's whole process group.
-    # <sig> first, so a suite's own trap, and those of the processes it
-    # started, can clean up; they have until 5 seconds after <sig> was
-    # sent. KILL goes to whatever is left in those groups then, and not
-    # before: a suite that has exited may leave a child still cleaning up
-    # in its group, and that child is given the same 5 seconds. A watchdog
-    # sends the KILL while the runner waits for a suite that ignores <sig>.
-    # The suites are those the loop tracks (job_of) and any background job
-    # bash still lists (`jobs -p`): a signal can land between a suite's `&`
-    # and its job_of entry. Only groups that still exist are signalled.
-    stop_suites() {
-        local sig="$1" pids=() p watchdog t_end left
+    # The process groups of suites that have exited but left a process
+    # running in their group: pid -> suite index. A group joins when its
+    # suite is reaped with something still in it, and leaves once it is
+    # empty (pruned on every reap and read by live_groups), so a stop also
+    # reaches what an earlier suite left behind. An empty group is dropped
+    # rather than kept, because its number can then be reused.
+    declare -A lingering=()
+
+    # live_groups: set `live` to every process group of this run that still
+    # has a process in it: the running suites (job_of), the groups suites
+    # left behind (lingering), and any background job bash still lists
+    # (`jobs -p`), since a signal can land between a suite's `&` and its
+    # job_of entry.
+    live_groups() {
+        local p
+        live=()
         # shellcheck disable=SC2046  # pids: one word each
-        for p in "${!job_of[@]}" $(jobs -p); do
-            [[ " ${pids[*]} " != *" $p "* ]] || continue
-            kill -0 -- "-$p" 2>/dev/null && pids+=("$p")
+        for p in "${!job_of[@]}" "${!lingering[@]}" $(jobs -p); do
+            [[ " ${live[*]} " != *" $p "* && "$p" != "$stop_watchdog" ]] || continue
+            if kill -0 -- "-$p" 2>/dev/null; then
+                live+=("$p")
+            else
+                unset 'lingering[$p]'
+            fi
         done
+    }
+
+    # stop_suites <sig>: stop every live process group of this run
+    # (live_groups). <sig> first, so a suite's own trap, and those of the
+    # processes it started, can clean up; they have until 5 seconds after
+    # <sig> was sent. KILL goes to whatever is left in those groups then,
+    # and not before: a suite that has exited may leave a child still
+    # cleaning up in its group, and that child is given the same 5 seconds.
+    # A watchdog sends the KILL while the runner waits for a suite that
+    # ignores <sig>.
+    stop_suites() {
+        local sig="$1" pids=() p t_end left live=()
+        stop_underway=1
+        live_groups
+        pids=("${live[@]}")
         (( ${#pids[@]} )) || return 0
         for p in "${pids[@]}"; do kill -s "$sig" -- "-$p" 2>/dev/null; done
         t_end=$(( $(now_us) + 5000000 ))
@@ -640,9 +687,11 @@ if (( jobs > 1 )); then
         (
             sleep 5
             for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
-        ) </dev/null >/dev/null 2>&1 &
-        watchdog=$!
+        ) </dev/null >/dev/null 2>&1 {runner_err}>&- &
+        stop_watchdog=$!
         set +m
+        # A lingering group's leader is already reaped: wait returns at once
+        # for it, and the loop below waits for the rest of its group.
         wait "${pids[@]}" 2>/dev/null
         # The suites have exited; what they started may still be in their
         # groups, cleaning up. Wait for it, up to the same deadline.
@@ -654,22 +703,37 @@ if (( jobs > 1 )); then
             (( left )) || break
             sleep 0.1
         done
-        kill -s KILL -- "-$watchdog" 2>/dev/null
+        kill -s KILL -- "-$stop_watchdog" 2>/dev/null
         # The deadline has passed for whatever is still there.
         for p in "${pids[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
     }
 
+    # kill_now: KILL every live process group of this run, and the watchdog
+    # of a stop under way, at once. For a stop cut short (see cleanup_run).
+    kill_now() {
+        local p live=()
+        live_groups
+        if (( ${#live[@]} )); then
+            echo "run_script_tests: stop cut short; KILLing ${#live[@]} process group(s) at once" >&"$runner_err"
+        fi
+        for p in "${live[@]}"; do kill -s KILL -- "-$p" 2>/dev/null; done
+        [[ -z "$stop_watchdog" ]] || kill -s KILL -- "-$stop_watchdog" 2>/dev/null
+    }
+
     # A signal stops every running suite (stop_suites) with that signal;
-    # the EXIT trap then removes $RUN_ROOT.
+    # the EXIT trap then removes $RUN_ROOT. The traps are reset first, so a
+    # second signal ends the runner, and the EXIT trap then KILLs at once.
     on_interrupt() {
         local sig="$1" code="$2"
         trap - INT TERM HUP
+        stop_underway=1
         echo "" >&2
         echo "run_script_tests: interrupted (SIG$sig); stopping ${#job_of[@]} running suite(s)" >&2
         stop_suites "$sig"
         exit "$code"
     }
     # From here the EXIT trap stops any suite still running.
+    exec {runner_err}>&2
     parallel=1
     trap 'on_interrupt INT 130' INT
     trap 'on_interrupt TERM 143' TERM
@@ -690,7 +754,7 @@ if (( jobs > 1 )); then
         started[i]=$EPOCHSECONDS
         set -m
         TMPDIR="$dir" TMP="$dir" TEMP="$dir" bash "${run_suites[$i]}" \
-            > "$RUN_ROOT/out/$i.log" 2>&1 < /dev/null &
+            > "$RUN_ROOT/out/$i.log" 2>&1 < /dev/null {runner_err}>&- &
         set +m
         job_of[$!]=$i
         running=$((running + 1))
@@ -710,6 +774,13 @@ if (( jobs > 1 )); then
         fi
         i=${job_of[$done_pid]}
         unset 'job_of[$done_pid]'
+        # A process the suite left running in its group keeps the group;
+        # remember it for stop_suites (see lingering), and drop the
+        # groups that have emptied since.
+        for p in "${!lingering[@]}"; do
+            kill -0 -- "-$p" 2>/dev/null || unset 'lingering[$p]'
+        done
+        if kill -0 -- "-$done_pid" 2>/dev/null; then lingering[$done_pid]=$i; fi
         running=$((running - 1))
         finished=$((finished + 1))
         secs[i]=$(( EPOCHSECONDS - started[i] ))
