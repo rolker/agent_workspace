@@ -1325,3 +1325,28 @@ Line counts: adapter.sh 2054 before, 2127 after (+73: the tag record and check, 
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1126 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 153 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
 - Not verified: the BSD branches (`stat -f` in `mr_stat`, `mv -h`, no flock) on a BSD/macOS host; a kill between the fetch and the tag record (an existing clone would then read as modified; same class as the checkout-to-record window the header names).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 18:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8fe85cce68b8a999, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `09182232`
+**Base**: origin/main
+**Depth**: Deep (reason: ~3,260 lines over 16 files; untrusted remote input reaching git, paths and generated files)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 5 | **Ship**: recommended — round 5: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Round-4 findings checked against the code: all eight are fixed as described (d550e90d, abee14e0, faa1a44f, 8ca65c84, ebec06cc, 10d997cd). test_ros2_colcon.sh: 1126 passed, 0 failed, 0 skipped.
+
+### Findings
+- [ ] (must-fix) A fetch that updates some refs and then fails, or a run killed between the fetch and the tag-record write, leaves an untouched clone that the next run refuses with "a tag made, moved or deleted in the clone", blaming the user for a tag the remote brought; the failure message's "nothing changed" is then false. The clone passed the untouched check under the lock, so rewrite the tag record after the fetch whether it succeeded or not, and correct the message; add a test (reproduced by the adversarial reviewer with a stale refs/tags/v3.lock) — `.agent/project_types/ros2_colcon/adapter.sh:861`
+- [ ] (must-fix) Clone-local git state that changes what fetch or checkout see is not checked, so a touched clone reads as untouched and a stale or local result is resolved silently: a narrowed `remote.origin.fetch` leaves origin/<ref> stale (Codex), and a `refs/replace/*` entry swaps the resolved content under the recorded origin commit (reproduced). Fetch with explicit refspecs (`+refs/heads/*:refs/remotes/origin/*`, `+refs/tags/*:refs/tags/*`) and run the clone's git with `GIT_NO_REPLACE_OBJECTS=1`, or refuse replace refs; a test each — `.agent/project_types/ros2_colcon/adapter.sh:861`
+- [ ] (suggestion) An empty clone directory left by a run killed after the mkdir claim is refused as "a file or directory the adapter did not make"; say it was left by an interrupted run (the advice to remove it works) — `.agent/project_types/ros2_colcon/adapter.sh:730`
+- [ ] (suggestion) The cleanup keeps the INT/TERM/HUP traps as `exit N`, so a second Ctrl-C kills its `rm -rf` and leaves a half-removed clone; set `trap '' INT TERM HUP` before the removal — `.agent/project_types/ros2_colcon/adapter.sh:800`
+- [ ] (suggestion) validate takes no source lock, so during a concurrent sync (fetch-to-record or checkout-to-record window) it can report the clone as modified and advise removing it under the running sync; take the lock with a short wait, or say a sync may be running — `.agent/project_types/ros2_colcon/adapter.sh:1249`
+- [ ] (suggestion) `_rc_pin_kind` runs `_adapter_bounded_git` without `_rc_nofd`, so git and its descendants (an ssh ControlMaster, a credential helper) inherit the reader pin on fd 8 and can keep a generated directory from removal after the adapter ends (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:1929`
+- [ ] (suggestion) Tests exercise only a tag added in the clone (the fixture remote has no tags); add a deleted and a moved tag (both refused correctly by hand); a moved tag's name is printed twice in the message (add `uniq`) — `.agent/scripts/tests/test_ros2_colcon.sh:2841`
+- [ ] (suggestion) A clone made before the tag record existed is refused as "tag made" when the remote has tags; affects only clones made earlier on this unmerged branch, so at most a line in the PR body — `.agent/project_types/ros2_colcon/adapter.sh:751`
