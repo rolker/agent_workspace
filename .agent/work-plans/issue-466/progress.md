@@ -178,3 +178,26 @@ Implements the plan as amended by the Plan Review's must-fix (the script is NOT 
 - `.agent/knowledge/script_reference.md` row; `register_project.sh` header comment only.
 
 Suites run, each on its own: test_register_session_root 53/0, test_user_tier_guard 64/0, test_user_tier_install 276/0, test_skill_paths 138/0, test_register_project 197/0, test_script_tests_hook_scope 326/0 (touched: ROOT_READERS); check_design_anchors.sh clean. Commits used SKIP=validate-script-tests; the full pre-commit pass was skipped on the owner's direction (2026-11-13), for the host's one run before publishing.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 11:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-466 at `092368bb`
+**Base**: origin/main
+**Depth**: Deep (reason: security-relevant: the permission gate for registration, which turns on the user-tier scripts for a folder)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Reviewers: static (shellcheck clean on the three changed scripts), governance, plan drift, Claude adversarial (fresh sub-agent), cross-model Gemini (agy) completed, Codex completed. Suites run one at a time: test_register_session_root 53/0, test_user_tier_guard 64/0, test_skill_paths 138/0, test_script_tests_hook_scope 326/0. Sandbox probes: symlinked cwd and trailing slash resolve to the physical path; a newline in --set is refused by register_project.sh; `--` is a usage error; a WS_ROOT environment variable is not read; a folder holding a symlink to the workspace is accepted (correct: every check is on physical paths); worktrees= must lie under its root or the workspace, so no "over a worktrees dir" gap.
+
+Limits the implement pass documented, judged acceptable: (a) the race between the checks and register_project.sh's lock needs two concurrent calls on the same or nested folders, each its own permission prompt showing its --set values, so nothing lands that the owner did not see; (b) the registering session lacks the workspace layer, said by the skill, design.md and the ADR, fixed by a new session.
+
+ADR-0021's Decision section stays within what the owner agreed: decision 1 is the exception (that folder's registry line and settings file, one guarded script, nothing else); decision 2 restates the status quo the issue named; ADR-0016 gets the one-line pointer only. design.md claims about the script match its code.
+
+### Findings
+- [ ] (must-fix) The real registration's only yes is its permission prompt ("Do not also ask for a yes in text"), and a prompt is not guaranteed: picking "Yes, and don't ask again" on the harmless-looking dry-run prompt (same command prefix), auto mode, or a broader allow rule lets the registration run with no yes at all. Ask one yes in text after showing the dry run, keep the prompt as the second gate; update the write-list wording, ADR-0021's Consequences bullet, design.md's onboarding bullet and the pinned phrase in test_skill_paths.sh (Gemini and Codex both, confirmed by reading) — `.claude/skills/onboard-project/SKILL.md:159`
+- [ ] (suggestion) With no --set, the real call's prompt shows no build or test command; register_project.sh re-detects them from the folder's files at that run, so the prompt does not show what is written and the folder can change between the dry run and the real run. Have the skill pass the dry run's detected commands as explicit --set build=/test= so the prompt carries them (Claude adversarial) — `.claude/skills/onboard-project/SKILL.md:149`, `.agent/scripts/register_session_root.sh:52`
+- [ ] (suggestion) A folder whose name is not a valid registry name (e.g. one with a space) passes the pre-checks and register_project.sh answers `NEXT=choose a name with --name`, an option this script refuses; pre-check it like the registered-name case and point at register_project.sh --name from the workspace (sandbox probe) — `.agent/scripts/register_session_root.sh:160`
