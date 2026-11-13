@@ -988,3 +988,59 @@ State at this checkpoint: pull request 449 (pull request (a): the resolver addit
 **Plan**: `.agent/work-plans/issue-436/plan.md` at `e0cae07f`
 
 Revision after the owner's 2026-11-13 decision: pull request (b) planned in full with the type-neutral keys `source`, `source_ref`, `source_path` (refused for single_project through its unused_settings, no type detection by `source`); every cited line re-read against the current tree; (a) and (c) recorded as delivered; (d) and (e) kept as outlines. Names what (b) does not do: the empty-folder onboarding flow is issue 473's.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 14:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #436 — Use the new manifest format for the second-machine test: the ROS adapter calls the manifest resolver
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `e0cae07f`
+**Branch**: `feature/issue-436`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request (b) in detail, about 13 files; (d) and (e) outlines. Large but one concern (the manifest route), with the design edit last. |
+| Issue alignment | Good | Owner's 2026-11-13 rename applied (`source`, `source_ref`, `source_path`); both questions his comment left to the revision (`unused_settings` refusal, message wording and the step 8 search) are settled. `bootstrap_url`/`distro` renames left to 473. Serves (checked): "Workspace goal "Modular" (README, Workspace goals) ... under `docs/design.md#registry-and-adapters`; the roadmap Direction acceptance case". |
+| File targeting | Needs work | `suites_for_files.sh` should not be in the list (findings 1); the registration end-to-end test's home needs naming (finding 5). |
+| Consequences | Good | Key list, header, value and cross-key rules, dispatcher exports, `unused_settings`, hints, example file, design, script reference all listed. |
+| Principle alignment | Needs work | "Test what breaks": the resolver wrapper as described could test main's resolver, or skip silently in CI (finding 2). |
+| ADR compliance | Good | 0003, 0009, 0011/0019, 0012, 0013, 0016/0021, 0017 addressed; the resolver is called by CLI only (issue 267 constraint). |
+| ROS conventions | N/A | Workspace plan; the adapter's distro handling keeps the existing `^[a-z0-9_]+$` check. |
+
+### Verified by the reviewer
+
+- `project_file_set` reuses the parse: it writes the whole resulting file to a temp file and runs `_project_file_parse` on it (`_project_registry.sh:1761`, `:1768`), so cross-key rules placed in `_project_file_parse` beside `_project_records_combination` (:1074) apply to `set` and `unset` too; `register_project.sh --set` goes through `project_file_set` (:1172) before `adapter setup` (:1186). The plan's "share one if not" branch is not needed.
+- Resolver, run read-only on `tools/ros-manifest/tests/fixtures/p11/manifest.yaml` (role `dev`, distro `rolling`, `--layout manifest-dir`, output in the session scratchpad): writes `repos/<layer>.repos`, `layers.txt`, `optional_layers.txt`, each text file starting with a `#` provenance line; `_rc_layers` and `_rc_is_optional_layer` already skip `#` lines. An unknown role exits 1 with `ERROR: unknown role 'nosuch' (known: ['dev'])` and writes no output dir. `emit.py:74` already omits an empty layer, so decision 8's first half is the resolver's existing behaviour.
+- Line citations: checked about forty; all point at the named code except `register_project.sh:602` (the key check is :605-606), `:181` (init; the flags are :193), `_project_registry.sh:1070` (the records check is :1074), `:976` (function starts a line or two later). None changes the plan.
+
+### Findings
+
+1. **[File targeting / tests]** `tools/ros-manifest/` is outside the `validate-script-tests` hook's `files:` scope (`^(\.agent/|\.claude/|...)`), so `suites_for_files.sh` can never map it: run on `tools/ros-manifest/src/ros_manifest/cli.py` it answers `ALL: ... outside the hook's files:/exclude: scope`, and pre-commit never passes such a file. Step 6's "check `suites_for_files.sh` maps `tools/ros-manifest/`" will fail, and the map is derived, not hand-edited (editing the script is itself a full-run trigger). The adapter files are already mapped: `ros2_colcon/adapter.sh`, `single_project/unused_settings`, `adapter` and `register_project.sh` each select `test_ros2_colcon.sh` and the registry/adapter suites; `_project_registry.sh` is a `_*.sh` helper, so it runs ALL. Resolution: drop `suites_for_files.sh` from Files to Change and replace the step 6 check with the fact that CI's `validate-adapter-contract` job runs `test_ros2_colcon.sh` on every push with the resolver installed. Severity: minor.
+2. **[Principle: Test what breaks]** The test resolver wrapper "running the real `ros_manifest.cli` under the repository's venv python" is underspecified in a way that matters: a worktree has no `.venv` (the plan says so), CI has none either (`validate.yml` does `pip install -e tools/ros-manifest` into setup-python's interpreter), and the main checkout's venv has an editable install of *main's* resolver, not the branch's. Resolution: the wrapper runs `python3 -I`-free `-m ros_manifest.cli` with `PYTHONPATH=$REAL_ROOT/tools/ros-manifest/src` and an interpreter that imports `yaml` (main checkout's `.venv/bin/python3` when present, else `python3`). The `SKIPPED` path must not be able to pass the CI adapter-contract job silently: either the suite fails when `ros-manifest` is on `PATH` but the wrapper cannot import, or the pull request description states the skip count seen locally and in CI. The CI `make lint` job (all files, system python, maybe no PyYAML) will skip them; that is fine only because the adapter-contract job runs them. Severity: moderate.
+3. **[Approach]** Cache location is stated two ways: the `extends` paragraph says `--cache-dir` "inside the temporary sibling directory ... discarded after", step 2 says `--cache-dir <tmp>.cache` (a sibling). If inside `<tmp>`, the cloned bases would be swapped in as part of `configs/manifest-resolved.<ts>/`. Resolution: use the sibling `<tmp>.cache` and remove it on success and failure (trap). Severity: minor.
+4. **[Approach]** "Rejects an empty `layers.txt`": the resolver always writes a `#` provenance line, so the check must count non-comment, non-blank lines (`_rc_layers` output), not file emptiness. Severity: minor.
+5. **[File targeting]** The "registration end to end" case is listed under `test_ros2_colcon.sh`, whose `make_sandbox` copies only `adapter`, `_project_registry.sh`, `validate_adapter.sh` and the two type dirs; `register_project.sh` needs more (registration.conf, `registration_verify.sh`, its helpers). Resolution: put that case in `test_register_project.sh` (its sandbox already runs registration) with the ros2_colcon stubs and the resolver wrapper, or say which files the colcon sandbox gains. Severity: minor.
+6. **[Approach]** Since `set`/`unset` re-parse the whole file, `unset <name> source` while `source_ref` remains is refused; the cross-key messages should give the one-command fix (`project_setting.sh unset <name> source source_ref source_path`, multi-key unset exists at `project_setting.sh:11`) and a test should cover it. Severity: minor.
+7. **[Approach]** The path-form `.resolved-from` mtime/size mismatch: step 3 does not say whether `validate` warns or fails on it. State it (a warning matches "the owner editing the manifest is a supported working style"). Severity: minor.
+
+### Owner decisions questioned
+
+- Decision 2 (any other bootstrap source alongside `source` is a hard error): `configs/project_bootstrap.url` may be a file tracked in the project's own repository, so an existing bootstrap-route project switching to `source` would have to change its project repository to use the workspace. Fine for the second-machine test (a fresh folder); worth one sentence in the message (or a veto note) for migration.
+- Decision 8: the first half is already the resolver's behaviour (`emit.py:74`); only the adapter's empty-result rejection is a new decision.
+- The others (1, 3, 4, 5, 6, 7, 9, 10) look right; 7's cost (network for every base on every `sync`) is stated.
+
+### Summary
+
+The plan is ready: the rename is applied consistently, the three items the planner could not verify check out (cross-key reuse holds, line numbers are right within a few lines), and the resolver's output matches what the adapter reads. Fold findings 1-7 into implementation; none needs an owner decision.
+
+### Recommended Actions
+
+- [ ] Drop `suites_for_files.sh` from Files to Change; name the CI adapter-contract job as coverage for resolver changes (finding 1).
+- [ ] Specify the test wrapper: branch source via `PYTHONPATH`, interpreter selection, and no silent skip in the adapter-contract job (finding 2).
+- [ ] Use a sibling cache dir removed on every exit (finding 3); count non-comment layers (finding 4).
+- [ ] Place the registration end-to-end case where `register_project.sh` can run (finding 5).
+- [ ] Cross-key messages name the multi-key unset; test it (finding 6); state warn-vs-fail for a changed path source (finding 7).
