@@ -58,3 +58,17 @@ issue: 465
 - Verdict: ready to plan as ONE pull request with the six file groups above (dispatcher text, run-issue skill, address-findings skill, host standing rules row, the stale time and rule comments, the pinning tests). Keep `docs/design.md` and AGENTS.md out of it.
 - Leave the wider question (suites off the commit hook, plus the AGENTS.md wording) for a later pull request; do not close #465 with this one unless the owner says the remainder is dropped.
 - In the pull request description, quote the owner's decision and the 2026-11-13 timings (240 s at 4 jobs against 824 to 1069 s at one job; CI lint 7 to 9.5 minutes against 11 to 13.5).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review scopes the issue to one pull request that writes the owner's decided rule where the loop reads it, and leaves the wider question, taking the suites off the commit hook and the AGENTS.md wording, for a later pull request because the owner has not decided it and AGENTS.md is Ask First; that keeps the issue's goal and adds or drops no behaviour his words ask for)
+**After**: issue-actions
+**Decision**: proceed
+
+Read: the Issue Review at 26e4f013 and its report. The owner's rule (2026-11-13): "yes, do the third option on both machines", "yes, one local run before a pr". His instruction for this drive: "Keep in mind the lessons about what waists time and modify the skills as needed to be efficient".
+
+### Decisions made (owner may veto)
+- One addition to the review's scope, in the same paragraphs of run-issue this pull request already rewrites (step 10, "The host owns every push"): record-only commits (review entries, triage entries, checkpoints) are pushed once, with the merge, not after each phase; commits that change code are still pushed when made, so CI and the pull-request-mode review see them. Each push starts two CI runs; on 2026-11-13 most pushes on a published pull request carried records only. Issue 477's review ranked this first of the later changes and marked it the host's to decide — undoing it: drop that paragraph's change from the pull request.
+- Issue 465 stays open after this pull request for the wider question.
