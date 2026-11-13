@@ -3214,15 +3214,41 @@ test_mr_source_lock() {
     assert_contains "held, sync: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
     touch "$sb/release"
     wait "$hpid" 2>/dev/null || true
-    # Two syncs at once: both succeed, one after the other, and leave one generated dir.
-    local p1 p2 r1=0 r2=0
+    # Two syncs at once, made deterministic: the first is held inside the
+    # critical section (its resolver waits on a file); the second must
+    # then be waiting in flock (seen by its unique wait value) without
+    # having reached the resolver, and proceeds once the first ends.
+    local p1 p2 r1=0 r2=0 waiting=no
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo START >> \"$sb/order.log\"" \
+        "if [ -e \"$sb/hold\" ] && mkdir \"$sb/held.d\" 2>/dev/null; then" \
+        "    touch \"$sb/ready\"" \
+        "    while [ ! -e \"$sb/go\" ]; do sleep 0.1; done" \
+        'fi' \
+        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    touch "$sb/hold"
     run_mr "$sb" sync >"$sb/s1.out" 2>&1 & p1=$!
-    run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
+    for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    assert_eq "two syncs: the first is inside the critical section" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    ROS2_COLCON_LOCK_WAIT=117 run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
+    for i in $(seq 1 100); do
+        if pgrep -f "flock -x -w 117 9" >/dev/null 2>&1; then waiting=yes; break; fi
+        sleep 0.1
+    done
+    assert_eq "two syncs: the second waits on the lock" "yes" "$waiting"
+    assert_eq "two syncs: the second has not reached the resolver" "1" "$(grep -c START "$sb/order.log")"
+    assert_eq "two syncs: the second still running" "yes" "$(kill -0 "$p2" 2>/dev/null && echo yes || echo no)"
+    touch "$sb/go"
     wait "$p1" || r1=$?
     wait "$p2" || r2=$?
     assert_eq "two syncs: both exit 0" "0 0" "$r1 $r2"
+    assert_eq "two syncs: the second resolved after the first" "2" "$(grep -c START "$sb/order.log")"
+    assert_contains "two syncs: the second resolved" "source: resolved role 'dev'" "$(cat "$sb/s2.out")"
     assert_contains "two syncs: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
     assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    rm -f "$sb/hold"
     # No flock on PATH: sync runs unlocked.
     mkdir -p "$sb/isolatedbin"
     for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
