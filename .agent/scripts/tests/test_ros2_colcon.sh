@@ -2532,7 +2532,7 @@ test_mr_setup_from_path_source() {
     assert_contains "per-distro ref honoured (quoted number)" "version: '2.0'" "$(cat "$gen/repos/core.repos")"
     assert_not_contains "a repository absent for the distro is left out" "pkg_b" "$(cat "$gen/repos/core.repos")"
     assert_contains "the resolver got role, distro and the layout" "--role dev --distro fakefox --out" "$(cat "$sb/resolver.log")"
-    assert_contains "the cache is a sibling of the generated dir" "--layout manifest-dir --cache-dir $sb/projects/p11/configs/manifest-resolved." "$(cat "$sb/resolver.log")"
+    assert_contains "the cache is a sibling of the generated dir" "--layout manifest-dir --cache-dir $sb/projects/p11/configs/manifest-resolved.gen-" "$(cat "$sb/resolver.log")"
     assert_eq "no cache left behind" "" "$(cd "$sb/projects/p11/configs" && ls -d -- *.cache 2>/dev/null || true)"
     assert_contains "core imported" "core_ws/src" "$(cat "$sb/vcs.log")"
     assert_contains "extra imported" "extra_ws/src" "$(cat "$sb/vcs.log")"
@@ -2584,19 +2584,20 @@ test_mr_url_source_branch_tag_commit() {
     mr_settings "$sb" "source=$url" "source_ref=main"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "branch: setup exit 0" "0" "$rc"
-    assert_contains "branch: checked out" "source: checked out main" "$out"
+    assert_contains "branch: checked out" "source: branch main at " "$out"
     assert_contains "branch: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
 
     mr_settings "$sb" "source=$url" "source_ref=v1"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "tag: sync exit 0" "0" "$rc"
-    assert_contains "tag: says the commit" "source: v1 -> ${c1:0:12}" "$out"
+    assert_contains "tag: says the commit" "source: tag v1 " "$out"
+    assert_contains "tag: the commit named" "-> ${c1:0:12}" "$out"
     assert_contains "tag: its commit resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
 
     mr_settings "$sb" "source=$url" "source_ref=$c1"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "commit: sync exit 0" "0" "$rc"
-    assert_contains "commit: pinned" "source: pinned ${c1:0:12}" "$out"
+    assert_contains "commit: named" "source: commit $c1 at ${c1:0:12}" "$out"
     assert_contains "commit: recorded" "commit=$c1" "$(cat "$gen/.resolved-from")"
     # sync never imports a repository the new result adds; setup does.
     rc=0; run_mr "$sb" validate >/dev/null 2>&1 || rc=$?
@@ -2647,219 +2648,70 @@ test_mr_url_source_branch_tag_commit() {
     mr_settings "$sb" "source=$other" "source_ref=main"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "origin mismatch: exit 1" "1" "$rc"
-    assert_contains "origin mismatch: named" "is a clone of file://$sb/mremote/leaf.git, not of source $other" "$out"
+    assert_contains "origin mismatch: named" "its origin is 'file://$sb/mremote/leaf.git', not source $other" "$out"
 }
 
-test_mr_stale_leaf_branch() {
-    echo "TEST: manifest route: a moved branch is followed; dirty, local-commit and other-branch clones are never forced"
-    local sb url out rc gen clone
+# A fingerprint of everything under <dir>: paths, link targets, file
+# modes, modification times and contents, so "untouched" means byte for
+# byte (and not even re-written with the same bytes).
+mr_tree_hash() {
+    (cd "$1" && find . -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
+        if [ -L "$f" ]; then
+            printf 'L %s %s\n' "$f" "$(readlink "$f")"
+        elif [ -f "$f" ]; then
+            printf 'F %s %s %s\n' "$f" "$(stat -c '%a %Y' "$f")" "$(sha256sum < "$f" | cut -c1-64)"
+        else
+            printf 'D %s\n' "$f"
+        fi
+    done) | sha256sum | cut -c1-64
+}
+
+# A sandbox whose p11 was set up from a URL source at main (two commits,
+# so HEAD~1 exists). Prints the sandbox; the remote's URL is
+# file://<sb>/mremote/leaf.git.
+make_mr_url_project() {
+    local sb url
     sb="$(make_mr_sandbox dev)"
     url="$(make_mr_remote "$sb" leaf)"
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
     mr_push "$sb" leaf >/dev/null
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    run_mr "$sb" setup >/dev/null 2>&1
-    gen="$(mr_gen "$sb")"
-    clone="$sb/projects/p11/configs/source-clone"
-
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
     mr_push "$sb" leaf >/dev/null
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "moved, clean: exit 0" "0" "$rc"
-    assert_contains "moved, clean: updated" "source: updated main " "$out"
-    assert_contains "moved, clean: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-    assert_contains "moved, clean: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
-
-    # Dirty: the local edit is resolved, with a warning; validate repeats it.
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_three
-    mr_push "$sb" leaf >/dev/null
-    write_mr_manifest "$clone/manifest.yaml" mark_local
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "dirty: exit 0" "0" "$rc"
-    assert_contains "dirty: warned" "WARNING: source: uncommitted changes in the manifest clone" "$out"
-    assert_contains "dirty: the local edit resolved" "mark_local" "$(cat "$gen/repos/core.repos")"
-    assert_contains "dirty: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
-    run_mr "$sb" setup >/dev/null 2>&1
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "dirty: validate still passes" "0" "$rc"
-    assert_contains "dirty: validate warns" "made from local changes in the manifest clone" "$out"
-    git -C "$clone" checkout --quiet -- manifest.yaml
-
-    # Local commits not on the remote: resolved as they are, warned.
-    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m local
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "local commits: exit 0" "0" "$rc"
-    assert_contains "local commits: warned" "has local commits not on origin/main" "$out"
-    assert_contains "local commits: what is checked out resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-    git -C "$clone" reset --quiet --hard origin/main
-
-    # On another branch, clean: switched to the ref, then fast-forwarded.
-    git -C "$clone" checkout --quiet -b elsewhere HEAD~1
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "other branch, clean: exit 0" "0" "$rc"
-    assert_contains "other branch, clean: switched" "source: switched to main" "$out"
-    assert_eq "other branch, clean: on main" "main" "$(git -C "$clone" branch --show-current)"
-    assert_contains "other branch, clean: the tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
-    # On another branch, dirty: left alone, warned.
-    git -C "$clone" checkout --quiet elsewhere
-    echo "scratch" > "$clone/notes.txt"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "other branch, dirty: exit 0" "0" "$rc"
-    assert_contains "other branch, dirty: warned" "uncommitted changes in the manifest clone" "$out"
-    assert_eq "other branch, dirty: not switched" "elsewhere" "$(git -C "$clone" branch --show-current)"
-}
-
-test_mr_interrupted_first_clone_and_head_ref() {
-    echo "TEST: manifest route: a first clone interrupted before its checkout is checked out, not read as dirty; source_ref=HEAD is refused"
-    local sb url out rc gen clone
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
     mr_settings "$sb" "source=$url" "source_ref=main"
-    clone="$sb/projects/p11/configs/source-clone"
-    mkdir -p "$(dirname "$clone")"
-    git clone --quiet --no-checkout -- "$url" "$clone"
-    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
-    assert_eq "half-made clone: setup exit 0" "0" "$rc"
-    assert_contains "half-made clone: said" "was never checked out (an interrupted first setup); checking it out now" "$out"
-    assert_not_contains "half-made clone: not read as dirty" "uncommitted changes" "$out"
-    gen="$(mr_gen "$sb")"
-    assert_contains "half-made clone: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
-    assert_contains "half-made clone: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_not_contains "then: an ordinary clone" "never checked out" "$out"
-    mr_settings "$sb" "source=$url" "source_ref=HEAD"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "source_ref=HEAD: refused" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
-    assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
-    assert_contains "source_ref=HEAD: the previous result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
-}
-
-test_mr_stale_leaf_commit_and_tag() {
-    echo "TEST: manifest route: a commit pin ignores pushes until changed; a moved tag is followed"
-    local sb url out rc c1 c2 gen
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    c1="$(mr_push "$sb" leaf)"
-    mr_settings "$sb" "source=$url" "source_ref=$c1"
     run_mr "$sb" setup >/dev/null 2>&1
-    gen="$(mr_gen "$sb")"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
-    c2="$(mr_push "$sb" leaf)"
-    run_mr "$sb" sync >/dev/null 2>&1
-    assert_contains "commit pin: a push changes nothing" "mark_one" "$(cat "$gen/repos/core.repos")"
-    mr_settings "$sb" "source=$url" "source_ref=$c2"
-    rc=0; run_mr "$sb" validate >/dev/null 2>&1 || rc=$?
-    assert_eq "commit pin changed: validate says sync is due" "1" "$rc"
-    run_mr "$sb" sync >/dev/null 2>&1
-    assert_contains "commit pin changed: the new commit resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-
-    git -C "$sb/mwork/leaf" tag rel "$c1"
-    git -C "$sb/mwork/leaf" push --quiet origin rel
-    mr_settings "$sb" "source=$url" "source_ref=rel"
-    run_mr "$sb" sync >/dev/null 2>&1
-    assert_contains "tag: its commit resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
-    git -C "$sb/mwork/leaf" tag -f rel "$c2" >/dev/null
-    git -C "$sb/mwork/leaf" push --quiet --force origin rel
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "moved tag: exit 0" "0" "$rc"
-    assert_contains "moved tag: followed" "source: rel -> ${c2:0:12}" "$out"
-    assert_contains "moved tag: the new commit resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-
-    # Commits on the clone's detached HEAD, on no branch or tag, are kept
-    # and warned (state local), for a tag and for a commit pin alike.
-    local clone local_c
-    clone="$sb/projects/p11/configs/source-clone"
-    write_mr_manifest "$clone/manifest.yaml" mark_detached
-    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet -am detached-local
-    local_c="$(git -C "$clone" rev-parse HEAD)"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "detached local commit, tag: exit 0" "0" "$rc"
-    assert_contains "detached local commit, tag: warned" "has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them: each fetch removes the tags the source does not have); resolved what is checked out, not tag 'rel'" "$out"
-    assert_eq "detached local commit, tag: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
-    assert_contains "detached local commit, tag: resolved" "mark_detached" "$(cat "$gen/repos/core.repos")"
-    assert_contains "detached local commit, tag: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
-    assert_contains "detached local commit, tag: its commit recorded" "commit=$local_c" "$(cat "$gen/.resolved-from")"
-    mr_settings "$sb" "source=$url" "source_ref=$c1"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_contains "detached local commit, commit pin: warned" "not commit '$c1'" "$out"
-    assert_eq "detached local commit, commit pin: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
-    # Once the commit is on a branch, the pin is checked out again.
-    git -C "$clone" branch keep-local "$local_c"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_not_contains "on a branch: no warning" "WARNING" "$out"
-    assert_eq "on a branch: the pin checked out" "$c1" "$(git -C "$clone" rev-parse HEAD)"
-    assert_contains "on a branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
-    mr_settings "$sb" "source=$url" "source_ref=rel"
-    run_mr "$sb" sync >/dev/null 2>&1
-
-    # From a tag to a branch: commits on the detached HEAD are kept, warned
-    # and recorded local, not orphaned by the switch; a tag made in the
-    # clone does not protect them (the fetch removes it).
-    write_mr_manifest "$clone/manifest.yaml" mark_to_branch
-    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet -am to-branch-local
-    local_c="$(git -C "$clone" rev-parse HEAD)"
-    git -C "$clone" tag mine
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "tag to branch, local commit: exit 0" "0" "$rc"
-    assert_contains "tag to branch, local commit: warned" "has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them" "$out"
-    assert_contains "tag to branch, local commit: names the branch" "not branch 'main'" "$out"
-    assert_eq "tag to branch, local commit: kept" "$local_c" "$(git -C "$clone" rev-parse HEAD)"
-    assert_eq "tag to branch, local commit: not switched" "" "$(git -C "$clone" branch --show-current)"
-    assert_eq "tag to branch, local commit: the clone's own tag removed by the fetch" "" "$(git -C "$clone" tag -l mine)"
-    assert_contains "tag to branch, local commit: resolved" "mark_to_branch" "$(cat "$gen/repos/core.repos")"
-    assert_contains "tag to branch, local commit: state local" "source-state=local" "$(cat "$gen/.resolved-from")"
-    git -C "$clone" branch keep-to-branch "$local_c"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_contains "tag to branch, commit on a branch: switched" "source: switched to main" "$out"
-    assert_contains "tag to branch, commit on a branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
-    mr_settings "$sb" "source=$url" "source_ref=rel"
-    run_mr "$sb" sync >/dev/null 2>&1
-
-    # A tag deleted on the remote is pruned, so it is no longer resolved.
-    git -C "$sb/mwork/leaf" push --quiet origin :refs/tags/rel
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "deleted tag: exit 1" "1" "$rc"
-    assert_contains "deleted tag: named" "source_ref 'rel' is not a branch or tag" "$out"
-    assert_eq "deleted tag: pruned from the clone" "" "$(git -C "$sb/projects/p11/configs/source-clone" tag -l rel)"
-    assert_contains "deleted tag: the previous result kept" "mark_two" "$(cat "$gen/repos/core.repos")"
+    echo "$sb"
 }
 
-test_mr_remote_rewrite_followed() {
-    echo "TEST: manifest route: a force-pushed branch and a tag moved off commits no branch holds are followed, not taken for local commits"
-    local sb url out rc gen clone work y
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
+test_mr_clone_follows_remote() {
+    echo "TEST: manifest route: an untouched clone follows a moved branch, a force-pushed branch, a moved tag and a commit ref; a deleted tag is an error that changes nothing"
+    local sb url out rc gen clone work c y mark
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
     work="$sb/mwork/leaf"
-    write_mr_manifest "$work/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    run_mr "$sb" setup >/dev/null 2>&1
     gen="$(mr_gen "$sb")"
     clone="$sb/projects/p11/configs/source-clone"
-    # The branch's last commit rewritten and force-pushed.
+    mark="$clone/.git/ros2-colcon-adapter-commit"
+    assert_contains "setup: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_eq "setup: the clone is detached" "" "$(git -C "$clone" branch --show-current)"
+    assert_eq "setup: the record is HEAD" "$(git -C "$clone" rev-parse HEAD)" "$(cat "$mark")"
+    assert_not_contains "setup: no source-state recorded" "source-state" "$(cat "$gen/.resolved-from")"
+    # A moved branch.
+    write_mr_manifest "$work/manifest.yaml" mark_three
+    c="$(mr_push "$sb" leaf)"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "moved branch: exit 0" "0" "$rc"
+    assert_contains "moved branch: said" "-> ${c:0:12}" "$out"
+    assert_contains "moved branch: the new tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
+    assert_eq "moved branch: the record follows" "$c" "$(cat "$mark")"
+    # A force-pushed branch (the last commit rewritten).
     write_mr_manifest "$work/manifest.yaml" mark_rewritten
     git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am rewritten
     git -C "$work" push --quiet --force origin main
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "force-pushed branch: exit 0" "0" "$rc"
-    assert_not_contains "force-pushed branch: no local-commits warning" "WARNING" "$out"
-    assert_contains "force-pushed branch: said" "source: main was rewritten on $url (not a fast-forward); followed" "$out"
-    assert_eq "force-pushed branch: the clone at the remote's tip" "$(git -C "$work" rev-parse HEAD)" "$(git -C "$clone" rev-parse HEAD)"
-    assert_contains "force-pushed branch: the rewrite resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
-    assert_contains "force-pushed branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
-    # Local commits on top are still local after a rewrite check.
-    git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m local
-    write_mr_manifest "$work/manifest.yaml" mark_again
-    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am again
-    git -C "$work" push --quiet --force origin main
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_contains "rewrite with local commits on top: still warned" "has local commits not on origin/main" "$out"
-    git -C "$clone" reset --quiet --hard origin/main
-    run_mr "$sb" sync >/dev/null 2>&1
+    assert_not_contains "force-pushed branch: no warning" "WARNING" "$out"
+    assert_eq "force-pushed branch: at the remote's tip" "$(git -C "$work" rev-parse HEAD)" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "force-pushed branch: resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
     # A tag on a commit no branch holds, then moved to another such commit.
     git -C "$work" checkout --quiet --detach
     write_mr_manifest "$work/manifest.yaml" mark_x
@@ -2868,7 +2720,8 @@ test_mr_remote_rewrite_followed() {
     git -C "$work" push --quiet origin t
     mr_settings "$sb" "source=$url" "source_ref=t"
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
-    assert_contains "tag on no branch: resolved" "mark_x" "$(cat "$gen/repos/core.repos")"
+    assert_eq "tag: exit 0" "0" "$rc"
+    assert_contains "tag: resolved" "mark_x" "$(cat "$gen/repos/core.repos")"
     git -C "$work" checkout --quiet --detach main
     write_mr_manifest "$work/manifest.yaml" mark_y
     git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am y
@@ -2877,11 +2730,156 @@ test_mr_remote_rewrite_followed() {
     git -C "$work" push --quiet --force origin t
     git -C "$work" checkout --quiet main
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "moved tag off no branch: exit 0" "0" "$rc"
-    assert_not_contains "moved tag off no branch: no local-commits warning" "WARNING" "$out"
-    assert_contains "moved tag off no branch: followed" "source: t -> ${y:0:12}" "$out"
-    assert_contains "moved tag off no branch: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
-    assert_contains "moved tag off no branch: state clean" "source-state=clean" "$(cat "$gen/.resolved-from")"
+    assert_eq "moved tag: exit 0" "0" "$rc"
+    assert_not_contains "moved tag: no warning" "WARNING" "$out"
+    assert_contains "moved tag: followed" "-> ${y:0:12}" "$out"
+    assert_contains "moved tag: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    # A commit ref: a push changes nothing until source_ref changes.
+    c="$(git -C "$work" rev-parse main)"
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "commit: exit 0" "0" "$rc"
+    assert_contains "commit: resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    write_mr_manifest "$work/manifest.yaml" mark_later
+    mr_push "$sb" leaf >/dev/null
+    run_mr "$sb" sync >/dev/null 2>&1
+    assert_contains "commit: a push changes nothing" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    # A commit only a local object holds (not on any remote ref) is no ref.
+    local dangling
+    dangling="$(git -C "$clone" commit-tree -m dangling "$(git -C "$clone" rev-parse "HEAD^{tree}")")"
+    mr_settings "$sb" "source=$url" "source_ref=$dangling"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "a commit origin does not hold: exit 1" "1" "$rc"
+    assert_contains "a commit origin does not hold: named" "is not a branch or tag of $url, nor a commit it holds" "$out"
+    # A tag deleted on the remote: an error, nothing changed.
+    mr_settings "$sb" "source=$url" "source_ref=t"
+    run_mr "$sb" sync >/dev/null 2>&1
+    git -C "$work" push --quiet origin :refs/tags/t
+    local head_before
+    head_before="$(git -C "$clone" rev-parse HEAD)"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "deleted tag: exit 1" "1" "$rc"
+    assert_contains "deleted tag: named" "source_ref 't' is not a branch or tag" "$out"
+    assert_eq "deleted tag: pruned from the clone" "" "$(git -C "$clone" tag -l t)"
+    assert_eq "deleted tag: the clone's checkout unchanged" "$head_before" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "deleted tag: the previous result kept" "mark_y" "$(cat "$gen/repos/core.repos")"
+    # source_ref=HEAD is refused by the settings file's rules.
+    mr_settings "$sb" "source=$url" "source_ref=HEAD"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "source_ref=HEAD: refused" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
+}
+
+test_mr_clone_refused_when_modified() {
+    echo "TEST: manifest route: a clone in any state but as the adapter left it is refused, byte for byte untouched, the live result unchanged"
+    local state sb clone gen before_link before_repos before_hash out rc expect
+    for state in uncommitted untracked ignored head_moved local_branch origin no_index no_record not_git; do
+        sb="$(make_mr_url_project)"
+        clone="$sb/projects/p11/configs/source-clone"
+        gen="$(mr_gen "$sb")"
+        write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_remote_new
+        mr_push "$sb" leaf >/dev/null
+        case "$state" in
+            uncommitted)
+                write_mr_manifest "$clone/manifest.yaml" mark_local
+                expect="it has uncommitted changes or untracked files" ;;
+            untracked)
+                git -C "$clone" config status.showUntrackedFiles no
+                echo note > "$clone/notes.txt"
+                expect="it has uncommitted changes or untracked files (?? notes.txt" ;;
+            ignored)
+                echo '*.bak' >> "$clone/.git/info/exclude"
+                echo note > "$clone/manifest.bak"
+                expect="it has uncommitted changes or untracked files (!! manifest.bak" ;;
+            head_moved)
+                expect="$(git -C "$clone" rev-parse HEAD | cut -c1-12)"
+                git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach HEAD~1
+                expect="HEAD is at $(git -C "$clone" rev-parse HEAD | cut -c1-12), not at $expect where the adapter left it" ;;
+            local_branch)
+                git -C "$clone" checkout --quiet -b mine
+                git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m local
+                expect="HEAD is on the branch 'mine', not detached" ;;
+            origin)
+                git -C "$clone" remote set-url origin "file://$sb/mremote/elsewhere.git"
+                expect="its origin is 'file://$sb/mremote/elsewhere.git', not source file://$sb/mremote/leaf.git" ;;
+            no_index)
+                rm -f "$clone/.git/index"
+                expect="it has no index (never checked out: half-made by an interrupted run)" ;;
+            no_record)
+                rm -f "$clone/.git/ros2-colcon-adapter-commit"
+                expect="it has no record of the commit the adapter left it at" ;;
+            not_git)
+                rm -rf "$clone"
+                mkdir -p "$clone"
+                echo mine > "$clone/file.txt"
+                expect="it is not a git clone (a file or directory the adapter did not make)" ;;
+        esac
+        before_link="$(readlink "$gen")"
+        before_repos="$(cat "$gen/repos/core.repos")"
+        before_hash="$(mr_tree_hash "$clone")"
+        local verb
+        for verb in sync setup; do
+            rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
+            assert_eq "$state, $verb: refused (exit 1)" "1" "$rc"
+            assert_contains "$state, $verb: names the clone and the state" "the manifest clone $clone is not as the adapter left it: $expect" "$out"
+            assert_contains "$state, $verb: does not use it" "The adapter does not use a modified clone; nothing was changed" "$out"
+            assert_contains "$state, $verb: how to recover" "To recover: move or remove $clone and run setup or sync again" "$out"
+            assert_contains "$state, $verb: names the path form" "To work on a manifest locally, use the path form" "$out"
+            assert_eq "$state, $verb: the clone byte for byte untouched" "$before_hash" "$(mr_tree_hash "$clone")"
+            assert_eq "$state, $verb: the link unchanged" "$before_link" "$(readlink "$gen")"
+            assert_eq "$state, $verb: the live result unchanged" "$before_repos" "$(cat "$gen/repos/core.repos")"
+        done
+        rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+        assert_eq "$state, validate: fails" "1" "$rc"
+        assert_contains "$state, validate: the same message" "❌ ERROR: source: the manifest clone $clone is not as the adapter left it: $expect" "$out"
+        assert_eq "$state, validate: the clone untouched" "$before_hash" "$(mr_tree_hash "$clone")"
+        # Removing the clone is the recovery: the next sync clones afresh.
+        rm -rf "$clone"
+        rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+        assert_eq "$state, after removing the clone: sync exit 0" "0" "$rc"
+        assert_contains "$state, after removing the clone: the remote's tip resolved" "mark_remote_new" "$(cat "$gen/repos/core.repos")"
+    done
+}
+
+test_mr_clone_removed_only_when_created_here() {
+    echo "TEST: manifest route: a failure removes only a clone this run created; an existing clone is never removed"
+    local sb url out rc clone gen hash
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    clone="$sb/projects/p11/configs/source-clone"
+    gen="$(mr_gen "$sb")"
+    # First setup with a ref the remote lacks: the clone it made is removed.
+    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "new clone, bad ref: exit 1" "1" "$rc"
+    assert_eq "new clone, bad ref: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
+    # An existing untouched clone and a bad ref: kept, checkout unchanged.
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" setup >/dev/null 2>&1
+    hash="$(git -C "$clone" rev-parse HEAD)"
+    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "existing clone, bad ref: exit 1" "1" "$rc"
+    assert_eq "existing clone, bad ref: kept" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
+    assert_eq "existing clone, bad ref: checkout unchanged" "$hash" "$(git -C "$clone" rev-parse HEAD)"
+    # An existing clone and the remote gone (offline): kept, says nothing changed.
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    mv "$sb/mremote/leaf.git" "$sb/mremote/leaf.away"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "existing clone, offline: exit 1" "1" "$rc"
+    assert_contains "existing clone, offline: says so" "cannot fetch source $url into $clone (offline?); nothing changed" "$out"
+    assert_eq "existing clone, offline: kept" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
+    assert_contains "existing clone, offline: the result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+    mv "$sb/mremote/leaf.away" "$sb/mremote/leaf.git"
+    # A no-index clone that this run did not make, with a bad ref: refused, never removed.
+    rm -f "$clone/.git/index"
+    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "no-index clone, bad ref: exit 1" "1" "$rc"
+    assert_contains "no-index clone, bad ref: refused as modified" "it has no index" "$out"
+    assert_eq "no-index clone, bad ref: not removed" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
 }
 
 test_mr_stale_extends_base() {
@@ -2975,47 +2973,6 @@ test_mr_sync_names_a_new_layer() {
     run_mr "$sb" setup >/dev/null 2>&1
     out="$(run_mr "$sb" sync 2>&1)"
     assert_not_contains "after setup: no notice" "not checked out yet" "$out"
-}
-
-test_mr_validate_source_state_warnings() {
-    echo "TEST: manifest route: validate warns on a clone edited after sync or missing; no stale-source warning once source itself changed"
-    local sb url out rc clone
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    run_mr "$sb" setup >/dev/null 2>&1
-    clone="$sb/projects/p11/configs/source-clone"
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "clean: exit 0" "0" "$rc"
-    assert_not_contains "clean: no warning" "WARNING" "$out"
-    # Edited after sync: HEAD unchanged, state clean.
-    echo "# edit" >> "$clone/manifest.yaml"
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "edited after sync: exit 0" "0" "$rc"
-    assert_contains "edited after sync: warned" "has uncommitted changes made since it was resolved; they are not in the resolved manifest" "$out"
-    git -C "$clone" checkout --quiet -- manifest.yaml
-    # Missing clone.
-    rm -rf "$clone"
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "missing clone: exit 0" "0" "$rc"
-    assert_contains "missing clone: warned" "the manifest clone $clone is missing; the resolved manifest is kept" "$out"
-    run_mr "$sb" sync >/dev/null 2>&1
-    # source changed to a path: the mismatch is the error; no "file changed" warning.
-    write_mr_manifest "$sb/m/manifest.yaml"
-    mr_settings "$sb" "source=$sb/m/manifest.yaml"
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "source changed to a path: exit 1" "1" "$rc"
-    assert_contains "source changed to a path: named" "the resolved manifest is from source='$url'" "$out"
-    assert_not_contains "source changed to a path: no file-changed warning" "has changed (modification time or size)" "$out"
-    # And back from a path to a URL: no clone warning either.
-    run_mr "$sb" sync >/dev/null 2>&1
-    rm -rf "$clone"
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_eq "source changed to a URL: exit 1" "1" "$rc"
-    assert_not_contains "source changed to a URL: no clone warning" "the manifest clone" "$out"
 }
 
 test_mr_validate_link_missing_and_path_changed() {
@@ -3604,16 +3561,14 @@ test_bootstrap_no_url_names_source
 mr_test test_mr_wrapper_runs_this_checkouts_resolver
 mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit
-mr_test test_mr_stale_leaf_branch
-mr_test test_mr_stale_leaf_commit_and_tag
-mr_test test_mr_remote_rewrite_followed
-mr_test test_mr_interrupted_first_clone_and_head_ref
+mr_test test_mr_clone_follows_remote
+mr_test test_mr_clone_refused_when_modified
+mr_test test_mr_clone_removed_only_when_created_here
 mr_test test_mr_stale_extends_base
 mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
 mr_test test_mr_sync_names_a_new_layer
 mr_test test_mr_validate_link_missing_and_path_changed
-mr_test test_mr_validate_source_state_warnings
 mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
 mr_test test_mr_interrupt_cleans_up

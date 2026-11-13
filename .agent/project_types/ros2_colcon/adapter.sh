@@ -570,12 +570,20 @@ _rc_bootstrap_manifest() {
 # project with no `source` takes the bootstrap route, unchanged.
 #
 # Never silently stale: after `sync`, what is resolved is what the remotes
-# hold now (the leaf manifest's clone is fetched and fast-forwarded when it
-# is clean and on its branch; every `extends` base is cloned afresh, the
+# hold now, or the run fails and says why. The clone is the adapter's own
+# (owner's rule, 2026-11-13): the adapter leaves it detached at the
+# fetched commit and records that commit in .git/ros2-colcon-adapter-commit.
+# When it is untouched (a git clone of source, an index, HEAD detached at
+# the recorded commit, no uncommitted change, untracked or ignored file),
+# setup and sync fetch and move it to the ref's commit, a rewritten branch
+# or moved tag included. In any other state they refuse and change
+# nothing, and say how to recover (remove the clone) and how to work on a
+# manifest locally (the path form); validate fails the same way. A run
+# killed between the checkout and the record leaves a clone that is
+# refused: remove it. The adapter removes only a clone this run created
+# and could not finish. Every `extends` base is cloned afresh, the
 # resolver's cache being a sibling of the new generated directory removed
-# on every exit), or a WARNING on stderr says it is not and why (local
-# commits, uncommitted changes: a dirty clone is never forced), and
-# `validate` repeats it from .resolved-from.
+# on every exit.
 #
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none
@@ -673,47 +681,72 @@ _rc_resolver_bin() {
     echo "$main/.venv/bin/ros-manifest"
 }
 
-# Is the clone's HEAD detached at commits on no branch, other than
-# <target> (what is about to be checked out)? A checkout would orphan
-# them. Tags count as holding commits only because the fetch has just made
-# the clone's tags the source's: a tag made in the clone is removed by it.
-_rc_detached_local_commits() {
-    local clone="$1" target="$2" head
-    git -C "$clone" symbolic-ref -q HEAD >/dev/null 2>&1 && return 1
-    head="$(git -C "$clone" rev-parse HEAD 2>/dev/null)" || return 1
-    [ "$head" = "$target" ] && return 1
-    _rc_head_is_last_resolved "$head" && return 1
-    [ -n "$(git -C "$clone" rev-list -n 1 HEAD --not --branches --tags --remotes 2>/dev/null)" ]
+# The file under the clone's .git/ where the adapter records the commit it
+# left the clone at (detached), written after each successful checkout.
+_RC_CLONE_MARK=ros2-colcon-adapter-commit
+
+# Why the existing clone at <clone> is not as the adapter left it, printed
+# as one phrase; nothing when it is untouched: a git clone rooted there,
+# origin <url>, an index, the adapter's record, HEAD detached at the
+# recorded commit, and no uncommitted change, untracked or ignored file.
+_rc_clone_modified() {
+    local clone="$1" url="$2" top real origin gitdir mark head branch st
+    top="$(git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
+    real="$(cd "$clone" 2>/dev/null && pwd -P || true)"
+    if [ -z "$top" ] || [ "$top" != "$real" ]; then
+        echo "it is not a git clone (a file or directory the adapter did not make)"
+        return 0
+    fi
+    origin="$(git -C "$clone" remote get-url origin 2>/dev/null || true)"
+    if [ "${origin%.git}" != "${url%.git}" ]; then
+        echo "its origin is '${origin:-none}', not source $url"
+        return 0
+    fi
+    gitdir="$(git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
+    if [ ! -e "$gitdir/index" ]; then
+        echo "it has no index (never checked out: half-made by an interrupted run)"
+        return 0
+    fi
+    mark="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
+    if [ -z "$mark" ]; then
+        echo "it has no record of the commit the adapter left it at ($gitdir/$_RC_CLONE_MARK)"
+        return 0
+    fi
+    if branch="$(git -C "$clone" symbolic-ref -q --short HEAD 2>/dev/null)"; then
+        echo "HEAD is on the branch '$branch', not detached at ${mark:0:12} where the adapter left it"
+        return 0
+    fi
+    head="$(git -C "$clone" rev-parse -q --verify HEAD 2>/dev/null || true)"
+    if [ "$head" != "$mark" ]; then
+        echo "HEAD is at ${head:0:12}, not at ${mark:0:12} where the adapter left it"
+        return 0
+    fi
+    st="$(git --no-optional-locks -C "$clone" status --porcelain --untracked-files=all --ignored=matching 2>/dev/null | head -n 3)"
+    if [ -n "$st" ]; then
+        echo "it has uncommitted changes or untracked files ($(printf '%s' "$st" | tr '\n' ';' | sed 's/;/; /g'))"
+        return 0
+    fi
 }
 
-# Is <commit> the one the live resolved manifest was made from, from this
-# source, with nothing local (source-state=clean)? Then the clone holds
-# only what the adapter checked out, and commits the remote no longer has
-# are a rewrite there (a force-pushed branch, a tag moved off commits no
-# branch holds), followed rather than taken for local commits.
-_rc_head_is_last_resolved() {
-    local rf
-    rf="$(_rc_root)/configs/manifest-resolved/.resolved-from"
-    [ -n "$1" ] && [ -f "$rf" ] || return 1
-    [ "$(_rc_resolved_from "$rf" source)" = "${ACTIVE_PROJECT_SOURCE:-}" ] || return 1
-    [ "$(_rc_resolved_from "$rf" source-state)" = clean ] || return 1
-    [ "$(_rc_resolved_from "$rf" commit)" = "$1" ]
-}
-
-_rc_warn_detached_local() {  # <clone> <kind> <ref>
-    echo "WARNING: source: the manifest clone $1 has commits on a detached HEAD that are on no branch (a tag made in the clone does not keep them: each fetch removes the tags the source does not have); resolved what is checked out, not $2 '$3' (put them on a branch and push them, or drop them, then run sync)" >&2
+# The refusal for a modified clone (setup, sync and validate say the same).
+_rc_clone_refusal() {  # <clone> <reason>
+    local name
+    name="$(_rc_name)"
+    echo "ERROR: source: the manifest clone $1 is not as the adapter left it: $2. The adapter does not use a modified clone; nothing was changed (the clone, the resolved manifest and its link are as they were)."
+    echo "  To recover: move or remove $1 and run setup or sync again; the adapter then clones ${ACTIVE_PROJECT_SOURCE:-the source} afresh."
+    echo "  To work on a manifest locally, use the path form: keep the manifest in a checkout of your own and point source at its file: .agent/scripts/project_setting.sh unset $name source source_ref source_path, then .agent/scripts/project_setting.sh set $name source=/path/to/your/manifest.yaml"
 }
 
 # Fetch the leaf manifest (see the header above). Sets _RC_SRC_FILE (the
-# manifest file to resolve), _RC_SRC_COMMIT (the clone's commit; empty for
-# a path source) and _RC_SRC_STATE (clean, or local when what is resolved
-# is not what the remote holds, said by a WARNING on stderr). A fetch
-# failure (offline) changes nothing and returns 1.
+# manifest file to resolve) and _RC_SRC_COMMIT (the clone's commit; empty
+# for a path source). A clone the adapter did not leave as it is is refused
+# with nothing changed; a clone this run made and could not finish is
+# removed by this run (created_here, never inferred from the clone's
+# state). A fetch failure (offline) changes nothing and returns 1.
 _rc_source_fetch() {
-    local url ref spath clone fresh=0 existing top real kind cur sha old new
+    local url ref spath clone created_here=0 reason kind sha old gitdir
     _RC_SRC_FILE=""
     _RC_SRC_COMMIT=""
-    _RC_SRC_STATE=clean
     url="${ACTIVE_PROJECT_SOURCE:-}"
     if ! _rc_source_is_url; then
         if [ ! -f "$url" ] || [ ! -r "$url" ]; then
@@ -728,133 +761,58 @@ _rc_source_fetch() {
     spath="${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}"
     clone="$(_rc_root)/configs/source-clone"
     if [ -e "$clone" ] || [ -L "$clone" ]; then
-        # The clone must be a repository rooted here (git -C would walk up
-        # into the project's own repository) whose origin is the source.
-        top="$(git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
-        real="$(cd "$clone" 2>/dev/null && pwd -P || true)"
-        if [ -z "$top" ] || [ "$top" != "$real" ] \
-            || ! existing="$(git -C "$clone" remote get-url origin 2>/dev/null)"; then
-            echo "ERROR: $clone exists but is not a git clone with an 'origin' remote; move it aside and rerun" >&2
+        reason="$(_rc_clone_modified "$clone" "$url")"
+        if [ -n "$reason" ]; then
+            _rc_clone_refusal "$clone" "$reason" >&2
             return 1
-        fi
-        if [ "${existing%.git}" != "${url%.git}" ]; then
-            echo "ERROR: $clone is a clone of $existing, not of source $url; move it aside (or fix source) and rerun" >&2
-            return 1
-        fi
-        # A first setup interrupted between the clone (--no-checkout) and
-        # the checkout leaves no index; git status would call every file
-        # deleted, so the clone would read as dirty forever. Nothing was
-        # ever checked out there, so it is taken as just cloned.
-        local gitdir
-        gitdir="$(git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
-        if [ -n "$gitdir" ] && [ ! -e "$gitdir/index" ]; then
-            echo "source: $clone was never checked out (an interrupted first setup); checking it out now"
-            fresh=1
         fi
     else
         mkdir -p "$(dirname "$clone")" || return 1
         echo "source: cloning $url into $clone"
+        created_here=1
         if ! GIT_TERMINAL_PROMPT=0 git clone --quiet --no-checkout -- "$url" "$clone"; then
             rm -rf -- "$clone"
-            echo "ERROR: cannot clone source $url" >&2
+            echo "ERROR: cannot clone source $url; nothing changed" >&2
             return 1
         fi
-        fresh=1
     fi
-    # Branches and tags in one fetch: pruned (--prune-tags too, as --prune
-    # alone keeps a tag deleted on the remote, which would then still be
-    # resolved) and forced, so a tag moved on the remote is followed.
+    # Branches and tags in one fetch, pruned (--prune-tags too, so a tag
+    # deleted on the remote is seen as gone) and forced: the clone then
+    # holds what origin holds, a rewritten branch or moved tag included.
     if ! GIT_TERMINAL_PROMPT=0 git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
-        [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
-        echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the clone's checkout and the previously resolved manifest, if any, are as they were" >&2
         return 1
     fi
     if git -C "$clone" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
         kind=branch
+        sha="$(git -C "$clone" rev-parse "refs/remotes/origin/$ref^{commit}")"
     elif git -C "$clone" show-ref --verify --quiet "refs/tags/$ref"; then
         kind=tag
+        sha="$(git -C "$clone" rev-parse "refs/tags/$ref^{commit}")"
     elif [[ "$ref" =~ ^[0-9a-fA-F]{7,64}$ ]] \
-        && git -C "$clone" rev-parse --verify --quiet "$ref^{commit}" >/dev/null 2>&1; then
+        && sha="$(git -C "$clone" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" \
+        && [ -n "$(git -C "$clone" for-each-ref --count=1 --contains "$sha" refs/remotes/origin refs/tags 2>/dev/null)" ]; then
         kind=commit
     else
-        [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
-        echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters)" >&2
+        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters); the clone's checkout and the resolved manifest are as they were" >&2
         return 1
     fi
-    local dirty=0
-    if [ "$fresh" -eq 0 ] && [ -n "$(git -C "$clone" status --porcelain 2>/dev/null)" ]; then
-        dirty=1
+    gitdir="$(git -C "$clone" rev-parse --absolute-git-dir)"
+    old="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
+    if ! git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
+        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
+        return 1
     fi
-    if [ "$dirty" -eq 1 ]; then
-        echo "WARNING: source: uncommitted changes in the manifest clone $clone; resolved those, not what $url holds at '$ref' (commit or discard them, then run sync)" >&2
-        _RC_SRC_STATE=local
-    elif [ "$kind" = branch ]; then
-        cur="$(git -C "$clone" symbolic-ref --short -q HEAD 2>/dev/null || true)"
-        if [ "$fresh" -eq 1 ]; then
-            if ! git -C "$clone" checkout --quiet -B "$ref" "origin/$ref"; then
-                rm -rf -- "$clone"
-                echo "ERROR: cannot check out '$ref' in $clone" >&2
-                return 1
-            fi
-            echo "source: checked out $ref at $(git -C "$clone" rev-parse --short HEAD)"
-        elif [ "$cur" != "$ref" ] \
-            && _rc_detached_local_commits "$clone" "$(git -C "$clone" rev-parse "origin/$ref")"; then
-            # Switching to the branch would orphan them, as for a tag or
-            # commit below.
-            _rc_warn_detached_local "$clone" branch "$ref"
-            _RC_SRC_STATE=local
-        else
-            if [ "$cur" != "$ref" ]; then
-                if git -C "$clone" show-ref --verify --quiet "refs/heads/$ref"; then
-                    git -C "$clone" checkout --quiet "$ref" || { echo "ERROR: cannot switch $clone to '$ref'" >&2; return 1; }
-                else
-                    git -C "$clone" checkout --quiet -b "$ref" --track "origin/$ref" \
-                        || { echo "ERROR: cannot switch $clone to '$ref'" >&2; return 1; }
-                fi
-                echo "source: switched to $ref"
-            fi
-            old="$(git -C "$clone" rev-parse HEAD)"
-            new="$(git -C "$clone" rev-parse "origin/$ref")"
-            if [ "$old" != "$new" ]; then
-                if git -C "$clone" merge-base --is-ancestor HEAD "origin/$ref"; then
-                    git -C "$clone" merge --quiet --ff-only "origin/$ref" \
-                        || { echo "ERROR: cannot fast-forward $clone to origin/$ref" >&2; return 1; }
-                    echo "source: updated $ref ${old:0:12}..${new:0:12}"
-                elif _rc_head_is_last_resolved "$old"; then
-                    # Rewritten on the remote: nothing here is local (the
-                    # clone is clean and at what was last resolved).
-                    git -C "$clone" reset --quiet --hard "origin/$ref" \
-                        || { echo "ERROR: cannot reset $clone to origin/$ref" >&2; return 1; }
-                    echo "source: $ref was rewritten on $url (not a fast-forward); followed ${old:0:12} -> ${new:0:12}"
-                else
-                    echo "WARNING: source: the manifest clone $clone has local commits not on origin/$ref; resolved what is checked out, not what $url holds (push or drop them, then run sync)" >&2
-                    _RC_SRC_STATE=local
-                fi
-            fi
-        fi
+    printf '%s\n' "$sha" > "$gitdir/$_RC_CLONE_MARK" || return 1
+    if [ -n "$old" ] && [ "$old" != "$sha" ]; then
+        echo "source: $kind $ref ${old:0:12} -> ${sha:0:12}"
     else
-        if [ "$kind" = tag ]; then
-            sha="$(git -C "$clone" rev-parse "refs/tags/$ref^{commit}")"
-        else
-            sha="$(git -C "$clone" rev-parse "$ref^{commit}")"
-        fi
-        # Commits made on a detached HEAD and on no branch would be
-        # orphaned by the checkout below: kept and warned, as local
-        # commits on a branch are.
-        if [ "$fresh" -eq 0 ] && _rc_detached_local_commits "$clone" "$sha"; then
-            _rc_warn_detached_local "$clone" "$kind" "$ref"
-            _RC_SRC_STATE=local
-        elif ! git -C "$clone" checkout --quiet --detach "$sha"; then
-            [ "$fresh" -eq 1 ] && rm -rf -- "$clone"
-            echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
-            return 1
-        elif [ "$kind" = tag ]; then
-            echo "source: $ref -> ${sha:0:12}"
-        else
-            echo "source: pinned ${sha:0:12}"
-        fi
+        echo "source: $kind $ref at ${sha:0:12}"
     fi
-    _RC_SRC_COMMIT="$(git -C "$clone" rev-parse HEAD)"
+    _RC_SRC_COMMIT="$sha"
     _RC_SRC_FILE="$clone/$spath"
     # The repository is not trusted to stay inside itself: a symbolic link
     # anywhere along source_path could lead the resolver to any file the
@@ -934,7 +892,6 @@ _rc_manifest_resolve() {
         echo "source_ref=${ACTIVE_PROJECT_SOURCE_REF:-}"
         echo "source_path=${ACTIVE_PROJECT_SOURCE_PATH:-}"
         echo "commit=$_RC_SRC_COMMIT"
-        echo "source-state=$_RC_SRC_STATE"
         echo "role=$role"
         echo "distro=$distro"
         if ! _rc_source_is_url; then
@@ -1155,9 +1112,6 @@ _rc_validate_manifest_route() {
             issues=$((issues + 1))
         fi
     done
-    if [ "$(_rc_resolved_from "$rf" source-state)" = local ]; then
-        echo "⚠️  WARNING: the resolved manifest was made from local changes in the manifest clone (uncommitted, or commits not on the remote), not from what the source holds (commit and push them, or discard them, then run: .agent/scripts/adapter --project $name sync)" >&2
-    fi
     # The checks against the source's current state apply only while the
     # resolved manifest is from that source (a changed source is the ❌
     # above, and what it holds says nothing about the old one).
@@ -1165,17 +1119,17 @@ _rc_validate_manifest_route() {
         :
     elif _rc_source_is_url; then
         clone="$(_rc_root)/configs/source-clone"
-        if [ ! -d "$clone" ]; then
+        local reason
+        if [ ! -e "$clone" ] && [ ! -L "$clone" ]; then
             echo "⚠️  WARNING: the manifest clone $clone is missing; the resolved manifest is kept, and the next sync clones $ACTIVE_PROJECT_SOURCE again (run: .agent/scripts/adapter --project $name sync)" >&2
+        elif reason="$(_rc_clone_modified "$clone" "$ACTIVE_PROJECT_SOURCE")" && [ -n "$reason" ]; then
+            _rc_clone_refusal "$clone" "$reason" | sed '1s/^/❌ /' >&2
+            issues=$((issues + 1))
         else
             head="$(git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
             got="$(_rc_resolved_from "$rf" commit)"
             if [ -n "$head" ] && [ -n "$got" ] && [ "$head" != "$got" ]; then
                 echo "⚠️  WARNING: the manifest clone $clone is at ${head:0:12}, the resolved manifest is from ${got:0:12} (run: .agent/scripts/adapter --project $name sync)" >&2
-            fi
-            if [ "$(_rc_resolved_from "$rf" source-state)" != local ] \
-                && [ -n "$(git -C "$clone" status --porcelain 2>/dev/null)" ]; then
-                echo "⚠️  WARNING: the manifest clone $clone has uncommitted changes made since it was resolved; they are not in the resolved manifest (commit or discard them, then run: .agent/scripts/adapter --project $name sync)" >&2
             fi
         fi
     elif [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
