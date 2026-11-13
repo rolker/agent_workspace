@@ -785,14 +785,37 @@ _rc_clone_refusal() {  # <clone> <reason>
     echo "  To work on a manifest locally, use the path form: keep the manifest in a checkout of your own and point source at its file: .agent/scripts/project_setting.sh unset $name source source_ref source_path, then .agent/scripts/project_setting.sh set $name source=/path/to/your/manifest.yaml"
 }
 
+# A clone this run created is removed on every exit until its record is
+# written (_rc_fetch_done): an error, a failed record write, or an
+# interrupt (INT, TERM, HUP), so no later run meets a half-made clone it
+# would refuse. A clone this run did not create is never removed.
+_rc_fetch_track_created() {
+    _RC_FETCH_CREATED="$1"
+    trap '_rc_fetch_abort' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+}
+
+_rc_fetch_abort() {
+    [ -n "${_RC_FETCH_CREATED:-}" ] && rm -rf -- "$_RC_FETCH_CREATED"
+    _rc_fetch_done
+}
+
+_rc_fetch_done() {
+    [ -n "${_RC_FETCH_CREATED:-}" ] || return 0
+    _RC_FETCH_CREATED=""
+    trap - EXIT HUP INT TERM
+}
+
 # Fetch the leaf manifest (see the header above). Sets _RC_SRC_FILE (the
 # manifest file to resolve) and _RC_SRC_COMMIT (the clone's commit; empty
 # for a path source). A clone the adapter did not leave as it is is refused
 # with nothing changed; a clone this run made and could not finish is
-# removed by this run (created_here, never inferred from the clone's
+# removed by this run (_RC_FETCH_CREATED, never inferred from the clone's
 # state). A fetch failure (offline) changes nothing and returns 1.
 _rc_source_fetch() {
-    local url ref spath clone created_here=0 reason kind sha old gitdir
+    local url ref spath clone reason kind sha old gitdir
     _RC_SRC_FILE=""
     _RC_SRC_COMMIT=""
     url="${ACTIVE_PROJECT_SOURCE:-}"
@@ -816,10 +839,18 @@ _rc_source_fetch() {
         fi
     else
         mkdir -p "$(dirname "$clone")" || return 1
+        # Claim the path: only the run whose mkdir made it clones there, and
+        # only that run may remove it (another run, unlocked without flock,
+        # may have claimed it since the test above).
+        if ! mkdir -- "$clone" 2>/dev/null; then
+            reason="$(_rc_clone_modified "$clone" "$url")"
+            _rc_clone_refusal "$clone" "${reason:-another run created it meanwhile}" >&2
+            return 1
+        fi
+        _rc_fetch_track_created "$clone"
         echo "source: cloning $url into $clone"
-        created_here=1
         if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git clone --quiet --no-checkout -- "$url" "$clone"; then
-            rm -rf -- "$clone"
+            _rc_fetch_abort
             echo "ERROR: cannot clone source $url; nothing changed" >&2
             return 1
         fi
@@ -828,13 +859,13 @@ _rc_source_fetch() {
     # deleted on the remote is seen as gone) and forced: the clone then
     # holds what origin holds, a rewritten branch or moved tag included.
     if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
-        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        _rc_fetch_abort
         echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the clone's checkout and the previously resolved manifest, if any, are as they were" >&2
         return 1
     fi
     gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir)"
     if ! _rc_clone_tag_list "$clone" > "$gitdir/$_RC_CLONE_TAGS"; then
-        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        _rc_fetch_abort
         echo "ERROR: cannot record the clone's tags in $gitdir/$_RC_CLONE_TAGS" >&2
         return 1
     fi
@@ -849,17 +880,22 @@ _rc_source_fetch() {
         && [ -n "$(_rc_nofd git -C "$clone" for-each-ref --count=1 --contains "$sha" refs/remotes/origin refs/tags 2>/dev/null)" ]; then
         kind=commit
     else
-        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        _rc_fetch_abort
         echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters); the clone's checkout and the resolved manifest are as they were" >&2
         return 1
     fi
     old="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
     if ! _rc_nofd git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
-        [ "$created_here" -eq 1 ] && rm -rf -- "$clone"
+        _rc_fetch_abort
         echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
         return 1
     fi
-    printf '%s\n' "$sha" > "$gitdir/$_RC_CLONE_MARK" || return 1
+    if ! printf '%s\n' "$sha" > "$gitdir/$_RC_CLONE_MARK"; then
+        _rc_fetch_abort
+        echo "ERROR: cannot record the checked-out commit in $gitdir/$_RC_CLONE_MARK" >&2
+        return 1
+    fi
+    _rc_fetch_done
     if [ -n "$old" ] && [ "$old" != "$sha" ]; then
         echo "source: $kind $ref ${old:0:12} -> ${sha:0:12}"
     else

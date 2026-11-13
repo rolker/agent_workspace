@@ -2876,6 +2876,71 @@ test_mr_clone_refused_when_modified() {
     done
 }
 
+test_mr_first_clone_interrupted_or_claimed() {
+    echo "TEST: manifest route: a first clone this run made is removed on an interrupt or a failed record; a path another run claimed is never removed"
+    local sb url rc out clone realgit realmkdir apid i tool
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    clone="$sb/projects/p11/configs/source-clone"
+    realgit="$(command -v git)"
+    mkdir -p "$sb/gitstub"
+    # A git that, on the clone's checkout, waits to be interrupted (hold)
+    # or, after it, makes the record path a directory (blockrecord).
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" checkout "*)' \
+        "    if [ -e \"$sb/hold\" ]; then touch \"$sb/ready\"; while [ ! -e \"$sb/go\" ]; do sleep 0.1; done; fi" \
+        "    \"$realgit\" \"\$@\"; rc=\$?" \
+        "    [ -e \"$sb/blockrecord\" ] && mkdir -p \"$clone/.git/ros2-colcon-adapter-commit\"" \
+        '    exit $rc ;;' \
+        'esac' \
+        "exec \"$realgit\" \"\$@\"" > "$sb/gitstub/git"
+    chmod +x "$sb/gitstub/git"
+    # Interrupted (TERM) between the clone and its record.
+    touch "$sb/hold"
+    (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        exec "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) &
+    apid=$!
+    for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    assert_eq "interrupted: held at the checkout" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    kill -TERM "$apid" 2>/dev/null || true
+    touch "$sb/go"
+    rc=0; wait "$apid" || rc=$?
+    assert_eq "interrupted: exit 143" "143" "$rc"
+    assert_eq "interrupted: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
+    rm -f "$sb/hold" "$sb/ready" "$sb/go"
+    # The record cannot be written.
+    touch "$sb/blockrecord"
+    rc=0; out="$(PATH="$sb/gitstub:$PATH" run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "record fails: exit 1" "1" "$rc"
+    assert_contains "record fails: said" "cannot record the checked-out commit" "$out"
+    assert_eq "record fails: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
+    rm -f "$sb/blockrecord"
+    # Without flock: another run claims the path between this run's check
+    # and its mkdir (a mkdir stub plays the other run). This run did not
+    # create the clone, so it refuses and removes nothing.
+    realmkdir="$(command -v mkdir)"
+    mkdir -p "$sb/claimstub" "$sb/isolatedbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "if [ ! -e \"$clone\" ] && [ \" \$* \" = \" -p $sb/projects/p11/configs \" ]; then" \
+        "    \"$realmkdir\" -p \"$clone\" && echo theirs > \"$clone/other-run.txt\"" \
+        'fi' \
+        "exec \"$realmkdir\" \"\$@\"" > "$sb/claimstub/mkdir"
+    chmod +x "$sb/claimstub/mkdir"
+    for tool in bash sh git grep sed awk cut head tail cat rm mv ln comm \
+        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    rc=0; out="$(cd "$sb" && PATH="$sb/claimstub:$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "claimed by another run: exit 1" "1" "$rc"
+    assert_contains "claimed by another run: refused" "the manifest clone $clone is not as the adapter left it" "$out"
+    assert_eq "claimed by another run: its clone left alone" "theirs" "$(cat "$clone/other-run.txt" 2>/dev/null)"
+}
+
 test_mr_clone_removed_only_when_created_here() {
     echo "TEST: manifest route: a failure removes only a clone this run created; an existing clone is never removed"
     local sb url out rc clone gen hash
@@ -3725,6 +3790,7 @@ mr_test test_mr_clone_follows_remote
 mr_test test_mr_clone_with_insteadof_rule
 mr_test test_mr_clone_refused_when_modified
 mr_test test_mr_clone_removed_only_when_created_here
+mr_test test_mr_first_clone_interrupted_or_claimed
 mr_test test_mr_stale_extends_base
 mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
