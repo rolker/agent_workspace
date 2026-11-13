@@ -741,12 +741,30 @@ else
     [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_ROOT_EFFECTIVE"
     _gate_wt=$(find_worktree_for_branch "$_gate_wt_repo" "$PR_BRANCH" || true)
 fi
+# The owning checkout must be its repository's top folder (resolved). A
+# folder that is gone, or that exists but is no longer a checkout, would
+# otherwise resolve through `rev-parse --show-toplevel` to an enclosing
+# repository, which would then supply the timeline, the ancestry check, the
+# CI target and the record commit. _GATE_OWN_PROBLEM says which, empty when
+# the checkout is sound; the gate then reads no timeline there, _ci_wt stays
+# empty, and the record goes on the PR.
+_GATE_OWN_PROBLEM=""
+if [[ "$_GATE_PKG_ROLE" == "owning" ]]; then
+    if [[ ! -d "$_gate_wt" ]]; then
+        _GATE_OWN_PROBLEM="the owning checkout $_gate_wt does not exist"
+    else
+        _gate_own_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
+        if [[ -z "$_gate_own_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$_gate_own_top" && pwd -P)" ]]; then
+            _GATE_OWN_PROBLEM="the owning checkout $_gate_wt is not a git checkout's top folder"
+        fi
+    fi
+fi
 # The path passes the records gate (records_path) like every other records
 # read: inside a package worktree only the issue's own checkout is read. A
 # refusal leaves no timeline and says why below.
 _gate_progress=""
 _gate_refusal=""
-if [[ -n "$_gate_wt" ]]; then
+if [[ -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" ]]; then
     _gate_cand="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
     if _gate_refusal=$(records_path "$_gate_cand" "$_gate_wt" 2>&1 >/dev/null); then
         _gate_refusal=""
@@ -761,7 +779,7 @@ fi
 # branch checked out (AGENTS.md forbids feature commits there). Empty means
 # "no local history to verify against".
 _ci_wt=""
-if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" ]]; then
+if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" ]]; then
     _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
     if [[ -n "$_ci_wt_top" ]]; then
         _ci_is_main=false
@@ -795,6 +813,8 @@ elif [[ -z "$_gate_progress" ]]; then
         else
             _gate_reasons+=("a sibling repository's pull request: package worktree $(_bk_display "$PKG_WT_DIR") has no single checkout on feature/issue-$(_bk_display "$ISSUE_NUM"), so no timeline is read for it")
         fi
+    elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
+        _gate_reasons+=("$(_bk_display "$_GATE_OWN_PROBLEM"), so no timeline is read for issue #$(_bk_display "$ISSUE_NUM")")
     elif [[ -n "$_gate_refusal" ]]; then
         _gate_reasons+=("the records gate refused the timeline in $(_bk_display "$_gate_wt"): $(_bk_display "$_gate_refusal")")
     else
@@ -886,6 +906,56 @@ if [[ -n "$PKG_WT_BASE" && "$PR_BRANCH" == "feature/issue-${ISSUE_NUM}" ]]; then
     fi
 fi
 
+# The record's progress.md in the checkout, as it was before the record was
+# written: its working-tree copy (or none), its index entry (or none) and
+# which of its folders did not exist. _gate_rec_restore puts back exactly
+# that, so a refused commit or an undone push leaves the checkout as it was
+# whether progress.md was there before the record or not, and a later run's
+# duplicate check never reads a leftover entry.
+_GS_REL="" _GS_ABS="" _GS_COPY="" _GS_INDEX="" _GS_STATUS=""
+declare -a _GS_NEW_DIRS=()
+_gate_rec_snapshot() {  # <checkout>
+    local wt="$1" d
+    _GS_REL=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+    _GS_ABS="$wt/$_GS_REL"
+    _GS_COPY=""
+    if [[ -f "$_GS_ABS" ]]; then
+        _GS_COPY=$(mktemp)
+        cp "$_GS_ABS" "$_GS_COPY"
+    fi
+    _GS_INDEX=$(git -C "$wt" ls-files -s -- "$_GS_REL" 2>/dev/null || true)
+    _GS_STATUS=$(git -C "$wt" status --porcelain -- "$_GS_REL" 2>/dev/null || true)
+    _GS_NEW_DIRS=()
+    for d in "$wt/.agent/work-plans/issue-${ISSUE_NUM}" "$wt/.agent/work-plans" "$wt/.agent"; do
+        [[ -d "$d" ]] || _GS_NEW_DIRS+=("$d")
+    done
+}
+_gate_rec_restore() {  # <checkout>; returns 0 when progress.md is as it was
+    local wt="$1" mode sha rest d rc=0
+    if [[ -n "$_GS_INDEX" ]]; then
+        read -r mode sha rest <<< "$_GS_INDEX"
+        git -C "$wt" update-index --cacheinfo "$mode,$sha,$_GS_REL" 2>/dev/null || rc=1
+    else
+        git -C "$wt" rm -q --cached --ignore-unmatch -- "$_GS_REL" >/dev/null 2>&1 || rc=1
+    fi
+    if [[ -n "$_GS_COPY" ]]; then
+        cp "$_GS_COPY" "$_GS_ABS" || rc=1
+    else
+        rm -f "$_GS_ABS"
+        for d in ${_GS_NEW_DIRS[@]+"${_GS_NEW_DIRS[@]}"}; do
+            rmdir "$d" 2>/dev/null || true
+        done
+    fi
+    [[ "$(git -C "$wt" status --porcelain -- "$_GS_REL" 2>/dev/null || true)" == "$_GS_STATUS" ]] || rc=1
+    return "$rc"
+}
+_gate_rec_snapshot_drop() {
+    if [[ -n "$_GS_COPY" ]]; then
+        rm -f "$_GS_COPY"
+    fi
+    _GS_COPY=""
+}
+
 _gate_record() {  # <entry type> <one-line why>
     local etype="$1" why="$2" entry body_file mode
     # Plain string assembly, not `$([[ ... ]] && ...)`: under `set -e` a
@@ -913,7 +983,7 @@ _gate_record() {  # <entry type> <one-line why>
     # package worktree container lives under the workspace checkout, so the
     # naive check would resolve to the live main tree and commit there
     # (round-2 review). A sibling package PR never takes this path at all.
-    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" ]]; then
+    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" ]]; then
         wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
@@ -927,44 +997,89 @@ _gate_record() {  # <entry type> <one-line why>
                 [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$wt_top" && pwd -P)" ]] && { wt_top=""; why_comment="the PR branch is checked out in the main tree, which never takes feature commits"; break; }
             done
         fi
+        # The record is committed and pushed only from a checkout that has
+        # the PR's branch checked out: a commit on another branch would not
+        # reach the PR, and `push origin <PR branch>` would then report
+        # nothing to push. A workspace or project PR's _gate_wt is found by
+        # its branch, so this holds there by construction; an owning
+        # package checkout (the manifest's entry) can have moved.
+        if [[ -n "$wt_top" ]]; then
+            local cur_branch
+            cur_branch=$(git -C "$_gate_wt" symbolic-ref --short -q HEAD 2>/dev/null || true)
+            if [[ -z "$cur_branch" ]]; then
+                wt_top=""
+                why_comment="the checkout $_gate_wt has a detached HEAD, not $PR_BRANCH, so the record is not committed there"
+            elif [[ "$cur_branch" != "$PR_BRANCH" ]]; then
+                wt_top=""
+                why_comment="the checkout $_gate_wt is on $cur_branch, not $PR_BRANCH, so the record is not committed there"
+            fi
+        fi
     fi
     if [[ -n "$wt_top" ]]; then
         if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
-        elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then
-            local rec_sha
-            rec_sha=$(git -C "$_gate_wt" rev-parse HEAD 2>/dev/null || echo "")
-            [[ -n "$rec_sha" ]] && _RUN_COMMITTED_SHAS+=("$rec_sha")
-            # Bounded like every call to origin: a timeout is a refused push.
-            # Run from the checkout rather than through -C: the path then
-            # never passes through timeout's argv, which may not carry a
-            # non-UTF-8 path intact.
-            if (cd "$_gate_wt" && wt_bounded_git push -q origin "$PR_BRANCH") 2>/dev/null; then
-                _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-                echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
-                return 0
-            fi
-            # Push refused: undo exactly that one-file commit so nothing is
-            # left half-recorded, then fall back to the PR comment (one record,
-            # never a stranded commit plus a comment).
-            git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
-            git -C "$_gate_wt" restore --staged --worktree -- ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" 2>/dev/null || true
-            if [[ -n "$rec_sha" ]]; then
-                local -a kept=()
-                local k
-                for k in ${_RUN_COMMITTED_SHAS[@]+"${_RUN_COMMITTED_SHAS[@]}"}; do
-                    [[ "$k" == "$rec_sha" ]] || kept+=("$k")
-                done
-                _RUN_COMMITTED_SHAS=(${kept[@]+"${kept[@]}"})
-            fi
-            why_comment="the timeline commit could not be pushed to origin (undone locally)"
         else
-            why_comment="progress_append.sh refused the timeline entry"
+            local head_before append_rc=0 rec_sha=""
+            head_before=$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")
+            _gate_rec_snapshot "$_gate_wt"
+            printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1 || append_rc=$?
+            if [[ "$append_rc" -eq 0 ]]; then
+                rec_sha=$(git -C "$_gate_wt" rev-parse HEAD 2>/dev/null || echo "")
+                [[ -n "$rec_sha" ]] && _RUN_COMMITTED_SHAS+=("$rec_sha")
+                # Bounded like every call to origin: a timeout is a refused
+                # push. Run from the checkout rather than through -C: the
+                # path then never passes through timeout's argv, which may
+                # not carry a non-UTF-8 path intact.
+                if (cd "$_gate_wt" && wt_bounded_git push -q origin "$PR_BRANCH") 2>/dev/null; then
+                    _gate_rec_snapshot_drop
+                    _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+                    echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
+                    return 0
+                fi
+                # Push refused or timed out: undo exactly that one-file
+                # commit and put progress.md back as it was, so nothing is
+                # left half-recorded, then fall back to the PR comment (one
+                # record, never a stranded commit plus a comment).
+                if [[ -n "$rec_sha" && "$rec_sha" != "$head_before" ]]; then
+                    git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
+                fi
+                if [[ -n "$rec_sha" ]]; then
+                    local -a kept=()
+                    local k
+                    for k in ${_RUN_COMMITTED_SHAS[@]+"${_RUN_COMMITTED_SHAS[@]}"}; do
+                        [[ "$k" == "$rec_sha" ]] || kept+=("$k")
+                    done
+                    _RUN_COMMITTED_SHAS=(${kept[@]+"${kept[@]}"})
+                fi
+                if [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" == "$head_before" ]] \
+                        && _gate_rec_restore "$_gate_wt"; then
+                    why_comment="the timeline commit could not be pushed to origin (undone locally)"
+                else
+                    why_comment="the timeline commit could not be pushed to origin, and undoing it in $_gate_wt did not leave progress.md as it was"
+                fi
+            elif [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" != "$head_before" ]]; then
+                # Not expected: progress_append.sh fails before its commit.
+                why_comment="progress_append.sh exited $append_rc after HEAD moved in $_gate_wt; the checkout was left as it is"
+            else
+                # Refused before or at the commit (exit 3: git add or the
+                # commit failed, e.g. a commit hook in the checkout's own
+                # repository; exit 2 or 4: nothing was written). The entry
+                # may already be appended and staged: put progress.md back.
+                local took_out="the entry was taken back out"
+                _gate_rec_restore "$_gate_wt" || took_out="taking the entry back out did not leave progress.md as it was"
+                if [[ "$append_rc" -eq 3 ]]; then
+                    why_comment="the timeline commit in $_gate_wt was refused (progress_append.sh exit 3: a git failure such as a commit hook), and ${took_out}"
+                else
+                    why_comment="progress_append.sh refused the timeline entry (exit $append_rc)"
+                    [[ "$took_out" != "the entry was taken back out" ]] && why_comment="$why_comment, and $took_out"
+                fi
+            fi
+            _gate_rec_snapshot_drop
         fi
     elif [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
         why_comment="a sibling repository's pull request records on its own PR, not in the owning checkout's timeline"
-    elif [[ "$_GATE_PKG_ROLE" == "owning" && "$why_comment" == "no open worktree for the PR's repo" ]]; then
-        why_comment="the owning checkout $_gate_wt is not a git checkout's top folder"
+    elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
+        why_comment="$_GATE_OWN_PROBLEM"
     fi
     body_file=$(mktemp)
     printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$entry" "${AGENT_NAME:-merge_pr.sh}" "${AGENT_MODEL:-unknown}" > "$body_file"
