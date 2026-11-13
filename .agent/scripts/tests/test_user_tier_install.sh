@@ -1506,6 +1506,27 @@ out="$(run)"; rc=$?
     || fail "re-run after a CLI rewrite (rc=$rc calls: $(log_since "$n0"))"
 rm -f "$SANDBOX/us-before.json"
 
+# The workspace checkout's tracked .claude/settings.json sets the plugin to
+# false (so a session at its root lists each skill once, bare). The real
+# file is pinned here, so removing the entry fails CI; --check calls a
+# copy without it drift, and the installer never writes it.
+jq -e --arg id "$PID" '.enabledPlugins[$id] == false' "$WS_ROOT/.claude/settings.json" >/dev/null \
+    && pass "the checkout's tracked .claude/settings.json sets enabledPlugins[\"$PID\"] to false" \
+    || fail "the checkout's tracked .claude/settings.json lacks the plugin's false entry"
+cp "$WSC/.claude/settings.json" "$SANDBOX/ws-settings.json"
+jq --arg id "$PID" 'del(.enabledPlugins[$id])' "$SANDBOX/ws-settings.json" > "$WSC/.claude/settings.json"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT: the workspace checkout's tracked $WSC/.claude/settings.json does not set enabledPlugins"* ]] \
+    && pass "--check reports a missing false entry in the checkout's tracked settings (drift)" \
+    || fail "--check without the tracked false entry (rc=$rc out=$out)"
+cp "$WSC/.claude/settings.json" "$SANDBOX/ws-settings-off.json"
+run >/dev/null
+cmp -s "$WSC/.claude/settings.json" "$SANDBOX/ws-settings-off.json" \
+    && pass "...and install does not write the tracked file" \
+    || fail "...install changed the checkout's tracked .claude/settings.json"
+cp "$SANDBOX/ws-settings.json" "$WSC/.claude/settings.json"
+rm -f "$SANDBOX/ws-settings.json" "$SANDBOX/ws-settings-off.json"
+
 # --check reports: not enabled at user scope; declared from another
 # checkout; the machine-level record lost. Install repairs each with only
 # the calls it needs.

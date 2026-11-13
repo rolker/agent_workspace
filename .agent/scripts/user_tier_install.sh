@@ -1323,6 +1323,15 @@ if [[ "$MODE" == "check" ]]; then
             plugin_note "the $PLUGIN_NAME plugin is not enabled at user scope from this checkout ($CLI_SETTINGS; re-run the installer)" ;;
     esac
 
+    # The workspace checkout's tracked .claude/settings.json sets the plugin
+    # to false: the plugin's source is this checkout's .claude/skills, so
+    # without it a session at the checkout's root would list every shipped
+    # skill twice. The installer never writes that tracked file (header);
+    # a missing entry is drift a commit fixes.
+    if ! jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == false' "$WS_ROOT/.claude/settings.json" >/dev/null 2>&1; then
+        note "the workspace checkout's tracked $WS_ROOT/.claude/settings.json does not set enabledPlugins[\"$PLUGIN_ID\"] to false, so a session at the checkout's root lists every shipped skill twice (restore the entry from the repository; the installer never edits that file)"
+    fi
+
     # Per-root entries the per-root generation left: notes, not drift (the
     # plugin enabled at local and user scope is listed once, live case U7),
     # except in the workspace checkout itself, where a local true overrides
