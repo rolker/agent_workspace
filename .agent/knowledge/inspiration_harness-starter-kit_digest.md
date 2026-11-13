@@ -1,5 +1,10 @@
 # Inspiration Digest: harness-starter-kit
 
+> **WATCHED, NOT TRACKED 2026-11-13** — removed from `projects:` in
+> `inspiration_registry.yml` and listed in its "Watched, not tracked" block:
+> no commit since 2026-06-18 (148 days at this check). This digest is kept
+> as the record.
+
 Type: inspiration
 Last checked: 2026-11-13
 Repo: harnessworks/harness-starter-kit @ 62437bec264b2deed83353e8209660d645e86828
@@ -241,6 +246,9 @@ Snapshot 2026-09-14 (kept for history):
 
 ## Tracking status
 
+- 2026-11-13: moved to the registry's "watched, not tracked" block (see
+  `starter-1` under Decided below).
+
 - 2026-09-14: keep tracked for one more round. If the repo is still dormant
   (no commits since 2026-06-18) at the next check, move it to the
   "watched, not tracked" block in `inspiration_registry.yml` instead of
@@ -248,13 +256,15 @@ Snapshot 2026-09-14 (kept for history):
 
 ## Pending Review (2026-11-13 round)
 
-- `starter-1` `dormant-source-move-to-watched` — the 2026-09-14 tracking
-  status said: if the repo is still dormant (no commits since 2026-06-18) at
-  the next check, move it to the "watched, not tracked" block in
-  `inspiration_registry.yml` instead of running another survey. That
-  condition now holds (no commits since 2026-06-18, 148 days; no new
-  releases, PRs or maintainer replies). Decision for the owner; this run
-  did not edit the registry. (2026-11-13)
+(none — `starter-1` decided below)
+
+## Decided (2026-11-13)
+
+- `starter-1` `dormant-source-move-to-watched` — the 2026-09-14 condition
+  (no commits since 2026-06-18 at the next check) held: no new commits,
+  releases, PRs or maintainer replies, 148 days. Owner said yes: entry
+  removed from `projects:` and added to the registry's "Watched, not
+  tracked" block (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 

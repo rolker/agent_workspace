@@ -1,5 +1,10 @@
 # Inspiration Digest: diffx
 
+> **ARCHIVED 2026-11-13** — removed from active tracking: no commits since
+> 2026-06-23 and pull requests disabled upstream; the 2026-09-14 condition
+> (still dormant at the next check) is met. Portable ideas are triaged
+> below. Re-add to `inspiration_registry.yml` if motivation changes.
+
 Type: inspiration
 Last checked: 2026-11-13
 Repo: wong2/diffx @ 1388595f1fea0ca4f33c4a1c2773a9e19d1bc27b (unchanged since 2026-09-14)
@@ -181,7 +186,8 @@ per-worktree file. **No change to the #172 path.**
 - 2026-11-13: the condition set on 2026-09-14 is met (no commits after
   2026-06-23; the open PRs #39/#40/#41 are no longer visible and were never
   merged). Whether to move diffx to watched-not-tracked is listed as
-  `diffx-1` under Pending Review. No registry edit made.
+  `diffx-1` under Pending Review. No registry edit made. (Decided
+  2026-11-13: retired, see Decided below.)
 - 2026-09-14: keep tracked for **one more round**. If there is still no
   maintainer activity (no commits after 2026-06-23, open PRs #39/#40/#41
   still unreviewed) at the next check, move diffx to **watched-not-tracked**
@@ -193,11 +199,6 @@ per-worktree file. **No change to the #172 path.**
 
 (2026-09-14 items are decided below. New this round:)
 
-- **diffx-1.** `retire-diffx-from-active-tracking` — the 2026-09-14 rule
-  ("no commits after 2026-06-23 at the next check, move to
-  watched-not-tracked") applies: still no commits, PRs disabled, 0
-  maintainer replies on the 8 new issues. Owner decision: retire the registry
-  entry (keep this digest as the record) or keep. (2026-11-13)
 - **diffx-2.** `file-and-diff-scope-comments` — issue #46's addition to the
   comment contract: a `scope` of line / file / diff, exported as
   `<comment scope="file">` inside the `<file>` block and `<comment
@@ -207,6 +208,15 @@ per-worktree file. **No change to the #172 path.**
   issue, not shipped code. Relevant if that contract is ever adopted, since a
   whole-change finding such as "missing migration" has no line anchor.
   (2026-11-13)
+
+## Decided (2026-11-13)
+
+- **diffx-1.** `retire-diffx-from-active-tracking` — the 2026-09-14 rule
+  ("no commits after 2026-06-23 at the next check, move to
+  watched-not-tracked") applied: still no commits, PRs disabled, 0
+  maintainer replies on the 8 new issues. Owner said yes: registry entry
+  removed and listed in the registry's "Archived 2026-11-13" block; this
+  digest kept as the record (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 
