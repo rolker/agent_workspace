@@ -739,6 +739,87 @@ else
     fail "manifest header: ${OUT:0:900}"
 fi
 echo
+echo "=== Did a branch start from its base? wt_base_foreign_history, every edge (issue 429) ==="
+# FH's origin: main = M0 M1; rel = M0 R1 (the pin; diverged from main);
+# old = M0 (a base that is an ancestor of main); ahead = M0 M1 A1 (a base
+# main is an ancestor of); dev2 = M0 M1 D2. FH itself is a clone.
+FHO="$SANDBOX/fh-origin.git"
+FH="$SANDBOX/fh"
+FHS="$SANDBOX/fh-seed"
+gitq init -q --bare -b main "$FHO"
+gitq init -q -b main "$FHS"
+gitq -C "$FHS" commit -q --allow-empty -m M0
+gitq -C "$FHS" branch old
+gitq -C "$FHS" checkout -q -b rel
+gitq -C "$FHS" commit -q --allow-empty -m R1
+gitq -C "$FHS" checkout -q main
+gitq -C "$FHS" commit -q --allow-empty -m M1
+gitq -C "$FHS" checkout -q -b ahead
+gitq -C "$FHS" commit -q --allow-empty -m A1
+gitq -C "$FHS" checkout -q -b dev2 main
+gitq -C "$FHS" commit -q --allow-empty -m D2
+gitq -C "$FHS" push -q "$FHO" main rel old ahead dev2
+gitq clone -q "$FHO" "$FH"
+own() {  # <branch> <start>: a local branch at <start> plus one commit of its own
+    gitq -C "$FH" branch "$1" "$2"
+    gitq -C "$FH" checkout -q "$1"
+    gitq -C "$FH" commit -q --allow-empty -m "own work on $1"
+    gitq -C "$FH" checkout -q main
+}
+gitq -C "$FH" branch b1 origin/rel
+own b2 origin/rel
+gitq -C "$FH" branch b3 origin/main
+own b4 origin/main
+own b5 origin/main
+own b6 origin/rel
+gitq -C "$FH" push -q origin b6
+own b7 origin/main
+gitq -C "$FH" push -q origin b7
+own b10 origin/dev2
+FH_TRACKING_BEFORE="$(git -C "$FH" for-each-ref refs/remotes/)"
+fh() {  # <branch> <base> [VAR=value...]: prints "rc count [from] [reason]"
+    local b="$1" base="$2"; shift 2
+    env ${@+"$@"} bash -c '
+        source "$1/.agent/scripts/_worktree_helpers.sh"
+        rc=0; wt_base_foreign_history "$2" "$3" "$4" || rc=$?
+        echo "$rc $WT_FOREIGN_COUNT [$WT_FOREIGN_FROM] [$WT_FOREIGN_REASON]"' _ "$SB" "$FH" "$b" "$base" 2>&1
+}
+fh_case() {  # <label> <want> <branch> <base> [VAR=value...]
+    local label="$1" want="$2" got; shift 2
+    got="$(fh "$@")"
+    if [[ "$got" == "$want" ]]; then pass "foreign history: $label"; else fail "foreign history: $label: got [$got], want [$want]"; fi
+}
+fh_case "no commits of its own, started from the base: none" "0 0 [] []" b1 rel
+fh_case "started from the base, with its own commits: none" "0 0 [] []" b2 rel
+fh_case "started from origin's default (main) while the base is rel: main's commit is foreign, main named first" "1 1 [main (1), ahead (1), b7 (1) and 1 more] []" b3 rel
+fh_case "a base that is an ancestor of main (old), branch from main: main's commit is foreign" "1 1 [main (1), ahead (1), b7 (1) and 1 more] []" b4 old
+fh_case "main is an ancestor of the base (ahead), branch from main: its own commit only, none" "0 0 [] []" b5 ahead
+fh_case "the issue branch pushed to origin, started from the base: its own commits are not foreign" "0 0 [] []" b6 rel
+fh_case "the issue branch pushed to origin, started from main: main's commit still foreign (b7 itself not named)" "1 1 [main (1), ahead (1), dev2 (1)] []" b7 rel
+fh_case "two origin branches carry the foreign commits: the one with most first" "1 2 [dev2 (2), main (1), ahead (1) and 1 more] []" b10 rel
+fh_case "a base origin does not have" "2 0 [] [origin has no branch 'nosuch']" b2 nosuch
+fh_case "no local branch of that name" "3 0 [] [$FH has no branch 'nobranch']" nobranch rel
+gitq -C "$FH" remote set-url origin "file:///nonexistent/fh-origin.git"
+got="$(fh b2 rel)"
+if [[ "$got" == "3 0 [] ["*"nonexistent"*"]" ]]; then
+    pass "foreign history: origin unreachable: not decided (3), git's reason"
+else
+    fail "foreign history: origin unreachable: got [$got]"
+fi
+gitq -C "$FH" remote set-url origin "$FHO"
+got="$(fh b2 rel PATH="$GITSTUB:$PATH" STUB_FETCH=fail)"
+if [[ "$got" == "3 0 [] [fatal: stub fetch failed]" ]]; then
+    pass "foreign history: the fetch fails: not decided (3), git's line"
+else
+    fail "foreign history: fetch fails: got [$got]"
+fi
+if [[ "$(git -C "$FH" for-each-ref refs/remotes/)" == "$FH_TRACKING_BEFORE" && -z "$(git -C "$FH" for-each-ref refs/wt-base-check/)" ]]; then
+    pass "foreign history: the checkout's remote-tracking refs are unchanged and no check refs are left"
+else
+    fail "foreign history: refs changed: $(git -C "$FH" for-each-ref refs/wt-base-check/ refs/remotes/)"
+fi
+
+echo
 echo "=== No resolvable default: refuse with the set-head hint, never HEAD ==="
 SB2="$SANDBOX/ws2"
 make_ws_repo "$SB2"
