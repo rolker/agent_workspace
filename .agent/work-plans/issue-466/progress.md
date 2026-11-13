@@ -377,3 +377,21 @@ Step 4 showed the success bullet only named "STATUS=registered, <verbs> not run"
 - test_skill_paths.sh: 139 passed, 0 failed
 - check_design_anchors.sh: exit 0
 - No full pre-commit pass and no full suite, on the host's direction: the pull request exists and CI on the push is the check. The commit used SKIP=validate-script-tests; no --no-verify.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a13b5dfc9c1880daf, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #469 at `25ca4eb4`
+**Depth**: Deep (reason: whole-PR classification as before, security-relevant registration gate; this pass checks fix commit 98d2713c for the previous Local Review's must-fix and suggestion)
+**Must-fix**: 0 | **Suggestions**: 0
+
+The previous must-fix is closed. Walked as an agent: a ros2_colcon folder (required_commands=none) gets "no settings file (nothing to write)" and no note:, the list stays empty, the second dry run and the real call run with no --set, the yes is asked on the second dry run's output ("writes no settings file"), and the plain STATUS=registered ending is named. A single_project folder is as before: detected values without the note, a kept file read and shown in full with its build and test passed, a missing required key asked for, the yes on the second dry run, the real call with the same arguments and no others; F1 and F2 not reopened. The "not read for project" rule removes a --set, at most two, and every change is followed by another second dry run, so it cannot loop on its own and the real call never runs arguments the last dry run did not check. The kept-file read is now named (Read tool, a permission prompt, a refused or failed read stops). The new test is synthetic (sandbox folder "eta", distro "fakefox") and names no real project. ADR-0021's Decision section is byte-identical to 9f2d5fd4; 98d2713c changes one Consequences sentence, which matches the types' run= settings (single_project run=build test, ros2_colcon run=none).
+
+Ran: test_skill_paths.sh 139 passed 0 failed (run twice by mistake, the second time only to count FAIL lines: 0); test_register_session_root.sh 66 passed 0 failed. Cross-model reviewers, full suite and full pre-commit pass not run, on the host's direction (CI runs every suite). F3 out of scope, open for the owner.
+
+### Findings
+- [x] No issues found. LGTM.
