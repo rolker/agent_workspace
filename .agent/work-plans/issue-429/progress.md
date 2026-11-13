@@ -2736,3 +2736,54 @@ The three, as put to him: F1 (must-fix) a record push that times out with origin
   - hang-4;
   - hang-ws ×2.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`. The run outlasted the tool's 600 s foreground limit, was moved to the background, and was waited for to its exit (rc 0) before this entry.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 08:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 3 of 3)
+
+**Branch**: feature/issue-429 at `f98c44eb`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings
+
+Round note: this is round 4 of this diff. The counter reads 13 because it still includes PRs 445, 456 and 460 (issue 459); the host corrected it.
+
+Scope:
+- The round-3 must-fix and its two suggestions.
+- The fixes in `2d4950c4`, `7bd51a18` and `7aa3bc6d`.
+
+Reviewers:
+- Cross-model: skipped (round-4 convergence check, per handoff).
+- Claude adversarial: a fresh narrow sub-review ran.
+
+Tests, run by the sub-review on HEAD:
+- test_merge_pr_gate: 158/0. This covers hang-1 to hang-4 (hang-4 with its second run), both hang-ws cases (`--report-only`, `--force-unreviewed`) and pkg-18 (older, tie, unreadable, newer).
+- test_merge_pr: 150/0.
+- test_package_issue_loop: 220/0.
+- No `sleep 300` process was left behind.
+
+Checked:
+- **F1 (a timed-out record push).** Every outcome puts the record on origin or on the PR before the merge:
+  - Origin's tip is the record, or contains it: kept.
+  - Origin's branch lacks it, the fetch fails or times out, or the fetch writes no ref: undone and posted as a comment.
+  - The worst case is two copies, never a lost record.
+  - The "PR comment failed" path is word for word main's. Its message "could not be written anywhere" is true, because every route into it has undone the commit or never made one.
+- **F2.** The record is accepted when it is an ancestor of origin's tip, so the record pushed under a later commit is kept (hang-3 on-top).
+- **F3.** `_gate_newer_when`:
+  - It parses the `-05:00` form the script writes and compares instants.
+  - A tie, an empty value or an unreadable value is doubt, and doubt records.
+  - A skip happens only when the newest record matches on both type and conditions.
+  - The duplicate check for workspace and project PRs is logically identical to main's.
+- **Workspace gate verdicts.** Unchanged from main except on a hang. Every new condition is empty or false outside package PRs.
+- **design.md.** Every `docs/design.md` citation into `merge_pr.sh` matches the final file.
+
+Outside scope, not counted (already on main, worked out from the code, not run): when no timeline is read for an owning PR, the comment-only duplicate check takes the last comment of the same entry type, not the newest of either type.
+- Input: the comments are `## Merge (unreviewed)` with conditions A, then `## Merge (report-only)` with conditions A, and a `--force-unreviewed` run whose conditions are A.
+- Result: the run skips although the newest record is the report-only one.
+
+### Findings
+- [ ] No issues found. LGTM.
