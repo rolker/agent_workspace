@@ -190,6 +190,8 @@ supersedes ADR-0016 decision 3 for skills, is Accepted too (2026-11-09, #425): i
 was the same run. [ADR-0020](decisions/0020-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446)
 supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope.
 [Open questions](#open-questions) OQ-2 records where that run was tracked and who ran it.
+[ADR-0021](decisions/0021-a-project-session-may-register-its-own-folder.md) (2026-11-13, #466)
+supersedes ADR-0016 decision 5: a session may register the folder it was started in.
 
 - The workspace and each project are separate session roots. A session is in exactly one, found from
   its cwd by the longest-prefix match against the registry; registered project roots are checked before
@@ -210,11 +212,17 @@ supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope
   root's `.claude/settings.json` and `.claude/settings.local.json`, its hooks and permission rules,
   never reach a session in a subdirectory of the root). Neither refusal is about the plugin, which
   reaches both (ADR-0018 decision 6, ADR-0020).
-- One exception to working only under the root (#332): a project session writes its own project's
-  settings file `.agent/projects.d/<name>` in the workspace checkout, through `project_setting.sh set`,
-  which calls `registry_require_root` and, from a project root, refuses any other project's file. That
-  file is per-machine, gitignored workspace configuration the project's onboarding owns, not a tracked
-  change to the workspace. Nothing else a project session does leaves its root.
+- Two exceptions to working only under the root, both per-machine, gitignored workspace configuration
+  the project's onboarding owns, not tracked changes to the workspace. A project session writes its own
+  project's settings file `.agent/projects.d/<name>` in the workspace checkout, through
+  `project_setting.sh set`, which calls `registry_require_root` and, from a project root, refuses any
+  other project's file (#332). And a session started in a folder that is not registered may register
+  that folder, its registry line and settings file, through `register_session_root.sh` (#466,
+  ADR-0021): no path argument, it refuses a folder inside or over a registered root or the workspace,
+  and it is not promoted to the user tier, so each call asks for permission (registration is what lets
+  the promoted scripts, `build.sh` among them, run in a folder, so a session in an untrusted folder
+  must not register it without the owner seeing the command). Nothing else a project session does
+  leaves its root.
 - When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
@@ -224,14 +232,18 @@ supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope
   its own hook commands by their path (the `claude plugin` commands drop any marker in the file), so
   install is repeatable, `--check` tells another checkout's hooks from the user's own, and
   `--uninstall` removes only its own commands (`user_tier_install.sh` header).
-- Registration is a workspace operation, not something a project session does to itself (ADR-0016
-  decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
-  when the user tier is installed from that checkout, checks it reaches the new root
+- Registration is done from the workspace, or from a session in the folder itself (ADR-0021,
+  superseding ADR-0016 decision 5): `register_project.sh`, run from the workspace's main checkout,
+  registers a project and, when the user tier is installed from that checkout, checks it reaches the new root
   (`registration_verify.sh --user-tier`, read-only); nothing is enabled per root. See
   [Registry and adapters](#registry-and-adapters).
 - Onboarding is the project side (#332 D1): `/agent-workspace:onboard-project`, in a session started at
-  the project root, finds the project through `session_root.sh` (a workspace session or an
-  unregistered root is sent to registration), shows the recorded choices, asks only the footprint
+  the project root, finds the project through `session_root.sh` (a workspace session is sent to the
+  project's root; in a folder that is not registered it shows `register_session_root.sh --dry-run`, asks
+  one yes in text (the real call's permission prompt is not guaranteed, so it is a second gate), then
+  registers the folder and carries on, with the build and test not run; a folder in no git repository
+  is refused by registration's gate, a known gap, although its dry run looks clean), shows the recorded
+  choices, asks only the footprint
   questions not yet answered (`instructions`, and the records settings, whose default is provisional and
   of which only (project, project) is stored until #393), runs `project_integration_audit.sh` (read-only;
   six categories of how the project and the workspace fit together), and makes offers only when
@@ -340,7 +352,14 @@ Status: `decided`
   written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
   than removed when a check fails. `--remove` refuses live worktrees, removes the line and the settings
   file, and leaves the project root, its records, its memory and the user tier alone. The script header
-  holds the order and the output lines.
+  holds the order and the output lines. From a session in a folder that is not registered,
+  `register_session_root.sh` registers that folder alone (#466, ADR-0021): it takes no path and only
+  `--dry-run` and `--set build=`/`test=`, refuses a folder already registered (before handing over,
+  since `register_project.sh` would adopt it and write the `--set` keys), inside or over a registered root
+  or the workspace, not its repository's top, a linked worktree or an invalid or registered name, then
+  runs `register_project.sh <folder> --skip-run`, never `--install-user-tier`. Registration needs a git
+  repository today (`adapter validate`), although any registered folder is a project (owner,
+  2026-11-12): a folder in no git repository is refused and rolled back, a named gap.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
   records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
@@ -435,8 +454,9 @@ Tally: 3 no-op, 5 thin wrapper, 5 real. No conclusion is drawn from it here; tha
 
 Status: `proposed`
 
-A project is added in two steps (#332 D1), and both are built: registration from the workspace
-(`register_project.sh`, see Now) and onboarding at the project root (`onboard-project`, see
+A project is added in two steps (#332 D1), and both are built: registration, from the workspace
+(`register_project.sh`) or from a session in the folder itself (`register_session_root.sh`, ADR-0021;
+see Now), and onboarding at the project root (`onboard-project`, see
 [Sessions and roots](#sessions-and-roots)). Registering and unregistering on one machine are defined
 (Now). Proposed: one project on two machines, not defined yet. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
 (#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
@@ -830,7 +850,7 @@ no budget of their own.
 Status: `decided`
 
 Purpose: tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row
-per ADR in `docs/decisions/` (19), in order. The ADRs are history and none is edited here (owner
+per ADR in `docs/decisions/` (21), in order. The ADRs are history and none is edited here (owner
 decision 2026-10-09, C1-c); this table is the only place the standing below is recorded.
 
 Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
@@ -860,11 +880,12 @@ no section of this file carries that ADR.
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
-| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
+| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018; decision 5 (registration is a workspace script) by ADR-0021 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
 | [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, not `~/.claude/skills/` symlinks. Decisions 3 and 4 (enabled at local scope per registered root; the exception to ADR-0016 decision 2) and decision 6's paragraph on how `run-issue` decides the prefix (`skill_prefix.sh` refusing and `run-issue` stopping) are superseded by ADR-0020 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
 | [0019](decisions/0019-repo-pin-verb.md) | The `repo_pin` adapter verb: the ref a repository is pinned at and whether it is a branch, tag, commit or unknown, so a base never comes from the forge's default branch | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-11-12 |
 | [0020](decisions/0020-plugin-enabled-once-at-user-scope.md) | The plugin is enabled once, at user scope; nothing is written into a project checkout; the workspace checkout's tracked settings set it to false, and a session in a subdirectory of the checkout lists each shipped skill under both names (accepted, 2026-11-12) | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
+| [0021](decisions/0021-a-project-session-may-register-its-own-folder.md) | A session started in a folder that is not registered may write that folder's own registry line and settings file through one guarded script, `register_session_root.sh`, and nothing else in the workspace; the script is not promoted, so each call asks for permission; registration from the workspace keeps working | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-13 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -887,7 +908,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stayed Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? Answered by #423: the run was tracked in the roadmap's Direction section, and the owner ran it, through `/orchestrator` and `/run-issue` in a session started at the registered project's root, answering the merge checkpoint himself; it passed on 2026-11-09 and ADR-0016 is Accepted | Owner | The [Sessions and roots](#sessions-and-roots) Now block is `decided`; the Registry inventory can now be read to settle #295 |
-| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line and the settings file, and leaves the project, its plans, timelines and memory, and the user tier (the plugin is at user scope since #446) alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
+| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace (or, since #466, by `register_session_root.sh` from a session in its own folder) and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line and the settings file, and leaves the project, its plans, timelines and memory, and the user tier (the plugin is at user scope since #446) alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
 | OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file)? Answered by #259, a host decision of 2026-11-02 for the owner's confirmation at the merge: `AGENTS.md` stays at most 200 lines, held by the `agents-md-line-budget` hook | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First (the owner's go-ahead for the #259 drive is approval in principle; the final approval is his at the merge) |
@@ -982,7 +1003,8 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` citations refreshed after the owning record check came to compare mode as well as content with `git diff` (issue 429, pull request 461); the rule's wording, that the record is committed only when the working copy's `progress.md` is the committed one, does not change | #429 | 1023 |
 | 2026-11-13 | Review loop and timeline | An issue delivered in several pull requests (#459, owner decision 2026-11-13): the `review-code` row counts `MAX_ROUNDS` per pull request; the `merge` row says a merge on an open issue was an earlier part and the `plan` checkpoint follows; the routing bullet says `next` reads where the current pull request's work starts and whether a `merge` answer stands (row 3a); a new bullet states the boundary rule (`pr_start.py`, shared by `next`, `round` and `sources`), the issue-state check before the probe, what `proceed` relies on, and who closes the issue. The section grows by 13 lines and stays past the 60-line prompt: the rule's detail is in `pr_start.py`'s docstring and `run-issue/SKILL.md` step 13, so no further detail moves | #459 | 981 |
 | 2026-11-13 | Change log | Main merged into issue 459's branch (pull request 467) after issue 429's last pull request (461) landed: the rows of both sides are kept, issue 429's 2026-11-13 rows (already on main) before #459's, and their line counts are each side's own file at the time; the `dispatch_phase.sh` line numbers in Table 1 and the Target's mechanism 1 are refreshed for the merged script (#459 had moved them by six to twenty lines); this row's count is the merged file's | #459 | 1038 |
-| 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` line numbers in Table 1, the Records bullet and the Target's mechanism 1 refreshed after the owning checkout's reason came to cap each value rather than the whole sentence (issue 444, pull request 468: a comment of six lines moved everything after line 750); no statement changes | #444 | 1039 |
+| 2026-11-13 | Sessions and roots, Registry and adapters, Decision register, Open questions | A project session may register its own folder (#466, ADR-0021, superseding ADR-0016 decision 5): the Sessions and roots Now block names ADR-0021; the exceptions bullet becomes two exceptions, the settings file and a session registering the folder it was started in through `register_session_root.sh`, which is not promoted, so each call asks for permission; the registration bullet says registration is done from the workspace or from the folder's own session; the onboarding bullet says an unregistered folder is offered registration (dry run, one yes in text, the real call's permission prompt as a second gate, build and test not run) and names the no-git gap; Registry and adapters Now says what `register_session_root.sh` takes, refuses and hands over, and that registration needs a git repository today; its Target names both ways to register; register row 0016 notes decision 5 superseded, row 0021 is added and the count says 21 (it said 19, two rows behind); C4's answer names the new way. Sessions and roots is 149 lines and Registry and adapters 139, both past the 60-line prompt, and grow by 12 and 8: the bullets name the script and the ADR that hold the rules, so no detail moves | #466 | 1060 |
+| 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` line numbers in Table 1, the Records bullet and the Target's mechanism 1 refreshed after the owning checkout's reason came to cap each value rather than the whole sentence (issue 444, pull request 468: a comment of six lines moved everything after line 750); no statement changes | #444 | 1061 |
 
 ## Glossary
 
