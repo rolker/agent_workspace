@@ -143,3 +143,11 @@ The boundary rule (i) is right on every real multi-PR timeline that has its merg
 **Decision**: revise
 
 Revise for all nine findings. Host decisions: (1) "the issue is closed" ends the run as a general step before the pull-request probe, so a finished one-pull-request issue never resumes into a plan; the plan says what closes the issue in each case, including a pull request whose base is not the default branch (where "Closes #N" does not fire), without the loop closing an issue on its own. (2) A merge that left no merge checkpoint leaves no boundary: name the limitation, the host's remedy using existing vocabulary, and test it. (3) The armed state is disarmed by a Merge record or by a later merge, findings or merge-refused checkpoint with a non-merge answer, as the review's replay showed; not by PR-correlated entries. (4) After a merge with the issue open and no pull request, next answers checkpoint:plan, not plan-task: proceed routes to implement, revise to plan-task, both already in the table. (5) One shared predicate for the "No issues found. LGTM." placeholder of an approved review, used by findings and sources. (6) Cut the plan to size: rejected alternatives and the owner block move into the owner's question. (7) A plain "from pr_start import pr_start" with the script directory passed through the environment. (8) A handoff test that the next part's first pre-push review task line has no "no cross-model reviewers". (9) Build the multi-pull-request test timeline from pull request 461's head.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 09:50 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-459/plan.md` at `7afb7867`
+
+Revision applying the nine checkpoint decisions: guarded boundary (arm on merge decision, disarm on Merge record or non-merge answer), checkpoint:plan after a merge with no PR, closed issue ends the run before the PR probe, hand-merge limitation, shared placeholder predicate, plain import, handoff and 461-based tests. The owner's question is the last section.
