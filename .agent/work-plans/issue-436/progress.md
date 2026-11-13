@@ -1077,3 +1077,26 @@ F2 (test resolver): the tests run THIS branch's `tools/ros-manifest/src` via `PY
 Tests: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: exit 0, 147 s, every hook passed. The script-test hook ran ALL 49 suites (the local `main` ref is stale at `56a9a913`, so the list included `inspiration_registry.yml` from the merged main, which maps to no suite). The first run of the same command failed only on the hub guard above; fixed and re-run. Manifest-route tests ran here (0 skipped). Not done: no network or real-project test (by rule); the BSD `mv` fallback (no `mv -T`) and BSD `stat` are untested on this Linux machine; no pre-existing test failed.
 
 Deviations: the register hint says "register it as type ros2_colcon" (the type is positional in `register_project.sh`, there is no `--type` flag). `sync` also reports repositories in the new result that are not checked out (sync never imports; setup does), which the plan did not list.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 15:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `408fa819`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~1,900 lines across 16 files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) A tag deleted on the source remote is still resolved as clean: neither fetch prunes tags (`--prune` without `--prune-tags`); add `--prune-tags` (or check with ls-remote) and a test — `.agent/project_types/ros2_colcon/adapter.sh:648`
+- [ ] (must-fix) With a tag or commit `source_ref`, local commits on a detached HEAD in the clone are silently orphaned by `checkout --detach` and recorded `source-state=clean`; warn and keep (state local) as the branch case does, with a test — `.agent/project_types/ros2_colcon/adapter.sh:710`
+- [ ] (suggestion) sync's "not checked out yet, run setup" notice skips a whole layer that is new (no `src/`), the role-change case it exists for — `.agent/project_types/ros2_colcon/adapter.sh:1097`
+- [ ] (suggestion) validate: no warning for a clone made dirty after sync (HEAD unchanged, state clean) or a missing clone; spurious "file changed" warning when source itself changed — `.agent/project_types/ros2_colcon/adapter.sh:895`
+- [ ] (suggestion) "validate also refuses it" is vacuous: no resolved dir exists yet, so validate fails at _rc_require_manifest, never at the single-source check; run after a good setup and assert on the output — `.agent/scripts/tests/test_ros2_colcon.sh:3011`
+- [ ] (suggestion) No lock against concurrent setup/sync: two first setups can rm -rf each other's clone, two syncs collide in one clone, the loser's generated dir leaks; flock on configs/ — `.agent/project_types/ros2_colcon/adapter.sh:638`
+- [ ] (suggestion) Interrupt after `mv -T` but before `_RC_RESOLVE_TMP=""` deletes the live target (dangling link); BSD fallback has a no-link window; SIGKILL leftovers never swept — `.agent/project_types/ros2_colcon/adapter.sh:798`
+- [ ] (suggestion) `source_path` may be a symlink in the hostile repo pointing outside the clone; `[ -f ]` follows it; check realpath stays under the clone — `.agent/project_types/ros2_colcon/adapter.sh:722`
+- [ ] (suggestion) Confusing errors: a half-made `--no-checkout` clone reads as dirty forever; `source_ref=HEAD` passes the registry and fails at `checkout -B HEAD` — `.agent/scripts/_project_registry.sh:813`
