@@ -690,7 +690,7 @@ has "$RI" "run-issue step 13: what closes the issue, the post-merge plan checkpo
     'A pull request into another base (a package issue'"'"'s pinned base) never closes it' \
     'The loop never closes an issue itself.' \
     '`proceed` (→ `implement`) is offered only when `plan.md` is unchanged since that review and the plan names a part not yet delivered; otherwise the answer is `revise`' \
-    '`**Decided-by**: owner`, his words in the body), or a `restart` when he restates the goal'
+    '`**Decided-by**: owner`, his words in the body). A `restart` is no remedy there: it starts the rounds over but draws no boundary'
 has "$RI" "run-issue steps 11 and 13: a landed merge ends the run; the next part is a fresh /run-issue (issue 459)" \
     '**A landed merge ends the run.** When `merge_pr.sh` reports the pull request merged, the run is `done`: the host reports the merge and does not call `next` again.' \
     'The next part of the issue, if any, starts with a fresh `/run-issue <N>` (step 13).' \

@@ -25,11 +25,12 @@ Atomic commits, after rebasing on 461 once it merges:
    `merge-refused` and a non-merge answer disarms; the first start entry while
    armed (`## Plan Authored`, or an `## Implementation` with no `**Addressed**`
    that is `**Branch**`-correlated, or carries a `**PR**` number other than the
-   merged pull request's (the newest PR-correlated entry's before the merge
-   answer; unknown → not a start), or has no correlation line and is not
-   complete; first fix round) is the boundary; a restart checkpoint sets the
-   round start (not the pull-request start `sources` reads; first fix round) and
-   clears the armed state. A `## Merge (...)` record neither arms nor disarms
+   merged pull request's (the newest PR-correlated entry's since the previous
+   boundary, before the merge answer, a legacy `**PR**: #N — ...` line read by
+   its `#N`; unknown → not a start), or has no correlation line and is not
+   complete; first and second fix rounds) is the boundary; a restart checkpoint
+   sets only the round start (not the pull-request start `sources` reads, and
+   a standing merge answer stays armed; second fix round, host decision). A `## Merge (...)` record neither arms nor disarms
    (`merge_pr.sh` writes it at the gate, before the merge, whether or not it
    lands). Entries that are not start entries do not disarm. It relies on ADR-0013's
    correlation table (`**Branch**` only "if no PR exists yet"). Both inline `-c`
@@ -86,8 +87,8 @@ Atomic commits, after rebasing on 461 once it merges:
      otherwise answer `revise`.
    - A multi-pull-request section: `Part of #N`, worktree and branch recreated
      after each merge, the hand-merge remedy (the host records the owner's merge
-     as a `merge` checkpoint, `Decided-by: owner`, before the next part, or a
-     `restart`).
+     as a `merge` checkpoint, `Decided-by: owner`, before the next part; a
+     `restart` is no remedy, it draws no boundary: second fix round).
    - `docs/design.md`, `review_loop_lifecycle.md`, `script_reference.md`, script
      headers.
 
@@ -192,8 +193,8 @@ work (a new plan, or the first implementation on a fresh branch) starts the next
 pull request; earlier reviews stop counting toward the three-round limit. A
 refused or failed merge does not count, and the merge gate's own record does
 nothing either way. Limitation: a merge done by hand with no `merge` answer
-recorded leaves no boundary; the host then records it (or a `restart`) before the
-next part. Rejected in a line: "the merge answer is not the newest entry",
+recorded leaves no boundary; the host then records it before the
+next part (second fix round: a `restart` is no remedy, it draws no boundary). Rejected in a line: "the merge answer is not the newest entry",
 a pull request number change, asking GitHub, or a new "merged" entry each fail on
 refusals, timing, offline use or a new entry type.
 

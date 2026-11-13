@@ -992,23 +992,28 @@ request: the part's `## Plan Authored`, or its first `## Implementation`
 with no `**Addressed**` that is `**Branch**`-correlated, or carries a
 `**PR**` number other than the merged pull request's (a draft of the next
 part that existed before it; the merged number is the newest PR-correlated
-entry's before the `merge` answer), or has no correlation line and is not
+entry's since the previous boundary, before the `merge` answer; a legacy
+`**PR**: #N — ...` line counts by its `#N`), or has no correlation line and is not
 `complete`, whatever the status otherwise. Its first pre-push review is
 round 1 with outside reviewers, and a failed first implement is retried as
 `implement`. Not a start: a fix on the merged pull request's own number, a
 `**PR**` Implementation when the merged number is unknown (no boundary is
 guessed: a missed one only brings the rounds checkpoint early), and a
 complete Implementation with no correlation line. The rounds count from
-the newer of this boundary and a `restart`; `sources` cuts only at the
-boundary, so a restart while a pull request is open keeps its earlier
-reviews in triage input. A refused or failed merge is no
+the round start, the newer of this boundary and a `restart`; `sources`
+cuts only at the boundary. A `restart` moves only the round start: while a
+pull request is open it keeps that pull request's earlier reviews in triage
+input, and after a `merge` answer it leaves the answer standing, so the
+next part's first start entry is still the boundary. A refused or failed merge is no
 boundary: the `merge-refused`, `merge` or `findings` checkpoint answered
 anything but `merge` disarms it, and a `## Merge (...)` record does nothing
 either way. A merge made by hand with no `merge` answer recorded leaves no
 boundary, and the next part's reviews would count with the last part's:
 before the next part, the host records the owner's merge as a `##
 Checkpoint` (`**After**: merge`, `**Decision**: merge`, `**Decided-by**:
-owner`, his words in the body), or a `restart` when he restates the goal.
+owner`, his words in the body). A `restart` is no remedy there: it starts
+the rounds over but draws no boundary, so `sources` would still list the
+merged part's reviews.
 
 ## Action tokens
 

@@ -613,11 +613,11 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   request starts is one rule in `pr_start.py`: after a `merge` answer, the first `## Plan Authored`, or
   `**Addressed**`-less `## Implementation` on the branch or on another pull request than the merged one
   (a fix on the merged one is none); a non-`merge` answer at `merge`, `findings` or `merge-refused`
-  withdraws it, a `## Merge (...)` record does nothing, and a hand merge with no `merge` answer leaves no
-  boundary until the host records one. Rounds (`next`, `review_progress.sh round`) count from the newer
-  of it and a `restart`; `sources` cuts only at it. A landed merge ends the run; the next part is a fresh
-  `/run-issue`, which asks the issue's state first (closed ends it; unreadable stops it), takes a merged
-  pull request as an earlier part, and with none open gets the `plan` checkpoint (row 3a), where
+  withdraws it, a `## Merge (...)` record does nothing, and a hand merge leaves none until the host
+  records a `merge` answer. Rounds (`next`, `review_progress.sh round`) count from the newer of it and a
+  `restart` (no boundary); `sources` cuts only at it. A landed merge ends the run; the next part is a
+  fresh `/run-issue`, which asks the issue's state first (closed ends it; unreadable stops it), takes a
+  merged pull request as an earlier part, and with none open gets the `plan` checkpoint (row 3a), where
   `proceed` is offered only for a plan unchanged since its review that names a part not yet delivered.
   `--pr merged` (row 1, `done`) is given only by hand. The last part's `Closes #N` closes the issue on
   the default branch; elsewhere the owner closes it; the loop never does (`run-issue/SKILL.md` step 13).
