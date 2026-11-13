@@ -496,3 +496,28 @@ Not done, or not verified:
 - The live suite was not run (the host runs it). The changed U-case judging is tested on synthetic lists only.
 - The real `claude` CLI was invoked by mistake during one test run in this pass: the second-checkout case of `test_user_tier_install.sh` ran the installer without the stub (`run2` set no `AGENT_WORKSPACE_CLAUDE_BIN`, and the installer now calls the CLI on every install), so its `--force`, plain and `--uninstall` runs could each call `claude plugin ... --scope user` (marketplace add, install, uninstall, marketplace remove) from a scratch directory, with `HOME` set to the test's sandbox; the `--force` run exited 1. The real `~/.claude` was not read to confirm it is untouched. Fixed: `run2` uses the stub, and the stub is first on `PATH` for the whole suite.
 - The proposed follow-up issue about relaxing the `session_root.sh` refusals is not opened (the owner's); its text is in the hand-back.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 20:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-446 at `630c47d6`
+**Base**: main
+**Depth**: Deep (reason: 25 files, +3198 -2202; governance files: ADRs, design.md, principles_review_guide.md, .claude/settings.json)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static (shellcheck --severity=warning clean on all changed .sh; settings.json parses), governance, plan drift, Claude adversarial (ran 8 non-live suites, 0 failures: test_user_tier_install 254, test_register_project 197, test_project_integration_audit 279, test_session_root 71, test_session_start_layer 52, test_user_tier_guard 64, test_skill_prefix 24, test_plugin_acceptance_helpers 29), cross-model gemini (agy) and codex, both completed. No non-live test can reach the real claude CLI or the real ~/.claude (stub first on PATH, sandbox HOME, AGENT_WORKSPACE_CLAUDE_BIN set on every installer call). New ADR-0019 instead of editing ADR-0018 complies with ADR-0001/0008/0017; the plan's "amend in place" would have broken ADR-0017.
+
+### Findings
+- [ ] (must-fix) ADR-0019 also replaces ADR-0018 decision 6's skill-names paragraph (prefix script "fails ... run-issue stops", the same-advice refusals, "installer never enables the plugin in the workspace"), but ADR-0018's Status addendum and ADR-0019's Status name only decisions 3 and 4 and say "the rest of ADR-0018 stands"; name decision 6's skill-names paragraph as superseded too (also the design.md register row 0018 and the review-guide 0018 row) — `docs/decisions/0018-plugin-based-skill-delivery.md:11`, `docs/decisions/0019-plugin-enabled-once-at-user-scope.md:5`
+- [ ] (must-fix) Decision register still says "One row per ADR in docs/decisions/ (18)"; there are now 19 — `docs/design.md:739`
+- [ ] (suggestion) A local `enabledPlugins` true with no marketplace declaration and no CLI install record (hand-written) may not be removable by `claude plugin uninstall --scope local`; install then exits 1 with ERROR on every run. Consider a note with the hand removal when there is no declaration and no CLI-record install — `.agent/scripts/user_tier_install.sh:967`
+- [ ] (suggestion) An installed_plugins.json that exists but does not parse silently drops the roots found only through it; `--uninstall` can then report a clean removal. Say so (note, and an error under strict) — `.agent/scripts/user_tier_install.sh:859`
+- [ ] (suggestion) The enable trusts `enabledPlugins[id] == true` without the user-scope record in installed_plugins.json; after a repoint from another checkout `install` is skipped, so the CLI's install record/cache may still be the other checkout's. Consider checking the user-scope install record in install and `--check` — `.agent/scripts/user_tier_install.sh:819`
+- [ ] (suggestion) `--uninstall` treats `partial` (enabled true, no declaration) as this checkout's and runs the user-scope uninstall + marketplace remove on an enable it cannot attribute — `.agent/scripts/user_tier_install.sh:1079`
+- [ ] (suggestion) cli_user traps INT and TERM but not HUP, so a hang-up leaves the scratch directory — `.agent/scripts/user_tier_install.sh:788`
+- [ ] (suggestion) The workspace copy keeps a real `.claude/settings.local.json` (the other two suites remove it), so the "checkout" place reads the machine's own file until the test overwrites it — `.agent/scripts/tests/test_user_tier_install.sh:44`
+- [ ] (suggestion) Plan step 4 said the follow-up issue on relaxing the session_root.sh refusals is opened in this PR; it is not (left to the owner). Open it or say so in the PR body — `.agent/work-plans/issue-446/plan.md:329`
