@@ -573,7 +573,7 @@ _rc_bootstrap_manifest() {
 # --- Manifest route (issue #436) -------------------------------------------
 # A project whose settings file sets `source` takes the manifest route: its
 # manifest, in the new format (tools/ros-manifest), is fetched (a git URL
-# source, cloned by the adapter into configs/source-clone/) or read in place
+# source, afresh on each setup and sync; no clone is kept) or read in place
 # (a path source), resolved for the registry line's role= and distro= by the
 # workspace-installed resolver into a generated directory
 # configs/manifest-resolved.gen-XXXXXX/ (a prefix no one types when moving
@@ -584,22 +584,29 @@ _rc_bootstrap_manifest() {
 # project with no `source` takes the bootstrap route, unchanged.
 #
 # Never silently stale: after `sync`, what is resolved is what the remotes
-# hold now, or the run fails and says why. The clone is the adapter's own
-# (owner's rule, 2026-11-13): the adapter leaves it detached at the
-# fetched commit and records that commit in .git/ros2-colcon-adapter-commit.
-# When it is untouched (a git clone of source, an index, HEAD detached at
-# the recorded commit, the tags the adapter recorded after its last fetch
-# and no others, no assume-unchanged or skip-worktree file, no uncommitted
-# change, untracked or ignored file),
-# setup and sync fetch and move it to the ref's commit, a rewritten branch
-# or moved tag included. In any other state they refuse and change
-# nothing, and say how to recover (remove the clone) and how to work on a
-# manifest locally (the path form); validate fails the same way. A run
-# killed between the checkout and the record leaves a clone that is
-# refused: remove it. The adapter removes only a clone this run created
-# and could not finish. Every `extends` base is cloned afresh, the
-# resolver's cache being a sibling of the new generated directory removed
-# on every exit.
+# hold now, or the run fails and says why. No clone is kept (owner's
+# decision, 2026-11-13, round-5 checkpoint): setup and sync fetch a URL
+# source into <gen>.src, a sibling of the new generated directory, removed
+# after the resolve and on every exit path, signals included (a further
+# INT, TERM or HUP during that removal is ignored); a SIGKILL's leftover
+# is in the gen- family the sweep removes. The fetch goes into a fresh
+# `git init --template=`, so the source repository's config, hooks,
+# replace refs and refspecs never apply, while the user's own git
+# configuration (credentials, url.*.insteadOf) does; submodules are never
+# fetched, and nothing from the repository is run. ls-remote decides the
+# kind of source_ref (a branch, then a tag, else a commit of 7 to 64 hex
+# characters); a branch or tag is fetched one commit deep, a commit by its
+# full name one commit deep, or, when the server will not serve that (or
+# the name is abbreviated), by a full fetch of the remote's branches and
+# tags. The commit is checked out detached; no symbolic link along
+# source_path is followed. .resolved-from records source, source_ref,
+# source_path and the commit. A fetch failure (offline, a ref the remote
+# lacks, a refused transport) exits 1 and says the previous result is
+# still in use, its link unchanged. A configs/source-clone/ left by an
+# earlier version of this route is neither read nor removed. Local
+# manifest work uses the path form. Every `extends` base is cloned afresh,
+# the resolver's cache being a sibling of the new generated directory
+# removed on every exit.
 #
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none
@@ -608,7 +615,7 @@ _rc_bootstrap_manifest() {
 #
 # Concurrency: setup and sync fetch and resolve holding an exclusive flock
 # on configs/.lock.source (waits ROS2_COLCON_LOCK_WAIT seconds, default
-# 120, then refuses with nothing changed), so two runs never clone, fetch
+# 120, then refuses with nothing changed), so two runs never fetch, sweep
 # or swap the link at once. The lock file is never removed (the reason
 # project_file_set gives in _project_registry.sh). Without flock (macOS by
 # default) the fetch and resolve run unlocked, as project_file_set's

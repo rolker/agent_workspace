@@ -80,9 +80,9 @@
 #                         (make install-ros-manifest): an absolute path to
 #                         the file, or an http(s):// or file:// URL of a git
 #                         repository holding it. Not beside bootstrap_url.
-#                         A URL is cloned into <root>/configs/source-clone,
-#                         the adapter's own: setup and sync refuse a clone
-#                         that was edited. To work on a manifest locally,
+#                         A URL is fetched afresh by each setup and sync
+#                         into a temporary directory removed afterwards (no
+#                         clone is kept). To work on a manifest locally,
 #                         give the path of the file in your own checkout.
 #   source_ref            with a URL source: the branch, tag or commit
 #   source_path           with a URL source: the file in the repository

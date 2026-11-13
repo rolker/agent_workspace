@@ -401,16 +401,16 @@ Status: `decided`
   and the distro rule.
 - `ros2_colcon` has two routes to that directory (#436), chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
-  new format, is an absolute path read in place or a git repository the adapter clones into
-  `configs/source-clone` (`source_ref`, `source_path`, default `manifest.yaml`), resolved for the
+  new format, is an absolute path read in place or a git repository fetched afresh by each `setup` and
+  `sync` into a temporary directory removed afterwards (`source_ref`, `source_path`, default
+  `manifest.yaml`), resolved for the
   registry line's `role=` and `distro=` (both required) by the workspace-installed resolver,
   `<main checkout>/.venv/bin/ros-manifest` from `make install-ros-manifest`, called by CLI only, into a
   new generated directory that `configs/manifest-resolved` is relinked to; every verb reads the
   directory the same way on both routes. One source only: `source` beside any other bootstrap source is
-  a hard error that names it. Never silently stale: `setup` and `sync` fetch the clone and move it to
-  the ref's commit, and clone every `extends` base afresh; a failed fetch or resolve keeps the previous
-  directory. The clone is the adapter's own (owner, 2026-11-13): any change to it is refused by `setup`,
-  `sync` and `validate` with nothing changed, and local manifest work uses the path form. `setup` and
+  a hard error that names it. Never silently stale: `setup` and `sync` fetch the ref's commit afresh and
+  keep no clone (owner, 2026-11-13), and clone every `extends` base afresh; a failed fetch or resolve
+  keeps the previous directory. Local manifest work uses the path form. `setup` and
   `sync` fetch and resolve holding a flock on `configs/.lock.source`, never removed, and every verb
   reads one generated directory throughout, never removed while a run reads it (without `flock`, the
   one before the live one is kept instead). `validate` also fails when the directory was resolved from
@@ -1035,6 +1035,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Registry and adapters | The manifest route's fetch and resolve hold a flock on `configs/.lock.source`, never removed, unlocked without `flock` as the settings writer is. One sentence in the existing bullet; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1086 |
 | 2026-11-13 | Registry and adapters | Every verb on the manifest route reads one generated directory throughout, never removed while a run reads it; unguarded without `flock`. The lock sentence grows by one line; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1088 |
 | 2026-11-13 | Registry and adapters | The source clone is the adapter's own (owner's decision at the rounds checkpoint): a modified clone is refused with nothing changed and local manifest work uses the path form, replacing "a dirty clone or local commits are never forced and resolve with a warning"; without `flock` the directory before the live one is kept. The bullet grows by two lines; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1091 |
+| 2026-11-13 | Registry and adapters | No kept clone (owner's decision at the round-5 checkpoint): a git `source` is fetched afresh by each `setup` and `sync` into a temporary directory removed afterwards, replacing the adapter's own clone in `configs/source-clone` and its refusal of a modified clone. The bullet keeps its length; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1092 |
 
 ## Glossary
 
