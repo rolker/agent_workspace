@@ -549,7 +549,6 @@ cleanup_run() {
     elif (( parallel )); then
         live_groups
         if (( ${#live[@]} )); then
-            echo "run_script_tests: stopping ${#live[@]} process group(s) of this run still running at exit" >&"$runner_err"
             # The loop's INT/TERM/HUP traps were reset after it, and bash
             # does not run the EXIT trap twice: a signal during this stop
             # (up to 5 seconds) would end the runner here and leave
@@ -558,6 +557,7 @@ cleanup_run() {
             trap 'kill_now; rm -rf "$RUN_ROOT"; exit 130' INT
             trap 'kill_now; rm -rf "$RUN_ROOT"; exit 143' TERM
             trap 'kill_now; rm -rf "$RUN_ROOT"; exit 129' HUP
+            echo "run_script_tests: stopping ${#live[@]} process group(s) of this run still running at exit" >&"$runner_err"
             stop_suites TERM
         fi
     fi
