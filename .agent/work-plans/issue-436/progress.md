@@ -1183,3 +1183,30 @@ Round-1 findings: all nine addressed as described in the Implementation entry at
 - `bash .agent/scripts/tests/test_project_file.sh`: 546 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit does not show which suites it ran on a pass).
 - Not verified: BSD `mv -h` and the no-flock paths on a real BSD/macOS host (Linux only, with stub mv and flock off PATH); `pgrep` is assumed present where the deterministic lock test runs (it is on this host and on Ubuntu CI images; not checked in CI here).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 16:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent acd44ebb128a81666, resume 2 of 3)
+
+**Branch**: feature/issue-436 at `c1642c68`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~2,800 lines across 16 files)
+**Must-fix**: 4 | **Suggestions**: 6
+**Round**: 3 | **Ship**: continue — round 3: 4 must-fix is high; another independent read warranted
+
+Round-2 findings: all ten addressed as described in the Implementation entry at `c1642c68`, checked fix by fix. Three of the four must-fix below are in code the round-2 fixes added (fresh=1 on a clone with no index came from round 1's fix 9).
+
+### Findings
+- [ ] (must-fix) A pre-existing clone with no index (e.g. after `rm .git/index`) is taken as just cloned (`fresh=1`): the dirty check is skipped and a later fetch or ref failure `rm -rf`s the clone with its local commits and edits; track "created by this run" apart from "needs a checkout" (Codex; confirmed by reading :752 and the fresh-only removals) — `.agent/project_types/ros2_colcon/adapter.sh:752`
+- [ ] (must-fix) `kind=commit` accepts a commit only the clone holds and records it `source-state=clean`; when source_ref later turns to a branch, `_rc_head_is_last_resolved` waives the orphan guard and the local commit is left on no ref, silently; require the commit to be reachable from a remote ref (else state local), and the same in `_rc_head_is_last_resolved` (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:778`
+- [ ] (must-fix) The rewrite rule's `reset --hard` overwrites an untracked file the rewritten remote now tracks when the user has `status.showUntrackedFiles=no` (porcelain then shows the clone as clean); use `status --porcelain --untracked-files=normal` in the dirty checks (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:826`
+- [ ] (must-fix) The two-syncs lock test's `pgrep -f "flock -x -w 117 9"` searches the whole machine: without pgrep it always fails, and any process whose command line holds the string (a parallel run, an editor, a grep) makes the three lock assertions pass with the lock broken (both reproduced); tie the check to this run (a unique wait value per run plus p2's descendants, or a flock wrapper on the sandbox PATH that writes a file), and skip rather than fail without the tool — `.agent/scripts/tests/test_ros2_colcon.sh:3237`
+- [ ] (suggestion) The rewrite rule knows only the last successful resolve: a fetch that moved the clone followed by a failed resolve (whose message then says "nothing changed"), or a branch revisited after another ref, is later taken for local commits after a force-push, and stays stuck on the old commit with a warning (Gemini) — `.agent/project_types/ros2_colcon/adapter.sh:694`
+- [ ] (suggestion) Without flock, pinning makes readers worse off: a concurrent sync removes the pinned directory at once, so setup fails on a missing repos file and sync skips the layer silently (reproduced); pin only with flock, or never remove at the swap without it — `.agent/project_types/ros2_colcon/adapter.sh:140`
+- [ ] (suggestion) A failed mv probe (mktemp error) silently takes the non-atomic remove-then-rename path on GNU, and a failure after its `rm` reports "nothing changed" with no link left — `.agent/project_types/ros2_colcon/adapter.sh:959`
+- [ ] (suggestion) fd 8 reaches every child (a long-lived one, such as git auto gc or a ROS daemon, keeps that directory from the sweep), and where flock on a directory fails nothing is ever removed: one `gen-*` per sync accumulates unwarned — `.agent/project_types/ros2_colcon/adapter.sh:116`
+- [ ] (suggestion) The registry accepts directory-like `source_path` values (`.`, `sub/`, `a//b`), refused only after a clone and fetch (Gemini) — `.agent/scripts/_project_registry.sh:831`
+- [ ] (suggestion) An assertion still checks the loose prefix `configs/manifest-resolved.`; tighten it to `.gen-` — `.agent/scripts/tests/test_ros2_colcon.sh:2535`
