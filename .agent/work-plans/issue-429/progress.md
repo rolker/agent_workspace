@@ -2501,7 +2501,7 @@ Host question on the repeated comment: there is a real input. It is a regression
   - Why: `_gate_already_recorded` reads only A's `progress.md` whenever `_gate_progress` is set. On main, a package PR's duplicate check read the PR's comments, so it posted once.
   - Fix: when the timeline holds no match, also check the PR's comments.
   - `.agent/scripts/merge_pr.sh:1116-1145`
-- [ ] (suggestion) With no argument, `check_branch_updates.sh` now prints a red error and exits 2 where main warned and exited 0.
+- [x] (suggestion) With no argument, `check_branch_updates.sh` now prints a red error and exits 2 where main warned and exited 0.
   - Input: a stale `origin/HEAD` after origin renamed master to main, or an empty origin, where `remote show` yields the name "(unknown)". Every commit (pre-commit hook) and every `worktree_enter.sh` then prints "✗ Error: origin has no branch ...". Nothing is blocked, because both callers ignore the exit code.
   - Fix: keep exit 2 only with `--base`; otherwise warn with exit 0, and treat "(unknown)" as no name.
   - `.agent/scripts/check_branch_updates.sh:141-145`

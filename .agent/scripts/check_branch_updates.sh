@@ -23,9 +23,12 @@
 #       be fetched or did not answer in time: a warning is printed, nothing
 #       is blocked)
 #   1 - Strict mode only: the branch is behind
-#   2 - Error occurred (also an unknown option or a missing --base value;
-#       origin answers but has no branch <b>; or origin/<b> is missing after
-#       a fetch that reported success)
+#   2 - Error occurred (also an unknown option or a missing --base value).
+#       With --base only: origin answers but has no branch <b>, or
+#       origin/<b> is missing after a fetch that reported success. With no
+#       --base those cases, and an origin that names no default branch
+#       ("(unknown)"), are warnings with exit 0, as before: the name then
+#       comes from origin/HEAD, which can be stale.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -107,6 +110,13 @@ else
         # Fallback: query remote (slower)
         DEFAULT_BRANCH=$(bounded_git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2 | xargs || echo "main")
     fi
+    # origin answered without naming its HEAD (an empty origin):
+    # `remote show` says "(unknown)". Nothing to compare with; a warning,
+    # as before, never an error.
+    if [[ "$DEFAULT_BRANCH" == "(unknown)" ]]; then
+        echo -e "${YELLOW}⚠️  Warning: origin does not name its default branch; not compared${NC}"
+        exit 0
+    fi
     # The pipeline above can succeed with no output (origin unreachable:
     # xargs still exits 0), which would leave the name empty.
     [[ -n "$DEFAULT_BRANCH" ]] || DEFAULT_BRANCH="main"
@@ -142,15 +152,25 @@ if [ "$FETCH_RC" -ne 0 ]; then
     LS_RC=0
     bounded_git ls-remote --exit-code --heads origin "refs/heads/$DEFAULT_BRANCH" >/dev/null 2>&1 || LS_RC=$?
     if [ "$LS_RC" -eq 2 ]; then
-        echo -e "${RED}✗ Error:${NC} origin has no branch '$DEFAULT_BRANCH'; nothing to compare with" >&2
-        exit 2
+        if [[ -n "$BASE_BRANCH" ]]; then
+            echo -e "${RED}✗ Error:${NC} origin has no branch '$DEFAULT_BRANCH'; nothing to compare with" >&2
+            exit 2
+        fi
+        # No --base: the name came from origin/HEAD, which can be stale
+        # (origin renamed its default branch). A warning, as before.
+        echo -e "${YELLOW}⚠️  Warning: origin has no branch '$DEFAULT_BRANCH' (the default branch origin/HEAD names here; run 'git remote set-head origin --auto' if it is stale); not compared${NC}"
+        exit 0
     fi
     echo -e "${YELLOW}⚠️  Warning: Could not fetch '$DEFAULT_BRANCH' from origin; not compared${NC}"
     exit 0  # Don't block on fetch failures
 fi
 if ! git rev-parse --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH^{commit}" >/dev/null; then
-    echo -e "${RED}✗ Error:${NC} the fetch of '$DEFAULT_BRANCH' reported success but wrote no origin/$DEFAULT_BRANCH; nothing to compare with" >&2
-    exit 2
+    if [[ -n "$BASE_BRANCH" ]]; then
+        echo -e "${RED}✗ Error:${NC} the fetch of '$DEFAULT_BRANCH' reported success but wrote no origin/$DEFAULT_BRANCH; nothing to compare with" >&2
+        exit 2
+    fi
+    echo -e "${YELLOW}⚠️  Warning: the fetch of '$DEFAULT_BRANCH' reported success but wrote no origin/$DEFAULT_BRANCH; not compared${NC}"
+    exit 0
 fi
 
 # Get commit counts

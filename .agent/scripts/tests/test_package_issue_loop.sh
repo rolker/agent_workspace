@@ -1139,6 +1139,29 @@ if command -v timeout >/dev/null 2>&1; then
         "$([[ "$reached" == yes && -z "$left" && "$rc" -eq 0 && "$elapsed" -lt 60 \
               && "$out" == *"origin did not answer within 1s; not compared with pinned"* ]]; echo $?)" "rc=$rc reached=$reached left=$left $out"
 fi
+# With no --base the name comes from origin/HEAD or `remote show`, and main's
+# script warned and exited 0 when it could not compare ("Could not fetch from
+# remote"); it still warns with exit 0, never an error, in both cases:
+# a stale origin/HEAD naming a branch origin no longer has, and an origin
+# that names no default branch ("(unknown)").
+NB="$SANDBOX/no-base"
+git init -q --bare -b main "$NB/o.git"
+git clone -q "$NB/o.git" "$NB/c" 2>/dev/null
+git -C "$NB/c" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$NB/c" push -q origin main
+git -C "$NB/c" checkout -q -b feature/issue-19
+git -C "$NB/c" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
+raw=$(cd "$NB/c" && "$CBU" 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "no --base, stale origin/HEAD (master gone): a warning naming it, exit 0, no error" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Warning: origin has no branch 'master' (the default branch origin/HEAD names here"* \
+          && "$out" != *"Error"* ]]; echo $?)" "rc=$rc $out"
+git init -q --bare -b main "$NB/empty.git"
+git -C "$NB/c" remote set-url origin "$NB/empty.git"
+git -C "$NB/c" symbolic-ref -d refs/remotes/origin/HEAD
+raw=$(cd "$NB/c" && "$CBU" 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "no --base, origin names no default branch: a warning, exit 0, no error and no '(unknown)' branch" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Warning: origin does not name its default branch; not compared"* \
+          && "$out" != *"Error"* && "$out" != *"(unknown)"* ]]; echo $?)" "rc=$rc $out"
 
 # The approved pre-push review, publish (step 7's block), the review fetch.
 (cd "$A17" && entry 'Local Review (Pre-Push)' '**Verdict**: approved' "**Branch**: feature/issue-17 at \`$(git -C "$A17" rev-parse --short HEAD)\`" \
