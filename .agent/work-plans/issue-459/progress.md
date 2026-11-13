@@ -376,3 +376,25 @@ All 12 rows of the plan's Tests table plus the issue-307-shape-plus-part, the fa
 
 ### Pull request 461
 `git merge-tree` of this head with 461's head `7ef2a6a2`: one conflict, docs/design.md change-log rows (both append a row at the table's end). dispatch_phase.sh, run-issue SKILL.md and script_reference.md merge cleanly (this change keeps out of `cmd_handoff`, `base`, step 11 and the script_reference rows 461 edits). After 461 merges, the 429 real-timeline test still holds (it checks the first two boundaries; 461's head adds 71P).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 10:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-459 at `96fedbc0`
+**Base**: main
+**Depth**: Deep (reason: ~1000 changed lines outside records; the dispatcher and review-loop enforcement scripts plus run-issue/design governance text)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) A next part whose first `## Implementation` carries `**PR**` (a pre-existing draft PR, probed as `--pr none`, then post-merge plan `proceed`, no Plan Authored) never starts a boundary: synthetic timeline part 1 (3 pre-push reviews, merge answer) + plan/proceed + Implementation `**PR**: #6` + one changes-requested pre-push review gives `next` checkpoint:rounds round=4 and `round` round=5 (so a "no cross-model reviewers" handoff); a failed such Implementation retries as address-findings. Same with `**Branch**`: round=1. Discriminate by PR number (332's entry 64 is PR 409 = the merged PR's own number; a new part's draft has a different one) and test it; codex and the Claude adversarial found it independently — `.agent/scripts/pr_start.py:53`
+- [ ] (must-fix) run-issue step 2 drops `--pr merged` as a probe answer, but step 11 (`SKILL.md:921-923`) still relies on it to end the run after `action=merge`: after a landed merge on an issue still open (any earlier part, a non-default base, or an auto-close not yet visible) the re-probe gives `--pr none` and `next` runs with the worktree gone: `dispatch_phase.sh next --issue 307 --pr none --type workspace` → `error: next: no workspace worktree found`, rc=2, instead of ending the run. Say in steps 11/13 that a landed merge ends this run (`done`; the next part is a fresh `/run-issue <N>`), and fix the step 11 sentence — `.claude/skills/run-issue/SKILL.md:921`
+- [ ] (must-fix) Missing consequence: the round rule is still written as "after the newest `**Decision**: restart`" in review-code step 2 (PR-mode hand count) and step 6, and in review_depth_classification.md's round-3 text; a host hand-counting part 2's PR-mode `## Local Review` entries by that text counts part 1's and can call part 2's first PR-mode re-review a round-3 convergence check with no cross-model reviewers — `.claude/skills/review-code/SKILL.md:198`, `:517`; `.agent/knowledge/review_depth_classification.md:171`
+- [ ] (suggestion) `is_lgtm_placeholder` matches the prefix "No issues found", not the placeholder: an approved review's open box `- [ ] No issues found in x but y breaks` is hidden from `findings` (`"open": []`); match the exact `No issues found. LGTM.` — `.agent/scripts/pr_start.py:97`
+- [ ] (suggestion) `sources` now also slices at a restart (main did not): a restart recorded while the PR is open drops that PR's earlier review entries (open must-fix boxes included) from triage input, neither listed nor "dropped"; confirm it is wanted and add a test — `.agent/scripts/review_progress.sh` cmd_sources
+- [ ] (suggestion) Implementer's deviation (an uncorrelated Addressed-less Implementation is a start entry): a failed fix pass written while armed (332 entry 64 shows fixes do get written after a merge answer) that lost both `**Addressed**` and its correlation line becomes the boundary, and `skill_for` retries it as `implement`; low reach (the dispatcher's own rows never dispatch a fix while armed), but count an uncorrelated entry only when it is not `complete`, or state the limit — `.agent/scripts/pr_start.py:49-55`
+- [ ] (suggestion) `/orchestrator`'s checkpoint table lets the host answer `proceed` at any `plan` checkpoint; run-issue step 13 restricts what is offered after a merge, which covers a host that follows run-issue, but a one-line pointer there removes the ambiguity (owner's call: the edit was refused as an instruction-file change) — `.claude/skills/orchestrator/SKILL.md:76`
+- [ ] (suggestion) Plan drift, justified: `test_skill_paths.sh`, `test_triage_reviews_integration.sh` and address-findings SKILL.md changed but are not in Files to Change; record it in the PR body — `.agent/work-plans/issue-459/plan.md:115`
