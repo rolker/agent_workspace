@@ -395,3 +395,31 @@ Ran: test_skill_paths.sh 139 passed 0 failed (run twice by mistake, the second t
 
 ### Findings
 - [x] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 12:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8966bd87c0bff1b0, resume 1 of 3)
+
+**PR**: #469 at `7423e4c`
+**Sources**: 3 (Local Review @ `25ca4eb` (head `7423e4c` is its progress-only commit), Integrated Review @ `53c1635` (stale: code changed since, its findings ruled on below), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side, checked at `7423e4c`: 0 reviews, 0 inline comments, 0 conversation comments. CI at `7423e4c`: Validate Documentation and ros-manifest tests pass. Validate Adapter Contract and Lint (pre-commit) are still pending.
+
+`review_progress.sh sources` at this head returns no open local findings. It drops two entries as stale. The first is the round-2 Local Review (Pre-Push) at `2212c07`, whose three suggestions the previous Integrated Review ruled on. The second is that Integrated Review at `53c1635`, whose one open box is F3, settled below. The pull-request-mode Local Review at `49a2fcea` raised one must-fix and one suggestion: a type that reads no build or test was broken, and the kept-file read named no method. Both were ticked by Implementation `98d2713c`, and the Local Review at `25ca4eb` approved with no findings.
+
+Confirmed from the code at the head (`.claude/skills/onboard-project/SKILL.md`, the `STATUS=dry-run` bullet):
+- F1 holds. Only the command after `build=` / `test=` is passed, never the parenthesised note. Once the list is complete, a second `--dry-run` runs with exactly those arguments. A refused list gets no yes, the yes is asked on the second dry run's output, and the real call takes the same arguments and no others. `register_project.sh` validates the merged settings, a kept file's values included, before writing, so the second dry run catches what the real call would refuse.
+- F2 holds. On `settings file kept as it is: <path>`, the kept file is read with the Read tool (a permission prompt; a refused read stops) and shown in full, with the warning that every key takes effect. Its build= and test= are passed as `--set`. The claim is narrowed to what is true: the question shows everything written, and the prompt shows build and test only.
+- The PR-mode must-fix is closed. A key goes on the list only when the first dry run lists it, a kept file has it, or the type requires it. A `required_commands=none` type such as ros2_colcon keeps an empty list. A "not read for project" refusal removes that `--set`, and the plain `STATUS=registered` ending is named.
+- ADR-0021's Decision section is byte-identical to `9f2d5fd4`; I checked with a section diff. Four passages of Context and Consequences changed since then.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`; F1 of the Integrated Review @ `53c1635`) Check the exact `--set` list before the yes. Fixed in `08ea7ad6`, confirmed above — `.claude/skills/onboard-project/SKILL.md:139`
+- [x] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`; F2 of the Integrated Review @ `53c1635`) Show a kept settings file in the question. Fixed in `08ea7ad6`, with the read named in `98d2713c`, confirmed above — `.claude/skills/onboard-project/SKILL.md:163`
+- [x] (suggestion, Local Review (Pre-Push) R2 @ `2212c07`; F3 of the Integrated Review @ `53c1635`) The project-name rule at `register_session_root.sh:171` is one of five copies (`register_project.sh:581`, `_project_registry.sh` 150, 192, 491). Drift cannot cause a wrong write; the worst case is a misleading refusal — `.agent/scripts/register_session_root.sh:171` (deferred: owner, 2026-11-13: "open the follow up issue about the valid project definition"; tracked as issue #470, "State the valid project-name rule once: five copies across the registration scripts and the registry")
+
+### False positives
