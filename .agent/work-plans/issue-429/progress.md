@@ -2787,3 +2787,13 @@ Outside scope, not counted (already on main, worked out from the code, not run):
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (pre-push review approved at round 4 of this diff, no findings in scope)
+**After**: publish
+**Decision**: publish
+
+Round 4 approved with no must-fix and no suggestions. One older behaviour already on main was noted outside scope (the comments-only duplicate check takes the last comment of the same entry type); it goes into the pull request body as a known gap.
