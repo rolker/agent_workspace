@@ -3270,3 +3270,52 @@ Set-aside items (raised by sub-reviewers, set aside by the lead reviewer), check
 **Decision**: address
 
 CI was green on 79b79c9a, but GitHub reports the pull request as conflicting with main (docs/design.md, .claude/skills/run-issue/SKILL.md, .agent/knowledge/script_reference.md) after pull request 458 merged. This pass: merge origin/main into the branch and resolve the three conflicts keeping both sides' content; then fix the open suggestion (the record step compares mode as well as content: decide "staged" with git diff --cached --quiet <sha> -- <rel> and "unstaged" with git diff --quiet -- <rel>, with a chmod test row). Triage had recommended deferring that suggestion to issue 462; since a fix pass and a re-review are needed for the merge in any case, it is fixed here.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 11:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 3 of 3)
+
+**PR**: #461 at `dead77be`
+**Addressed**: Integrated Review at `979a076` (2026-11-13 10:52 -05:00), its one suggestion, fixed here rather than deferred by the host's Checkpoint of 11:09
+**Commits**: 0c76ff3e (merge of origin/main), de98769d (fix), dead77be (docs)
+
+The branch took main: `GIT_EDITOR=true git merge --no-edit origin/main` brought in pull request 458 (issue 446, ADR-0020). The merge commit is `0c76ff3e`.
+
+### Actions
+- [x] Merge of main. Three text conflicts, each resolved keeping both sides:
+  - `.agent/knowledge/script_reference.md`: this branch's `dispatch_phase.sh` row, which adds the package pre-push review's diff against its base, plus main's `skill_prefix.sh` and `session_root.sh` rows. Main did not touch the `dispatch_phase.sh` row and this branch did not touch the other two.
+  - `.claude/skills/run-issue/SKILL.md`, the skill-prefix paragraph: main's rewritten paragraph (the plugin enabled once at user scope; a checkout subdirectory lists both names). Rewritten sentence: main's two mentions of the real root name `p11-jazzy` become this branch's synthetic `demo-jazzy`, which this branch had already introduced in that same sentence (commit 6f32c946) so that the mechanism text names no real project. Nothing else changed.
+  - `docs/design.md` change log: #446's 2026-11-12 row is placed before this branch's 2026-11-13 rows (date order). Each row keeps the line count of its own side's file at that time.
+  - A merge row states the merged file's count (1022, true at the merge). The citation row after it states the final count (1023, the file's length now).
+  - Main's other design.md changes (Sessions and roots, the registration bullet, the decision register, C4) merged cleanly and touch no sentence this branch wrote, so no sentence was rewritten there.
+- [x] Scripts changed on both sides: none. Only the three text files above were changed by both pull request 458 and this branch, so no script region needed a sense check. `.agent/scripts/check_design_anchors.sh`: exit 0.
+- [x] Suggestion (mode and git's line-ending rules), `_gate_rec_not_committed` in `merge_pr.sh` (de98769d).
+  - "Staged" is now `git diff --cached --quiet <sha> -- <rel>` (the index against the commit). "Unstaged" is `git diff --quiet -- <rel>` (the working tree against the index). Both compare mode as well as content and apply git's own line-ending rules.
+  - `--no-ext-diff --no-textconv` keep diff drivers out. An exit other than 0 or 1 is reported as a reason ("could not compare ... (exit N)"), never treated as "the same".
+  - Kept: HEAD still at the commit; a regular file in the commit; tracked (the not-committed branch); no assume-unchanged or skip-worktree flag; `_gate_rec_unsafe` first (symlinks and non-folders on the way). The `hash-object` comparison is gone.
+  - The one-rule comment now says "a tracked regular file that git itself sees as unchanged in content and mode, in the index and in the working tree".
+  - Test pkg-23 has three shapes. All three fail on the scripts at `0c76ff3e` and pass now:
+    - chmod-unstaged: comment "has unstaged changes"; file mode, index, HEAD and origin's 100644 all left as found.
+    - chmod-staged: comment "has staged and unstaged changes", which is git's own `MM`; the index stays at 100755 and origin at 100644.
+    - crlf-autocrlf: a committed CRLF blob with `core.autocrlf=true`, `git status` clean as a precondition; the record is committed and pushed, with no comment.
+- [x] Texts last (dead77be).
+  - `docs/design.md` citations into `merge_pr.sh`, re-derived by content from the final file: Table 1 at 869 and 1176 (main-tree guards), 1466 and 1479 (report-only project gate), 2268-2288 (project sync); Records bullet at 890-897 and 1299-1300 and the same guard and gate lines; mechanism 1 at 719-858 and 1139-1314. Unchanged: 744-805 and 806-858.
+  - `dispatch_phase.sh` citations (Table 1: 216, 277-326, 501, 643, 731, 763, 902; mechanism 1: 549, 595, 597, 659, 920) were checked against the file and are unchanged; neither main nor this pass touched it.
+  - The Records and Merge gate wording ("the record is committed only when the working copy's `progress.md` is the committed one") still holds and is unchanged. `script_reference.md` row 38 now says "unchanged in content and mode by `git diff` against the commit and the index".
+  - A change-log row was added; the file is 1023 lines.
+
+### Input table (owning checkout equal to origin; NEW rows from this pass)
+| Working copy / commit | Gate reads | Record | Test |
+|---|---|---|---|
+| clean, committed timeline | the commit | committed and pushed in A | pkg-3, pkg-4, e2e |
+| uncommitted `chmod +x` — NEW | the commit | PR comment "has unstaged changes"; mode, index, origin left as found | pkg-23 chmod-unstaged |
+| staged `--chmod=+x` — NEW | the commit | PR comment "has staged and unstaged changes"; index stays 100755 | pkg-23 chmod-staged |
+| committed CRLF blob, `core.autocrlf=true`, status clean — NEW | the commit | committed and pushed (was a comment) | pkg-23 crlf-autocrlf |
+| unstaged / staged / both / untracked / ignored / deleted / assume-unchanged / skip-worktree | the commit | PR comment with that reason | pkg-20 |
+| other rows | as in the previous entry | | pkg-1 to pkg-22, hang-* |
+
+Workspace path: unchanged. `_gate_rec_not_committed` runs only for an owning package PR, and the workspace gate rows pass with unchanged assertions.
+
+Tests, run directly: `test_merge_pr_gate.sh` 200 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the e2e owning case still commits and pushes in A); `test_dispatch_phase.sh` 148 passed, 0 failed; `test_skill_paths.sh` 136 passed, 0 failed; `test_design_anchors.sh` 47 passed, 0 failed. No script was changed on both sides, so no further suite applies. The full `pre-commit run --files ...` pass was skipped on the owner's direction (2026-11-13). Every commit, the merge and this entry included, ran the other hooks with `SKIP=validate-script-tests`; CI on the pull request is the check for the rest.
