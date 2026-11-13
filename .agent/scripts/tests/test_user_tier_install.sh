@@ -1766,6 +1766,14 @@ out="$(run --uninstall)"; rc=$?
     && pass "...and --uninstall, which cannot remove it, exits 1 naming the hand removal" \
     || fail "...--uninstall over a worktree entry (rc=$rc out=${out:0:500})"
 run >/dev/null
+# When the CLI's record lists a local install there too, the hand removal
+# names that object as well (left alone, it would outlive the root).
+(cd "$ROOTS/a-wt" && HOME="$HOMEDIR" STUB_LOG="$SANDBOX/byhand.log" "$STUB" plugin install "$PID" --scope local >/dev/null)
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"NOTE: $ROOTS/a-wt/$SLJ"*"remove it by hand: delete \"$PID\" from enabledPlugins and \"agent-workspace\" from extraKnownMarketplaces in $ROOTS/a-wt/$SLJ, and the object with \"scope\": \"local\" and \"projectPath\": \"$ROOTS/a-wt\" from the \"$PID\" array in $IP_FILE"* ]] \
+    && pass "a hand removal names the CLI record's local install object when it lists one" \
+    || fail "hand removal with a CLI record (rc=$rc out=${out:0:700})"
+jq --arg id "$PID" '.plugins[$id] |= map(select(.scope != "local"))' "$IP_FILE" > "$tmp" && mv "$tmp" "$IP_FILE"
 rm -f "$ROOTS/a-wt/$SLJ" "$ROOTS/a/$SLJ" "$SANDBOX/main-before.json"
 
 # A root that is a plain subdirectory of a repository: reported, not
@@ -1912,6 +1920,22 @@ out="$(run)"; rc=$?
     && grep -qxF "$WSC|plugin uninstall $PID --scope local" "$STUB_LOG" \
     && pass "...and install removes it through the CLI" \
     || fail "...checkout's own enable not removed (rc=$rc out=${out:0:400})"
+# A hand-written true there (no declaration, no CLI record): --check gives
+# install's advice, the removal by hand beside the re-run; without the
+# claude CLI, a note with the removal by hand, not drift.
+mkdir -p "$WSC/.claude"
+jq -n --arg id "$PID" '{enabledPlugins: {($id): true}}' > "$WSC/$SLJ"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT: $WSC/$SLJ enables the agent-workspace plugin in the workspace checkout itself"*"(written by hand?)"*"or remove it by hand: delete \"$PID\" from enabledPlugins"* ]] \
+    && pass "--check gives a hand-written true in the checkout itself the removal by hand" \
+    || fail "--check over a hand-written checkout enable (rc=$rc out=$out)"
+out="$( unset CLAUDE_CONFIG_DIR
+        HOME="$HOMEDIR" TMPDIR="$INST_TMP" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" bash "$INSTALL" --check 2>&1 )"; rc=$?
+[[ "$out" == *"note: $WSC/$SLJ enables the agent-workspace plugin in the workspace checkout itself"*"the claude CLI is not on PATH -- remove it by hand"* \
+   && "$out" != *"DRIFT: $WSC/$SLJ"* ]] \
+    && pass "...and without the claude CLI, a note with the removal by hand, not drift" \
+    || fail "...no-CLI --check over a checkout enable (rc=$rc out=$out)"
+rm -f "$WSC/$SLJ"
 
 # An old install moved over in one run: per-root entries in two roots and
 # the checkout, nothing at user scope. One run ends with the plugin at user

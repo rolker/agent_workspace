@@ -961,8 +961,13 @@ cli_refusal() {  # <root>
 legacy_say() {  # <strict or empty> <message>
     if [[ "$1" == strict ]]; then echo "  ERROR: $2" >&2; else echo "  NOTE: $2"; fi
 }
+# The removal by hand of a root's per-root entry: its settings.local.json,
+# and the CLI's record of a local install there when it lists one (left
+# alone, it would outlive the root and be noted on every run).
 hand_removal() {  # <settings.local.json>
-    echo "delete \"$PLUGIN_ID\" from enabledPlugins and \"$MARKETPLACE_NAME\" from extraKnownMarketplaces in $1"
+    local recorded
+    recorded="$(local_install_path "${1%/.claude/settings.local.json}")"
+    echo "delete \"$PLUGIN_ID\" from enabledPlugins and \"$MARKETPLACE_NAME\" from extraKnownMarketplaces in $1${recorded:+, and the object with \"scope\": \"local\" and \"projectPath\": \"$recorded\" from the \"$PLUGIN_ID\" array in $INSTALLED_PLUGINS}"
 }
 
 # The CLI's record of installs ($INSTALLED_PLUGINS): absent, ok, or
@@ -999,13 +1004,23 @@ installed_plugins_unreadable() {
 # (by its path as given or its physical path)? 1 when it does not, or when
 # the record is absent or cannot be read.
 local_install_recorded() {  # <root>
+    [[ -n "$(local_install_path "$1")" ]]
+}
+# The projectPath of that install as the record spells it, or nothing.
+local_install_path() {  # <root>
     local phys
-    [[ "$(installed_plugins_state)" == ok ]] || return 1
+    [[ "$(installed_plugins_state)" == ok ]] || return 0
     phys="$(cd "$1" 2>/dev/null && pwd -P)" || phys="$1"
-    jq -e --arg id "$PLUGIN_ID" --arg a "$1" --arg b "$phys" '
+    jq -r --arg id "$PLUGIN_ID" --arg a "$1" --arg b "$phys" '
         [(.plugins? // {})[$id]? // [] | if type == "array" then .[] else empty end
-         | objects | select(.scope? == "local" and (.projectPath? == $a or .projectPath? == $b))]
-        | length > 0' "$INSTALLED_PLUGINS" >/dev/null 2>&1
+         | objects | select(.scope? == "local" and (.projectPath? == $a or .projectPath? == $b))
+         | .projectPath] | first // empty' "$INSTALLED_PLUGINS" 2>/dev/null || true
+}
+# A local true the CLI did not write: no marketplace declaration beside it,
+# and no local-scope install in the CLI's record (which parses) there.
+local_entry_hand_written() {  # <root>
+    [[ -z "$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path? // empty' "$1/.claude/settings.local.json" 2>/dev/null)" ]] \
+        && [[ "$(installed_plugins_state)" != unparseable ]] && ! local_install_recorded "$1"
 }
 
 # Move one place's legacy entry to user scope (install), or remove it
@@ -1054,10 +1069,7 @@ migrate_legacy_root() {  # <kind> <label> <root> [strict]
     # error that would fail every install. Judged before the CLI runs: its
     # uninstall changes the record.
     hand_written=false
-    if [[ -z "$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path? // empty' "$f" 2>/dev/null)" ]] \
-        && [[ "$(installed_plugins_state)" != unparseable ]] && ! local_install_recorded "$root"; then
-        hand_written=true
-    fi
+    local_entry_hand_written "$root" && hand_written=true
     LEGACY_CLI_RAN=1
     (cd "$root" && claude_plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
     (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
@@ -1465,7 +1477,19 @@ if [[ "$MODE" == "check" ]]; then
         case "$(legacy_state "$root")" in
             ours)
                 if [[ "$kind" == checkout ]] && jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id]? == true' "$f" >/dev/null 2>&1; then
-                    note "$f enables the $PLUGIN_NAME plugin in the workspace checkout itself, overriding the false entry in its tracked .claude/settings.json, so a session at the checkout's root lists every skill twice (re-run the installer to remove it)"
+                    # The advice is what install would do with it: the CLI
+                    # where install runs it, the removal by hand where
+                    # install leaves it (the same cases, the same words).
+                    twice="$f enables the $PLUGIN_NAME plugin in the workspace checkout itself, overriding the false entry in its tracked .claude/settings.json, so a session at the checkout's root lists every skill twice"
+                    if ! have_claude; then
+                        echo "  note: $twice; the claude CLI is not on PATH -- remove it by hand: $(hand_removal "$f")"
+                    elif why="$(cli_refusal "$root")"; then
+                        note "$twice; the installer does not run the claude CLI there: $why -- remove it by hand: $(hand_removal "$f")"
+                    elif local_entry_hand_written "$root"; then
+                        note "$twice; it has no marketplace declaration and the claude CLI's record lists no local install there (written by hand?), so the claude CLI may not remove it -- re-run the installer to try, or remove it by hand: $(hand_removal "$f")"
+                    else
+                        note "$twice (re-run the installer to remove it)"
+                    fi
                 elif why="$(cli_refusal "$root")"; then
                     echo "  note: $f ($label) holds a per-root $PLUGIN_NAME entry from this checkout, and the installer does not run the claude CLI there: $why -- remove it by hand: $(hand_removal "$f")"
                 else
