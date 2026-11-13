@@ -494,3 +494,23 @@ Read: the Integrated Review at 0713d270 and its report. Finding: run_script_test
 ### Checks
 - Full pre-commit pass and the full script suite skipped on the owner's direction (2026-11-13: one local run before a pull request, already made at 3880add0); CI on the push is the check. The commit used `SKIP=validate-script-tests`; every other hook ran and passed (shellcheck included).
 - `test_run_script_tests.sh` three times in a row on the final tree (loaded machine): 163 passed, 0 failed in 50 s; 163/0 in 45 s; 163/0 in 46 s. The end-of-run-stop case ended the run 48–49 ms after SIGTERM and 2 ms after SIGINT. No run directory of these runs left; the one new /tmp/run-script-tests.* seen afterwards belongs to another session's live `run_script_tests.sh --files` run (test_cross_model_review.sh content), not to these.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 11:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa8210757935c59b7, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #468 at `d2916a3c`
+**Depth**: Deep (reason: narrow re-review of the post-publish fix pass per handoff, the owner's rule of 2026-11-13; whole-diff tier is Deep)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: `git diff 0f6b78d8..33b83ab7 -- .agent/scripts/tests/`, the one fix commit 33b83ab7; d2916a3c and the entries before it change progress.md only. Cross-model: skipped (narrow fix-pass check, per handoff).
+
+The diff is exactly the move: the "still running at exit" echo, text and redirection unchanged, now sits after the three `trap` lines in cleanup_run and before `stop_suites TERM` (:560). It still prints in every case it did before: it stays inside the same `if (( ${#live[@]} ))` branch, `trap` with a fixed handler string does not exit or fail, and nothing between the traps and the echo touches `live`. The open suggestion from the Local Review at c327c009 (echo before the traps) is fixed.
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 163 passed, 0 failed, 47 s (end-of-run-stop cases: SIGTERM 48 ms, SIGINT 2 ms).
+
+### Findings
+None.
