@@ -122,3 +122,18 @@ The plan carries the owner's rule to the right files with the right scope, and t
 - [ ] Finding 1: replace the `suites_for_files.sh` instruction in `pass_rule`, run-issue's Hook-rule paragraph and address-findings step 4 with "the suites that test what you changed" (or the hook-id `pre-commit run validate-script-tests --files` form), and pin the chosen text
 - [ ] Finding 2: run the host pass when `checkpoint:publish` is raised, record a failure as `**Decision**: address` with the failure quoted, and let address-findings act on a quoted host-pass failure when `open` is empty
 - [ ] Notes 3 to 7 as the implement pass sees fit: which tree, background run and `origin/main`, the Serves goal name, the record push at session end, the "intermediate" negative pin
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:52 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work with two must-fix findings, and it says both are text changes in files the plan already edits and need no re-plan if the implement handoff carries them; the host takes the review's own fix for each, so a second plan round would add about ten minutes and no information; first host answer at this checkpoint)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at 6ebf04f3 and its report. Both must-fix findings and notes N1 to N5 go into the implement handoff verbatim.
+
+### Decisions made (owner may veto)
+- F1: the agent does not call suites_for_files.sh. It runs the suites that test what it changed: the test_<name>.sh of each changed script, plus the suite that checks any text it changed (test_skill_paths.sh for skill and knowledge text, test_dispatch_phase.sh for the dispatcher), names them in its entry, and leaves the rest to the host's pass and CI. This is what both machines did all day on 2026-11-13. The review measured the alternative: the selection script prints ALL on every loop branch as called, and 36 to 43 of 49 suites when filtered — undoing it: use the exact-selection command and pay about the old run's cost per pass.
+- F2: the host runs its full pass when the publish checkpoint is raised, before answering it, on the exact head that will be pushed; on a failure it answers address with the failing suites quoted, and address-findings treats a quoted host-pass failure as its open finding — undoing it: none sensible; without it a failed pass has no route back into the loop.
+- N4: outstanding records are also pushed when a drive parks or the session ends, so a drive resumed on the other machine does not re-run a phase — undoing it: drop that sentence.
