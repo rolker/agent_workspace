@@ -1570,3 +1570,13 @@ The refresh is accurate: every "what changed" claim and line citation checked ou
 - [ ] Decide `base=` back-fill for part-1 worktrees or state the gap (finding 4)
 - [ ] State `dispatch_phase.sh base` behaviour for non-package issues, with a test (finding 5)
 - [ ] Host: decide the cleanup-pull question (recommended: pull only on `baseRefName`, fetch otherwise; in 2a)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 21:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review verdict needs-work, small text edits only; first revise at this checkpoint since the last proceed)
+**After**: plan
+**Decision**: revise
+
+Revise the plan for the review's five findings, with these host decisions: (1) the base= field and the start-point rule are recorded in docs/design.md#worktrees with a cross-reference addendum in ADR-0012, not by editing ADR-0012's decision text and not as a new ADR; (2) remove the stale "ADR-0011 amended", stub-adapter and size statements; (3) PKG_OWN_REL and the header's base= travel inside the _PKG_MATCHES record; (4) a worktree with no base= gets the field written on resume, and a --base given on resume is checked on origin; (5) say what dispatch_phase.sh base prints for a workspace or single-repository issue, with a test. Open question decided: change the merge cleanup's pull. Pull --ff-only only when the owning checkout is clean and on the pull request's base branch; otherwise fetch and print "fetched only" without marking the cleanup incomplete; an empty base also means fetch only. It goes in 2a next to the cross-check step, and 2b's cleanup test pins the new behaviour.
