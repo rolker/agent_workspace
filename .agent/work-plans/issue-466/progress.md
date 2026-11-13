@@ -97,3 +97,51 @@ Read: the Issue Review at 7395390f and its report. The one action that is the ow
 **Plan**: `.agent/work-plans/issue-466/plan.md` at `1d0b8f5a`
 
 One new guarded user-tier script (register_session_root.sh) registers only the session's own unregistered root via register_project.sh --skip-run; onboard-project step 1 offers it; guard test gets a named exception; design.md in the same PR; ADR-0021 only after the owner's yes.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 11:24 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #466 — onboard-project offers to register an unregistered folder, from the project session
+**Plan**: `.agent/work-plans/issue-466/plan.md` at `1d0b8f5a`
+**Branch**: `feature/issue-466`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, nine files, one new script that delegates to `register_project.sh`. The fix below makes it smaller (steps 1 and 3 drop). |
+| Issue alignment | Good | Covers every "What the plan has to settle" item and the review's seven actions. Serves (as checked): "Onboarding a project, one step from its own folder: `docs/design.md#sessions-and-roots` and `docs/design.md#registry-and-adapters`"; both sections exist (design.md lines 177, 314). |
+| File targeting | Needs work | `.agent/user_tier_scripts.txt` and `test_user_tier_guard.sh` should not change (finding 1). Add a "not in the manifest" assertion to the new test. |
+| Consequences | Good | The installer re-run consequence disappears with finding 1. |
+| Principle alignment | Concern | Promotion turns registration, the owner's trust gate for the whole user tier, into a call that needs no prompt (finding 1). |
+| ADR compliance | Concern | Promotion breaks ADR-0016 decision 6, which the agreed ADR-0021 does not supersede (finding 1). Step 7 otherwise matches what the owner agreed: supersedes decision 5 only, a one-line pointer on ADR-0016, a script that writes only the folder's own registry line and settings file. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment / ADR compliance], must-fix**: do not promote `register_session_root.sh` (no line in `.agent/user_tier_scripts.txt`, so no allow-rule). How it goes wrong as planned: the owner opens a session in a folder he does not trust (a downloaded clone). Text in that folder (its CLAUDE.md, say) tells the agent to run `register_session_root.sh --set build=./x.sh` or just `register_session_root.sh` (detection writes `build=make` from the folder's own Makefile). That call is allow-listed, so no prompt. The next call, `build.sh`, is also allow-listed (`~/.claude/settings.json` has `Bash(<ws>/.agent/scripts/build.sh:*)`). It now passes `registry_require_root` and runs the folder's own code, again with no prompt. Today the same chain stops at `build.sh`, because registration needs the owner (`register_project.sh` has no allow-rule anywhere). It is not the same as `register_project.sh --set build=` from the workspace: that path never runs without the owner. Registration is what turns on every user-tier script for a folder, so a self-service registration with no prompt removes the owner from that gate. The skill's dry run and question cannot enforce anything, because an injected call never goes through the skill. A permission prompt can: without an allow-rule, each call prompts with the full command, `--set` values included. The plan already found that an unpromoted call prompts rather than fails. Promotion also contradicts ADR-0016 decision 6 ("an entry may be promoted only if it is inert outside ... every registered project root"), and this script acts only outside every root. ADR-0021 as agreed supersedes decision 5 only. The fix: drop plan steps 1 and 3 and the installer re-run note. `test_user_tier_guard.sh` and the manifest stay as they are, and the manifest's "never promoted" comment gains the new script with this reason. The new test asserts the script is absent from the manifest. The script header, `script_reference.md` and design.md say "not promoted: each call raises a permission prompt, which is the owner's yes".
+
+### Notes for the implementer (no re-plan needed)
+
+- The guard-marker question is moot once the script is not promoted. If promotion is ever revisited: as planned, the named marker is safe only if `marker_of` returns its own value and the case arm fails it for any entry but the one named file. The existing `# user-tier: inert` marker is already a self-declared exemption that is checked behaviourally for four named entries only, so the new marker would be no weaker than that.
+- Refuse a folder that is already a registered root (equality) before delegating. `register_project.sh` treats a registered path as an adoption and writes the `--set` keys (lines 559-567, 719-721), so without the refusal the script would rewrite a registered project's build command. Test it with `--set build=x` and assert the settings file is unchanged.
+- "Inside a registered root or the workspace" is `registry_require_root` succeeding, or `registry_derive_type_from_dir` returning 0. "Over" (a registered root or the workspace lies under `$PWD`, as in a session in `~`) has no helper: a short loop over `registry_entries` with `_registry_path_under`. Both are in the plan's step 2 and are not the "new registry logic" of stop condition (c).
+- Resolve WS_ROOT from the script's own location (as `session_root.sh` lines 76-78 do: the main checkout of its own repository), not from `~/.claude/agent-workspace-root`, so a sandbox copy in the test is self-contained.
+- Pass `--set` only for `build=` and `test=`, one argv element each (quoted). `register_project.sh` already validates values (`_project_file_value_error`: no shell metacharacters).
+- `register_project.sh --dry-run` prints detection notes ("note: no build command detected ...") on stderr (line 763). The skill must capture `2>&1` to know when to ask for build/test commands.
+- A dry run does not run the gate (`registration_verify.sh`), so a no-git folder's dry run looks clean and only the real run refuses and rolls back. The skill shows that refusal as printed and says non-git folders are not supported yet.
+- With no allow-rule, the dry run and the real run each prompt. The skill shows the dry-run output (registry line, settings it would write, the build/test commands) and lets the real call's permission prompt be the yes, rather than asking twice in text.
+- Confirmed by reading the code: (a) no-git is refused by `single_project` `adapter_validate` ("not a git repository (no .git at its root)", adapter.sh line 174), reached through `registration_verify.sh` (line 163), which `register_project.sh` runs at step 2 even with `--skip-run`, then rolls back. This stays a named gap. (b) Allow-rules come only from the manifest (`allow_rules_json`, user_tier_install.sh lines 296-301) and `--check` reports "allow-rule(s) missing" (line 1394). That re-run would have been needed only for a promoted entry, so it goes away with finding 1.
+
+### Summary
+
+The plan is small and well grounded except for one choice. Promoting the new script lets any session, in any folder, register that folder and so open every user-tier script there with no prompt, and it breaks ADR-0016 decision 6, which the owner did not agree to supersede. Leaving the script unpromoted fixes both, removes the guard-test change and the installer re-run, and keeps ADR-0021 exactly as agreed. With that change the plan is ready to implement.
+
+### Recommended Actions
+
+- [ ] Drop the promotion: no `user_tier_scripts.txt` entry and no `test_user_tier_guard.sh` change. Add the script to the manifest's "never promoted" comment, assert its absence in `test_register_session_root.sh`, and state "not promoted; each call prompts" in the script header, `script_reference.md` and design.md.
+- [ ] Remove the "re-run `user_tier_install.sh` on each machine" consequence and the PR note.
+- [ ] Refuse a folder that is already a registered root before delegating, and test that `--set` cannot change a registered project's settings through this script.
