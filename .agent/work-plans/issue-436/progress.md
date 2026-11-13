@@ -1284,3 +1284,17 @@ Line counts: adapter.sh 2044 before, 1998 after the rule change (94437a33), 2054
 - [ ] (suggestion) The path-source `file-stamp` is taken after the resolver ran, so an edit during resolve is recorded as resolved; take it before resolve (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:918`
 - [ ] (suggestion) New test code uses GNU-only `stat -c`, `sha256sum` (mr_tree_hash) and bare `sed -i` (2940-3562); CI is ubuntu-only, but the suite cannot run on macOS where the adapter claims BSD support — `.agent/scripts/tests/test_ros2_colcon.sh:2662`
 - [ ] (suggestion) The assertion that `.resolved-from` has no `source-state` guards only a key from the withdrawn rule; remove it — `.agent/scripts/tests/test_ros2_colcon.sh:2697`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 17:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Q1 "Fix all, then review once more (Recommended)"; Q2 "Refuse, like any modified clone (Recommended)".
+
+Q1 as put to him: round 4 is past the three-round limit, so how should this go on? Round 4 was a fresh reviewer after the simplification (Local Review (Pre-Push) at `2994e766`): 2 must-fix, down from 4, Ship "recommended". Shown to him by their text: F1 `adapter.sh:720`, the origin check compares the URL after git's `insteadOf` rewriting, so a user with such a rule is refused on every run after the first and removing the clone cannot recover; F2 `adapter.sh:744`, a file marked assume-unchanged or skip-worktree hides a local edit from `git status`, so the clone reads as untouched and the edited manifest is resolved silently; F3 `adapter.sh:790-829`, a Ctrl-C between the fresh clone and writing the record leaves a half-made clone every later run refuses; F4 `adapter.sh:783-796`, without flock two first runs can race and one removes the other's clone; F5 `adapter.sh:918`, the path-source stamp is taken after the resolver ran; F6 new test code uses GNU-only `stat -c`, `sha256sum` and `sed -i`; F7 `test_ros2_colcon.sh:2697`, one assertion only guards a key from the withdrawn rule; F8 Gemini's review failed this round (a tool call denied in headless mode), Codex and the adversarial reviewer ran. The option he chose: a fix pass for F1 to F7 and his Q2 answer, then one more pre-push review of those fixes before he is asked to publish.
+
+Q2 as put to him: what should the adapter do when its clone holds a tag the remote does not have (F9, `adapter.sh:802`: the fetch's `--prune-tags` deletes local tags in a clone that reads as untouched, so work held only by a tag is lost silently)? His answer: a local tag not on the remote counts as a modified clone; setup and sync refuse and change nothing, with the usual message.
