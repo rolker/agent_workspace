@@ -2478,13 +2478,13 @@ Round-1 findings, verified:
 Host question on the repeated comment: there is a real input. It is a regression from main for package PRs, so it is listed below as a suggestion.
 
 ### Findings
-- [ ] (must-fix) The restore deletes a `progress.md` symlink that was there before.
+- [x] (must-fix) The restore deletes a `progress.md` symlink that was there before.
   - Input: the checkout on the PR branch has `.agent/work-plans/issue-N/progress.md` as a dangling symlink (tracked or not), and the record path runs. The snapshot's `-f` is false, so no copy is taken. `progress_append.sh` refuses with exit 4, writing nothing. `_gate_rec_restore` then runs `rm -f` on the user's symlink.
   - Reproduced by the sub-review: status went from clean to ` D`.
   - Fix: snapshot with `-e || -L` and `cp -P`, or restore nothing after a refusal that wrote nothing (exit 2/4). Add a test.
   - Found by both codex and the Claude adversarial sub-review.
   - `.agent/scripts/merge_pr.sh:918-944`
-- [ ] (must-fix) The gate reads the owning checkout's timeline while that checkout is detached or on another branch, and a stale timeline there passes the gate.
+- [x] (must-fix) The gate reads the owning checkout's timeline while that checkout is detached or on another branch, and a stale timeline there passes the gate.
   - Input: the PR branch is H (code), then R1 (progress: Local Review approved at H), then R2 (progress: Local Review changes-requested at H), and the head is R2. A is detached at R1, or on a local branch at R1.
   - The gate reads "approved at H" from A's file. The ancestry check finds only `progress.md` changed between H and R2.
   - Result: "✅ Review gate: approved review at head", and no record, although the PR branch's timeline says changes requested.
@@ -2496,7 +2496,7 @@ Host question on the repeated comment: there is a real input. It is a regression
   - The anchors hook does not check line numbers.
   - Found by gemini.
   - `docs/design.md:384,478-488,559`
-- [ ] (suggestion) Repeated runs post one more identical PR comment each time, a regression from main for package PRs.
+- [x] (suggestion) Repeated runs post one more identical PR comment each time, a regression from main for package PRs.
   - Input: the owning checkout is off-branch or detached, or a pkg_a commit hook always refuses. Each `merge_pr.sh` retry with the same conditions posts another identical `## Merge (report-only)` comment. pkg-12 asserts 1 and then 2.
   - Why: `_gate_already_recorded` reads only A's `progress.md` whenever `_gate_progress` is set. On main, a package PR's duplicate check read the PR's comments, so it posted once.
   - Fix: when the timeline holds no match, also check the PR's comments.
@@ -2505,7 +2505,7 @@ Host question on the repeated comment: there is a real input. It is a regression
   - Input: a stale `origin/HEAD` after origin renamed master to main, or an empty origin, where `remote show` yields the name "(unknown)". Every commit (pre-commit hook) and every `worktree_enter.sh` then prints "✗ Error: origin has no branch ...". Nothing is blocked, because both callers ignore the exit code.
   - Fix: keep exit 2 only with `--base`; otherwise warn with exit 0, and treat "(unknown)" as no name.
   - `.agent/scripts/check_branch_updates.sh:141-145`
-- [ ] (suggestion) A push that times out after origin applied it is still undone locally.
+- [x] (suggestion) A push that times out after origin applied it is still undone locally.
   - Input: the server updates the branch, then stalls past `WT_FETCH_TIMEOUT`. The local commit is reset and a comment is posted. A is then one commit behind origin, and the record exists twice. It surfaces loudly: the host's next push is non-fast-forward.
   - Fix: after a failed push, compare a bounded `ls-remote origin refs/heads/<PR branch>` with `rec_sha` and treat equality as pushed.
   - Found by codex.

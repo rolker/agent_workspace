@@ -759,12 +759,44 @@ if [[ "$_GATE_PKG_ROLE" == "owning" ]]; then
         fi
     fi
 fi
+# A sound owning checkout's timeline is the PR branch's only when the
+# checkout has that branch checked out and contains origin's copy of it.
+# Otherwise its progress.md may be another branch's, or an older one that
+# lacks a newer review, and a stale approval there must not pass the gate.
+# _GATE_OWN_NOREAD says why the timeline is not read (empty: it is read);
+# the repository itself stays usable for the ancestry check and the CI
+# target (_ci_wt), and the record goes on the PR. Origin is asked with a
+# bounded fetch by explicit refspec; an origin that cannot be asked is a
+# reason, never a pass. Workspace and project PRs never reach this: their
+# worktree is found by its branch, and their timeline read is unchanged.
+_GATE_OWN_NOREAD=""
+if [[ "$_GATE_PKG_ROLE" == "owning" && -z "$_GATE_OWN_PROBLEM" ]]; then
+    _gate_own_branch=$(git -C "$_gate_wt" symbolic-ref --short -q HEAD 2>/dev/null || true)
+    if [[ -z "$_gate_own_branch" ]]; then
+        _GATE_OWN_NOREAD="the owning checkout $_gate_wt has a detached HEAD, not $PR_BRANCH"
+    elif [[ "$_gate_own_branch" != "$PR_BRANCH" ]]; then
+        _GATE_OWN_NOREAD="the owning checkout $_gate_wt is on $_gate_own_branch, not $PR_BRANCH"
+    else
+        _gate_own_rc=0
+        _gate_own_err=$( (cd "$_gate_wt" && wt_bounded_git fetch --quiet origin -- "+refs/heads/$PR_BRANCH:refs/remotes/origin/$PR_BRANCH") 2>&1 >/dev/null ) || _gate_own_rc=$?
+        if [[ "$_gate_own_rc" -ne 0 ]]; then
+            _GATE_OWN_NOREAD="origin's $PR_BRANCH could not be fetched in the owning checkout $_gate_wt ($(wt_fetch_why "$_gate_own_rc" "$_gate_own_err")), so it is not known to be current"
+        else
+            _gate_own_origin=$(git -C "$_gate_wt" rev-parse -q --verify "refs/remotes/origin/$PR_BRANCH^{commit}" 2>/dev/null || true)
+            if [[ -z "$_gate_own_origin" ]]; then
+                _GATE_OWN_NOREAD="the fetch of $PR_BRANCH in the owning checkout $_gate_wt wrote no origin/$PR_BRANCH, so it is not known to be current"
+            elif ! git -C "$_gate_wt" merge-base --is-ancestor "$_gate_own_origin" HEAD 2>/dev/null; then
+                _GATE_OWN_NOREAD="the owning checkout $_gate_wt does not contain origin's $PR_BRANCH at ${_gate_own_origin:0:7} (local $(git -C "$_gate_wt" rev-parse --short=7 HEAD 2>/dev/null || echo '?'))"
+            fi
+        fi
+    fi
+fi
 # The path passes the records gate (records_path) like every other records
 # read: inside a package worktree only the issue's own checkout is read. A
 # refusal leaves no timeline and says why below.
 _gate_progress=""
 _gate_refusal=""
-if [[ -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" ]]; then
+if [[ -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" ]]; then
     _gate_cand="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
     if _gate_refusal=$(records_path "$_gate_cand" "$_gate_wt" 2>&1 >/dev/null); then
         _gate_refusal=""
@@ -815,6 +847,8 @@ elif [[ -z "$_gate_progress" ]]; then
         fi
     elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
         _gate_reasons+=("$(_bk_display "$_GATE_OWN_PROBLEM"), so no timeline is read for issue #$(_bk_display "$ISSUE_NUM")")
+    elif [[ -n "$_GATE_OWN_NOREAD" ]]; then
+        _gate_reasons+=("$(_bk_display "$_GATE_OWN_NOREAD"); its timeline is not read for issue #$(_bk_display "$ISSUE_NUM")")
     elif [[ -n "$_gate_refusal" ]]; then
         _gate_reasons+=("the records gate refused the timeline in $(_bk_display "$_gate_wt"): $(_bk_display "$_gate_refusal")")
     else
@@ -914,6 +948,28 @@ fi
 # duplicate check never reads a leftover entry.
 _GS_REL="" _GS_ABS="" _GS_COPY="" _GS_INDEX="" _GS_STATUS=""
 declare -a _GS_NEW_DIRS=()
+# Prints why the record cannot be written safely in <checkout>, or nothing:
+# progress.md, or one of the folders on its way, is a symlink (dangling or
+# not) or exists as something other than a regular file or a folder. Such a
+# path is never written, snapshotted or restored: it is left exactly as
+# found and the record goes on the PR.
+_gate_rec_unsafe() {  # <checkout>
+    local wt="$1" rel p
+    for rel in .agent .agent/work-plans ".agent/work-plans/issue-${ISSUE_NUM}"; do
+        p="$wt/$rel"
+        if [[ -L "$p" ]]; then
+            echo "$rel in $wt is a symlink"; return 0
+        elif [[ -e "$p" && ! -d "$p" ]]; then
+            echo "$rel in $wt is not a folder"; return 0
+        fi
+    done
+    p="$wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+    if [[ -L "$p" ]]; then
+        echo ".agent/work-plans/issue-${ISSUE_NUM}/progress.md in $wt is a symlink"
+    elif [[ -e "$p" && ! -f "$p" ]]; then
+        echo ".agent/work-plans/issue-${ISSUE_NUM}/progress.md in $wt is not a regular file"
+    fi
+}
 _gate_rec_snapshot() {  # <checkout>
     local wt="$1" d
     _GS_REL=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
@@ -941,7 +997,11 @@ _gate_rec_restore() {  # <checkout>; returns 0 when progress.md is as it was
     if [[ -n "$_GS_COPY" ]]; then
         cp "$_GS_COPY" "$_GS_ABS" || rc=1
     else
-        rm -f "$_GS_ABS"
+        # Only the regular file the record created is removed; anything
+        # else found there was not ours and stays.
+        if [[ -f "$_GS_ABS" && ! -L "$_GS_ABS" ]]; then
+            rm -f "$_GS_ABS"
+        fi
         for d in ${_GS_NEW_DIRS[@]+"${_GS_NEW_DIRS[@]}"}; do
             rmdir "$d" 2>/dev/null || true
         done
@@ -977,13 +1037,13 @@ _gate_record() {  # <entry type> <one-line why>
     # _gate_wt is its owning checkout, which is; a sibling PR keeps the
     # container and always takes the PR-comment path) and an agent identity
     # is set (progress_append.sh refuses to commit without).
-    local why_comment="no open worktree for the PR's repo" wt_top=""
+    local why_comment="no open worktree for the PR's repo" wt_top="" unsafe=""
     # "Is a repo" must mean the directory IS a repo root, not that some
     # ancestor is one: `git rev-parse --show-toplevel` walks up, and a
     # package worktree container lives under the workspace checkout, so the
     # naive check would resolve to the live main tree and commit there
     # (round-2 review). A sibling package PR never takes this path at all.
-    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" ]]; then
+    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" ]]; then
         wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
@@ -1018,27 +1078,52 @@ _gate_record() {  # <entry type> <one-line why>
     if [[ -n "$wt_top" ]]; then
         if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
+        elif unsafe=$(_gate_rec_unsafe "$_gate_wt") && [[ -n "$unsafe" ]]; then
+            why_comment="${unsafe}, so the record is not written there (left as found)"
         else
-            local head_before append_rc=0 rec_sha=""
+            local head_before append_rc=0 rec_sha="" push_rc=0 remote_line="" ls_rc=0
             head_before=$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")
             _gate_rec_snapshot "$_gate_wt"
             printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1 || append_rc=$?
             if [[ "$append_rc" -eq 0 ]]; then
                 rec_sha=$(git -C "$_gate_wt" rev-parse HEAD 2>/dev/null || echo "")
                 [[ -n "$rec_sha" ]] && _RUN_COMMITTED_SHAS+=("$rec_sha")
-                # Bounded like every call to origin: a timeout is a refused
-                # push. Run from the checkout rather than through -C: the
-                # path then never passes through timeout's argv, which may
-                # not carry a non-UTF-8 path intact.
-                if (cd "$_gate_wt" && wt_bounded_git push -q origin "$PR_BRANCH") 2>/dev/null; then
+                # Bounded like every call to origin. Run from the checkout
+                # rather than through -C: the path then never passes through
+                # timeout's argv, which may not carry a non-UTF-8 path intact.
+                (cd "$_gate_wt" && wt_bounded_git push -q origin "$PR_BRANCH") 2>/dev/null || push_rc=$?
+                if [[ "$push_rc" -eq 0 ]]; then
                     _gate_rec_snapshot_drop
                     _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
                     echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
                     return 0
                 fi
-                # Push refused or timed out: undo exactly that one-file
-                # commit and put progress.md back as it was, so nothing is
-                # left half-recorded, then fall back to the PR comment (one
+                # A push that timed out may have reached origin before it
+                # stalled: a bounded ls-remote decides. Origin has the record
+                # commit: it was pushed, keep it. Origin cannot be asked: keep
+                # the commit in the checkout and post no comment (one record,
+                # in the timeline, which the next run's duplicate check reads
+                # and the branch's next push publishes). Origin answers
+                # without it, or the push was refused outright: undo below.
+                if [[ "$push_rc" -eq 124 || "$push_rc" -eq 137 ]]; then
+                    remote_line=$( (cd "$_gate_wt" && wt_bounded_git ls-remote origin "refs/heads/$PR_BRANCH") 2>/dev/null ) || ls_rc=$?
+                    if [[ "$ls_rc" -eq 0 && -n "$rec_sha" && "${remote_line%%[[:space:]]*}" == "$rec_sha" ]]; then
+                        _gate_rec_snapshot_drop
+                        _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+                        echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed (the push timed out after $(wt_fetch_limit)s; origin has the record commit)"
+                        return 0
+                    fi
+                    if [[ "$ls_rc" -ne 0 ]]; then
+                        _gate_rec_snapshot_drop
+                        _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+                        echo "  ⚠️  ${etype} entry committed in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md as \`${rec_sha:0:7}\`, but the push timed out after $(wt_fetch_limit)s and origin could not be asked whether it has it: the commit is kept there, unpushed as far as is known, and no PR comment is posted; the next push of $PR_BRANCH publishes it" >&2
+                        return 0
+                    fi
+                fi
+                # Push refused, or timed out and origin answers without the
+                # record commit: undo exactly that one-file commit and put
+                # progress.md back as it was, so nothing is left
+                # half-recorded, then fall back to the PR comment (one
                 # record, never a stranded commit plus a comment).
                 if [[ -n "$rec_sha" && "$rec_sha" != "$head_before" ]]; then
                     git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
@@ -1051,28 +1136,30 @@ _gate_record() {  # <entry type> <one-line why>
                     done
                     _RUN_COMMITTED_SHAS=(${kept[@]+"${kept[@]}"})
                 fi
+                local push_what="could not be pushed to origin"
+                if [[ "$push_rc" -eq 124 || "$push_rc" -eq 137 ]]; then
+                    push_what="was not pushed: the push timed out after $(wt_fetch_limit)s and origin does not have it"
+                fi
                 if [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" == "$head_before" ]] \
                         && _gate_rec_restore "$_gate_wt"; then
-                    why_comment="the timeline commit could not be pushed to origin (undone locally)"
+                    why_comment="the timeline commit ${push_what} (undone locally)"
                 else
-                    why_comment="the timeline commit could not be pushed to origin, and undoing it in $_gate_wt did not leave progress.md as it was"
+                    why_comment="the timeline commit ${push_what}, and undoing it in $_gate_wt did not leave progress.md as it was"
                 fi
             elif [[ "$(git -C "$_gate_wt" rev-parse -q --verify HEAD 2>/dev/null || echo "")" != "$head_before" ]]; then
                 # Not expected: progress_append.sh fails before its commit.
                 why_comment="progress_append.sh exited $append_rc after HEAD moved in $_gate_wt; the checkout was left as it is"
-            else
-                # Refused before or at the commit (exit 3: git add or the
-                # commit failed, e.g. a commit hook in the checkout's own
-                # repository; exit 2 or 4: nothing was written). The entry
-                # may already be appended and staged: put progress.md back.
+            elif [[ "$append_rc" -eq 3 ]]; then
+                # git add or the commit failed (e.g. a commit hook in the
+                # checkout's own repository) after the entry was appended
+                # and staged: put progress.md back as it was.
                 local took_out="the entry was taken back out"
                 _gate_rec_restore "$_gate_wt" || took_out="taking the entry back out did not leave progress.md as it was"
-                if [[ "$append_rc" -eq 3 ]]; then
-                    why_comment="the timeline commit in $_gate_wt was refused (progress_append.sh exit 3: a git failure such as a commit hook), and ${took_out}"
-                else
-                    why_comment="progress_append.sh refused the timeline entry (exit $append_rc)"
-                    [[ "$took_out" != "the entry was taken back out" ]] && why_comment="$why_comment, and $took_out"
-                fi
+                why_comment="the timeline commit in $_gate_wt was refused (progress_append.sh exit 3: a git failure such as a commit hook), and ${took_out}"
+            else
+                # Exit 2 or 4: refused before anything was written; nothing
+                # to restore, and nothing is touched.
+                why_comment="progress_append.sh refused the timeline entry (exit $append_rc)"
             fi
             _gate_rec_snapshot_drop
         fi
@@ -1080,6 +1167,8 @@ _gate_record() {  # <entry type> <one-line why>
         why_comment="a sibling repository's pull request records on its own PR, not in the owning checkout's timeline"
     elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
         why_comment="$_GATE_OWN_PROBLEM"
+    elif [[ -n "$_GATE_OWN_NOREAD" ]]; then
+        why_comment="$_GATE_OWN_NOREAD; the record is not committed there"
     fi
     body_file=$(mktemp)
     printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$entry" "${AGENT_NAME:-merge_pr.sh}" "${AGENT_MODEL:-unknown}" > "$body_file"
@@ -1121,16 +1210,23 @@ _gate_already_recorded() {  # <entry type> <conditions text>
         latest=$(jq -c --arg pr "$PR_NUMBER" \
             '.entries | map(select(.correlation.kind == "pr" and (.correlation.pr|tostring) == $pr)) | last // empty' \
             <<<"$read_json" 2>/dev/null || echo "")
-        [[ -z "$latest" || "$latest" == "null" ]] && return 1
-        l_type=$(jq -r '.type' <<<"$latest")
-        l_cond=$(jq -r '.fields.Conditions // ""' <<<"$latest")
-        l_sha=$(jq -r '.correlation.sha // ""' <<<"$latest")
-        if [[ "$l_type" == "$etype" && "$l_cond" == "$why" ]]; then
-            echo "  ℹ️  already recorded at \`${l_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
-            return 0
+        if [[ -n "$latest" && "$latest" != "null" ]]; then
+            l_type=$(jq -r '.type' <<<"$latest")
+            l_cond=$(jq -r '.fields.Conditions // ""' <<<"$latest")
+            l_sha=$(jq -r '.correlation.sha // ""' <<<"$latest")
+            if [[ "$l_type" == "$etype" && "$l_cond" == "$why" ]]; then
+                echo "  ℹ️  already recorded at \`${l_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
+                return 0
+            fi
         fi
-        return 1
-    elif [[ -n "$_gate_json" ]]; then
+        # No match in the timeline. A workspace or project PR stops here, as
+        # before. An owning package PR's record can fall back to the PR
+        # comment while its checkout keeps a timeline (a commit hook that
+        # refuses the record, an undone push), so its comments are read
+        # too: such a record is posted once, not once per run.
+        [[ "$_GATE_PKG_ROLE" == "owning" ]] || return 1
+    fi
+    if [[ -n "$_gate_json" ]]; then
         latest=$(jq -r --arg h "## ${etype}" \
             '[.comments[]? | .body // ""] | map(select(startswith($h))) | last // empty' \
             <<<"$_gate_json" 2>/dev/null || echo "")
