@@ -246,11 +246,13 @@ hard-fails with exit 2 when `AGENT_NAME`/`AGENT_EMAIL` are unset — there is
 no fallback to the human's git config. Shell state does not persist between
 tool calls, so source the identity in the *same* chain as every
 `dispatch_phase.sh` call (and every `progress_append.sh` / `git commit`),
-not once at the start of the run:
+not once at the start of the run. `--agent claude-code` derives the email
+from the checkout's git email (`<local>+claude-code@<domain>`, issue #455);
+no address is written into the command:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-source $WS_ROOT/.agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
+source $WS_ROOT/.agent/scripts/set_git_identity_env.sh --agent claude-code "<model-id>" \
   && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [...]
 ```
 
@@ -336,8 +338,9 @@ $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [--pr <M
 
 (`--skill-prefix` exactly as "Skill names in this session" decided.)
 It prints the handoff block: `worktree=`, `package_worktree=` (a package
-issue only), `task=`, `agent_name=`, `agent_email=`, `model=`,
-`entry_type=`, `exit_contract=`, `conventions=`.
+issue only), `task=`, `agent_name=`, `agent_email=` (the derived address
+the identity line above exported), `model=`, `entry_type=`,
+`exit_contract=`, `conventions=`.
 Paste the task line, the worktree (and the package worktree, whose
 `env.sh`, `build.sh` and `test.sh` the phase builds and tests with), the
 exit contract, and the `conventions=` line (the `**When**` format,

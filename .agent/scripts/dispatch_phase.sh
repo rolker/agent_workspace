@@ -35,7 +35,10 @@
 #     `key=value` lines, one per line, in this order: worktree,
 #     package_worktree (only for a package issue), task, agent_name,
 #     agent_email, model, entry_type, exit_contract, conventions, and
-#     prompt_file (only when --prompt-file was given). conventions tells
+#     prompt_file (only when --prompt-file was given). agent_email is the
+#     AGENT_EMAIL the host exported when it sourced set_git_identity_env.sh
+#     (with --agent / --detect, derived from the checkout's git user.email,
+#     issue #455); no address is held here. conventions tells
 #     the phase to start every command chain with `cd <worktree> &&`.
 #     For `implement` and `address-findings` in a workspace handoff,
 #     conventions also carries the once-per-pass hook rule (owner-decided

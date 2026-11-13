@@ -373,12 +373,13 @@ once more before creating anything. Then:
 2. Make the changes, commit them (one commit per logical change), and show
    the commits. Each commit carries the agent's identity: shell state does
    not persist between tool calls, so source it in the same command chain
-   as every `git commit`, with this session's own agent name, email and
-   model ID (the three-argument form, as `/run-issue` does):
+   as every `git commit`, with this session's framework and model ID
+   (`--agent <framework> "<model-id>"`, as `/run-issue` does; the email is
+   derived from the checkout's git email, `<local>+<framework>@<domain>`):
 
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" \
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" \
      && git commit -m "<what changed>"
    ```
 3. Push and open the pull request only on a yes, from the worktree. For a
@@ -406,7 +407,7 @@ once more before creating anything. Then:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
+source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" || exit 1
 [ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
 git push -u <remote> "$(git branch --show-current)" || exit 1
 PR_BODY_FILE="$(mktemp)"
@@ -447,7 +448,7 @@ For each "open issue" answer, after showing the title and body:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
+source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" || exit 1
 [ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
 BODY_FILE="$(mktemp)"
 cat > "$BODY_FILE" <<'EOF'

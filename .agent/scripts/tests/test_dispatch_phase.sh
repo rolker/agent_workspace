@@ -439,11 +439,11 @@ echo ""
 echo "TEST: handoff -- literal task line, identity, model, entry type per skill"
 SB="$(mk_sandbox 9)"
 run_handoff() {  # [args...]
-    (cd "$SB" && AGENT_NAME="Claude Code Agent" AGENT_EMAIL="roland+claude-code@rolker.net" bash .agent/scripts/dispatch_phase.sh "$@" 2>&1)
+    (cd "$SB" && AGENT_NAME="Claude Code Agent" AGENT_EMAIL="dev+claude-code@example.org" bash .agent/scripts/dispatch_phase.sh "$@" 2>&1)
 }
 out=$(run_handoff --issue 9 --skill review-issue)
 [[ "$out" == *"task=/review-issue 9"* && "$out" == *"model=sonnet"* && "$out" == *"entry_type=Issue Review"* \
-    && "$out" == *"agent_name=Claude Code Agent"* && "$out" == *"agent_email=roland+claude-code@rolker.net"* \
+    && "$out" == *"agent_name=Claude Code Agent"* && "$out" == *"agent_email=dev+claude-code@example.org"* \
     && "$out" == *"worktree=$SB/worktrees/workspace/issue-workspace-9"* \
     && "$out" == *"Never push"* \
     && "$out" == *"conventions="*"local time with offset"*"scratchpad"* ]] \
