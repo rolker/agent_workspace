@@ -1,9 +1,10 @@
 # Inspiration Digest: worktrunk
 
 Type: inspiration
-Last checked: 2026-09-22
-Repo: max-sixty/worktrunk (no local clone checked out; survey done from
-README + GitHub API — see "Clone note" below)
+Last checked: 2026-11-13
+Repo: max-sixty/worktrunk @ d5b9a7e01dc086a5109673d04e3b0243ea14647b
+Previously checked: 2026-09-22 (no commit SHA recorded: the first survey was
+done from the README and GitHub API without a clone)
 
 First-run survey. Registry interest areas: worktree lifecycle UX
 (switch/list/merge addressed by branch name); pre/post-merge and
@@ -115,11 +116,132 @@ documented only at the summary level on worktrunk.dev and would need a
 source read (`src/` for the `wt step copy-ignored` implementation, the
 hook config schema) before any port decision.
 
+## Changelog (2026-09-22 → 2026-11-13)
+
+Method note: the 2026-09-22 survey recorded no commit SHA, so a compare from
+the last-checked SHA was impossible; and the volume is large anyway (378
+commits since 2026-09-22 by `gh api repos/max-sixty/worktrunk/commits?since=2026-09-22T00:00:00Z`),
+well past the compare API's 250-commit limit. Used instead the release notes
+in the new shallow clone (`CHANGELOG.md`, HEAD d5b9a7e, commit date
+2026-11-12; clone at `.agent/scratchpad/inspiration/worktrunk/` in the main
+checkout), `gh release list`, and merged-PR titles. Release notes for v0.80.0
+and v0.81.0 were read; per-commit diffs were not.
+
+**Releases since the survey**: v0.80.0 (2026-09-27) and v0.81.0
+(2026-10-20). v0.79.0 was 2026-09-21, one day before the survey. A release PR
+for v0.82.0 (#4716) is open; nothing released in the 24 days since v0.81.0
+although commits land daily.
+
+Changes touching the registry interest areas:
+
+- **Copy-on-write build-cache sharing (`wt step copy-ignored`)**, v0.81.0.
+  Linux: copied files now keep the source mtime (cargo previously rebuilt much
+  of a copied `target/`); a reflink rejected with `EPERM` falls back to a
+  plain copy; directory patterns in `.worktreeinclude` and
+  `[step.copy-ignored] exclude` now behave like `.gitignore`. Open-in-last-48h
+  fix #4751 (copy-ignored reaching `.worktreeinclude` paths inside a wholly
+  ignored directory). The mechanism is a reflink copy driven by
+  `.worktreeinclude`, which the survey said was not detailed.
+- **Hooks**, v0.81.0 (marked breaking): serial foreground hooks (`pre-*`,
+  `wt hook <type> --foreground`) inherit wt's stdin, so a hook can prompt;
+  hooks no longer receive context as JSON on stdin (use template arguments or
+  the new `tojson` filter); templates moved to MiniJinja 3 with undefined
+  variables now errors; hook failures name the hook's source. Open issue
+  #4143: `wt switch <branch>` skips `pre-start`, so a suggested recovery after
+  a failed setup reports success on an unusable worktree; PR #4705 adds a
+  retry-setup hint.
+- **Worktree lifecycle UX**, v0.81.0: `wt switch -` returns to the worktree it
+  left; experimental `wt switch --path` places one worktree outside the
+  `worktree-path` template; `wt merge --branch` merges another worktree's
+  branch without leaving the current one; faster bulk removal; removal
+  refusals explain themselves (`--force` lists what it discards); `wt step
+  prune` fixes.
+- **Merge safety**, v0.80.0 and v0.81.0: a squash whose commit fails keeps the
+  branch untouched (it used to leave it at the merge base with changes
+  staged); squash backups print a `refs/wt-backup/<branch>` recovery command;
+  formatter pre-commit hooks during a squash now land in the squash commit.
+- **PR/MR checkout**: `wt switch pr:N` continues to gain forge coverage (Azure
+  DevOps, Gitea, GitHub Enterprise host handling in merged PRs #4722, #4734,
+  #4764). No change to the basic behaviour.
+- **LLM commit messages**: Codex command updated to a smaller model with
+  reasoning off (v0.80.0); open issue #4264 proposes a direct small-model
+  query instead of an agent CLI.
+- **Agent integration (outside the registry list, but relevant)**: the Claude
+  Code plugin's `WorktreeCreate` / `WorktreeRemove` hooks route worktrees that
+  Claude Code creates (`claude --worktree`, `EnterWorktree`) through `wt
+  switch --create` / `wt remove`; the plugin ships a `wt-switch-create` skill
+  that moves a session into a worktree, including in another repository, and
+  (v0.81.0) reads that repo's root `CLAUDE.md` and `AGENTS.md`. Open issue
+  #4776 documents that the Claude desktop app skips the plugin's worktree
+  hooks. An OpenCode 2 integration and a Cursor plugin (PR #4225, open) exist.
+- **Repo conventions**: `AGENTS.md` shared by Claude Code and Codex was cut
+  from 2,763 to 382 lines in v0.80.0 (121 lines in the current clone). The
+  repo uses its own skills (`.claude/skills/release`, `running-tend`,
+  `writing-user-outputs`) for maintenance by agents. Releases carry a signed
+  `packslip.sigstore.json` manifest (v0.80.0).
+
+**Corrections to the 2026-09-22 survey**
+
+- Stars: the survey recorded 8,335; the current count is 12,502.
+- The survey said `wt step copy-ignored` was "not fully detailed" and needed a
+  source read: it is now cloned and the behaviour above is from the release
+  notes; the implementation under `src/` was not read in this run.
+- The "Clone note" is superseded by the clone made on this run.
+- The survey's hook description ("pre-merge, post-merge, post-create implied")
+  predates the v0.81.0 hook changes above (pre-start, pre-remove, post-remove
+  hooks named in release notes); the hook model is larger than described.
+
 ## Activity Snapshot
 
-See "Activity Snapshot (2026-09-22)" above.
+Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
+
+- 12,502 stars (was 8,335), dual MIT/Apache-2.0, Rust, not archived, default
+  branch `main`, `pushedAt` 2026-11-13T06:40Z.
+- 45 open issues listed, 19 open PRs listed (limit 200). Issue themes: forge
+  edge cases (GitHub Enterprise, Gitea, Azure DevOps), `wt list` output and
+  JSON schema (last-activity timestamp, JSON Schemas for config), agent
+  integration (Claude plugin version matching, desktop app hook gap, Cursor
+  plugin, marker staleness), performance on machines with per-exec endpoint
+  security cost (#4514), and flaky macOS interrupt tests.
+- 378 commits in 52 days, of which a large share are bot dependency bumps and
+  agent-maintained doc/test cleanups (merged PR titles such as "Correct stale
+  comments..." and "skills(running-tend)...", consistent with the project's
+  own agent-run maintenance). Substantive user-facing change arrives in the
+  roughly monthly releases.
 
 ## Pending Review
+
+New in the 2026-11-13 check:
+
+- `worktrunk-1` `copy-ignored-matured-and-source-available` — v0.81.0
+  hardened `wt step copy-ignored` (mtime preserved on Linux so cargo does not
+  rebuild, EPERM fallback to copy, `.worktreeinclude` directory patterns).
+  Strengthens the existing `cow-build-cache-sharing-for-project-worktrees`
+  item below: the mechanism is real and tested at scale, and the source is now
+  cloned for the read that item required. (2026-11-13)
+- `worktrunk-2` `claude-worktree-hooks-and-cross-repo-entry` — the plugin's
+  `WorktreeCreate`/`WorktreeRemove` hooks and `wt-switch-create` skill (enter
+  a worktree, including in another repository, then read its `CLAUDE.md` and
+  `AGENTS.md`) address the same problem as this workspace's `/start-task`
+  `cd` approach and the native `EnterWorktree` limits for project worktrees.
+  Also documents a known gap (issue #4776: desktop app skips these hooks).
+  Worth a read of `plugins/worktrunk/skills/wt-switch-create/rationale.md`.
+  (2026-11-13)
+- `worktrunk-3` `hook-semantics-lessons` — v0.81.0 hook changes (foreground
+  hooks can prompt; context passed by template args not stdin JSON) and open
+  issue #4143 (recovery after a failed `pre-start` reports success on an
+  unusable worktree) are concrete failure modes for any lifecycle-hook design.
+  Refines the existing `worktree-lifecycle-hooks` item below. (2026-11-13)
+- `worktrunk-4` `merge-safety-backups` — failed squash leaves the branch
+  untouched; squash backups under `refs/wt-backup/<branch>` with a printed
+  restore command. Possible hardening ideas for `merge_pr.sh` / local merge
+  paths; relevant only if a local squash path is ever added (see
+  `local-squash-merge-one-shot` below). (2026-11-13)
+- `worktrunk-5` `agents-md-trim-reference` — an agent-instruction file cut from
+  2,763 to 382 lines (121 now) and shared across Claude Code and Codex.
+  Informational comparison point for the `AGENTS.md` line budget. (2026-11-13)
+
+Carried from 2026-09-22, still undecided:
 
 - `cow-build-cache-sharing-for-project-worktrees` — Evaluate `wt step
   copy-ignored`'s filesystem-CoW approach (APFS/btrfs/XFS reflinks) for
