@@ -2819,3 +2819,13 @@ CI at triage: of 8 check runs on `7836be6`, both Validate Documentation runs suc
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid and recommends fixing it in this pull request; a few lines, with a test)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 461, as triage states it: in the comments-only duplicate check (no timeline read), take the last comment that starts with either "## Merge (report-only)" or "## Merge (unreviewed)", and skip only when that comment's type equals the requested type and its conditions match; one gate test. Nothing else changes; the timeline path and the owning-package path are untouched.
