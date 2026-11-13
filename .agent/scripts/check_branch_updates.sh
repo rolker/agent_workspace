@@ -12,11 +12,20 @@
 #                    branch, as before; the pre-commit hook and
 #                    worktree_enter.sh call it that way.
 #
+# The fetch names an explicit refspec, +refs/heads/<b>:refs/remotes/origin/<b>,
+# so a --single-branch or otherwise narrowed clone (whose configured refspec
+# does not cover <b>) still gets a fresh origin/<b>; a plain
+# `git fetch origin <b>` there writes FETCH_HEAD only and the counts would
+# compare with a missing or stale origin/<b>.
+#
 # Exit codes:
 #   0 - No updates needed or on the compared branch (also when origin cannot
-#       be fetched: a warning is printed, nothing is blocked)
+#       be fetched or did not answer in time: a warning is printed, nothing
+#       is blocked)
 #   1 - Strict mode only: the branch is behind
-#   2 - Error occurred (also an unknown option or a missing --base value)
+#   2 - Error occurred (also an unknown option or a missing --base value;
+#       origin answers but has no branch <b>; or origin/<b> is missing after
+#       a fetch that reported success)
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -64,11 +73,14 @@ fi
 # Every call to origin is bounded: no credential prompt, and at most
 # CHECK_BRANCH_UPDATES_TIMEOUT seconds (default 60) when `timeout` exists.
 # A call that times out is a failed call (the fetch warning below).
-bounded_git() {
+fetch_limit() {
     local limit="${CHECK_BRANCH_UPDATES_TIMEOUT:-60}"
     [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    echo "$limit"
+}
+bounded_git() {
     if command -v timeout >/dev/null 2>&1; then
-        GIT_TERMINAL_PROMPT=0 timeout -k 5 "$limit" git "$@"
+        GIT_TERMINAL_PROMPT=0 timeout -k 5 "$(fetch_limit)" git "$@"
     else
         GIT_TERMINAL_PROMPT=0 git "$@"
     fi
@@ -95,6 +107,9 @@ else
         # Fallback: query remote (slower)
         DEFAULT_BRANCH=$(bounded_git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2 | xargs || echo "main")
     fi
+    # The pipeline above can succeed with no output (origin unreachable:
+    # xargs still exits 0), which would leave the name empty.
+    [[ -n "$DEFAULT_BRANCH" ]] || DEFAULT_BRANCH="main"
 fi
 
 # If we're on the compared branch, no need to check
@@ -109,18 +124,33 @@ echo "Checking for updates in $KIND ($DEFAULT_BRANCH)..."
 
 # Check if this is a shallow clone
 IS_SHALLOW=$(git rev-parse --is-shallow-repository 2>/dev/null || echo "false")
+DEPTH_ARGS=()
+# For shallow clones, fetch with depth to get enough history
+[ "$IS_SHALLOW" == "true" ] && DEPTH_ARGS=(--depth=50)
 
-if [ "$IS_SHALLOW" == "true" ]; then
-    # For shallow clones, fetch with depth to get enough history
-    if ! bounded_git fetch origin "$DEFAULT_BRANCH" --depth=50 --quiet 2>/dev/null; then
-        echo -e "${YELLOW}⚠️  Warning: Could not fetch from remote${NC}"
+FETCH_RC=0
+bounded_git fetch --quiet ${DEPTH_ARGS[@]+"${DEPTH_ARGS[@]}"} origin -- \
+    "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" 2>/dev/null || FETCH_RC=$?
+if [ "$FETCH_RC" -ne 0 ]; then
+    if [ "$FETCH_RC" -eq 124 ] || [ "$FETCH_RC" -eq 137 ]; then
+        echo -e "${YELLOW}⚠️  Warning: origin did not answer within $(fetch_limit)s; not compared with $DEFAULT_BRANCH${NC}"
         exit 0  # Don't block on fetch failures
     fi
-else
-    if ! bounded_git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null; then
-        echo -e "${YELLOW}⚠️  Warning: Could not fetch from remote${NC}"
-        exit 0  # Don't block on fetch failures
+    # Did the fetch fail because origin has no such branch, or because
+    # origin could not be reached? ls-remote --exit-code tells them apart
+    # (2: origin answered and has no such branch).
+    LS_RC=0
+    bounded_git ls-remote --exit-code --heads origin "refs/heads/$DEFAULT_BRANCH" >/dev/null 2>&1 || LS_RC=$?
+    if [ "$LS_RC" -eq 2 ]; then
+        echo -e "${RED}✗ Error:${NC} origin has no branch '$DEFAULT_BRANCH'; nothing to compare with" >&2
+        exit 2
     fi
+    echo -e "${YELLOW}⚠️  Warning: Could not fetch '$DEFAULT_BRANCH' from origin; not compared${NC}"
+    exit 0  # Don't block on fetch failures
+fi
+if ! git rev-parse --verify --quiet "refs/remotes/origin/$DEFAULT_BRANCH^{commit}" >/dev/null; then
+    echo -e "${RED}✗ Error:${NC} the fetch of '$DEFAULT_BRANCH' reported success but wrote no origin/$DEFAULT_BRANCH; nothing to compare with" >&2
+    exit 2
 fi
 
 # Get commit counts

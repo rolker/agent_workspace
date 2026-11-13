@@ -1093,6 +1093,53 @@ out=$(cd "$A17" && bash -c "$STEP8_PKG" 2>&1 | strip_ansi)
 check "after merging origin/pinned: up to date with pinned, and origin/main's commits did not come in" \
     "$([[ "$out" == *"up-to-date with pinned"* ]] && ! git -C "$A17" merge-base --is-ancestor origin/main HEAD; echo $?)" "$out"
 
+# A single-branch clone of main has no origin/pinned and a configured refspec
+# that does not cover it: the explicit refspec still fetches it, and the
+# branch is judged behind pinned by the true count.
+SBC="$SANDBOX/single-branch-a"
+git clone -q --single-branch --branch main "$REM/owner/pkg_a.git" "$SBC"
+git -C "$SBC" checkout -q -b feature/issue-18
+want=$(git -C "$REM/owner/pkg_a.git" rev-list --count main..pinned)
+out=$(cd "$SBC" && "$CBU" --base pinned 2>&1 | strip_ansi)
+rc=$(cd "$SBC" && "$CBU" --strict --base pinned >/dev/null 2>&1; echo $?)
+check "single-branch clone of main, origin's pinned $want ahead: behind pinned by $want, --strict exits 1" \
+    "$([[ "$want" -gt 0 && "$rc" -eq 1 && "$out" == *"Commits behind:  $want"* && "$out" == *"git merge origin/pinned"* \
+          && "$out" != *"up-to-date"* && "$(git -C "$SBC" rev-parse origin/pinned)" == "$(git -C "$REM/owner/pkg_a.git" rev-parse pinned)" ]]; echo $?)" \
+    "rc=$rc want=$want $out"
+# A base origin does not have: a true message and exit 2, with or without --strict.
+out=$(cd "$SBC" && "$CBU" --base no-such-base 2>&1 | strip_ansi)
+rc=$(cd "$SBC" && "$CBU" --base no-such-base >/dev/null 2>&1; echo $?)
+rcs=$(cd "$SBC" && "$CBU" --strict --base no-such-base >/dev/null 2>&1; echo $?)
+check "a base origin does not have: 'origin has no branch', exit 2 (also --strict)" \
+    "$([[ "$rc" -eq 2 && "$rcs" -eq 2 && "$out" == *"origin has no branch 'no-such-base'"* && "$out" != *"up-to-date"* \
+          && "$out" != *"Could not fetch"* ]]; echo $?)" "rc=$rc rcs=$rcs $out"
+# An origin that cannot be reached: a warning saying so, exit 0 (never blocks).
+git -C "$SBC" remote set-url origin "$SANDBOX/no-such-origin.git"
+raw=$(cd "$SBC" && "$CBU" --strict --base pinned 2>&1; echo "RC=$?"); rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+check "origin unreachable: 'Could not fetch', not compared, exit 0 even with --strict" \
+    "$([[ "$rc" -eq 0 && "$out" == *"Could not fetch 'pinned' from origin; not compared"* && "$out" != *"origin has no branch"* \
+          && "$out" != *"up-to-date"* ]]; echo $?)" "rc=$rc $out"
+# An origin that does not answer: ended by the time limit, said so, exit 0.
+if command -v timeout >/dev/null 2>&1; then
+    HANG_PIDS="$SANDBOX/cbu-hang.pids"
+    printf '#!/usr/bin/env bash\necho $$ >> "%s"\nexec sleep 300\n' "$HANG_PIDS" > "$SANDBOX/cbu-hang-ssh"
+    chmod +x "$SANDBOX/cbu-hang-ssh"
+    git -C "$SBC" remote set-url origin "ssh://git@example.invalid/owner/pkg_a.git"
+    started=$SECONDS
+    raw=$(cd "$SBC" && GIT_SSH_COMMAND="$SANDBOX/cbu-hang-ssh" CHECK_BRANCH_UPDATES_TIMEOUT=1 "$CBU" --strict --base pinned 2>&1; echo "RC=$?")
+    rc=${raw##*RC=}; out=$(strip_ansi <<< "${raw%RC=*}")
+    elapsed=$((SECONDS - started))
+    reached=no; left=""
+    if [[ -s "$HANG_PIDS" ]]; then
+        reached=yes
+        while read -r p; do kill "$p" 2>/dev/null || true; done < "$HANG_PIDS"
+        while read -r p; do kill -0 "$p" 2>/dev/null && left="$left $p"; done < "$HANG_PIDS"
+    fi
+    check "origin hangs: ended by CHECK_BRANCH_UPDATES_TIMEOUT (${elapsed}s < 60s), said so, exit 0; no process left" \
+        "$([[ "$reached" == yes && -z "$left" && "$rc" -eq 0 && "$elapsed" -lt 60 \
+              && "$out" == *"origin did not answer within 1s; not compared with pinned"* ]]; echo $?)" "rc=$rc reached=$reached left=$left $out"
+fi
+
 # The approved pre-push review, publish (step 7's block), the review fetch.
 (cd "$A17" && entry 'Local Review (Pre-Push)' '**Verdict**: approved' "**Branch**: feature/issue-17 at \`$(git -C "$A17" rev-parse --short HEAD)\`" \
     | "$S/progress_append.sh" 17 >/dev/null 2>&1)
