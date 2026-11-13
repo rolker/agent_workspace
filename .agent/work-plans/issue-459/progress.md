@@ -514,3 +514,16 @@ Partial for one reason only: the owner-directed `/orchestrator` line (must-fix 1
 
 ### Verification
 The full `pre-commit run --files ...` pass was SKIPPED on the owner's direction ("have agent skip pre-commit and let ci handle it"); CI's lint job is the check for the remaining suites. Each commit ran the fast hooks with `SKIP=validate-script-tests`. Suites run directly on the final tree: test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0. New behaviour tests fail on the code before this pass (6 in test_dispatch_phase, 1 in test_commit_identity checked by restoring the old files). No `__pycache__` left (one written while the hook edit was still unstaged, as pre-commit stashes it, was removed; a hook run on the committed hook writes none).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: takeover
+**Phase**: address-findings
+
+You do it (takeover)
+
+Put to him: the fix pass ended partial only because the permission system twice refused the sub-agent's edit of the one line he had approved ("yes, add it in 459's pull request") in .claude/skills/orchestrator/SKILL.md, the plan row of the checkpoint table. The host makes that one edit, commits it, and writes the pass's entry as complete; nothing else in the file changes.
