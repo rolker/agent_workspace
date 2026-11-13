@@ -2002,3 +2002,30 @@ Scope: the three pre-push reviews after the Checkpoint of 2026-11-12 21:45 (Afte
 **Decision**: address
 
 Fix in pull request 460: state the --parent-issue exception to "an existing owning branch needs --base" in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text: the existing branch is accepted, no base is recorded, and dispatch_phase.sh base --base records one later.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 23:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3896df654672786a, resume 2 of 3)
+
+**PR**: #460 at `9bc5f3ee`
+**Addressed**: Integrated Review at `4c248c51` (2026-11-12 23:18 -05:00)
+**Commits**: 9bc5f3ee
+
+### Actions
+- [x] (should-fix, documentation defect) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" now carries its `--parent-issue` exception everywhere it was stated without it. The exception matches `worktree_create.sh`'s manifest write: with `--parent-issue`, where `--base` is refused, an existing owning branch is accepted, no `base=` is recorded, a Note says so, and `dispatch_phase.sh base --base <branch>` records one later. This is text only; no behaviour changed. Places:
+  - `docs/design.md#worktrees` (Base branch bullet)
+  - `.claude/skills/start-task/SKILL.md:175`
+  - `.agent/scripts/worktree_create.sh`: the `--base` usage text, and the manifest-write comment, which stated the rule the same way
+  - `.agent/WORKTREE_GUIDE.md` (Base branch bullet)
+  - `.agent/knowledge/script_reference.md` (`worktree_create.sh` row)
+  - `.agent/work-plans/issue-429/plan.md` (Part 2 step 4)
+
+### Places left as they are
+- `.claude/skills/run-issue/SKILL.md` (lines 144 and 247) states the rule without the exception, and I left it: run-issue never passes `--parent-issue`, so in its flow the rule holds as written.
+- The ADR-0012 addendum also stays. It says only that for a branch the workspace did not start "only a base the owner names is recorded", which is still true when nothing is recorded.
+- No test asserts the usage text: a grep of `.agent/scripts/tests/` found none.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0, every hook passed. That includes `validate-script-tests`, which ran the suites the branch's changed files reach.
