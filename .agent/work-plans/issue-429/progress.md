@@ -1395,3 +1395,45 @@ Scope: the one finding of the Local Review at `6807c9f4` and its fix, e361588d (
 
 ### Findings
 - [x] (must-fix) `version: True` and `version: False` (unquoted) are refused, though PyYAML gives the bool `True`/`False` and `str()` turns it back into the same text, so vcstool checks out the ref as written. That breaks the stated rule. Run through the real verb, with a branch `True` on origin, the error says something false: `... which YAML reads as the bool True, so vcstool would check out 'True', not 'True'; quote it`. ADR-0019 line 52 also lists "a bool" among the values whose reading changes the text. Fix: accept exactly `True` and `False`, or exclude them from the bool branch, and add both to the test's kept list and the ADR wording. Other spellings (`true`, `TRUE`, `yes`, ...) stay refused. — `.agent/project_types/ros2_colcon/adapter.sh:949-952`, `docs/decisions/0019-repo-pin-verb.md:52`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #456 at `8fc482b9`
+**Addressed**: Local Review at `33cbccd7` (2026-11-12 19:28 -05:00)
+**Commits**: 556ead1b (merge of main), 8fc482b9
+
+The branch took main first: merge commit `556ead1b` brings in issue 455's identity change. Its one conflict was the `docs/design.md` change log, where main and this branch each added a 2026-11-12 row. Both rows are kept, main's first and then this branch's, matching the table's merge order. This branch's row, now the last, gives the merged file's length (921 lines, was 917). `check_design_anchors.sh` passed.
+
+### Actions
+- [x] (must-fix) Unquoted `True` and `False` were falsely refused, and the error contradicted itself ("would check out 'True', not 'True'"). Both are now taken out of the bool branch of `_rc_yaml_plain_reading`. Every other bool spelling stays refused (`true`, `TRUE`, `yes`, `On`, `false`, `FALSE`, `Off`, ...). The helper's comment says why. — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_reading`
+  - Test `test_repo_pin_refuses_yaml_typed_plain_pins` changes:
+    - `True` and `False` are in the accepted list.
+    - A real branch `True` on origin gives `True	branch`.
+    - `true`, `TRUE`, `false` and `FALSE` are added to the refused list, each naming the bool and the checkout `True`/`False`.
+  - Parser table (`test_repos_entries_parser_table`) gains ` True` → `True` plain and ` false` → `false` plain.
+  - ADR-0019 no longer lists every bool among the values whose reading changes the text. It now says a bool other than `True` or `False` is refused, and lists `True` and `False` among the values accepted unquoted. — `docs/decisions/0019-repo-pin-verb.md:52-61`
+
+The finding's box was ticked by hand in the `## Local Review` entry, because `review_progress.sh findings` does not read a post-publish Local Review.
+
+Not changed: the `^\.[0-9_]+` float pattern. PyYAML 6 uses `\.[0-9][0-9_]*`. Aligning them is not a one-character change, which is what the handoff allowed. The difference only refuses `._<digits>`-style values, and no git ref can start with `.`.
+
+### Parser input table additions (repo_pin column)
+| Input | Value | Form | repo_pin |
+|-------|-------|------|----------|
+| ` True` (new) | `True` | plain | ref (str() gives `True`) |
+| ` false` (new) | `false` | plain | refused: the bool False, checks out `False` |
+
+### Checks
+- PyYAML 6.0.3 cross-check (system python3, `safe_load` + `str()`) on 58,758 plain values: every bool spelling in every case, random strings over digits, `._-+eExXbBoO:abfTrueFalsNn~`, and random decimals.
+  - No accepted value changes under `str()`.
+  - Every "would check out X" claim matches PyYAML's `str()`.
+  - The bool branch now refuses all 16 other spellings and accepts only `True` and `False`, the only two it was wrongly refusing.
+  - Null: `~`, `null`, `Null` and `NULL` become `None` and stay refused. `None` itself is a string and is accepted.
+  - The remaining false refusals:
+    - 515 floats, all with more than 15 significant digits (refused by design);
+    - `._0`, `._7` and `.__` (the pattern difference above).
+- `test_ros2_colcon.sh`: 504 passed, 0 failed.
+- Pre-commit over `main...HEAD` (local `main` = origin/main `38119e32`), no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`, `check-design-anchors`, `shellcheck` and the adapter contract check.
