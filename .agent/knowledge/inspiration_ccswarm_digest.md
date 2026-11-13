@@ -234,35 +234,12 @@ Snapshot 2026-11-13 (supersedes the 2026-09-22 snapshot above for counts):
 
 New in the 2026-11-13 check:
 
-- `ccswarm-1` `quorum-then-machine-gates-ordering` — Sangha now runs
-  command gates once after quorum is reached and fails the stage with
-  `gate_failed` even when all members approved (members do not run the
-  checks). Compare with this workspace's review loop, where machine checks
-  (pre-commit, CI) and agent review are separate and the merge decision
-  treats them side by side; the ordering "vote first, then checks decide,
-  and a failed check overrides a unanimous vote" is a concrete rule to
-  weigh for the triage step. (2026-11-13)
-- `ccswarm-2` `route-by-status-not-by-text` — rule routing now follows a
-  stage's structured status rather than words or tags in its output, after
-  a failed stage that quoted a success tag routed as success. Check whether
-  any `/run-issue` phase routing or `dispatch_phase.sh` handback parsing
-  relies on strings in free-form agent output. (2026-11-13)
 - `ccswarm-3` `read-only-enforced-not-requested` — read-only stages are
   enforced by the provider's own sandbox flag, passed explicitly so explicit
   tool lists cannot widen it, and a fallback to a provider that cannot
   enforce read-only fails instead of degrading silently. Same principle as
   the earlier `fail-fast-unsupported-provider-pattern` item; relevant to how
   reviewer sub-agents are kept read-only in this workspace. (2026-11-13)
-- `ccswarm-4` `prune-unreached-code` — v0.11.0 deleted whole modules that
-  the CLI never reached (governance, hooks, identity, resource, session
-  management) and the `ccswarm task` command, which silently did nothing.
-  Informational parallel to this workspace's "rules without enforcement"
-  audits. Note: the deleted `governance` module is the nearest thing the
-  project had to a rules layer. (2026-11-13)
-- `ccswarm-5` `watch-untagged-release` — 0.11.0 is dated 2026-11-06 in the
-  changelog but untagged on GitHub; if it is tagged, re-check the Herdr
-  requirement before treating local-provider behaviour as stable.
-  Informational. (2026-11-13)
 
 Carried from 2026-09-22, still undecided (`quorum-gate-for-plan-review` is
 partly sharpened by `ccswarm-1`; its note that Sangha "bypasses gates" is
@@ -294,12 +271,20 @@ no longer true):
 
 ## Roadmapped
 
-(none — first-run survey; items above are pending review, not yet
-triaged into roadmap/skip/defer)
+(none)
 
 ## Skipped
 
-(none)
+- `ccswarm-1` `quorum-then-machine-gates-ordering` — the workspace already
+  follows the rule: merge waits on CI for the reviewed commit, and hooks run
+  regardless of reviews (2026-11-13)
+- `ccswarm-2` `route-by-status-not-by-text` — checked 2026-11-13:
+  `dispatch_phase.sh` routes on the parsed `Status` / `Verdict` fields of the
+  progress entry via `progress_read.py`, not on free text (2026-11-13)
+- `ccswarm-4` `prune-unreached-code` — informational parallel to this
+  workspace's "rules without enforcement" audits (2026-11-13)
+- `ccswarm-5` `watch-untagged-release` — informational: only matters if the
+  0.11.0 tag appears and local-provider behaviour is relied on (2026-11-13)
 
 ## Deferred
 
