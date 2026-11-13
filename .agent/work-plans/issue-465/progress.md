@@ -137,3 +137,28 @@ Read: the Plan Review at 6ebf04f3 and its report. Both must-fix findings and not
 - F1: the agent does not call suites_for_files.sh. It runs the suites that test what it changed: the test_<name>.sh of each changed script, plus the suite that checks any text it changed (test_skill_paths.sh for skill and knowledge text, test_dispatch_phase.sh for the dispatcher), names them in its entry, and leaves the rest to the host's pass and CI. This is what both machines did all day on 2026-11-13. The review measured the alternative: the selection script prints ALL on every loop branch as called, and 36 to 43 of 49 suites when filtered — undoing it: use the exact-selection command and pay about the old run's cost per pass.
 - F2: the host runs its full pass when the publish checkpoint is raised, before answering it, on the exact head that will be pushed; on a failure it answers address with the failing suites quoted, and address-findings treats a quoted host-pass failure as its open finding — undoing it: none sensible; without it a failed pass has no route back into the loop.
 - N4: outstanding records are also pushed when a drive parks or the session ends, so a drive resumed on the other machine does not re-run a phase — undoing it: drop that sentence.
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-13 15:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-465 at `f7fdd50f`
+
+Stopped early on the coordinator's word (machine shutting down). Every plan step and binding change (F1, F2, N2, N4, N5) is written and committed; one suite result is unexplained.
+
+### Done
+- `4a526aa2`, `eb369bb1` dispatch_phase.sh: new `pass_rule` (SKIP on every commit incl. the entry, never --no-verify, run only the suites that test what changed, name them in the entry, no pre-commit command printed); `root_q` dropped; header and inline comments updated. test_dispatch_phase.sh: old pins and the spaced-root block replaced by pins on the new sentences, plus negatives on `pre-commit run --files`, `.venv/bin/pre-commit`, `run_script_tests.sh`, `suites_for_files.sh`, "intermediate"; review-phase and project negatives also refuse "Hook rule".
+- `9e807298` run-issue: Hook rule paragraph (owner's words); step 7 host full pass at checkpoint:publish (and rounds) before answering, on the head to be pushed, `origin/main...HEAD`, background or long timeout, failure answered `address` with failing lines quoted; step 9 CI confirmed before merge checkpoint; step 10/11 record-only push rule (before merge_pr.sh with rev-list/status check, issue #462; and when a drive parks). address-findings: step 2 host-pass failure as open finding, step 3 SKIP on every commit, step 4 own suites only, step 5 `**Addressed**` for a host-pass fix. host_standing_rules.md: one new row. script_reference.md: runner row's rule sentence was the old rule, corrected. test_skill_paths.sh: pins for all of it.
+- `f7fdd50f` run_script_tests.sh header and .pre-commit-config.yaml hook comment (comments only), last.
+
+### Suites (each on its own; full pass skipped on the owner's direction)
+- test_dispatch_phase.sh: 232 passed, 0 failed (tree at eb369bb1 plus the uncommitted skill edits; dispatcher unchanged since)
+- test_skill_paths.sh: 154 passed, 0 failed (tree = 9e807298)
+- test_checkpoint_269.sh: 43 passed, 0 failed; test_package_issue_loop.sh: 220 passed, 0 failed (tree = 9e807298 content)
+- test_script_tests_hook_scope.sh: 325 passed, 3 failed (tree = f7fdd50f content): "hub guard: register_project.sh" selects 35 suites (limit 16), including test_cross_model_review.sh. Not investigated; may come from this branch's new text (suites_for_files.sh maps by references) or exist on main.
+- test_run_script_tests.sh: not run (stopped for the shutdown).
+
+### Left
+- Find out whether the hook-scope hub-guard failure is caused by this branch (compare against origin/main), and fix if so.
+- Run test_run_script_tests.sh.
+- test_address_findings.sh not run: it does not read the skill text.
