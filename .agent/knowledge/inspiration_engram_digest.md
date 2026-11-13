@@ -218,10 +218,12 @@ linked git worktree — a worktree gotcha worth knowing).
   concurrent sessions sharing findings. May matter to this workspace
   because several agent sessions run in parallel and have no channel
   beyond the issue timeline (2026-11-13)
-- `engram-2` `mem-append-with-size-warning` — atomic append to an existing
-  memory plus a length warning that prompts consolidation. May matter as
-  a concrete mechanism for the roadmapped memory-consolidation rule, which
-  currently has no tool support (2026-11-13)
+
+## Skipped (2026-11-13 decisions)
+
+- `engram-2` `mem-append-with-size-warning` — informational: a mechanism for
+  the roadmapped memory-consolidation rule, which uses no such tool here
+  (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
