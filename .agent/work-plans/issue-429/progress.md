@@ -3366,3 +3366,15 @@ PR body against the code at `72cf2c6` (for the host; this triage does not edit t
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge, note on 462 (Recommended)
+
+He was shown: the gate reads the committed progress.md at origin's branch head in the owning checkout; it reads only a checkout that is the top folder, on the branch and equal to origin; the record is committed there only when the working copy's file is the committed one in content and mode, otherwise a comment; package pull requests stay report-only and the workspace gate is as on main except time-limited calls; the base is used by the pre-push review and the behind-check; the known gaps in the pull request body. The note on issue 462 is the rollback-guard point triage assigned to it.
