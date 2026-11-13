@@ -250,3 +250,13 @@ Dismissed: Codex's lock race (round 1's judged limit (a), not in the fix diff; e
 - [ ] (suggestion) Before the yes, re-run the dry run with the exact --set arguments the real call will pass: a user's command register_project.sh refuses (e.g. "make && make install") or a copied "(detected (Makefile))" annotation is only caught after the yes, as STATUS=refused and a rollback, and the shown output is then exactly the real call's (Claude adversarial, confirmed by reading) — `.claude/skills/onboard-project/SKILL.md:149`
 - [ ] (suggestion) A settings file left under the folder's name (register_project.sh --remove --keep-settings) is kept: the dry run says "settings file kept as it is" with no build= or test= lines, so the question names no commands and the skill's "both show what is written" is untrue there; show that file's build and test in the question — `.claude/skills/onboard-project/SKILL.md:165`
 - [ ] (suggestion) The name rule is a second copy of register_project.sh's; a change to one leaves the other refusing or passing names differently (worst case round 1's NEXT=--name message again); move it into a function in _project_registry.sh both call — `.agent/scripts/register_session_root.sh:171`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 12:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 is approved with no must-fix; by the review-depth rule a third round runs only for a real defect; its three suggestions go to triage; the host's one full pre-commit pass on 2212c07b, every hook and every suite with no SKIP, exited 0 in 824 s; the commit after it changes progress.md only)
+**After**: publish
+**Decision**: publish
+
+Read: the round 2 Local Review (Pre-Push) at 5b9887f5 and its report; the full pass output. Open suggestions for triage: SKILL.md:149 re-run the dry run with the exact --set arguments before asking the yes; SKILL.md:165 show a kept settings file's commands in the question; register_session_root.sh:171 share the name rule with register_project.sh through one function.
