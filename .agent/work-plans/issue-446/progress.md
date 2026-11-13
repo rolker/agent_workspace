@@ -662,3 +662,13 @@ Verified: `git grep` for 0019 and 0020: every plugin-record reference says 0020 
 ### Findings
 - [ ] (must-fix) PR body's Decision summary still says "ADR-0019 records the decision" (now ADR-0020) and the pre-merge diff count (3741 insertions; now 3759) — PR #458 description, "What changed"
 - [ ] (suggestion) The 446 change-log row's Lines value 928 is the pre-merge count; the file is 967 and as the newest row it reads as a shrink from 936; nothing reads the column — `docs/design.md:913`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 10:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Asked: "Merge once CI passes, leaving F2 as it is?" with F1 (must-fix: the pull request description still said ADR-0019 and gave the old diff size; corrected by the host in the description, no commit) and F2 (suggestion: the design document's change-log row for issue 446 gives 928 lines, the file is 967 after the merge; nothing reads the column). The owner's answer, verbatim: "yes". F2 is deferred on that answer. Earlier the same day he approved the merge commit 00b549df with the script suites skipped ("yes, commit with the suites skipped and push"); CI on the pull request is the full run the merge waits for. He also approved running the new installer on this machine after the merge ("yes, run the installer after the merge").
