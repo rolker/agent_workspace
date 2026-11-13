@@ -105,8 +105,16 @@ looked at) and `open`: each unchecked finding with its `index`, `text`, and
   address — run `review-code --branch` (pre-push) or `triage-reviews`
   (post-PR) first" and exit without a commit. Do **not** act on other entry
   types.
-- **`open` is empty** — report "nothing to address — the latest review has
-  no open actions" and exit without a commit.
+- **A host full-pass failure** — when the handoff, or the newest
+  `## Checkpoint` entry (`**After**: publish` or `rounds`, `**Decision**:
+  address`), quotes a failure of the host's full pre-commit pass
+  (`run-issue` step 7), that failure is an open finding, in addition to
+  `open` and even when `open` is empty (an approved review leaves it
+  empty). Act on it in step 3 like any other finding, with no box to check
+  (skip 3.4 for it), and list it under Actions in step 5.
+- **`open` is empty and no host full-pass failure is quoted** — report
+  "nothing to address — the latest review has no open actions" and exit
+  without a commit.
 
 > **Pre-push actions *all* unchecked findings — including suggestions.**
 > Post-PR `triage-reviews` curates which findings become actions; pre-push
@@ -148,13 +156,13 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
    box-check (next step) is the one permitted addition to a finding's
    commit beyond the finding's own files.
 
-   **Dispatched pass** (owner-decided 2026-10-20, issue #399): only when
+   **Dispatched pass** (owner-decided 2026-11-13, issue #465): only when
    the handoff's `conventions=` line carries the hook rule — a workspace
    pass dispatched by `/run-issue` — set `SKIP=validate-script-tests` on
-   these intermediate fix commits, so the script suite does not run once
-   per commit. Every other hook still runs, and `--no-verify` is still
-   never allowed. A hand-run session or a project pass has no such line
-   and commits with every hook, as above.
+   every commit, the step 5 entry's commit included, so the script suites
+   do not run on any commit. Every other hook still runs, and
+   `--no-verify` is still never allowed. A hand-run session or a project
+   pass has no such line and commits with every hook, as above.
 4. Check the box for that finding so the timeline tracks resolution — in
    the same commit as the fix, or a trailing progress commit:
 
@@ -172,35 +180,22 @@ After the last fix, run the relevant quick checks (the linters pre-commit
 already ran, plus any suite the changes touch). This is not a full
 `review-code` — it's a sanity pass before handing to the re-review.
 
-A dispatched pass that skipped `validate-script-tests` (step 3) runs every
-hook once over the whole branch here, with no SKIP. Run the exact line
-the handoff's rule prints, copied from the handoff: it names the main
-checkout's venv pre-commit by absolute path, because a worktree has no
-`.venv` (a bare `pre-commit` is not found there) and the absolute form is
-the one the permission allowlist matches. Its shape, with the path shown
-as a placeholder (not a command to paste):
-
-```text
-<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
-```
-
-The file list is left unquoted because no repo path has a space. In a
-sub-issue worktree (branched from the parent's feature branch)
-`main...HEAD` also covers the parent's files, so a failure there may be in
-a file this pass never touched.
-
-It includes `validate-script-tests`, so the script suites run once for the
-pass whenever a changed file that still exists matches that hook: the
-suites those files reach (issue #410), or every suite when the branch
-deletes an in-scope file or touches a shared helper, the runner or the hook
-config. pre-commit drops deleted paths, so a branch whose only in-scope
-changes are deletions runs no suite here; CI's all-files run covers it.
-Run no separate suite. It takes about 2 minutes for a typical fix and
-about 7 when every suite runs, longer than the Bash tool's 120 s default
-timeout: give the call a long timeout (up to 600000 ms) and wait for its
-exit. A run that was backgrounded or cut off
-by a timeout has not passed. If it fails, fix the failure (a commit of its
-own) and run the same command again on the final tree before step 5.
+A dispatched pass whose handoff carries the hook rule (step 3) runs no
+full pre-commit pass over the branch: that pass is the host's, once per
+pull request before the push (`run-issue` step 7), and after publish CI
+checks every push. Follow the rule as the handoff prints it: run the
+suites that test what you changed, each on its own with
+`bash <worktree>/.agent/scripts/tests/<suite>`, the issue worktree's own
+copy (never `$WS_ROOT`'s, which is the main checkout's) — the
+`test_<name>.sh` and any `test_<name>_*.sh` of each script you changed,
+`test_skill_paths.sh` when you changed skill or knowledge text, and any
+suite file you changed. A changed script with no suite of its own gets
+none; name it in step 5's entry. If a suite fails, fix the cause (a commit
+of its own) and run that suite again before step 5. Step 5's entry names
+each suite you ran with its result line and says the full pass was left
+to the host. A run of every suite takes about 4 minutes at 4 jobs (240 s),
+against 14 to 18 minutes at one job (824 to 1069 s), measured 2026-11-13
+on a 16-CPU machine; that cost is why it runs once per pull request.
 
 ### 5. Write the `## Implementation` entry
 
@@ -234,16 +229,24 @@ ENTRY
 `**Branch**`/`**PR**` line is required — without it the entry's
 correlation parses as null. `**Addressed**` names the source entry's type
 and correlation SHA so a reader (and the next review's round counter) can
-tie the two together. Every finding from the source entry appears under
+tie the two together. When the pass acted on a host full-pass failure
+(step 2), `**Addressed**` names it, never left empty (`next` tells this
+pass from the implement pass by that field), as
+`**Addressed**: host full pass at <head sha> (Checkpoint <its When>)`,
+followed by the review entry as above when that entry's open boxes were
+worked too. Every finding
+from the source entry, and a quoted host-pass failure, appears under
 Actions, either fixed-and-checked or deferred-checked-with-reason. Do not
 push here; the calling session decides when to push.
 
-The entry commit is committed as usual, with every hook. It touches only
-the issue's work-plan directory, which `validate-script-tests` excludes,
-so it is not the backstop for a dispatched pass's skipped commits: CI is.
-`make lint` runs every hook on all files on pushes to `main`,
-`feature/**` and `fix/**` and on PRs to main, and `merge_pr.sh` waits for
-it.
+The entry is committed like the fixes: with every hook, or, in a
+dispatched pass whose handoff carries the hook rule, with
+`SKIP=validate-script-tests` too (step 3). It touches only the issue's
+work-plan directory, which `validate-script-tests` excludes either way.
+The checks on a dispatched pass's commits are the host's full pass before
+the push and CI after it: `make lint` runs every hook on all files on
+pushes to `main`, `feature/**` and `fix/**` and on PRs to main, and
+`merge_pr.sh` waits for it.
 
 ### Next step
 

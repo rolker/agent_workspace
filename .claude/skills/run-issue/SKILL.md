@@ -464,24 +464,24 @@ to a takeover, step 5) and no `**Addressed**` field (that one is
 `## Implementation` on).
 
 **Hook rule for the dispatched implement and fix passes** (owner-decided
-2026-10-20, issue #399). A workspace `implement` or `address-findings`
+2026-11-13, issue #465: "yes, do the third option on both machines", "yes,
+one local run before a pr"). A workspace `implement` or `address-findings`
 handoff's `conventions=` carries it; paste it verbatim. The pass sets
-`SKIP=validate-script-tests` on its intermediate commits only (never
-`--no-verify`). Before writing the entry it runs, once and with no SKIP,
-the main checkout's venv pre-commit, which the rule prints by absolute
-path because a worktree has no `.venv`:
-
-```text
-<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
-```
-
-That run includes the script suites whenever a changed file that still
-exists matches the hook, so they run once per pass, not once per commit:
-the suites the branch's changed files reach, or every suite when the
-branch deletes an in-scope file or touches a shared helper, the runner or
-the hook config (issue #410). CI (`make lint`, every hook on all files,
-awaited by `merge_pr.sh`) is the backstop, runs every suite, and covers a
-branch that only deletes a script. Review phases and project handoffs carry no such rule.
+`SKIP=validate-script-tests` on every commit, its progress entry's commit
+included; every other hook still runs, and `--no-verify` is never allowed.
+It runs no full pre-commit pass. It runs the suites that test what it
+changed, each on its own with `bash`: the `test_<name>.sh` (and any
+`test_<name>_*.sh`) of each script it changed, `test_skill_paths.sh` when it
+changed skill or knowledge text, and any suite file it changed. Its entry
+names each suite with its result line, names a changed script that has no
+suite of its own, and says the full pass was left to the host. The full
+pass is the host's, once per pull request, when the `publish` checkpoint is
+raised (step 7); a failed pass runs again once its fix is approved.
+After publish, fix passes follow the same rule and CI on
+each push is the check, confirmed before the merge checkpoint (step 9); the
+host runs no second full pass. Review phases and project handoffs carry no
+such rule: a project pass commits with every hook, and the host runs no
+full pass for it.
 
 ### 4a. Reusing a running sub-agent for a repeat phase
 
@@ -742,6 +742,54 @@ acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); r
 
 ### 7. Publish
 
+**The host's full pass comes first** (a workspace issue; the Hook rule in
+step 4, owner-decided 2026-11-13). When `next` prints
+`action=checkpoint:publish`, the host runs every hook once over the
+branch, with no SKIP, before the checkpoint is answered, by the owner or
+by the host. `checkpoint:rounds` gets the same pass before its answer,
+since `publish` is one of its answers; a failure there is answered
+`address` as below, within `/orchestrator`'s limit on repeated host
+answers at `rounds`.
+
+```text
+cd <worktree> && <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)
+```
+
+`<main checkout>` is the workspace root by absolute path (the path
+`~/.claude/agent-workspace-root` holds): a worktree has no `.venv`, and the
+absolute form is the one the permission allowlist matches. The file list
+is left unquoted because no repository path has a space; on a sub-issue
+branch it also covers the parent's files. The pass
+runs on the exact head that will be pushed: after the pre-push review
+approved it and after step 8's merge of the base, never alongside the
+review. If anything other than record commits (progress entries, box
+ticks) lands before the push, it runs again. Main moving after that is
+left to CI's run on the branch combined with main.
+
+When every suite runs (the branch touches the runner, a shared helper or
+the hook config) it took about 4 minutes at 4 jobs (240 s), against 14 to
+18 minutes at one job (824 to 1069 s), measured 2026-11-13 on a 16-CPU
+machine. The runner's default is a quarter of the CPUs, between 2 and 6
+jobs, so a smaller machine takes roughly 6 to 9 minutes, near the Bash
+tool's 600000 ms limit. Run it in the background and wait for its exit,
+or give the call a long timeout (600000 ms); a run that was cut off has
+not passed.
+
+- **It passes**: the checkpoint is answered as usual and recorded
+  (step 6); on `publish`, push and create the pull request (below).
+- **It fails**: the host answers the checkpoint `address` and fixes
+  nothing itself. The `## Checkpoint` entry (`**After**: publish`, or
+  `rounds` at that checkpoint, `**Decision**: address`, `**Decided-by**: host (the full pass failed;
+  the owner's 2026-11-13 rule sends a failure back as findings)`) quotes
+  each failing hook or suite with its failing lines, and the
+  `address-findings` handoff quotes the same; that skill's step 2 takes
+  it as its open finding. A fixing hook (trailing whitespace, end of file,
+  line endings, `black`) that rewrote a file is a failure too: quote it,
+  then `git restore` that file so the fix is the fix pass's commit. The
+  fix pass's `## Implementation` routes to another `review-code --branch`
+  round, and that round's approval raises `publish` again, with a fresh
+  full pass.
+
 `action=publish` (`--pr none` only, row 16): push the branch, then create
 the PR:
 
@@ -845,7 +893,11 @@ early.
 **Re-check CI before the merge checkpoint.** After an `## Integrated
 Review` that recorded `**CI**: pending`, run `fetch_pr_reviews.sh --pr
 <M>` again before presenting the `merge` checkpoint, and do not present it
-while CI is still running.
+while CI is still running. After publish, CI on each push is the check on
+a fix pass's commits: under the Hook rule (step 4) the pass ran only the
+suites that test what it changed, and the host's full pass ran once,
+before publish (step 7), so CI's verdict on the pushed head is confirmed
+before the merge checkpoint, never assumed.
 
 If CI has since *failed*, **do not dispatch anything off the table.** The
 loop was about to raise a checkpoint here anyway (`checkpoint:merge`, or
@@ -880,28 +932,51 @@ reaches the `findings`/`merge` checkpoints.
 ### 10. The host owns every push
 
 Dispatched phases never push — the exit contract in every handoff says so.
-The host pushes: at publish (step 7), after every `## Implementation`
-written while a PR exists (before the next `review-code <M>` or
-`triage-reviews` dispatch, so the head those phases correlate on contains
-the fix), and before `review-code --branch` when a merge of the base
-(`main`, or a package issue's `<base>`) just landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
-(...)` record commit from inside its own gate — that is the merge script's
-contract, not a phase's, and `run-issue` leaves it alone.
+The host pushes when commits that change code need to reach GitHub: at
+publish (step 7), after every `## Implementation` written while a PR exists
+(before the next `review-code <M>` or `triage-reviews` dispatch, so the
+head those phases correlate on contains the fix and CI checks it, step 9),
+and before `review-code --branch` when a merge of the base (`main`, or a
+package issue's `<base>`) just landed (step 8). A push sends the whole
+branch, so the record commits made before it ride along. One exception:
+`merge_pr.sh` pushes its own `## Merge (...)` record commit from inside its
+own gate — that is the merge script's contract, not a phase's, and
+`run-issue` leaves it alone.
 
-The host also pushes the entry commits that come *after* the last review —
-the `## Integrated Review` `triage-reviews` writes and every `## Checkpoint`
-entry recorded on the way to the merge checkpoint — before running
-`merge_pr.sh`. This is safe even though those commits move the head past
-the SHA the review named: the merge gate (`merge_pr.sh`, #286) treats a
-review at SHA `R` as still current for head `H` when `R` is an ancestor of
-`H` and only bookkeeping files (`progress.md`, the roadmap) changed between
-them (`_only_bookkeeping_between`). See ADR-0013's References for the gate
-rule.
+**Record-only commits are not pushed after each phase** (issue #465):
+review and triage entries, `## Checkpoint` entries and deferred-box ticks
+wait for the next code push, because each push starts CI runs and on
+2026-11-13 most pushes on a published pull request carried records only.
+Outstanding records are otherwise pushed in two places:
+
+- **Once, before `merge_pr.sh`** (step 11): push, then check that
+  `git rev-list origin/<branch>..HEAD` prints nothing and `git status
+  --porcelain` prints nothing. Never run `merge_pr.sh` with a record
+  commit or an uncommitted `progress.md` edit outstanding: the merge
+  removes the worktree, so records not pushed by then never reach main,
+  and a recording run that pushes (`--report-only`, `--force-unreviewed`)
+  would publish them unasked (issue #462, a recording run publishing
+  unpushed commits and uncommitted `progress.md` edits).
+- **When a drive parks or the session ends**, so that a drive resumed on
+  another machine reads the whole timeline from origin and does not run a
+  phase again.
+
+Until then a record lives only in this worktree; a lost worktree loses it.
+Pushing records after the last review is safe even though those commits
+move the head past the SHA the review named: the merge gate
+(`merge_pr.sh`, #286) treats a review at SHA `R` as still current for head
+`H` when `R` is an ancestor of `H` and only bookkeeping files
+(`progress.md`, the roadmap) changed between them
+(`_only_bookkeeping_between`), and the CI target walks back over them too,
+so the final record push adds no review and no CI wait. See ADR-0013's
+References for the gate rule.
 
 ### 11. Leave the worktree before merging
 
 `merge_pr.sh` removes the worktree and deletes the branch. Before
-`action=merge` (row 21), `cd` to this session's root first: the `root=`
+`action=merge` (row 21), still in the worktree, push the outstanding
+record commits and check that nothing is left unpushed or uncommitted
+(step 10). Then `cd` to this session's root: the `root=`
 that `session_root.sh` printed before step 1. Inside the worktree, `git
 rev-parse --show-toplevel` is the worktree itself (for a package issue, its
 owning checkout), which the merge removes.
