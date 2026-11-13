@@ -206,7 +206,9 @@ show_usage() {
     echo "                        branch that already exists needs --base naming where it started"
     echo "                        (checked: on origin, history in common). Recorded as base= in"
     echo "                        .worktree-repos. Not with --parent-issue (the parent's branch is"
-    echo "                        the start then)"
+    echo "                        the start then; an owning branch that already exists is accepted"
+    echo "                        with no base= recorded, and dispatch_phase.sh base --base <branch>"
+    echo "                        records one later)"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
@@ -952,7 +954,9 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     #     the parent's branch when it is found (locally or on origin,
     #     PARENT_BRANCH_FOUND), the branch a sub-issue's draft PR targets
     #     (check_existing_branch_parent's rule), else nothing;
-    #   - the owning branch already existed (locally or on origin): where
+    #     An owning branch that already existed is accepted here with no
+    #     base= and a note (--base is refused with --parent-issue);
+    #   - otherwise, the owning branch already existed (locally or on origin): where
     #     it started cannot be known, so the pin is not trusted; only a
     #     --base given by name is recorded, after wt_check_named_base
     #     (origin has it, and the branch shares history with it). Without

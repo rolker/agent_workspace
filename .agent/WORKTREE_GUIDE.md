@@ -263,7 +263,10 @@ package repos, and issue are all explicit:
   base as `base=`. An owning branch that already exists (locally or on
   origin) needs `--base` naming the branch it started from; it is recorded
   once origin has it and the branch shares history with it, and otherwise
-  creation refuses and rolls back. Sibling repos start from their default
+  creation refuses and rolls back. The exception is `--parent-issue`
+  (where `--base` is refused): an existing owning branch is accepted, no
+  `base=` is recorded (a note says so), and `dispatch_phase.sh base --base
+  <branch>` records one later. Sibling repos start from their default
   branch.
 - Directory: `<project root>/worktrees/issue-<project>-<owner>-<repo>-<N>/`
   (under the instance's own worktree dir, issue #265) — cosmetic only. Every

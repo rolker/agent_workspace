@@ -502,7 +502,9 @@ Status: `decided`
   it: the owner names the base with `--base`, and it is recorded after two checks
   (`wt_check_named_base`): origin has the branch (bounded), and the issue branch shares history with
   it. Without `--base`, or when a check fails or origin does not answer, nothing is recorded and the run
-  refuses, saying which. `run-issue` passes it to
+  refuses, saying which. The one exception is creation with `--parent-issue` (where `--base` is refused):
+  an owning branch that already exists is accepted, no `base=` is recorded and a note says so, and
+  `dispatch_phase.sh base --base <branch>` records one later. `run-issue` passes it to
   `gh_create_pr.sh --base`; `merge_pr.sh` reports an owning pull request whose base differs from it
   (report-only, like every package reason) and, at cleanup, fast-forwards the owning repository's own
   checkout from origin's base by name (never the branch's configured upstream) only when it is clean

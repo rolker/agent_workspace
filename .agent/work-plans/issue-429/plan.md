@@ -394,7 +394,9 @@ unchanged.
    it: `--base` must name where it started, recorded after `wt_check_named_base` (origin has it, bounded;
    the branch shares history with origin/<base>), else creation refuses and rolls back. With
    `--parent-issue` the pin is not read: the branch starts from the parent's branch as before, and
-   `base=` records the parent's branch when it is found (the branch a sub-issue's draft PR targets).
+   `base=` records the parent's branch when it is found (the branch a sub-issue's draft PR targets); an
+   owning branch that already exists is accepted there with no `base=` and a note (`--base` is refused
+   with `--parent-issue`), and `dispatch_phase.sh base --base <branch>` records one later.
    `--branch` with `--layer` is refused (the adapter names a package worktree's branches). A `--base`
    value is validated with `check-ref-format --branch` and as `refs/heads/<b>`; an empty one is refused.]
    Tests in `test_worktree_create.sh`: (i) a base absent on origin refuses and rolls back; (ii) an
