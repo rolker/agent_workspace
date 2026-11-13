@@ -1234,3 +1234,55 @@ Text after `    version:` → value (default output, read by sync), the form `--
 
 ### Checks
 - Pre-commit over `main...HEAD`, no SKIP, identity sourced: all hooks passed (rc=0), including `validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-12 19:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a590f22537565001a, resume 3 of 3)
+
+**PR**: #456 at `6807c9f4`
+**Depth**: Deep (reason: fix-round re-review. The whole-diff tier is unchanged: the change extends the ADR-0011 adapter contract and adds ADR-0019)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the three triage findings and the fix diff (d4a7750b, 7127cc81, 942a442c), as the handoff set. Cross-model reviewers were not dispatched, per the host's handoff. Static analysis, governance and plan drift were done inline.
+
+**Checks:**
+- test_ros2_colcon: 433 passed, 0 failed.
+- test_adapter: 147 passed, 0 failed.
+- shellcheck at warning severity: rc 0.
+
+**`_rc_yaml_plain_type` against PyYAML:** 70 plain values were run through both `yaml.safe_load('v: <x>')` followed by `str()`, which is vcstool's own path (`import_.py:78,173`), and through a copy of the function.
+- **Bool/null:** the PyYAML forms are matched. `y`, `Y`, `n`, `oN` and `nUll` stay strings and are correctly accepted; `Yes`, `ON`, `On`, `yes` and the three `null` spellings are refused.
+- **Ints:** `017`, `0x1F`, `0b101`, `1:30`, `1_000` and `+5` are refused.
+- **Floats:** `.inf`, `-.inf`, `+.INF`, the NaN forms, `.5`, `1.`, `1.50`, `01.5`, `1_0.5`, `1.5e+3` and `1.10` are refused.
+- **Strings kept:** `1e3`, `1e5`, `1.5e3`, `0o17`, `018` and `0123456789` are strings in PyYAML and are accepted.
+- **Indicators:** values starting with an indicator character are refused (`!`, `@`, `%` and `,` probed; PyYAML errors on all of them).
+- **Real ref names accepted:** `main`, `rolling`, `v1.10`, `1.10.x`, `release/1.2`, `0.3.1`, `deadbeef`, `1e5abcd` and `2024-01-01`.
+- **Misses:** none that matter. `=` and `<<` make PyYAML itself fail on the manifest.
+
+**Shas:**
+- A leading-zero sha prefix of octal digits only (`0123456`) is octal 42798 to vcstool, so refusing it with "quote it" is right.
+- An exponent-looking sha (`1e5abcd`, `12e4567`) is a string and is accepted.
+- An all-digit sha without a leading zero (a 7-digit prefix is all digits about 4% of the time) is refused as an int, although `str()` gives it back unchanged. For a sha the outcome barely differs, because a commit or unknown kind is refused as a base anyway; only the message is wrong.
+
+**`--all` renamed to `--detail`:** no caller or test is left on `--all`. `adapter_sync` (633) and `adapter_validate` (675) call with no flag, and `repo_pin` (1070) uses `--detail`.
+
+**Sync pull condition:** `[ -n "$branch" ] && [ "$branch" = "$version" ]`.
+- A branch checkout whose pin is the same branch still pulls (`test_sync_*`: "pkg_a: on 'fakefox' — pulling", and the quoted+comment case).
+- A different branch still fetches (`on 'feature/x' (pinned: fakefox) — fetching`, line 1478).
+- A detached checkout fetches for every pin, empty or not, as before for a non-empty pin.
+
+**Backslash:** a double-quoted value holding `\` is passed raw, and the guard now includes `\`. That holds.
+
+### Findings
+- [ ] (must-fix) False refusal: every plain value YAML types as an int or float is refused, including those whose `str()` is the text itself. vcstool checks those out exactly as written, yet the error claims "vcstool would not check out '<ref>'". Affected forms:
+  - floats `2.0`, `1.0`, `1.5`, `0.3`;
+  - ints `2024`, `0`, `-5`;
+  - an all-digit sha or sha prefix (verified against PyYAML).
+  A project pinned at a release branch such as `2.0` cannot be used without editing its manifest. Fix: refuse only when `str()` changes the text.
+  - Ints: accept `^(0|-?[1-9][0-9]*)$`.
+  - Floats: accept `^-?(0|[1-9][0-9]*)\.([0-9]*[1-9]|0)$` with at most 15 significant digits, an integer part of at most 16 digits, and not `0.0000…`. This rule was checked against PyYAML on 178,646 random floats: 0 accepted values changed under `str()`, and no value of 15 digits or fewer that round-trips was refused.
+  - Add these cases to the test.
+  — `.agent/project_types/ros2_colcon/adapter.sh:_rc_yaml_plain_type` and the refusal in `adapter_repo_pin`
