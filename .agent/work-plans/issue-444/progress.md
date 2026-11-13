@@ -582,3 +582,27 @@ Not a signal, process group or stdin difference: the hang-1 run ended on time (r
 Commits used SKIP=validate-script-tests under the owner's test rule of 2026-11-13; the full suite and the full pre-commit pass were not run. CI on the push is the full check. Nothing was pushed.
 
 Left as it is: _gate_refusal (merge_pr.sh, the "records gate refused" reason) still caps a whole message from another script. In most cases it is that script's single error line, a value. Its two built-in sentences hold only a short relative path.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 13:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #468 at `f068ca67`
+**Depth**: Deep (reason: whole-PR diff is 2201 lines and touches `merge_pr.sh`, the merge gate; scope per handoff: the fix 7938e59f, the merges e5c228b3 and f068ca67, the docs commit bfb76b0e; the runner itself not re-reviewed)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Fix (7938e59f). Diagnosis confirmed: `suite_tmp` adds exactly `/tmp/test_merge_pr_gate.sh` (26 bytes) to the sandbox path, and `_bk_display` capped the whole `_GATE_OWN_NOREAD` sentence at 256 bytes. What the gate decides is unchanged: every test of `_GATE_OWN_PROBLEM` / `_GATE_OWN_NOREAD` is on emptiness (`merge_pr.sh:854, 871, 905, 907, 1172, 1307, 1309`), and `_bk_display` never empties a value. Each untrusted value in the two sentences (`_gate_wt`, `PR_BRANCH`, `_gate_own_branch`, the `wt_fetch_why` text) passes through `_bk_display` exactly once; the SHA slices, `rev-parse --short` and the count are hex or digits. The reasons at :906/:908 and `why_comment` at :1308/:1310 use the sentences as built, and the joined `_gate_why` (:1468) is never displayed again, so nothing is escaped twice. The only text change beyond "not truncated": `why_comment` on these two paths now prints an escaped path where it printed it raw. `_gate_already_recorded` compares Conditions built the same way, so one fresh record after an older truncated one is the only effect. `_gate_refusal` (:910) is fine, not the same defect: the gate's own sentence ("the records gate refused the timeline in <wt>:") stays whole and only the other script's one-line message, an opaque value, is capped as values are meant to be; no test matches on its tail. The new case fails without the fix by construction (239-byte path, 310-byte reason: the old cap appends "...(+54 bytes)").
+
+Merges. e5c228b3: no conflict (remerge diff empty). f068ca67: the one conflict in `docs/design.md`'s change log keeps main's #466 row as on main, then this branch's row, its count 1061 (`wc -l` agrees). `test_script_tests_hook_scope.sh` holds both sides (the job-count checks and the `test_register_session_root.sh` ROOT_READERS entry). Main's test changes (pull requests 461, 467, 469) were scanned for parallel hazards: `test_register_session_root.sh` redirects HOME into its sandbox and only reads copies of the real tree; the hang cases keep their pids in sandbox files and allow up to 120 s; nothing names `run-script-tests`, `RUN_TMPDIR` or the old layout. The one path-length dependence was the defect fixed here. Serial runs still stop at the first failure, so CI's failing runs never reached suites 17-48 on the combined tree; the CI run at f068ca67 (Lint still pending at review time, the other checks passed) is the first to.
+
+Docs (bfb76b0e). Spot-checked against the file: 741, 875, 1182, 1472, 1485, 896-903, 1305-1306, 744-811, 812-864, 1145-1320 all land on the statements cited.
+
+Cross-model: ran on the fix commit alone (a scratch clone detached at 7938e59f, `--branch e5c228b3 --no-progress`), since Deep calls for it and the handoff gave no convergence words. Gemini: completed, no issues. Codex: completed, two test-portability points, not taken: the case fails, naming the cause, when the sandbox path is 157 bytes or more, and at about 172 the existing cases fail anyway because the path alone passes the cap by design; and the raw path in `want` breaks only with a non-ASCII TMPDIR, the same assumption every existing pkg case makes. Claude adversarial (fresh subagent): no must-fix; its points are in the suggestions.
+
+Ran: `test_merge_pr_gate.sh` 201 passed, 0 failed, 152 s (pkg-13 long-path and hang-1 pass); `test_script_tests_hook_scope.sh` 328 passed, 0 failed, 49 s; `check_design_anchors.sh` exit 0; shellcheck --severity=warning on both changed scripts, clean. No full suite, no full pre-commit pass (owner's rule of 2026-11-13).
+
+### Findings
+- [ ] (suggestion) No case pins exactly-once escaping in the owning checkout's sentences: every fixture path is printable ASCII, on which `_bk_display` is the identity, so re-wrapping the sentence at :906/:908 would not be caught; a raw-byte owning path, as g17 does for the workspace root, would — `.agent/scripts/tests/test_merge_pr_gate.sh:890`
+- [ ] (suggestion) Follow-up, outside this pull request (main's code from pull request 461): the other `why_comment` / `after_why` texts interpolate `_gate_wt`, `PR_BRANCH`, `cur_branch` and `wt_fetch_why` raw; they reach only the terminal (:1316/:1318), not the PR comment — `.agent/scripts/merge_pr.sh:1197-1297`
