@@ -586,10 +586,10 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 | `plan-task` | `plan.md`, committed on the feature branch, and a `## Plan Authored` entry | `review-plan` runs next, no decision |
 | `review-plan` | A `## Plan Review` entry | The `plan` checkpoint follows every plan review, whatever its verdict: proceed, revise or stop |
 | `implement` | Commits on the branch and an `## Implementation` entry; it never pushes | `review-code` on the branch runs next, no decision |
-| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
+| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) of the current pull request without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
 | `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | `publish` has just been answered; the host does the push (`run-issue/SKILL.md` step 7) |
 | `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the `findings` checkpoint, where merging past them is the owner's answer only; with none open, the `merge` checkpoint |
-| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
+| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused`. A merge on an issue that stays open was an earlier part: with no pull request open, the `plan` checkpoint plans or implements the next one |
 
 - **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
   only place loop state lives: not the conversation, not a lock file. `publish` writes no entry, and
@@ -603,11 +603,24 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   issue, a plan or a commit; ADR-0013), are written by `progress_append.sh`, checked by
   `_progress_entry.sh` and read by `progress_read.py`.
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
-  and, as its one other input, the pull request state; it reads earlier entries for two things only, the
-  count of completed pre-push reviews on the branch since the newest `**Decision**: restart` checkpoint (`round_count`; a restart begins the new work at round 1) and whether a failed `Implementation`
-  entry belongs to `address-findings` (`skill_for`, which also looks only after that checkpoint); it makes no `gh` call and returns one action from a
-  28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
-  checkpoint, never a silent retry.
+  and, as its one other input, the pull request state; it reads earlier entries for three things only:
+  the count of completed pre-push reviews on the branch of the current pull request (`round_count`),
+  whether a failed `Implementation` entry belongs to `address-findings` (`skill_for`), both from where
+  the current pull request's work starts, and whether a `merge` answer stands with no new work after it.
+  It makes no `gh` call and returns one action from a 28-row table plus row 3a (`dispatch_phase.sh`
+  header). A partial or failed newest entry is always a `phase-failed` checkpoint, never a silent retry.
+- **An issue can be delivered in several pull requests** (owner decision 2026-11-13, #459). Where a pull
+  request's work starts is one rule in `pr_start.py`, read by `next`, `review_progress.sh round` and
+  `sources`: after the newest `**Decision**: restart` checkpoint, or at the first `## Plan Authored` or
+  `**Addressed**`-less, not PR-correlated `## Implementation` after a `merge` answer; a non-`merge`
+  answer at `merge`, `findings` or `merge-refused` withdraws that answer, a `## Merge (...)` record does
+  nothing either way, and a merge by hand with no `merge` answer leaves no boundary until the host
+  records one. So each pull request counts its own review rounds. After a merge, `/run-issue` asks the
+  issue's state first (closed ends the run; an unreadable state stops it); on an open issue a merged pull
+  request is an earlier part, and with none open `next` raises the `plan` checkpoint (row 3a), where
+  `proceed` is offered only for a plan unchanged since its review that names a part not yet delivered.
+  `--pr merged` (row 1, `done`) is given only by hand. The last part's `Closes #N` closes the issue on
+  the default branch; elsewhere the owner closes it; the loop never does (`run-issue/SKILL.md` step 13).
 - **Each phase but `publish` and `merge` runs in a fresh sub-agent**, except that a repeat of a phase in
   the same drive may resume the earlier agent (`run-issue/SKILL.md` 4a), and a failed phase the owner
   hands to the host runs in the host (`mode=inline`, step 5). The host does the push and the merge
@@ -893,6 +906,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
 | 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
 | 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's pre-push reviews: creation of a new owning branch always resolves a base (`--base`, else the pin; with `--parent-issue` the parent's branch), a branch this workspace did not start gets `base=` only from a named `--base` that origin has and that shares history with it, the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
+| 2026-11-13 | Review loop and timeline | An issue delivered in several pull requests (#459, owner decision 2026-11-13): the `review-code` row counts `MAX_ROUNDS` per pull request; the `merge` row says a merge on an open issue was an earlier part and the `plan` checkpoint follows; the routing bullet says `next` reads where the current pull request's work starts and whether a `merge` answer stands (row 3a); a new bullet states the boundary rule (`pr_start.py`, shared by `next`, `round` and `sources`), the issue-state check before the probe, what `proceed` relies on, and who closes the issue. The section grows by 13 lines and stays past the 60-line prompt: the rule's detail is in `pr_start.py`'s docstring and `run-issue/SKILL.md` step 13, so no further detail moves | #459 | 963 |
 
 ## Glossary
 

@@ -297,19 +297,44 @@ source $WS_ROOT/.agent/scripts/set_git_identity_env.sh --agent claude-code "<mod
   && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <ref> --skill <phase> [...]
 ```
 
-### 2. Probe PR state
+### 2. Probe the issue and PR state
+
+First the issue's own state, in the repository that owns it (issue 459):
+`gh issue view <N>`, or for `owner/repo#N` `gh issue view <N> -R
+owner/repo`:
+
+```bash
+S="$(gh issue view <N> [-R <owner/repo>] --json state --jq .state)" \
+  || { echo "STOP: could not read the state of issue <ref> (see above); do not continue"; exit 1; }
+echo "issue state: ${S:-?}"
+```
+
+`CLOSED` ends the run (`done`; nothing is dispatched). A `gh` failure, no
+network, or an answer that is neither `OPEN` nor `CLOSED` stops the run
+with the error: it is never read as open or as closed. Only an open issue
+goes on to the pull-request probe:
 
 ```bash
 gh pr list --head "$(git branch --show-current)" --state all \
-  --json number,state,isDraft,title
+  --json number,state,isDraft,title,headRefOid
 ```
 
-No result → `--pr none`. A result with `isDraft == true` → still `--pr
-none` (a pre-existing `[PLAN]` draft the publish step below will take over
-by `isDraft`, not by title — see step 8). Otherwise map GitHub `state`
-(`OPEN`/`MERGED`/`CLOSED`) to `open`/`merged`/... — a closed-not-merged PR
-is outside this loop's action-token vocabulary; stop and hand it to the
-user. Keep the PR number `<M>` for every `--pr <M>` call below.
+On an open issue a `MERGED` pull request is an earlier part of it (an issue
+delivered in several pull requests, step 13), not the end: take the `OPEN`
+pull request if there is one (a draft one counts as below), and otherwise
+answer `--pr none`, whatever `MERGED` rows the list holds. Exception: if
+local `HEAD` equals a `MERGED` pull request's `headRefOid`, the old
+worktree survived the merge; stop and say so (recreate the worktree and
+branch from the base, step 13), and do not route or implement on it.
+
+No `OPEN` result → `--pr none`. A result with `isDraft == true` → still
+`--pr none` (a pre-existing `[PLAN]` draft the publish step below will take
+over by `isDraft`, not by title — see step 8). An `OPEN` one → `--pr open`.
+A closed-not-merged PR with no open one is outside this loop's action-token
+vocabulary; stop and hand it to the user. Keep the PR number `<M>` for
+every `--pr <M>` call below. `--pr merged` (row 1, `done`) is no longer a
+probe answer: it is given only by hand, for a run that should end on a
+merged pull request.
 
 ### 3. Ask `next` what happens next
 
@@ -320,7 +345,8 @@ $WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <ref> --pr <none|draft|op
 
 Prints `action=<token>`, `reason=<one line>`, and, depending on the row:
 `round=<n>`, `phase=<skill>`, `mode=inline`. Read the full contract and the
-28-row decision table in the script's header comment and inline comments
+28-row decision table (plus row 3a, the step after a merge; step 13) in the
+script's header comment and inline comments
 (`$WS_ROOT/.agent/scripts/dispatch_phase.sh`) — this skill does not restate them.
 Route on `action=` per "Action tokens" below.
 
@@ -916,6 +942,52 @@ stopped checkpoint. `/run-issue <N> --resume` re-asks that exact
 checkpoint (same `**After**`, and `**Phase**` if the row carried one) and
 records the new answer as a fresh `## Checkpoint` entry, which then routes
 normally on the following `next` call.
+
+### 13. An issue delivered in several pull requests
+
+An issue can be delivered in parts, one pull request each, on one
+timeline (issue 459). Each part but the last says `Part of #N` in its
+body; only the last says `Closes #N`.
+
+**What closes the issue.** A merged pull request whose body says `Closes
+#N` closes it only when it merges into the repository's default branch. A
+pull request into another base (a package issue's pinned base) never
+closes it: at that merge's hand-back the host tells the owner the issue
+stays open and why, and the owner closes it when the last part is in. The
+loop never closes an issue itself.
+
+**After each merge.** `merge_pr.sh` removes the worktree and deletes the
+branch. The next part starts with `/run-issue <N>` again: step 1 recreates
+the worktree and `feature/issue-<N>` from the base, step 2 asks the issue's
+state (closed → done) and finds no open pull request (the merged one is an
+earlier part) → `--pr none`. `next` then answers `checkpoint:plan` (row
+3a: the newest entry is the `merge` answer, or the `## Merge (...)` record
+the gate wrote before a merge that landed, and the timeline is armed).
+
+**The post-merge plan checkpoint** shows, in the dialog: the pull request
+just merged; that the issue is still open and why it can be (more parts to
+come, a non-default base, or a `Part of` body written by mistake on what was
+the last part: then the answer is `stop`, and the owner closes the issue);
+the plan's parts and which are delivered; and the newest `## Plan Review`'s
+`**Plan**` commit against the current one (`review_progress.sh plan-sha
+--plan <plan.md>`). `proceed` (→ `implement`) is offered only when
+`plan.md` is unchanged since that review and the plan names a part not yet
+delivered; otherwise the answer is `revise` (→ `plan-task`, then
+`review-plan`). `stop` ends the run as anywhere else.
+
+**Where a pull request ends** (`pr_start.py`, read by `next`, `round` and
+`sources`). After a `merge` answer, the next new work, the part's `## Plan
+Authored` or its first `## Implementation` with no `**Addressed**` and no
+`**PR**` correlation (whatever its status), starts the next pull request:
+its first pre-push review is round 1 with outside reviewers, and a failed
+first implement is retried as `implement`. A refused or failed merge is no
+boundary: the `merge-refused`, `merge` or `findings` checkpoint answered
+anything but `merge` disarms it, and a `## Merge (...)` record does nothing
+either way. A merge made by hand with no `merge` answer recorded leaves no
+boundary, and the next part's reviews would count with the last part's:
+before the next part, the host records the owner's merge as a `##
+Checkpoint` (`**After**: merge`, `**Decision**: merge`, `**Decided-by**:
+owner`, his words in the body), or a `restart` when he restates the goal.
 
 ## Action tokens
 
