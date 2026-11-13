@@ -3054,3 +3054,48 @@ pkg-20 read clean and dedup-c number's "records" row pass on both.
 Workspace path: unchanged. The read-guard change sits inside the owning block. The only change the workspace path sees is the shared comment filter: empty and null bodies are now not records, and an unreadable store records with a message. The workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with their assertions unchanged, so the workspace gate's verdicts are unchanged.
 
 Tests: `test_merge_pr_gate.sh` 191 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the end-to-end owning case still records and pushes in A when it equals origin). `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0; `run_script_tests: all 37 suites passed in 621s (scoped run, 37 of 48)`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 10:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad893fc5d06bb04f1, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #461 at `b36bbf8`
+**Depth**: Standard (reason: fix-round re-review of the three findings at `7ef2a6a`, fix commits 45eb2e1d, 04fda41d, 7fa4efcf; whole-diff tier keeps cross-model)
+**Must-fix**: 2 | **Suggestions**: 0
+
+Verified by running:
+- **Suites:** test_merge_pr_gate 191 passed, 0 failed; test_merge_pr 150 passed, 0 failed; test_package_issue_loop 220 passed, 0 failed.
+- **The three previous findings are fixed.**
+  - pkg-20 read: an uncommitted approval is not read and does not pass; an unrelated uncommitted note is not read; a clean committed approval is read and passes.
+  - pkg-22: an empty, null or number comment beside a newer report-only X comment records rather than skips. The number case also prints "could not be read".
+  - dedup-c: empty-body and null-body comments are not records, and the earlier record is still found and skipped.
+  - design.md: every `merge_pr.sh` citation checked against the final file (Table 1; lines 744-840, 886-893, 1221-1222, 865, 1103, 1388, 1401; 719-854, 1066-1236; 2190-2210). The file is 999 lines.
+- **Neighbours:** pkg-20 passes all seven dirty shapes, including assume-unchanged and skip-worktree. The e2e "owning PR targeting main ... recorded in A and pushed" passes.
+- **The removed record-time check:** `_gate_record` commits in the owning checkout only when `_GATE_OWN_NOREAD` is empty (:1093). Between the guard and the record only read-only steps run (Step 1 runs earlier, at :595, and package PRs skip the roadmap), so nothing in the gate can make `progress.md` dirty in between.
+- **"Records rather than skips":** the duplicate check runs once per run, so a run posts at most one comment. An unreadable store posts one comment on each later run; nothing loops.
+- **Workspace path:** `_gate_rec_dirty` and the equality guard sit only in the owning block. The comments-only check differs from main only by the shared filter (empty or null bodies are not records) and a stderr line on a jq failure; a jq failure still records, as on main.
+- **Lint:** shellcheck --severity=warning is clean on both shell files.
+
+The byte-identical record question: the message is true enough, not a defect.
+- **Input:** within one minute, run 1 `--force-unreviewed` X commits and pushes `Merge (unreviewed)` X to the timeline; run 2 `--report-only` X has its push refused and posts a report-only X comment; run 3 `--force-unreviewed` X ties on `**When**`, finds it doubtful and records.
+- **Result:** `progress_append.sh` finds the identical tail and commits nothing, and the gate prints "recorded ... and pushed". That entry, with the same text, is committed and on origin. `_RUN_COMMITTED_SHAS` gains run 1's record commit, which changes only `progress.md`, so the CI hold steps past a bookkeeping commit.
+- gemini rated it must-fix; not taken, for the reasons above.
+
+Outside reviewers:
+- gemini (agy): complete, 2 must-fix. The symlink item is finding 2 (verified). The identical-record item is answered above.
+- codex: complete, 2 must-fix, the same as findings 1 and 2.
+- Copilot: skipped (disabled for quota).
+- Claude adversarial subagent: finding 1.
+
+### Findings
+- [ ] (must-fix) An untracked `progress.md` that git ignores is reported clean by `_gate_rec_dirty`: `ls-files -v` prints nothing, and `status --untracked-files=all` omits ignored files. The timeline is then read.
+  - **Input** (sandbox from the gate suite's fixtures): owning checkout equal to origin, no committed `progress.md`, `.agent/work-plans/` in the checkout's `info/exclude`, a local `progress.md` holding `$APPROVED_AT_HEAD`, and a PR with a decision summary.
+  - **Result:** "Review gate: approved review at head `abc1234`", and no record. A package repository whose `.gitignore` lists `.agent/` hits this on every run.
+  - **Fix:** when the path exists and `git ls-files --error-unmatch -- <rel>` fails, report it as untracked; add a pkg-20 read row for an excluded file. — `.agent/scripts/merge_pr.sh:767-790`
+- [ ] (must-fix) The early `return 0` for a symlink leaves the read side unguarded: `_gate_rec_unsafe` is consulted only when recording.
+  - **Input:** owning checkout equal to origin, `progress.md` an untracked symlink to an untracked `local.md` in the same folder that holds `$APPROVED_AT_HEAD`.
+  - **Result:** "Review gate: approved review at head `abc1234`", and no record. Before this round's early return, git status would have reported `??`.
+  - **Fix:** in the read guard, set `_GATE_OWN_NOREAD` from `_gate_rec_unsafe` (a symlink or a non-file is not read either), or drop the early return. Add a read row. — `.agent/scripts/merge_pr.sh:770-772, 830-836`
