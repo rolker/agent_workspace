@@ -1992,3 +1992,13 @@ Scope: the three pre-push reviews after the Checkpoint of 2026-11-12 21:45 (Afte
 - [ ] (should-fix, documentation defect, Local Review (Pre-Push) @ `0144179c` covers head via bookkeeping) The rule "an owning branch that already exists needs `--base`, otherwise creation refuses" is written without its `--parent-issue` exception. Verified in code: `worktree_create.sh:955-969` accepts an existing owning branch under `--parent-issue`, records no `base=`, prints a Note, and exits 0; `--base` is refused with `--parent-issue`, so the rule as written cannot be followed there. Under the Quality Standard, documentation that states a rule the code does not follow is a defect, not a nit. Fix in this pull request: add the exception (existing branch accepted, no base recorded, `dispatch_phase.sh base --base` records one later) to all three places — `docs/design.md:500-505`, `.claude/skills/start-task/SKILL.md:175`, `.agent/scripts/worktree_create.sh:205-207`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-12 23:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (triage classified the one open finding valid, a documentation defect to fix in this pull request)
+**After**: findings
+**Decision**: address
+
+Fix in pull request 460: state the --parent-issue exception to "an existing owning branch needs --base" in docs/design.md, start-task's SKILL.md and worktree_create.sh's usage text: the existing branch is accepted, no base is recorded, and dispatch_phase.sh base --base records one later.
