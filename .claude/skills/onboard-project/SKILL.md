@@ -1,6 +1,6 @@
 ---
 name: onboard-project
-description: Onboard a registered project from a session at its root. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes. Ends by offering audit-project, which holds the hygiene checklist.
+description: Onboard a project from a session at its root; in a folder that is not registered, it first offers to register it. Shows the recorded choices, asks the footprint questions not yet answered, runs the integration audit (how the project and the workspace fit together), makes the offers the footprint allows, and answers each finding with fix now, open issue, queue in the roadmap, or skip. Every write waits for a yes. Ends by offering audit-project, which holds the hygiene checklist.
 session_scope: project
 ---
 
@@ -51,13 +51,14 @@ started in.
 ## Overview
 
 **Lifecycle position**: Utility. Adding a project is two steps (#332 D1):
-**register** from the workspace (`register_project.sh <path>`, in a workspace
-session; it writes the registry line and the project's settings file,
-writes nothing into the project, and enables nothing per root: the
-workspace plugin is enabled once, at user scope, by the user-tier
-installer), then
-**onboard** from the project, here, in a session at the project root with
-the project's own instructions loaded.
+**register**, then **onboard** from the project, here, in a session at the
+project root with the project's own instructions loaded. Registration
+writes the registry line and the project's settings file, writes nothing
+into the project, and enables nothing per root: the workspace plugin is
+enabled once, at user scope, by the user-tier installer. It is done either
+from the workspace (`register_project.sh <path>`, in a workspace session)
+or here: run in a folder that is not registered, step 1 offers to register
+it and then carries on (#466, ADR-0021).
 
 What a project must carry is **nothing** (D3): the registry line and the
 settings file are enough, a project with no footprint is fully usable, and
@@ -70,6 +71,11 @@ says so, and changes nothing without a yes.
 
 **Every write waits for a yes.** The writes this skill can make are:
 
+- in a folder that is not registered, its registration: its line in the
+  workspace's registry and its settings file (through
+  `$WS_ROOT/.agent/scripts/register_session_root.sh`, step 1; the yes is
+  asked in text after its dry run is shown, and the real call's permission
+  prompt is a second gate);
 - a setting in the project's settings file (through
   `$WS_ROOT/.agent/scripts/project_setting.sh set`);
 - a line in the clone's `.git/info/exclude`;
@@ -84,10 +90,11 @@ bridge) belong to the hygiene checklist, which `audit-project` holds
 
 The settings file `.agent/projects.d/<name>` (at a parent root, the
 chosen instance's) lives in the workspace checkout, outside this session's
-root. It is the one thing a project session
-writes outside its root: per-machine, gitignored workspace configuration that
-the project's onboarding owns, not a tracked change to the workspace
-(`docs/design.md`, Sessions and roots). `project_setting.sh set` refuses to
+root. It and, in a folder not yet registered, that folder's registry
+line are the only things a project session writes outside its root:
+per-machine, gitignored workspace configuration that the project's
+onboarding owns, not a tracked change to the workspace (`docs/design.md`,
+Sessions and roots). `project_setting.sh set` refuses to
 write any other project's file from here (at a parent root, it writes only
 its instances').
 
@@ -104,14 +111,137 @@ It prints `root=`, `type=` and `project=`. Keep `project=` as `<name>` for
 the rest of the run.
 
 - **Exit 1** (this directory is no session's root, or a session here does
-  not read the root's settings): stop and report its message. If the
-  project is not registered, say so: registration comes first, from a
-  workspace session: `$WS_ROOT/.agent/scripts/register_project.sh <path>`,
-  run in the workspace checkout. Its last line `NEXT=` says to start a
-  session at the root and run this skill.
+  not read the root's settings): keep its message and find out whether
+  this folder can be registered from here, with the registration's dry
+  run. Capture `2>&1`: its notes on the build and test commands go to
+  stderr.
+
+  ```bash
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+  "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run 2>&1
+  ```
+
+  The script is not promoted to the user tier, so this call and the real
+  one each ask for permission. That is by design (ADR-0021): registering a
+  folder makes its build command runnable by the workspace scripts, so the
+  owner sees each registration call in full.
+
+  - **It refuses** (exit 1, nothing handed over: the folder is already
+    registered, lies inside or over a registered root or the workspace, is
+    not the top of its git repository, is a linked worktree, or its name is
+    not a valid project name or is registered): stop and report `session_root.sh`'s message and the
+    refusal, as printed. A folder under a registered root is onboarded
+    from a session started at that root. Registering under another name, or
+    with options this script does not take, is done from a workspace
+    session: `$WS_ROOT/.agent/scripts/register_project.sh <path>`, run in
+    the workspace checkout. Its last line `NEXT=` says to start a session at
+    the root and run this skill.
+  - **`STATUS=dry-run`**: the folder is not registered. Show the output as
+    printed: the registry line (its second field is the folder's type),
+    the settings file and the build and test commands it would write, or
+    `no settings file (nothing to write)`, and that the build and test are
+    not run. Say what registration is: one line in the workspace's
+    per-machine registry and the folder's settings file in the workspace
+    checkout, nothing written into the folder. Under this skill's
+    `--dry-run`, stop here.
+
+    Then make the `--set` list the real call will pass: at most one
+    `--set "build=<command>"` and one `--set "test=<command>"`, each one
+    quoted argument; `build=` and `test=` are the only keys it takes. A key
+    goes on the list only when this first dry run lists it, a kept
+    settings file has it, or the folder's type requires it and it has no
+    command (below). Pass the detected ones too: without `--set`, the real
+    call detects them again from the folder's files at that run, so its
+    permission prompt would not show them and the folder could have
+    changed since the dry run. Each command comes from one of these:
+
+    - **A line `would write <settings file>:`** lists the commands
+      detected, one per line, as `    build=make    (detected (Makefile))`.
+      Pass only the command, the text after `build=` (or `test=`) and
+      before the spaces and the parenthesised note: `build=make`. The note
+      is never part of the value.
+    - **A line `settings file kept as it is: <path>`** means a settings
+      file under this folder's name is already there (from an earlier
+      registration removed with `--keep-settings`, perhaps for another
+      folder) and nothing is detected: registering turns every key in it
+      on. Read that file with the Read tool. It is in the workspace
+      checkout's `.agent/projects.d/`, outside this session's root, so the
+      read asks for permission; when that read is refused or fails, stop:
+      the yes needs the file's contents. Keep its contents, every line, to
+      show with the question. Pass its `build=` and `test=` values, those
+      it has.
+    - **No command for a key the type requires**: a `note:` line says no
+      build (or test) command was detected, or several build systems
+      disagree; or a kept file has no `build=` (or `test=`) line and the
+      type requires that key (the type's
+      `$WS_ROOT/.agent/project_types/<type>/registration.conf` names them
+      in `required_commands=`; `none` requires neither). Ask the user for
+      the command, or `none`.
+
+    A type whose own tool owns the build and test (`required_commands=none`)
+    reads neither key: its first dry run prints `no settings file (nothing
+    to write)` and no `note:` line, the list stays empty, and a `--set` for
+    either key, even `none`, is refused. Never add one there.
+
+    When the list is complete, run the dry run again with exactly those
+    arguments, or with none when the list is empty:
+
+    ```bash
+    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1
+    ```
+
+    It checks the commands as the real call will. When it refuses (exit 1,
+    `STATUS=refused`, a command register_project.sh does not take, say
+    one with `&&`), show the refusal and ask for another command (a script
+    path, when it needs a shell) or stop, and run this dry run again; no
+    yes is asked on a refused list. A refusal that a key "is not read for
+    project" means that `--set` must come off the list, not get another
+    command.
+
+    Then ask one yes in text, for this write alone, on that second dry
+    run: show its output as printed (the registry line and the build and
+    test commands it would set, or that it writes no settings file), and,
+    for a kept settings file, the file's full contents as read, saying
+    that every key in it takes effect. A no stops the run. Ask it even
+    though the real call raises a permission prompt: that prompt is not
+    guaranteed. A "Yes, and don't ask again" on the dry run's prompt
+    allows the same command, so the real call can run with no prompt, and
+    auto mode or a broader allow rule removes both prompts.
+
+    On the yes, run it with the same `--set` arguments as the second dry
+    run, and no others (none, when the list is empty):
+
+    ```bash
+    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1
+    ```
+
+    The text question shows everything that is written: the registry line,
+    the build and test commands, and a kept file in full. The permission
+    prompt shows the build and test commands only: a kept file's other keys
+    can never appear in it, since the script takes no other key, so the
+    question is the only place they are shown.
+
+    The permission prompt for this call, when it appears, shows the full
+    command and is a second gate after the yes in text: a no there also
+    stops the run.
+  - **The real run ends `STATUS=registered`** (followed by `, <verbs> not
+    run` for a type whose registration would run its build and test; a
+    plain `STATUS=registered` for a type that runs nothing there): run
+    `session_root.sh` again; it now prints `type=project` and `project=`,
+    and the run carries on with that. Say that the build and test were not
+    run, and that this session started before the folder was registered,
+    so it lacks the workspace layer the `SessionStart` hook gives a session
+    at a registered root; a new session at the root has it.
+  - **The real run ends `STATUS=refused` or `STATUS=NOT READY`**: show it
+    as printed and stop; its `NEXT=` says what to do. A folder in no git
+    repository is refused there ("not a git repository") and rolled back,
+    although its dry run looked clean: registration needs a git repository
+    today, a known gap, so say this folder cannot be registered yet.
 - **`type=workspace`**: stop. Onboarding runs in a session started at the
-  project's root, not in the workspace; register the project first if it
-  is not, then start a session there.
+  project's root, not in the workspace; start a session there and run this
+  skill, which offers to register the folder when it is not registered.
 
 **A parent root** (a root that groups instances, such as one per ROS
 distro) has no settings, adapter or worktrees of its own: they belong to

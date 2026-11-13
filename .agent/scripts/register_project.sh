@@ -8,7 +8,10 @@
 # enabled once, at user scope, by user_tier_install.sh (ADR-0018), so it
 # already reaches the new root. The project side (D1 step 2) is
 # `/agent-workspace:onboard-project`, run in a session started at the
-# project root.
+# project root. Run there in a folder not yet registered, onboarding
+# registers it through register_session_root.sh (#466, ADR-0021), which
+# calls this script on that folder with --skip-run and never
+# --install-user-tier.
 #
 # Usage:
 #   register_project.sh <path|name> [<type>] [--name N] [--parent P]

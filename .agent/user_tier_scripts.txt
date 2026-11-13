@@ -27,6 +27,12 @@
 # promoted: it writes the registry, so it runs only from the workspace
 # checkout (#332). Its read-only gate, registration_verify.sh, is promoted
 # with the integration audit and project_setting.sh (#332 PR 3), below.
+# register_session_root.sh is never promoted either (#466, ADR-0021): it
+# registers the folder a project session was started in, so it acts only
+# outside every registered root, which the rule above forbids, and without
+# an allow-rule each call asks for permission, showing the full command. A
+# session in a folder the owner does not trust must not be able to register
+# it, and so make its own build command runnable, without him seeing that.
 #
 # cross_model_review.sh is absent for a different reason: it CANNOT satisfy
 # the rule. Reviewing a repo that is neither the workspace nor registered is
