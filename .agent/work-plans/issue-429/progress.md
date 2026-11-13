@@ -2440,3 +2440,75 @@ Must-fix 2 and suggestions 1 and 2 share `_gate_record`'s body (the fallback rea
 - Against `43a724a8`'s scripts: the gate suite gave 135/7 (pkg-12 ×2, pkg-13 ×2, pkg-14 ×2 and pkg-15 fail) and the loop suite 214/4 (the four new checks fail).
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
 - Removed the reviewer's `cbu.P6au/`, `cbu.sh`, `hang.sh` and `mainco.MClj/` from the session scratchpad.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 07:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a0eb010d8b53dea32, resume 1 of 3)
+
+**Branch**: feature/issue-429 at `2d17b3b2`
+**Base**: main
+**Depth**: Deep (reason: enforcement script `merge_pr.sh` changed; the whole-diff tier, kept for the fix round)
+**Must-fix**: 3 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted
+
+Round note: this is round 2 of this diff. The host corrected the counter, which still includes PRs 445, 456 and 460 (issue 459); the verdict script was given `--round 2`.
+
+Scope: the round-1 findings and the fix commits `2fae2ba3`, `367e8414`, `7388b8dd`, `855f2efe` and `df029cd7`.
+
+Who reviewed:
+- A fresh Claude adversarial sub-review.
+- Cross-model reviews by gemini (agy) and codex. Both completed: round 2 is below round 3, so the cross-model rule still applies.
+- Copilot was skipped (disabled for quota).
+
+Suites run by the sub-review on HEAD: test_merge_pr_gate 142/0 and test_package_issue_loop 218/0. No `sleep 300` process was left afterwards.
+
+Round-1 findings, verified:
+- Must-fix 1 and 2 are resolved, apart from the symlink case below.
+- Suggestions 1 to 5 are done.
+- The workspace gate's verdicts and record behaviour match main:
+  - The enforcing refusal exits before recording.
+  - Report-only and `--force-unreviewed` record.
+  - The on-branch check holds by construction (`find_worktree_for_branch`).
+- The restore keeps other staged, unstaged and untracked changes byte-identical. The sub-review checked status, diff and diff --cached. That is better than main, which wiped existing `progress.md` edits on a refused push.
+- The hang tests: 1-2 s limits against 60-120 s ceilings, shims reaped. Without the bound they would fail on the 300 s shim.
+
+Host question on the repeated comment: there is a real input. It is a regression from main for package PRs, so it is listed below as a suggestion.
+
+### Findings
+- [ ] (must-fix) The restore deletes a `progress.md` symlink that was there before.
+  - Input: the checkout on the PR branch has `.agent/work-plans/issue-N/progress.md` as a dangling symlink (tracked or not), and the record path runs. The snapshot's `-f` is false, so no copy is taken. `progress_append.sh` refuses with exit 4, writing nothing. `_gate_rec_restore` then runs `rm -f` on the user's symlink.
+  - Reproduced by the sub-review: status went from clean to ` D`.
+  - Fix: snapshot with `-e || -L` and `cp -P`, or restore nothing after a refusal that wrote nothing (exit 2/4). Add a test.
+  - Found by both codex and the Claude adversarial sub-review.
+  - `.agent/scripts/merge_pr.sh:918-944`
+- [ ] (must-fix) The gate reads the owning checkout's timeline while that checkout is detached or on another branch, and a stale timeline there passes the gate.
+  - Input: the PR branch is H (code), then R1 (progress: Local Review approved at H), then R2 (progress: Local Review changes-requested at H), and the head is R2. A is detached at R1, or on a local branch at R1.
+  - The gate reads "approved at H" from A's file. The ancestry check finds only `progress.md` changed between H and R2.
+  - Result: "✅ Review gate: approved review at head", and no record, although the PR branch's timeline says changes requested.
+  - Package PRs are report-only, so this is a false pass and a missing record, not a blocked merge. Workspace PRs are unaffected, because their worktree is found by branch.
+  - Fix: run the same on-branch check before the read, and give a gate reason when it fails ("the owning checkout is on X / detached, not <PR branch>; its timeline is not read").
+  - `.agent/scripts/merge_pr.sh:767-776`
+- [ ] (must-fix) The `docs/design.md` line citations into `merge_pr.sh` are stale after the fix commits.
+  - Examples: the sibling reason is now at 812, cited as 789-796. The sibling comment is at 1080, cited as 964-965. `_gate_record` starts at 959, cited as 889-977. Also stale: the main-tree guard 926, the report-only lines 1040/1053, and Table 1's row.
+  - The anchors hook does not check line numbers.
+  - Found by gemini.
+  - `docs/design.md:384,478-488,559`
+- [ ] (suggestion) Repeated runs post one more identical PR comment each time, a regression from main for package PRs.
+  - Input: the owning checkout is off-branch or detached, or a pkg_a commit hook always refuses. Each `merge_pr.sh` retry with the same conditions posts another identical `## Merge (report-only)` comment. pkg-12 asserts 1 and then 2.
+  - Why: `_gate_already_recorded` reads only A's `progress.md` whenever `_gate_progress` is set. On main, a package PR's duplicate check read the PR's comments, so it posted once.
+  - Fix: when the timeline holds no match, also check the PR's comments.
+  - `.agent/scripts/merge_pr.sh:1116-1145`
+- [ ] (suggestion) With no argument, `check_branch_updates.sh` now prints a red error and exits 2 where main warned and exited 0.
+  - Input: a stale `origin/HEAD` after origin renamed master to main, or an empty origin, where `remote show` yields the name "(unknown)". Every commit (pre-commit hook) and every `worktree_enter.sh` then prints "✗ Error: origin has no branch ...". Nothing is blocked, because both callers ignore the exit code.
+  - Fix: keep exit 2 only with `--base`; otherwise warn with exit 0, and treat "(unknown)" as no name.
+  - `.agent/scripts/check_branch_updates.sh:141-145`
+- [ ] (suggestion) A push that times out after origin applied it is still undone locally.
+  - Input: the server updates the branch, then stalls past `WT_FETCH_TIMEOUT`. The local commit is reset and a comment is posted. A is then one commit behind origin, and the record exists twice. It surfaces loudly: the host's next push is non-fast-forward.
+  - Fix: after a failed push, compare a bounded `ls-remote origin refs/heads/<PR branch>` with `rec_sha` and treat equality as pushed.
+  - Found by codex.
+  - `.agent/scripts/merge_pr.sh:1023-1044`
+- [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. This is the owner's call at the merge checkpoint, carried from round 1.
+  - `.agent/work-plans/issue-429/plan.md:192,562`
