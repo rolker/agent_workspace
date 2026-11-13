@@ -146,3 +146,12 @@ Read: the Plan Review at 12bf95f0 and its report. Direction for the revised plan
 
 ### Decisions made (owner may veto)
 - The first pull request grows from two files to the texts plus the sit-rep skill and its tests, so the sit-rep is right the day Path 3 exists — undoing it: split the sit-rep part back out into its own pull request.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 14:47 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Dispatch**: resumed (agent ac19fcfa95aa96a31, resume 1 of 3)
+**Plan**: `.agent/work-plans/issue-477/plan.md` at `ece64fd5`
+
+Revised at the host's checkpoint: part 1 now also carries the sit-rep marking Path 3 (recognised by the README line's opening words, "A safeguard has to earn its cost", in the newest complete Issue Review's Serves line; review-issue's Serves rule says to write it), the closing question and "serves neither" wording for three paths, the first-sentence pattern accepting a closing quotation mark, and the two test files. Part 2 loses its item 6.
