@@ -1694,3 +1694,30 @@ Pull request 2a's remaining steps (3 to 8): the base branch of a package pull re
   - `test_merge_pr_gate.sh` 121/0 (unchanged suite)
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, identity sourced: every hook passed, rc 0, including `validate-script-tests`, shellcheck and check-design-anchors. The branch touches `.agent/scripts/_*.sh` helpers and `run_script_tests.sh`, both full-run triggers, so that hook ran every suite. Its per-suite output is hidden by pre-commit on a pass.
 - Each new behaviour has a test that fails on the old code. Examples: the base start point (old code starts from origin/main), the `base` subcommand, `base=` in the handoff, fetch-only and its banner, the cross-check reason.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 22:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-429 at `69b6072a`
+**Base**: main
+**Depth**: Deep (reason: 17 files, +1414/-95; new and changed worktree/merge scripts and run-issue/start-task skills, cross-layer: creation, dispatch, merge)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Round correction by the host: `review_progress.sh round` counts 7 because the pre-push reviews of this issue's merged pull requests 445 and 456 share this timeline (tracked as issue 459). The code beyond main (`git diff main...HEAD`) had never been reviewed, so this is round 1 of a new change: full Deep depth, cold read of the whole diff, cross-model reviewers run, verdict script given `--round 1`.
+
+Specialists: static analysis (pre-commit shellcheck on the 9 changed .sh files: pass); governance and plan drift (lead); Claude adversarial (fresh subagent); cross-model gemini (via agy) and codex, both completed; Copilot skipped (disabled for quota). Suites run: test_worktree_create 71/0, test_package_issue_loop 180/0, test_dispatch_phase 148/0, test_merge_pr 131/0; no sleep or wall-clock tuning in the new cases, no leftover processes.
+
+Implementation deviations judged: start-task SKILL.md edit, citation refresh, qualified-ref refusal with no worktree, unreadable baseRefName as a gate reason, wt_fetch_why fallback: all accepted. The stated gap (`base` ignores `--package-repos` for an existing worktree) is suggestion 5.
+
+### Findings
+- [ ] (must-fix) Resume write-back records the pin as `base=` without checking the owning branch started there: a worktree made without `--base` (every part-1 worktree, or `/start-task --layer l1 --package-repos pkg_a` directly) starts `feature/issue-N` at origin's default branch; `base` then writes `base=<pin>` after only an `ls-remote`, publish targets the pin and carries default-only commits, and the merge cross-check agrees. Check ancestry against origin/<base> before recording (or refuse), and decide whether a package worktree may be created without `--base` — `.agent/scripts/dispatch_phase.sh:789-807`
+- [ ] (must-fix) Cleanup `pull --ff-only` follows the checkout's configured upstream, not origin's `$PR_BASE_REF`: a base branch tracking another remote/branch is moved to unrelated history while the line says "<base> fast-forwarded"; one with no upstream fails and marks the cleanup incomplete. Pull `origin "$PR_BASE_REF"` explicitly; test both upstream setups (codex, adversarial) — `.agent/scripts/merge_pr.sh:1678`
+- [ ] (suggestion) A legacy `project/` worktree's header says `project=project` (`${PROJECT_NAME:-project}`); resume passes `--project project` to the adapter, which refuses "not registered", and step 1 stops. Pass the header's project only when it is registered — `.agent/scripts/dispatch_phase.sh:786`
+- [ ] (suggestion) The failed-fetch branch of the cleanup ("Could not fetch origin ... so no pull was due", incomplete) has no test; add one with a dead origin and a checkout off the base — `.agent/scripts/tests/test_merge_pr.sh`
+- [ ] (suggestion) A pin of kind `unknown` (offline with no remote-tracking ref, so repo_pin's NOTE says unverified) is refused as "pinned at <ref> (unknown); only a branch can be a base": the cause may be an unanswered origin, not a non-branch; word it as "kind could not be established" and suggest retrying online — `.agent/scripts/_pr_base.sh:109-111`
+- [ ] (suggestion) `base` for an existing package worktree ignores `--package-repos` without a message, and the header comment does not say so (the implementer's stated gap): compare it with the manifest and refuse a mismatch, or say it is ignored — `.agent/scripts/dispatch_phase.sh:26-55`
+- [ ] (suggestion) docs/design.md Table 1 `dispatch_phase.sh` row was edited but its line citations (167, 228-277, 452, 581, 669, 700) are stale (`resolve_worktree` is now at 269; they were already off on main) — `docs/design.md`
