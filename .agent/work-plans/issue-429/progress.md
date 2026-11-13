@@ -3211,3 +3211,52 @@ Outside reviewers:
   - **Input C** (subagent): a CRLF blob with `core.autocrlf=true`. Result: reported as changed though status is clean, so the record goes to a comment.
   - No review state or text is affected; the gate's read is the blob.
   - **Fix:** decide staged with `git diff --cached --quiet <sha> -- <rel>` and unstaged with `git diff --quiet -- <rel>`, and add a chmod row. — `.agent/scripts/merge_pr.sh:1035-1086`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 10:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adba5a9f2a1e35af5, resume 2 of 3)
+
+**PR**: #461 at `979a076`
+**Sources**: 4 (Local Review @ `7ef2a6a`, @ `b36bbf8`, @ `5be968e` (covers `979a076` via bookkeeping), with their gemini, codex and Claude adversarial sub-reviews; GitHub reviews: none, Copilot skipped (disabled for quota); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: entries after the Integrated Review at `5d296c5`. Stale boxes of PRs 445, 456 and 460 stay out of scope. The PR-mode Local Review boxes cannot be ticked by `review_progress.sh findings` (issue 459 fixes that); they are accounted for here from the Implementation entries' Actions.
+
+CI at triage, on `979a076` (8 runs): Validate Documentation and ros-manifest tests succeeded (both runs each); Lint (pre-commit) and Validate Adapter Contract had not concluded in either run. Not waited for.
+
+Accounted for since the Integrated Review at `5d296c5`:
+- That entry's four items. Its boxes are left as written.
+  - (a), unpushed commits published: fixed for the owning checkout in `cf1a2850` (the read and the record need HEAD equal to origin's branch).
+  - (b), uncommitted `progress.md` swept in: fixed in `a2bdab0f`, then replaced by the owner's committed-copy rule in `76b5f5f7` (`_gate_rec_not_committed`).
+  - The workspace path keeps main's behaviour for (a) and (b), by the host's Checkpoint of 09:09. Issue 462 (open) tracks it.
+  - Items 3 and 4 (trimmed values, exact heading): fixed in `b65e66d2`.
+  - The Local Review at `7ef2a6a` verified all four (pkg-19, pkg-20, pkg-21, dedup-c).
+- Local Review at `7ef2a6a`:
+  - Must-fix 1, an uncommitted approval read: fixed in `45eb2e1d`, superseded by `76b5f5f7`, which reads the committed copy.
+  - Must-fix 2, an empty or null body breaking the filter: fixed in `04fda41d` (dedup-c and pkg-22 rows).
+  - The citations suggestion: fixed in `7fa4efcf`.
+  - The Local Review at `b36bbf8` verified all three.
+- Local Review at `b36bbf8`: both must-fix findings, an ignored untracked file and an untracked symlink, are closed by the owner's rule in `76b5f5f7`. The gate reads the blob at origin's head, so no working-copy file is read. pkg-20 read rows ignored-approval and symlink-approval cover them; the Local Review at `5be968e` verified this (test_merge_pr_gate 197/0, test_merge_pr 150/0, test_package_issue_loop 220/0, run by that review).
+
+Set-aside items (raised by sub-reviewers, set aside by the lead reviewer), checked against the code:
+- **A same-minute, byte-identical record is reported "recorded ... and pushed".** Needs nothing. `progress_append.sh` commits nothing because the identical entry is already committed. For an owning checkout, HEAD equals origin's branch, so that entry is on origin and the message is true in substance.
+- **The push-failure rollback can undo another process's commit.** `merge_pr.sh:1257-1258` runs `reset --soft HEAD~1` when `rec_sha != head_before`, without checking that HEAD is still `rec_sha`. If another process commits in the same checkout during the push, that commit is the one taken off the branch: its changes stay staged, and the reason posted says progress.md was not left as it was. Main does the same unconditionally (main `merge_pr.sh:910`). Belongs on issue 462: it is the record-time handling of the shared `_gate_record`, workspace path included. The fix is one guard, HEAD == rec_sha before the reset.
+- **A partial clone fetches a missing blob with no time limit of its own.** Put it in the PR body as a known gap. This PR wrote the committed-copy read (`merge_pr.sh:826,838`: `ls-tree`, `cat-file blob`). In a partial clone whose sparse checkout leaves `.agent/` out, the blob is not local, and git fetches it lazily outside `wt_bounded_git`. That contradicts the script's "bounded like every call to origin". The failure is a hang, never a pass, and it needs both partial clone and a sparse checkout. A checked-out blob is otherwise local, since HEAD equals origin.
+- **A directory at the path gets a less specific reason.** Needs nothing. It is still a refusal ("could not be read"), never a pass, and only the text differs.
+- **An ignored `.agent/` with no file gives a hook-flavoured reason.** Put it in the PR body as a known gap. `git add` refuses the ignored path, `progress_append.sh` exits 3, and the reason reads "a git failure such as a commit hook". The record goes on the PR and the checkout is restored, so it fails safe. A package repository whose `.gitignore` lists `.agent/` will hit this on every recording run, so the reason should be named. A later fix is a `check-ignore` before the append.
+
+### Findings
+- [ ] (suggestion, Local Review @ `5be968e`, from codex and the Claude adversarial sub-review) `_gate_rec_not_committed` compares blob contents only (`hash-object` against the index and the commit), not file mode, and not with git's EOL rule.
+  - Input A, an uncommitted `chmod +x progress.md`: the mode change is committed and pushed with the record.
+  - Input B, a staged `--chmod=+x`: the staged change is lost, because the commit restores 100644.
+  - Input C, a CRLF blob with `core.autocrlf=true`: reported as changed, so the record goes to a comment (safe side).
+  - Classification: valid, low impact. It touches only the mode bit of a bookkeeping file in a package's owning checkout. No review state or text changes, and the gate's read is the committed blob.
+  - Recommendation: defer, with a reason. Issue 462 will rework this record-time check for the workspace path, where the same "commit only when the working copy is the committed one" rule is needed. Doing it once there, shared by both paths, with `git diff --cached --quiet <sha> -- <rel>` and `git diff --quiet -- <rel>` (which compare mode and apply EOL rules) avoids a tenth review round for a mode bit.
+  - Tracking: the host adds this input to issue 462 and lists it in the PR body's known gaps. Not done here: no comment posted, no issue opened.
+  - `.agent/scripts/merge_pr.sh:1035-1086`
+
+### False positives
+- None.
