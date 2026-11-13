@@ -266,37 +266,38 @@ issues closed in the previous 60 days; v1.4.0 (2026-06-29); last push
   `single-source-multi-host-emission` (the multi-host converter is the 1.x
   design; 2.0 may drop it). Relevant to this workspace as a re-check of those
   two entries once 2.0's shape is visible. (2026-11-13)
-- **codeguard-2.** `secure-prompt-vs-skill-effect-numbers` — the first
-  published three-condition result: a short prompt matched or beat the full
-  skill on finding reduction at far lower token cost (Sol: 22 findings at
-  44.9K tokens per case, +19% cost, vs 26 findings at 162.4K, +188%). Direct evidence for the
-  roadmapped skill-authoring guidance and for the deferred
-  `skill-efficacy-eval-harness`: measure the cost of loading a skill and
-  compare against a plain instruction before adding bulk. Caveat: scanner
-  findings on 121 generation tasks, upstream's own estimates, snapshots
-  differ. (2026-11-13)
-- **codeguard-3.** `activation-fix-incomplete` — update to the roadmapped
-  `skill-activation-and-targeting-evidence`: the rule-table half (#121) was
-  fixed (JavaScript 18 to 16 table rules; 21 to 19 of 23 with the always-apply rules); the activation half (#117, the
-  "too broad" `description`) was not, and the skill's description is
-  unchanged. Evidence strengthens the lesson that narrowing the loaded
-  content does not by itself make an agent choose a skill. (2026-11-13)
-- **codeguard-4.** `consumer-update-workflow-validate-then-replace` — the
-  vendored-rules refresh job now validates the downloaded archive before
-  deleting existing files and detects mixed versions. A small, concrete
-  pattern for the roadmapped `manifest-carried-rule-packs` (never delete
-  before the replacement is verified). (2026-11-13)
 - **codeguard-5.** `behaviour-change-is-a-major-version` — issue #139's
   proposal that changes to activation, selection or required steps are major
   releases even if installs keep working, because an agent-facing skill can
   change workflow without breaking. Possible input to how this workspace
   versions or announces changes to its own skills; discussion only, no
   decision upstream yet. (2026-11-13)
-- **codeguard-6.** `source-lint-and-per-module-coverage-gate` — PR #135:
-  lint and format tooling for authored Markdown sources plus a CI rule that
-  each module has a matching test file covering at least 95% of its
-  statements. Overlaps the roadmapped `skill-source-schema-and-version-gate`
-  only in spirit; open, unmerged, and mostly Python tooling. (2026-11-13)
+
+## Decided (2026-11-13)
+
+Roadmapped (addenda to existing roadmap lines, no new lines):
+
+- **codeguard-2.** `secure-prompt-vs-skill-effect-numbers` — addendum to the
+  "Skill-authoring guidance knowledge doc" line, citing the published
+  three-condition SecurityEval numbers: short secure prompt 22 findings at
+  +19% cost vs full skill 26 at +188% on one model; 30 vs 35 on the other.
+  Scanner findings, upstream's own cost estimates, not independently
+  checked. Cross-referenced to the `gstack-1` retirement criterion
+  (2026-11-13)
+- **codeguard-3.** `activation-fix-incomplete` — one sentence added to the
+  "Skill activation and targeting evidence" line: the targeting half (#121)
+  was fixed upstream, the activation half (#117) is still open (2026-11-13)
+
+Skipped:
+
+- **codeguard-4.** `consumer-update-workflow-validate-then-replace` —
+  informational: a small pattern (never delete before the replacement is
+  verified) that belongs to the roadmapped `manifest-carried-rule-packs`
+  when that is built (2026-11-13)
+- **codeguard-6.** `source-lint-and-per-module-coverage-gate` — open,
+  unmerged, mostly Python tooling this workspace does not have; overlaps the
+  roadmapped `skill-source-schema-and-version-gate` only in spirit
+  (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 
