@@ -2792,7 +2792,7 @@ test_mr_clone_with_insteadof_rule() {
 test_mr_clone_refused_when_modified() {
     echo "TEST: manifest route: a clone in any state but as the adapter left it is refused, byte for byte untouched, the live result unchanged"
     local state sb clone gen before_link before_repos before_hash out rc expect
-    for state in uncommitted untracked ignored head_moved local_branch origin no_index no_record not_git; do
+    for state in uncommitted untracked ignored assume_unchanged skip_worktree head_moved local_branch origin no_index no_record not_git; do
         sb="$(make_mr_url_project)"
         clone="$sb/projects/p11/configs/source-clone"
         gen="$(mr_gen "$sb")"
@@ -2810,6 +2810,14 @@ test_mr_clone_refused_when_modified() {
                 echo '*.bak' >> "$clone/.git/info/exclude"
                 echo note > "$clone/manifest.bak"
                 expect="it has uncommitted changes or untracked files (!! manifest.bak" ;;
+            assume_unchanged)
+                git -C "$clone" update-index --assume-unchanged manifest.yaml
+                write_mr_manifest "$clone/manifest.yaml" mark_hidden
+                expect="it has files marked assume-unchanged or skip-worktree, which hide edits (manifest.yaml" ;;
+            skip_worktree)
+                git -C "$clone" update-index --skip-worktree manifest.yaml
+                write_mr_manifest "$clone/manifest.yaml" mark_hidden
+                expect="it has files marked assume-unchanged or skip-worktree, which hide edits (manifest.yaml" ;;
             head_moved)
                 expect="$(git -C "$clone" rev-parse HEAD | cut -c1-12)"
                 git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach HEAD~1

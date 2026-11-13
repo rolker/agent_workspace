@@ -708,7 +708,8 @@ _RC_CLONE_MARK=ros2-colcon-adapter-commit
 # Why the existing clone at <clone> is not as the adapter left it, printed
 # as one phrase; nothing when it is untouched: a git clone rooted there,
 # origin <url>, an index, the adapter's record, HEAD detached at the
-# recorded commit, and no uncommitted change, untracked or ignored file.
+# recorded commit, no file marked assume-unchanged or skip-worktree, and no
+# uncommitted change, untracked or ignored file.
 _rc_clone_modified() {
     local clone="$1" url="$2" top real origin gitdir mark head branch st
     top="$(_rc_nofd git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
@@ -741,6 +742,13 @@ _rc_clone_modified() {
     head="$(_rc_nofd git -C "$clone" rev-parse -q --verify HEAD 2>/dev/null || true)"
     if [ "$head" != "$mark" ]; then
         echo "HEAD is at ${head:0:12}, not at ${mark:0:12} where the adapter left it"
+        return 0
+    fi
+    # assume-unchanged (a lowercase tag) and skip-worktree (S) hide an
+    # edit from git status.
+    st="$(_rc_nofd git -C "$clone" ls-files -v 2>/dev/null | awk '$1 ~ /^([a-z]|S)$/ { print $2 }' | head -n 3)"
+    if [ -n "$st" ]; then
+        echo "it has files marked assume-unchanged or skip-worktree, which hide edits ($(printf '%s' "$st" | tr '\n' ' '))"
         return 0
     fi
     st="$(_rc_nofd git --no-optional-locks -C "$clone" status --porcelain --untracked-files=all --ignored=matching 2>/dev/null | head -n 3)"
