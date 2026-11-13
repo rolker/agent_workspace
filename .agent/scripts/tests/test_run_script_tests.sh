@@ -1469,6 +1469,9 @@ u8_alive_of() {
     done
     printf '%s' "$alive"
 }
+# ms_now: the time in milliseconds, from EPOCHREALTIME (whole seconds are
+# too coarse to tell 1 s of cleanup from the 5 s backstop under load).
+ms_now() { local us="${EPOCHREALTIME//[!0-9]/}"; printf '%s' "$(( 10#$us / 1000 ))"; }
 
 # --- Case (u8), the KILL backstop: a suite that ignores SIGTERM, and the
 #     sleep it waits on (which inherits the ignore), are KILLed 5 seconds
@@ -1487,16 +1490,18 @@ if read -r u8_suite u8_sleep u8_tmp < "$TMPD/u8b_info" 2>/dev/null; then
     u8_pids=("$u8_suite" "$u8_sleep")
     u8_root="$(dirname "$(dirname "$u8_tmp")")"
 fi
-u8_t0=$(date +%s)
+# Timed from before the signal is sent, so a runner that keeps the
+# 5-second deadline measures at least 5000 ms.
+u8_t0=$(ms_now)
 kill -s TERM "$u8_runner"
 wait "$u8_runner"; rc=$?
-u8_secs=$(( $(date +%s) - u8_t0 ))
+u8_ms=$(( $(ms_now) - u8_t0 ))
 u8_alive=$(u8_alive_of "${u8_pids[@]}")
-if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -eq 143 && $u8_secs -ge 4 && $u8_secs -le 10 ]] \
+if [[ ${#u8_pids[@]} -eq 2 && -z "$u8_alive" && $rc -eq 143 && $u8_ms -ge 4900 && $u8_ms -le 10000 ]] \
         && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
-    pass "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (${u8_secs}s), and the run's directory is removed"
+    pass "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (${u8_ms} ms), and the run's directory is removed"
 else
-    fail "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (rc=$rc, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fail "(u8) a suite that ignores SIGTERM is KILLed with what it started after the 5 s backstop (rc=$rc, ${u8_ms} ms to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
 fi
 for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 
@@ -1524,19 +1529,22 @@ if read -r u8_suite u8_child u8_sleep u8_tmp < "$TMPD/u8c_info" 2>/dev/null; the
     u8_pids=("$u8_suite" "$u8_child" "$u8_sleep")
     u8_root="$(dirname "$(dirname "$u8_tmp")")"
 fi
-u8_t0=$(date +%s)
+# Bounded just below the backstop, in milliseconds: a runner that waited
+# out the 5 s deadline measures at least 5000 ms, and the 1 s cleanup has
+# 3.8 s of slack for a loaded machine.
+u8_t0=$(ms_now)
 kill -s TERM "$u8_runner"
 wait "$u8_runner"; rc=$?
-u8_secs=$(( $(date +%s) - u8_t0 ))
+u8_ms=$(( $(ms_now) - u8_t0 ))
 # Checked as the runner exits: the cleanup must have finished by then.
 u8_cleaned=no
 [[ -e "$U8C_DONE" ]] && u8_cleaned=yes
 u8_alive=$(u8_alive_of "${u8_pids[@]}")
-if [[ ${#u8_pids[@]} -eq 3 && $u8_cleaned == yes && -z "$u8_alive" && $rc -eq 143 && $u8_secs -le 4 ]] \
+if [[ ${#u8_pids[@]} -eq 3 && $u8_cleaned == yes && -z "$u8_alive" && $rc -eq 143 && $u8_ms -lt 4800 ]] \
         && [[ "$u8_root" == */run-script-tests.* && ! -e "$u8_root" ]]; then
-    pass "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (${u8_secs}s)"
+    pass "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (${u8_ms} ms)"
 else
-    fail "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (rc=$rc, cleaned=$u8_cleaned, ${u8_secs}s to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
+    fail "(u8) a process a suite started finishes its own cleanup after the suite exits, before the backstop (rc=$rc, cleaned=$u8_cleaned, ${u8_ms} ms to stop, recorded=${u8_pids[*]}, alive=$u8_alive, root=$u8_root, log=$(cat "$TMPD/u8.log"))"
 fi
 for p in "${u8_pids[@]}"; do kill -s KILL "$p" 2>/dev/null; done
 

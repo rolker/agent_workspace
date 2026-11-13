@@ -309,7 +309,7 @@ Dismissed, with evidence: the "wait -n misses children" and "late leak should gi
 - [ ] (suggestion) A second signal during the stop does not hurry it: `on_interrupt` resets the traps, so a second TERM or Ctrl-C makes the EXIT trap call `stop_suites TERM` again with a new 5 s deadline (the adversarial reviewer measured 6.0 s for a second TERM at 1 s); when a stop is already under way, KILL at once — `.agent/scripts/tests/run_script_tests.sh:530`
 - [ ] (suggestion) A suite reaped by `wait -n` leaves `job_of`, so a process it left running in its own group is not stopped by a later interrupt or the EXIT cleanup (not a regression; the second sweep catches it only if it writes to TMPDIR); keep every launched group for `stop_suites` — `.agent/scripts/tests/run_script_tests.sh:712`
 - [x] (suggestion) (u4)'s finish-order check relies on 0.5 s gaps between three suites that start one after another; under load or on a 4-vCPU runner b and c can swap and fail a correct runner; widen the gaps (about 1 s and 2.5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1252`
-- [ ] (suggestion) (u8c) bounds a 1 s cleanup by `u8_secs -le 4` measured with whole-second `date +%s` against a 5 s backstop; a 1 to 2 s stall under load fails it; measure with EPOCHREALTIME or bound against the backstop (under 5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1523`
+- [x] (suggestion) (u8c) bounds a 1 s cleanup by `u8_secs -le 4` measured with whole-second `date +%s` against a 5 s backstop; a 1 to 2 s stall under load fails it; measure with EPOCHREALTIME or bound against the backstop (under 5 s) — `.agent/scripts/tests/test_run_script_tests.sh:1523`
 
 ## Checkpoint
 **Status**: complete
