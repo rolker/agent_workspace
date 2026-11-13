@@ -1588,3 +1588,49 @@ Revise the plan for the review's five findings, with these host decisions: (1) t
 **Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
 
 Revision for the plan review (needs-work) and the host's checkpoint. The header field and start-point rule are recorded in the design (Worktrees) with an ADR-0012 cross-reference addendum only; stale ADR-0011, stub-adapter and size statements are corrected; the owning-checkout path and the header base travel in the `_PKG_MATCHES` record; a worktree with no base gets it written on resume after an origin check; `dispatch_phase.sh base` prints nothing for an issue with no package base, with a test; and the cleanup pull runs only when the owning checkout is clean and on the pull request's base (otherwise fetch only), in 2a, pinned by 2b's case (d).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-12 21:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #429 — run-issue: drive an issue in a package repository of a multi-repository project
+**Plan**: `.agent/work-plans/issue-429/plan.md` at `6cba9799`
+**Branch**: `feature/issue-429`
+
+Convergence review of the revision for the previous Plan Review (needs-work) and the host's checkpoint (revise, six decisions). Code on the branch equals main at `b151b741`. Merged parts (445, 456) and earlier-settled design not reopened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: 2a's rest, then 2b, in this worktree. |
+| Issue alignment | Good | Serves, as checked: `README.md#easy-to-use`, `README.md#flexibility`; design `docs/design.md#worktrees`, `docs/design.md#review-loop-and-timeline` (`#merge-gate`). Base still comes only from the pin or `--base` (owner comment of 2026-11-10). Finding 3. |
+| File targeting | Needs work | Pull-rule test is placed in the wrong suite and an existing assertion it breaks is not listed (finding 1). |
+| Consequences | Good | Decision 1 route reflected in step 5, Files, ADR and Consequences tables. Banner (finding 2). |
+| Principle alignment | Good | Strict resume write-back (refuse, write nothing) fits "start limits strict". |
+| ADR compliance | Good | ADR-0012 decision text and its line-65 header list untouched; addendum only (ADR-0008); no new ADR. |
+| ROS conventions | N/A | Workspace plan. |
+
+Decisions applied, each checked in plan.md: (1) step 5 (395-398), Files row 560, ADR row 613, Consequences row 629: applied. (2) Stale text: "ADR-0011 amended" survives only in the record heading of step 2 with its bracketed correction (366); "stub adapter" only negated (262, 424); sizes say 11 files / 500 lines with the 16/600 figure explained (217, 244, 675): applied. (3) `_PKG_MATCHES` carries `PKG_OWN_REL` and `base=` (2a.7 row 261, 2b.1 439-445): applied; the `-` placeholder is sound: the record is built once (`merge_pr.sh` 521) and read only at 527 (ambiguity message) and 533 (`PKG_WT_DIR`/`PKG_WT_PROJECT`/`PKG_WT_ISSUE`), no reader outside `merge_pr.sh` (grep of `.agent`), a tab `IFS` is whitespace so empty fields do collapse (today's `_hdr_project`/`_hdr_issue` already could), and `-` cannot be a real branch, project or relative path. Mapping back at both reads covers every reader. (4) Step 6 (401-407): `wt_set_manifest_base` beside `wt_write_manifest` (`_worktree_helpers.sh` 416-422), origin check via `wt_bounded_git` (exists, 476), refuse and write nothing when absent or unknown, differing `--base` refused; consistent with step 3's "header first" rule and with step 5's un-anchored `layer=` reader (an appended ` base=` would otherwise blank `WT_MANIFEST_LAYER`, 444). Consequence accepted by the decision: an offline resume of a part-1 worktree stops at step 1. (5) Step 6 (407-410) and step 8 (427-428): applied, but see finding 3. (6) Step 7 (413-421): pull only when clean and on `baseRefName`, else fetch with "fetched only: <why>", not incomplete; failed pull or fetch still incomplete; empty base fetch only; 1742 untouched; matches `merge_pr.sh` 1624-1631 and `_OWN_ORIGIN` (1569) as the owning repository's own checkout. Note: `adapter_sync` (ros2_colcon `adapter.sh` 614-617) skips a dirty checkout outright rather than fetching, so "the rule adapter_sync already follows" is approximate; fetching a dirty checkout is harmless.
+
+Nothing the previous review confirmed has regressed: the revision table's citations (`merge_pr.sh` 485-535, 545, 1548-1660; `_worktree_helpers.sh` 416-451) re-read and still correct.
+
+### Findings
+
+1. **[File targeting]** (should-fix) The pull-rule case does not belong in `test_merge_pr_gate.sh`: that suite tests the gate, and its stub stops a run at the merge by default (`GH_MERGE_EXIT=1`, line 181). The package cleanup (Step 4) is tested in `test_merge_pr.sh` (sibling, sweep, banner and sync cases, 295-611), and its `write_pr_view_fixture` (139-144) writes no `baseRefName`. After 2a's rule every package case there has an empty base and fetches only, so `test_own_repo_sync_failure_is_reported` (394-421; asserts "Could not fast-forward owner/pkg_a" and "cleanup incomplete") fails. Resolution: put the pull-rule case in `test_merge_pr.sh` beside that test; give `write_pr_view_fixture` a `baseRefName` (default `main`, the sandbox origin's branch) so the existing case keeps pinning a failed pull; add `test_merge_pr.sh` to 2a's Files row and step 8. Likewise 2b.3's cleanup cases (a)-(d), listed under `test_merge_pr_gate.sh` (Files row 562), fit `test_merge_pr.sh`, where (b)/(c)-like cases already exist (`test_sibling_pr_open_keeps_worktree` 295, `test_sweep_reports_unmerged_local_branch` 524); check before adding duplicates.
+2. **[Consequences]** (minor) After a fetch-only cleanup the final banner still prints "merged, cleaned up, and synced" (`merge_pr.sh` 1759), the misleading success the rule set out to remove. Resolution: one line in step 7: the banner says the checkout was fetched only (or the step accepts it explicitly); the case in finding 1 asserts it.
+3. **[Issue alignment]** (minor) Step 6 lists "a bare number" among the no-base cases, but `resolve_issue_dir` (`dispatch_phase.sh` 306) maps a unique bare number to a package worktree's owning checkout; `base` would then print nothing and the handoff would drop `base=` for a package issue. Resolution: decide "no base" by the resolved worktree (no manifest, or a lone `.` entry) and pre-creation mode (no `--layer`), not by the form of the ref.
+4. **[File targeting]** (nit) Files row 559 (2a tests) still lists `test_adapter.sh` and `test_ros2_colcon.sh` as edited ("Verb" cases merged in 456) and omits `test_dispatch_phase.sh`; step 8 names `test_dispatch_phase.sh` both as gaining a case and as unchanged (427, 431). Resolution: fix the row and the list when 2a starts.
+
+### Summary
+
+All six checkpoint decisions are in the plan as decided and agree with each other and with main; the `-` placeholder, the resume write-back and the pull rule are sound. The pull-rule test is aimed at the wrong suite and misses an existing assertion it breaks; that and three smaller points are edits to make as 2a starts, not a reason for another plan round.
+
+### Recommended Actions
+
+- [ ] Move the pull-rule case to `test_merge_pr.sh`; add `baseRefName` to `write_pr_view_fixture`; list the suite in 2a (finding 1)
+- [ ] State the final banner after a fetch-only cleanup (finding 2)
+- [ ] Key "no package base" on the resolved worktree, not on a bare number (finding 3)
+- [ ] Correct the 2a tests row and step 8's suite list (finding 4)
