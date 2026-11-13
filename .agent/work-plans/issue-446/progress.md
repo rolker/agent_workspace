@@ -547,3 +547,27 @@ Specialists: static (shellcheck --severity=warning clean on all changed .sh; set
 - test_register_project.sh: 197 passed, 0 failed; test_project_integration_audit.sh: 279 passed, 0 failed (after the stub change)
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree before this entry: exit 0, validate-script-tests Passed
 - Not run: the live suite, any claude CLI call, the installer against the real HOME (per the handoff)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 20:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ace1c4380862fee80, resume 1 of 3)
+
+**Branch**: feature/issue-446 at `f3dccb33`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff, 25+ files, ADRs/design.md/settings.json; fix-round re-review at the whole-diff tier)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round 1's findings: both must-fix fixed (ADR status lines and register/guide rows name decision 6's skill_prefix paragraph; register counts 19); suggestions 1-6 fixed with tests; suggestion 7 (follow-up issue) left for the owner by the host, not counted. Specialists: static (shellcheck --severity=warning clean), governance (ADR-0018 status edit is a permitted ADR-0008 addendum), plan drift (no new drift), Claude adversarial (fresh; ran test_user_tier_install 265, test_register_project 197, test_project_integration_audit 279, test_plugin_acceptance_helpers 29, all 0 failed; no must-fix), cross-model gemini and codex (both completed). Both must-fix below were found independently by all three adversarial reviewers.
+
+### Findings
+- [ ] (must-fix) A repoint's required re-install is lost when it fails or is interrupted: `marketplace add` has already repointed the declaration and machine record, so the next run sees `ours` plus the other checkout's user-scope install record, takes the no-call shortcut, and `--check` says "installed and current" while the install/cache are still the other checkout's. Same when only the machine record names another checkout (`repointed` reads the settings source only). Make the pending re-install survive a failure (e.g. remove the user-scope install before repointing, or treat a machine record/declaration that was another checkout's as a repoint) and test failure-then-rerun — `.agent/scripts/user_tier_install.sh:826`
+- [ ] (must-fix) `user_scope_readback` checks the settings and the machine record but not the user-scope install record that the shortcut and `--check` now require, so an install (or a migration whose local uninstall drops the user record) can exit 0 while `--check` immediately reports drift. Require `user_install_record` present (when the record parses) in the read-back, with a stub test for each path — `.agent/scripts/user_tier_install.sh:845`
+- [ ] (suggestion) A local true in the workspace checkout's own settings.local.json is DRIFT in `--check` with "re-run the installer to remove it", but install leaves it with a NOTE and exits 0 when it is hand-written or the CLI is missing; give `--check` the same hand-removal advice (and `plugin_note` without the CLI) there — `.agent/scripts/user_tier_install.sh:1446`
+- [ ] (suggestion) A hand-written local true the CLI leaves makes every install run the two `--scope local` CLI calls again (and the read-back), so a re-run is never call-free; consider not re-running the CLI once it is known to leave the entry — `.agent/scripts/user_tier_install.sh:1038`
+- [ ] (suggestion) The hand removal for a root the CLI is not run in names only settings.local.json; when the CLI's record lists a local install there, also name its `installed_plugins.json` object, or a later deleted root leaves a note on every run — `.agent/scripts/user_tier_install.sh:943`
+- [ ] (suggestion) With the workspace in no git repository, the fallback answers bare for a git repository nested under it; guard it with an empty `dir_repo` — `.agent/scripts/skill_prefix.sh:94`
+- [ ] (suggestion) Live suite: `us_case` replaces a valid empty list (`<none>`) from the first session with the second session's `<no init line>`, and U7 treats `<none>` as "no init line" (UNDECIDED wording instead of "0 times") — `.agent/scripts/tests/live/plugin_acceptance.sh:635`
