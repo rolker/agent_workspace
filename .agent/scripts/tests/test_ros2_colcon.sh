@@ -2624,6 +2624,21 @@ test_mr_url_source_branch_tag_commit() {
     assert_eq "missing source_path: exit 1" "1" "$rc"
     assert_contains "missing source_path: named" "source_path 'nope.yaml' is not a file" "$out"
 
+    # A committed symbolic link out of the repository is never followed,
+    # as the file or as a directory on the way to it.
+    write_mr_manifest "$sb/outside/secret.yaml" mark_secret
+    ln -s "$sb/outside/secret.yaml" "$sb/mwork/leaf/evil.yaml"
+    ln -s "$sb/outside" "$sb/mwork/leaf/evildir"
+    mr_push "$sb" leaf >/dev/null
+    local spath
+    for spath in evil.yaml evildir/secret.yaml; do
+        mr_settings "$sb" "source=$url" "source_ref=main" "source_path=$spath"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "symlink source_path $spath: exit 1" "1" "$rc"
+        assert_contains "symlink source_path $spath: named" "source_path '$spath' goes through the symbolic link '${spath%%/*}'" "$out"
+        assert_not_contains "symlink source_path $spath: not resolved" "mark_secret" "$(cat "$gen/repos/core.repos")"
+    done
+
     # A clone of another repository is refused.
     local other
     other="$(make_mr_remote "$sb" other)"

@@ -736,6 +736,20 @@ _rc_source_fetch() {
     fi
     _RC_SRC_COMMIT="$(git -C "$clone" rev-parse HEAD)"
     _RC_SRC_FILE="$clone/$spath"
+    # The repository is not trusted to stay inside itself: a symbolic link
+    # anywhere along source_path could lead the resolver to any file the
+    # user can read, so none is followed.
+    local part="" comp
+    local -a comps=()
+    IFS='/' read -r -a comps <<< "$spath"
+    for comp in "${comps[@]}"; do
+        [ -z "$comp" ] || [ "$comp" = . ] && continue
+        part="${part:+$part/}$comp"
+        if [ -L "$clone/$part" ]; then
+            echo "ERROR: source_path '$spath' goes through the symbolic link '$part' in $url at '$ref' ($clone); a symbolic link is never followed out of the source repository: name the file itself" >&2
+            return 1
+        fi
+    done
     if [ ! -f "$_RC_SRC_FILE" ]; then
         echo "ERROR: source_path '$spath' is not a file in $url at '$ref' ($clone)" >&2
         return 1
