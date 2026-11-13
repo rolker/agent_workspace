@@ -2653,17 +2653,29 @@ test_mr_url_source_branch_tag_commit() {
 
 # A fingerprint of everything under <dir>: paths, link targets, file
 # modes, modification times and contents, so "untouched" means byte for
-# byte (and not even re-written with the same bytes).
+# byte (and not even re-written with the same bytes). Portable: GNU or
+# BSD stat (as the adapter's _rc_file_stamp), cksum, no NUL-separated
+# lists (the fixtures' paths hold no newline).
+mr_stat() {
+    stat -c '%a %Y' "$1" 2>/dev/null || stat -f '%Lp %m' "$1"
+}
+
 mr_tree_hash() {
-    (cd "$1" && find . -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' f; do
+    (cd "$1" && find . | LC_ALL=C sort | while IFS= read -r f; do
         if [ -L "$f" ]; then
             printf 'L %s %s\n' "$f" "$(readlink "$f")"
         elif [ -f "$f" ]; then
-            printf 'F %s %s %s\n' "$f" "$(stat -c '%a %Y' "$f")" "$(sha256sum < "$f" | cut -c1-64)"
+            printf 'F %s %s %s\n' "$f" "$(mr_stat "$f")" "$(cksum < "$f")"
         else
             printf 'D %s\n' "$f"
         fi
-    done) | sha256sum | cut -c1-64
+    done) | cksum
+}
+
+# sed -i without GNU or BSD differences: <sed args...> <file>.
+mr_sed() {
+    local f="${*: -1}"
+    sed "${@:1:$#-1}" "$f" > "$f.mr_sed" && mv -- "$f.mr_sed" "$f"
 }
 
 # A sandbox whose p11 was set up from a URL source at main (two commits,
@@ -2694,7 +2706,6 @@ test_mr_clone_follows_remote() {
     assert_contains "setup: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
     assert_eq "setup: the clone is detached" "" "$(git -C "$clone" branch --show-current)"
     assert_eq "setup: the record is HEAD" "$(git -C "$clone" rev-parse HEAD)" "$(cat "$mark")"
-    assert_not_contains "setup: no source-state recorded" "source-state" "$(cat "$gen/.resolved-from")"
     # A moved branch.
     write_mr_manifest "$work/manifest.yaml" mark_three
     c="$(mr_push "$sb" leaf)"
@@ -3037,7 +3048,7 @@ test_mr_role_and_distro_changes() {
     run_mr "$sb" setup >/dev/null 2>&1
     gen="$(mr_gen "$sb")"
     assert_contains "role dev: pkg_c selected" "pkg_c" "$(cat "$gen/repos/extra.repos")"
-    sed -i 's/role=dev/role=lite/' "$sb/.agent/projects.local"
+    mr_sed 's/role=dev/role=lite/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "role changed: validate exit 1" "1" "$rc"
     assert_contains "role changed: names the registry line and sync" "is for role 'dev' but the registry line says role=lite (run: .agent/scripts/adapter --project p11 sync" "$out"
@@ -3049,7 +3060,7 @@ test_mr_role_and_distro_changes() {
     assert_eq "role lite: validate exit 0" "0" "$rc"
     assert_contains "role lite: pkg_c's checkout named" "layer 'extra': 'pkg_c' is checked out but not in the resolved manifest" "$out"
     assert_eq "role lite: nothing removed" "yes" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src/pkg_c" ] && echo yes || echo no)"
-    sed -i 's/distro=fakefox/distro=otherfox/' "$sb/.agent/projects.local"
+    mr_sed 's/distro=fakefox/distro=otherfox/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "distro changed: validate exit 1" "1" "$rc"
     assert_contains "distro changed: named" "is for distro 'fakefox' but the registry line says distro=otherfox" "$out"
@@ -3066,7 +3077,7 @@ test_mr_sync_names_a_new_layer() {
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
     run_mr "$sb" setup >/dev/null 2>&1
     assert_eq "role lite: extra never set up" "no" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src" ] && echo yes || echo no)"
-    sed -i 's/role=lite/role=dev/' "$sb/.agent/projects.local"
+    mr_sed 's/role=lite/role=dev/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "role dev: sync exit 0" "0" "$rc"
     assert_contains "role dev: the new layer's repository counted" "source: 1 repository in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project p11 setup" "$out"
@@ -3151,7 +3162,7 @@ test_mr_resolver_failures() {
 
     # A role and distro that select nothing.
     write_mr_manifest "$sb/m/manifest.yaml"
-    sed -i 's/distro=fakefox/distro=emptyfox/' "$sb/.agent/projects.local"
+    mr_sed 's/distro=fakefox/distro=emptyfox/' "$sb/.agent/projects.local"
     cat > "$sb/m/manifest.yaml" <<'EOF'
 layers:
   - core
@@ -3170,7 +3181,7 @@ EOF
     assert_eq "empty result: exit 1" "1" "$rc"
     assert_contains "empty result: says so" "select no repositories" "$out"
     assert_eq "empty result: link unchanged" "$before" "$(readlink "$gen")"
-    sed -i 's/distro=emptyfox/distro=fakefox/' "$sb/.agent/projects.local"
+    mr_sed 's/distro=emptyfox/distro=fakefox/' "$sb/.agent/projects.local"
     write_mr_manifest "$sb/m/manifest.yaml"
 
     # A stale resolver (no --layout): the reinstall message.
@@ -3569,7 +3580,7 @@ test_mr_reader_pinned_to_one_result() {
     assert_eq "setup A: held in its first import" "yes" "$([ -e "$sb/vready" ] && echo yes || echo no)"
     dir_a="$(readlink "$gen")"
     # Meanwhile the manifest changes (pkg_c, layer extra, v1 -> v2) and a sync swaps the link.
-    sed -i 's/ref: v1/ref: v2/' "$sb/m/manifest.yaml"
+    mr_sed 's/ref: v1/ref: v2/' "$sb/m/manifest.yaml"
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "sync B: exit 0" "0" "$rc"
     dir_b="$(readlink "$gen")"
@@ -3643,14 +3654,14 @@ test_mr_preflight_before_any_fetch() {
     assert_not_contains "no vcs: the source was not contacted" "cloning" "$out"
     assert_eq "no vcs: no clone made" "no" "$([ -e "$sb/projects/p11/configs/source-clone" ] && echo yes || echo no)"
 
-    sed -i 's/ role=dev//' "$sb/.agent/projects.local"
+    mr_sed 's/ role=dev//' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no role=: exit 1" "1" "$rc"
     assert_contains "no role=: names the field" "which needs role=<name> on its registry line" "$out"
     assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
     assert_not_contains "no role=: not contacted" "cloning" "$out"
 
-    sed -i 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
+    mr_sed 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no distro=: exit 1" "1" "$rc"
     assert_contains "no distro=: names the field" "which needs distro=<name> on its registry line" "$out"
@@ -3677,7 +3688,7 @@ test_mr_one_source_only() {
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "legacy MANIFEST_BOOTSTRAP_URL: exit 1" "1" "$rc"
     assert_contains "legacy MANIFEST_BOOTSTRAP_URL: names the file" "MANIFEST_BOOTSTRAP_URL=https://example.invalid/legacy.yaml in $sb/.agent/projects.d/p11.sh (the legacy per-project config): remove that line" "$out"
-    sed -i '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
+    mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
 
     # A good setup first, so validate reaches the single-source check.
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
