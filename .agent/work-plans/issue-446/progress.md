@@ -644,3 +644,21 @@ Lint (pre-commit) still running at this entry; ros-manifest tests, Validate Adap
 - [x] (suggestion, Local Review R1 @ `630c47d6`, stale) Follow-up issue on relaxing the two `session_root.sh` refusals: left to the owner, and the PR body says so ("Left for the owner") — `.agent/work-plans/issue-446/plan.md:329`
 
 ### False positives
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 10:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #458 at `00b549df`
+**Depth**: Deep (reason: whole-diff tier of this PR; narrowed per handoff to the merge of main, 00b549df, after three approved pre-push rounds at 939d23d0 / b4eb5532)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Scope: the merge commit only: the ADR renumber (0019 to 0020), the three conflict resolutions, and main's changes since the review (issue 429's package-repository work, issue 455's identity work) against this branch's plugin, session_root.sh, skill_prefix.sh, user_tier_install.sh and register_project.sh. Static analysis skipped (the resolutions touch Markdown only). Specialists run inline by the lead, no fresh adversarial subagent; cross-model skipped (narrow post-merge pass, per handoff).
+
+Verified: `git grep` for 0019 and 0020: every plugin-record reference says 0020 (ADR-0016, ADR-0018, design.md lines 190/212/272/337/806/808/913, principles_review_guide row); every repo_pin reference says 0019 (ADR-0011, ADR-0012, adapters, _pr_base.sh, dispatch_phase.sh, tests, design.md 365/502/807/911); the fork's ADR-0019 (digest, fork_parity.md, ADR-0014) untouched. `git show --remerge-diff 00b549df`: all three resolutions keep both sides (register rows 0018/0019/0020, the three change-log rows of 455 and 429 plus the 446 row, the script_reference dispatch_phase row from main with session_root/skill_prefix from the branch). Register has 20 rows, matching "making 20 rows"; Sessions and roots is 137 lines (122 on main + 15), matching its row. `check_design_anchors.sh .` exit 0. No main change calls session_root.sh, skill_prefix.sh, user_tier_install.sh or the plugin; package-worktree code writes no `.claude/` settings; run-issue's merged text keeps three `dispatch_phase.sh where` blocks. Suites run singly: test_skill_paths 136/0, test_package_issue_loop 194/0, test_user_tier_guard 64/0, test_register_project 197/0. sitrep TERM case: no cause in this branch's diff (its session_root.sh change is refusal messages only, same success path).
+
+### Findings
+- [ ] (must-fix) PR body's Decision summary still says "ADR-0019 records the decision" (now ADR-0020) and the pre-merge diff count (3741 insertions; now 3759) — PR #458 description, "What changed"
+- [ ] (suggestion) The 446 change-log row's Lines value 928 is the pre-merge count; the file is 967 and as the newest row it reads as a shrink from 936; nothing reads the column — `docs/design.md:913`
