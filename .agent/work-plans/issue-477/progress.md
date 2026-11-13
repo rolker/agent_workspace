@@ -292,3 +292,37 @@ path	Path 3	less waiting for the same care	In the owner's words (2026-11-13): "W
 
 - Refused by the permission checker: one `python3` heredoc that rewrote `.claude/skills/sitrep/SKILL.md` by string replacement; the same three edits were made with the Edit tool instead (no workaround of the check's intent).
 - Nothing outside the six files in scope was touched.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 14:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-477 at `92229a53`
+**Base**: origin/main
+**Depth**: Standard (reason: two `.claude/skills/*/SKILL.md` files, governance override trigger; 165 lines, 6 files)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### What was checked
+- Approved texts: the Path 3 paragraph (unwrapped) and the README bullet match the issue body character for character. The merge of main (PR 475) changed only the inspiration block of `docs/roadmap.md`; the Direction section and its three Paths paragraphs are intact.
+- `serves=` awk, extracted from the skill as written, on eight synthetic records: phrase in upper case gives path3; phrase in an older review with a newer plain goal gives goal; `none` then the phrase gives none; phrase only inside a fence gives goal; phrase in a newer partial review gives goal; no Serves line gives unstated; `` `none` `` gives none; plain goal gives goal. All match the prose.
+- `wpath` chain, extracted as written, over ten combinations: Path 1 over path3; path3 in a project worktree or in a project session gives "no path (serves a project goal)"; Path 3, Path 2, no path, the three unknown labels, and empty with no Paths paragraph.
+- Paths block (awk and python as written) on this worktree's roadmap prints the three paths; Path 3's first sentence ends at `cautious."`. `\x22` survives the bash single quotes and the raw string. No apostrophe was added inside any single-quoted block.
+- Revert test on a scratch export of HEAD with the awk `path3` line removed: test_sitrep_checks.sh fails the combined Serves assertion (issue 32 reads Path 2). Cases 33 to 35 and the project row pass either way; they pin order only, as the plan review said.
+- review-issue's sentence sits in the workspace-issue clause, before "For a project issue", so a project review does not follow it.
+- Nothing in the skill prose or the sandbox tests counts paths; only test_skill_paths.sh's check of the workspace's own roadmap names Path 3.
+
+### Cross-model and adversarial
+- Gemini (agy): completed, one suggestion: a Serves line that names a goal and negates the phrase reads Path 3. Not carried: the second plan review weighed this exact case and accepted it (one wrong path word, unlikely wording).
+- Codex: completed, no findings.
+- Claude adversarial: no must-fix. Its one suggestion (a workspace worktree in a project session could read Path 3) is a false positive: the chain tests `stype` (the session type), and the extracted chain printed "no path (serves a project goal)" for that case.
+
+### Tests run
+- `test_skill_paths.sh`: 149 passed, 0 failed.
+- `test_sitrep_checks.sh`: 211 passed, 0 failed.
+- Not run, on the owner's rule of 2026-11-13: the full suite and the full pre-commit pass (the host's one run).
