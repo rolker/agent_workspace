@@ -543,3 +543,21 @@ Written by the host on the owner's takeover answer (the phase-failed checkpoint 
 - Everything else in this fix pass is in the previous (partial) entry: must-fix 2 and 3 and the three suggestions, commits `4971bb6c` `6f1cd32d` `d9390180` `6efbf2c6` `7d31e57a`.
 
 Checks: `test_skill_paths.sh` 143 passed, 0 failed, run after the edit. The full pre-commit pass was not run, on the owner's direction (2026-11-13: one full run per pull request, by the host, before publishing).
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-11-13 11:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-459 at 6ecbcbd0
+**Addressed**: Local Review (Pre-Push) at `7d11a8d9` (2026-11-13 10:55 -05:00)
+
+The branch took main: merge commit `6ecbcbd0` merges main at `2809fcef` (pull request 458, issue 446, ADR-0020) into the branch head `8c9e5531`.
+
+- **Conflict**: one, in `docs/design.md`, both sides appending a change-log row. Both rows kept in date order: #446's (2026-11-12) first, then #459's (2026-11-13). #459's Lines value moved from 963 to 981, the merged file's `wc -l`. No prose sentence was changed by both sides (#459's design hunks are lines 589-623 of the base, #446's are elsewhere), so no sentence needed rewriting.
+- **Files both sides changed**: `docs/design.md` (above), `.claude/skills/run-issue/SKILL.md` and `.agent/knowledge/script_reference.md`, both auto-merged. Read the merged regions: SKILL.md's prefix/plugin text (main, lines 64-104) and this branch's steps 2, 11 and 13 touch separate regions and read correctly together; script_reference.md's rows (main: `validate_adapter.sh`, `register_project.sh`, `skill_prefix.sh`, `session_root.sh`; this branch: `dispatch_phase.sh`, the new `pr_start.py` row) are separate rows and consistent. No script or test was changed by both sides.
+- **Citations**: main did not change `dispatch_phase.sh`, so no `dispatch_phase.sh` citation moved; `check_design_anchors.sh` exits 0.
+- **Suites** (run directly): test_dispatch_phase 233/0, test_review_code_convergence 38/0, test_address_findings 24/0, test_triage_reviews_integration 69/0, test_skill_paths 143/0, test_records_write_gate 68/0, test_commit_identity 94/0, test_design_anchors 47/0 (passed/failed). `suites_for_files.sh` maps the three shared files to ALL, the full suite, which was not run.
+- **Hooks**: the full pre-commit pass was skipped on the owner's direction (2026-11-13); every commit used `SKIP=validate-script-tests`.
+- **Noticed, not touched**: main's #446 change-log row states 928 lines, but main's own `docs/design.md` was 967 lines after pull request 458 (the row's count predates #446's later merge of main and was not refreshed). Left as main has it.
