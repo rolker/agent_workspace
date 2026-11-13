@@ -2829,3 +2829,39 @@ CI at triage: of 8 check runs on `7836be6`, both Validate Documentation runs suc
 **Decision**: address
 
 Fix in pull request 461, as triage states it: in the comments-only duplicate check (no timeline read), take the last comment that starts with either "## Merge (report-only)" or "## Merge (unreviewed)", and skip only when that comment's type equals the requested type and its conditions match; one gate test. Nothing else changes; the timeline path and the owning-package path are untouched.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 08:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a38adc8f32bf8dcb5, resume 3 of 3)
+
+**PR**: #461 at `2f5a8392`
+**Addressed**: Integrated Review at `7836be6` (2026-11-13 08:37 -05:00), as the host's Checkpoint of 08:38 decided
+**Commits**: `2f5a8392`
+
+### Actions
+- [x] (suggestion) When no timeline is read, the comments-only duplicate check now takes the last comment that starts with `## Merge (report-only)` or `## Merge (unreviewed)`. It skips only when that comment's heading type equals the requested type and its `**Conditions**` match. Before, it took the last comment of the requested type only. The timeline path, the owning-package path and every verdict are unchanged.
+  - `docs/design.md`: one sentence in the Merge gate bullet and a change-log row (986 lines). The citations that moved by 7 lines were refreshed: Table 1's `1316 and 1329, 2118-2138` and the Records bullet's `1316 and 1329`. Every other citation sits before line 1288 and did not move.
+  - `script_reference.md` row 38 gets the same clause.
+  - No text in the repository states the "Known gap" premise, so nothing else was removed; the pull request body is the host's.
+  - `.agent/scripts/merge_pr.sh:1287-1304` — `2f5a8392`
+
+### Test rows (`test_merge_pr_gate.sh` dedup-c; a workspace PR with no worktree, so the comments are the store; conditions A are taken from a calibration run)
+| Comments on the PR (oldest first) | Run | Result | Fails on `7836be6`'s script |
+|---|---|---|---|
+| unreviewed A, report-only A | `--force-unreviewed`, A | records | yes |
+| report-only A, unreviewed A | `--report-only`, A | records | yes |
+| unreviewed A | `--force-unreviewed`, A | skips | no (neighbour) |
+| unreviewed with other conditions | `--force-unreviewed`, A | records | no (neighbour) |
+| report-only A | `--force-unreviewed`, A | records | no (neighbour) |
+| no record comment | `--force-unreviewed` | records | no (neighbour) |
+| unreviewed A, then a comment quoting a report-only heading mid-body | `--force-unreviewed`, A | skips (the quote is not a record) | no (neighbour) |
+
+`tail_of` moved to the top of the test file: the new test runs before the place where it was defined.
+
+### Checks
+- Suites run directly on the final tree:
+  - `test_merge_pr_gate.sh` 165/0. Against the previous `merge_pr.sh` it gave 163/2: the two sequence rows.
+  - `test_merge_pr.sh` 150/0.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, identity sourced, no SKIP: rc 0. It was waited for to its exit. Every hook passed or was skipped for having no files, including `validate-script-tests`, `shellcheck` and `check-design-anchors`.
