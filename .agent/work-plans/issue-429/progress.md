@@ -2998,3 +2998,59 @@ Outside reviewers: gemini (agy) complete, one suggestion (stale citations, findi
 - [ ] (must-fix) The owning timeline is read from the working copy when progress.md has uncommitted changes. Input (sandbox from the gate suite's fixtures): owning checkout equal to origin with a committed stale review, `$APPROVED_AT_HEAD` appended uncommitted, PR with a decision summary. Result: "Review gate: approved review at head `abc1234`", no record written, the file left ` M`. The same approval in an unpushed commit is not read (pkg-19 approval). Fix: when `_gate_rec_dirty` reports anything, set `_GATE_OWN_NOREAD` in the read guard (the function is defined at :987, after the guard at :790, so move it up), and add a pkg-20-style row for an uncommitted approval — `.agent/scripts/merge_pr.sh:790-801`
 - [ ] (must-fix) An empty or null comment body makes `_GATE_REC_COMMENT_JQ` fail (`"" | split("\n")` is `[]`, so `[0]` is null, and `sub` on null errors), and stderr is discarded. The whole comment store then reads as "no record". Input (owning PR, sandbox): the timeline has `Merge (unreviewed)` X, the comments have a newer `Merge (report-only)` X plus `{"body":""}`, and `--force-unreviewed` runs with X. Result: "already recorded at `abc1234` ... skipping"; with the scripts at `f78c25e3`, and with the empty comment left out, it records. In the comments-only path the same input writes a duplicate. This needs GitHub to return a blank body, which its API normally refuses (unverified), but `.body // ""` shows null was expected. Fix: `((.body // "") + "\n" | split("\n")[0] | sub(...))` or `(split("\n")[0] // "")`, plus a dedup-c row with an empty-body comment — `.agent/scripts/merge_pr.sh:1267-1270`
 - [ ] (suggestion) In `docs/design.md`, the Records/registry bullet still cites `merge_pr.sh` "lines 818 and 1056" and "lines 1316 and 1329". The code is now at 829 and 1087 (main-tree guards) and 1365 and 1378 (report-only project gate), as Table 1 already says (gemini, verified) — `docs/design.md:490-492`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 10:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4fdcdaaa3384704a, resume 1 of 3)
+
+**PR**: #461 at `7fa4efcf`
+**Addressed**: Local Review at `7ef2a6a` (2026-11-13 09:36 -05:00), post-PR re-review; its boxes are left as written, because `review_progress.sh findings` selects only an Integrated Review or a pre-push Local Review as a source
+**Commits**: 45eb2e1d, 04fda41d, 7fa4efcf (docs)
+
+### Actions
+- [x] (must-fix 1) Uncommitted approval passed the gate. `_gate_rec_dirty` moves above the owning read guard. When the checkout equals origin but the function reports anything, the guard sets `_GATE_OWN_NOREAD` to its text: untracked, staged, unstaged, both, deleted, or a new case (below). The gate gives "<rel> in <A> <what>; its timeline is not read for issue #N", does not pass, and the record goes on the PR with "<rel> in <A> <what>; the record is not committed there". The record-time check that fed the same function could no longer be reached and is removed. A symlink or non-file `progress.md` stays `_gate_rec_unsafe`'s case, so pkg-17 keeps its reason. Workspace path untouched. — `merge_pr.sh:762-840` (45eb2e1d)
+  - Tests: pkg-20 read uncommitted-approval (the review's input: no "approved" line, not read, file left ` M`); pkg-20 read unrelated-note (committed approval plus an unrelated uncommitted line: not read, by the same rule); pkg-20 read clean (read, passes). pkg-20's seven record shapes now also assert the read reason.
+- [x] (must-fix 2) An empty or null body broke the record filter. The filter now uses `(split("\n")[0] // "")`, so an empty or null body is simply not a record. Both checks go through the new `_gate_rec_comment`. Any other jq failure (a comment that is not an object; a non-string body) prints "the PR's comments could not be read for the duplicate check (jq exit N) — recording rather than skipping" on stderr, and the record is written. — `merge_pr.sh:1266-1296, 1336, 1370` (04fda41d)
+  - Tests: dedup-c "report-only A, then an empty-body comment" (skips) and "...a null-body comment" (skips); dedup-c "...a comment that is a number" (records), plus "(dedup-c unreadable) the failed read is said".
+  - Tests: pkg-22 empty / null / number (the review's owning input: timeline Merge (unreviewed) X, a newer report-only X comment beside the odd one; `--force-unreviewed` with X records; number also says the read failed).
+- [x] (suggestion) Every `merge_pr.sh` citation in `docs/design.md` was re-derived from the final file by content, after all code edits:
+  - Table 1: 865 and 1103 (main-tree guards), 1388 and 1401 (report-only project gate), 2190-2210 (project sync).
+  - Records bullet: 744-840, 886-893 and 1221-1222, and the stale 818/1056 and 1316/1329 there, now 865 and 1103 and 1388 and 1401.
+  - Mechanism 1: 719-854 and 1066-1236.
+  - Prose: the Records bullet, the comment-fallback list, the Merge gate bullet and `script_reference.md` row 38 now name the new read condition and the empty-body and unreadable-comment rules. A change-log row was added (999 lines). (7fa4efcf)
+- [x] (checked, fixed as a guard with a test) assume-unchanged. Reproduced on the owning path before this fix, in a sandbox built from the gate suite's fixtures: with `progress.md` marked `--assume-unchanged` and edited, the run printed "Merge (report-only) entry recorded in <A>/... and pushed". HEAD and origin had not moved, the entry stayed appended in the working copy, and git status showed nothing.
+  - Cause: git status hides the file and `git add` takes no change. `progress_append.sh` then finds nothing staged and exits 0 through its "already committed" no-op.
+  - Fix: `_gate_rec_dirty` now reads `git ls-files -v`. A lowercase tag (assume-unchanged) or `S` (skip-worktree) means "<rel> in <A> is marked assume-unchanged or skip-worktree in the index, so its changes are not known". The owning timeline is then not read and the record goes on the PR.
+  - Tests: pkg-20 assume-unchanged and pkg-20 skip-worktree.
+  - Not changed: the workspace path keeps main's behaviour here; it was not tested in this pass, and the reviewer reports main has it.
+  - Same no-op, also unchanged: a record whose text is byte-identical to the committed tail (same minute, same conditions) also takes the no-op and is reported "recorded ... and pushed". The entry is then already in the committed file. I first saw this as a timing-dependent pkg-22 failure, so pkg-22 asserts the duplicate check's outcome, not HEAD movement. No wall-clock tuning.
+
+### Input table (owning checkout; NEW = rows added in this pass)
+| Input | Timeline read? | Record | Test |
+|---|---|---|---|
+| equal to origin, progress.md clean | yes | committed and pushed | pkg-1, pkg-3, pkg-4; pkg-20 read clean (passes); e2e "owning PR targeting main" |
+| ahead / behind / diverged / detached / other branch | no | PR comment | pkg-19, pkg-16, pkg-15, pkg-13 |
+| progress.md unstaged / staged / both / untracked / deleted | no — NEW (it was read before) | PR comment, file byte-identical | pkg-20 (now asserts the read reason) |
+| uncommitted approval on a committed stale review — NEW | no; the gate does not pass | PR comment | pkg-20 read uncommitted-approval |
+| committed approval and an unrelated uncommitted line — NEW | no (same rule) | PR comment | pkg-20 read unrelated-note |
+| progress.md assume-unchanged, edited — NEW | no | PR comment (was a false "recorded and pushed") | pkg-20 assume-unchanged |
+| progress.md skip-worktree, edited — NEW | no | PR comment | pkg-20 skip-worktree |
+| progress.md symlink / folder | unchanged | PR comment, `_gate_rec_unsafe`'s reason | pkg-17 |
+| record comment beside an empty-body comment — NEW | n/a | duplicate skipped (comments-only); records when the newest record differs (owning) | dedup-c empty, pkg-22 empty |
+| record comment beside a null-body comment — NEW | n/a | same as empty | dedup-c null, pkg-22 null |
+| a comment that is not an object — NEW | n/a | said on stderr, record written | dedup-c number, pkg-22 number |
+| CRLF / trailing blanks / heading plus text | n/a | as in the previous entry | dedup-c, pkg-21 |
+
+Before-fix check: the suite with the new tests was run against the scripts at `0274d429`. 15 tests fail there:
+- dedup-c empty and null, and dedup-c unreadable.
+- All seven pkg-20 shapes. The five older shapes fail on their new read-reason assertion; assume-unchanged and skip-worktree are new behaviour.
+- pkg-20 read uncommitted-approval and unrelated-note.
+- pkg-22 empty, null and number.
+
+pkg-20 read clean and dedup-c number's "records" row pass on both.
+
+Workspace path: unchanged. The read-guard change sits inside the owning block. The only change the workspace path sees is the shared comment filter: empty and null bodies are now not records, and an unreadable store records with a message. The workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with their assertions unchanged, so the workspace gate's verdicts are unchanged.
+
+Tests: `test_merge_pr_gate.sh` 191 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed (the end-to-end owning case still records and pushes in A when it equals origin). `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0; `run_script_tests: all 37 suites passed in 621s (scoped run, 37 of 48)`.
