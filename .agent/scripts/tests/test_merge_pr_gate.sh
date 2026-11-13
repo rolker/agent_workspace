@@ -1352,6 +1352,63 @@ for variant in empty null number; do
     fi
 done
 
+echo "TEST: the record is committed only when progress.md is the committed one in mode as well as content, by git's own rules"
+# chmod-unstaged: an uncommitted chmod +x must not ride along with the
+# record (before the fix the record commit pushed mode 100755). chmod-staged:
+# a staged --chmod=+x must not be lost (before the fix the commit put 100644
+# back). crlf-autocrlf: a committed CRLF blob with core.autocrlf=true and a
+# clean git status is the committed one (before the fix it was reported
+# changed and the record went to a comment).
+for shape in chmod-unstaged chmod-staged crlf-autocrlf; do
+    sb="$(make_sandbox "" "")"
+    cont="$(make_pkg_container "$sb" demo "$STALE")"
+    A="$cont/l1_ws/src/pkg_a"
+    P="$A/.agent/work-plans/issue-901/progress.md"
+    R=".agent/work-plans/issue-901/progress.md"
+    BARE="$sb/fake_remotes/github.com/owner/pkg_a.git"
+    pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
+    case "$shape" in
+        chmod-unstaged) chmod +x "$P" ;;
+        chmod-staged) git -C "$A" update-index --chmod=+x "$P" ;;
+        crlf-autocrlf)
+            git -C "$A" config core.autocrlf false
+            sed -i 's/$/\r/' "$P"
+            git -C "$A" -c user.name=t -c user.email=t@t commit -q -am "progress: CRLF"
+            git -C "$A" push -q origin feature/issue-901
+            git -C "$A" config core.autocrlf true ;;
+    esac
+    st_before=$(git -C "$A" status --porcelain=v1 --untracked-files=all)
+    idx_before=$(git -C "$A" ls-files -s -- "$R"); fmode_before=$(stat -c %a "$P")
+    f_before=$(od -c "$P")
+    a_before=$(git -C "$A" rev-parse HEAD)
+    origin_entry=$(git -C "$BARE" ls-tree feature/issue-901 -- "$R")
+    out="$(run_pkg_merge "$sb" owner/pkg_a#901)" || true
+    ok=true
+    if [[ "$shape" == crlf-autocrlf ]]; then
+        [[ -z "$st_before" ]] || ok=false
+        [[ "$out" == *"Merge (report-only) entry recorded in $P and pushed"* ]] || ok=false
+        [[ "$(git -C "$BARE" rev-parse feature/issue-901)" == "$(git -C "$A" rev-parse HEAD)" && "$(git -C "$A" rev-parse HEAD)" != "$a_before" ]] || ok=false
+        [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]] || ok=false
+    else
+        case "$shape" in
+            chmod-unstaged) what="has unstaged changes" ;;
+            chmod-staged) what="has staged and unstaged changes" ;;
+        esac
+        [[ "$out" == *"$R in $A $what, so the record is not committed there (left as found) — Merge (report-only) record posted as a comment on owner/pkg_a#901"* ]] || ok=false
+        [[ "$out" != *"and pushed"* ]] || ok=false
+        [[ "$(git -C "$A" status --porcelain=v1 --untracked-files=all)" == "$st_before" ]] || ok=false
+        [[ "$(git -C "$A" ls-files -s -- "$R")" == "$idx_before" && "$(stat -c %a "$P")" == "$fmode_before" && "$(od -c "$P")" == "$f_before" ]] || ok=false
+        [[ "$(git -C "$A" rev-parse HEAD)" == "$a_before" ]] || ok=false
+        [[ "$(git -C "$BARE" ls-tree feature/issue-901 -- "$R")" == "$origin_entry" && "$origin_entry" == 100644* ]] || ok=false
+        [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md")" -eq 1 ]] || ok=false
+    fi
+    if [[ "$ok" == true ]]; then
+        pass "(pkg-23 $shape) $( [[ "$shape" == crlf-autocrlf ]] && echo 'clean by git status: the record is committed and pushed' || echo 'not the committed one: the record on the PR, mode, index and origin left as found')"
+    else
+        fail "(pkg-23 $shape) (st_before=$st_before idx_before=$idx_before now=$(git -C "$A" ls-files -s -- "$R") origin=$(git -C "$BARE" ls-tree feature/issue-901 -- "$R") out=$(tail_of "$out" 800))"
+    fi
+done
+
 echo "TEST: an origin that does not answer: the gate's fetch and the record push are ended by WT_FETCH_TIMEOUT"
 # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt with
 # no agent, or a stalled host, would. Only WT_FETCH_TIMEOUT (2s) can end

@@ -1027,13 +1027,15 @@ _gate_rec_unsafe() {  # <checkout>
 }
 # An owning package checkout: the record is committed only when the working
 # copy's progress.md is the committed one at _GATE_OWN_SHA (HEAD, equal to
-# origin's branch): the same regular file, tracked, with nothing staged or
-# changed and no assume-unchanged / skip-worktree flag, or absent from both
-# the commit and the working copy (the record then creates it). Prints why
-# it is not, or nothing. (Symlinks and non-folders on the way are
-# _gate_rec_unsafe's, checked first.)
+# origin's branch): a tracked regular file that git itself sees as
+# unchanged in content and mode, in the index and in the working tree (git
+# diff, with git's own line-ending rules), with no assume-unchanged /
+# skip-worktree flag; or absent from both the commit and the working copy
+# (the record then creates it). Prints why it is not, or nothing.
+# (Symlinks and non-folders on the way are _gate_rec_unsafe's, checked
+# first.)
 _gate_rec_not_committed() {  # <checkout>
-    local wt="$1" rel="$_gate_rel" sha="$_GATE_OWN_SHA" entry mode blob idx tag wsha staged=false unstaged=false
+    local wt="$1" rel="$_gate_rel" sha="$_GATE_OWN_SHA" entry mode idx tag rc staged=false unstaged=false
     if [[ "$(git -C "$wt" rev-parse -q --verify 'HEAD^{commit}' 2>/dev/null || true)" != "$sha" ]]; then
         echo "the owning checkout $wt is no longer at ${sha:0:7}"; return 0
     fi
@@ -1053,7 +1055,7 @@ _gate_rec_not_committed() {  # <checkout>
         fi
         return 0
     fi
-    mode="${entry%% *}"; blob=$(awk '{print $3}' <<<"$entry")
+    mode="${entry%% *}"
     if [[ "$mode" != 100644 && "$mode" != 100755 ]]; then
         echo "$rel at ${sha:0:7} is not a regular file in the commit (mode $mode)"; return 0
     fi
@@ -1064,17 +1066,21 @@ _gate_rec_not_committed() {  # <checkout>
     case "$tag" in
         [[:lower:]]|S) echo "$rel in $wt is marked assume-unchanged or skip-worktree in the index, so its changes are not known"; return 0 ;;
     esac
-    [[ -z "$idx" || "$(awk '{print $2}' <<<"$idx")" != "$blob" ]] && staged=true
-    if [[ ! -f "$wt/$rel" ]]; then
-        [[ -n "$idx" ]] && unstaged=true
-    else
-        wsha=$(git -C "$wt" hash-object -- "$rel" 2>/dev/null || true)
-        if [[ -n "$idx" ]]; then
-            [[ "$wsha" != "$(awk '{print $2}' <<<"$idx")" ]] && unstaged=true
-        else
-            unstaged=true
-        fi
-    fi
+    # Staged: the index against the commit. Unstaged: the working tree
+    # against the index. Both compare mode as well as content. Exit 1 is a
+    # difference; anything else is not known, and never "the same".
+    rc=0; git -C "$wt" diff --cached --quiet --no-ext-diff --no-textconv "$sha" -- "$rel" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0) ;;
+        1) staged=true ;;
+        *) echo "git diff --cached could not compare $rel in $wt with ${sha:0:7} (exit $rc)"; return 0 ;;
+    esac
+    rc=0; git -C "$wt" diff --quiet --no-ext-diff --no-textconv -- "$rel" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0) ;;
+        1) unstaged=true ;;
+        *) echo "git diff could not compare $rel in $wt with the index (exit $rc)"; return 0 ;;
+    esac
     if [[ "$staged" == true && "$unstaged" == true ]]; then
         echo "$rel in $wt has staged and unstaged changes"
     elif [[ "$staged" == true ]]; then
