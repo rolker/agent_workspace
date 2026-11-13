@@ -176,6 +176,45 @@ out=$("$RP" sources --progress "$TMPD/lgtm_cr.md" --head "$HEAD" --reviews "$TMP
 [[ "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
     && pass "sources: the same box on a changes-requested review is still a local finding" \
     || fail "sources: changes-requested box (out=$out)"
+# An issue delivered in several pull requests (issue 459): the open boxes
+# of the merged first pull request's reviews are not listed as stale for
+# the second; only entries from pr_start (the next part's Plan Authored
+# after the merge answer) count. Without the merge answer they still are.
+open_review() {  # <type> <corr-line> <text>
+    printf '## %s\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: changes-requested\n\n%s\n\n### Findings\n- [ ] (must-fix) %s — `scripts/x.sh:3`\n\n' "$1" "$2" "$3"
+}
+part_checkpoint() {  # <after> <decision>
+    printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: %s\n**Decision**: %s\n\n' "$1" "$2"
+}
+part_plan() {
+    printf '## Plan Authored\n**Status**: complete\n**When**: 2026-09-17 12:10 -04:00\n**By**: t (m)\n**Plan**: `.agent/work-plans/issue-7/plan.md` at `1111111`\n\n'
+}
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/parts.md"
+out=$("$RP" sources --progress "$TMPD/parts.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>"$TMPD/parts.err")
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) part 2 finding — `scripts/x.sh:3`"]' \
+    && ! -s "$TMPD/parts.err" ]] \
+    && pass "sources: after a merge answer and the next part's plan, the merged pull request's open boxes are not dropped entries (issue 459)" \
+    || fail "sources: earlier part's boxes (out=$out err=$(<"$TMPD/parts.err"))"
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge address
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/noparts.md"
+out=$("$RP" sources --progress "$TMPD/noparts.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 1 && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 1 ]] \
+    && pass "sources: with no merge answer (merge checkpoint answered address) the older entry is still listed as dropped" \
+    || fail "sources: no boundary (out=$out)"
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_plan
+  printf '## External Review\n**Status**: complete\n**When**: 2026-09-17 13:00 -04:00\n**By**: t (m)\n**PR**: #70 at `abc1234`\n\n### Actions\n- [ ] legacy action on part 2 — `scripts/x.sh:3`\n\n'; } > "$TMPD/parts_ext.md"
+out=$("$RP" sources --progress "$TMPD/parts_ext.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq -r '.local_findings[0].entry_type')" == "External Review" && "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 ]] \
+    && pass "sources: an External Review after the boundary is still read (the predecessor --type gave before)" \
+    || fail "sources: External Review after the slice (out=$out)"
 
 # ============================================ sources: coverage (#309) =====
 # Real git histories. A review recorded at R still covers head H when R is an

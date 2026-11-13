@@ -60,8 +60,9 @@
 #          cover the PR head (recorded at it, or at an ancestor with only
 #          bookkeeping changes since -- _bookkeeping.sh, #309), the entries
 #          dropped and why, GitHub inline comments, and candidate cross-source
-#          confirmations (same file, comment at the head) as JSON. Run it from
-#          the PR worktree. See cmd_sources.
+#          confirmations (same file, comment at the head) as JSON. Only the
+#          review entries of the current pull request count (pr_start.py,
+#          issue 459). Run it from the PR worktree. See cmd_sources.
 #
 # plan-sha The plan-commit SHA (last commit touching plan.md) for the
 #          **Plan** correlation field of Plan Authored / Plan Review
@@ -403,7 +404,11 @@ _persist_impl() {
 # reason "stale" (verified) or "unverifiable" (could not check, including an
 # entry with no parseable PR/Branch correlation SHA; also warned on stderr). A covering entry with a NEWER covering Integrated Review is
 # dropped with reason "superseded" (owner decision "Only triage supersedes",
-# #309); newer Local Reviews supersede nothing. Nothing is fetched.
+# #309); newer Local Reviews supersede nothing. Only entries from the start
+# of the current pull request's work count (pr_start.py, issue 459): the
+# reviews of an earlier merged pull request of the issue, or of the work
+# before a restart checkpoint, are neither findings nor dropped entries.
+# Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
     while [[ $# -gt 0 ]]; do
@@ -424,7 +429,9 @@ cmd_sources() {
         echo "error: sources: --progress '$progress' exists but is not a regular file (pass the progress.md path, not its directory)" >&2; exit 2
     fi
     if [[ -n "$progress" && -f "$progress" ]]; then
-        json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Local Review" --type "Local Review (Pre-Push)" --type "Integrated Review") || {
+        # The whole timeline (not --type): the slice below needs the
+        # Checkpoint, Plan Authored and Implementation entries.
+        json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
             echo "error: sources: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
     fi
     if ! "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$reviews" 2>/dev/null; then
@@ -434,9 +441,18 @@ cmd_sources() {
         BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
 import json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["PR_START_DIR"])
-from pr_start import is_lgtm_placeholder
+from pr_start import is_lgtm_placeholder, pr_start
 head = os.environ["HEAD"]
 data = json.load(sys.stdin)
+# Only the review entries of the current pull request (issue 459): from
+# pr_start, so the open boxes of an earlier merged pull request of the
+# issue, or of the work before a restart, are not listed as stale. The
+# types are the ones --type gave before: Local Review, Local Review
+# (Pre-Push), Integrated Review and its predecessor, External Review.
+everything = data.get("entries", [])
+data["entries"] = [e for e in everything[pr_start(everything):]
+                   if e.get("base_type") in ("Local Review", "Local Review (Pre-Push)", "Integrated Review")
+                   or e.get("predecessor_of") == "Integrated Review"]
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
 short = lambda s: (s or "")[:7]
 # Coverage (#309): an entry recorded at review SHA R still speaks for head H
