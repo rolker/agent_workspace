@@ -187,7 +187,8 @@ hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is A
 #423): a `/run-issue` run started from a project root passed through the merge checkpoint, the
 acceptance test named in #317. [ADR-0018](decisions/0018-plugin-based-skill-delivery.md), which
 supersedes ADR-0016 decision 3 for skills, is Accepted too (2026-11-09, #425): its promotion condition
-was the same run.
+was the same run. [ADR-0020](decisions/0020-plugin-enabled-once-at-user-scope.md) (2026-11-12, #446)
+supersedes ADR-0018 decisions 3 and 4: the plugin is enabled once, at user scope.
 [Open questions](#open-questions) OQ-2 records where that run was tracked and who ran it.
 
 - The workspace and each project are separate session roots. A session is in exactly one, found from
@@ -202,10 +203,13 @@ was the same run.
   root and refuses an issue of another root, naming the directory to start in; `run-issue` and
   `/start-task` run it before anything is created. Worktrees live under their root (a root's
   `worktrees=` directory counts as its own, for the `SessionStart` hook too), so the directory a run
-  starts from names its root, and nothing records where a session started. A directory whose sessions
-  do not read the root's local settings (a package repository nested in it, a subdirectory of a root
-  in no git repository) is refused by `session_root.sh` and `skill_prefix.sh` alike (ADR-0018
-  decision 6).
+  starts from names its root, and nothing records where a session started. `session_root.sh` refuses
+  two directories under a root, each for its own reason: a package repository nested in it (a
+  multi-repo project's root is its registered hosting directory, above), and a subdirectory of a root
+  in no git repository (a session started outside git reads the settings of its own directory, so the
+  root's `.claude/settings.json` and `.claude/settings.local.json`, its hooks and permission rules,
+  never reach a session in a subdirectory of the root). Neither refusal is about the plugin, which
+  reaches both (ADR-0018 decision 6, ADR-0020).
 - One exception to working only under the root (#332): a project session writes its own project's
   settings file `.agent/projects.d/<name>` in the workspace checkout, through `project_setting.sh set`,
   which calls `registry_require_root` and, from a project root, refuses any other project's file. That
@@ -215,14 +219,16 @@ was the same run.
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
 - The user tier is installed from a workspace checkout by `.agent/scripts/user_tier_install.sh`: a
-  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. It recognises
+  `SessionStart` hook, a `PreToolUse` hook, permission rules for the promoted scripts, and the plugin
+  enabled at user scope (below). It recognises
   its own hook commands by their path (the `claude plugin` commands drop any marker in the file), so
   install is repeatable, `--check` tells another checkout's hooks from the user's own, and
   `--uninstall` removes only its own commands (`user_tier_install.sh` header).
 - Registration is a workspace operation, not something a project session does to itself (ADR-0016
   decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
-  when the user tier is installed from that checkout, re-runs its installer so the new root gets the
-  plugin. See [Registry and adapters](#registry-and-adapters).
+  when the user tier is installed from that checkout, checks it reaches the new root
+  (`registration_verify.sh --user-tier`, read-only); nothing is enabled per root. See
+  [Registry and adapters](#registry-and-adapters).
 - Onboarding is the project side (#332 D1): `/agent-workspace:onboard-project`, in a session started at
   the project root, finds the project through `session_root.sh` (a workspace session or an
   unregistered root is sent to registration), shows the recorded choices, asks only the footprint
@@ -249,12 +255,21 @@ was the same run.
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
-  `test_plugin_manifest.sh`). The installer enables it at local scope in each registered root, never in
-  the workspace's own repository, and refuses a root that is a plain directory inside another
-  repository, whose settings that would write. A project session names the skills
-  `/agent-workspace:<skill>` and a workspace session keeps the bare names; `skill_prefix.sh` says which for a directory, and the
-  `SessionStart` header states it. The old `~/.claude/skills/` symlinks are removed by install and
-  reported by `--check` (ADR-0018).
+  `test_plugin_manifest.sh`). The installer enables it once, at user scope (`claude plugin ... --scope
+  user`, recorded in `~/.claude/settings.json` and the CLI's `~/.claude/plugins/`), and writes nothing
+  into a project checkout; it migrates the per-root entries the earlier installer left (`--scope
+  local`, run only from a root that is its own git toplevel, not a linked worktree, or in no git
+  repository; anywhere else it names the removal by hand). A project that does not want the plugin
+  sets it to false in its own settings. The workspace checkout's tracked `.claude/settings.json` sets
+  it to false, so a session at the checkout's root or in a worktree of it lists each shipped skill
+  once, bare. A session started in
+  a subdirectory of the checkout (a plain subdirectory, or a registered root inside its tree with no
+  `.git` of its own) lists each shipped skill under both names, bare and `/agent-workspace:<skill>`;
+  both run the same skill, and the owner accepted this on 2026-11-12 (live suite, U2 and U4). Anywhere
+  else a session names the skills `/agent-workspace:<skill>`; `skill_prefix.sh` says which for a
+  directory (bare in the workspace's repository, the prefix elsewhere), and the `SessionStart` header
+  states it. The old `~/.claude/skills/` symlinks are removed by install and reported by `--check`
+  (ADR-0018, ADR-0020).
 - The `SessionStart` hook (`.claude/hooks/session_start_project_layer.sh`) gives a session under a
   registered root the workspace layer, rendered from nine pinned `AGENTS.md` headings, and the project
   layer, built from the registry entry and the project's own agent guide. Outside every registered root
@@ -317,14 +332,15 @@ Status: `decided`
   legacy `.sh`, else `--detect`, which proposes only a single correct command), then runs the
   read-only gate `registration_verify.sh` (each command the type requires is the project's own or
   `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
-  and only then the user-tier installer. A failure removes the line and the file, and the plugin
-  enable when this run's installer added it; a settings file changed during the run is kept, and a
-  cleanup step that fails is reported, never a clean result; a hosting directory `setup` created is
-  kept and reported. A line
+  and only then, when the user tier is installed from this checkout, the read-only
+  `registration_verify.sh --user-tier`; the user-tier installer runs only with `--install-user-tier`,
+  and nothing is enabled per root (the plugin is at user scope, ADR-0020). A failure removes the line
+  and the file; a settings file changed during the run is kept, and a cleanup step that fails is
+  reported, never a clean result; a hosting directory `setup` created is kept and reported. A line
   written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
-  than removed when a check fails. `--remove` refuses live worktrees, disables the plugin in the root
-  (`user_tier_install.sh --disable-root`), removes the line and the settings file, and leaves the
-  project, its records and its memory alone. The script header holds the order and the output lines.
+  than removed when a check fails. `--remove` refuses live worktrees, removes the line and the settings
+  file, and leaves the project root, its records, its memory and the user tier alone. The script header
+  holds the order and the output lines.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
   records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
@@ -801,7 +817,7 @@ no budget of their own.
 Status: `decided`
 
 Purpose: tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row
-per ADR in `docs/decisions/` (18), in order. The ADRs are history and none is edited here (owner
+per ADR in `docs/decisions/` (19), in order. The ADRs are history and none is edited here (owner
 decision 2026-10-09, C1-c); this table is the only place the standing below is recorded.
 
 Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
@@ -833,8 +849,9 @@ no section of this file carries that ADR.
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions. Decision 3 is superseded for skills by ADR-0018 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
-| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-10-27 |
+| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, not `~/.claude/skills/` symlinks. Decisions 3 and 4 (enabled at local scope per registered root; the exception to ADR-0016 decision 2) and decision 6's paragraph on how `run-issue` decides the prefix (`skill_prefix.sh` refusing and `run-issue` stopping) are superseded by ADR-0020 | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
 | [0019](decisions/0019-repo-pin-verb.md) | The `repo_pin` adapter verb: the ref a repository is pinned at and whether it is a branch, tag, commit or unknown, so a base never comes from the forge's default branch | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-11-12 |
+| [0020](decisions/0020-plugin-enabled-once-at-user-scope.md) | The plugin is enabled once, at user scope; nothing is written into a project checkout; the workspace checkout's tracked settings set it to false, and a session in a subdirectory of the checkout lists each shipped skill under both names (accepted, 2026-11-12) | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -857,7 +874,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stayed Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? Answered by #423: the run was tracked in the roadmap's Direction section, and the owner ran it, through `/orchestrator` and `/run-issue` in a session started at the registered project's root, answering the merge checkpoint himself; it passed on 2026-11-09 and ADR-0016 is Accepted | Owner | The [Sessions and roots](#sessions-and-roots) Now block is `decided`; the Registry inventory can now be read to settle #295 |
-| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
+| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line and the settings file, and leaves the project, its plans, timelines and memory, and the user tier (the plugin is at user scope since #446) alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
 | OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file)? Answered by #259, a host decision of 2026-11-02 for the owner's confirmation at the merge: `AGENTS.md` stays at most 200 lines, held by the `agents-md-line-budget` hook | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First (the owner's go-ahead for the #259 drive is approval in principle; the final approval is his at the merge) |
@@ -939,6 +956,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-12 | Rules, Identity | No owner address in the infrastructure (#455): the Rules row for commit identity says the hook accepts the checkout's configured git email (`+suffix` removed) or `<local>+<anything>@<domain>` and fails when that email is unset; the Identity bullets say the agent email is `<local>+<framework>@<domain>` derived from `git config user.email` by `identity_base.py` (clone value over global, unset or malformed fails with the fix) and the hook's accepted set is derived the same way | #455 | 914 |
 | 2026-11-12 | Registry and adapters, Decision register | The adapter contract gains a 13th verb, `repo_pin` (issue 429, part 2, first pull request; ADR-0019): the contract bullet says 13 verbs and what the verb prints for each type, Table 2 gains its row (tally 5 real), and the decision register gains ADR-0019's row and ADR-0011's verb count. Registry and adapters is past the 60-line prompt: the bullet names the verb, and its rules stay in the ADR and the adapters' headers, so no detail moves | #429 | 921 |
 | 2026-11-12 | Worktrees | A package issue's pull request has a base branch (issue 429, part 2, second pull request): a Worktrees bullet says it comes from the owning repository's pin through `repo_pin` (or the owner's `--base`), never the forge's default branch, that a pin that is no branch is refused, that the owning repository's new branch starts from origin's copy of it with no fallback (also with `--allow-unverified-branch`), that the `.worktree-repos` header records it as `base=` (every field read unanchored) and gets it on resume once origin confirms it, and what publish and merge do with it; ADR-0012 gets a cross-reference addendum, its decision text unchanged; the `merge_pr.sh` and `dispatch_phase.sh` line citations in the Records bullet and the Target's mechanism 1 are refreshed. Worktrees grows by 14 lines and stays past the 60-line prompt: the bullet names the functions whose headers hold the mechanics, so no detail moves. Revised after the branch's pre-push reviews: creation of a new owning branch always resolves a base (`--base`, else the pin; with `--parent-issue` the parent's branch), a branch this workspace did not start gets `base=` only from a named `--base` that origin has and that shares history with it, the cleanup pulls origin's base by name, and Table 1's `dispatch_phase.sh` line numbers are made true | #429 | 936 |
+| 2026-11-12 | Sessions and roots, Registry and adapters, Decision register, Open questions | The plugin is enabled once, at user scope (#446, ADR-0020, superseding ADR-0018 decisions 3 and 4): the plugin bullet says the installer enables it with `--scope user`, writes nothing into a project checkout and migrates the per-root entries, that the checkout's tracked `.claude/settings.json` sets it to false so a session at the checkout's root or in a worktree lists each skill once, bare, and that a session in a subdirectory of the checkout lists each shipped skill under both names, accepted by the owner on 2026-11-12; the user-tier bullet lists the plugin; the registration bullets say registration runs only the read-only user-tier check (the installer only with `--install-user-tier`) and `--remove` leaves the root alone; the root-rule text gives each `session_root.sh` refusal its own reason, no longer "sessions do not read the root's local settings", and no longer says `skill_prefix.sh` refuses them; register row 0018 notes the supersession (decisions 3 and 4, and decision 6's paragraph on how `run-issue` decides the prefix) and row 0020 is added, making 20 rows; C4 no longer says unregistering removes a plugin enable. Sessions and roots is 137 lines, past the 60-line prompt, and grows by 15: the bullets name the scripts and the ADR that hold the mechanics, so no detail moves | #446 | 928 |
 | 2026-11-13 | Worktrees, Review loop and timeline, Merge gate, Registry and adapters | The merge gate reads and records a package issue in its owning checkout (issue 429, part 2, last pull request): the Records bullet no longer says `merge_pr.sh` does not read that timeline, and says the owning repository's pull request is gated and recorded there while a sibling repository's reads none and records on its own pull request; the Base branch bullet adds that the pre-push review diffs against `origin/<base>` and `run-issue` step 8 checks and merges that base (`check_branch_updates.sh --base`); the Review loop's comment-fallback list and a Merge gate bullet say the same; Table 1's `merge_pr.sh` and `dispatch_phase.sh` line numbers, the Records bullet's and the Target's mechanism 1 citations are refreshed. Worktrees grows by six lines and stays past the 60-line prompt: the bullets name the variables and lines that hold the rule, so no detail moves | #429 | 959 |
 | 2026-11-13 | Merge gate, Review loop and timeline | Review fix (issue 429): two Merge gate bullets and the Review loop's comment-fallback list say the gate's calls to origin are time-limited, so an SSH prompt with no agent fails at the limit, and when the record is committed in a checkout and when it goes on the pull request with `progress.md` put back | #429 | 968 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Second review fix (issue 429): the owning checkout's timeline is read only when it is on the pull request's branch and contains origin's copy; a symlinked `progress.md` is left as found; a timed-out record push is settled by `ls-remote`; a package pull request's duplicate check reads its comments; every `merge_pr.sh` line citation (Table 1, the Records bullet, mechanism 1) is refreshed | #429 | 979 |
@@ -947,6 +965,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Second triage fix (issue 429, pull request 461): the owning checkout is read, and the record committed there, only when its HEAD equals origin's copy of the branch and its `progress.md` has no uncommitted change; a record comment is matched only on an exact heading, with trimmed values; the workspace path is unchanged; `merge_pr.sh` citations refreshed | #429 | 993 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Third triage fix (issue 429, pull request 461): the owning checkout's timeline is not read when its `progress.md` has an uncommitted change or an assume-unchanged or skip-worktree flag; an empty or null comment body is not a record, and unreadable comments are said and recorded over; every `merge_pr.sh` citation refreshed, including the Records bullet's main-tree guard and report-only lines | #429 | 999 |
 | 2026-11-13 | Merge gate, Review loop and timeline, Worktrees, Registry and adapters | Owner's decision (issue 429, pull request 461): for a package issue the gate reads the committed `progress.md` at origin's branch head, never the working copy; the record is committed in the owning checkout only when the working copy's file is the committed one; the working-copy read conditions are gone; every `merge_pr.sh` citation refreshed | #429 | 1003 |
+| 2026-11-13 | Change log | Main merged into issue 429's branch (pull request 461) after #446 landed: the rows of both sides are kept in date order (#446's 2026-11-12 row before issue 429's 2026-11-13 rows), and their line counts are each side's own file at the time; this row's count is the merged file's | #429 | 1022 |
 
 ## Glossary
 

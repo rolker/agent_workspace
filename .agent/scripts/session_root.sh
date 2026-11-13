@@ -28,11 +28,19 @@
 # instance beats its parent; registered roots before the workspace, so a
 # root inside the workspace tree is its own root), or one whose
 # worktrees= directory contains it, else the workspace checkout when <dir>
-# is inside it or in its repository. Anywhere else: exit 1. A session
-# there must also read that root's local settings -- be in the root's git
-# repository, or be the root itself when it is in no git repository --
-# or it exits 1 too: skill_prefix.sh refuses the same directories (a
-# package repository nested in a root, a subdirectory of a no-git root).
+# is inside it or in its repository. Anywhere else: exit 1. Two
+# directories under a root are refused too (exit 1), each for its own
+# reason:
+#   - a git repository nested in a root (a package repository under src/):
+#     a multi-repo project's root is its registered hosting directory,
+#     never a package repository nested in it (docs/design.md, "Sessions
+#     and roots");
+#   - a subdirectory of a root in no git repository: a session started
+#     outside git reads the settings of its own directory, so the root's
+#     .claude/settings.json and .claude/settings.local.json (its hooks and
+#     permission rules) never reach a session in a subdirectory of the root.
+# Neither is about the workspace plugin, which is enabled once, at user
+# scope, and reaches both (skill_prefix.sh answers agent-workspace: there).
 #
 # The issue's root, for --type project: --project <name> (a parent root
 # becomes its default or only instance). Without --project, in a project
@@ -146,17 +154,22 @@ if ! SESSION="$(root_of "$DIR_PHYS")"; then
 fi
 IFS="$US" read -r S_TYPE S_NAME S_ROOT <<< "$SESSION"
 
-# A session reads the local settings of its own project root: its git
-# repository (the main one, for a worktree), or its own directory outside
-# git. Unless that is the root's, neither the root's plugin nor its layer
-# reaches the session, so it is no place to work from -- the same
-# directories skill_prefix.sh refuses (a package repository nested in a
-# root, a subdirectory of a root in no git repository), with the same
-# advice.
+# The two refusals of the header, each with its own reason. A directory in
+# the root's git repository (a plain directory, or a worktree) is the
+# root's; so is the root itself when it is in no git repository.
 S_REPO="$(common_dir "$S_ROOT")"
-if [[ -n "$S_REPO" && "$(common_dir "$DIR_PHYS")" != "$S_REPO" ]] \
-        || [[ -z "$S_REPO" && "$DIR_PHYS" != "$S_ROOT" ]]; then
-    echo "session_root: $DIR_PHYS lies under the root $S_ROOT, but a session there does not read that root's local settings (its project root is its own git repository, or its own directory) -- start the session at $S_ROOT or a worktree of it" >&2
+D_REPO="$(common_dir "$DIR_PHYS")"
+if [[ -n "$S_REPO" && "$D_REPO" != "$S_REPO" ]]; then
+    if [[ -n "$D_REPO" ]]; then
+        why="it is a git repository of its own ($(git -C "$DIR_PHYS" rev-parse --show-toplevel 2>/dev/null)), and a multi-repo project's root is its registered hosting directory, never a package repository nested in it"
+    else
+        why="it is in no git repository, so a session there reads the settings of its own directory, and the root's .claude/settings.json and .claude/settings.local.json (its hooks and permission rules) never reach it"
+    fi
+    echo "session_root: $DIR_PHYS lies under the root $S_ROOT, but $why -- start the session at $S_ROOT or a worktree of it" >&2
+    exit 1
+fi
+if [[ -z "$S_REPO" && "$DIR_PHYS" != "$S_ROOT" ]]; then
+    echo "session_root: $DIR_PHYS lies under the root $S_ROOT, which is in no git repository: a session started outside git reads the settings of its own directory, so the root's .claude/settings.json and .claude/settings.local.json (its hooks and permission rules) never reach a session in a subdirectory of the root -- start the session at $S_ROOT" >&2
     exit 1
 fi
 
