@@ -180,28 +180,10 @@ is native capabilities that make hand-rolled workspace tooling redundant.
   sessions that create worktrees and `cd` into them (it is off in this
   host's user settings); the worktree scripts and `/start-task` `cd`
   pattern are the affected case (2026-11-13)
-- `cc-2` `deny-instead-of-prompting-for-background-agents` —
-  `permissions.denyInsteadOfPrompting` (2.1.319) denies a call that would
-  wait on a permission prompt instead of stalling; may suit background
-  phase agents dispatched by `run-issue` that otherwise wait for an
-  absent owner (2026-11-13)
-- `cc-3` `doctor-prompt-audit` — `/doctor prompt-audit` (2.1.283) audits
-  CLAUDE.md, skills, agents and commands for patterns written for older
-  models; possible overlap or input for `/audit-workspace` (2026-11-13)
 - `cc-4` `mods-and-plugin-engines` — mods (TypeScript hooks plugins),
   `claude plugin validate/test`, and `engines["claude-code"]` in
   `plugin.json`; bears on the plugin-packaging format question left open
   above and on whether shell hooks should stay shell (2026-11-13)
-- `cc-5` `workflow-resume-and-model-env` — Workflow resume now serves
-  finished agents from the run's journal (2.1.305, 2.1.318) and
-  `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` sets one model for workflow
-  agents; strengthens the existing `dispatcher-to-workflow-and-agent-files`
-  item rather than adding a new one (2026-11-13)
-- `cc-6` `native-agents-md` — built-in `agents-md` mod loads `AGENTS.md`
-  where no `CLAUDE.md` exists, or beside it under an option; may let the
-  `@AGENTS.md` import shim in `CLAUDE.md` be reconsidered, but only if the
-  option is settable on the installed CLI (not checked) and the
-  Claude-specific setup content in `CLAUDE.md` is kept (2026-11-13)
 
 Carried over from 2026-09-22 (still pending):
 
@@ -220,11 +202,31 @@ Carried over from 2026-09-22 (still pending):
 
 ## Roadmapped
 
-(none yet — pending owner triage)
+- `cc-3` `doctor-prompt-audit` — run `/doctor prompt-audit` once on the
+  workspace, read the report, then decide whether `/audit-workspace` should
+  use it. Owner's note: "it might become part of the janitor routines" —
+  cross-referenced to the roadmap's "Janitor sweep" line. Added to
+  docs/roadmap.md (2026-11-13)
+- `cc-5` `workflow-resume-and-model-env` — note on the existing
+  `dispatcher-to-workflow-and-agent-files` item (no matching line existed in
+  docs/roadmap.md, so one short line stating the item and the note was
+  added): Workflow resume serves finished agents from the run's journal
+  (2.1.305, 2.1.318) and `CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL` sets one
+  model for workflow agents, so two reasons for the hand-written dispatcher
+  are weaker; read from the changelog, not tried here. Added to
+  docs/roadmap.md (2026-11-13)
 
 ## Skipped
 
-(none yet)
+- `cc-2` `deny-instead-of-prompting-for-background-agents` — measured
+  2026-11-13: 683 background-agent transcripts (2026-10-14 to 2026-11-13,
+  about 31,000 tool calls), 159 permission refusals, median 0.06 s, max
+  16 s, none waited on a prompt; background agents are already refused at
+  once. The setting applies to the whole session per the changelog, so it
+  would also turn the owner's own prompts into refusals (2026-11-13)
+- `cc-6` `native-agents-md` — informational: whether the option can be set on
+  the installed CLI was not checked, and the Claude-specific setup content
+  in `CLAUDE.md` would stay either way (2026-11-13)
 
 ## Deferred
 
