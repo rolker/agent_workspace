@@ -373,3 +373,13 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 161 passed
 ### Findings
 - [ ] (suggestion) A signal during the end-of-run stop of a left-behind process (the new "still running at exit" path, up to 5 s if it ignores SIGTERM) ends the runner inside its EXIT trap: traps were reset at :801, and bash does not run the EXIT trap a second time, so /tmp/run-script-tests.* is left behind (reproduced: rc 143, directory still there; the watchdog KILLs the process later). Trap INT/TERM/HUP to kill_now and rm before stop_suites in that branch — `.agent/scripts/tests/run_script_tests.sh:553`
 - [ ] (suggestion) kill_now KILLs `-$stop_watchdog` even after stop_suites has KILLed that watchdog (:706) and it may have been reaped, so the id is stale by then. Clear stop_watchdog after :706 — `.agent/scripts/tests/run_script_tests.sh:720`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 11:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3, the narrow convergence check, is approved with no must-fix; its two suggestions, a signal during the end-of-run stop leaving the run's temp directory behind and a stale watchdog id in kill_now, go to triage; the host's one full pre-commit pass on 3880add0, every hook and every suite with no SKIP, exited 0 in 1069 s on a loaded machine; the entry commit e852068b after it changes progress.md only)
+**After**: publish
+**Decision**: publish
+
+Read: the round 3 Local Review (Pre-Push) at e852068b and its report; the full pass output. The owner's rule of 2026-11-13 ("yes, one local run before a pr") is met by that pass.
