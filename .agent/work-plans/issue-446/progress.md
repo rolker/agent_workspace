@@ -596,3 +596,21 @@ Round 1's findings: both must-fix fixed (ADR status lines and register/guide row
 - `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree before this entry: exit 0, validate-script-tests Passed
 - Not run: the live suite, any claude CLI call, the installer against the real HOME (per the handoff)
 - Not verified on the real CLI: that `uninstall --scope user` removes the user-scope install record (the take-over's safety rests on it; the read-back requires the record again after install)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-12 21:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ace1c4380862fee80, resume 2 of 3)
+
+**Branch**: feature/issue-446 at `939d23d0`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: round 2's findings and the diff b208d2da..939d23d0. Cross-model: skipped (round-3 convergence check, per handoff). Round 2's two must-fix are fixed: a take-over (declaration or machine record naming another checkout) removes the user-scope install first, so a failed or interrupted take-over leaves no install record and the next run installs (tested: failed install then re-run, machine-record-only take-over); the read-back requires the user-scope install record (tested after install and after migration). Suggestions 1, 3, 4 and 5 fixed with tests; suggestion 2 deferred by the host with its reason (bfd1c72d); round 1's suggestion 7 stays the owner's. Ran: test_user_tier_install 276, test_skill_prefix 25, test_plugin_acceptance_helpers 31, all 0 failed; shellcheck --severity=warning clean on the changed scripts. Unverified on the real CLI, and said so in the code: that `uninstall --scope user` removes the user-scope install record.
+
+### Findings
+- [ ] (suggestion) The take-over aborts on any failed `uninstall --scope user` ("nothing was repointed", no hand removal named), and runs it also when the user settings only enable the plugin with no install record; if the real CLI refuses to uninstall what it has not installed, every install exits 1 the same way. Consider running it only when the record lists a user-scope install, or naming the hand removal in that error — `.agent/scripts/user_tier_install.sh:834`
