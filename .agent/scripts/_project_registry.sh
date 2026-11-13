@@ -67,11 +67,12 @@
 #                           (for ros2_colcon, its manifest; issue #436): an
 #                           absolute path to the file, or an http(s):// or
 #                           file:// URL of a git repository that holds it
-#     source_ref            branch, tag or commit of a URL source: required
-#                           with a URL, refused with a path
+#     source_ref            branch, tag or commit of a URL source (not
+#                           HEAD): required with a URL, refused with a path
 #     source_path           the file's path inside that repository
-#                           (relative, no '..'; default manifest.yaml);
-#                           refused with a path
+#                           (relative; no '..', '.' or empty component, no
+#                           trailing '/'; default manifest.yaml); refused
+#                           with a path
 #   source_ref and source_path are refused without source, and source is
 #   refused beside bootstrap_url (one source only). Each refusal names the
 #   one command that removes the three together (project_setting.sh unset
