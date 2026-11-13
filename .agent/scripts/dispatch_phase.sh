@@ -23,6 +23,36 @@
 #     repository and refuses on a mismatch (a checkout with an `upstream`
 #     remote), naming both and `gh repo set-default <owner/repo>`.
 #
+#   dispatch_phase.sh base --issue <N|owner/repo#N> [--base <branch>]
+#                      [--type workspace|project] [--project <name>]
+#                      [--layer <l> --package-repos <a,b>]
+#     The base branch of a package issue's pull request (issue 429), one
+#     line `base=<branch>`: the branch the owning repository's
+#     feature/issue-<N> starts from and its pull request targets. It comes
+#     from the project's pin (_pr_base.sh pr_base_for: adapter repo_pin,
+#     ADR-0019), or from --base, the owner's override; never from the
+#     forge's default branch. Whether there is a package base is decided by
+#     the worktree the ref resolves to, not by how the ref is written (a
+#     unique bare number can resolve to a package worktree):
+#       - a package worktree (a manifest whose issue checkout is not the
+#         worktree itself): its header's base= is the answer, and a --base
+#         that differs is refused. A header with no base= (a worktree made
+#         before the field) gets one: the pin or --base, checked on origin
+#         in the owning checkout (bounded, wt_bounded_git) and only then
+#         written (wt_set_manifest_base); origin lacking it, or not
+#         answering, refuses and writes nothing.
+#       - any other worktree (workspace, single-repository project, a lone
+#         "." manifest): no package base. Prints nothing, exit 0; --base,
+#         --layer or --package-repos is refused.
+#       - no worktree yet: with --layer and --package-repos (a package
+#         worktree about to be made, as worktree_create.sh takes them) the
+#         owning entry comes from `adapter worktree_repos` (the one on
+#         feature/issue-<N>) and its directory name is the repository whose
+#         pin is read; run-issue passes the answer to worktree_create.sh
+#         --base. A qualified ref without them is refused (nothing says
+#         which package worktree); a bare number without them is no package
+#         base (prints nothing, exit 0).
+#
 #   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
 #                      [--project <name>]
 #                      [--pr <M>] [--prompt-file <f>] [--entry-type <T>]
@@ -33,7 +63,8 @@
 #     in **By**, the expected entry type, the exit contract, and the
 #     workspace conventions every dispatched phase must follow. Output is
 #     `key=value` lines, one per line, in this order: worktree,
-#     package_worktree (only for a package issue), task, agent_name,
+#     package_worktree (only for a package issue), base (only for a package
+#     issue whose manifest records base=; `base` above records it), task, agent_name,
 #     agent_email, model, entry_type, exit_contract, conventions, and
 #     prompt_file (only when --prompt-file was given). agent_email is the
 #     AGENT_EMAIL the host exported when it sourced set_git_identity_env.sh
@@ -93,6 +124,11 @@
 #   where /
 #   handoff:     2 also when the package worktree has no single entry on
 #                feature/issue-<N>, or gh resolves another repository there.
+#   base:        0 printed the base, or nothing for an issue with no package
+#                base; 2 refused (usage, no single owning entry, a pin that
+#                is not a branch or cannot be read, a --base that differs
+#                from the recorded one, origin lacking the base or not
+#                answering on resume), the reason on stderr.
 #
 # See docs/decisions/0013-progress-md-entry-type-vocabulary.md for the
 # entry-type vocabulary and .agent/work-plans/issue-276/ for the plan.
@@ -130,6 +166,8 @@ usage() {
     cat >&2 <<'EOF'
 Usage (--issue takes <N> or <owner/repo#N> in every mode):
   dispatch_phase.sh where --issue <N> [--type workspace|project] [--project <name>]
+  dispatch_phase.sh base --issue <N> [--base <branch>] [--type workspace|project]
+                     [--project <name>] [--layer <l> --package-repos <a,b>]
   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
                      [--project <name>] [--pr <M>] [--prompt-file <f>]
                      [--entry-type <T>] [--model <alias>]
@@ -476,10 +514,13 @@ cmd_handoff() {
     [[ -n "$entry_type_override" ]] && entry_type="$entry_type_override"
     [[ -n "$model_override" ]] && model="$model_override"
 
-    local wt resolved pkg_wt="" rc=0
+    local wt resolved pkg_wt="" pkg_base="" rc=0
     resolved=$(resolve_issue_dir "$ref" "$issue" "$type" "$project" 1) || { rc=$?; report_resolve_failure dispatch "$rc" "$type" "$ref"; }
     wt=$(sed -n 1p <<< "$resolved")
     pkg_wt=$(sed -n 2p <<< "$resolved")
+    # The recorded base only: the handoff asks no adapter and no origin.
+    # run-issue step 1 (`base`) has recorded it before any phase runs.
+    [[ -n "$pkg_wt" ]] && pkg_base=$(head -n1 "$pkg_wt/.worktree-repos" | sed -n 's/.* base=\([^ ]*\).*/\1/p')
 
     # A pre-push review at round 3 or later is a narrow convergence check
     # with no cross-model reviewers: the owner's standing exception to the
@@ -512,6 +553,8 @@ cmd_handoff() {
     # A package worktree's generated env.sh, build.sh and test.sh live in
     # its top folder, not in the owning checkout the phase works in.
     [[ -n "$pkg_wt" ]] && echo "package_worktree=$pkg_wt"
+    # The branch the owning repository's pull request targets (issue 429).
+    [[ -n "$pkg_base" ]] && echo "base=$pkg_base"
     echo "task=$task"
     echo "agent_name=$AGENT_NAME"
     echo "agent_email=$AGENT_EMAIL"
@@ -680,6 +723,131 @@ cmd_where() {
         exit 2
     fi
     printf '%s\n' "$dir"
+}
+
+# ------------------------------------------------------------------ base ---
+# The base branch of a package issue's pull request (issue 429); see the
+# header comment for the three cases. Prints `base=<branch>`, or nothing
+# for an issue with no package base.
+cmd_base() {
+    local issue="" type="workspace" project="" layer="" package_repos="" override=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --issue)         [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
+            --type)          [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
+            --project)       [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
+            --layer)         [[ $# -ge 2 ]] || usage; layer="$2"; shift 2 ;;
+            --package-repos) [[ $# -ge 2 ]] || usage; package_repos="$2"; shift 2 ;;
+            --base)          [[ $# -ge 2 ]] || usage; override="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    local ref="$issue" num
+    num=$(parse_issue_ref "$ref" base) || exit 2
+    [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: base: --type must be workspace or project" >&2; exit 2; }
+    if [[ -n "$layer" || -n "$package_repos" ]]; then
+        [[ "$type" == project ]] || { echo "error: base: --layer/--package-repos are only valid with --type project" >&2; exit 2; }
+        [[ -n "$layer" && -n "$package_repos" ]] || { echo "error: base: --layer and --package-repos must be given together" >&2; exit 2; }
+    fi
+    if [[ -n "$override" ]] && ! git check-ref-format "refs/heads/$override" >/dev/null 2>&1; then
+        echo "error: base: --base '$override' is not a valid branch name" >&2
+        exit 2
+    fi
+
+    local wt="" rc=0
+    wt=$(resolve_worktree "$ref" "$type" "$project") || rc=$?
+    [[ "$rc" -eq 2 ]] && exit 2
+
+    # pr_base_for is sourced only where a package base is read below.
+    local base
+    if [[ "$rc" -eq 0 ]]; then
+        local dir
+        dir=$(issue_checkout_of "$wt" "$num") || exit 2
+        if [[ "$dir" == "$wt" ]]; then
+            if [[ -n "$override" || -n "$layer" ]]; then
+                echo "error: base: issue $ref has the worktree $wt, which is no package worktree (no manifest entry for an owning package repository), so it has no package base; --base, --layer and --package-repos do not apply" >&2
+                exit 2
+            fi
+            return 0
+        fi
+        # shellcheck source=_pr_base.sh
+        source "$SCRIPT_DIR/_pr_base.sh"
+        local header hdr_layer hdr_project hdr_base
+        header=$(head -n1 "$wt/.worktree-repos")
+        hdr_layer=$(sed -n 's/.* layer=\([^ ]*\).*/\1/p' <<< "$header")
+        hdr_project=$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$header")
+        hdr_base=$(sed -n 's/.* base=\([^ ]*\).*/\1/p' <<< "$header")
+        if [[ -n "$layer" && "$layer" != "$hdr_layer" ]]; then
+            echo "error: base: the package worktree $wt for $ref is of layer '${hdr_layer}', not --layer $layer" >&2
+            exit 2
+        fi
+        local -a pargs=(--repo "$(basename "$dir")" --recorded "$hdr_base")
+        [[ -n "$hdr_layer" ]] && pargs+=(--layer "$hdr_layer")
+        [[ -n "$hdr_project" ]] && pargs+=(--project "$hdr_project")
+        [[ -n "$override" ]] && pargs+=(--base "$override")
+        base=$(pr_base_for "${pargs[@]}") || exit 2
+        if [[ -z "$hdr_base" ]]; then
+            # A worktree made before base= existed: record it, but only a
+            # branch origin has, asked now in the owning checkout.
+            local err lrc=0
+            err=$(wt_bounded_git -C "$dir" ls-remote --exit-code --heads origin "refs/heads/$base" 2>&1 >/dev/null) || lrc=$?
+            case "$lrc" in
+                0) ;;
+                2)
+                    echo "error: base: origin of $dir has no branch '$base', so it cannot be $ref's base; nothing was recorded in $wt/.worktree-repos. Pass --base with a branch origin has, or push '$base' first." >&2
+                    exit 2
+                    ;;
+                *)
+                    echo "error: base: could not ask origin of $dir whether it has '$base' ($(wt_fetch_why "$lrc" "${err:-git ls-remote exited $lrc}")); nothing was recorded in $wt/.worktree-repos. Retry when origin answers (for a slow origin, raise WT_FETCH_TIMEOUT, now $(wt_fetch_limit)s)." >&2
+                    exit 2
+                    ;;
+            esac
+            wt_set_manifest_base "$wt" "$base" || exit 2
+            echo "note: base: recorded base=$base in $wt/.worktree-repos (origin has it)" >&2
+        fi
+        echo "base=$base"
+        return 0
+    fi
+
+    # No worktree yet.
+    if [[ -z "$layer" ]]; then
+        if [[ "$ref" == */*#* ]]; then
+            echo "error: base: issue $ref has no worktree yet, and without --layer and --package-repos nothing says which package worktree would be made (pass them as worktree_create.sh takes them)" >&2
+            exit 2
+        fi
+        if [[ -n "$override" ]]; then
+            echo "error: base: --base applies to an issue of a package repository (owner/repo#N, with --layer and --package-repos before its worktree exists); issue $ref has no worktree and names none" >&2
+            exit 2
+        fi
+        return 0
+    fi
+    if [[ "$ref" != */*#* ]]; then
+        echo "error: base: --layer/--package-repos need a qualified --issue owner/repo#N (got '$ref')" >&2
+        exit 2
+    fi
+    local pname="" lines arc=0
+    pname=$(derive_project_name "$project") || pname=""
+    local -a aargs=()
+    [[ -n "$pname" ]] && aargs+=(--project "$pname")
+    lines=$("$SCRIPT_DIR/adapter" "${aargs[@]}" worktree_repos --issue "$ref" --layer "$layer" --package-repos "$package_repos") || arc=$?
+    if [[ "$arc" -ne 0 ]]; then
+        echo "error: base: adapter worktree_repos exited $arc for $ref (its message is above); the owning repository is unknown, so there is no base" >&2
+        exit 2
+    fi
+    local owning n
+    owning=$(awk -F'\t' -v b="feature/issue-$num" '$3 == b && $2 != "." { print $2 }' <<< "$lines")
+    n=$(grep -c . <<< "$owning" || true)
+    if [[ "$n" -ne 1 ]]; then
+        echo "error: base: $n of --package-repos $package_repos would be on feature/issue-$num, so the repository of $ref (whose pin is the base) is undecided; name it in --package-repos exactly once" >&2
+        exit 2
+    fi
+    # shellcheck source=_pr_base.sh
+    source "$SCRIPT_DIR/_pr_base.sh"
+    local -a pargs=(--repo "$(basename "$owning")" --layer "$layer")
+    [[ -n "$pname" ]] && pargs+=(--project "$pname")
+    [[ -n "$override" ]] && pargs+=(--base "$override")
+    base=$(pr_base_for "${pargs[@]}") || exit 2
+    echo "base=$base"
 }
 
 # ------------------------------------------------------------------ next ---
@@ -982,6 +1150,7 @@ emit("checkpoint:unexpected", "no row matches this state (type=" + str(etype) + 
 case "${1:-}" in
     next)         shift; cmd_next "$@" ;;
     where)        shift; cmd_where "$@" ;;
+    base)         shift; cmd_base "$@" ;;
     --check-exit) shift; cmd_check_exit "$@" ;;
     -h|--help|help) usage ;;
     *)            cmd_handoff "$@" ;;

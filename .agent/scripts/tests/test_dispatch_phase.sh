@@ -646,6 +646,32 @@ out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_ph
     && pass "resolve_worktree --type project: no registry entry -- falls back to the deprecated project/worktrees/ shape" || fail "resolve_worktree project legacy fallback (rc=$rc out=$out)"
 
 echo ""
+echo "TEST: base -- an issue with no package base prints nothing, exit 0 (issue 429)"
+# Decided by the worktree the ref resolves to: a workspace worktree, a
+# single-repository project worktree (no manifest) and one whose manifest
+# is a lone "." entry have no package base; the handoff has no base= line.
+SBB="$(mk_sandbox 41)"
+out=$(cd "$SBB" && bash .agent/scripts/dispatch_phase.sh base --issue 41 --type workspace 2>&1); rc=$?
+[[ "$rc" -eq 0 && -z "$out" ]] && pass "base: workspace worktree -- nothing, exit 0" || fail "base workspace (rc=$rc out=$out)"
+out=$(cd "$SBB" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 41 --skill implement --type workspace 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == "worktree="* && "$out" != *$'\nbase='* && "$out" != "base="* ]] \
+    && pass "handoff: workspace issue -- no base= line" || fail "handoff workspace base= (rc=$rc out=$out)"
+out=$(cd "$SBB" && bash .agent/scripts/dispatch_phase.sh base --issue 41 --type workspace --base main 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"no package worktree"* ]] && pass "base: --base on a workspace issue -- refused" || fail "base workspace --base (rc=$rc out=$out)"
+out=$(cd "$SBB" && bash .agent/scripts/dispatch_phase.sh base --issue 42 --type workspace 2>&1); rc=$?
+[[ "$rc" -eq 0 && -z "$out" ]] && pass "base: a bare number with no worktree and no --layer -- nothing, exit 0" || fail "base no worktree (rc=$rc out=$out)"
+out=$(cd "$SBB" && bash .agent/scripts/dispatch_phase.sh base --issue 41 --type workspace --layer l1 --package-repos a 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"only valid with --type project"* ]] && pass "base: --layer with --type workspace -- refused" || fail "base workspace --layer (rc=$rc out=$out)"
+out=$(cd "$SBP1" && bash .agent/scripts/dispatch_phase.sh base --issue 9 --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && -z "$out" ]] && pass "base: single-repository project worktree -- nothing, exit 0" || fail "base single project (rc=$rc out=$out)"
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill implement --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" != *$'\nbase='* ]] && pass "handoff: single-repository project issue -- no base= line" || fail "handoff single project base= (rc=$rc out=$out)"
+printf '# project=myproj issue=9 layer=\n%s\t.\tfeature/issue-9\n' "$SBP1/myproj" > "$SBP1/myproj/worktrees/issue-9/.worktree-repos"
+out=$(cd "$SBP1" && bash .agent/scripts/dispatch_phase.sh base --issue 9 --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && -z "$out" ]] && pass "base: a lone '.' manifest -- nothing, exit 0" || fail "base lone dot (rc=$rc out=$out)"
+rm -f "$SBP1/myproj/worktrees/issue-9/.worktree-repos"
+
+echo ""
 echo "TEST: --skill-prefix -- the host's skill set, independent of the issue's --type (#345)"
 # The four host/issue combinations. The host is expressed ONLY by
 # --skill-prefix (empty = a workspace-hosted or Codex session with bare

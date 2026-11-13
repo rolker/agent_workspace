@@ -1,7 +1,7 @@
 ---
 name: run-issue
 description: "Claude Code only — drives one GitHub issue through the full review loop (review-issue → plan-task → review-plan → implement → review-code → publish → triage-reviews → merge), dispatching each phase to a fresh sub-agent via the Agent tool and pausing at AskUserQuestion checkpoints. Depends on `.agent/scripts/dispatch_phase.sh` and the Agent tool, neither of which Codex/Gemini sessions can drive the same way."
-argument-hint: "<issue-number | owner/repo#N> [--type workspace|project] [--layer <l> --package-repos <a,b>] [--resume]"
+argument-hint: "<issue-number | owner/repo#N> [--type workspace|project] [--layer <l> --package-repos <a,b>] [--base <branch>] [--resume]"
 session_scope: both
 ---
 
@@ -122,7 +122,7 @@ script, not here — see "Action tokens" below for where to read it.
 
 ```
 /run-issue <issue-number | owner/repo#N> [--type workspace|project]
-           [--layer <l> --package-repos <a,b>] [--resume]
+           [--layer <l> --package-repos <a,b>] [--base <branch>] [--resume]
 ```
 
 - `<issue-number>` — the GitHub issue driving the loop. Below, `<ref>` is
@@ -134,6 +134,13 @@ script, not here — see "Action tokens" below for where to read it.
 - `--layer`, `--package-repos` — passed through to `/start-task` for a
   package issue whose worktree does not exist yet; without them creation
   refuses with `worktree_create.sh`'s own message. Re-entry needs neither.
+- `--base <branch>` — a package issue only: the base branch of the owning
+  repository's pull request, overriding the project's pin of that
+  repository. Without it the base is the pin (`adapter repo_pin`, read by
+  `dispatch_phase.sh base` in step 1), never the forge's default branch; a
+  pin that is a tag, a commit or unknown stops step 1 and asks for
+  `--base`. Once the worktree records a base, a different `--base` is
+  refused.
 - `--type` — `workspace` or `project`, exactly the value `/start-task` and
   `dispatch_phase.sh` take; default: the type of this session's root
   ("This session's root" above). It must name this session's root, or the
@@ -203,10 +210,32 @@ outside it — issue #147). For a package issue, check the user tier first
 test -s ~/.claude/agent-workspace-root || echo "stop: an issue of a package repository needs the user tier (the workspace's user_tier_install.sh)"
 ```
 
+Next, the base branch of a package issue's pull request: the branch its
+owning repository's `feature/issue-<N>` starts from and the pull request
+targets (issue 429). Run it for every issue; it prints `base=<branch>` for
+a package issue and nothing for any other, decided by the worktree `<ref>`
+resolves to (a bare number can name a package worktree), or, before the
+worktree exists, by `--layer`/`--package-repos`. It reads the project's
+pin (or `--base`), refuses a pin that is not a branch, and, for a worktree
+made before the base was recorded, checks the branch on origin and records
+it in the manifest. Stop on a refusal:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+B="$($WS_ROOT/.agent/scripts/dispatch_phase.sh base --issue <ref> --type <type> [--project <project>] [--layer <l> --package-repos <a,b>] [--base <branch>])" \
+  || { echo "STOP: dispatch_phase.sh base refused (see above); do not continue"; exit 1; }
+echo "${B:-no package base}"
+```
+
+Keep the branch after `base=` as `<base>` for the run (step 7 needs it); no
+line means the issue has no package base.
+
 Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <ref> --type <type>` (and `--layer`, `--package-repos` when
-given). If step 1 there refuses (already in a worktree), stop and tell the
-user to exit first.
+given, with `--base <base>` beside them, so the owning branch starts from
+origin's `<base>` and the manifest records it; never `--base` without
+them, which only creation takes). If step 1 there refuses (already in a
+worktree), stop and tell the user to exit first.
 
 Then move to the directory the issue's work and records happen in, which
 `dispatch_phase.sh where` decides, the same answer every handoff gives a
@@ -676,7 +705,7 @@ the PR:
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 git push -u origin "$(git branch --show-current)"
-$WS_ROOT/.agent/scripts/gh_create_pr.sh [-R <owner/repo>] --title "<title>" --body-stdin <<'EOF'
+$WS_ROOT/.agent/scripts/gh_create_pr.sh [-R <owner/repo> --base <base>] --title "<title>" --body-stdin <<'EOF'
 ## Decision summary
 
 <the pinned Decision summary from the last review-code / implementation>
@@ -685,7 +714,12 @@ EOF
 
 Pass `-R <owner/repo>` (the repository part of `<ref>`) for a package
 issue: `gh_create_pr.sh` otherwise refuses a repository that is neither the
-workspace's nor the project's.
+workspace's nor the project's. Pass `--base <base>` too (step 1; every
+handoff for a package issue also names it as `base=`): without it `gh`
+targets the repository's default branch, which need not be the branch the
+project pins and the feature branch started from. `merge_pr.sh` reports a
+pull request whose base differs from the worktree's recorded one. A
+workspace or single-repository issue passes neither.
 
 **The heading must be exactly `## Decision summary`** — level 2, at the
 top level of the PR body, never re-nested under a sub-agent's own heading

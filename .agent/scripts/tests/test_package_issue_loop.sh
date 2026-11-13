@@ -58,6 +58,7 @@ cat > "$STUB/gh" <<'EOF'
 printf '%s | cwd=%s\n' "$*" "$PWD" >> "${GH_LOG:?}"
 case "$1 $2" in
     "issue view") echo '{"title":"Fix the thing","body":"b","comments":[]}'; exit 0 ;;
+    "pr create") echo "https://github.com/owner/x/pull/1"; exit 0 ;;
     "repo view") ;;
     *) exit 1 ;;
 esac
@@ -676,6 +677,177 @@ out=$(cd "$A" && export WORK_PLANS_DIR_OVERRIDE="$WP" && source "$S/_resolve_wor
 check "workspace timeline from A: the resolver's override passes" "$([[ "$rc" -eq 0 && "$out" == "$WP" ]]; echo $?)" "$out"
 out=$(cd "$A" && "$S/dispatch_phase.sh" next --progress "$WP/progress.md" --pr none 2>&1); rc=$?
 check "workspace timeline from A: next --progress reads it" "$([[ "$rc" -eq 0 && "$out" == "action="* ]]; echo $?)" "$out"
+
+# ----------------------------------------------------------------- case 11
+# The base branch (issue 429, pull request 2a): `dispatch_phase.sh base`
+# before the worktree exists reads the owning repository's pin through
+# the adapter's repo_pin, for every kind of pin the sandbox's real .repos
+# file can hold. pkg_a's origin has main, a branch `pinned` one commit
+# ahead of it, and a tag v1.
+echo "TEST: base before creation: the pin of the owning repository, every kind"
+PIN_SEED="$SANDBOX/pin_seed"
+git clone -q "git@github.com:owner/pkg_a.git" "$PIN_SEED"
+git -C "$PIN_SEED" checkout -q -b pinned
+git -C "$PIN_SEED" commit -q --allow-empty -m "pinned work"
+git -C "$PIN_SEED" push -q origin pinned
+git -C "$PIN_SEED" tag v1
+git -C "$PIN_SEED" push -q origin v1
+PINNED_SHA=$(git -C "$PIN_SEED" rev-parse pinned)
+PKG_A_HOSTED="$H/layers/main/l1_ws/src/pkg_a"
+# The hosted checkout's own `pinned` carries a commit origin never got.
+git -C "$PKG_A_HOSTED" branch pinned main
+git -C "$PKG_A_HOSTED" checkout -q pinned
+git -C "$PKG_A_HOSTED" commit -q --allow-empty -m "unpushed local work on pinned"
+git -C "$PKG_A_HOSTED" checkout -q main
+LOCAL_PINNED=$(git -C "$PKG_A_HOSTED" rev-parse pinned)
+pin_a() {  # <version line value, or "" for no version: key>
+    local v=""
+    [[ -n "$1" ]] && v="    version: $1\n"
+    printf "repositories:\n  pkg_a:\n    type: git\n    url: file:///x/pkg_a.git\n${v}  pkg_b:\n    type: git\n    url: file:///x/pkg_b.git\n    version: main\n" > "$M/repos/l1.repos"
+}
+PRE=(--type project --layer l1 --package-repos "pkg_a,pkg_b")
+pin_a pinned
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+check "pin at a branch: base=pinned" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}" --base main)
+check "--base overrides the pin" "$([[ "$out" == "base=main"$'\n'"rc=0" ]]; echo $?)" "$out"
+for kind in "v1 tag" "$PINNED_SHA commit" "nosuch unknown"; do
+    ref="${kind% *}"; k="${kind#* }"
+    pin_a "$ref"
+    out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+    check "pin at a $k: refused, naming it and --base" \
+        "$([[ "$out" == *"error: pkg_a is pinned at $ref ($k); only a branch can be a base. Pass --base <branch>."* \
+              && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+done
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}" --base pinned)
+check "a pin that is no branch, with --base: the override is the base" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+pin_a ""
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}")
+check "no version: key: the adapter's own refusal, then no base guessed" \
+    "$([[ "$out" == *"'pkg_a' has no version: key in layer 'l1'"* && "$out" == *"there is no base; none is guessed"* \
+          && "$out" != *"base="* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+pin_a pinned
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project --layer l1 --package-repos pkg_b)
+check "--package-repos without the owning repository: refused" \
+    "$([[ "$out" == *"0 of --package-repos pkg_b would be on feature/issue-11"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project)
+check "a qualified ref with no worktree and no --layer: refused, not 'no base'" \
+    "$([[ "$out" == *"has no worktree yet, and without --layer and --package-repos"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' "${PRE[@]}" --base 'bad..name')
+check "an invalid --base: refused" "$([[ "$out" == *"--base 'bad..name' is not a valid branch name"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+
+# The repository whose pin is read is the owning entry's directory, not the
+# forge name: directory pkg_c, forge repository owner/forge_c.
+git init -q --bare "$REM/owner/forge_c.git"
+git clone -q "git@github.com:owner/forge_c.git" "$SANDBOX/seed_c" 2>/dev/null
+git -C "$SANDBOX/seed_c" commit -q --allow-empty -m init
+git -C "$SANDBOX/seed_c" push -q origin HEAD:main HEAD:cbranch
+rm -rf "$SANDBOX/seed_c"
+git clone -q "git@github.com:owner/forge_c.git" "$H/layers/main/l1_ws/src/pkg_c"
+printf '  pkg_c:\n    type: git\n    url: file:///x/forge_c.git\n    version: cbranch\n' >> "$M/repos/l1.repos"
+out=$(dp "$H" base --issue 'owner/forge_c#12' --type project --layer l1 --package-repos pkg_c)
+check "the pin is read under the owning entry's directory name (pkg_c), not the forge name (forge_c)" \
+    "$([[ "$out" == "base=cbranch"$'\n'"rc=0" ]]; echo $?)" "$out"
+
+# ----------------------------------------------------------------- case 12
+echo "TEST: creation with --base: the owning branch starts from origin's base, the header records it"
+create --issue owner/pkg_a#11 --type project --project demo --layer l1 --package-repos pkg_a,pkg_b --base pinned \
+    || { cat "$SANDBOX/create.log"; fail "setup: package worktree owner/pkg_a#11 with --base pinned"; }
+C11="$H/worktrees/issue-demo-owner-pkg_a-11"
+A11="$C11/l1_ws/src/pkg_a"
+B11="$C11/l1_ws/src/pkg_b"
+check "header: base=pinned after layer=" \
+    "$([[ "$(head -n1 "$C11/.worktree-repos")" == "# project=demo issue=owner/pkg_a#11 layer=l1 base=pinned" ]]; echo $?)" "$(head -n1 "$C11/.worktree-repos")"
+check "A's feature/issue-11 is origin's pinned, without the hosted checkout's unpushed commit, untracked" \
+    "$([[ "$(git -C "$A11" rev-parse HEAD)" == "$PINNED_SHA" ]] && ! git -C "$A11" merge-base --is-ancestor "$LOCAL_PINNED" HEAD \
+        && ! git -C "$A11" config branch.feature/issue-11.remote >/dev/null; echo $?)"
+check "the sibling B starts from its own origin's main, as before" \
+    "$([[ "$(git -C "$B11" rev-parse HEAD)" == "$(git -C "$REM/owner/pkg_b.git" rev-parse main)" ]]; echo $?)"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project)
+check "base after creation: the recorded base" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 11 --type project)
+check "a bare number that resolves to the package worktree: its base, not 'no base'" \
+    "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+pin_a main
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project)
+check "the recorded base wins over a pin changed since" "$([[ "$out" == "base=pinned"$'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#11' --type project --base main)
+check "a --base that differs from the recorded base: refused" \
+    "$([[ "$out" == *"records base=pinned for pkg_a"*"--base main differs"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+out=$(dp "$H" --issue 'owner/pkg_a#11' --skill implement --type project)
+check "handoff: base= after package_worktree=" \
+    "$([[ "$out" == *"worktree=$A11"$'\n'"package_worktree=$C11"$'\n'"base=pinned"$'\n'"task="* ]]; echo $?)" "$out"
+out=$(dp "$H" --issue 'owner/pkg_a#7' --skill implement --type project)
+check "handoff for a package worktree with no recorded base: no base= line" \
+    "$([[ "$out" == *"package_worktree=$C"$'\n'"task="* && "$out" != *$'\n'"base="* ]]; echo $?)" "$out"
+
+# Publish: run-issue step 7's own block, from the SKILL.md copy, in A.
+PUB=$(python3 - "$WS/.claude/skills/run-issue/SKILL.md" <<'PY2'
+import re, sys
+text = open(sys.argv[1], encoding="utf-8").read()
+blocks = [b for b in re.findall(r"```bash\n(.*?)```", text, re.S) if "gh_create_pr.sh" in b and "git push" in b]
+print(blocks[0] if len(blocks) == 1 else "")
+PY2
+)
+check "SKILL.md has one publish block, and it passes --base <base> for a package issue" \
+    "$([[ "$PUB" == *"[-R <owner/repo> --base <base>]"* ]]; echo $?)" "$PUB"
+PUB="${PUB//\[-R <owner\/repo> --base <base>\]/-R owner/pkg_a --base pinned}"
+PUB="${PUB//<title>/Fix the thing}"
+gh_before=$(wc -l < "$GH_LOG")
+out=$(cd "$A11" && AGENT_MODEL=m bash -c "$PUB" 2>&1); rc=$?
+created=$(tail -n +"$((gh_before + 1))" "$GH_LOG" | grep '^pr create ')
+check "publish: gh pr create --repo owner/pkg_a --base pinned (gh_create_pr.sh spells -R as --repo), from A" \
+    "$([[ "$rc" -eq 0 && "$created" == "pr create --repo owner/pkg_a --base pinned "*"| cwd=$A11" ]]; echo $?)" "rc=$rc created=$created out=$out"
+
+# A base origin lacks stops creation and rolls back the sibling already added.
+create --issue owner/pkg_a#13 --type project --project demo --layer l1 --package-repos pkg_b,pkg_a --base nosuch; rc=$?
+check "creation with a base origin lacks: refused, the sibling added first rolled back, no worktree" \
+    "$([[ "$rc" -ne 0 && ! -e "$H/worktrees/issue-demo-owner-pkg_a-13" ]] \
+        && ! git -C "$PKG_B_HOSTED" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-13 \
+        && ! git -C "$PKG_A_HOSTED" show-ref --verify --quiet refs/heads/feature/issue-13 \
+        && grep -q "origin does not have it" "$SANDBOX/create.log"; echo $?)" "$(cat "$SANDBOX/create.log")"
+
+# ----------------------------------------------------------------- case 13
+# A worktree made before base= existed (C, owner/pkg_a#7, made in setup with
+# no --base): `base` records the base on resume, only after origin confirms
+# it, and writes nothing otherwise.
+echo "TEST: resume of a worktree with no recorded base"
+hdr_before=$(cat "$C/.worktree-repos")
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base nosuch)
+check "--base origin lacks: refused, nothing recorded" \
+    "$([[ "$out" == *"origin of $A has no branch 'nosuch'"*"nothing was recorded"* && "$out" == *"rc=2" \
+          && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+pin_a v1
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
+check "a pin that is a tag: refused, nothing recorded" \
+    "$([[ "$out" == *"pkg_a is pinned at v1 (tag)"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+pin_a pinned
+GOOD_SSH="$GIT_SSH_COMMAND"
+printf '#!/usr/bin/env bash\necho "ssh: connect to host github.com: Network is unreachable" >&2\nexit 255\n' > "$STUB/deadssh"
+chmod +x "$STUB/deadssh"
+out=$(GIT_SSH_COMMAND="$STUB/deadssh" dp "$H" base --issue 'owner/pkg_a#7' --type project)
+check "origin unreachable: the pin is unverified, the origin check fails, nothing recorded" \
+    "$([[ "$out" == *"(unverified)"* && "$out" == *"could not ask origin of $A whether it has 'pinned'"*"Network is unreachable"* \
+          && "$out" == *"nothing was recorded"* && "$out" == *"rc=2" && "$(cat "$C/.worktree-repos")" == "$hdr_before" ]]; echo $?)" "$out"
+export GIT_SSH_COMMAND="$GOOD_SSH"
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project)
+check "origin has the pinned branch: base=pinned, and the header now records it, entries unchanged" \
+    "$([[ "$out" == *"recorded base=pinned in $C/.worktree-repos"* && "$out" == *"base=pinned"$'\n'"rc=0" \
+          && "$(head -n1 "$C/.worktree-repos")" == "$(head -n1 <<< "$hdr_before") base=pinned" \
+          && "$(tail -n +2 "$C/.worktree-repos")" == "$(tail -n +2 <<< "$hdr_before")" ]]; echo $?)" "$out"
+out=$(dp "$H" base --issue 'owner/pkg_a#7' --type project --base main)
+check "after that, a different --base is refused" "$([[ "$out" == *"records base=pinned"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
+out=$(dp "$H" where --issue 'owner/pkg_a#7' --type project)
+check "where still prints A with base= in the header" "$([[ "$out" == "$A"$'\n'"rc=0" ]]; echo $?)" "$out"
+
+# Workspace and single-repository issues have no package base.
+out=$(dp "$WS" base --issue 7 --type workspace)
+check "workspace issue: base prints nothing, exit 0" "$([[ "$out" == $'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$SOLO" base --issue 7 --type project --project solo)
+check "single-repository project issue: base prints nothing, exit 0" "$([[ "$out" == $'\n'"rc=0" ]]; echo $?)" "$out"
+out=$(dp "$SOLO" base --issue 7 --type project --project solo --base main)
+check "single-repository project issue with --base: refused" \
+    "$([[ "$out" == *"no package worktree"* && "$out" == *"rc=2" ]]; echo $?)" "$out"
 
 echo
 echo "test_package_issue_loop: $PASS passed, $FAIL failed"
