@@ -682,6 +682,6 @@ PR body, sentences no longer true or missing (not edited):
 - "After the merge" (#461 edits the same documents; whichever merges second takes main first): past; this branch took main with #461 at `91967144`. Drop it or restate it as done.
 
 ### Findings
-- [ ] (suggestion, triage) PR body: update the five places above (1,352-state comparison after the merge, second merge of main and its PR-mode review, 429 boundaries 25/50/71 and 45 reviews, the full-run statement vs CI, the past "After the merge" section) — PR #467 body
+- [x] (suggestion, triage) PR body: update the five places above (1,352-state comparison after the merge, second merge of main and its PR-mode review, 429 boundaries 25/50/71 and 45 reviews, the full-run statement vs CI, the past "After the merge" section) — PR #467 body
 
 ### False positives
