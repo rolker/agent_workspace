@@ -386,9 +386,9 @@ $(checkpoint rounds restart)
 $(plan_authored complete)
 $M
 $(plan_authored complete)" "4 no"
-assert_start "merge, restart: the restart clears the armed state" \
+assert_start "merge, restart: the restart moves the round start and leaves the merge answer armed" \
     "$M
-$(checkpoint rounds restart)" "2 no"
+$(checkpoint rounds restart)" "2 yes"
 assert_start "hand merge: review, Branch Implementation, no merge answer: no boundary (known limitation)" \
     "$(local_review_prepush complete changes-requested feature/issue-9)
 $(implementation complete "")" "0 no"
@@ -468,6 +468,66 @@ assert (r.round_start, r.pr_start, r.armed) == (round_start(e), pr_start(e), mer
 print(r.round_start, r.pr_start, "yes" if r.armed else "no")' 2>&1)
     [[ "$got" == "$want" ]] && pass "pr_start: $label -> $want" || fail "pr_start: $label (want '$want', got '$got')"
 }
+# A restart moves only the round start (issue 459, second fix round, host
+# decision). The pre-push review's timelines, with their new values:
+# merge answer, restart, the next part's plan -> both starts at the plan.
+assert_starts "merge answer, restart, Plan Authored, Implementation, review: both starts at the Plan Authored (was Scan(12, 0)-shaped: pull-request start 0)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$IR9
+$M
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)" "6 6 no"
+# A hand merge (no merge answer) then a restart: the restart is no boundary
+# (the remedy is a merge checkpoint by the owner), so the pull-request
+# start stays 0 and only the rounds start over.
+assert_starts "hand merge with no merge answer, restart, Plan Authored: round start after the restart, pull-request start 0 (Scan(7, 0)-shaped; unchanged, by design)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_pr complete changes-requested open)
+$IR9
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")" "5 0 no"
+assert_starts "the same with the owner's merge recorded as a merge checkpoint before the restart: both starts at the Plan Authored" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$(local_review_pr complete changes-requested open)
+$IR9
+$M
+$(checkpoint rounds restart)
+$(plan_authored complete)
+$(implementation complete "")" "6 6 no"
+# The newest pull-request number is forgotten at a boundary (second fix
+# round, must-fix 2): a part whose Integrated Review line carries no
+# number never takes the previous part's.
+assert_starts "part 2's Integrated Review has no readable number: its post-merge fix on #11 is no boundary (pull-request start 4, was 10)" \
+    "$(plan_authored complete)
+$(implementation complete "")
+$IR9
+$M
+$(plan_authored complete)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(checkpoint rounds publish)
+$(printf '## Integrated Review\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: see the pull request\n\n### Findings\n- [x] (must-fix) fixed\n' "$NOW")
+$M
+$(implementation_pr complete 11)" "4 4 yes"
+# A legacy "**PR**: #11 -- 1 review(s), ..." line parses to no correlation
+# in progress_read.py; pr_start.py reads its leading #11 itself.
+LEGACY_IR11="$(printf '## Integrated Review\n**Status**: complete\n**When**: %s\n**By**: t (m)\n**PR**: #11 — 1 review(s), 1 valid, 0 false positives\n\n### Findings\n- [x] (must-fix) fixed\n' "$NOW")"
+assert_starts "a legacy '**PR**: #11 — 1 review(s)' line gives the merged number: a fix on #11 is no boundary, the next part on #12 is" \
+    "$LEGACY_IR11
+$M
+$(implementation_pr complete 11)
+$(implementation_pr complete 12)" "3 3 no"
+assert_starts "the legacy line read as #11 at the merge answer: an Implementation on #12 first is the boundary" \
+    "$LEGACY_IR11
+$M
+$(implementation_pr complete 12)" "2 2 no"
 assert_starts "a restart while the pull request is open: round start after it, pull-request start unmoved" \
     "$(implementation complete "")
 $IR9

@@ -162,8 +162,8 @@ fi
 # 459): at the head it is no local finding, at another head it is no
 # dropped entry and no warning. A changes-requested review's box with the
 # same words still counts.
-lgtm_entry() {  # <verdict> <sha>
-    printf '## Local Review\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: %s\n\n**PR**: #70 at `%s`\n\n### Findings\n- [ ] No issues found. LGTM.\n\n' "$1" "$2"
+lgtm_entry() {  # <verdict> <sha> [summary line, default "**Must-fix**: 0 | **Suggestions**: 0"]
+    printf '## Local Review\n**Status**: complete\n**When**: 2026-09-17 11:00 -04:00\n**By**: t (m)\n**Verdict**: %s\n\n**PR**: #70 at `%s`\n%s\n\n### Findings\n- [ ] No issues found. LGTM.\n\n' "$1" "$2" "${3-**Must-fix**: 0 | **Suggestions**: 0}"
 }
 { lgtm_entry approved 0ld0000; lgtm_entry approved abc1234; } > "$TMPD/lgtm.md"
 out=$("$RP" sources --progress "$TMPD/lgtm.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>"$TMPD/lgtm.err"); rc=$?
@@ -225,6 +225,19 @@ out=$("$RP" sources --progress "$TMPD/restart.md" --head "$HEAD" --reviews "$TMP
 [[ "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) before the restart — `scripts/x.sh:3`","(must-fix) after the restart — `scripts/x.sh:3`"]' ]] \
     && pass "sources: a restart while the pull request is open keeps that pull request's earlier reviews, open boxes included" \
     || fail "sources: restart keeps the open pull request's reviews (out=$out)"
+# A restart leaves a standing merge answer armed (second fix round, host
+# decision): merge answer, restart, the next part's plan -- the plan is the
+# pull-request boundary, so the merged part's reviews are not listed.
+{ open_review "Integrated Review" '**PR**: #69 at `0ld0000`' "part 1 deferred box"
+  part_checkpoint merge merge
+  part_checkpoint rounds restart
+  part_plan
+  open_review "Local Review" '**PR**: #70 at `abc1234`' "part 2 finding"; } > "$TMPD/merge_restart.md"
+out=$("$RP" sources --progress "$TMPD/merge_restart.md" --head "$HEAD" --reviews "$TMPD/rules.json" 2>/dev/null)
+[[ "$(printf '%s' "$out" | jq '.dropped_entries | length')" -eq 0 \
+    && "$(printf '%s' "$out" | jq -c '[.local_findings[].text]')" == '["(must-fix) part 2 finding — `scripts/x.sh:3`"]' ]] \
+    && pass "sources: merge answer, restart, next part's plan -- the merged part's reviews are neither findings nor dropped entries" \
+    || fail "sources: merge answer then restart (out=$out)"
 # A merge boundary still cuts after a restart: merge answer, restart, next
 # part's plan -- the restart clears the arm, so the plan is no boundary and
 # the earlier pull request's entry stays (the documented limitation); a

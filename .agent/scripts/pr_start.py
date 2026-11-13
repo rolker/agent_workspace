@@ -21,8 +21,10 @@ chronological). One pass over it gives two starts and the armed state:
 The pass:
 
 - ``## Checkpoint`` with **Decision**: restart: the round start moves to the
-  next entry, and the merge state is cleared (the owner restated the goal).
-  The pull-request start does not move.
+  next entry (the owner restated the goal; rounds start over). Nothing
+  else changes: the pull-request start does not move, and a standing
+  ``merge`` answer stays armed, so the next part's first start entry after
+  it is still the pull-request boundary (and the round start, being later).
 - ``## Checkpoint`` with **Decision**: merge and **After**: merge or findings
   arms: the pull request may have merged. The merged pull request's number
   is taken there: the number of the newest PR-correlated entry before the
@@ -62,10 +64,17 @@ The pass:
   never disarms.
 
 Limitations: a merge made by hand with no ``merge`` answer recorded leaves
-no boundary. The host records the owner's merge as a ``merge`` checkpoint
-(**Decided-by**: owner), or a ``restart``, before the next part. A restart
-recorded after a merge answer clears the arm, so a part started after it
-moves the round start (the restart) but not the pull-request start.
+no boundary, and a restart does not make one (it moves only the round
+start). The host records the owner's merge as a ``merge`` checkpoint
+(**Decided-by**: owner) before the next part.
+
+Pull-request numbers: an entry's number is its ``**PR**`` correlation, or,
+when ``progress_read.py`` parsed none (a legacy ``**PR**: #11 — 1 review(s),
+...`` line with no ``at `<sha>``` part), the ``#<n>`` that opens its
+``**PR**`` field. Only this module reads that fallback; the correlation
+contract of ``progress_read.py`` is unchanged. The newest number seen is
+forgotten at a boundary, so a part whose own reviews carry no number never
+takes the previous part's (its merged number is then unknown).
 """
 
 import re
@@ -81,6 +90,7 @@ Scan = namedtuple("Scan", "round_start pr_start armed")
 # 48/48."). Exactly that text, not a prefix of it: "No issues found in x
 # but y breaks" is a finding.
 _LGTM = re.compile(r"No issues found\. LGTM\.(\s|$)")
+_PR_FIELD = re.compile(r"^\s*#(\d+)\b")
 
 
 def _norm(value):
@@ -93,12 +103,15 @@ def _status(entry):
 
 def _pr_number(entry):
     c = entry.get("correlation") or {}
-    if c.get("kind") != "pr":
+    if c.get("kind") == "pr":
+        try:
+            return int(c.get("pr"))
+        except (TypeError, ValueError):
+            return None
+    if c.get("kind"):
         return None
-    try:
-        return int(c.get("pr"))
-    except (TypeError, ValueError):
-        return None
+    m = _PR_FIELD.match((entry.get("fields") or {}).get("PR") or "")
+    return int(m.group(1)) if m else None
 
 
 def _is_start_entry(entry, merged_pr):
@@ -112,8 +125,8 @@ def _is_start_entry(entry, merged_pr):
     kind = (entry.get("correlation") or {}).get("kind")
     if kind == "branch":
         return True
-    if kind == "pr":
-        number = _pr_number(entry)
+    number = _pr_number(entry)
+    if kind == "pr" or number is not None:
         return merged_pr is not None and number is not None and number != merged_pr
     return _status(entry) != "complete"
 
@@ -135,7 +148,6 @@ def scan(entries):
             decision = _norm(fields.get("Decision"))
             if decision == "restart":
                 rstart = i + 1
-                armed = False
             elif decision == "merge":
                 if after in ARM_AFTERS:
                     armed = True
@@ -146,6 +158,7 @@ def scan(entries):
         if armed and _is_start_entry(entry, merged_pr):
             rstart = pstart = i
             armed = False
+            last_pr = None
         number = _pr_number(entry)
         if number is not None:
             last_pr = number
