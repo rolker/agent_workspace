@@ -1935,6 +1935,24 @@ out="$(RUN_TMPDIR="$SANDBOX/gittmp" run)"; rc=$?
 [[ "$(cat "$SANDBOX/term-rc")" -eq 143 && -s "$SANDBOX/saw-scratch" && -z "$(ls -A "$INST_TMP")" ]] \
     && pass "an interrupt while the CLI runs leaves no scratch directory behind" \
     || fail "interrupted enable (rc=$(cat "$SANDBOX/term-rc") saw='$(cat "$SANDBOX/saw-scratch")' left='$(ls -A "$INST_TMP")')"
+# A hang-up too (the terminal closed while the CLI runs).
+jq --arg id "$PID" 'del(.enabledPlugins[$id]) | del(.extraKnownMarketplaces["agent-workspace"])' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+rm -f "$SANDBOX/saw-scratch" "$SANDBOX/term-rc"
+(
+    unset CLAUDE_CONFIG_DIR
+    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="$INST_TMP" STUB_ADD_SLEEP=2 \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" >/dev/null 2>&1 &
+    pid=$!
+    sleep 1
+    ls -A "$INST_TMP" > "$SANDBOX/saw-scratch"
+    kill -HUP "$pid"
+    wait "$pid"
+    echo "$?" > "$SANDBOX/term-rc"
+)
+[[ "$(cat "$SANDBOX/term-rc")" -eq 129 && -s "$SANDBOX/saw-scratch" && -z "$(ls -A "$INST_TMP")" ]] \
+    && pass "...and a hang-up while the CLI runs leaves none either" \
+    || fail "hung-up enable (rc=$(cat "$SANDBOX/term-rc") saw='$(cat "$SANDBOX/saw-scratch")' left='$(ls -A "$INST_TMP")')"
+rm -f "$SANDBOX/saw-scratch" "$SANDBOX/term-rc"
 run >/dev/null
 
 # --check reads JSON only: it never runs the CLI.

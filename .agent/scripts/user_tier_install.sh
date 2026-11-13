@@ -786,21 +786,24 @@ cli_user() {  # <claude plugin args...>
         echo "  ERROR: could not create a scratch directory to run \`claude plugin $*\` from" >&2
         return 1
     }
-    # An interrupt while the CLI runs must not leave the directory behind
-    # (its path is fixed into the trap now: the local is gone by then).
+    # An interrupt, a termination or a hang-up while the CLI runs must not
+    # leave the directory behind (its path is fixed into the trap now: the
+    # local is gone by then).
     # shellcheck disable=SC2064  # expand $scratch now, on purpose
     trap "rm -rf $(printf '%q' "$scratch"); exit 130" INT
     # shellcheck disable=SC2064
     trap "rm -rf $(printf '%q' "$scratch"); exit 143" TERM
+    # shellcheck disable=SC2064
+    trap "rm -rf $(printf '%q' "$scratch"); exit 129" HUP
     if git -C "$scratch" rev-parse --show-toplevel >/dev/null 2>&1; then
         rm -rf "$scratch"
-        trap - INT TERM
+        trap - INT TERM HUP
         echo "  ERROR: the scratch directory $scratch is inside a git repository -- not running the claude CLI there (point TMPDIR at a directory outside any git repository)" >&2
         return 1
     fi
     (cd "$scratch" && claude_plugin "$@" >/dev/null) || rc=$?
     rm -rf "$scratch"
-    trap - INT TERM
+    trap - INT TERM HUP
     return "$rc"
 }
 
