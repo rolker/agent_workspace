@@ -1101,7 +1101,14 @@ adapter_sync() {
     while IFS= read -r layer; do
         layer_dir="$(_rc_layer_dir "$layer")"
         repos_file="$mdir/repos/${layer}.repos"
-        [ -d "$layer_dir/src" ] || continue
+        if [ ! -d "$layer_dir/src" ]; then
+            # A layer never set up (new after a role or distro change):
+            # every repository in it is still to be checked out.
+            while IFS= read -r entry; do
+                [ -n "$entry" ] && missing=$((missing + 1))
+            done < <(_rc_repos_entries "$repos_file")
+            continue
+        fi
         while IFS= read -r entry; do
             [ -z "$entry" ] && continue
             name="${entry%%$'\t'*}"

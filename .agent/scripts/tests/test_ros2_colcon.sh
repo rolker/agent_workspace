@@ -2838,6 +2838,23 @@ test_mr_role_and_distro_changes() {
     assert_contains "distro otherfox: pkg_a at its default ref" "version: main" "$(cat "$gen/repos/core.repos")"
 }
 
+test_mr_sync_names_a_new_layer() {
+    echo "TEST: manifest route: sync's run-setup notice counts a layer that is new (never set up)"
+    local sb out rc
+    sb="$(make_mr_sandbox lite)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    assert_eq "role lite: extra never set up" "no" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src" ] && echo yes || echo no)"
+    sed -i 's/role=lite/role=dev/' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "role dev: sync exit 0" "0" "$rc"
+    assert_contains "role dev: the new layer's repository counted" "source: 1 repository in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project p11 setup" "$out"
+    run_mr "$sb" setup >/dev/null 2>&1
+    out="$(run_mr "$sb" sync 2>&1)"
+    assert_not_contains "after setup: no notice" "not checked out yet" "$out"
+}
+
 test_mr_validate_link_missing_and_path_changed() {
     echo "TEST: manifest route: validate fails with no resolved manifest; warns when a path source changed"
     local sb out rc
@@ -3161,6 +3178,7 @@ mr_test test_mr_stale_leaf_commit_and_tag
 mr_test test_mr_stale_extends_base
 mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
+mr_test test_mr_sync_names_a_new_layer
 mr_test test_mr_validate_link_missing_and_path_changed
 mr_test test_mr_layer_failures
 mr_test test_mr_resolver_failures
