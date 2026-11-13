@@ -2657,3 +2657,15 @@ The round-2 findings hold, except where noted:
   - `.agent/scripts/merge_pr.sh:1222-1239`
 - [ ] (suggestion) The two follow-up issues drafted in plan.md are still not filed. That is the owner's call at the merge checkpoint, carried over from round 1.
   - `.agent/work-plans/issue-429/plan.md:192,562`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 08:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Fix all three (Recommended)
+
+The three, as put to him: F1 (must-fix) a record push that times out with origin then unreachable is never published and the pull request still merges: route that outcome to the undo-and-comment path, accepting a possible duplicate, and update docs/design.md's Merge gate bullet and script_reference.md row 38; F2 the after-timeout check tests ancestry, not equality, so a push made on top is recognised as containing the record; F3 the duplicate check compares against the newest record across both stores (the timeline and the pull request's comments), so a superseded comment is not matched. Then a narrow check of that fix only, then publish.
