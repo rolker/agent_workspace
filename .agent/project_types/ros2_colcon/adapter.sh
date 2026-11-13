@@ -717,7 +717,9 @@ _rc_clone_modified() {
         echo "it is not a git clone (a file or directory the adapter did not make)"
         return 0
     fi
-    origin="$(_rc_nofd git -C "$clone" remote get-url origin 2>/dev/null || true)"
+    # The stored value: remote get-url applies url.*.insteadOf rewriting,
+    # which would never equal source for a user with such a rule.
+    origin="$(_rc_nofd git -C "$clone" config --get remote.origin.url 2>/dev/null || true)"
     if [ "${origin%.git}" != "${url%.git}" ]; then
         echo "its origin is '${origin:-none}', not source $url"
         return 0

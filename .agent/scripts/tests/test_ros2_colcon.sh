@@ -2770,6 +2770,25 @@ test_mr_clone_follows_remote() {
     assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
 }
 
+test_mr_clone_with_insteadof_rule() {
+    echo "TEST: manifest route: a url.<base>.insteadOf rule does not make the adapter's own clone read as another origin"
+    local sb out rc gen i
+    sb="$(make_mr_sandbox dev)"
+    make_mr_remote "$sb" leaf >/dev/null
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    # source names an alias that the rule rewrites to the real remote.
+    mr_settings "$sb" "source=file://$sb/alias/leaf.git" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    for i in setup sync sync; do
+        rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$sb/mremote/.insteadOf" \
+            GIT_CONFIG_VALUE_0="file://$sb/alias/" run_mr "$sb" "$i" 2>&1)" || rc=$?
+        assert_eq "insteadOf, $i: exit 0" "0" "$rc"
+        assert_not_contains "insteadOf, $i: not refused" "not as the adapter left it" "$out"
+    done
+    assert_contains "insteadOf: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+}
+
 test_mr_clone_refused_when_modified() {
     echo "TEST: manifest route: a clone in any state but as the adapter left it is refused, byte for byte untouched, the live result unchanged"
     local state sb clone gen before_link before_repos before_hash out rc expect
@@ -3687,6 +3706,7 @@ mr_test test_mr_wrapper_runs_this_checkouts_resolver
 mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit
 mr_test test_mr_clone_follows_remote
+mr_test test_mr_clone_with_insteadof_rule
 mr_test test_mr_clone_refused_when_modified
 mr_test test_mr_clone_removed_only_when_created_here
 mr_test test_mr_stale_extends_base
