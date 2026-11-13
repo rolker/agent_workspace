@@ -465,7 +465,9 @@ if [[ -f "$ONB" ]]; then
     # #466 (ADR-0021): an unregistered folder is offered registration from
     # here, the dry run captured with its stderr notes, the commands passed
     # as --set without the dry run's notes and checked by a second dry run,
-    # a kept settings file shown in full, one yes asked in text on that
+    # no --set for a type that reads neither key (it would be refused),
+    # a kept settings file read (a permission prompt; a refused read
+    # stops) and shown in full, one yes asked in text on that
     # second dry run before the real call (its permission prompt is not
     # guaranteed, so it is a second gate, never the yes), and the no-git
     # gap named.
@@ -478,6 +480,8 @@ if [[ -f "$ONB" ]]; then
         'Then ask one yes in text, for this write alone, on that second dry run' \
         'the file'"'"'s full contents as read, saying that every key in it takes effect' \
         'so the question is the only place they are shown' \
+        'a `--set` for either key, even `none`, is refused. Never add one there.' \
+        'the read asks for permission; when that read is refused or fails, stop' \
         'that prompt is not guaranteed' \
         'is a second gate after the yes in text' \
         'Pass the detected ones too' \

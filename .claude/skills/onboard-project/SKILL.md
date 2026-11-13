@@ -137,19 +137,23 @@ the rest of the run.
     the workspace checkout. Its last line `NEXT=` says to start a session at
     the root and run this skill.
   - **`STATUS=dry-run`**: the folder is not registered. Show the output as
-    printed: the registry line, the settings file and the build and test
-    commands it would write, and that the build and test are not run. Say
-    what registration is: one line in the workspace's per-machine registry
-    and the folder's settings file in the workspace checkout, nothing
-    written into the folder. Under this skill's `--dry-run`, stop here.
+    printed: the registry line (its second field is the folder's type),
+    the settings file and the build and test commands it would write, or
+    `no settings file (nothing to write)`, and that the build and test are
+    not run. Say what registration is: one line in the workspace's
+    per-machine registry and the folder's settings file in the workspace
+    checkout, nothing written into the folder. Under this skill's
+    `--dry-run`, stop here.
 
-    Then make the `--set` list the real call will pass: one
+    Then make the `--set` list the real call will pass: at most one
     `--set "build=<command>"` and one `--set "test=<command>"`, each one
-    quoted argument; `build=` and `test=` are the only keys it takes. Pass
-    the detected ones too: without `--set`, the real call detects them
-    again from the folder's files at that run, so its permission prompt
-    would not show them and the folder could have changed since the dry
-    run. Each command comes from one of these:
+    quoted argument; `build=` and `test=` are the only keys it takes. A key
+    goes on the list only when this first dry run lists it, a kept
+    settings file has it, or the folder's type requires it and it has no
+    command (below). Pass the detected ones too: without `--set`, the real
+    call detects them again from the folder's files at that run, so its
+    permission prompt would not show them and the folder could have
+    changed since the dry run. Each command comes from one of these:
 
     - **A line `would write <settings file>:`** lists the commands
       detected, one per line, as `    build=make    (detected (Makefile))`.
@@ -160,15 +164,27 @@ the rest of the run.
       file under this folder's name is already there (from an earlier
       registration removed with `--keep-settings`, perhaps for another
       folder) and nothing is detected: registering turns every key in it
-      on. Read that file and keep its contents, every line, to show with
-      the question. Pass its `build=` and `test=` values.
-    - **No command for a key**: a `note:` line says no build (or test)
-      command was detected, or several build systems disagree, or a kept
-      file has no `build=` (or `test=`) line. Ask the user for the command,
-      or `none`.
+      on. Read that file with the Read tool. It is in the workspace
+      checkout's `.agent/projects.d/`, outside this session's root, so the
+      read asks for permission; when that read is refused or fails, stop:
+      the yes needs the file's contents. Keep its contents, every line, to
+      show with the question. Pass its `build=` and `test=` values, those
+      it has.
+    - **No command for a key the type requires**: a `note:` line says no
+      build (or test) command was detected, or several build systems
+      disagree; or a kept file has no `build=` (or `test=`) line and the
+      type requires that key (the type's
+      `$WS_ROOT/.agent/project_types/<type>/registration.conf` names them
+      in `required_commands=`; `none` requires neither). Ask the user for
+      the command, or `none`.
+
+    A type whose own tool owns the build and test (`required_commands=none`)
+    reads neither key: its first dry run prints `no settings file (nothing
+    to write)` and no `note:` line, the list stays empty, and a `--set` for
+    either key, even `none`, is refused. Never add one there.
 
     When the list is complete, run the dry run again with exactly those
-    arguments:
+    arguments, or with none when the list is empty:
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -179,20 +195,22 @@ the rest of the run.
     `STATUS=refused`, a command register_project.sh does not take, say
     one with `&&`), show the refusal and ask for another command (a script
     path, when it needs a shell) or stop, and run this dry run again; no
-    yes is asked on a refused list.
+    yes is asked on a refused list. A refusal that a key "is not read for
+    project" means that `--set` must come off the list, not get another
+    command.
 
     Then ask one yes in text, for this write alone, on that second dry
     run: show its output as printed (the registry line and the build and
-    test commands it would set), and, for a kept settings file, the file's
-    full contents as read, saying that every key in it takes effect. A no
-    stops the run. Ask it even though the real call raises a permission
-    prompt: that prompt is not guaranteed. A "Yes, and don't ask again" on
-    the dry run's prompt allows the same command, so the real call can run
-    with no prompt, and auto mode or a broader allow rule removes both
-    prompts.
+    test commands it would set, or that it writes no settings file), and,
+    for a kept settings file, the file's full contents as read, saying
+    that every key in it takes effect. A no stops the run. Ask it even
+    though the real call raises a permission prompt: that prompt is not
+    guaranteed. A "Yes, and don't ask again" on the dry run's prompt
+    allows the same command, so the real call can run with no prompt, and
+    auto mode or a broader allow rule removes both prompts.
 
     On the yes, run it with the same `--set` arguments as the second dry
-    run, and no others:
+    run, and no others (none, when the list is empty):
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -208,12 +226,14 @@ the rest of the run.
     The permission prompt for this call, when it appears, shows the full
     command and is a second gate after the yes in text: a no there also
     stops the run.
-  - **The real run ends `STATUS=registered, <verbs> not run`**: run
+  - **The real run ends `STATUS=registered`** (followed by `, <verbs> not
+    run` for a type whose registration would run its build and test; a
+    plain `STATUS=registered` for a type that runs nothing there): run
     `session_root.sh` again; it now prints `type=project` and `project=`,
     and the run carries on with that. Say that the build and test were not
-    run, and that this session started before the folder was registered, so
-    it lacks the workspace layer the `SessionStart` hook gives a session at
-    a registered root; a new session at the root has it.
+    run, and that this session started before the folder was registered,
+    so it lacks the workspace layer the `SessionStart` hook gives a session
+    at a registered root; a new session at the root has it.
   - **The real run ends `STATUS=refused` or `STATUS=NOT READY`**: show it
     as printed and stop; its `NEXT=` says what to do. A folder in no git
     repository is refused there ("not a git repository") and rolled back,

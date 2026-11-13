@@ -42,8 +42,10 @@
 #
 # Then: register_project.sh <folder> --skip-run [--dry-run] [--set ...],
 # from the main checkout of this script's own repository. The build and
-# test are not run (the status says so), and --install-user-tier is never
-# passed: the installer rewrites ~/.claude, which no project session does.
+# test are not run (the status says so for a type whose registration would
+# run them; a type that runs neither ends a plain STATUS=registered), and
+# --install-user-tier is never passed: the installer rewrites ~/.claude,
+# which no project session does.
 # The output and the exit code from there on are register_project.sh's
 # (its STATUS=, NAME=, ROOT=, NEXT= lines). Its refusal of a name or a
 # path it finds registered under its lock stands; a path registered by

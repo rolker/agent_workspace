@@ -87,7 +87,8 @@ does not take (a name, a type, a parent root, `--remove`).
   the skill asks one yes in text after showing the dry run, before the real
   call, and the real call's prompt, when it appears, is a second gate.
 - **The build and test are not run** by a registration from a project
-  session; the status says so.
+  session; the status says so for a type whose registration would run
+  them (a type whose own tool owns the build and test runs neither).
 - **A folder in no git repository cannot be registered this way yet.**
   The owner decided on 2026-11-12 that any registered folder is a project,
   but registration's gate (`adapter validate`) still requires a git

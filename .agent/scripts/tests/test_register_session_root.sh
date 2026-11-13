@@ -9,7 +9,9 @@
 # its repository; a linked worktree; a name already registered; a name
 # that is not a valid project name; usage), a folder with no build command
 # (refused until --set), the dry run's commands passed back as --set
-# (written even after the folder changes), a folder in no git repository
+# (written even after the folder changes), a folder of a type that reads
+# no build or test command (registered with no --set; --set for them
+# refused), a folder in no git repository
 # (the named gap: refused and rolled back), a copy of the
 # script in a linked worktree of the workspace (it registers in the main
 # checkout), and that the script is not promoted to the user tier.
@@ -257,6 +259,36 @@ rm "$ZETA/Makefile"
 out="$(rsr "$ZETA" --set "build=$zb" --set "test=$zt")"; rc=$?
 check "registered, with exactly the dry run's commands" \
     bash -c '[ "$1" -eq 0 ] && grep -qx "build=make" "$2" && grep -qx "test=make test" "$2"' _ "$rc" "$(pfile zeta)"
+
+echo "TEST: a folder of a type that reads no build or test command registers with no --set, and --set for them is refused"
+# A sandbox multi-repository workspace folder: configs/manifest makes its
+# type ros2_colcon, whose tool owns build and test (required_commands=none).
+# One layer with no repositories, set up, so the static gate passes.
+COLC="$P/eta"
+mkdir -p "$COLC/configs/manifest/repos" "$COLC/layers/main/l1_ws/src"
+printf 'l1\n' > "$COLC/configs/manifest/layers.txt"
+printf 'distro: fakefox\n' > "$COLC/configs/manifest/bootstrap.yaml"
+printf 'repositories:\n' > "$COLC/configs/manifest/repos/l1.repos"
+gitq -C "$COLC" init --quiet
+gitq -C "$COLC" add -A
+gitq -C "$COLC" commit --quiet -m init
+out="$(rsr "$COLC" --dry-run)"; rc=$?
+check "first dry run: exit 0, its type, nothing to write and no note: line (the --set list stays empty)" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"would add the registry line: eta  ros2_colcon  $3"* && "$2" == *"no settings file (nothing to write)"* ]] && ! grep -q "^note:" <<< "$2"' _ "$rc" "$out" "$COLC"
+out="$(rsr "$COLC" --dry-run --set build=none --set test=none)"; rc=$?
+check "--set build=none is refused for it, naming the key and the type" \
+    bash -c '[ "$1" -eq 1 ] && [ "$(sed -n "s/^STATUS=//p" <<< "$2" | tail -1)" = refused ] && [[ "$2" == *"'"'"'build'"'"' is not read for project '"'"'eta'"'"' (type ros2_colcon)"* ]]' _ "$rc" "$out"
+out="$(rsr "$COLC" --dry-run)"; rc=$?
+check "second dry run with the empty list: exit 0, STATUS=dry-run" [ "$rc" -eq 0 -a "$(status_of "$out")" = "dry-run" ]
+out="$(rsr "$COLC")"; rc=$?
+# The type runs no build or test at registration (run=none), so the
+# status is a plain "registered", with no "not run" part.
+check "the real call with no --set registers it: STATUS=registered, its line in the registry" \
+    bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$(grep -E "^eta[[:space:]]" "$3")" == "eta  ros2_colcon  $4"* ]]' _ "$rc" "$(status_of "$out")" "$REGISTRY" "$COLC"
+check "no settings file written for it" [ ! -e "$(pfile eta)" ]
+out="$("$WS/.agent/scripts/session_root.sh" --dir "$COLC" 2>&1)"; rc=$?
+check "session_root.sh now resolves it: type=project, project=eta" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"type=project"* && "$2" == *"project=eta"* ]]' _ "$rc" "$out"
 
 # ------------------------------------------------------------- no git ---
 echo "TEST: a folder in no git repository: the dry run looks clean, the real run is refused and rolled back (the named gap)"
