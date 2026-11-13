@@ -966,3 +966,17 @@ Local timeline since the Integrated Review at `c4c73224`: both of its findings w
 "Q9 yes, Q10 yes"
 
 Q9 as put to him: merge pull request 449 (pull request (a) of five)? The decision summary was presented in the session: seven pre-push rounds and two on the pull request, rounds 1 to 4's defects fixed, round 5's findings carried in issue 447 on his earlier decision, the later rounds README wording only, the final triage with nothing open, CI all passing, Gemini and Codex in rounds 1 and 2, Copilot failed on quota each time. Said to him: nothing calls the new layout yet, and whether manifests are untrusted input at all is the first question on issue 447.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:44 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+"yes, start 436 and adopt the type neutral names"
+
+His words in the workspace session on the second machine, 2026-11-13, in answer to the host's proposal to start pull request (b) with the plan's settings keys `manifest`, `manifest_ref` and `manifest_path` built as `source`, `source_ref` and `source_path`. He was not shown this checkpoint as a dialog: the plan (`plan.md` at `deca7bd8`, unchanged since its Plan Review) names the old keys, so `proceed` would implement what he has just changed, and `revise` is the only answer his words leave. The decision and its limits are in the issue comment of 2026-11-13 (issuecomment-6863123962): the three keys are renamed before they exist anywhere; renaming `bootstrap_url` and the registry field `distro` is left to issue 473; `role=` and `distro=` stay on the registry line as planned.
+
+State at this checkpoint: pull request 449 (pull request (a): the resolver additions, the install target, CI) merged on 2026-11-12. Pull request (c), the `repo_pin` verb, was delivered under issue 429 (pull requests 456 and 460, merged). Not delivered: (b) settings keys and the adapter route, (d) the records, (e) the manifest text and drafted issue. The issue is open because those parts remain. The owner's test on the second machine uses the new manifest, Rolling first and Lyrical as the follow-up; he does it himself, and agents do not create or use `~/project11`.
