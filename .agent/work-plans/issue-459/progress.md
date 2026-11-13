@@ -70,3 +70,11 @@ issue: 459
 **Decision**: proceed
 
 Proceed to the plan. For the plan: (2) define the "a pull request ended here" boundary once, shared by dispatch_phase.sh and review_progress.sh, never reading a refused merge as a boundary, with tests for the refused-merge path and a restart-plus-merge timeline; ADR-0013 rules out a new entry type without a superseding ADR, so prefer a boundary derivable from existing entries, and say plainly if none is sound. (3) propose the post-merge route from the timeline and state it as the design question for the owner, with what it changes in docs/design.md#review-loop-and-timeline, how hard it is to undo, and a recommendation. (4) host decision: the findings reading of a post-publish Local Review rides along as its own atomic commit, since the issue names it; the stale-box filtering rides along only if it falls out of the same boundary with no extra mechanism, otherwise it is left out and noted. (5) a multi-pull-request section in run-issue's SKILL.md. (6) expect pull request 461 to merge first: plan against main plus 461's changes to dispatch_phase.sh and its tests.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 09:40 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-459/plan.md` at `f6b9c537`
+
+One shared boundary: a merge-decision checkpoint, then the first Plan Authored or Branch-correlated Implementation after it; used by dispatch_phase.sh and review_progress.sh. After a merge with no PR, next answers plan-task; the host writes a plan/proceed checkpoint to go straight to implement. The design question (i)/(ii) goes to the owner at the plan checkpoint.
