@@ -58,7 +58,8 @@ open, not merged, as of this check).
 - **Workspace relevance**: High, checked here. `wc -c` on this workspace's
   `.claude/skills/*/SKILL.md` (2026-11-13): sitrep 64,934 bytes, run-issue
   52,000, review-code 37,180, audit-project 24,489, onboard-project
-  24,446 — five skills over 20,000 bytes. Bytes are not characters, and
+  24,446, triage-reviews 23,702 — six skills over 20,000 bytes
+  (the first count, five, missed triage-reviews; corrected 2026-11-13). Bytes are not characters, and
   I did not verify the 20,000-character claim against Claude Code itself
   (the claude-code digest's changelog section is the place to look), so
   treat this as a lead to confirm before acting.
@@ -342,12 +343,6 @@ not diagnose superpowers".
 
 ## Pending Review (2026-11-13 round)
 
-- `superpowers-1` `skill-size-compaction-limit` — skills over ~20,000
-  characters are truncated when Claude Code re-attaches them after
-  compaction; upstream moved guidance to `references/` and added a size
-  test. Five workspace skills are over 20,000 bytes (see changelog), so
-  rules at the end of those files (for example run-issue's) may be lost
-  after compaction (2026-11-13)
 - `superpowers-2` `session-diagnosis-skill` (deferred earlier) —
   `diagnosing-superpowers` is now released on main: transcript forensics
   with `path:line` evidence, scrubbed bundle, drafted issue. The
@@ -361,6 +356,17 @@ not diagnose superpowers".
   code, with a plan-length-versus-spec-length self-review; reported
   large time and token savings. Possible input to `/plan-task`
   (2026-11-13)
+
+## Roadmapped (2026-11-13 decisions)
+
+- `superpowers-1` `skill-size-compaction-limit` — long skills may be cut at
+  20,000 characters when re-attached after compaction (superpowers release
+  notes; not confirmed in the Claude Code changelog). First confirm the
+  limit; only if it holds, split and add a size check. Measured 2026-11-13,
+  six `SKILL.md` files over 20,000 bytes: sitrep 64,934; run-issue 52,000;
+  review-code 37,180; audit-project 24,489; onboard-project 24,446;
+  triage-reviews 23,702. Owner's note: "this is part of a bigger effort to
+  streamline instructions". Added to docs/roadmap.md (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
