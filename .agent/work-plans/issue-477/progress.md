@@ -133,3 +133,16 @@ The plan is ready. Both approved texts are exact, the three roadmap edits sit in
 - [ ] In the PR description, say the sit-rep's Path 2 mark on Path 3 work is wrong until part 2 item 6, and that its closing question is worded for two paths.
 - [ ] List the ", other than Path 3 work" clause for the owner's veto.
 - [ ] Run `test_skill_paths.sh` and `test_sitrep_checks.sh` separately and expect the baseline counts (146 and 210 passed).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:46 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready, but its notes 1 and 2 show the two-file plan leaves the sit-rep wrong, not just incomplete: once Path 2 says "other than Path 3 work", the per-issue mark "Path 2" on Path 3 work contradicts the roadmap, and the closing question still offers "Path 1, Path 2 or both"; the owner reads the sit-rep every day, and a second pull request for it could only start after he merges this one; so the sit-rep's Path 3 marking, part 2's item 6, moves into this pull request; first host revise at this checkpoint)
+**After**: plan
+**Decision**: revise
+
+Read: the Plan Review at 12bf95f0 and its report. Direction for the revised plan: part 1 becomes the two approved texts plus the sit-rep's part: step 3 marks work Path 3 when the newest complete Issue Review's Serves line names the new README line (say exactly how it is recognised), the closing question and the "no path" wording stop assuming two paths, the first-sentence extraction copes with a sentence that ends in a quotation mark, and the tests and comments that say "two" follow (test_sitrep_checks.sh, test_skill_paths.sh). docs/design.md stays out, as the review accepted. The owner's instruction for the drive: "modify the skills as needed to be efficient".
+
+### Decisions made (owner may veto)
+- The first pull request grows from two files to the texts plus the sit-rep skill and its tests, so the sit-rep is right the day Path 3 exists — undoing it: split the sit-rep part back out into its own pull request.
