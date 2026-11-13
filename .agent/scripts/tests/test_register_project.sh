@@ -748,8 +748,8 @@ if [ -n "$MR_PY" ]; then
     check "the registry line carries role and distro" bash -c 'grep -qE "^tau .*role=dev.*distro=fakefox|^tau .*distro=fakefox.*role=dev" "$1"' _ "$WS/.agent/projects.local"
     check "the settings file holds the source" \
         [ "$(cat "$(pfile "$WS" tau)")" = "source=file://$SANDBOX/mremote/tau.git"$'\n'"source_ref=main" ]
-    check "the generated directory and the clone are in the root" \
-        bash -c '[ -L "$1/configs/manifest-resolved" ] && [ -d "$1/configs/source-clone/.git" ] && [ -d "$1/layers/main/core_ws/src/pkg_a" ]' _ "$TAU"
+    check "the generated directory is in the root, and no source clone or temporary fetch is kept" \
+        bash -c '[ -L "$1/configs/manifest-resolved" ] && [ ! -e "$1/configs/source-clone" ] && ! ls -d "$1"/configs/manifest-resolved.gen-*.src >/dev/null 2>&1 && [ -d "$1/layers/main/core_ws/src/pkg_a" ]' _ "$TAU"
     out="$(reg "$WS" --remove tau)"
 else
     if command -v ros-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \

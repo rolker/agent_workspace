@@ -2640,15 +2640,17 @@ test_mr_url_source_branch_tag_commit() {
         assert_not_contains "symlink source_path $spath: not resolved" "mark_secret" "$(cat "$gen/repos/core.repos")"
     done
 
-    # A clone of another repository is refused.
+    # Another repository as source: fetched like the first, nothing kept.
     local other
     other="$(make_mr_remote "$sb" other)"
-    write_mr_manifest "$sb/mwork/other/manifest.yaml"
+    write_mr_manifest "$sb/mwork/other/manifest.yaml" mark_other
     mr_push "$sb" other >/dev/null
     mr_settings "$sb" "source=$other" "source_ref=main"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "origin mismatch: exit 1" "1" "$rc"
-    assert_contains "origin mismatch: named" "its origin is 'file://$sb/mremote/leaf.git', not source $other" "$out"
+    assert_eq "another source: exit 0" "0" "$rc"
+    assert_contains "another source: resolved" "mark_other" "$(cat "$gen/repos/core.repos")"
+    assert_not_contains "another source: no old -> new line across sources" " -> " "$out"
+    mr_no_temp "$sb" "another source"
 }
 
 # A fingerprint of everything under <dir>: paths, link targets, file
@@ -2694,18 +2696,28 @@ make_mr_url_project() {
     echo "$sb"
 }
 
-test_mr_clone_follows_remote() {
-    echo "TEST: manifest route: an untouched clone follows a moved branch, a force-pushed branch, a moved tag and a commit ref; a deleted tag is an error that changes nothing"
-    local sb url out rc gen clone work c y mark
+# After a run: no fetched source, cache or new link left beside the
+# generated directories, <count> generated directories (default 1), and no
+# configs/source-clone (the adapter keeps no clone).
+mr_no_temp() {  # <sb> <label> [count]
+    local cfg="$1/projects/p11/configs"
+    assert_eq "$2: no temporary fetch, cache or link left" "" \
+        "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-*.src manifest-resolved.gen-*.cache manifest-resolved.gen-*.link 2>/dev/null || true)"
+    assert_eq "$2: ${3:-1} generated dir(s)" "${3:-1}" \
+        "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-* 2>/dev/null | wc -l | tr -d ' ')"
+    assert_eq "$2: no configs/source-clone" "no" "$([ -e "$cfg/source-clone" ] && echo yes || echo no)"
+}
+
+test_mr_url_follows_remote() {
+    echo "TEST: manifest route: each sync fetches afresh and follows a moved branch, a force-pushed branch, a moved tag and a commit ref (full or abbreviated)"
+    local sb url out rc gen work c y
     sb="$(make_mr_url_project)"
     url="file://$sb/mremote/leaf.git"
     work="$sb/mwork/leaf"
     gen="$(mr_gen "$sb")"
-    clone="$sb/projects/p11/configs/source-clone"
-    mark="$clone/.git/ros2-colcon-adapter-commit"
     assert_contains "setup: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-    assert_eq "setup: the clone is detached" "" "$(git -C "$clone" branch --show-current)"
-    assert_eq "setup: the record is HEAD" "$(git -C "$clone" rev-parse HEAD)" "$(cat "$mark")"
+    assert_contains "setup: the commit recorded" "commit=$(git -C "$work" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "setup"
     # A moved branch.
     write_mr_manifest "$work/manifest.yaml" mark_three
     c="$(mr_push "$sb" leaf)"
@@ -2713,7 +2725,8 @@ test_mr_clone_follows_remote() {
     assert_eq "moved branch: exit 0" "0" "$rc"
     assert_contains "moved branch: said" "-> ${c:0:12}" "$out"
     assert_contains "moved branch: the new tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
-    assert_eq "moved branch: the record follows" "$c" "$(cat "$mark")"
+    assert_contains "moved branch: the commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "moved branch"
     # A force-pushed branch (the last commit rewritten).
     write_mr_manifest "$work/manifest.yaml" mark_rewritten
     git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am rewritten
@@ -2721,7 +2734,7 @@ test_mr_clone_follows_remote() {
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "force-pushed branch: exit 0" "0" "$rc"
     assert_not_contains "force-pushed branch: no warning" "WARNING" "$out"
-    assert_eq "force-pushed branch: at the remote's tip" "$(git -C "$work" rev-parse HEAD)" "$(git -C "$clone" rev-parse HEAD)"
+    assert_contains "force-pushed branch: at the remote's tip" "commit=$(git -C "$work" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
     assert_contains "force-pushed branch: resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
     # A tag on a commit no branch holds, then moved to another such commit.
     git -C "$work" checkout --quiet --detach
@@ -2743,8 +2756,10 @@ test_mr_clone_follows_remote() {
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "moved tag: exit 0" "0" "$rc"
     assert_not_contains "moved tag: no warning" "WARNING" "$out"
-    assert_contains "moved tag: followed" "-> ${y:0:12}" "$out"
+    assert_contains "moved tag: followed" "source: tag t " "$out"
+    assert_contains "moved tag: the new commit named" "-> ${y:0:12}" "$out"
     assert_contains "moved tag: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "moved tag"
     # A commit ref: a push changes nothing until source_ref changes.
     c="$(git -C "$work" rev-parse main)"
     mr_settings "$sb" "source=$url" "source_ref=$c"
@@ -2755,30 +2770,14 @@ test_mr_clone_follows_remote() {
     mr_push "$sb" leaf >/dev/null
     run_mr "$sb" sync >/dev/null 2>&1
     assert_contains "commit: a push changes nothing" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
-    # A commit only a local object holds (not on any remote ref) is no ref.
-    local dangling
-    dangling="$(git -C "$clone" commit-tree -m dangling "$(git -C "$clone" rev-parse "HEAD^{tree}")")"
-    mr_settings "$sb" "source=$url" "source_ref=$dangling"
+    mr_no_temp "$sb" "commit"
+    # An abbreviated commit (a full fetch, then the name looked up).
+    mr_settings "$sb" "source=$url" "source_ref=${y:0:10}"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "a commit origin does not hold: exit 1" "1" "$rc"
-    assert_contains "a commit origin does not hold: named" "is not a branch or tag of $url, nor a commit it holds" "$out"
-    # A tag deleted on the remote: an error, nothing changed.
-    mr_settings "$sb" "source=$url" "source_ref=t"
-    run_mr "$sb" sync >/dev/null 2>&1
-    git -C "$work" push --quiet origin :refs/tags/t
-    local head_before
-    head_before="$(git -C "$clone" rev-parse HEAD)"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "deleted tag: exit 1" "1" "$rc"
-    assert_contains "deleted tag: named" "source_ref 't' is not a branch or tag" "$out"
-    assert_eq "deleted tag: pruned from the clone" "" "$(git -C "$clone" tag -l t)"
-    assert_eq "deleted tag: the clone's checkout unchanged" "$head_before" "$(git -C "$clone" rev-parse HEAD)"
-    assert_contains "deleted tag: the previous result kept" "mark_y" "$(cat "$gen/repos/core.repos")"
-    # The pruned tag is not taken for a tag deleted in the clone.
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "after the deleted tag: sync exit 0" "0" "$rc"
-    assert_not_contains "after the deleted tag: not refused" "not as the adapter left it" "$out"
+    assert_eq "abbreviated commit: exit 0" "0" "$rc"
+    assert_contains "abbreviated commit: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    assert_contains "abbreviated commit: the full commit recorded" "commit=$y" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "abbreviated commit"
     # source_ref=HEAD is refused by the settings file's rules.
     mr_settings "$sb" "source=$url" "source_ref=HEAD"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
@@ -2786,211 +2785,217 @@ test_mr_clone_follows_remote() {
     assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
 }
 
-test_mr_clone_with_insteadof_rule() {
-    echo "TEST: manifest route: a url.<base>.insteadOf rule does not make the adapter's own clone read as another origin"
+test_mr_fetch_failures_keep_previous() {
+    echo "TEST: manifest route: a ref deleted on the remote, a commit it does not hold, and an unreachable remote fail with the previous result live and unchanged"
+    local sb url out rc gen work before repos verb ref
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    work="$sb/mwork/leaf"
+    gen="$(mr_gen "$sb")"
+    # A branch and a tag, each resolved once, then deleted on the remote.
+    git -C "$work" branch feature
+    git -C "$work" tag v9
+    git -C "$work" push --quiet origin feature v9
+    for ref in feature v9; do
+        mr_settings "$sb" "source=$url" "source_ref=$ref"
+        rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+        assert_eq "$ref: resolved first (exit 0)" "0" "$rc"
+        before="$(readlink "$gen")"
+        repos="$(cat "$gen/repos/core.repos")"
+        git -C "$work" push --quiet origin ":$([ "$ref" = feature ] && echo refs/heads || echo refs/tags)/$ref"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "$ref deleted on the remote: exit 1" "1" "$rc"
+        assert_contains "$ref deleted on the remote: named" "source_ref '$ref' is not a branch or tag of $url" "$out"
+        assert_contains "$ref deleted on the remote: says the previous is in use" "the previously resolved manifest, if any, is still in use (its link unchanged)" "$out"
+        assert_not_contains "$ref deleted on the remote: never says nothing changed" "nothing changed" "$out"
+        assert_eq "$ref deleted on the remote: the link unchanged" "$before" "$(readlink "$gen")"
+        assert_eq "$ref deleted on the remote: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+        mr_no_temp "$sb" "$ref deleted on the remote"
+    done
+    # A full commit name the remote does not hold.
+    mr_settings "$sb" "source=$url" "source_ref=0123456789abcdef0123456789abcdef01234567"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "a commit the remote does not hold: exit 1" "1" "$rc"
+    assert_contains "a commit the remote does not hold: named" "is not a branch or tag of $url, nor a commit it holds" "$out"
+    assert_eq "a commit the remote does not hold: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "a commit the remote does not hold"
+    # The remote unreachable (gone), for sync and setup.
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" sync >/dev/null 2>&1
+    before="$(readlink "$gen")"
+    repos="$(cat "$gen/repos/core.repos")"
+    mv "$sb/mremote/leaf.git" "$sb/mremote/leaf.away"
+    for verb in sync setup; do
+        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "unreachable, $verb: exit 1" "1" "$rc"
+        assert_contains "unreachable, $verb: says what failed" "cannot reach source $url" "$out"
+        assert_contains "unreachable, $verb: says the previous is in use" "still in use (its link unchanged)" "$out"
+        assert_not_contains "unreachable, $verb: never says nothing changed" "nothing changed" "$out"
+        assert_eq "unreachable, $verb: the link unchanged" "$before" "$(readlink "$gen")"
+        assert_eq "unreachable, $verb: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+        mr_no_temp "$sb" "unreachable, $verb"
+    done
+    mv "$sb/mremote/leaf.away" "$sb/mremote/leaf.git"
+    # A first setup that fails leaves nothing at all.
+    local sb2
+    sb2="$(make_mr_sandbox dev)"
+    mr_settings "$sb2" "source=file://$sb2/mremote/none.git" "source_ref=main"
+    rc=0; run_mr "$sb2" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "first setup, unreachable: exit 1" "1" "$rc"
+    assert_eq "first setup, unreachable: no link" "no" "$([ -L "$(mr_gen "$sb2")" ] && echo yes || echo no)"
+    mr_no_temp "$sb2" "first setup, unreachable" 0
+}
+
+test_mr_url_insteadof_rule() {
+    echo "TEST: manifest route: a user url.<base>.insteadOf rule applies to the fetch for setup and repeated syncs"
     local sb out rc gen i
     sb="$(make_mr_sandbox dev)"
     make_mr_remote "$sb" leaf >/dev/null
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
     mr_push "$sb" leaf >/dev/null
-    # source names an alias that the rule rewrites to the real remote.
+    # source names an alias that only the rule rewrites to the real remote.
     mr_settings "$sb" "source=file://$sb/alias/leaf.git" "source_ref=main"
     gen="$(mr_gen "$sb")"
     for i in setup sync sync; do
         rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$sb/mremote/.insteadOf" \
             GIT_CONFIG_VALUE_0="file://$sb/alias/" run_mr "$sb" "$i" 2>&1)" || rc=$?
         assert_eq "insteadOf, $i: exit 0" "0" "$rc"
-        assert_not_contains "insteadOf, $i: not refused" "not as the adapter left it" "$out"
+        mr_no_temp "$sb" "insteadOf, $i"
     done
     assert_contains "insteadOf: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_contains "insteadOf: the source recorded as set" "source=file://$sb/alias/leaf.git" "$(cat "$gen/.resolved-from")"
+    # Without the rule the alias does not exist: the rule was what worked.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "without the rule: exit 1" "1" "$rc"
 }
 
-test_mr_clone_refused_when_modified() {
-    echo "TEST: manifest route: a clone in any state but as the adapter left it is refused, byte for byte untouched, the live result unchanged"
-    local state sb clone gen before_link before_repos before_hash out rc expect
-    for state in uncommitted untracked ignored assume_unchanged skip_worktree local_tag head_moved local_branch origin no_index no_record not_git; do
-        sb="$(make_mr_url_project)"
-        clone="$sb/projects/p11/configs/source-clone"
-        gen="$(mr_gen "$sb")"
-        write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_remote_new
-        mr_push "$sb" leaf >/dev/null
-        case "$state" in
-            uncommitted)
-                write_mr_manifest "$clone/manifest.yaml" mark_local
-                expect="it has uncommitted changes or untracked files" ;;
-            untracked)
-                git -C "$clone" config status.showUntrackedFiles no
-                echo note > "$clone/notes.txt"
-                expect="it has uncommitted changes or untracked files (?? notes.txt" ;;
-            ignored)
-                echo '*.bak' >> "$clone/.git/info/exclude"
-                echo note > "$clone/manifest.bak"
-                expect="it has uncommitted changes or untracked files (!! manifest.bak" ;;
-            assume_unchanged)
-                git -C "$clone" update-index --assume-unchanged manifest.yaml
-                write_mr_manifest "$clone/manifest.yaml" mark_hidden
-                expect="it has files marked assume-unchanged or skip-worktree, which hide edits (manifest.yaml" ;;
-            skip_worktree)
-                git -C "$clone" update-index --skip-worktree manifest.yaml
-                write_mr_manifest "$clone/manifest.yaml" mark_hidden
-                expect="it has files marked assume-unchanged or skip-worktree, which hide edits (manifest.yaml" ;;
-            local_tag)
-                git -C "$clone" tag mine
-                expect="its tags differ from those the adapter fetched: a tag made, moved or deleted in the clone (refs/tags/mine" ;;
-            head_moved)
-                expect="$(git -C "$clone" rev-parse HEAD | cut -c1-12)"
-                git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach HEAD~1
-                expect="HEAD is at $(git -C "$clone" rev-parse HEAD | cut -c1-12), not at $expect where the adapter left it" ;;
-            local_branch)
-                git -C "$clone" checkout --quiet -b mine
-                git -C "$clone" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m local
-                expect="HEAD is on the branch 'mine', not detached" ;;
-            origin)
-                git -C "$clone" remote set-url origin "file://$sb/mremote/elsewhere.git"
-                expect="its origin is 'file://$sb/mremote/elsewhere.git', not source file://$sb/mremote/leaf.git" ;;
-            no_index)
-                rm -f "$clone/.git/index"
-                expect="it has no index (never checked out: half-made by an interrupted run)" ;;
-            no_record)
-                rm -f "$clone/.git/ros2-colcon-adapter-commit"
-                expect="it has no record of the commit the adapter left it at" ;;
-            not_git)
-                rm -rf "$clone"
-                mkdir -p "$clone"
-                echo mine > "$clone/file.txt"
-                expect="it is not a git clone (a file or directory the adapter did not make)" ;;
-        esac
-        before_link="$(readlink "$gen")"
-        before_repos="$(cat "$gen/repos/core.repos")"
-        before_hash="$(mr_tree_hash "$clone")"
-        local verb
-        for verb in sync setup; do
-            rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
-            assert_eq "$state, $verb: refused (exit 1)" "1" "$rc"
-            assert_contains "$state, $verb: names the clone and the state" "the manifest clone $clone is not as the adapter left it: $expect" "$out"
-            assert_contains "$state, $verb: does not use it" "The adapter does not use a modified clone; nothing was changed" "$out"
-            assert_contains "$state, $verb: how to recover" "To recover: move or remove $clone and run setup or sync again" "$out"
-            assert_contains "$state, $verb: names the path form" "To work on a manifest locally, use the path form" "$out"
-            assert_eq "$state, $verb: the clone byte for byte untouched" "$before_hash" "$(mr_tree_hash "$clone")"
-            assert_eq "$state, $verb: the link unchanged" "$before_link" "$(readlink "$gen")"
-            assert_eq "$state, $verb: the live result unchanged" "$before_repos" "$(cat "$gen/repos/core.repos")"
-        done
-        rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-        assert_eq "$state, validate: fails" "1" "$rc"
-        assert_contains "$state, validate: the same message" "❌ ERROR: source: the manifest clone $clone is not as the adapter left it: $expect" "$out"
-        assert_eq "$state, validate: the clone untouched" "$before_hash" "$(mr_tree_hash "$clone")"
-        # Removing the clone is the recovery: the next sync clones afresh.
-        rm -rf "$clone"
-        rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
-        assert_eq "$state, after removing the clone: sync exit 0" "0" "$rc"
-        assert_contains "$state, after removing the clone: the remote's tip resolved" "mark_remote_new" "$(cat "$gen/repos/core.repos")"
+test_mr_hostile_source_repo() {
+    echo "TEST: manifest route: the source repository's replace refs, refspecs, hooks and config have no effect; the fetched tree is the requested ref's"
+    local sb url bare work out rc gen c1 evil verb
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    bare="$sb/mremote/leaf.git"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_one
+    c1="$(mr_push "$sb" leaf)"
+    # Another commit on a side branch, then everything in the remote that
+    # could point at it instead of main's commit.
+    git -C "$work" checkout --quiet -b evil
+    write_mr_manifest "$work/manifest.yaml" mark_evil
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am evil
+    evil="$(git -C "$work" rev-parse HEAD)"
+    git -C "$work" push --quiet origin evil
+    git -C "$work" checkout --quiet main
+    git -C "$bare" replace "$c1" "$evil"
+    git -C "$bare" config remote.origin.url "$url"
+    git -C "$bare" config remote.origin.fetch "+refs/heads/evil:refs/heads/main"
+    git -C "$bare" config core.hooksPath "$bare/evilhooks"
+    mkdir -p "$bare/evilhooks"
+    local h
+    for h in post-checkout post-merge reference-transaction pre-upload-pack; do
+        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/hook-ran.log" > "$bare/evilhooks/$h"
+        cp "$bare/evilhooks/$h" "$bare/hooks/$h"
+    done
+    chmod +x "$bare/evilhooks/"* "$bare/hooks/"*
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    for verb in setup sync; do
+        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "hostile remote, $verb: exit 0" "0" "$rc"
+        assert_contains "hostile remote, $verb: main's commit resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+        assert_not_contains "hostile remote, $verb: not the replacement" "mark_evil" "$(cat "$gen/repos/core.repos")"
+        assert_contains "hostile remote, $verb: main's commit recorded" "commit=$c1" "$(cat "$gen/.resolved-from")"
+        assert_eq "hostile remote, $verb: no hook of the remote ran" "" "$(cat "$sb/hook-ran.log" 2>/dev/null)"
+        mr_no_temp "$sb" "hostile remote, $verb"
     done
 }
 
-test_mr_first_clone_interrupted_or_claimed() {
-    echo "TEST: manifest route: a first clone this run made is removed on an interrupt or a failed record; a path another run claimed is never removed"
-    local sb url rc out clone realgit realmkdir apid i tool
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
-    mr_settings "$sb" "source=$url" "source_ref=main"
+test_mr_old_source_clone_left_alone() {
+    echo "TEST: manifest route: a configs/source-clone left by an earlier run is neither read nor touched"
+    local sb clone hash rc out verb gen
+    sb="$(make_mr_url_project)"
     clone="$sb/projects/p11/configs/source-clone"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$clone"
+    git -C "$clone" init --quiet
+    write_mr_manifest "$clone/manifest.yaml" mark_in_old_clone
+    echo mine > "$clone/notes.txt"
+    hash="$(mr_tree_hash "$clone")"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_remote_new
+    mr_push "$sb" leaf >/dev/null
+    for verb in sync setup validate; do
+        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "old clone, $verb: exit 0" "0" "$rc"
+        assert_not_contains "old clone, $verb: not mentioned" "source-clone" "$out"
+        assert_eq "old clone, $verb: byte for byte untouched" "$hash" "$(mr_tree_hash "$clone")"
+    done
+    assert_contains "old clone: the remote's tip resolved, not the old clone's file" "mark_remote_new" "$(cat "$gen/repos/core.repos")"
+}
+
+test_mr_fetch_interrupted() {
+    echo "TEST: manifest route: TERM during the fetch removes the temporary fetch (a second TERM during that removal is ignored); a KILL's leftover is swept by the next run"
+    local sb url gen cfg before realgit realrm apid rc i
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_three
+    mr_push "$sb" leaf >/dev/null
     realgit="$(command -v git)"
+    realrm="$(command -v rm)"
     mkdir -p "$sb/gitstub"
-    # A git that, on the clone's checkout, waits to be interrupted (hold)
-    # or, after it, makes the record path a directory (blockrecord).
+    # A git whose fetch waits on a file while $sb/hold exists, then marks
+    # that it ended; an rm that, once, sends its caller TERM while removing
+    # the temporary fetch (while $sb/rmterm exists).
     printf '%s\n' '#!/usr/bin/env bash' \
-        'case " $* " in *" checkout "*)' \
+        'case " $* " in *" fetch "*)' \
         "    if [ -e \"$sb/hold\" ]; then touch \"$sb/ready\"; while [ ! -e \"$sb/go\" ]; do sleep 0.1; done; fi" \
-        "    \"$realgit\" \"\$@\"; rc=\$?" \
-        "    [ -e \"$sb/blockrecord\" ] && mkdir -p \"$clone/.git/ros2-colcon-adapter-commit\"" \
-        '    exit $rc ;;' \
+        "    \"$realgit\" \"\$@\"; rc=\$?; touch \"$sb/fetchdone\"; exit \$rc ;;" \
         'esac' \
         "exec \"$realgit\" \"\$@\"" > "$sb/gitstub/git"
-    chmod +x "$sb/gitstub/git"
-    # Interrupted (TERM) between the clone and its record.
-    touch "$sb/hold"
-    (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        exec "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) &
-    apid=$!
-    for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
-    assert_eq "interrupted: held at the checkout" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "if [ -e \"$sb/rmterm\" ] && [[ \" \$* \" == *.src\\ * ]] && mkdir \"$sb/rmterm.done\" 2>/dev/null; then" \
+        "    kill -TERM \"\$PPID\"; sleep 0.5" \
+        'fi' \
+        "exec \"$realrm\" \"\$@\"" > "$sb/gitstub/rm"
+    chmod +x "$sb/gitstub/git" "$sb/gitstub/rm"
+    _mr_held_sync() {
+        rm -f "$sb/ready" "$sb/go" "$sb/fetchdone"
+        touch "$sb/hold"
+        (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
+        apid=$!
+        for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    }
+    # TERM, then a second TERM while the cleanup removes the fetch.
+    touch "$sb/rmterm"
+    _mr_held_sync
+    assert_eq "TERM: held in the fetch" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    assert_eq "TERM: the fetch goes to a .src sibling of a generated dir" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-*.src 2>/dev/null | wc -l | tr -d ' ')"
     kill -TERM "$apid" 2>/dev/null || true
     touch "$sb/go"
     rc=0; wait "$apid" || rc=$?
-    assert_eq "interrupted: exit 143" "143" "$rc"
-    assert_eq "interrupted: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
-    rm -f "$sb/hold" "$sb/ready" "$sb/go"
-    # The record cannot be written.
-    touch "$sb/blockrecord"
-    rc=0; out="$(PATH="$sb/gitstub:$PATH" run_mr "$sb" setup 2>&1)" || rc=$?
-    assert_eq "record fails: exit 1" "1" "$rc"
-    assert_contains "record fails: said" "cannot record the checked-out commit" "$out"
-    assert_eq "record fails: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
-    rm -f "$sb/blockrecord"
-    # Without flock: another run claims the path between this run's check
-    # and its mkdir (a mkdir stub plays the other run). This run did not
-    # create the clone, so it refuses and removes nothing.
-    realmkdir="$(command -v mkdir)"
-    mkdir -p "$sb/claimstub" "$sb/isolatedbin"
-    printf '%s\n' '#!/usr/bin/env bash' \
-        "if [ ! -e \"$clone\" ] && [ \" \$* \" = \" -p $sb/projects/p11/configs \" ]; then" \
-        "    \"$realmkdir\" -p \"$clone\" && echo theirs > \"$clone/other-run.txt\"" \
-        'fi' \
-        "exec \"$realmkdir\" \"\$@\"" > "$sb/claimstub/mkdir"
-    chmod +x "$sb/claimstub/mkdir"
-    for tool in bash sh git grep sed awk cut head tail cat rm mv ln comm \
-        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
-        command -v "$tool" >/dev/null 2>&1 \
-            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
-    done
-    rc=0; out="$(cd "$sb" && PATH="$sb/claimstub:$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
-    assert_eq "claimed by another run: exit 1" "1" "$rc"
-    assert_contains "claimed by another run: refused" "the manifest clone $clone is not as the adapter left it" "$out"
-    assert_eq "claimed by another run: its clone left alone" "theirs" "$(cat "$clone/other-run.txt" 2>/dev/null)"
-}
-
-test_mr_clone_removed_only_when_created_here() {
-    echo "TEST: manifest route: a failure removes only a clone this run created; an existing clone is never removed"
-    local sb url out rc clone gen hash
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
-    clone="$sb/projects/p11/configs/source-clone"
-    gen="$(mr_gen "$sb")"
-    # First setup with a ref the remote lacks: the clone it made is removed.
-    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
-    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
-    assert_eq "new clone, bad ref: exit 1" "1" "$rc"
-    assert_eq "new clone, bad ref: the clone this run made removed" "no" "$([ -e "$clone" ] && echo yes || echo no)"
-    # An existing untouched clone and a bad ref: kept, checkout unchanged.
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    run_mr "$sb" setup >/dev/null 2>&1
-    hash="$(git -C "$clone" rev-parse HEAD)"
-    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "existing clone, bad ref: exit 1" "1" "$rc"
-    assert_eq "existing clone, bad ref: kept" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
-    assert_eq "existing clone, bad ref: checkout unchanged" "$hash" "$(git -C "$clone" rev-parse HEAD)"
-    # An existing clone and the remote gone (offline): kept, says nothing changed.
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    mv "$sb/mremote/leaf.git" "$sb/mremote/leaf.away"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "existing clone, offline: exit 1" "1" "$rc"
-    assert_contains "existing clone, offline: says so" "cannot fetch source $url into $clone (offline?); nothing changed" "$out"
-    assert_eq "existing clone, offline: kept" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
-    assert_contains "existing clone, offline: the result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
-    mv "$sb/mremote/leaf.away" "$sb/mremote/leaf.git"
-    # A no-index clone that this run did not make, with a bad ref: refused, never removed.
-    rm -f "$clone/.git/index"
-    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "no-index clone, bad ref: exit 1" "1" "$rc"
-    assert_contains "no-index clone, bad ref: refused as modified" "it has no index" "$out"
-    assert_eq "no-index clone, bad ref: not removed" "yes" "$([ -d "$clone/.git" ] && echo yes || echo no)"
+    assert_eq "TERM: exit 143" "143" "$rc"
+    assert_eq "TERM: the second TERM was sent during the cleanup" "yes" "$([ -d "$sb/rmterm.done" ] && echo yes || echo no)"
+    assert_eq "TERM: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "TERM, a second TERM during the cleanup"
+    rm -f "$sb/rmterm"
+    # KILL: nothing runs a cleanup; the leftover is the gen- family only.
+    _mr_held_sync
+    kill -KILL "$apid" 2>/dev/null || true
+    touch "$sb/go"
+    rc=0; wait "$apid" || rc=$?
+    assert_eq "KILL: exit 137" "137" "$rc"
+    for i in $(seq 1 100); do [ -e "$sb/fetchdone" ] && break; sleep 0.1; done
+    assert_eq "KILL: a .src leftover" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-*.src 2>/dev/null | wc -l | tr -d ' ')"
+    assert_eq "KILL: the link unchanged" "$before" "$(readlink "$gen")"
+    rm -f "$sb/hold"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "after KILL: sync exit 0" "0" "$rc"
+    assert_contains "after KILL: the new tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "after KILL: the leftover swept"
+    unset -f _mr_held_sync
 }
 
 test_mr_stale_extends_base() {
@@ -3018,25 +3023,6 @@ test_mr_stale_extends_base() {
     assert_contains "the resolver's clone error passed through" "failed to clone its extends base" "$out"
     assert_contains "the previous result kept" "base_two" "$(cat "$gen/repos/core.repos")"
     assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
-}
-
-test_mr_offline_keeps_previous() {
-    echo "TEST: manifest route: a fetch failure exits 1 and keeps the previous resolved manifest"
-    local sb url out rc gen before
-    sb="$(make_mr_sandbox dev)"
-    url="$(make_mr_remote "$sb" leaf)"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
-    mr_push "$sb" leaf >/dev/null
-    mr_settings "$sb" "source=$url" "source_ref=main"
-    run_mr "$sb" setup >/dev/null 2>&1
-    gen="$(mr_gen "$sb")"
-    before="$(readlink "$gen")"
-    rm -rf "$sb/mremote/leaf.git"
-    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
-    assert_eq "offline sync: exit 1" "1" "$rc"
-    assert_contains "offline sync: says nothing changed" "cannot fetch source $url" "$out"
-    assert_eq "offline sync: the link unchanged" "$before" "$(readlink "$gen")"
-    assert_contains "offline sync: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
 }
 
 test_mr_role_and_distro_changes() {
@@ -3270,7 +3256,7 @@ test_mr_source_lock() {
     rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "held, first setup: exit 1" "1" "$rc"
     assert_contains "held, first setup: says so" "another setup or sync of project 'p11' holds its lock $sb/projects/p11/configs/.lock.source (waited 1 s); nothing changed" "$out"
-    assert_eq "held, first setup: no clone made" "no" "$([ -e "$sb/projects/p11/configs/source-clone" ] && echo yes || echo no)"
+    assert_eq "held, first setup: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
     assert_eq "held, first setup: the resolver not run" "no" "$([ -e "$sb/resolver.log" ] && echo yes || echo no)"
     # A wait that is not a number is said to be one, not taken for a held lock.
     local badwait
@@ -3630,7 +3616,7 @@ test_mr_lock_fd_not_inherited() {
     rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
-    assert_contains "the git wrapper saw the fetch" "fetch --quiet --prune --prune-tags" "$(cat "$sb/git.log" 2>/dev/null)"
+    assert_contains "the git wrapper saw the fetch" "fetch --quiet --depth 1 --no-tags" "$(cat "$sb/git.log" 2>/dev/null)"
     assert_contains "the resolver ran" "RESOLVER_RAN:resolve" "$(cat "$sb/resolver.log" 2>/dev/null)"
     assert_eq "no git or resolver call got fd 9" "" "$(cat "$sb/fd9.log" 2>/dev/null)"
     assert_eq "the lock held while the resolver ran" "" "$(cat "$sb/held.log" 2>/dev/null)"
@@ -3651,21 +3637,21 @@ test_mr_preflight_before_any_fetch() {
     rc=0; out="$(cd "$sb" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "no vcs: exit 1" "1" "$rc"
     assert_contains "no vcs: named" "'vcs' (vcstool) not found" "$out"
-    assert_not_contains "no vcs: the source was not contacted" "cloning" "$out"
-    assert_eq "no vcs: no clone made" "no" "$([ -e "$sb/projects/p11/configs/source-clone" ] && echo yes || echo no)"
+    assert_not_contains "no vcs: the source was not contacted" "source: fetching" "$out"
+    assert_eq "no vcs: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
 
     mr_sed 's/ role=dev//' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no role=: exit 1" "1" "$rc"
     assert_contains "no role=: names the field" "which needs role=<name> on its registry line" "$out"
     assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
-    assert_not_contains "no role=: not contacted" "cloning" "$out"
+    assert_not_contains "no role=: not contacted" "source: fetching" "$out"
 
     mr_sed 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no distro=: exit 1" "1" "$rc"
     assert_contains "no distro=: names the field" "which needs distro=<name> on its registry line" "$out"
-    assert_not_contains "no distro=: not contacted" "cloning" "$out"
+    assert_not_contains "no distro=: not contacted" "source: fetching" "$out"
     # A legacy ROS_DISTRO is not accepted on this route.
     echo "ROS_DISTRO=fakefox" >> "$sb/.agent/projects.d/p11.sh"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
@@ -3815,13 +3801,13 @@ test_bootstrap_no_url_names_source
 mr_test test_mr_wrapper_runs_this_checkouts_resolver
 mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit
-mr_test test_mr_clone_follows_remote
-mr_test test_mr_clone_with_insteadof_rule
-mr_test test_mr_clone_refused_when_modified
-mr_test test_mr_clone_removed_only_when_created_here
-mr_test test_mr_first_clone_interrupted_or_claimed
+mr_test test_mr_url_follows_remote
+mr_test test_mr_fetch_failures_keep_previous
+mr_test test_mr_url_insteadof_rule
+mr_test test_mr_hostile_source_repo
+mr_test test_mr_old_source_clone_left_alone
+mr_test test_mr_fetch_interrupted
 mr_test test_mr_stale_extends_base
-mr_test test_mr_offline_keeps_previous
 mr_test test_mr_role_and_distro_changes
 mr_test test_mr_sync_names_a_new_layer
 mr_test test_mr_validate_link_missing_and_path_changed

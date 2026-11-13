@@ -703,119 +703,32 @@ _rc_resolver_bin() {
     echo "$main/.venv/bin/ros-manifest"
 }
 
-# The file under the clone's .git/ where the adapter records the commit it
-# left the clone at (detached), written after each successful checkout.
-_RC_CLONE_MARK=ros2-colcon-adapter-commit
-# The file under .git/ where the adapter records the clone's tags (name and
-# object, sorted) right after each successful fetch. Before the next fetch
-# the clone's tags must equal it: a tag made, moved or deleted in the clone
-# is a modified clone (the fetch's --prune-tags would delete a tag made
-# there, and the work it holds). Tags the fetch brings, moves or prunes
-# are recorded again, so a deleted or moved remote tag is still followed.
-_RC_CLONE_TAGS=ros2-colcon-adapter-tags
-
-_rc_clone_tag_list() {  # <clone>
-    _rc_nofd git -C "$1" for-each-ref --format='%(refname) %(objectname)' refs/tags 2>/dev/null | LC_ALL=C sort
+# git in the temporary repository <src> (a fresh `git init`, so only the
+# user's own global and system configuration applies, never the source
+# repository's): no prompt, no submodules, and fd 8 and 9 closed.
+_rc_src_git() {  # <src> <git args...>
+    local src="$1"
+    shift
+    GIT_TERMINAL_PROMPT=0 _rc_nofd git -c submodule.recurse=false -C "$src" "$@"
 }
 
-# Why the existing clone at <clone> is not as the adapter left it, printed
-# as one phrase; nothing when it is untouched: a git clone rooted there,
-# origin <url>, an index, the adapter's record, HEAD detached at the
-# recorded commit, no file marked assume-unchanged or skip-worktree, and no
-# uncommitted change, untracked or ignored file.
-_rc_clone_modified() {
-    local clone="$1" url="$2" top real origin gitdir mark head branch st
-    top="$(_rc_nofd git -C "$clone" rev-parse --show-toplevel 2>/dev/null || true)"
-    real="$(cd "$clone" 2>/dev/null && pwd -P || true)"
-    if [ -z "$top" ] || [ "$top" != "$real" ]; then
-        echo "it is not a git clone (a file or directory the adapter did not make)"
-        return 0
-    fi
-    # The stored value: remote get-url applies url.*.insteadOf rewriting,
-    # which would never equal source for a user with such a rule.
-    origin="$(_rc_nofd git -C "$clone" config --get remote.origin.url 2>/dev/null || true)"
-    if [ "${origin%.git}" != "${url%.git}" ]; then
-        echo "its origin is '${origin:-none}', not source $url"
-        return 0
-    fi
-    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir 2>/dev/null || true)"
-    if [ ! -e "$gitdir/index" ]; then
-        echo "it has no index (never checked out: half-made by an interrupted run)"
-        return 0
-    fi
-    mark="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
-    if [ -z "$mark" ]; then
-        echo "it has no record of the commit the adapter left it at ($gitdir/$_RC_CLONE_MARK)"
-        return 0
-    fi
-    st="$(_rc_clone_tag_list "$clone" | LC_ALL=C comm -3 - <(LC_ALL=C sort "$gitdir/$_RC_CLONE_TAGS" 2>/dev/null) | awk '{ print $1 }' | head -n 3)"
-    if [ -n "$st" ]; then
-        echo "its tags differ from those the adapter fetched: a tag made, moved or deleted in the clone ($(printf '%s' "$st" | tr '\n' ' '))"
-        return 0
-    fi
-    if branch="$(_rc_nofd git -C "$clone" symbolic-ref -q --short HEAD 2>/dev/null)"; then
-        echo "HEAD is on the branch '$branch', not detached at ${mark:0:12} where the adapter left it"
-        return 0
-    fi
-    head="$(_rc_nofd git -C "$clone" rev-parse -q --verify HEAD 2>/dev/null || true)"
-    if [ "$head" != "$mark" ]; then
-        echo "HEAD is at ${head:0:12}, not at ${mark:0:12} where the adapter left it"
-        return 0
-    fi
-    # assume-unchanged (a lowercase tag) and skip-worktree (S) hide an
-    # edit from git status.
-    st="$(_rc_nofd git -C "$clone" ls-files -v 2>/dev/null | awk '$1 ~ /^([a-z]|S)$/ { print $2 }' | head -n 3)"
-    if [ -n "$st" ]; then
-        echo "it has files marked assume-unchanged or skip-worktree, which hide edits ($(printf '%s' "$st" | tr '\n' ' '))"
-        return 0
-    fi
-    st="$(_rc_nofd git --no-optional-locks -C "$clone" status --porcelain --untracked-files=all --ignored=matching 2>/dev/null | head -n 3)"
-    if [ -n "$st" ]; then
-        echo "it has uncommitted changes or untracked files ($(printf '%s' "$st" | tr '\n' ';' | sed 's/;/; /g'))"
-        return 0
-    fi
-}
-
-# The refusal for a modified clone (setup, sync and validate say the same).
-_rc_clone_refusal() {  # <clone> <reason>
-    local name
-    name="$(_rc_name)"
-    echo "ERROR: source: the manifest clone $1 is not as the adapter left it: $2. The adapter does not use a modified clone; nothing was changed (the clone, the resolved manifest and its link are as they were)."
-    echo "  To recover: move or remove $1 and run setup or sync again; the adapter then clones ${ACTIVE_PROJECT_SOURCE:-the source} afresh."
-    echo "  To work on a manifest locally, use the path form: keep the manifest in a checkout of your own and point source at its file: .agent/scripts/project_setting.sh unset $name source source_ref source_path, then .agent/scripts/project_setting.sh set $name source=/path/to/your/manifest.yaml"
-}
-
-# A clone this run created is removed on every exit until its record is
-# written (_rc_fetch_done): an error, a failed record write, or an
-# interrupt (INT, TERM, HUP), so no later run meets a half-made clone it
-# would refuse. A clone this run did not create is never removed.
-_rc_fetch_track_created() {
-    _RC_FETCH_CREATED="$1"
-    trap '_rc_fetch_abort' EXIT
-    trap 'exit 129' HUP
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
-}
-
-_rc_fetch_abort() {
-    [ -n "${_RC_FETCH_CREATED:-}" ] && rm -rf -- "$_RC_FETCH_CREATED"
-    _rc_fetch_done
-}
-
-_rc_fetch_done() {
-    [ -n "${_RC_FETCH_CREATED:-}" ] || return 0
-    _RC_FETCH_CREATED=""
-    trap - EXIT HUP INT TERM
+# The commit the live resolved manifest was resolved from, when it came
+# from the same source (for the "old -> new" line); empty otherwise.
+_rc_live_commit() {
+    local rf
+    rf="$(_rc_root)/configs/manifest-resolved/.resolved-from"
+    [ "$(_rc_resolved_from "$rf" source)" = "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
+    _rc_resolved_from "$rf" commit
 }
 
 # Fetch the leaf manifest (see the header above). Sets _RC_SRC_FILE (the
-# manifest file to resolve) and _RC_SRC_COMMIT (the clone's commit; empty
-# for a path source). A clone the adapter did not leave as it is is refused
-# with nothing changed; a clone this run made and could not finish is
-# removed by this run (_RC_FETCH_CREATED, never inferred from the clone's
-# state). A fetch failure (offline) changes nothing and returns 1.
+# manifest file to resolve) and _RC_SRC_COMMIT (the fetched commit; empty
+# for a path source). A URL source is fetched into <tmp>.src, a sibling of
+# the new generated directory _rc_resolve_begin made, which the resolve
+# cleanup removes on every exit. A failure returns 1, the previously
+# resolved manifest and its link as they were.
 _rc_source_fetch() {
-    local url ref spath clone reason kind sha old gitdir
+    local url ref spath src kind sha old remote fetched=0
     _RC_SRC_FILE=""
     _RC_SRC_COMMIT=""
     url="${ACTIVE_PROJECT_SOURCE:-}"
@@ -830,79 +743,69 @@ _rc_source_fetch() {
     fi
     ref="${ACTIVE_PROJECT_SOURCE_REF:-}"
     spath="${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}"
-    clone="$(_rc_root)/configs/source-clone"
-    if [ -e "$clone" ] || [ -L "$clone" ]; then
-        reason="$(_rc_clone_modified "$clone" "$url")"
-        if [ -n "$reason" ]; then
-            _rc_clone_refusal "$clone" "$reason" >&2
-            return 1
-        fi
-    else
-        mkdir -p "$(dirname "$clone")" || return 1
-        # Claim the path: only the run whose mkdir made it clones there, and
-        # only that run may remove it (another run, unlocked without flock,
-        # may have claimed it since the test above).
-        if ! mkdir -- "$clone" 2>/dev/null; then
-            reason="$(_rc_clone_modified "$clone" "$url")"
-            _rc_clone_refusal "$clone" "${reason:-another run created it meanwhile}" >&2
-            return 1
-        fi
-        _rc_fetch_track_created "$clone"
-        echo "source: cloning $url into $clone"
-        if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git clone --quiet --no-checkout -- "$url" "$clone"; then
-            _rc_fetch_abort
-            echo "ERROR: cannot clone source $url; nothing changed" >&2
-            return 1
-        fi
-    fi
-    # Branches and tags in one fetch, pruned (--prune-tags too, so a tag
-    # deleted on the remote is seen as gone) and forced: the clone then
-    # holds what origin holds, a rewritten branch or moved tag included.
-    if ! GIT_TERMINAL_PROMPT=0 _rc_nofd git -C "$clone" fetch --quiet --prune --prune-tags --force origin; then
-        _rc_fetch_abort
-        echo "ERROR: cannot fetch source $url into $clone (offline?); nothing changed: the clone's checkout and the previously resolved manifest, if any, are as they were" >&2
+    src="${_RC_RESOLVE_TMP:?}.src"
+    local kept="the previously resolved manifest, if any, is still in use (its link unchanged)"
+    # --template= : no hooks or other files copied into the new repository.
+    if ! mkdir -- "$src" || ! _rc_src_git "$src" init --quiet --template= >/dev/null; then
+        echo "ERROR: cannot make the temporary repository $src for fetching source $url; $kept" >&2
         return 1
     fi
-    gitdir="$(_rc_nofd git -C "$clone" rev-parse --absolute-git-dir)"
-    if ! _rc_clone_tag_list "$clone" > "$gitdir/$_RC_CLONE_TAGS"; then
-        _rc_fetch_abort
-        echo "ERROR: cannot record the clone's tags in $gitdir/$_RC_CLONE_TAGS" >&2
+    echo "source: fetching '$ref' from $url"
+    # The remote names the kind: a branch first, then a tag.
+    if ! remote="$(_rc_src_git "$src" ls-remote -- "$url" "refs/heads/$ref" "refs/tags/$ref")"; then
+        echo "ERROR: cannot reach source $url (git's message above: offline, a wrong URL, or a transport git refused); $kept" >&2
         return 1
     fi
-    if _rc_nofd git -C "$clone" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+    if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$remote"; then
         kind=branch
-        sha="$(_rc_nofd git -C "$clone" rev-parse "refs/remotes/origin/$ref^{commit}")"
-    elif _rc_nofd git -C "$clone" show-ref --verify --quiet "refs/tags/$ref"; then
+    elif awk -F'\t' -v r="refs/tags/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$remote"; then
         kind=tag
-        sha="$(_rc_nofd git -C "$clone" rev-parse "refs/tags/$ref^{commit}")"
-    elif [[ "$ref" =~ ^[0-9a-fA-F]{7,64}$ ]] \
-        && sha="$(_rc_nofd git -C "$clone" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" \
-        && [ -n "$(_rc_nofd git -C "$clone" for-each-ref --count=1 --contains "$sha" refs/remotes/origin refs/tags 2>/dev/null)" ]; then
+    elif [[ "$ref" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
         kind=commit
     else
-        _rc_fetch_abort
-        echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds (a commit is 7 to 64 hex characters); the clone's checkout and the resolved manifest are as they were" >&2
+        echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit (a commit is 7 to 64 hex characters); $kept" >&2
         return 1
     fi
-    old="$(cat "$gitdir/$_RC_CLONE_MARK" 2>/dev/null || true)"
-    if ! _rc_nofd git -C "$clone" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
-        _rc_fetch_abort
-        echo "ERROR: cannot check out $kind '$ref' in $clone" >&2
+    if [ "$kind" != commit ]; then
+        # One ref, one commit deep, into FETCH_HEAD only.
+        if ! _rc_src_git "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "refs/$([ "$kind" = branch ] && echo heads || echo tags)/$ref"; then
+            echo "ERROR: cannot fetch $kind '$ref' of source $url (git's message above); $kept" >&2
+            return 1
+        fi
+        sha="$(_rc_src_git "$src" rev-parse --verify --quiet "FETCH_HEAD^{commit}")" || sha=""
+    else
+        # A full commit name is asked for shallow first; a server that will
+        # not serve it so, and an abbreviated name, take a full fetch of the
+        # remote's branches and tags.
+        if [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] \
+            && _rc_src_git "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "$ref" 2>/dev/null; then
+            fetched=1
+        elif _rc_src_git "$src" fetch --quiet --no-tags --no-recurse-submodules -- "$url" \
+            '+refs/heads/*:refs/remotes/source/*' '+refs/tags/*:refs/tags/*'; then
+            fetched=1
+        fi
+        if [ "$fetched" -eq 0 ]; then
+            echo "ERROR: cannot fetch source $url to look for commit '$ref' (git's message above); $kept" >&2
+            return 1
+        fi
+        sha="$(_rc_src_git "$src" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" || sha=""
+        if [ -z "$sha" ]; then
+            echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds; $kept" >&2
+            return 1
+        fi
+    fi
+    if [ -z "$sha" ] || ! _rc_src_git "$src" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
+        echo "ERROR: cannot check out $kind '$ref' of source $url in $src; $kept" >&2
         return 1
     fi
-    if ! printf '%s\n' "$sha" > "$gitdir/$_RC_CLONE_MARK"; then
-        _rc_fetch_abort
-        echo "ERROR: cannot record the checked-out commit in $gitdir/$_RC_CLONE_MARK" >&2
-        return 1
-    fi
-    _rc_fetch_done
+    old="$(_rc_live_commit)"
     if [ -n "$old" ] && [ "$old" != "$sha" ]; then
         echo "source: $kind $ref ${old:0:12} -> ${sha:0:12}"
     else
         echo "source: $kind $ref at ${sha:0:12}"
     fi
     _RC_SRC_COMMIT="$sha"
-    _RC_SRC_FILE="$clone/$spath"
+    _RC_SRC_FILE="$src/$spath"
     # The repository is not trusted to stay inside itself: a symbolic link
     # anywhere along source_path could lead the resolver to any file the
     # user can read, so none is followed.
@@ -912,35 +815,29 @@ _rc_source_fetch() {
     for comp in "${comps[@]}"; do
         [ -z "$comp" ] || [ "$comp" = . ] && continue
         part="${part:+$part/}$comp"
-        if [ -L "$clone/$part" ]; then
-            echo "ERROR: source_path '$spath' goes through the symbolic link '$part' in $url at '$ref' ($clone); a symbolic link is never followed out of the source repository: name the file itself" >&2
+        if [ -L "$src/$part" ]; then
+            echo "ERROR: source_path '$spath' goes through the symbolic link '$part' in $url at '$ref'; a symbolic link is never followed out of the source repository: name the file itself; $kept" >&2
             return 1
         fi
     done
     if [ ! -f "$_RC_SRC_FILE" ]; then
-        echo "ERROR: source_path '$spath' is not a file in $url at '$ref' ($clone)" >&2
+        echo "ERROR: source_path '$spath' is not a file in $url at '$ref'; $kept" >&2
         return 1
     fi
 }
 
-# Resolve _RC_SRC_FILE for the registry line's role and distro into a new
-# generated directory, then point configs/manifest-resolved at it and
-# remove the previous one. A failure (the resolver's, or a role and distro
-# that select nothing) leaves the previous directory and link as they are;
-# the new directory and the resolver's cache are removed on every exit,
-# an interrupt included, unless the link already points at the new
-# directory (an interrupt just after the swap). Holding the source lock,
-# it first sweeps what a killed run (SIGKILL, a power cut) left: every
-# generated directory, cache and link the live link does not point at.
-# Sets _RC_LAYERS_CHANGED (1 when layers.txt changed).
-_rc_manifest_resolve() {
-    local root configs link bin role distro tmp rc=0 err count prev old_layers new_layers
-    _RC_LAYERS_CHANGED=0
-    role="${ACTIVE_PROJECT_ROLE:-}"
-    distro="$(_rc_distro)" || return 1
-    bin="$(_rc_resolver_bin)"
-    root="$(_rc_root)"
-    configs="$root/configs"
+# Before the fetch (setup and sync): refuse anything but a link at
+# configs/manifest-resolved; holding the source lock, sweep what a killed
+# run (SIGKILL, a power cut) left: every generated directory, fetched
+# source, cache and link the live link does not point at; then make the
+# new generated directory configs/manifest-resolved.gen-XXXXXX. From here
+# the cleanup (_rc_resolve_cleanup) removes it, its fetched source <tmp>.src,
+# the resolver's cache <tmp>.cache and the new link <tmp>.link on every
+# exit, an interrupt included, unless the link already points at the new
+# directory (an interrupt just after the swap).
+_rc_resolve_begin() {
+    local configs link tmp
+    configs="$(_rc_root)/configs"
     link="$configs/manifest-resolved"
     mkdir -p "$configs" || return 1
     if [ -e "$link" ] && [ ! -L "$link" ]; then
@@ -955,13 +852,30 @@ _rc_manifest_resolve() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+}
+
+# Resolve _RC_SRC_FILE for the registry line's role and distro into the
+# generated directory _rc_resolve_begin made, then point
+# configs/manifest-resolved at it and remove the previous one. A failure
+# (the resolver's, or a role and distro that select nothing) leaves the
+# previous directory and link as they are. Sets _RC_LAYERS_CHANGED (1 when
+# layers.txt changed).
+_rc_manifest_resolve() {
+    local configs link bin role distro tmp rc=0 err count prev old_layers new_layers
+    _RC_LAYERS_CHANGED=0
+    role="${ACTIVE_PROJECT_ROLE:-}"
+    distro="$(_rc_distro)" || return 1
+    bin="$(_rc_resolver_bin)"
+    tmp="${_RC_RESOLVE_TMP:?}"
+    link="${_RC_RESOLVE_LINK:?}"
+    configs="$(dirname "$tmp")"
     # The path source's stamp is taken before the resolve, so an edit made
     # while it runs shows in validate as a changed file.
     local stamp=""
     _rc_source_is_url || stamp="$(_rc_file_stamp "$_RC_SRC_FILE")"
     err="$(_rc_nofd "$bin" resolve --manifest "$_RC_SRC_FILE" --role "$role" --distro "$distro" \
         --out "$tmp" --layout manifest-dir --cache-dir "$tmp.cache" 2>&1 >/dev/null)" || rc=$?
-    rm -rf -- "$tmp.cache"
+    rm -rf -- "$tmp.cache" "$tmp.src"
     [ -n "$err" ] && printf '%s\n' "$err" >&2
     if [ "$rc" -ne 0 ]; then
         if [ "$rc" -eq 2 ] && [[ "$err" == *--layout* ]]; then
@@ -1044,12 +958,16 @@ _rc_manifest_resolve() {
     echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
 }
 
-# Remove the new generated directory, its cache and its link, keeping the
-# directory when the live link already points at it (the swap happened).
+# Remove the new generated directory, its fetched source, its cache and
+# its link, keeping the directory when the live link already points at it
+# (the swap happened). A further INT, TERM or HUP while it runs is
+# ignored (and so by rm, which inherits that), so a second Ctrl-C cannot
+# leave a half-removed directory; the exit status stays the first one's.
 _rc_resolve_cleanup() {
     local tmp="${_RC_RESOLVE_TMP:-}"
+    trap '' INT TERM HUP
     if [ -n "$tmp" ]; then
-        rm -rf -- "$tmp.cache" "$tmp.link"
+        rm -rf -- "$tmp.src" "$tmp.cache" "$tmp.link"
         if [ "$(readlink -- "${_RC_RESOLVE_LINK:-/nonexistent}" 2>/dev/null)" != "$(basename "$tmp")" ]; then
             rm -rf -- "$tmp"
         fi
@@ -1085,24 +1003,25 @@ _rc_mv_link_form() {
     echo "$form"
 }
 
-# Without flock: remove the generated directories (with their caches and
-# links) other than <keep1> and <keep2>.
+# Without flock: remove the generated directories (with their fetched
+# sources, caches and links) other than <keep1> and <keep2>.
 _rc_prune_unlocked() {
     local configs="$1" keep1="$2" keep2="$3" e n base
     for e in "$configs"/manifest-resolved.gen-*; do
         [ -e "$e" ] || [ -L "$e" ] || continue
         n="$(basename "$e")"
-        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link|\.src)?$ ]] || continue
         base="${n%.cache}"
         base="${base%.link}"
+        base="${base%.src}"
         [ "$base" = "$keep1" ] || [ "$base" = "$keep2" ] && continue
         rm -rf -- "$e"
     done
     return 0
 }
 
-# Remove configs/manifest-resolved.gen-XXXXXX directories, caches and links
-# the live link does not point at: a killed run leaves them, and so does a
+# Remove configs/manifest-resolved.gen-XXXXXX directories, fetched sources (.src),
+# caches and links the live link does not point at: a killed run leaves them, and so does a
 # swap whose previous directory a run was still reading (removed here once
 # no run reads it, _rc_remove_generated). This runs only while the source
 # lock is held, so a concurrent run's new directory is never taken for a
@@ -1113,9 +1032,9 @@ _rc_resolve_sweep() {
     for e in "$configs"/manifest-resolved.gen-*; do
         [ -e "$e" ] || [ -L "$e" ] || continue
         n="$(basename "$e")"
-        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link)?$ ]] || continue
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link|\.src)?$ ]] || continue
         [ -n "$live" ] && [ "$n" = "$live" ] && continue
-        if [ -d "$e" ] && [ ! -L "$e" ] && [[ "$n" != *.cache ]]; then
+        if [ -d "$e" ] && [ ! -L "$e" ] && [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]]; then
             _rc_remove_generated "$e"
         else
             rm -rf -- "$e"
@@ -1148,7 +1067,8 @@ _rc_manifest_prepare() {
     # other child (a detached one, git's auto gc say, would otherwise hold
     # the lock after the adapter ends): bash saves fd 9 for the group under
     # a close-on-exec copy, so this shell still holds the lock.
-    { _rc_source_fetch && _rc_manifest_resolve; } 9>&- || rc=$?
+    { _rc_resolve_begin && _rc_source_fetch && _rc_manifest_resolve; } 9>&- || rc=$?
+    [ "$rc" -eq 0 ] || _rc_resolve_cleanup
     _rc_source_unlock
     return "$rc"
 }
@@ -1201,7 +1121,7 @@ _rc_resolved_from() {
 # to exist: prints each problem (❌, counted) and each warning (⚠️, not
 # counted) on stderr; prints the count of problems on stdout.
 _rc_validate_manifest_route() {
-    local mdir rf name issues=0 key want got clone head stamp
+    local mdir rf name issues=0 key want got stamp
     mdir="$(_rc_manifest_dir)"
     rf="$mdir/.resolved-from"
     name="$(_rc_name)"
@@ -1241,27 +1161,9 @@ _rc_validate_manifest_route() {
             issues=$((issues + 1))
         fi
     done
-    # The checks against the source's current state apply only while the
-    # resolved manifest is from that source (a changed source is the ❌
-    # above, and what it holds says nothing about the old one).
-    if [ "$source_changed" -eq 1 ]; then
-        :
-    elif _rc_source_is_url; then
-        clone="$(_rc_root)/configs/source-clone"
-        local reason
-        if [ ! -e "$clone" ] && [ ! -L "$clone" ]; then
-            echo "⚠️  WARNING: the manifest clone $clone is missing; the resolved manifest is kept, and the next sync clones $ACTIVE_PROJECT_SOURCE again (run: .agent/scripts/adapter --project $name sync)" >&2
-        elif reason="$(_rc_clone_modified "$clone" "$ACTIVE_PROJECT_SOURCE")" && [ -n "$reason" ]; then
-            _rc_clone_refusal "$clone" "$reason" | sed '1s/^/❌ /' >&2
-            issues=$((issues + 1))
-        else
-            head="$(_rc_nofd git -C "$clone" rev-parse HEAD 2>/dev/null || true)"
-            got="$(_rc_resolved_from "$rf" commit)"
-            if [ -n "$head" ] && [ -n "$got" ] && [ "$head" != "$got" ]; then
-                echo "⚠️  WARNING: the manifest clone $clone is at ${head:0:12}, the resolved manifest is from ${got:0:12} (run: .agent/scripts/adapter --project $name sync)" >&2
-            fi
-        fi
-    elif [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
+    # A path source still the one resolved: warn when the file changed
+    # since (validate never fetches, so a URL source has no such check).
+    if [ "$source_changed" -eq 0 ] && [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && ! _rc_source_is_url; then
         stamp="$(_rc_file_stamp "$ACTIVE_PROJECT_SOURCE" || true)"
         got="$(_rc_resolved_from "$rf" file-stamp)"
         if [ "$stamp" != "$got" ]; then
@@ -1338,7 +1240,7 @@ adapter_setup() {
             return 1
         fi
         _rc_manifest_prepare || return 1
-        echo "note: the adapter keeps configs/source-clone, configs/manifest-resolved* and configs/.lock.source in $(_rc_root) and edits no ignore file; if that root is a git checkout, ignore them there"
+        echo "note: the adapter keeps configs/manifest-resolved* and configs/.lock.source in $(_rc_root) and edits no ignore file; if that root is a git checkout, ignore them there"
     else
         _rc_bootstrap_manifest || return 1
     fi
