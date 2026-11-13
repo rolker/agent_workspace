@@ -882,12 +882,22 @@ _rc_manifest_resolve() {
         _rc_resolve_cleanup
         return 1
     fi
-    # GNU mv -T, else BSD mv -h (both rename(2) the link over the old one,
-    # never into the directory it points at); only when neither exists is
-    # the old link removed first, leaving a moment with no link.
-    if ! mv -T "$tmp.link" "$link" 2>/dev/null && ! mv -fh "$tmp.link" "$link" 2>/dev/null; then
-        rm -f -- "$link"
-        mv "$tmp.link" "$link" || { _rc_resolve_cleanup; return 1; }
+    # The form this mv supports, probed once: GNU mv -T or BSD mv -h, both
+    # rename(2) the link over the old one, never into the directory it
+    # points at. A failure of that form is an error that leaves the live
+    # link in place. Only an mv with neither removes the old link first,
+    # leaving a moment with no link.
+    local mvform rc_mv=0
+    mvform="$(_rc_mv_link_form "$configs")"
+    case "$mvform" in
+        T) mv -T "$tmp.link" "$link" || rc_mv=$? ;;
+        h) mv -fh "$tmp.link" "$link" || rc_mv=$? ;;
+        *) rm -f -- "$link"; mv "$tmp.link" "$link" || rc_mv=$? ;;
+    esac
+    if [ "$rc_mv" -ne 0 ]; then
+        echo "ERROR: cannot rename the new link over $link (mv${mvform:+ -$mvform} failed, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
     fi
     _RC_RESOLVE_TMP=""
     trap - EXIT HUP INT TERM
@@ -913,6 +923,30 @@ _rc_resolve_cleanup() {
     trap - EXIT HUP INT TERM
 }
 
+# Which option of this mv renames a symbolic link to a directory over
+# another such link rather than into the directory: T (GNU), h (BSD), or
+# empty for neither. Probed once per resolve, in a scratch directory
+# <configs>/.mv-probe.XXXXXX that is removed (and swept if a kill left it).
+_rc_mv_link_form() {
+    local configs="$1" d f form=""
+    d="$(mktemp -d "$configs/.mv-probe.XXXXXX")" || { echo ""; return 0; }
+    for f in T h; do
+        rm -rf -- "${d:?}"/*
+        mkdir "$d/t" && ln -s t "$d/old" && ln -s t "$d/new" || break
+        if [ "$f" = T ]; then
+            mv -T "$d/new" "$d/old" 2>/dev/null || continue
+        else
+            mv -fh "$d/new" "$d/old" 2>/dev/null || continue
+        fi
+        if [ -L "$d/old" ] && [ ! -e "$d/new" ] && [ ! -e "$d/t/new" ]; then
+            form="$f"
+            break
+        fi
+    done
+    rm -rf -- "$d"
+    echo "$form"
+}
+
 # Remove configs/manifest-resolved.gen-XXXXXX directories, caches and links
 # the live link does not point at: only a killed run leaves them, so this
 # runs only while the source lock is held (a concurrent run's are never
@@ -927,6 +961,10 @@ _rc_resolve_sweep() {
         [ -n "$live" ] && [ "$n" = "$live" ] && continue
         rm -rf -- "$e"
     done
+    for e in "$configs"/.mv-probe.*; do
+        [ -d "$e" ] && [[ "$(basename "$e")" =~ ^\.mv-probe\.[A-Za-z0-9]{6}$ ]] && rm -rf -- "$e"
+    done
+    return 0
 }
 
 # Everything the manifest route checks before it contacts any remote, then

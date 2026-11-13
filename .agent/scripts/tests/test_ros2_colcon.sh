@@ -3230,7 +3230,7 @@ test_mr_source_lock() {
 
 test_mr_swap_interrupt_and_sweep() {
     echo "TEST: manifest route: an interrupt just after the link swap keeps the new directory; BSD mv -h swaps; a killed run's leftovers are swept"
-    local sb out rc gen realmv cfg live
+    local sb out rc gen realmv cfg live before
     sb="$(make_mr_sandbox dev)"
     write_mr_manifest "$sb/m/manifest.yaml" mark_one
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
@@ -3242,7 +3242,7 @@ test_mr_swap_interrupt_and_sweep() {
     # An mv that does the swap, then has its caller sent TERM.
     printf '%s\n' '#!/usr/bin/env bash' \
         "\"$realmv\" \"\$@\"; rc=\$?" \
-        'case " $* " in *" -T "*) kill -TERM "$PPID" ;; esac' \
+        'case " $* " in *" -T "*"/manifest-resolved ") kill -TERM "$PPID" ;; esac' \
         'exit $rc' > "$sb/mvbin/mv"
     chmod +x "$sb/mvbin/mv"
     write_mr_manifest "$sb/m/manifest.yaml" mark_two
@@ -3268,6 +3268,22 @@ test_mr_swap_interrupt_and_sweep() {
     assert_contains "BSD mv: mv -fh used" "BSD_MV_H" "$(cat "$sb/mv.log" 2>/dev/null)"
     assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
     assert_contains "BSD mv: the new result is live" "mark_three" "$(cat "$gen/repos/core.repos")"
+    # GNU mv whose -T fails on the real swap (the probe succeeds): an
+    # error, and the live link is never removed.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" -T "*"/manifest-resolved ") echo "mv: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_four
+    rc=0; out="$(cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    assert_eq "mv -T fails: exit 1" "1" "$rc"
+    assert_contains "mv -T fails: said" "cannot rename the new link over $gen (mv -T failed, above); nothing changed" "$out"
+    assert_eq "mv -T fails: the live link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "mv -T fails: the previous result kept" "mark_three" "$(cat "$gen/repos/core.repos")"
+    assert_eq "mv -T fails: no new generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "mv -T fails: no probe dir left" "" "$(cd "$cfg" && ls -d -- .mv-probe.* 2>/dev/null || true)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_three
+    run_mr "$sb" sync >/dev/null 2>&1
     # What a SIGKILLed run leaves: a directory, a cache and a link.
     mkdir -p "$cfg/manifest-resolved.gen-Ab12Cd/repos" "$cfg/manifest-resolved.gen-Ab12Cd.cache/clone"
     ln -s manifest-resolved.gen-Ab12Cd "$cfg/manifest-resolved.gen-Ab12Cd.link"
