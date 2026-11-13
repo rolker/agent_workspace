@@ -1298,3 +1298,30 @@ Q1 "Fix all, then review once more (Recommended)"; Q2 "Refuse, like any modified
 Q1 as put to him: round 4 is past the three-round limit, so how should this go on? Round 4 was a fresh reviewer after the simplification (Local Review (Pre-Push) at `2994e766`): 2 must-fix, down from 4, Ship "recommended". Shown to him by their text: F1 `adapter.sh:720`, the origin check compares the URL after git's `insteadOf` rewriting, so a user with such a rule is refused on every run after the first and removing the clone cannot recover; F2 `adapter.sh:744`, a file marked assume-unchanged or skip-worktree hides a local edit from `git status`, so the clone reads as untouched and the edited manifest is resolved silently; F3 `adapter.sh:790-829`, a Ctrl-C between the fresh clone and writing the record leaves a half-made clone every later run refuses; F4 `adapter.sh:783-796`, without flock two first runs can race and one removes the other's clone; F5 `adapter.sh:918`, the path-source stamp is taken after the resolver ran; F6 new test code uses GNU-only `stat -c`, `sha256sum` and `sed -i`; F7 `test_ros2_colcon.sh:2697`, one assertion only guards a key from the withdrawn rule; F8 Gemini's review failed this round (a tool call denied in headless mode), Codex and the adversarial reviewer ran. The option he chose: a fix pass for F1 to F7 and his Q2 answer, then one more pre-push review of those fixes before he is asked to publish.
 
 Q2 as put to him: what should the adapter do when its clone holds a tag the remote does not have (F9, `adapter.sh:802`: the fetch's `--prune-tags` deletes local tags in a clone that reads as untouched, so work held only by a tag is lost silently)? His answer: a local tag not on the remote counts as a modified clone; setup and sync refuse and change nothing, with the usual message.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 18:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 3 of 3)
+
+**Branch**: feature/issue-436 at `f3633aec`
+**Addressed**: Local Review (Pre-Push) at `105f5763` (2026-11-13 17:33 -05:00), with the owner's Checkpoint answer on Q2 ("Refuse, like any modified clone")
+**Commits**: d550e90d, abee14e0, faa1a44f, 8ca65c84, ebec06cc, 10d997cd, f3633aec
+
+### Actions
+- [x] (must-fix 1) The origin check compares the stored `remote.origin.url` with `source` (no `insteadOf` rewriting); test test_mr_clone_with_insteadof_rule: setup then two syncs with a sandbox `url.<base>.insteadOf` rule all succeed, and 4 assertions fail without the fix, checked — d550e90d. Follow-up, not done here: the bootstrap route's same `remote get-url origin` pattern (`_rc_bootstrap_manifest`, adapter.sh near :540) predates this branch.
+- [x] (must-fix 2) A clone where `git ls-files -v` shows assume-unchanged (lowercase) or skip-worktree (`S`) is refused; refusal-test states `assume_unchanged` and `skip_worktree` with a hidden edit: refused by setup, sync and validate, clone byte for byte untouched, result unchanged; 26 assertions fail without the fix, checked — abee14e0
+- [x] (owner's decision, finding 9) Local tags: the adapter records the clone's tags (name and object, sorted) in `.git/ros2-colcon-adapter-tags` right after each successful fetch; before the next fetch the clone's tags must equal that record, else the clone is modified (a tag made, moved or deleted in the clone). Tags a fetch brings, moves or prunes are recorded again, so no false positive. Rule stated in the adapter header and the plan. Tests: refusal state `local_tag` (19 assertions fail without the fix, checked); a tag deleted on the remote is still seen as gone and the next sync is not refused; a tag moved on the remote is still followed — faa1a44f, f3633aec
+- [x] (suggestion 3) A clone this run created is removed on every exit until its record is written: errors, a failed record write and INT/TERM/HUP (`_rc_fetch_track_created`, `_rc_fetch_abort`, `_rc_fetch_done`); tests: TERM while a git stub holds the checkout (exit 143, clone gone) and a record path that cannot be written (exit 1, said, clone gone) — 8ca65c84
+- [x] (suggestion 4) The clone path is claimed with `mkdir` (no `-p`); a run whose mkdir fails refuses and removes nothing. Test without flock: a mkdir stub plays another run claiming the path between the check and the mkdir; this run exits 1 and the other run's file survives (fails on the old code, checked) — 8ca65c84
+- [x] (suggestion 5) The path source's `file-stamp` is taken before the resolve; test test_mr_path_source_edited_during_resolve (a resolver wrapper edits the file as it ends; validate reports it; fails on the old code, checked) — ebec06cc
+- [x] (suggestion 6) `mr_tree_hash` uses GNU-or-BSD stat (as `_rc_file_stamp`), `cksum` and plain sorted paths, and still catches an index refresh (checked by dropping `--no-optional-locks`); the manifest-route tests' bare `sed -i` became `mr_sed` (temporary file and mv). The `sed -i''` at test line 949 predates this branch and was left — 10d997cd
+- [x] (suggestion 7) The `source-state` absence assertion removed — 10d997cd
+
+Line counts: adapter.sh 2054 before, 2127 after (+73: the tag record and check, the flag check, the created-clone tracking and claim, the stored-URL read, header lines). test_ros2_colcon.sh 3714 before, 3846 after.
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1126 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 153 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
+- Not verified: the BSD branches (`stat -f` in `mr_stat`, `mv -h`, no flock) on a BSD/macOS host; a kill between the fetch and the tag record (an existing clone would then read as modified; same class as the checkout-to-record window the header names).
