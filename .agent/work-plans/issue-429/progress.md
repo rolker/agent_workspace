@@ -3165,3 +3165,49 @@ Before-fix check: the suite with these tests was run against the scripts at `e9f
 Workspace path: unchanged. The committed-copy read and `_gate_rec_not_committed` run only when `_GATE_PKG_ROLE` is owning. The workspace branch keeps `records_path` plus a working-copy read, and the workspace gate rows of `test_merge_pr_gate.sh` and all of `test_merge_pr.sh` pass with unchanged assertions, so verdicts and record behaviour are as on main, apart from what earlier rounds of this PR changed in the shared comment filter.
 
 Tests: `test_merge_pr_gate.sh` 197 passed, 0 failed; `test_merge_pr.sh` 150 passed, 0 failed; `test_package_issue_loop.sh` 220 passed, 0 failed. `pre-commit run --verbose --files $(git diff --name-only main...HEAD)` with no SKIP and the identity sourced: exit 0, "run_script_tests: all 37 suites passed in 626s (scoped run, 37 of 48)".
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 10:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad893fc5d06bb04f1, resume 3 of 3)
+**Verdict**: approved
+
+**PR**: #461 at `5be968e`
+**Depth**: Standard (reason: fix-round re-review of the two findings at `b36bbf8` and the owner's rule change, commits 76b5f5f7, 1e54eaed; whole-diff tier keeps cross-model)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified by running:
+- **Suites:** test_merge_pr_gate 197 passed, 0 failed; test_merge_pr 150 passed, 0 failed; test_package_issue_loop 220 passed, 0 failed.
+- **Both earlier findings are fixed.**
+  - pkg-20 read: ignored-approval and symlink-approval read the commit, do not pass, and leave the file as found.
+  - With a committed approval, the gate passes whatever the working copy holds: clean, unrelated-note, edited-changes-requested, deleted, symlink-replaced.
+  - The new test file run against `e9f72dfc`'s `merge_pr.sh` fails 16 rows. Among them are ignored-approval and symlink-approval (the two inputs), the other read rows, and the record rows. Some of those fail on the changed reason text, and the new rows test something on both counts.
+- **No working-copy reader is left.** The owning timeline is read only through `_gate_progress`, at :914 (the review check) and :1378 (the duplicate check), which is now the extracted blob. Every other use of the path writes (snapshot, record) or names a path (CI bookkeeping, `git diff`). `progress_read.py` does not depend on the file's path.
+- **Blob extraction:** `cat-file blob` reads raw, so no filters or EOL conversion apply. A symlink (120000) or submodule (160000) tree entry is a refusal with its mode. For a directory, `ls-tree` without `-d` lists its child, and `cat-file` then fails: still a refusal, with the reason "could not be read" (gemini). A failed read is a refusal, never a pass. A blob missing in a partial clone is fetched lazily from origin, which the gate's bounded fetch reached moments before.
+- **Temp folder:** none left after a normal exit, which was checked under a dedicated TMPDIR. Signals were checked by reading the traps (EXIT cleanup, exit 129/130/143); the run's TERM attempt did not show it either way. No other trap exists in the script or its sourced helpers. A failing `mktemp -d` aborts the run under `set -e`, like the script's other `mktemp` calls: never a pass.
+- **Window between the guard and the record:** `_gate_rec_not_committed` re-checks that HEAD equals `_GATE_OWN_SHA`.
+- **Record rule:** the input-table rows behave as stated (pkg-1/3/4/19/20/21/22), and the e2e "owning PR targeting main ... recorded in A and pushed" passes.
+- **Workspace path:** it reads the worktree file exactly as on main, through the `!= owning` branch, and only the reason label variable is new. Nothing in it reads a blob.
+- **Texts:** design.md, script_reference.md and run-issue SKILL.md state the one rule (the committed copy at origin's head; the record is committed only when the working copy is the committed one). Each design.md citation was checked against the final file (Table 1; 719-743, 744-805, 806-858, 890-897, 1293-1294, 869, 1170, 1460, 1473, 1133-1308). The file is 1003 lines.
+- **Lint:** shellcheck --severity=warning is clean.
+
+Outside reviewers:
+- gemini (agy): complete.
+  - It again rated the byte-identical same-minute record must-fix. My earlier answer stands: the code is unchanged in this round and the entry is committed.
+  - The workspace path not reading comments is the workspace path as on main, outside this PR's decided scope.
+  - `ls-tree` without `-d` changes only a reason's text.
+  - An ignored `.agent/` with no file present gives a refused record whose reason reads "a git failure such as a commit hook". The record still goes on the PR.
+- codex: complete.
+  - The mode change is the suggestion below.
+  - The push-failure `reset --soft` when another process commits during the push is in code this round did not change; out of scope.
+- Copilot: skipped (disabled for quota).
+- Claude adversarial subagent: a CRLF blob with `core.autocrlf=true` is reported "has unstaged changes" when git status is clean. The record goes on the PR with a wrong reason, which fails safe. It is folded into the suggestion.
+
+### Findings
+- [ ] (suggestion) `_gate_rec_not_committed` compares blob IDs only. It decides by content (`hash-object`) where git status also compares mode and applies its EOL rule.
+  - **Input A:** owning checkout equal to origin, committed `progress.md`, `chmod +x progress.md` uncommitted. Result: the record commit takes the mode change and pushes it (origin mode 100755).
+  - **Input B:** a staged `update-index --chmod=+x` only. Result: the commit puts 100644 back, so the staged change is lost, not left as found.
+  - **Input C** (subagent): a CRLF blob with `core.autocrlf=true`. Result: reported as changed though status is clean, so the record goes to a comment.
+  - No review state or text is affected; the gate's read is the blob.
+  - **Fix:** decide staged with `git diff --cached --quiet <sha> -- <rel>` and unstaged with `git diff --quiet -- <rel>`, and add a chmod row. — `.agent/scripts/merge_pr.sh:1035-1086`
