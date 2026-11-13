@@ -1,12 +1,22 @@
 #!/bin/bash
 # Script: .agent/scripts/check_branch_updates.sh
-# Purpose: Check if the default branch has new commits and provide merge/rebase recommendations
-# Usage: check_branch_updates.sh [--strict]
+# Purpose: Check if the default branch (or a named base branch) has new commits
+#          and provide merge/rebase recommendations
+# Usage: check_branch_updates.sh [--strict] [--base <branch>]
+#
+#   --strict         exit 1 when the branch is behind
+#   --base <branch>  compare with origin/<branch> instead of the default branch
+#                    (issue 429: a package issue's branch started from its
+#                    recorded base, which need not be the default branch).
+#                    With no --base the comparison is with the default
+#                    branch, as before; the pre-commit hook and
+#                    worktree_enter.sh call it that way.
 #
 # Exit codes:
-#   0 - No updates needed or on default branch
-#   1 - Script should never exit 1 in informational mode (reserved for strict mode)
-#   2 - Error occurred
+#   0 - No updates needed or on the compared branch (also when origin cannot
+#       be fetched: a warning is printed, nothing is blocked)
+#   1 - Strict mode only: the branch is behind
+#   2 - Error occurred (also an unknown option or a missing --base value)
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced."
@@ -22,11 +32,47 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+usage() {
+    echo "Usage: $0 [--strict] [--base <branch>]" >&2
+}
+
 # Parse arguments
 STRICT_MODE=false
-if [[ "$1" == "--strict" ]]; then
-    STRICT_MODE=true
+BASE_BRANCH=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --strict) STRICT_MODE=true; shift ;;
+        --base)
+            if [[ $# -lt 2 || -z "$2" ]]; then
+                echo -e "${RED}✗ Error:${NC} --base needs a branch name" >&2
+                usage
+                exit 2
+            fi
+            BASE_BRANCH="$2"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            echo -e "${RED}✗ Error:${NC} unknown argument '$1'" >&2
+            usage
+            exit 2 ;;
+    esac
+done
+if [[ -n "$BASE_BRANCH" ]] && ! git check-ref-format --branch "$BASE_BRANCH" >/dev/null 2>&1; then
+    echo -e "${RED}✗ Error:${NC} --base '$BASE_BRANCH' is not a valid branch name" >&2
+    exit 2
 fi
+
+# Every call to origin is bounded: no credential prompt, and at most
+# CHECK_BRANCH_UPDATES_TIMEOUT seconds (default 60) when `timeout` exists.
+# A call that times out is a failed call (the fetch warning below).
+bounded_git() {
+    local limit="${CHECK_BRANCH_UPDATES_TIMEOUT:-60}"
+    [[ "$limit" =~ ^[1-9][0-9]*$ ]] || limit=60
+    if command -v timeout >/dev/null 2>&1; then
+        GIT_TERMINAL_PROMPT=0 timeout -k 5 "$limit" git "$@"
+    else
+        GIT_TERMINAL_PROMPT=0 git "$@"
+    fi
+}
 
 # Get current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD) || {
@@ -34,36 +80,44 @@ CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD) || {
     exit 2
 }
 
-# Detect default branch
-REMOTE_HEAD=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo "")
-if [ -n "$REMOTE_HEAD" ]; then
-    DEFAULT_BRANCH=${REMOTE_HEAD#refs/remotes/origin/}
+# The branch compared with: --base when given, else the default branch.
+# DEFAULT_BRANCH keeps its name for the rest of the script; KIND names it in
+# the messages ("default branch" or "base branch").
+if [[ -n "$BASE_BRANCH" ]]; then
+    DEFAULT_BRANCH="$BASE_BRANCH"
+    KIND="base branch"
 else
-    # Fallback: query remote (slower)
-    DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2 | xargs || echo "main")
+    KIND="default branch"
+    REMOTE_HEAD=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || echo "")
+    if [ -n "$REMOTE_HEAD" ]; then
+        DEFAULT_BRANCH=${REMOTE_HEAD#refs/remotes/origin/}
+    else
+        # Fallback: query remote (slower)
+        DEFAULT_BRANCH=$(bounded_git remote show origin 2>/dev/null | grep "HEAD branch" | cut -d: -f2 | xargs || echo "main")
+    fi
 fi
 
-# If we're on the default branch, no need to check
+# If we're on the compared branch, no need to check
 if [ "$CURRENT_BRANCH" == "$DEFAULT_BRANCH" ]; then
-    echo -e "${GREEN}✓${NC} On default branch ($DEFAULT_BRANCH). No update check needed."
+    echo -e "${GREEN}✓${NC} On $KIND ($DEFAULT_BRANCH). No update check needed."
     exit 0
 fi
 
 # Fetch latest from origin (quietly)
 # For shallow clones, we may need to unshallow or fetch with depth
-echo "Checking for updates in default branch ($DEFAULT_BRANCH)..."
+echo "Checking for updates in $KIND ($DEFAULT_BRANCH)..."
 
 # Check if this is a shallow clone
 IS_SHALLOW=$(git rev-parse --is-shallow-repository 2>/dev/null || echo "false")
 
 if [ "$IS_SHALLOW" == "true" ]; then
     # For shallow clones, fetch with depth to get enough history
-    if ! git fetch origin "$DEFAULT_BRANCH" --depth=50 --quiet 2>/dev/null; then
+    if ! bounded_git fetch origin "$DEFAULT_BRANCH" --depth=50 --quiet 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Warning: Could not fetch from remote${NC}"
         exit 0  # Don't block on fetch failures
     fi
 else
-    if ! git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null; then
+    if ! bounded_git fetch origin "$DEFAULT_BRANCH" --quiet 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Warning: Could not fetch from remote${NC}"
         exit 0  # Don't block on fetch failures
     fi
@@ -95,10 +149,17 @@ fi
 
 # Branch is behind
 echo ""
-echo -e "${YELLOW}⚠️  Default branch has new commits!${NC}"
-echo ""
-echo -e "  Current branch:  ${BLUE}$CURRENT_BRANCH${NC}"
-echo -e "  Default branch:  ${BLUE}$DEFAULT_BRANCH${NC}"
+if [[ -n "$BASE_BRANCH" ]]; then
+    echo -e "${YELLOW}⚠️  Base branch has new commits!${NC}"
+    echo ""
+    echo -e "  Current branch:  ${BLUE}$CURRENT_BRANCH${NC}"
+    echo -e "  Base branch:     ${BLUE}origin/$DEFAULT_BRANCH${NC}"
+else
+    echo -e "${YELLOW}⚠️  Default branch has new commits!${NC}"
+    echo ""
+    echo -e "  Current branch:  ${BLUE}$CURRENT_BRANCH${NC}"
+    echo -e "  Default branch:  ${BLUE}$DEFAULT_BRANCH${NC}"
+fi
 echo -e "  Commits behind:  ${YELLOW}$COMMITS_BEHIND${NC}"
 echo -e "  Commits ahead:   ${GREEN}$COMMITS_AHEAD${NC}"
 echo ""
