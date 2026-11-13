@@ -21,46 +21,85 @@ Atomic commits, after rebasing on 461 once it merges:
 
 1. **One boundary definition** — new `.agent/scripts/pr_start.py`,
    `pr_start(entries)`, one pass: a `Decision: merge` checkpoint (After `merge`
-   or `findings`) arms; the armed state is disarmed by a `## Merge (...)` record
-   or by a later checkpoint with After `merge`, `findings` or `merge-refused` and
-   a non-merge answer; the first start entry while armed (`## Plan Authored`, or
-   an `## Implementation` with `**Branch**` and no `**Addressed**`) is the
-   boundary; a restart checkpoint sets the start and clears the armed state.
-   PR-correlated entries do not disarm. It relies on ADR-0013's correlation
-   table (`**Branch**` only "if no PR exists yet"). Both inline `-c` scripts
-   get the script directory through the environment and a plain
+   or `findings`) arms; a later checkpoint with After `merge`, `findings` or
+   `merge-refused` and a non-merge answer disarms; the first start entry while
+   armed (`## Plan Authored`, or an `## Implementation` with `**Branch**` and no
+   `**Addressed**`) is the boundary; a restart checkpoint sets the start and
+   clears the armed state. A `## Merge (...)` record neither arms nor disarms
+   (`merge_pr.sh` writes it at the gate, before the merge, whether or not it
+   lands). PR-correlated entries do not disarm. It relies on ADR-0013's
+   correlation table (`**Branch**` only "if no PR exists yet"). Both inline `-c`
+   scripts get the script directory through the environment and a plain
    `from pr_start import pr_start` (so `suites_for_files.sh` maps it);
    `restart_start()` and the `cmd_round` loop go; `round_count()` and
-   `skill_for()` use the result. Tests: `pr_start` directly; `next` and `round`
-   on synthetic timelines for a refused merge, a merge-from-main
-   `Implementation` while armed (no false boundary), restart plus merge, a hand
-   merge with no merge checkpoint (no boundary: the known limitation), and
-   fixtures modelled on 429 at 461's head (four pull requests) and the real
-   332 shape; a handoff test that part 2's first pre-push review task line has
-   no "no cross-model reviewers".
-2. **Post-merge route** — a `next` row: newest entry is a merge-decision
-   checkpoint and `--pr none` answers `checkpoint:plan` (`proceed` goes to
-   `implement`, `revise` to `plan-task`, both in the table). A refused or failed
-   merge leaves its PR open (`--pr open`), so `merge` and `merge-refused` are
-   unchanged. Tests for each.
+   `skill_for()` use it. Tests: see "Tests".
+2. **Post-merge route** — a `next` row, before row 23 and the `merge` rows: armed
+   at the end of the timeline and `--pr none` answers `checkpoint:plan`
+   (`proceed` to `implement`, `revise` to `plan-task`). It keys on armed state, so
+   a newest `## Merge (...)` record after a landed merge raises it too. Row 23
+   (newest Merge record, `--pr open`) is unchanged: with the pull request still
+   open it keeps answering `checkpoint:merge-refused`. `--pr none` with a Merge
+   record and no armed state (a disarmed refusal) also stays row 23. `merge`
+   and `merge-refused` answers are unchanged. Tests for each, both Merge-record
+   cases included.
 3. **`findings` and `check` read a post-publish `## Local Review`** (own commit,
    the two stay in step), with one shared predicate for the "No issues found.
-   LGTM." placeholder of an approved review in `pr_start.py`,
-   used by `findings` and `sources`; tests.
+   LGTM." placeholder of an approved review in `pr_start.py`, used by `findings`
+   and `sources`; tests.
 4. **Stale boxes** — `cmd_sources` reads the whole timeline and slices from
    `pr_start`; one slice, droppable if review finds it needs more. Test.
-5. **Docs and run-issue** — step 2 gains a general step before the PR probe: if
-   the issue is closed, the run ends (`done`), so a finished one-PR issue never
-   resumes into a plan. What closes it: a last pull request with `Closes #N`
-   merged to the default branch; a pull request whose base is not the default
-   branch never closes it, so the host tells the owner at the merge hand-back
-   and the owner closes it; an issue delivered in parts is closed by the last
-   part's `Closes #N` (earlier ones say `Part of #N`). The loop never closes an
-   issue itself. A new multi-pull-request section: `Part of #N`, worktree and
-   branch recreated after each merge, the hand-merge remedy (the host records the
-   owner's merge as a `merge` checkpoint, `Decided-by: owner`, before the next
-   part, or a `restart`). Also `docs/design.md`, `review_loop_lifecycle.md`,
-   `script_reference.md`, script headers.
+5. **Docs and run-issue** (`SKILL.md` step 2 text; `dispatch_phase.sh` row 1 is
+   unchanged and is reached only by an explicit `--pr merged`):
+   - A general step before the PR probe: ask the issue's state (`gh issue view
+     <N>`; for `owner/repo#N`, `-R owner/repo`). Closed ends the run (`done`). A
+     `gh` failure or offline stops the run with the error, never read as open or
+     closed.
+   - What closes an issue: a last pull request with `Closes #N` merged to the
+     default branch; a pull request into a non-default base never does, so the
+     host tells the owner at the merge hand-back and the owner closes it; an issue
+     delivered in parts is closed by the last part (earlier ones say `Part of
+     #N`). The loop never closes an issue itself.
+   - Probe on an open issue: a merged pull request is an earlier part. Take an
+     open or draft pull request on the branch if there is one, otherwise `none`.
+     If the old worktree survived the merge (local HEAD equals a merged pull
+     request's `headRefOid`), stop and say so; do not route. Tested by a
+     skill-text check where one exists and by the `next` tests; the probe is host
+     prose, not script code.
+   - The post-merge `checkpoint:plan` dialog shows the pull request just merged,
+     that the issue is still open and why it can be (a non-default base, or a
+     `Part of` body by mistake: then answer `stop` and close), the parts delivered,
+     and the newest Plan Review's plan commit against the current one. `proceed` is
+     offered only when `plan.md` is unchanged since that review
+     (`review_progress.sh plan-sha`) and the plan names a part not yet delivered;
+     otherwise answer `revise`.
+   - A multi-pull-request section: `Part of #N`, worktree and branch recreated
+     after each merge, the hand-merge remedy (the host records the owner's merge
+     as a `merge` checkpoint, `Decided-by: owner`, before the next part, or a
+     `restart`).
+   - `docs/design.md`, `review_loop_lifecycle.md`, `script_reference.md`, script
+     headers.
+
+## Tests
+
+`pr_start` directly, then `next` and `round` on synthetic timelines, plus a handoff
+test that part 2's first pre-push `review-code` task line has no "no cross-model
+reviewers". Expected results, from a throwaway replay of the final rule over real
+timelines (0-based entry index) and synthetic sequences:
+
+| Timeline | Boundary (start) | Armed at end |
+|---|---|---|
+| 429 on main (three pull requests; the fourth fixture is 461's head) | 25, 50 | yes |
+| 332 (four pull requests, one hand-merged) | 67, 81 (the part after PR 403 has none) | yes |
+| 451, 455, 354, 307 (single pull request) | none | yes |
+| merge, stop, merge, Plan Authored | the Plan Authored | no |
+| merge, Merge record, landed, Plan Authored (was wrong) | the Plan Authored | no |
+| merge, record, merge-refused/retriage, review, merge, Plan Authored | the Plan Authored | no |
+| merge, record, merge-refused/address, Branch fix | none | no |
+| merge, refusal, `address` checkpoint, Branch Implementation (merge-from-main) | none | no |
+| merge, Branch Implementation, no checkpoint between (the other order) | the Implementation | no |
+| merge, PR-correlated fix, merge, Plan Authored | the Plan Authored | no |
+| merge, restart, Plan Authored, merge, Plan Authored | the last Plan Authored | no |
+| hand merge: review, Branch Implementation, no merge checkpoint | none (known limitation) | no |
 
 ## Files to Change
 
@@ -128,31 +167,34 @@ Single pull request, five commits; 3 and 4 can be split off.
 **What changes in the design** (`docs/design.md#review-loop-and-timeline`): the
 "next step is routed on the newest entry" bullet and the table rows for
 `review-code` and `merge`. Review rounds are counted per pull request instead of
-per issue, and a merge on an open issue now has a defined next step. Today the
+per issue, and a merge on an open issue gets a defined next step. Today the
 design assumes one pull request per issue.
 
-**Rule 1, where a pull request ends.** After you answer `merge`, the next piece of
-new work (a new plan, or the first implementation on a fresh branch) starts the
-next pull request; reviews before that point stop counting toward the three-round
-limit. A merge that was refused or failed does not count: fix and re-merge
-entries do not start a new one. Limitation: a merge done by hand with no merge
-answer recorded leaves no boundary; the host then records your merge as a
-`merge` answer (or a `restart`) before the next part.
-Rejected: "the merge answer is not the newest entry" (a refusal adds entries
-after it); the pull request number changing (it only changes after the next
-publish, too late); asking GitHub (the router stays offline); a new "merged"
-entry (needs a new entry type and a step a crash can skip).
+**Rule 1, where a pull request ends.** After you answer `merge`, the next new
+work (a new plan, or the first implementation on a fresh branch) starts the next
+pull request; earlier reviews stop counting toward the three-round limit. A
+refused or failed merge does not count, and the merge gate's own record does
+nothing either way. Limitation: a merge done by hand with no `merge` answer
+recorded leaves no boundary; the host then records it (or a `restart`) before the
+next part. Rejected in a line: "the merge answer is not the newest entry",
+a pull request number change, asking GitHub, or a new "merged" entry each fail on
+refusals, timing, offline use or a new entry type.
 
-**Rule 2, after a merge with the issue still open.** The router cannot know a part
-remains, so before anything else the run ends if the issue is closed (a last pull
-request saying `Closes #N`, merged to the default branch). If it is open and
-no pull request exists, the router asks the plan checkpoint: `proceed` goes to
-implement when the plan already covers the next part, `revise` plans it.
-Where nothing closes the issue (a pull request into a non-default base), the host
-tells you at the merge and you close it; the loop never closes an issue itself.
+**Rule 2, after a merge.** A merged pull request on an open issue is treated as an
+earlier part, not as the end. The run first asks GitHub whether the issue is
+closed and ends if so; if it cannot read the state it stops, never guessing. If
+the issue is open and no pull request is open, the plan checkpoint is asked:
+`revise` plans the next part; `proceed` goes straight to implementing and is
+offered only when the plan is unchanged since its last review and names a part
+not yet delivered. The dialog shows the pull request just merged, why the issue
+is still open, the parts delivered, and the reviewed plan's commit against the
+current one. Where nothing closes the issue (a pull request into a non-default
+base), the host tells you at the merge and you close it; the loop never closes
+an issue itself.
 
-**How hard to undo:** easy; one helper, one row and docs, no entry format
-change; old timelines read the same.
+**How hard to undo:** easy; one helper, one row, a run-issue step and docs; no
+entry format changes. Single-pull-request timelines read the same; timelines of
+issues with several pull requests count fewer rounds, which is the point.
 
 **Recommendation:** adopt both rules.
 
