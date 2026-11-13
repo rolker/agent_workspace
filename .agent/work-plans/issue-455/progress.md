@@ -426,3 +426,20 @@ The open finding was checked against the code. `ident_email` returns "" when `gi
 **Decision**: address
 
 Fix in pull request 457: when git var fails (user.useConfigOnly=true with no user.name), the hook prints git's own error text, not "(not set)" for the email; with a test.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-12 19:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8ac6eac32c162da8, resume 2 of 3)
+
+**PR**: #457 at `f61c1834`
+**Addressed**: Integrated Review at `6fc03b60` (2026-11-12 18:54 -05:00)
+**Commits**: f61c1834
+
+### Actions
+- [x] (suggestion) When `git var` fails, the hook now reports git's own error instead of "(not set)". Reproduced first in a sandbox repo with `user.email` set, `user.useConfigOnly=true` and no `user.name`: the hook printed "Author email: (not set) / Committer email: (not set)", and `git var` said `fatal: no name was given and auto-detection is disabled`. `ident_email` now returns `(email, error)`, where the error is git's `fatal:` line. When either ident is unresolved, the hook prints that line for the author and the committer, plus a `user.name` hint, and skips the derived-command advice. Test (`test_commit_identity.sh`): with `useConfigOnly` and no `user.name`, the hook output names `git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT` and "no name was given", mentions `user.name`, and contains neither "not set" nor the derived command. — `.agent/scripts/identity_base.py`, `.agent/hooks/check-commit-identity.py`
+
+### Checks
+- `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP: exit 0, including the `.agent/scripts/tests/` suite hook (Passed).
+- `test_commit_identity.sh`: 93 passed, 0 failed.
