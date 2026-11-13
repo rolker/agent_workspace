@@ -136,11 +136,26 @@ EOF
     chmod +x "$sb/stubbin/gh"
 }
 
+# <base> is the PR's baseRefName (default main, the branch every sandbox
+# origin has); an empty <base> leaves the field out, as a PR whose base
+# could not be read.
 write_pr_view_fixture() {
-    local sb="$1" repo="$2" num="$3" branch="$4" title="${5:-Test PR}"
+    local sb="$1" repo="$2" num="$3" branch="$4" title="${5:-Test PR}" base="${6-main}"
     mkdir -p "$sb/gh_fixtures"
-    printf '{"state":"OPEN","headRefName":"%s","title":"%s"}\n' "$branch" "$title" \
-        > "$sb/gh_fixtures/pr_view_$(printf '%s' "$repo" | tr '/' '_')_${num}.json"
+    if [[ -n "$base" ]]; then
+        printf '{"state":"OPEN","headRefName":"%s","title":"%s","baseRefName":"%s"}\n' "$branch" "$title" "$base" \
+            > "$sb/gh_fixtures/pr_view_$(printf '%s' "$repo" | tr '/' '_')_${num}.json"
+    else
+        printf '{"state":"OPEN","headRefName":"%s","title":"%s"}\n' "$branch" "$title" \
+            > "$sb/gh_fixtures/pr_view_$(printf '%s' "$repo" | tr '/' '_')_${num}.json"
+    fi
+}
+
+# Append base=<b> to a manifest's header, as worktree_create.sh --base
+# writes it (issue 429).
+set_manifest_base() {  # <worktree> <base>
+    local m="$1/.worktree-repos"
+    { printf '%s base=%s\n' "$(head -n1 "$m")" "$2"; tail -n +2 "$m"; } > "$m.new" && mv "$m.new" "$m"
 }
 
 write_pr_list_fixture() {
@@ -414,10 +429,129 @@ test_own_repo_sync_failure_is_reported() {
 
     out="$(run_merge_pr "$sb" --pr owner/pkg_a#557 --no-wait --no-roadmap-update 2>&1)" || rc=$?
     assert_eq "exit 0 (merge itself succeeded)" "0" "$rc"
+    # The checkout is clean and on the PR's base (main), so the pull is due
+    # (issue 429's rule) and its failure still counts.
+    assert_eq "the checkout was on the base, so a pull was attempted (not fetch-only)" "false" \
+        "$(grep -q 'fetched only' <<< "$out" && echo true || echo false)"
     assert_contains "sync failure is reported" "Could not fast-forward owner/pkg_a" "$out"
     assert_contains "git's own error is surfaced" "fast-forward" "$out"
     assert_contains "final summary marks cleanup incomplete" "cleanup incomplete" "$out"
     assert_eq "worktree still removed (sync failure does not block removal)" "false" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
+# The owning repository's own checkout is fast-forwarded only when it is
+# clean and on the PR's base; anywhere else it is fetched, said, and not
+# counted as an incomplete cleanup (issue 429). Origin's main is one commit
+# ahead in every case.
+_pull_rule_case() {  # <num> <setup: base|other|dirty|detached|nobase> ; sets OUT, OA, AHEAD, BEFORE_OTHER
+    local num="$1" setup="$2" sb wt scratch base=main
+    sb="$(make_merge_sandbox)"
+    OA="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-$num" \
+        p11 "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
+    set_manifest_base "$wt" main
+    scratch="$sb/scratch_clone"
+    git clone --quiet "$(git -C "$OA" remote get-url origin)" "$scratch"
+    git -C "$scratch" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "landed on origin"
+    git -C "$scratch" push --quiet origin main
+    AHEAD="$(git -C "$scratch" rev-parse HEAD)"
+    case "$setup" in
+        other) git -C "$OA" checkout --quiet -b other; BEFORE_OTHER="$(git -C "$OA" rev-parse HEAD)" ;;
+        dirty) echo dirty > "$OA/dirty.txt" ;;
+        detached) git -C "$OA" checkout --quiet --detach ;;
+        nobase) base="" ;;
+    esac
+    write_pr_view_fixture "$sb" "owner/pkg_a" "$num" "feature/issue-$num" "Test PR" "$base"
+    OUT="$(run_merge_pr "$sb" --pr "owner/pkg_a#$num" --no-wait --no-roadmap-update 2>&1)"
+    RC=$?
+}
+
+test_own_repo_pulls_only_on_the_base() {
+    echo "TEST: the merged repository's checkout is pulled only when clean and on the PR's base; otherwise fetched only (issue 429)"
+    _pull_rule_case 571 base
+    assert_eq "on the base, clean: exit 0" "0" "$RC"
+    assert_contains "on the base, clean: synced" "owner/pkg_a synced (main fast-forwarded" "$OUT"
+    assert_eq "on the base, clean: main fast-forwarded to origin's" "$AHEAD" "$(git -C "$OA" rev-parse main)"
+    assert_contains "on the base, clean: the banner says synced" "merged, cleaned up, and synced" "$OUT"
+
+    local setup why
+    for setup in "other|on other, not the base main" "dirty|not clean" \
+                 "detached|detached HEAD, not the base main" \
+                 "nobase|no base known (the PR's base branch could not be read)"; do
+        why="${setup#*|}"; setup="${setup%%|*}"
+        _pull_rule_case 572 "$setup"
+        assert_eq "$setup: exit 0" "0" "$RC"
+        assert_contains "$setup: fetched only, saying why" "fetched only: $why" "$OUT"
+        assert_eq "$setup: not marked incomplete" "false" "$(grep -q 'cleanup incomplete' <<< "$OUT" && echo true || echo false)"
+        assert_contains "$setup: the banner says what happened" \
+            "merged and cleaned up; owner/pkg_a's checkout was fetched only, not fast-forwarded ($why)" "$OUT"
+        assert_eq "$setup: the banner does not claim synced" "false" \
+            "$(grep -q 'cleaned up, and synced' <<< "$OUT" && echo true || echo false)"
+        assert_eq "$setup: origin/main fetched" "$AHEAD" "$(git -C "$OA" rev-parse refs/remotes/origin/main)"
+        assert_eq "$setup: local main not moved" "false" "$([[ "$(git -C "$OA" rev-parse main)" == "$AHEAD" ]] && echo true || echo false)"
+        if [[ "$setup" == other ]]; then
+            assert_eq "other: the other branch not moved" "$BEFORE_OTHER" "$(git -C "$OA" rev-parse other)"
+        fi
+    done
+}
+
+test_package_pr_base_cross_check() {
+    echo "TEST: the owning PR's base is compared with the worktree's recorded base; a sibling's is not (issue 429)"
+    local sb out rc=0 origin_a origin_b wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-573" \
+        p11 "owner/pkg_a#573" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-573" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-573")"
+    set_manifest_base "$wt" pinned
+    write_pr_view_fixture "$sb" "owner/pkg_a" 573 "feature/issue-573" "Test PR" main
+    write_pr_list_fixture "$sb" "owner/pkg_b" "feature/pkg_b-issue-573" 1
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#573 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "mismatch: exit 0 (package PRs are report-only)" "0" "$rc"
+    assert_contains "mismatch: the reason names both" "targets main; this worktree's recorded base is pinned" "$out"
+
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-574" \
+        p11 "owner/pkg_a#574" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-574")"
+    set_manifest_base "$wt" main
+    write_pr_view_fixture "$sb" "owner/pkg_a" 574 "feature/issue-574" "Test PR" main
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#574 --no-wait --no-roadmap-update 2>&1)"
+    assert_eq "match: no base reason" "false" "$(grep -q "recorded base" <<< "$out" && echo true || echo false)"
+
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-575" \
+        p11 "owner/pkg_a#575" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-575")"
+    set_manifest_base "$wt" pinned
+    write_pr_view_fixture "$sb" "owner/pkg_a" 575 "feature/issue-575" "Test PR" ""
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#575 --no-wait --no-roadmap-update 2>&1)"
+    assert_contains "unreadable base: said, not passed in silence" \
+        "the PR's base branch could not be read, so it was not compared with this worktree's recorded base pinned" "$out"
+
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-576" \
+        p11 "owner/pkg_a#576" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-576" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-576")"
+    set_manifest_base "$wt" pinned
+    write_pr_view_fixture "$sb" "owner/pkg_b" 576 "feature/pkg_b-issue-576" "Test PR" main
+    write_pr_list_fixture "$sb" "owner/pkg_a" "feature/issue-576" 1
+    out="$(run_merge_pr "$sb" --pr owner/pkg_b#576 --no-wait --no-roadmap-update 2>&1)"
+    assert_eq "a sibling repository's PR: not compared with the owning entry's base" "false" \
+        "$(grep -q "recorded base" <<< "$out" && echo true || echo false)"
+
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-577" \
+        p11 "owner/pkg_a#577" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-577" >/dev/null
+    write_pr_view_fixture "$sb" "owner/pkg_a" 577 "feature/issue-577" "Test PR" other
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#577 --no-wait --no-roadmap-update 2>&1)"
+    assert_eq "no recorded base: silent" "false" "$(grep -q "recorded base" <<< "$out" && echo true || echo false)"
 }
 
 test_package_repo_without_worktree_never_uses_legacy_cleanup() {
@@ -739,6 +873,8 @@ test_conflicting_repo_and_qualified_ref_rejected
 test_sibling_check_failure_fails_closed
 test_sibling_without_remote_fails_closed
 test_own_repo_sync_failure_is_reported
+test_own_repo_pulls_only_on_the_base
+test_package_pr_base_cross_check
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
 test_same_repo_under_two_instances_requires_project

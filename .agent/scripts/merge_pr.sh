@@ -472,6 +472,10 @@ echo "========================================"
 PKG_WT_DIR=""
 PKG_WT_PROJECT=""
 PKG_WT_ISSUE=""
+# The header's base= (issue 429): the base the owning repository's branch
+# started from and its pull request should target. Empty for a worktree
+# that records none.
+PKG_WT_BASE=""
 declare -a _PKG_MATCHES=()
 if [[ -n "$PR_REPO_SLUG" ]]; then
     declare -a _PKG_MANIFESTS=()
@@ -504,6 +508,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             _header="$(head -n1 "$_manifest")"
             _hdr_project="$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$_header")"
             _hdr_issue="$(sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$_header")"
+            _hdr_base="$(sed -n 's/.* base=\([^ ]*\).*/\1/p' <<< "$_header")"
             # --project narrows to one registered instance; otherwise collect
             # every match — the same repo+branch can be worktreed under more
             # than one ros2_colcon instance (each has its own checkout), and
@@ -518,21 +523,29 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
                     continue
                 fi
             fi
-            _PKG_MATCHES+=("$_wtdir"$'\t'"$_hdr_project"$'\t'"$_hdr_issue")
+            # One tab-separated record per match, read back below with a
+            # tab IFS, which collapses empty fields: an empty value is
+            # written as "-" (no project, issue or branch is named "-") and
+            # mapped back on read, so a later field never shifts left.
+            _PKG_MATCHES+=("$_wtdir"$'\t'"${_hdr_project:--}"$'\t'"${_hdr_issue:--}"$'\t'"${_hdr_base:--}")
         fi
     done
     if [[ "${#_PKG_MATCHES[@]}" -gt 1 ]]; then
         echo "ERROR: $PR_REPO_SLUG branch '$PR_BRANCH' is worktreed under more than one project:" >&2
         for _pm in "${_PKG_MATCHES[@]}"; do
-            IFS=$'\t' read -r _pm_dir _pm_project _pm_issue <<< "$_pm"
+            IFS=$'\t' read -r _pm_dir _pm_project _pm_issue _pm_base <<< "$_pm"
+            [[ "$_pm_project" == "-" ]] && _pm_project=""
             echo "  --project $_pm_project   ($_pm_dir)" >&2
         done
         echo "  Pass --project <name> to say which one this merge cleans up. Nothing was merged." >&2
         exit 2
     elif [[ "${#_PKG_MATCHES[@]}" -eq 1 ]]; then
-        IFS=$'\t' read -r PKG_WT_DIR PKG_WT_PROJECT PKG_WT_ISSUE <<< "${_PKG_MATCHES[0]}"
+        IFS=$'\t' read -r PKG_WT_DIR PKG_WT_PROJECT PKG_WT_ISSUE PKG_WT_BASE <<< "${_PKG_MATCHES[0]}"
+        [[ "$PKG_WT_PROJECT" == "-" ]] && PKG_WT_PROJECT=""
+        [[ "$PKG_WT_ISSUE" == "-" ]] && PKG_WT_ISSUE=""
+        [[ "$PKG_WT_BASE" == "-" ]] && PKG_WT_BASE=""
     fi
-    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header _hdr_project _hdr_issue _pm _pm_dir _pm_project _pm_issue
+    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header _hdr_project _hdr_issue _hdr_base _pm _pm_dir _pm_project _pm_issue _pm_base
 fi
 IS_PACKAGE_PR=false
 [[ -n "$PKG_WT_DIR" ]] && IS_PACKAGE_PR=true
@@ -542,9 +555,15 @@ IS_PACKAGE_PR=false
 # correlates with, and the SHA CI is already considered verified for.
 # Read once here and reuse it for the Step 1.5 gate's own headRefOid /
 # comments / body fetch below, instead of a second `gh pr view` call.
-_head_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body 2>/dev/null || echo "")
+_head_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body,baseRefName 2>/dev/null || echo "")
 HEAD_REVIEWED=""
 [[ -n "$_head_json" ]] && HEAD_REVIEWED=$(jq -r '.headRefOid // empty' <<<"$_head_json" 2>/dev/null || echo "")
+# The branch the PR targets, from the same read (issue 429): the gate
+# compares it with a package worktree's recorded base, and Step 4 pulls the
+# owning repository's own checkout only when it sits on it. Empty when it
+# could not be read.
+PR_BASE_REF=""
+[[ -n "$_head_json" ]] && PR_BASE_REF=$(jq -r '.baseRefName // empty' <<<"$_head_json" 2>/dev/null || echo "")
 
 # Paths this run's own steps commit, so the Step 3 CI-target decision can
 # tell "the head moved because this script updated a document it owns" from
@@ -817,6 +836,19 @@ fi
 # or in any comment.
 if [[ -z "$_gate_json" ]] || ! jq -e '[(.body // ""), (.comments[]? | .body // "")] | map(select(test("(^|\\n)## Decision summary"))) | length > 0' <<<"$_gate_json" >/dev/null 2>&1; then
     _gate_reasons+=("no \"## Decision summary\" heading in the PR body or a PR comment")
+fi
+# A package PR's base (issue 429): the owning repository's PR (on
+# feature/issue-<N>) must target the base its worktree recorded, the branch
+# its feature branch started from. base= describes the owning entry only, so
+# a sibling repository's PR (feature/<repo>-issue-<N>) is not compared, and a
+# worktree that records no base says nothing. Report-only, like every
+# package reason.
+if [[ -n "$PKG_WT_BASE" && "$PR_BRANCH" == "feature/issue-${ISSUE_NUM}" ]]; then
+    if [[ -z "$PR_BASE_REF" ]]; then
+        _gate_reasons+=("the PR's base branch could not be read, so it was not compared with this worktree's recorded base $(_bk_display "$PKG_WT_BASE")")
+    elif [[ "$PR_BASE_REF" != "$PKG_WT_BASE" ]]; then
+        _gate_reasons+=("targets $(_bk_display "$PR_BASE_REF"); this worktree's recorded base is $(_bk_display "$PKG_WT_BASE")")
+    fi
 fi
 
 _gate_record() {  # <entry type> <one-line why>
@@ -1622,14 +1654,47 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             _CLEANUP_INCOMPLETE=true
         fi
         unset _lsr_rc
-        if _git_err="$(git -C "$_OWN_ORIGIN" pull --ff-only 2>&1)"; then
-            echo "  ✅ $PR_REPO_SLUG synced"
-        else
-            echo "  ⚠️  Could not fast-forward $PR_REPO_SLUG's checkout at $_OWN_ORIGIN:" >&2
-            echo "     ${_git_err:-no output}" >&2
-            _CLEANUP_INCOMPLETE=true
+        # Fast-forward the owning repository's own checkout (the layer's
+        # src/<repo> the worktree was made from) only when it is clean and
+        # on the branch this PR merged into; anywhere else a pull would
+        # move some other branch, or fail on a detached HEAD (a pin at a
+        # tag or a commit) or a dirty tree, for no problem of the merge's.
+        # There it fetches only and says why (issue 429), the rule
+        # adapter_sync follows. A failed pull or fetch marks the cleanup
+        # incomplete. The workspace and project sync (Step 6) is unchanged.
+        _own_branch="$(git -C "$_OWN_ORIGIN" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+        _own_dirty="$(git -C "$_OWN_ORIGIN" status --porcelain 2>/dev/null || echo "status failed")"
+        _OWN_FETCH_ONLY=""
+        if [[ -z "$PR_BASE_REF" ]]; then
+            _OWN_FETCH_ONLY="no base known (the PR's base branch could not be read)"
+        elif [[ -z "$_own_branch" ]]; then
+            _OWN_FETCH_ONLY="detached HEAD, not the base $PR_BASE_REF"
+        elif [[ "$_own_branch" != "$PR_BASE_REF" ]]; then
+            _OWN_FETCH_ONLY="on $_own_branch, not the base $PR_BASE_REF"
+        elif [[ -n "$_own_dirty" ]]; then
+            _OWN_FETCH_ONLY="not clean"
         fi
-        unset _git_err
+        if [[ -z "$_OWN_FETCH_ONLY" ]]; then
+            if _git_err="$(wt_bounded_git -C "$_OWN_ORIGIN" pull --ff-only 2>&1)"; then
+                echo "  ✅ $PR_REPO_SLUG synced ($PR_BASE_REF fast-forwarded at $_OWN_ORIGIN)"
+            else
+                echo "  ⚠️  Could not fast-forward $PR_REPO_SLUG's checkout at $_OWN_ORIGIN:" >&2
+                echo "     ${_git_err:-no output}" >&2
+                _CLEANUP_INCOMPLETE=true
+            fi
+        else
+            _own_frc=0
+            _git_err="$(wt_bounded_git -C "$_OWN_ORIGIN" fetch --quiet origin 2>&1)" || _own_frc=$?
+            if [[ "$_own_frc" -eq 0 ]]; then
+                echo "  ℹ️  $PR_REPO_SLUG's checkout at $_OWN_ORIGIN fetched only: $_OWN_FETCH_ONLY"
+            else
+                echo "  ⚠️  Could not fetch origin in $PR_REPO_SLUG's checkout at $_OWN_ORIGIN ($_OWN_FETCH_ONLY, so no pull was due):" >&2
+                echo "     $(wt_fetch_why "$_own_frc" "${_git_err:-}")" >&2
+                _CLEANUP_INCOMPLETE=true
+                _OWN_FETCH_ONLY=""
+            fi
+        fi
+        unset _git_err _own_branch _own_dirty _own_frc
     else
         echo "  ⚠️  Could not resolve $PR_REPO_SLUG's own manifest entry — remote branch/sync left untouched" >&2
         _CLEANUP_INCOMPLETE=true
@@ -1755,6 +1820,8 @@ if [[ "${_CLEANUP_INCOMPLETE:-false}" == true ]]; then
     echo "⚠️  Done: PR #${PR_NUMBER} merged, but cleanup incomplete — see warnings above"
 elif [[ "${_WORKTREE_KEPT:-false}" == true ]]; then
     echo "✅ Done: PR #${PR_NUMBER} merged; worktree kept until the sibling package PR(s) above are resolved"
+elif [[ -n "${_OWN_FETCH_ONLY:-}" ]]; then
+    echo "✅ Done: PR #${PR_NUMBER} merged and cleaned up; $PR_REPO_SLUG's checkout was fetched only, not fast-forwarded ($_OWN_FETCH_ONLY)"
 else
     echo "✅ Done: PR #${PR_NUMBER} merged, cleaned up, and synced"
 fi
