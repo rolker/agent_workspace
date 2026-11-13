@@ -1,12 +1,46 @@
 # Inspiration Digest: diffx
 
 Type: inspiration
-Last checked: 2026-09-14
-Repo: wong2/diffx @ 1388595f1fea0ca4f33c4a1c2773a9e19d1bc27b
+Last checked: 2026-11-13
+Repo: wong2/diffx @ 1388595f1fea0ca4f33c4a1c2773a9e19d1bc27b (unchanged since 2026-09-14)
+Previously checked: 2026-09-14 @ 1388595f1fea0ca4f33c4a1c2773a9e19d1bc27b
 
 Registry interest areas: review-before-push workflow integration; diff
 presentation for human supervision of agent output; inline commenting and
 finding-tracking UX; staying local-first / terminal-adjacent.
+
+## Changelog (2026-09-14 → 2026-11-13): still no commits, PRs now disabled
+
+0 commits: `main` is still `1388595f` (committed 2026-06-23, v0.16.0 is
+still the latest release; `git ls-remote` and the GitHub compare API,
+`1388595...main`, status `identical`, both agree). The local clone was
+already at that head. There is no code to read.
+
+What did change is the issue tracker and the repo settings:
+
+- **Pull requests are disabled.** `gh pr view 39|40|41 -R wong2/diffx` fails
+  with "Pull requests are disabled for this repository" and
+  `GET /repos/wong2/diffx/pulls` returns 404. On 2026-09-14 three PRs (#39,
+  #40, #41) were open. Since `main` did not move, none of them was merged;
+  whether they were closed or merely hidden was not determinable. This
+  corrects the "3 open PRs" and "#40 ... still unmerged" statements below.
+- Issue #47 (2026-09-30, "Enable fork pull requests?") asks the maintainer
+  to enable fork PRs and points at a contributor fork carrying a stack of
+  seven-plus changes (mnemonic-prefix fix, scroll anchoring, multiline
+  comments, comment persistence, and more). Zero replies. Not fetched: those
+  branches live in a third party fork and were not read.
+- Eight issues opened since the last check (#42-#49). Seven are from one
+  outside contributor (#43-#49), #42 is from a different user: #42 search
+  cannot find not-yet-rendered diff content (2026-09-28), #43 empty diff when
+  `diff.mnemonicPrefix` is set (2026-09-30), #44 per-comment resolved/open
+  status that round-trips through "Copy comments" and import, plus a
+  persisted-review status control (2026-09-30), #45 "Viewed" scrolls to the
+  next unviewed file (2026-09-30), #46 file-level and diff-level comments
+  with `scope="file"` / `scope="diff"` in the XML export (2026-09-30), #47
+  the fork-PR request above, #48 large files and very long lines hang the tab
+  (2026-10-29), #49 normalise +/- markers and show diff size in the file tree
+  (2026-10-29). The maintainer has replied to none of them (0 comments each,
+  checked with `gh issue view`).
 
 ## Survey Summary (first run, 2026-09-14)
 
@@ -107,7 +141,10 @@ parked idea.
 
 The local API has no auth, accepted any `Origin`, and `/api/file-content`
 served any repo file (including gitignored `.env`) until PR #40 — which is
-**still unmerged** as of this check (opened 2026-07-31). Because the finish
+**still unmerged** as of the 2026-09-14 check (opened 2026-07-31). *Correction
+2026-11-13:* PRs are now disabled on the repo, so #40 cannot be viewed; `main`
+has not moved, so it was not merged and the issue it fixed is presumed still
+present in v0.16.0 (the code was not re-read). Because the finish
 skill applies posted comments as code edits, any web page open in the same
 browser could inject "review comments" that the agent then executes. If the
 workspace ever adopts a local review-comment API of this shape, loopback
@@ -124,21 +161,27 @@ ever built: it would resolve the review root via `adapter project_root`
 like any other skill, and any on-disk comment store would be a gitignored
 per-worktree file. **No change to the #172 path.**
 
-## Activity Snapshot (2026-09-14)
+## Activity Snapshot (2026-11-13)
 
-- Repo created 2026-04-04; 199 stars, 33 forks; single maintainer (wong2).
-- Last commit / release: **2026-06-23** (v0.16.0, sidebar resize). No
-  commits in the ~12 weeks since; no issues or PRs closed in the last 30
-  days. Five releases in Apr–Jun, then silence.
-- 6 open issues (multiline comments #33, comment editing #34, persistence
-  #29, import comments #28, scroll jump #24, markdown/dark-mode #38).
-- 3 open PRs, all unreviewed by the maintainer: #39 markdown + Google-Docs
-  comments (Jul 14), #40 API scoping / same-origin security fix (Jul 31),
-  #41 untracked-file diff fix (Aug 7).
-- Assessment: effectively dormant. See "Tracking status" below.
+- 218 stars, 38 forks (2026-09-14: 199 stars, 33 forks); single maintainer.
+- Last commit / release unchanged: **2026-06-23**, v0.16.0. About 20 weeks
+  with no commits; no issues or PRs closed in the last 30 days.
+- 14 open issues (2026-09-14: 6): the 6 earlier ones (#24, #28, #29, #33,
+  #34, #38) plus the eight new ones #42-#49.
+- Pull requests disabled (see changelog); #39/#40/#41 are no longer
+  reachable.
+- Assessment: still dormant on the maintainer side. Outside interest is
+  growing (stars, forks, a contributor stack), but nothing is landing.
+
+(2026-09-14 snapshot, kept: 199 stars, 33 forks; 6 open issues; 3 open PRs
+#39, #40, #41; last commit 2026-06-23.)
 
 ## Tracking status
 
+- 2026-11-13: the condition set on 2026-09-14 is met (no commits after
+  2026-06-23; the open PRs #39/#40/#41 are no longer visible and were never
+  merged). Whether to move diffx to watched-not-tracked is listed as
+  `diffx-1` under Pending Review. No registry edit made.
 - 2026-09-14: keep tracked for **one more round**. If there is still no
   maintainer activity (no commits after 2026-06-23, open PRs #39/#40/#41
   still unreviewed) at the next check, move diffx to **watched-not-tracked**
@@ -148,7 +191,22 @@ per-worktree file. **No change to the #172 path.**
 
 ## Pending Review
 
-(none — all 2026-09-14 items decided below)
+(2026-09-14 items are decided below. New this round:)
+
+- **diffx-1.** `retire-diffx-from-active-tracking` — the 2026-09-14 rule
+  ("no commits after 2026-06-23 at the next check, move to
+  watched-not-tracked") applies: still no commits, PRs disabled, 0
+  maintainer replies on the 8 new issues. Owner decision: retire the registry
+  entry (keep this digest as the record) or keep. (2026-11-13)
+- **diffx-2.** `file-and-diff-scope-comments` — issue #46's addition to the
+  comment contract: a `scope` of line / file / diff, exported as
+  `<comment scope="file">` inside the `<file>` block and `<comment
+  scope="diff">` outside all `<file>` blocks; and issue #44's `status`
+  round-tripping through export/import. Extends the deferred
+  `line-anchored-comment-contract` (no consumer today); only a proposal in an
+  issue, not shipped code. Relevant if that contract is ever adopted, since a
+  whole-change finding such as "missing migration" has no line anchor.
+  (2026-11-13)
 
 ## Roadmapped (2026-09-14 decisions)
 
