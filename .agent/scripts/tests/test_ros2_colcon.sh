@@ -1689,7 +1689,8 @@ test_repo_pin_refuses_yaml_typed_plain_pins() {
     dir="$proj/layers/main/l1_ws/src/pkg_a"
     git -C "$dir" tag 1.10
     git -C "$dir" branch --quiet 2.0
-    git -C "$dir" push --quiet origin refs/tags/1.10 2.0
+    git -C "$dir" branch --quiet True
+    git -C "$dir" push --quiet origin refs/tags/1.10 2.0 True
     f="$proj/configs/manifest/repos/l1.repos"
     # value|what YAML reads it as|what vcstool (str() of it) checks out;
     # an empty "checks out" means the shell cannot work it out exactly.
@@ -1701,7 +1702,11 @@ test_repo_pin_refuses_yaml_typed_plain_pins() {
         '1_000|the number 1000|1000'
         '0x1F|the number 31|31'
         'yes|the bool True|True'
+        'true|the bool True|True'
+        'TRUE|the bool True|True'
         'Off|the bool False|False'
+        'false|the bool False|False'
+        'FALSE|the bool False|False'
         '~|null|None'
         'Null|null|None'
         '.inf|the float inf|inf'
@@ -1728,8 +1733,10 @@ test_repo_pin_refuses_yaml_typed_plain_pins() {
         assert_contains "[$val]: asks for quotes" "quote it: version: \"$val\"" "$out"
     done
     # str() gives these back as written, so vcstool checks out the text:
-    # accepted unquoted. 1e+5 has no dot, so PyYAML keeps it a string.
-    local -a kept=(2.0 1.0 1.5 0.3 2024 0 -5 1e+5 1234567890123456789012345678901234567890)
+    # accepted unquoted. 1e+5 has no dot, so PyYAML keeps it a string;
+    # True and False are bools whose str() is the same text.
+    local -a kept=(2.0 1.0 1.5 0.3 2024 0 -5 1e+5 True False
+        1234567890123456789012345678901234567890)
     for val in "${kept[@]}"; do
         write_pin_repos "$f" "pkg_a=$val"
         rc=0
@@ -1740,6 +1747,9 @@ test_repo_pin_refuses_yaml_typed_plain_pins() {
     write_pin_repos "$f" "pkg_a=2.0"
     out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
     assert_eq "an unquoted release branch 2.0 is that branch" "2.0	branch" "$out"
+    write_pin_repos "$f" "pkg_a=True"
+    out="$(run_adapter "$sb" repo_pin pkg_a 2>/dev/null)" || true
+    assert_eq "an unquoted branch True is that branch" "True	branch" "$out"
     for val in '"1.10"' "'1.10'"; do
         write_pin_repos "$f" "pkg_a=$val"
         rc=0
@@ -1798,6 +1808,8 @@ test_repos_entries_parser_table() {
         ' "1.10"|1.10|quoted'
         " '1.10'|1.10|quoted"
         ' yes|yes|plain'
+        ' True|True|plain'
+        ' false|false|plain'
         ' ~|~|plain'
         ' 0x1F|0x1F|plain'
         ' .inf|.inf|plain'

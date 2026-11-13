@@ -924,7 +924,8 @@ adapter_worktree_env() {
 # more digits than this check works out, which may or may not round-trip,
 # is refused too, as the rule below keeps only what surely does).
 # The patterns are PyYAML's resolvers, written out:
-#   bool   yes/no/true/false/on/off, each lower, Capitalised or UPPER
+#   bool   yes/no/true/false/on/off, each lower, Capitalised or UPPER;
+#          True and False are kept, as str() of the bool is the text
 #   null   ~, null/Null/NULL (an empty value is refused before this)
 #   int    [-+]0b binary, [-+]0 octal, [-+] decimal, [-+]0x hex and
 #          [-+] sexagesimal (1:30), all allowing "_"
@@ -946,9 +947,9 @@ _rc_yaml_plain_reading() {
     case "$v" in
         [\!\&\*\|\>%@\`\[\]\{\},]*) printf '%s\t\n' "YAML syntax, not text ('${v:0:1}' starts it)"; return 0 ;;
     esac
-    if [[ "$v" =~ ^(yes|Yes|YES|true|True|TRUE|on|On|ON)$ ]]; then
+    if [[ "$v" =~ ^(yes|Yes|YES|true|TRUE|on|On|ON)$ ]]; then
         printf '%s\t%s\n' "the bool True" True
-    elif [[ "$v" =~ ^(no|No|NO|false|False|FALSE|off|Off|OFF)$ ]]; then
+    elif [[ "$v" =~ ^(no|No|NO|false|FALSE|off|Off|OFF)$ ]]; then
         printf '%s\t%s\n' "the bool False" False
     elif [[ "$v" =~ ^(~|null|Null|NULL)$ ]]; then
         printf '%s\t%s\n' "null" None

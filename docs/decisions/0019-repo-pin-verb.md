@@ -49,14 +49,16 @@ Add `repo_pin` to `REQUIRED_VERBS` (13 verbs):
   backslash escape; a ref still holding a quote, backslash or carriage
   return is refused). vcstool checks out `str()` of the value PyYAML's
   `safe_load` gives, so an unquoted value is refused only when YAML's
-  reading changes the text: a bool or null, one starting with a YAML
+  reading changes the text: a bool other than `True` or `False` (`yes`,
+  `true`, `Off` read as `True` or `False`), null, one starting with a YAML
   indicator character, or an int or float whose `str()` is not the text
   (`version: 1.10` is the float 1.1 there, `017` the int 15). The error
   says what vcstool would check out instead and asks for quotes;
   `version: "1.10"` is accepted. An int written `0`, `2024`, `-5` or as an
   all-digit sha, and a float such as `2.0`, `1.5` or `0.3` (at most 15
-  significant digits, an integer part of at most 16, not `0.0000…`), come
-  back unchanged and are accepted unquoted. The check is an explicit
+  significant digits, an integer part of at most 16, not `0.0000…`), and
+  the bools `True` and `False`, come back unchanged and are accepted
+  unquoted. The check is an explicit
   pattern list in the adapter, with no YAML library. An entry with no `version:` key pins
   nothing, and the verb exits 1 saying so rather than reporting the default
   branch. A repository pinned in
