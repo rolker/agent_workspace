@@ -349,3 +349,27 @@ Read: the round 2 Local Review (Pre-Push) at f1bf7501 and its reviewer's report.
 - On the owner's direction, the full `pre-commit run --files ...` pass and the full suite were skipped. `test_run_script_tests.sh` is the only suite run; the host runs the full pass before publishing.
 - Every commit used `SKIP=validate-script-tests`; every other hook ran, shellcheck included, and passed.
 - The behaviour of the runner from before this pass was checked with a small scratchpad script, deleted afterwards.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 11:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-444 at `3880add0`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: round 2's S1 to S4 and the fix diff f1bf7501..f48e2101 (ddb035fd, cb3371e9, f48e2101). The merge of origin/main at 3880add0 does not touch either file (empty diff stat). Cross-model: skipped (round-3 convergence check, per handoff).
+
+All four are fixed. S1: after on_interrupt the EXIT trap calls kill_now, and the second SIGTERM and second Ctrl-C (u8) cases end in milliseconds and check the "stop cut short" line. S2: groups a reaped suite leaves non-empty go into `lingering`. They are pruned on every reap and in live_groups, and only a non-empty group is signalled. Linux does not reuse a pid while it is a live group's id, so a reused group id is only possible in the microseconds between the check and the kill, the same window as before for job_of. S3: (u4) chains finish order on pids, with a 30 s cap per wait. S4: (u8b) and (u8c) are timed in ms from before the signal.
+
+New descriptor: `runner_err` is closed in the suites (:757) and the watchdog (:690). Every other process that gets it is short-lived and runs in the foreground (`$(jobs -p)`, `sleep 0.1`). A left-behind process therefore cannot hold a caller's pipe open. Normal runs: a suite's `setsid` children leave its group, so nothing the suites start on purpose is stopped (grep of the suites: only setsid'd holders).
+
+Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 161 passed, 0 failed, 58 s, load average 14. Scratchpad experiments (deleted), killing only the pids they started: (a) a single SIGTERM with a suite that ignores it, 3 times: rc 143, and no spurious "stop cut short" line; (b) the finding below. One fd-listing experiment was refused by the permission checker and not run.
+
+### Findings
+- [ ] (suggestion) A signal during the end-of-run stop of a left-behind process (the new "still running at exit" path, up to 5 s if it ignores SIGTERM) ends the runner inside its EXIT trap: traps were reset at :801, and bash does not run the EXIT trap a second time, so /tmp/run-script-tests.* is left behind (reproduced: rc 143, directory still there; the watchdog KILLs the process later). Trap INT/TERM/HUP to kill_now and rm before stop_suites in that branch — `.agent/scripts/tests/run_script_tests.sh:553`
+- [ ] (suggestion) kill_now KILLs `-$stop_watchdog` even after stop_suites has KILLed that watchdog (:706) and it may have been reaped, so the id is stale by then. Clear stop_watchdog after :706 — `.agent/scripts/tests/run_script_tests.sh:720`
