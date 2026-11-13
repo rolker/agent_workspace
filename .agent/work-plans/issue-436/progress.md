@@ -1155,3 +1155,31 @@ Round-1 findings: all nine addressed as described in the Implementation entry at
 - [x] (suggestion) On GNU, a real `mv -T` failure falls through `mv -fh` (unknown there) to `rm -f` of the live link, leaving no link and letting the next sweep remove the previous directory; probe the option once instead of falling back on any failure — `.agent/project_types/ros2_colcon/adapter.sh:846`
 - [x] (suggestion) The two-syncs-at-once test catches a missing lock only through its directory-count assertion, about 19 runs in 20 (lock disabled in a scratch copy, 20 runs); the exit and tip assertions pass without the lock — `.agent/scripts/tests/test_ros2_colcon.sh:3137`
 - [x] (suggestion) A URL `source` refuses blanks but not other control characters (the path form and source_path refuse both) — `.agent/scripts/_project_registry.sh:804`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 16:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `a726fb95`
+**Addressed**: Local Review (Pre-Push) at `9329b41e` (2026-11-13 16:11 -05:00)
+**Commits**: de4b06c7, 7cf6984a, 0bf2c295, bb172236, 88f7b15c, 2e546705, 25cb45f5, 8d246c8d, bac379ac, a726fb95
+
+### Actions
+- [x] (must-fix) Tag/commit to branch orphaned detached local commits: the same guard now runs before the branch switch (kept, warned, state local); test `tag to branch, local commit:` in test_mr_stale_leaf_commit_and_tag, including a tag made in the clone being removed by the fetch — de4b06c7 — `.agent/project_types/ros2_colcon/adapter.sh:703`
+- [x] (must-fix) The sweep removed a moved-aside `manifest-resolved.backup`: generated directories take the prefix `manifest-resolved.gen-`, the sweep and the previous-directory removal touch only that prefix, and the error now suggests `manifest-resolved.old`; test plants `manifest-resolved.backup/notes.txt` (survives a sync) and checks the message — 0bf2c295 — `.agent/project_types/ros2_colcon/adapter.sh:878`
+- [x] (suggestion) A remote rewrite was taken for local commits: a clean clone at the `commit=` of the live resolved manifest (source unchanged, source-state=clean) follows the rewrite; new test test_mr_remote_rewrite_followed (force-pushed branch, tag moved off commits no branch holds; local commits on top still warned); 9 assertions fail without the fix, checked — 7cf6984a — `.agent/project_types/ros2_colcon/adapter.sh:732`
+- [x] (suggestion) Readers followed the link unlocked: each verb pins one generated directory in `_rc_require_manifest` and holds a shared flock on it (fd 8); a swap removes the previous directory only when an exclusive lock on it is free at once, else a later sweep does. Without flock a reader is unguarded, stated in the adapter header and design.md. New test test_mr_reader_pinned_to_one_result (a setup held mid-import while a sync swaps: its directory is kept, its next layer reads its own result, the next sync sweeps it); 3 assertions fail without the fix, checked — bac379ac, a726fb95 — `.agent/project_types/ros2_colcon/adapter.sh:908`
+- [x] (suggestion) fd 9 inherited by children: the fetch-and-resolve group runs with `9>&-` (bash keeps the lock under a close-on-exec copy); new test test_mr_lock_fd_not_inherited checks no git or resolver call sees fd 9 and the lock is held while the resolver runs; fails without the fix, checked — 88f7b15c — `.agent/project_types/ros2_colcon/adapter.sh:922`
+- [x] (suggestion) An invalid `ROS2_COLCON_LOCK_WAIT` is now named (digits with an optional decimal part), checked before flock; tests for `abc`, `-1`, `1 2`, `5s` — 2e546705 — `.agent/project_types/ros2_colcon/adapter.sh:926`
+- [x] (suggestion) The detached-commit warning says "on no branch" and that each fetch removes the tags the source does not have, so a tag made in the clone does not keep them; asserted in the tests above — de4b06c7 — `.agent/project_types/ros2_colcon/adapter.sh:735`
+- [x] (suggestion) mv's form (`-T` or `-h`) is probed once per resolve in `configs/.mv-probe.XXXXXX` (removed, and swept if a kill left it) and used alone; its failure is an error with the live link kept. Test with a stub mv whose `-T` fails on the real swap: exit 1, link and previous result unchanged, no stray directory — bb172236 — `.agent/project_types/ros2_colcon/adapter.sh:846`
+- [x] (suggestion) The two-syncs test is deterministic: the first sync is held inside the critical section by a resolver waiting on a file; the second must be seen waiting in `flock -x -w 117 9` (its unique wait value, via pgrep) without having reached the resolver, then resolve after release. With the lock disabled, 3 of its assertions fail, checked — 25cb45f5 — `.agent/scripts/tests/test_ros2_colcon.sh:3137`
+- [x] (suggestion) A URL `source` with control characters is refused (before, `https://e.invalid/m\x01.git` passed the value check and failed only on the missing source_ref); two refused-value rows (`\x01`, `\x7f`) in test_project_file.sh; fail without the fix, checked — 8d246c8d — `.agent/scripts/_project_registry.sh:804`
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 862 passed, 0 failed, 0 skipped (was 795 before this pass).
+- `bash .agent/scripts/tests/test_project_file.sh`: 546 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit does not show which suites it ran on a pass).
+- Not verified: BSD `mv -h` and the no-flock paths on a real BSD/macOS host (Linux only, with stub mv and flock off PATH); `pgrep` is assumed present where the deterministic lock test runs (it is on this host and on Ubuntu CI images; not checked in CI here).
