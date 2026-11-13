@@ -383,3 +383,21 @@ Ran: `bash .agent/scripts/tests/test_run_script_tests.sh` alone once: 161 passed
 **Decision**: publish
 
 Read: the round 3 Local Review (Pre-Push) at e852068b and its report; the full pass output. The owner's rule of 2026-11-13 ("yes, one local run before a pr") is met by that pass.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-13 11:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #468 at `bb125a16`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `3880add0` (covers bb125a16 via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub: 0 reviews, 0 inline comments, 0 conversation comments; Copilot's automatic review is off for this repository (owner, 2026-11-12), so no check-run is awaited. CI at bb125a16: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass; Lint (pre-commit) still running in both workflow runs. Rounds 1 and 2 were fixed and ticked on the timeline; only round 3's two suggestions are open, and both are valid on reading the code. Both paths are reached only with -j above 1, which is opt-in in this pull request (JOBS_DEFAULT=1, :166) and becomes the default in part 2.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ 3880add0) Valid. After the loop the INT/TERM/HUP traps are reset (:801); when cleanup_run (the EXIT trap) finds a group a suite left running, it prints "still running at exit" and calls `stop_suites TERM`, which can wait up to 5 s. A Ctrl-C or TERM in that window ends the runner with the default action; bash does not run the EXIT trap again, so `rm -rf "$RUN_ROOT"` at :556 never runs and one /tmp/run-script-tests.* directory (suite logs and scratch) is left behind; the left process is still KILLed by the watchdog. Needs a suite that leaves a process in its own group that is slow on TERM (a suite defect the runner already reports), then a signal in that window; the printed line followed by a pause invites exactly that Ctrl-C. Fix: in the elif branch of cleanup_run, before `stop_suites TERM`, trap INT/TERM/HUP to `kill_now; rm -rf "$RUN_ROOT"; exit <128+n>` (stop_suites sets stop_underway, so kill_now covers the watchdog); add a (u8) case beside the "still running at exit" test (test_run_script_tests.sh:1671) with a left process that ignores TERM, signal the runner after that line, and assert a fast exit and no RUN_ROOT — `.agent/scripts/tests/run_script_tests.sh:553`
+- [ ] (suggestion, Local Review (Pre-Push) @ 3880add0) Valid. stop_suites KILLs its watchdog's group at :706 but leaves `stop_watchdog` set; after every interrupted parallel run, on_interrupt exits and kill_now (:720) KILLs `-$stop_watchdog` again, by then usually reaped. It reaches a live process only if that pid has been reused as a group leader within milliseconds, which needs the pid space to wrap (very unlikely), but the result would be a KILL to an unrelated process group of the same user. Fix: `stop_watchdog=""` right after :706 (the live_groups exclusion at :661 only matters while the watchdog runs) — `.agent/scripts/tests/run_script_tests.sh:720`
+
+### False positives
