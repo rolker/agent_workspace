@@ -1848,3 +1848,17 @@ Earlier open boxes on this timeline, checked at the head: the Plan Review's F1 t
 - [ ] (suggestion, triage: PR body) Two sentences are not true at triage time: "Its suggestions and the limits the fix pass named are recorded on follow-up issue #481" (Reviews and outcomes) and the first bullet of "Follow-ups, in #481" ("The last review's two suggestions, and the two limits the last fix pass named"). Issue 481's body (items 1-7) and its only comment (item 8 and the leftover `.partial` directory note) hold neither of the last review's suggestions nor the two named limits (a second, different signal recorded but not delivered; a Ctrl-C and a SIGTERM together at the start of the cleanup leaving one handler). Add them to 481 (a comment), then the sentences are true — PR #480 body
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-14 10:17 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, F1 and F2 stay in #481 (Recommended)"
+
+Q1 as put to him: merge pull request 480? State shown: the last review (Local Review at `59aadc52`) approved, "ready to merge as it stands", 0 must-fix; CI passed in full on head `bb630eef`, lint and the resolver's Python 3.10 tests included (read by the host with `gh pr checks 480` after waiting for the last lint job); the branch level with main; GitHub reporting it mergeable and clean. The Integrated Review at `bb630eef` found no must-fix and these open items, shown by their text: F1 (suggestion, `extends.py:243`), a SIGTERM or SIGHUP the caller had blocked before the call is treated as a signal to git, so a finished clone is discarded; it does not happen in the command-line tool, which starts with nothing blocked; the fix is one line plus a test. F2 (suggestion, `extends.py:183`), narrow windows in the cleanup, already meant for the follow-up issue. F3 (closed), two sentences in the pull request body said these items were recorded on issue 481 when they were not yet; the host then posted them there (issue 481, comment of 2026-11-14, items 9 to 11), so the sentences are true.
+
+The option he chose, as worded to him: merges pull request 480 into main now and removes its worktree and branch; F1 and F2 are recorded as deferred to issue 481; undone only by a revert pull request. He was told that taking F1 first means a code change and another review at the new head, and that this merges pull request (b) of issue 436 while the issue stays open for its remaining parts.
