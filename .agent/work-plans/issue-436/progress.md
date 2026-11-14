@@ -1714,7 +1714,7 @@ Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-
 
 ## Implementation
 **Status**: partial
-**When**: 2026-11-14 02:05 -05:00
+**When**: 2026-11-14 01:39 -05:00
 **By**: Claude Code Agent (claude-opus-5-5)
 **Dispatch**: resumed (agent aba9811477ab5f1bc, resume 1 of 3)
 
