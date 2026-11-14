@@ -3097,12 +3097,42 @@ test_mr_fetch_bounded() {
     chmod +x "$sb/hangbin/git"
     rc=0; out="$(WT_FETCH_TIMEOUT=1 PATH="$sb/hangbin:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "stalled host: exit 1" "1" "$rc"
-    assert_contains "stalled host: says so" "it did not answer within 1 s (WT_FETCH_TIMEOUT)" "$out"
+    assert_contains "stalled host: says the limit was reached and what raises it" "it did not finish within 1 s (the limit; WT_FETCH_TIMEOUT raises it)" "$out"
     assert_contains "stalled host: the previous result in use" "still in use (its link unchanged)" "$out"
     assert_eq "stalled host: the link unchanged" "$before" "$(readlink "$gen")"
     mr_no_temp "$sb" "stalled host"
     rc=0; ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "stalled host: the lock is free afterwards" "0" "$rc"
+    # A Ctrl-C during the bounded call takes effect at once, not at the
+    # limit: the sync runs as a job of its own (set -m), and SIGINT goes to
+    # its whole process group, as a terminal sends it.
+    if ! timeout --foreground 5 true >/dev/null 2>&1; then
+        echo "  SKIPPED (Ctrl-C part): this timeout has no --foreground"
+        return 0
+    fi
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" ls-remote \"*) touch \"$sb/hang.ready\"; exec sleep 30 ;; esac" \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/hangbin/git"
+    local jpid started elapsed i
+    before="$(readlink "$gen")"
+    rc=0
+    (
+        set -m
+        cd "$sb" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
+            "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1 &
+        jpid=$!
+        for i in $(seq 1 100); do [ -e "$sb/hang.ready" ] && break; sleep 0.1; done
+        started=$SECONDS
+        kill -INT -- "-$jpid" 2>/dev/null
+        rc=0; wait "$jpid" || rc=$?
+        echo "rc=$rc elapsed=$((SECONDS - started))" > "$sb/int.result"
+    ) || true
+    assert_eq "Ctrl-C: reached the bounded call" "yes" "$([ -e "$sb/hang.ready" ] && echo yes || echo no)"
+    assert_contains "Ctrl-C: exit 130" "rc=130 " "$(cat "$sb/int.result" 2>/dev/null)"
+    elapsed="$(sed 's/.*elapsed=//' "$sb/int.result" 2>/dev/null)"
+    assert_eq "Ctrl-C: took effect well before the 30 s limit" "yes" "$([ "${elapsed:-99}" -lt 10 ] && echo yes || echo no)"
+    assert_eq "Ctrl-C: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "Ctrl-C"
 }
 
 test_mr_provenance_names_the_source() {

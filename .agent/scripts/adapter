@@ -111,6 +111,11 @@ source "$_ADAPTER_SCRIPT_DIR/_project_registry.sh"
 # HTTPS credential prompt; `timeout` (when installed) also ends an SSH
 # passphrase or host-key prompt and a stalled host. The exit status is
 # git's, or 124 (137 after the -k grace) when the limit ended it.
+# `timeout --foreground` (where this timeout has it) keeps git in the
+# caller's process group, so a Ctrl-C reaches git at once instead of
+# after the limit; the limit then ends git itself, not programs git
+# started (an ssh git started exits when git's end of its pipe closes, or
+# at its own timeout).
 # Usage: _adapter_bounded_git -C <repo> ls-remote ...
 _adapter_git_limit() {
     local limit="${WT_FETCH_TIMEOUT:-60}"
@@ -120,7 +125,11 @@ _adapter_git_limit() {
 _adapter_bounded_git() {
     local -a bound=()
     if command -v timeout >/dev/null 2>&1; then
-        bound=(timeout -k 5 "$(_adapter_git_limit)")
+        if timeout --foreground 5 true >/dev/null 2>&1; then
+            bound=(timeout --foreground -k 5 "$(_adapter_git_limit)")
+        else
+            bound=(timeout -k 5 "$(_adapter_git_limit)")
+        fi
     fi
     GIT_TERMINAL_PROMPT=0 ${bound[@]+"${bound[@]}"} git "$@"
 }

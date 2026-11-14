@@ -772,7 +772,7 @@ _rc_src_net() {  # <src> <git args...>
 # What failed in a call to the source's host, for messages.
 _rc_net_why() {  # <exit status>
     if [ "$1" -eq 124 ] || [ "$1" -eq 137 ]; then
-        echo "it did not answer within $(_adapter_git_limit) s (WT_FETCH_TIMEOUT)"
+        echo "it did not finish within $(_adapter_git_limit) s (the limit; WT_FETCH_TIMEOUT raises it): a host that does not answer, or a fetch larger than the limit allows"
     else
         echo "git's message above: offline, a wrong URL, or a transport this fetch does not allow (https, ssh and file only)"
     fi
