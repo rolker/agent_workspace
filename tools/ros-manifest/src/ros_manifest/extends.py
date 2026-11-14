@@ -6,12 +6,15 @@ extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clo
 cache hit (same url+ref). The clone is untrusted content, so: the transports git may use are
 stated on the command line and in GIT_ALLOW_PROTOCOL; no hook, fsmonitor, submodule, filter
 driver or text conversion of the user's configuration runs on it; git's repository-locating
-environment variables are removed; git has no terminal and no askpass to prompt with; each call
-that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default 60); and the clone
-is made in a temporary sibling and renamed into the cache only when complete. The url and ref
-have already passed the allow-lists in ``schema.py``. This module invokes `git clone`, `git
-reset` and `git rev-parse` on the clone; tests point `url` at a local git repository through a
-`file://` URL (a plain local path is not an accepted url).
+environment variables are removed; git runs without a terminal, with GIT_TERMINAL_PROMPT=0, an
+empty core.askPass, no GIT_ASKPASS or SSH_ASKPASS and SSH_ASKPASS_REQUIRE=never, so neither git
+nor ssh can ask for a password or passphrase (a credential helper the user configured still
+runs); each call that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default
+60), after which git's process group is killed, as it is on an interrupt, SIGTERM or SIGHUP;
+and the clone is made in a temporary sibling and renamed into the cache only when complete.
+The url and ref have already passed the allow-lists in ``schema.py``. This module invokes `git
+clone`, `git reset` and `git rev-parse` on the clone; tests point `url` at a local git
+repository through a `file://` URL (a plain local path is not an accepted url).
 
 Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
 manifest read from a git-backed `extends` clone is labelled `url#ref:path@<commit>` (the commit
@@ -138,29 +141,56 @@ class _GitTimeout(Exception):
     pass
 
 
+class _Signalled(BaseException):
+    """A SIGTERM or SIGHUP that arrived while git ran (git's group is then killed)."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+def _raise_signalled(signum, _frame):
+    raise _Signalled(signum)
+
+
 def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, bytes]:
-    """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask for a
-    passphrase), stdin closed, output captured as bytes. With `timeout`, git and everything it
-    started are killed when it runs out (_GitTimeout); an interrupt kills them too."""
+    """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask on
+    one), stdin closed, stdout captured as bytes, stderr discarded. With `timeout`, git and
+    everything still in its process group are killed when it runs out (_GitTimeout); an
+    interrupt, a SIGTERM or a SIGHUP kills them too (SIGTERM and SIGHUP are caught only while
+    git runs, then the previous handlers are put back)."""
+    previous = {}
+    for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)):
+        if sig is None:
+            continue
+        try:
+            previous[sig] = signal.signal(sig, _raise_signalled)
+        except ValueError:  # not the main thread: signals cannot be caught here
+            pass
+    proc = None
     try:
-        proc = subprocess.Popen(
-            ["git", *args],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=_git_env(),
-            start_new_session=True,
-        )
-    except FileNotFoundError:
-        raise ManifestError(_NO_GIT) from None
-    try:
+        try:
+            proc = subprocess.Popen(
+                ["git", *args],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=_git_env(),
+                start_new_session=True,
+            )
+        except FileNotFoundError:
+            raise ManifestError(_NO_GIT) from None
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         _kill_group(proc)
         raise _GitTimeout() from None
     except BaseException:
-        _kill_group(proc)
+        if proc is not None:
+            _kill_group(proc)
         raise
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
     return proc.returncode, out
 
 
@@ -172,7 +202,12 @@ def _kill_group(proc: subprocess.Popen) -> None:
             proc.kill()
     except ProcessLookupError:
         pass
-    proc.communicate()
+    # git itself is dead now; a program that left its group may still hold the pipe, so the
+    # wait for the pipe is short, and only git's exit is waited for.
+    try:
+        proc.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        proc.wait()
 
 
 def _cache_key(url: str, ref: str) -> str:
@@ -370,6 +405,11 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
             current_path, current_origin = _resolve_one(
                 manifest.extends, current_path.parent, current_origin, cache_dir, manifest.source
             )
+        except _Signalled as sig:
+            # git's group is killed and the partial clone removed; end as the signal would.
+            signal.signal(sig.signum, signal.SIG_DFL)
+            os.kill(os.getpid(), sig.signum)
+            raise
         except (OSError, RuntimeError) as exc:
             raise ManifestError(
                 f"{manifest.source}: its extends cannot be followed ({_os_reason(exc)})"

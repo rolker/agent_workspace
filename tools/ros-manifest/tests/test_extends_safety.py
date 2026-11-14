@@ -4,8 +4,10 @@ a stalled remote past the time limit; a failed clone leaves nothing in the cache
 
 import hashlib
 import os
+import signal
 import stat
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -163,6 +165,90 @@ def test_a_user_rule_cannot_reach_another_transport(tmp_path, monkeypatch):
         ["git", "ls-remote", "file:///alias/base.git"], capture_output=True, env=dict(os.environ)
     )
     assert marker.exists()
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _gone_within(pid: int, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if not _alive(pid):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_a_signal_while_git_runs_kills_git_and_leaves_no_partial_clone(tmp_path, signum):
+    # The resolver in a process of its own, cloning from an ssh remote whose "ssh" records its
+    # pid and then never answers; the signal goes to the resolver alone, not to git's session.
+    pidfile = tmp_path / "ssh.pid"
+    hang = _script(tmp_path / "hang-ssh", f'echo $$ > "{pidfile}"\nexec sleep 30\n')
+    cache = tmp_path / "cache"
+    leaf = _leaf(tmp_path, "ssh://git@example.invalid/base.git")
+    src = str(Path(extends.__file__).resolve().parents[1])
+    code = (
+        "import sys; from pathlib import Path; from ros_manifest.extends import resolve_chain;"
+        " resolve_chain(Path(sys.argv[1]), cache_dir=Path(sys.argv[2]))"
+    )
+    env = dict(os.environ, GIT_SSH_COMMAND=str(hang), ROS_MANIFEST_GIT_TIMEOUT="60")
+    env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code, str(leaf), str(cache)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not (pidfile.exists() and pidfile.read_text().strip()):
+            assert time.monotonic() < deadline, "the stalled ssh was never reached"
+            time.sleep(0.1)
+        ssh_pid = int(pidfile.read_text().strip())
+        proc.send_signal(signum)
+        assert proc.wait(timeout=10) == -signum
+        assert _gone_within(ssh_pid, 5), "git's ssh outlived the resolver"
+        assert list(cache.iterdir()) == []
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+
+def test_a_timed_out_clone_returns_soon_after_the_limit(tmp_path, monkeypatch):
+    # A program that left git's group and holds what git gave it must not keep the resolver
+    # waiting after the limit.
+    holder_pid = tmp_path / "holder.pid"
+    detach = (
+        f'"{sys.executable}" -c "import os, time; os.setsid();'
+        f" open('{holder_pid}', 'w').write(str(os.getpid())); time.sleep(30)\" &\n"
+    )
+    hang = _script(tmp_path / "hang-ssh", detach + "exec sleep 30\n")
+    monkeypatch.setenv("GIT_SSH_COMMAND", str(hang))
+    # No `ssh -G` probe first (git runs it with its output discarded): the holder is started
+    # by the ssh git really talks to, and inherits git's stderr.
+    monkeypatch.setenv("GIT_SSH_VARIANT", "ssh")
+    monkeypatch.setenv("ROS_MANIFEST_GIT_TIMEOUT", "1")
+    started = time.monotonic()
+    try:
+        with pytest.raises(ManifestError, match="within 1 s"):
+            resolve_chain(
+                _leaf(tmp_path, "ssh://git@example.invalid/base.git"), cache_dir=tmp_path / "c"
+            )
+        assert time.monotonic() - started < 6
+        assert holder_pid.exists(), "the detached holder never started"
+    finally:
+        if holder_pid.exists() and holder_pid.read_text().strip():
+            try:
+                os.kill(int(holder_pid.read_text().strip()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
 def test_no_askpass_runs(tmp_path, monkeypatch):
