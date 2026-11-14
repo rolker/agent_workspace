@@ -21,6 +21,15 @@ REAL_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 PASS=0
 FAIL=0
 
+# Wait up to 10 s for a lock test's marker file. A marker that never
+# appears is a failure naming it, so a slow machine fails here, loudly,
+# and not at a later assertion that depends on it.
+wait_for_marker() {  # <file> <what it marks>
+    local _i
+    for _i in $(seq 1 100); do [ -e "$1" ] && return 0; sleep 0.1; done
+    assert_eq "marker appeared within 10 s: $2 ($1)" "present" "absent"
+}
+
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -878,7 +887,7 @@ test_set_lock_and_interrupt_cleanup() {
     # sleep, which all hold the lock's descriptor) can be ended at once.
     setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the lock holder took the lock"
     rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set alpha build=other 2>&1)" || rc=$?
     assert_eq "held lock: exit 1" "1" "$rc"
     assert_contains "held lock: says so" "another writer holds its lock $lock (waited 1 s)" "$out"
@@ -895,7 +904,7 @@ test_set_lock_and_interrupt_cleanup() {
         cmp() { touch "$_marker"; sleep 30; }
         project_file_set "$1" alpha build=interrupted' _ "$sb" "$marker" >/dev/null 2>&1 &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer reached its replaced cmp"
     assert_eq "interrupt: the temporary file exists while it runs" "1" "$(find "$sb/.agent/projects.d" -name '.alpha.*' | wc -l | tr -d ' ')"
     pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')" || pgid=""
     kill -TERM -- "-${pgid:-$pid}" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
@@ -927,7 +936,7 @@ test_set_lock_follows_shared_symlink_target() {
     marker="$(mktemp -u -p "$SANDBOX")"
     setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the lock holder took the lock"
     for name in alpha beta; do
         rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set "$name" build=held 2>&1)" || rc=$?
         assert_eq "$name: the target's held lock refuses: exit 1" "1" "$rc"
@@ -970,11 +979,11 @@ test_set_lock_follows_shared_symlink_target() {
     hold_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
         "$sb/.agent/scripts/project_setting.sh" set alpha build=moved > "$shared/out" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer started waiting for the lock"
     ln -sfn "$other" "$(pfile "$sb" alpha)"
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
     wait "$holder" 2>/dev/null || true
@@ -1008,11 +1017,11 @@ test_set_rechecks_the_file_after_the_lock_wait() {
     hold_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
         "$sb/.agent/scripts/project_setting.sh" set alpha test=replaced > "$stubdir/out" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer started waiting for the lock"
     rm -f "$f"
     mkdir "$f"
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
@@ -1060,11 +1069,11 @@ test_set_writer_orphaned_by_a_killed_caller() {
     done_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$wait_marker" DONE_MARK="$done_marker" PROJECT_FILE_LOCK_WAIT=15 \
         exec "$sb/.agent/scripts/project_setting.sh" set alpha build=orphan > "$stubdir/out1" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$wait_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$wait_marker" "the writer started waiting for the lock"
     kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
