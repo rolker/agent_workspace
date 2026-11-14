@@ -804,42 +804,45 @@ _project_file_value_error() {
             fi
             ;;
         source)
-            # Plain http is refused: the manifest decides which repositories
-            # are cloned and built, so it must not be open to change on the
-            # way. A value with a scheme (any case, with or without '//')
-            # may hold a credential, so no refusal of one prints it, and a
-            # user name or password is refused outright.
+            # A value with a scheme (any case, with or without '//') may hold
+            # a credential, so no refusal of one prints it. It is accepted
+            # only if it matches one of two shapes whole (an allow-list):
+            #   https://<host>[:port]/<path>, the host a name of letters,
+            #     digits, '.' and '-' (starting and ending with a letter or
+            #     digit) or an IPv6 address in brackets, the port 1 to 5
+            #     digits, the path not empty and without '?' or '#';
+            #   file:///<path>: exactly three slashes (no authority), the
+            #     path not empty ('?', '#', '@' and ':' are ordinary in it).
+            # So there is no place for a user name or password. A refusal
+            # names the cause where it can be told.
+            local https_re file_re
+            https_re='^https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?/[^?#[:space:][:cntrl:]]+$'
+            file_re='^file:///[^/[:space:][:cntrl:]][^[:space:][:cntrl:]]*$'
             local lower authority
             lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
             if [[ "$lower" =~ ^[a-z][a-z0-9+.-]*: ]]; then
-                # By the URL grammar the authority is the text after '//' up
-                # to the next '/' (or the end), and a user name or password
-                # can only be there, before an '@'. An '@' or ':' after that
-                # '/' is part of the path; a port or a bracketed IPv6 host
-                # in the authority is ordinary.
+                if [[ "$value" =~ $https_re ]] || [[ "$value" =~ $file_re ]]; then
+                    return 0
+                fi
+                # The part before the path, however many '/' follow the
+                # scheme: an '@' there is a user name or password to git.
                 authority="${value#*:}"
-                authority="${authority#//}"
+                while [[ "$authority" == /* ]]; do authority="${authority#/}"; done
                 authority="${authority%%/*}"
                 if [[ "$authority" == *@* ]]; then
                     echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
-                    return 1
-                fi
-                # After a file:// URL's authority comes a path, where '?' and
-                # '#' are ordinary characters, as in the path form.
-                local query_part="$value"
-                [[ "$lower" == file:* ]] && query_part="$authority"
-                if [[ "$query_part" == *[?#]* ]]; then
-                    echo "source must not have a query or a fragment (the part from '?' or '#'; the value is not shown: it may hold a token): name the repository's URL alone, and keep credentials in a git credential helper"
-                    return 1
-                fi
-                if [[ "$lower" == http://* ]]; then
+                elif [[ "$lower" == http:* ]]; then
+                    # The manifest decides which repositories are cloned and
+                    # built, so it must not be open to change on the way.
                     echo "source must not be a plain http:// URL: the manifest decides which repositories are cloned and built, and plain http lets anyone on the network change it on the way; use https:// (a url.<base>.insteadOf rule in your git configuration may send it to an ssh mirror), or file:// for a repository on this machine"
-                    return 1
-                fi
-                if ! [[ "$value" =~ ^(https|file)://[^[:space:][:cntrl:]]+$ ]]; then
+                elif [[ "$lower" == https:* ]] && [[ "$value" == *[?#]* ]]; then
+                    echo "source must not have a query or a fragment (the part from '?' or '#'; the value is not shown: it may hold a token): name the repository's URL alone, and keep credentials in a git credential helper"
+                elif [[ "$lower" =~ ^(https|file):// ]] && ! [[ "$value" =~ ^(https|file):// ]]; then
                     echo "source must be an absolute path to a file, or an https:// or file:// URL (scheme in lower case) of a git repository, with no blanks or control characters (the value is not shown: a URL may hold a credential)"
-                    return 1
+                else
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of one of two shapes: https://<host>[:port]/<path> (the host a name or an IPv6 address in brackets, no '?' or '#') or file:///<path> (three slashes), with no blanks or control characters (the value is not shown: a URL may hold a credential)"
                 fi
+                return 1
             elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
                 # A value holding '://' or '@' (a URL in quotes or brackets,
                 # say) may hold a credential: it is not shown.
