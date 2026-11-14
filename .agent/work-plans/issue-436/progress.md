@@ -1711,3 +1711,23 @@ Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-
 - [x] (must-fix) A `source` of the form `https:///user:pass@host/repo` (three or more slashes) is accepted: `${authority#//}` strips two slashes, the authority is empty, no '@' is seen. git sends the credential (reproduced: `git ls-remote http:///u:s3cr3tTOKEN@127.0.0.1:PORT/m.git` sent `Authorization: Basic dTpzM2NyM3RUT0tFTg==`); the old rule refused it. Refuse an empty authority for a URL with a scheme (or strip every leading '/'), and add the row to the refused list — `.agent/scripts/_project_registry.sh:817`
 - [x] (must-fix) The handler-restore `finally` runs with `armed` still True: a signal arriving after one handler is restored and before the other raises `_Signalled` out of the loop, leaving `on_signal` installed for the life of the process; `resolve_chain`'s `raise_signal` then re-enters it and `_Signalled` escapes as a traceback instead of ending the process by the signal (reproduced by the adversarial reviewer). Block SIGTERM/SIGHUP with `signal.pthread_sigmask` across the restore (the blocked signal is then delivered to the restored handler), or disarm first and restore in a loop that cannot be cut short — `tools/ros-manifest/src/ros_manifest/extends.py:208`
 - [ ] (suggestion) A signal arriving at the top of `except subprocess.TimeoutExpired:` or `except BaseException:`, before `armed = False`, raises out of that clause, so `_kill_group` never runs and git keeps writing into the directory being removed (same few-bytecode window as before this diff; `armed` was meant to close it). The same `pthread_sigmask` block around the kill sections closes it; a second, different signal during a kill is still dropped (the fixer's stated gap) — `tools/ros-manifest/src/ros_manifest/extends.py:197`
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-14 02:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 1 of 3)
+
+**PR**: #480 at `c288cff7`
+**Addressed**: Local Review at `bc07886c` (2026-11-14 01:23 -05:00)
+**Commits**: f4a14069, d828d07d, 5b7daf01, c288cff7
+
+### Actions
+- [x] (must-fix) `source` URL rule replaced by an allow-list matched whole: `https://<host>[:port]/<path>` (host a name or bracketed IPv6, port 1-5 digits, non-empty path without `?`/`#`) or `file:///<path>` (exactly three slashes); anything else with a scheme is refused without the value, with the specific message for an `@` before the path (any number of slashes), plain http, an https query/fragment, an upper-case scheme. 19 rows failed on the old rule; `test_project_file.sh` 692 passed — `.agent/scripts/_project_registry.sh:817` (d828d07d)
+- [x] (must-fix) The restore `finally` and both except clauses now first block SIGTERM and SIGHUP with `pthread_sigmask` (after Popen returned), and the entry mask is put back last; a signal during the restore or the kill goes to the restored previous handler. Tests: a signal while the handlers are put back, a signal while git is being killed (both failed on the previous code), handlers and mask as before on exit/timeout/signal/no-git paths — `tools/ros-manifest/src/ros_manifest/extends.py:208` (f4a14069, c288cff7)
+- [ ] (suggestion) Open: a signal at the top of `except TimeoutExpired:`/`except BaseException:`, before `block()` takes effect, still raises out of the clause and git is not killed. Python runs a handler at any bytecode boundary in the main thread, and an except clause cannot be entered with a mask change in the same step; the signals cannot be blocked earlier because they must reach the handler during `communicate` — `extends.py:197`
+
+### Verification
+- Resolver suite (Python 3.14): 327 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases); `test_extends_safety.py` passed 10 runs in a row after the reaping fix (c288cff7).
+- `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree: rc 0; `validate-script-tests` ran all 49 suites, all passed.
+- Not run on Python 3.10.
