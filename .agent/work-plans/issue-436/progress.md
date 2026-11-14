@@ -1746,3 +1746,25 @@ Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-
 Q1 as put to him: the fix phase is recorded as partial; how should the loop go on? Shown to him: F1 (fixed), the `source` URL rule is an allow-list, only `https://host[:port]/path` and `file:///path` are accepted, and `https:///u:pw@h/x` is refused; the host ran `test_project_file.sh` at head `0aa0e45c` (692 passed, 0 failed) and tried seven values against the rule by hand. F2 (fixed), the resolver's cleanup after a signal runs with the two signals blocked; resolver suite 327 passed, 2 failed, the two known Python 3.14 cases. F3 (left open, the reason for "partial"), the suggestion about a signal in the first instant of the cleanup; the fixer's reason: "It cannot be closed in Python: an except clause cannot be entered and the mask changed in one step."; the window is the same size it was before this pull request. CI on the previous head had passed in full.
 
 The option he chose, as worded to him: the fix phase is run once more only to record F3 as deferred to follow-up issue #481 with the fixer's reason, and to write a complete entry; no code changes; then the narrow review for the merge gate, triage, and the merge question.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 08:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 2 of 3)
+
+**PR**: #480 at `fd4926ad`
+**Addressed**: Local Review at `bc07886c` (2026-11-14 01:23 -05:00)
+**Commits**: fd4926ad (records only)
+
+No code changed in this pass. The two must-fix of the review committed as 65522d84 were fixed in the previous pass (commits f4a14069, d828d07d, c288cff7, 5b7daf01; head 0aa0e45c).
+
+### Actions
+- [x] (must-fix) A `source` URL with three or more slashes passed with its credentials: fixed by the allow-list of two URL shapes — `.agent/scripts/_project_registry.sh:817` (d828d07d, 5b7daf01)
+- [x] (must-fix) The handler-restore `finally` could leave `on_signal` installed: the cleanup now runs with SIGTERM and SIGHUP blocked — `tools/ros-manifest/src/ros_manifest/extends.py:208` (f4a14069, c288cff7)
+- [x] (suggestion) A signal before the block takes effect in an except clause skips the kill — `extends.py:197` (deferred: deferred to issue 481 on the owner's decision of 2026-11-14: cannot be closed in Python (an except clause cannot be entered and the signal mask changed in one step); same window as before this pull request)
+
+### Verification (as reported in the previous pass, at head 0aa0e45c)
+- Resolver suite: 327 passed, 2 known failures on Python 3.14 (`test_an_extends_path_too_long_is_a_message_without_the_path`).
+- `test_project_file.sh`: 692 passed, 0 failed.
+- pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
