@@ -1810,3 +1810,20 @@ Scope: the fix pass for the review committed as 65522d84. Must-fix 1 of that rev
 - `test_project_file.sh`: 699 passed, 0 failed.
 - pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
 - Not run on Python 3.10.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 09:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7f6eba07e9249f54, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #480 at `59aadc52`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling; this pass reviews the fix diff e73091b9..59aadc52)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Scope: the fix pass for the review committed as e73091b9. Its must-fix (restore cut short on the normal path, mask leak) and its three suggestions (leftover `.partial-*` directory, locale-dependent host class, the handler killing git) are closed. Each row of the signal table beside `_run_git` was walked against the code: on every path out, the previous handlers and the entry mask are back, git's group is killed, and a signal taken in the cleanup is raised after the unmask so the partial clone is removed before re-delivery. All six new tests fail on the old extends.py (scratch copy). `_project_matches_in_c` keeps `LC_ALL` local (the caller's locale is unchanged afterwards), the blank and control-character rule applies to the whole value, and `https://é/x` is refused under en_US.UTF-8 while `https://h/é.git` and `https://github.com/o/r.git` are accepted. Runs at the head: resolver suite 3 runs, each 331 passed with the 2 known failures; `test_project_file.sh` 699 passed, 0 failed (no SKIP); flake8 and shellcheck clean. CI on 59aadc52: run 43603242761 completed, all jobs passed, Lint included; its ros-manifest job ran on Python 3.10.22, 333 passed (log read); in run 43603238006 every job passed except Lint, still pending. Cross-model: Codex completed (one finding, the `inf` timeout at extends.py:133, outside this diff; a follow-up); Gemini failed, empty response, a tool call denied in headless mode (issue 364). The fixer's two named limits (a second, different signal recorded, not delivered; a Ctrl-C and a SIGTERM together at the start of the cleanup leaving one handler) do not make merging unsafe for a command-line resolver whose process ends right after; they belong to issue 481.
+
+### Findings
+- [ ] (suggestion) A SIGTERM or SIGHUP the caller had blocked on entry is still in `previous`, so the cleanup's `sigpending()` takes it and raises `_Signalled` after a git that finished: the clone is discarded with "git was stopped by SIGTERM" (adversarial reviewer, reproduced). Leave out signals in `entry_mask` (`set(previous) - entry_mask` at the `sigpending` line) — `tools/ros-manifest/src/ros_manifest/extends.py:243`
+- [ ] (suggestion, for issue 481) Narrow cleanup windows besides the two named limits: a KeyboardInterrupt while the handlers are being installed (that loop is outside the `try`) or between `sigwait` and the final raise; `sigwait` could block if another thread takes the same signal between `sigpending` and `sigwait`; the handler's `killpg` runs on a reaped git's pid on the normal path (guard with `proc.returncode is None`) — `tools/ros-manifest/src/ros_manifest/extends.py:183`
