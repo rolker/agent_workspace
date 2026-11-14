@@ -1768,3 +1768,22 @@ No code changed in this pass. The two must-fix of the review committed as 65522d
 - Resolver suite: 327 passed, 2 known failures on Python 3.14 (`test_an_extends_path_too_long_is_a_message_without_the_path`).
 - `test_project_file.sh`: 692 passed, 0 failed.
 - pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 08:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7f6eba07e9249f54, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `d3aeb6c1`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling; this pass reviews the fix diff 65522d84..d3aeb6c1)
+**Must-fix**: 1 | **Suggestions**: 3
+
+Scope: the fix pass for the review committed as 65522d84. Must-fix 1 of that review (three-slash `source` URL) is closed: the allow-list refuses `https:///u:p@h/x` and every variant tried; no accepted value gives git a user name (`git credential fill` on the accepted edge cases); `https://github.com/o/r.git`, a port, and `.`, `-`, `_`, `~`, `+`, `%20` in a path are accepted; a newline is refused; no refusal prints the value. Must-fix 2 (restore cut short) is closed on the except paths but not on the normal path (finding 1). The new mask tests fail on the old extends.py (signal while git is killed, signal while handlers are put back; checked in a scratch copy). Runs at the head: resolver suite 327 passed, 2 known failures (test_an_extends_path_too_long_is_a_message_without_the_path); `test_project_file.sh` 692 passed, 0 failed; flake8 and shellcheck clean on the changed files. CI on d3aeb6c1: ros-manifest tests, Validate Adapter Contract, Validate Documentation pass in both runs; both Lint (pre-commit) jobs pending. Cross-model: Codex completed (its two findings are on code outside this diff: adapter.sh:1535 a changed repository URL in a refreshed manifest is not noticed for an existing checkout, and the `inf` timeout; follow-ups); Gemini failed, empty response, a tool call denied in headless mode (issue 364).
+
+### Findings
+- [ ] (must-fix) On the normal path (git exited) the `finally` starts with `armed` True and nothing blocked: a SIGTERM or SIGHUP before `block()` takes effect raises `_Signalled` out of the `finally`, leaving `on_signal` installed for good (reproduced: handler stayed `on_signal`, the caller's handler got nothing). Tripped during the `pthread_sigmask` call (which runs handlers after changing the mask), it also leaves `saved_mask` unset, so SIGTERM and SIGHUP stay blocked for the process (adversarial reviewer, reproduced with PyErr_SetInterruptEx); the same mask leak follows a signal tripped inside `block()` in an except clause, as the `finally`'s `block()` then saves the already-blocked mask. Read the entry mask before the handlers are installed, and restore handlers and that mask in a nested `try/finally` inside the `finally` — `tools/ros-manifest/src/ros_manifest/extends.py:220`
+- [ ] (suggestion) A caught signal pending when the entry mask is put back (with the default disposition) ends the process before `_clone_or_reuse` removes its temporary directory: reproduced, a `.<key>.partial-*` directory is left in the cache (never trusted, never cleaned). Before unmasking, take a pending caught signal with `sigpending`/`sigwait` and raise `_Signalled`, so the usual cleanup and re-delivery run — `tools/ros-manifest/src/ros_manifest/extends.py:225`
+- [ ] (suggestion) The host classes `[A-Za-z0-9]` follow the locale: under en_US.UTF-8 `https://é/x` and fullwidth letters are accepted, under C refused; no credential results (lookalike '@' and ':' are refused). Use explicit ASCII or `local LC_ALL=C` — `.agent/scripts/_project_registry.sh:820`
+- [ ] (suggestion, for issue 481) The deferral's reason holds for the window but not for its harm: if `on_signal` kills git's process group itself before raising (it can read `proc`), a `_Signalled` that escapes an except clause leaves no git running — `tools/ros-manifest/src/ros_manifest/extends.py:163`
