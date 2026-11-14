@@ -804,20 +804,25 @@ _project_file_value_error() {
         source)
             # Plain http is refused: the manifest decides which repositories
             # are cloned and built, so it must not be open to change on the
-            # way. A user name or password in the URL is refused without
-            # printing the value (it would be echoed and stored).
-            if [[ "$value" == http://* ]]; then
-                echo "source must not be a plain http:// URL: the manifest decides which repositories are cloned and built, and plain http lets anyone on the network change it on the way; use https:// (a url.<base>.insteadOf rule in your git configuration may send it to an ssh mirror), or file:// for a repository on this machine"
-                return 1
-            elif [[ "$value" =~ ^(https|file):// ]]; then
-                local authority="${value#*://}"
+            # way. A value with a scheme (any case, with or without '//')
+            # may hold a credential, so no refusal of one prints it, and a
+            # user name or password before the host is refused outright.
+            local lower authority
+            lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$lower" =~ ^[a-z][a-z0-9+.-]*: ]]; then
+                authority="${value#*:}"
+                authority="${authority#//}"
                 authority="${authority%%/*}"
                 if [[ "$authority" == *@* ]]; then
                     echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
                     return 1
                 fi
+                if [[ "$lower" == http://* ]]; then
+                    echo "source must not be a plain http:// URL: the manifest decides which repositories are cloned and built, and plain http lets anyone on the network change it on the way; use https:// (a url.<base>.insteadOf rule in your git configuration may send it to an ssh mirror), or file:// for a repository on this machine"
+                    return 1
+                fi
                 if ! [[ "$value" =~ ^(https|file)://[^[:space:][:cntrl:]]+$ ]]; then
-                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL (scheme in lower case) of a git repository, with no blanks or control characters (the value is not shown: a URL may hold a credential)"
                     return 1
                 fi
             elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then

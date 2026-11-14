@@ -1724,12 +1724,23 @@ test_source_keys() {
     assert_contains "plain http: says what to use" "use https://" "$out"
     # A user name or password in the URL is refused without printing it.
     for v in 'https://alice:s3cr3tTOKEN@example.invalid/m.git' 'https://s3cr3tTOKEN@example.invalid/m.git' \
-        'file://s3cr3tTOKEN@localhost/srv/m.git'; do
+        'file://s3cr3tTOKEN@localhost/srv/m.git' 'HTTPS://bob:s3cr3tTOKEN@example.invalid/m.git' \
+        'https:bob:s3cr3tTOKEN@example.invalid/m.git' 'Http://bob:s3cr3tTOKEN@example.invalid/m.git' \
+        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git'; do
         printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "refused: userinfo in $v" "2" "$rc"
         assert_contains "userinfo: names the rule" "source must not carry a user name or password in its URL" "$out"
         assert_not_contains "userinfo: the secret is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # Any other refusal of a URL-like value does not print it either.
+    for v in 'HTTPS://example.invalid/s3cr3tTOKEN.git' $'https://example.invalid/s3cr3tTOKEN\x01.git' \
+        'https://example.invalid/a s3cr3tTOKEN.git' 'ftp://example.invalid/s3cr3tTOKEN.git'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: URL-like ${v//[[:cntrl:]]/?}" "2" "$rc"
+        assert_contains "URL-like: names the rule" "source must be an absolute path to a file, or an https:// or file:// URL" "$out"
+        assert_not_contains "URL-like: the value is not printed" "s3cr3tTOKEN" "$out"
     done
     printf 'source=https://e.invalid/m.git\nsource_ref=a/.hidden\n' | write_pfile "$sb" rc
     rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
