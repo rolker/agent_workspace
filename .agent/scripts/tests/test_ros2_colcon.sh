@@ -3233,7 +3233,10 @@ test_mr_role_and_distro_changes() {
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "distro changed: validate exit 1" "1" "$rc"
     assert_contains "distro changed: named" "is for distro 'fakefox' but the registry line says distro=otherfox" "$out"
-    run_mr "$sb" sync >/dev/null 2>&1
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "distro changed: sync exit 0" "0" "$rc"
+    assert_eq "distro changed: the layers are the same" "core" "$(grep -v '^#' "$gen/layers.txt")"
+    assert_contains "distro changed, same layers: worktrees told to recreate env.sh" "the layers or the distro changed; existing package worktrees keep their old env.sh; recreate them" "$out"
     assert_contains "distro otherfox: pkg_b present there" "pkg_b" "$(cat "$gen/repos/core.repos")"
     assert_contains "distro otherfox: pkg_a at its default ref" "version: main" "$(cat "$gen/repos/core.repos")"
 }

@@ -945,7 +945,7 @@ _rc_resolve_begin() {
 # configs/manifest-resolved at it and remove the previous one. A failure
 # (the resolver's, or a role and distro that select nothing) leaves the
 # previous directory and link as they are. Sets _RC_LAYERS_CHANGED (1 when
-# layers.txt changed).
+# layers.txt or the distro changed).
 _rc_manifest_resolve() {
     local configs link bin role distro tmp rc=0 err count prev old_layers new_layers
     _RC_LAYERS_CHANGED=0
@@ -1002,8 +1002,12 @@ _rc_manifest_resolve() {
     fi
     prev=""
     [ -L "$link" ] && prev="$(readlink -- "$link")"
-    old_layers="$(_rc_layer_lines "$link/layers.txt")"
-    new_layers="$(_rc_layer_lines "$tmp/layers.txt")"
+    # A package worktree's env.sh embeds the layers and the distro's
+    # underlay: either changing is announced.
+    old_layers="$(_rc_layer_lines "$link/layers.txt")
+distro=$(_rc_resolved_from "$link/.resolved-from" distro)"
+    new_layers="$(_rc_layer_lines "$tmp/layers.txt")
+distro=$distro"
     # Swap atomically: a new relative link renamed over the old one.
     if ! ln -s "$(basename "$tmp")" "$tmp.link"; then
         _rc_resolve_cleanup
@@ -1510,7 +1514,7 @@ adapter_sync() {
             echo "source: $missing repositor$([ "$missing" -eq 1 ] && echo y || echo ies) in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project $(_rc_name) setup"
         fi
         if [ "${_RC_LAYERS_CHANGED:-0}" -eq 1 ]; then
-            echo "source: the layers changed; existing package worktrees keep their old env.sh; recreate them"
+            echo "source: the layers or the distro changed; existing package worktrees keep their old env.sh; recreate them"
         fi
     fi
     echo "Sync complete."
