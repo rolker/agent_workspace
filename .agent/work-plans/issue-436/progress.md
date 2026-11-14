@@ -1694,3 +1694,20 @@ CI on `3fe6662a` at 00:27: Validate Documentation, Validate Adapter Contract and
 - Resolver suite (`PYTHONPATH=tools/ros-manifest/src python3 -m pytest tools/ros-manifest/tests`, Python 3.14): 321 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases).
 - `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP: every hook passed or had no files; `validate-script-tests` ran all 49 suites, all passed (test_project_file.sh alone: 629 passed, 0 failed).
 - Not run on Python 3.10.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 01:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #480 at `bc07886c`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling, 20 files +4768/-226; this pass reviews the fix diff 9379bb77..bc07886c)
+**Must-fix**: 2 | **Suggestions**: 1
+
+Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-fix closed: an ignored SIGTERM/SIGHUP is left alone, the previous handler gets the signal through `signal.raise_signal`, and a caller's handler runs (new tests fail on the old extends.py: ignored-hangup, caller's-handler and signal-while-starting, checked in a scratch copy). Prior suggestions 2 (pending signal during Popen) and 3 (wait-bound test now holds git's stdout; it fails when the 2 s bound is removed, checked) closed. Suggestion 4 (URL-grammar `source` rule) closed for two-slash URLs, but introduced must-fix 1. git's own credential parser and the rule agree on '@' after the first '/' (checked with `git credential fill`); `file://` paths holding '?' or '#' work with `git ls-remote` (checked). Runs at the head: resolver suite 321 passed, 2 known failures (test_untrusted_input path-too-long); `test_project_file.sh` 629 passed, 0 failed; flake8 and shellcheck clean on the changed files. CI on bc07886c at 01:22: ros-manifest tests, Validate Adapter Contract, Validate Documentation pass in both runs; both Lint (pre-commit) jobs pending. Cross-model: Codex completed (both findings on code outside this diff, recorded as follow-ups in the report); Gemini failed with an empty response, a tool call denied in headless mode (issue 364).
+
+### Findings
+- [ ] (must-fix) A `source` of the form `https:///user:pass@host/repo` (three or more slashes) is accepted: `${authority#//}` strips two slashes, the authority is empty, no '@' is seen. git sends the credential (reproduced: `git ls-remote http:///u:s3cr3tTOKEN@127.0.0.1:PORT/m.git` sent `Authorization: Basic dTpzM2NyM3RUT0tFTg==`); the old rule refused it. Refuse an empty authority for a URL with a scheme (or strip every leading '/'), and add the row to the refused list — `.agent/scripts/_project_registry.sh:817`
+- [ ] (must-fix) The handler-restore `finally` runs with `armed` still True: a signal arriving after one handler is restored and before the other raises `_Signalled` out of the loop, leaving `on_signal` installed for the life of the process; `resolve_chain`'s `raise_signal` then re-enters it and `_Signalled` escapes as a traceback instead of ending the process by the signal (reproduced by the adversarial reviewer). Block SIGTERM/SIGHUP with `signal.pthread_sigmask` across the restore (the blocked signal is then delivered to the restored handler), or disarm first and restore in a loop that cannot be cut short — `tools/ros-manifest/src/ros_manifest/extends.py:208`
+- [ ] (suggestion) A signal arriving at the top of `except subprocess.TimeoutExpired:` or `except BaseException:`, before `armed = False`, raises out of that clause, so `_kill_group` never runs and git keeps writing into the directory being removed (same few-bytecode window as before this diff; `armed` was meant to close it). The same `pthread_sigmask` block around the kill sections closes it; a second, different signal during a kill is still dropped (the fixer's stated gap) — `tools/ros-manifest/src/ros_manifest/extends.py:197`
