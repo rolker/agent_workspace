@@ -8,6 +8,17 @@
 # bootstrap.yaml). Manifest-repo formalization is #172 step 4; this adapter
 # reads the manifest from the hosting dir only.
 #
+# Two routes to that directory (issue #436). The bootstrap route (below) is
+# today's bootstrap.yaml flow. The manifest route is taken when the
+# project's settings file sets `source` (with source_ref and source_path for
+# a git URL), and needs role= and distro= on the registry line: the
+# manifest, in the new format, is resolved by the workspace-installed
+# ros-manifest resolver (<main checkout>/.venv/bin/ros-manifest, from `make
+# install-ros-manifest`; called by CLI only) into configs/manifest-resolved
+# (see "Manifest route" below for the fetch, staleness and network rules).
+# Package worktrees' env.sh is written once at create time: after a sync
+# that changes the layers, sync says to recreate them.
+#
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
 # non-interactively. The bootstrap URL (a remote bootstrap.yaml) resolves
@@ -62,8 +73,109 @@ _rc_root() {
     echo "${ACTIVE_PROJECT_ROOT:-$WORKSPACE_ROOT/project}"
 }
 
+# The manifest directory every verb reads: configs/manifest on the
+# bootstrap route, the link configs/manifest-resolved to the generated
+# directory on the manifest route (issue #436; a configs/manifest left
+# from an earlier bootstrap is then ignored). On the manifest route, once
+# _rc_pin_manifest_dir has run (_rc_require_manifest runs it), it is the
+# generated directory the link pointed at then, so a run reads one result
+# throughout even when another run swaps the link meanwhile.
 _rc_manifest_dir() {
-    echo "$(_rc_root)/configs/manifest"
+    if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
+        if [ -n "${_RC_MDIR_PIN:-}" ]; then
+            echo "$_RC_MDIR_PIN"
+        else
+            echo "$(_rc_root)/configs/manifest-resolved"
+        fi
+    else
+        echo "$(_rc_root)/configs/manifest"
+    fi
+}
+
+# Pin this run to the generated directory configs/manifest-resolved points
+# at (manifest route; sets _RC_MDIR_PIN). With flock, a shared lock on that
+# directory, held on fd 8 until the run ends, keeps it from being removed
+# while this run reads it: a run that replaces the link removes the
+# previous directory only when it can take an exclusive lock on it at
+# once, and otherwise leaves it to the sweep. A directory removed between
+# reading the link and taking the lock is noticed (no layers.txt) and the
+# link read again. A link the adapter did not write (to another name) is
+# read through, unpinned. The programs the adapter starts (git, vcs,
+# colcon, the resolver) run through _rc_nofd, so none inherits fd 8.
+_rc_pin_manifest_dir() {
+    local configs link target i
+    [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
+    configs="$(_rc_root)/configs"
+    link="$configs/manifest-resolved"
+    for i in 1 2 3 4 5; do
+        _rc_unpin_manifest_dir
+        [ -L "$link" ] || return 0
+        target="$(readlink -- "$link" 2>/dev/null)" || return 0
+        [[ "$target" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] || return 0
+        if command -v flock >/dev/null 2>&1; then
+            { exec 8<"$configs/$target"; } 2>/dev/null || continue
+            if ! flock -s 8 9>&-; then
+                exec 8<&-
+                echo "WARNING: cannot take a shared lock on $configs/$target (flock on a directory failed here); this run reads it unguarded, and a sync meanwhile may replace it" >&2
+                _RC_MDIR_PIN="$configs/$target"
+                return 0
+            fi
+            _RC_MDIR_FD=1
+        fi
+        if [ -f "$configs/$target/layers.txt" ]; then
+            _RC_MDIR_PIN="$configs/$target"
+            return 0
+        fi
+    done
+    _rc_unpin_manifest_dir
+}
+
+_rc_unpin_manifest_dir() {
+    if [ "${_RC_MDIR_FD:-0}" -eq 1 ]; then
+        exec 8<&-
+        _RC_MDIR_FD=0
+    fi
+    _RC_MDIR_PIN=""
+}
+
+# Run a program without the reader pin (fd 8) or the source lock (fd 9),
+# so a child that outlives the adapter (git's auto gc, a ROS daemon a test
+# starts) holds neither, and without the variables that tell git which
+# repository to use (_rc_git_local_vars): git sets GIT_DIR, GIT_INDEX_FILE
+# and the like for every hook, and a `git -C <dir>` would still act on the
+# repository they name.
+_rc_nofd() {
+    _rc_git_local_vars
+    ( unset $_RC_GIT_LOCAL_VARS; "$@" ) 8<&- 9>&-
+}
+
+# The repository-locating names `git rev-parse --local-env-vars` prints,
+# with git's list as of 2.53 as a floor, less GIT_CONFIG_PARAMETERS and
+# GIT_CONFIG_COUNT, which carry the user's own `-c` and environment
+# configuration (credentials, url.*.insteadOf) and are kept. Computed once
+# per run into _RC_GIT_LOCAL_VARS.
+_rc_git_local_vars() {
+    [ -n "${_RC_GIT_LOCAL_VARS:-}" ] && return 0
+    local floor="GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_OBJECT_DIRECTORY GIT_DIR GIT_WORK_TREE GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_INDEX_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_SHALLOW_FILE GIT_COMMON_DIR" more
+    # shellcheck disable=SC2086
+    more="$( unset $floor; git rev-parse --local-env-vars 2>/dev/null 8<&- 9>&- )" || more=""
+    _RC_GIT_LOCAL_VARS="$(printf '%s\n' $floor $more | grep -vx -e GIT_CONFIG_PARAMETERS -e GIT_CONFIG_COUNT | LC_ALL=C sort -u | tr '\n' ' ')"
+}
+
+# Remove a generated directory no run is reading (with flock only; the
+# caller never removes one without it): only when an exclusive lock on it
+# is free at once. A reader's shared lock keeps it for a later sweep. When
+# a directory cannot be locked at all, nothing is removed and that is said
+# once per run, so leftovers never pile up unsaid.
+_rc_remove_generated() {
+    local dir="$1" rc=0
+    [ -d "$dir" ] || return 0
+    flock -x -n -E 75 "$dir" rm -rf -- "$dir" 8<&- 9>&- 2>/dev/null || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 75 ] && [ "${_RC_WARNED_DIRLOCK:-0}" -eq 0 ]; then
+        _RC_WARNED_DIRLOCK=1
+        echo "WARNING: cannot lock or remove $dir (exit $rc); previous results under $(dirname "$dir")/manifest-resolved.gen-* are left: remove those the link manifest-resolved does not point at by hand" >&2
+    fi
+    return 0
 }
 
 # Require the manifest dir (dir or resolving symlink) with at least one
@@ -71,7 +183,13 @@ _rc_manifest_dir() {
 # the layer loops run zero times and report success.
 _rc_require_manifest() {
     local mdir
+    _rc_pin_manifest_dir
     mdir="$(_rc_manifest_dir)"
+    if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && { [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; }; then
+        echo "ERROR: no resolved manifest at $mdir (project '${ACTIVE_PROJECT_NAME:-?}' sets source, so the manifest is resolved from it)" >&2
+        echo "Run: .agent/scripts/adapter --project ${ACTIVE_PROJECT_NAME:-<name>} setup" >&2
+        return 1
+    fi
     if [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; then
         echo "ERROR: no manifest at $mdir (expected layers.txt)" >&2
         echo "The hosting dir must contain configs/manifest/ with layers.txt," >&2
@@ -128,6 +246,22 @@ _rc_layer_dir() {
 # the distro. Errors loudly.
 _rc_distro() {
     local mdir distro="" config manifest_distro=""
+    # The manifest route (issue #436) takes the registry's distro= only: the
+    # generated directory has no bootstrap.yaml, and resolving needs the
+    # distro before any other config (one source).
+    if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
+        distro="${ACTIVE_PROJECT_DISTRO:-}"
+        if [ -z "$distro" ]; then
+            _rc_registry_field_missing distro
+            return 1
+        fi
+        if ! [[ "$distro" =~ ^[a-z0-9_]+$ ]]; then
+            echo "ERROR: invalid ROS distro name '$distro'" >&2
+            return 1
+        fi
+        echo "$distro"
+        return 0
+    fi
     mdir="$(_rc_manifest_dir)"
     if [ -f "$mdir/bootstrap.yaml" ]; then
         manifest_distro="$(grep '^distro:' "$mdir/bootstrap.yaml" 2>/dev/null \
@@ -354,6 +488,9 @@ _rc_bootstrap_manifest() {
         fi
         echo "  MANIFEST_BOOTSTRAP_URL=<url> in $(_rc_config_file) (legacy)" >&2
         echo "  $root/configs/project_bootstrap.url" >&2
+        if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
+            echo "Or use a manifest in the new format (issue #436): .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME source=<git URL or absolute path> [source_ref=<branch|tag|commit>] [source_path=<file in the repo>], with role= and distro= on its registry line" >&2
+        fi
         return 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
@@ -417,7 +554,7 @@ _rc_bootstrap_manifest() {
         # cloned before. Branch is the developer's business (feature work
         # on a Pattern B manifest repo is normal) — report, don't refuse.
         local existing_url existing_branch
-        if ! existing_url="$(git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
+        if ! existing_url="$(_rc_nofd git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
             echo "ERROR: $clone_dir exists but is not a git checkout with an 'origin' remote." >&2
             echo "Remove it (or point bootstrap.yaml elsewhere) and rerun setup." >&2
             return 1
@@ -427,13 +564,13 @@ _rc_bootstrap_manifest() {
             echo "Remove it (or fix git_url in the bootstrap config) and rerun setup." >&2
             return 1
         fi
-        existing_branch="$(git -C "$clone_dir" branch --show-current 2>/dev/null)"
+        existing_branch="$(_rc_nofd git -C "$clone_dir" branch --show-current 2>/dev/null)"
         if [ "$existing_branch" != "$branch" ]; then
             echo "  WARNING: existing checkout is on '${existing_branch:-detached}', bootstrap pins '$branch' — reusing as-is"
         else
             echo "  (already present — reusing existing checkout)"
         fi
-    elif ! git clone -b "$branch" "$git_url" "$clone_dir"; then
+    elif ! _rc_nofd git clone -b "$branch" "$git_url" "$clone_dir"; then
         echo "ERROR: failed to clone $git_url (branch: $branch)" >&2
         return 1
     fi
@@ -448,6 +585,755 @@ _rc_bootstrap_manifest() {
     target="$(realpath --relative-to="$root/configs" "$config_dir")"
     ln -sfn "$target" "$mdir"
     echo "Created symlink: $mdir -> $target"
+}
+
+# --- Manifest route (issue #436) -------------------------------------------
+# A project whose settings file sets `source` takes the manifest route: its
+# manifest, in the new format (tools/ros-manifest), is fetched (a git URL
+# source, afresh on each setup and sync; no clone is kept) or read in place
+# (a path source), resolved for the registry line's role= and distro= by the
+# workspace-installed resolver into a generated directory
+# configs/manifest-resolved.gen-XXXXXX/ (a prefix no one types when moving
+# a directory aside: only such names are ever removed), and
+# configs/manifest-resolved is a link to the current one. Every other verb reads layers.txt,
+# optional_layers.txt and repos/<layer>.repos through _rc_manifest_dir, so
+# they are the same on both routes (ADR-0012's directory contract). A
+# project with no `source` takes the bootstrap route, unchanged.
+#
+# Never silently stale: after `sync`, what is resolved is what the remotes
+# hold now, or the run fails and says why. No clone is kept (owner's
+# decision, 2026-11-13, round-5 checkpoint): setup and sync fetch a URL
+# source into <gen>.src, a sibling of the new generated directory, removed
+# after the resolve and on every exit path, signals included (a further
+# INT, TERM or HUP during that removal is ignored); a SIGKILL's leftover
+# is in the gen- family the sweep removes. A URL source is https:// or
+# file:// (the registry refuses plain http and a user name or password in
+# the URL), and the fetch names the transports git may use: https, ssh
+# (for a user's url.*.insteadOf rule) and file. The fetch goes into a
+# fresh `git init --template=` (SHA-1, or SHA-256 when the remote's object
+# names are), so the source repository's config, hooks, replace refs and
+# refspecs never apply, while the user's own git configuration
+# (credentials, url.*.insteadOf) does; GIT_DIR and the other variables
+# that name a repository are cleared for every program the adapter starts
+# (_rc_nofd); no hook runs (a global core.hooksPath included), no
+# attribute selects a filter or conversion (.git/info/attributes), no
+# submodule is fetched, and nothing from the repository is run. ls-remote
+# decides the kind of source_ref (a branch, then a tag, else a commit of
+# 7 to 64 hex characters); a branch or tag is fetched one commit deep, a
+# commit by its full name one commit deep, or, when the server will not
+# serve that (or the name is abbreviated), by a full fetch of the remote's
+# branches and tags. ls-remote and the fetches are bounded by
+# WT_FETCH_TIMEOUT (default 60 s), as repo_pin's calls are, and a Ctrl-C
+# ends them at once. The commit is
+# checked out detached; no symbolic link along source_path is followed.
+# .resolved-from records source, source_ref, source_path and the commit
+# (a path source: a checksum of its content, for validate), and the
+# generated files' provenance lines name url#ref:path@commit. A fetch
+# failure (offline, a ref the remote lacks, a refused transport, a host
+# that does not answer) exits 1 and says the previous result is still in
+# use, its link unchanged. setup and sync refuse a manifest-resolved link
+# written other than as the bare generated name, before anything is swept
+# or fetched. Local manifest work uses the path form. Every `extends` base
+# is cloned afresh, the resolver's cache being a sibling of the new
+# generated directory removed on every exit; the resolver protects that
+# clone itself (tools/ros-manifest README: no user hook, filter driver or
+# submodule, git's repository variables cleared, no terminal and no
+# askpass, the same three transports) and bounds each of its git calls by
+# ROS_MANIFEST_GIT_TIMEOUT (default 60 s). So while the source lock is
+# held, every call that asks a remote has a limit: WT_FETCH_TIMEOUT for
+# the leaf, the resolver's for each base. The leaf's limit ends git, not
+# an ssh git started, which may outlive it (until its own connect
+# timeout when stalled while connecting) but holds neither the adapter
+# nor the lock; the resolver's ends git's whole process group. On the
+# leaf no askpass runs, but an ssh started from a terminal can still ask
+# for a passphrase or a host key there, until the limit.
+#
+# Network: the source host and every `extends` host at setup and sync, and
+# every package host at setup (vcs import) and sync (git pull/fetch); none
+# once fetched for the other verbs. The resolver itself comes from PyPI
+# when it is installed (make install-ros-manifest).
+#
+# Concurrency: setup and sync fetch and resolve holding an exclusive flock
+# on configs/.lock.source (waits ROS2_COLCON_LOCK_WAIT seconds, default
+# 120, then refuses with nothing changed), so two runs never fetch, sweep
+# or swap the link at once. The lock file is never removed (the reason
+# project_file_set gives in _project_registry.sh). Without flock (macOS by
+# default) the fetch and resolve run unlocked, as project_file_set's
+# write does, and leftovers of killed runs are not swept (they could be a
+# concurrent run's). Every verb reads one generated directory throughout
+# (_rc_pin_manifest_dir), holding a shared flock on it, and a directory a
+# run still reads is never removed under it: the run that replaced it
+# leaves it, and a later sweep removes it once no run reads it. Without
+# flock no reader is guarded, so a swap never removes the directory it
+# replaces: it removes only older generated directories, so at most two
+# remain (the live one and the one before it), and a run reading one
+# loses it only after two more syncs. Two unlocked setups or syncs at once
+# may still remove each other's directory in progress (that run then
+# fails). Where flock cannot lock a directory at all, nothing is removed
+# and the run says so once. Programs the adapter starts (git, vcs,
+# colcon, the resolver) run through _rc_nofd and inherit neither lock.
+
+# "manifest" when the settings file sets source, else "bootstrap".
+_rc_route() {
+    if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then echo manifest; else echo bootstrap; fi
+}
+
+# Is the source a git URL (else an absolute path to the manifest file)?
+_rc_source_is_url() {
+    [[ "${ACTIVE_PROJECT_SOURCE:-}" =~ ^(https|file):// ]]
+}
+
+# The project's name for messages.
+_rc_name() {
+    echo "${ACTIVE_PROJECT_NAME:-<name>}"
+}
+
+# Report a registry-line field (role, distro) the manifest route needs.
+_rc_registry_field_missing() {
+    local field="$1" name
+    name="$(_rc_name)"
+    echo "ERROR: project '$name' sets source (the manifest route), which needs $field=<name> on its registry line." >&2
+    echo "Edit the line for '$name' in .agent/projects.local to add $field=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project $name sync" >&2
+}
+
+# Non-comment, non-blank lines of a layers.txt (the resolver always writes
+# a '#' provenance line, so a file holding only that selects nothing).
+_rc_layer_lines() {
+    [ -f "$1" ] || return 0
+    grep -v '^[[:space:]]*#' "$1" 2>/dev/null | grep -v '^[[:space:]]*$' || true
+}
+
+# "<checksum> <size>" of a file's content (POSIX cksum), so any edit shows,
+# one that keeps the size and the second included.
+_rc_file_stamp() {
+    { cksum < "$1"; } 2>/dev/null
+}
+
+# One source only, never a silent choice: on the manifest route every other
+# bootstrap source that resolves is a hard error naming it and how to
+# remove it. The four are those of _rc_bootstrap_url.
+_rc_check_single_source() {
+    local name v cfg url_file
+    local -a lines=()
+    name="$(_rc_name)"
+    v="$(printf '%s' "${BOOTSTRAP_URL:-}" | tr -d '[:space:]')"
+    [ -n "$v" ] && lines+=("BOOTSTRAP_URL=$v in the environment: unset it when running the adapter for this project")
+    [ -n "${ACTIVE_PROJECT_BOOTSTRAP_URL:-}" ] && lines+=("bootstrap_url=${ACTIVE_PROJECT_BOOTSTRAP_URL} in ${ACTIVE_PROJECT_FILE:-the settings file}: remove it with: .agent/scripts/project_setting.sh unset $name bootstrap_url")
+    cfg="$(_rc_config_file)"
+    v="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
+    v="$(printf '%s' "$v" | tr -d '[:space:]')"
+    if [ -n "$v" ]; then
+        if [ "$cfg" = "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
+            lines+=("MANIFEST_BOOTSTRAP_URL=$v in $cfg (the shared config, read by every project without a legacy file of its own): remove that line")
+        else
+            lines+=("MANIFEST_BOOTSTRAP_URL=$v in $cfg (the legacy per-project config): remove that line")
+        fi
+    fi
+    url_file="$(_rc_root)/configs/project_bootstrap.url"
+    [ -f "$url_file" ] && lines+=("the file $url_file (in the project's root; it may be tracked in the project's own repository): remove it")
+    [ "${#lines[@]}" -eq 0 ] && return 0
+    echo "ERROR: project '$name' sets source=${ACTIVE_PROJECT_SOURCE:-} (the manifest route), and another bootstrap source was found; a project has one source only, never a silent choice:" >&2
+    for v in "${lines[@]}"; do
+        echo "  $v" >&2
+    done
+    echo "Remove the old source above, or stop using source: .agent/scripts/project_setting.sh unset $name source source_ref source_path" >&2
+    return 1
+}
+
+# The workspace-installed resolver: <main checkout>/.venv/bin/ros-manifest,
+# the main checkout found from git's common dir (a worktree has no venv of
+# its own; the Makefile's WS_ROOT), else WORKSPACE_ROOT. No PATH lookup, so
+# a stray copy elsewhere is never used.
+_rc_resolver_bin() {
+    local common main="$WORKSPACE_ROOT"
+    common="$(_rc_nofd git -C "$WORKSPACE_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
+    [ -n "$common" ] && main="${common%/.git}"
+    echo "$main/.venv/bin/ros-manifest"
+}
+
+# The transports the fetch may use, stated on its command line as the
+# resolver's extends clone states them (tools/ros-manifest extends.py):
+# https, ssh (a user's url.*.insteadOf rule may send https to an ssh
+# mirror) and file, nothing else; GIT_ALLOW_PROTOCOL says the same in the
+# environment, which a user's own protocol.<name>.allow=always cannot widen.
+_RC_TRANSPORTS=(-c protocol.allow=never -c protocol.https.allow=always
+    -c protocol.ssh.allow=always -c protocol.file.allow=always)
+
+# git in the temporary repository <src> (a fresh `git init`, so only the
+# user's own global and system configuration applies, never the source
+# repository's): no terminal prompt and no askpass (GIT_TERMINAL_PROMPT=0,
+# an empty core.askPass, GIT_ASKPASS and SSH_ASKPASS empty,
+# SSH_ASKPASS_REQUIRE=never; a credential helper the user configured still
+# runs, and an ssh started from a terminal can still ask on it), no
+# submodules, no hooks (a user's global core.hooksPath included), no
+# fsmonitor, the transports above, the repository-locating variables
+# cleared and fd 8 and 9 closed (_rc_nofd).
+_rc_src_git() {  # <src> <git args...>
+    local src="$1"
+    shift
+    GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https:ssh:file GIT_ASKPASS='' SSH_ASKPASS='' SSH_ASKPASS_REQUIRE=never \
+        _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.askPass= -C "$src" "$@"
+}
+
+# The same, for a call that asks the source's host (ls-remote, fetch):
+# bounded as repo_pin's calls are (_adapter_bounded_git, WT_FETCH_TIMEOUT,
+# default 60 s), so a stalled source host cannot hold the source lock (an
+# `extends` host is bounded by the resolver, see the header). Exit 124
+# or 137 when the limit ended it.
+_rc_src_net() {  # <src> <git args...>
+    local src="$1"
+    shift
+    GIT_ALLOW_PROTOCOL=https:ssh:file GIT_ASKPASS='' SSH_ASKPASS='' SSH_ASKPASS_REQUIRE=never \
+        _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.askPass= -C "$src" "$@"
+}
+
+# What failed in a call to the source's host, for messages.
+_rc_net_why() {  # <exit status>
+    if [ "$1" -eq 124 ] || [ "$1" -eq 137 ]; then
+        echo "it did not finish within $(_adapter_git_limit) s (the limit; WT_FETCH_TIMEOUT raises it): a host that does not answer, or a fetch larger than the limit allows"
+    else
+        echo "git's message above: offline, a wrong URL, or a transport this fetch does not allow (https, ssh and file only)"
+    fi
+}
+
+# The commit the live resolved manifest was resolved from, when it came
+# from the same source (for the "old -> new" line); empty otherwise.
+_rc_live_commit() {
+    local rf
+    rf="$(_rc_root)/configs/manifest-resolved/.resolved-from"
+    [ "$(_rc_resolved_from "$rf" source)" = "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
+    _rc_resolved_from "$rf" commit
+}
+
+# Fetch the leaf manifest (see the header above). Sets _RC_SRC_FILE (the
+# manifest file to resolve) and _RC_SRC_COMMIT (the fetched commit; empty
+# for a path source). A URL source is fetched into <tmp>.src, a sibling of
+# the new generated directory _rc_resolve_begin made, which the resolve
+# cleanup removes on every exit. A failure returns 1, the previously
+# resolved manifest and its link as they were.
+_rc_source_fetch() {
+    local url ref spath src kind sha old remote fetched=0 rc=0
+    _RC_SRC_FILE=""
+    _RC_SRC_COMMIT=""
+    url="${ACTIVE_PROJECT_SOURCE:-}"
+    if ! _rc_source_is_url; then
+        if [ ! -f "$url" ] || [ ! -r "$url" ]; then
+            echo "ERROR: source $url (project '$(_rc_name)') is not a readable file" >&2
+            return 1
+        fi
+        _RC_SRC_FILE="$url"
+        echo "source: $url (a file, read in place)"
+        return 0
+    fi
+    ref="${ACTIVE_PROJECT_SOURCE_REF:-}"
+    spath="${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}"
+    src="${_RC_RESOLVE_TMP:?}.src"
+    local kept="the previously resolved manifest, if any, is still in use (its link unchanged)"
+    # --template= : no hooks or other files copied into the new repository.
+    # The object format is stated (a user's init.defaultObjectFormat must
+    # not decide it) and matched to the remote's below.
+    if ! mkdir -- "$src" || ! _rc_src_git "$src" init --quiet --template= --object-format=sha1 >/dev/null; then
+        echo "ERROR: cannot make the temporary repository $src for fetching source $url; $kept" >&2
+        return 1
+    fi
+    echo "source: fetching '$ref' from $url"
+    # The remote names the kind: a branch first, then a tag. All its refs
+    # are listed, so the length of its object names is known even when its
+    # HEAD is unborn and source_ref is a commit.
+    remote="$(_rc_src_net "$src" ls-remote -- "$url")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: cannot reach source $url ($(_rc_net_why "$rc")); $kept" >&2
+        return 1
+    fi
+    # A SHA-256 remote: the temporary repository is made again to match.
+    if grep -Eq '^[0-9a-f]{64}[[:space:]]' <<< "$remote"; then
+        if ! rm -rf -- "${src:?}/.git" || ! _rc_src_git "$src" init --quiet --template= --object-format=sha256 >/dev/null; then
+            echo "ERROR: cannot make the temporary SHA-256 repository $src for fetching source $url; $kept" >&2
+            return 1
+        fi
+    fi
+    if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$remote"; then
+        kind=branch
+    elif awk -F'\t' -v r="refs/tags/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$remote"; then
+        kind=tag
+    elif [[ "$ref" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+        kind=commit
+    else
+        echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit (a commit is 7 to 64 hex characters); $kept" >&2
+        return 1
+    fi
+    if [ "$kind" != commit ]; then
+        # One ref, one commit deep, into FETCH_HEAD only.
+        _rc_src_net "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "refs/$([ "$kind" = branch ] && echo heads || echo tags)/$ref" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "ERROR: cannot fetch $kind '$ref' of source $url ($(_rc_net_why "$rc")); $kept" >&2
+            return 1
+        fi
+        sha="$(_rc_src_git "$src" rev-parse --verify --quiet "FETCH_HEAD^{commit}")" || sha=""
+    else
+        # A full commit name is asked for shallow first; a server that will
+        # not serve it so, and an abbreviated name, take a full fetch of the
+        # remote's branches and tags.
+        if [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] \
+            && _rc_src_net "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "$ref" 2>/dev/null; then
+            fetched=1
+        else
+            _rc_src_net "$src" fetch --quiet --no-tags --no-recurse-submodules -- "$url" \
+                '+refs/heads/*:refs/remotes/source/*' '+refs/tags/*:refs/tags/*' || rc=$?
+            [ "$rc" -eq 0 ] && fetched=1
+        fi
+        if [ "$fetched" -eq 0 ]; then
+            echo "ERROR: cannot fetch source $url to look for commit '$ref' ($(_rc_net_why "$rc")); $kept" >&2
+            return 1
+        fi
+        sha="$(_rc_src_git "$src" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" || sha=""
+        if [ -z "$sha" ]; then
+            echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds; $kept" >&2
+            return 1
+        fi
+    fi
+    # No attribute of the fetched tree may select a filter, an encoding or a
+    # line-ending conversion from the user's configuration (git-lfs's
+    # filter would contact a host the repository names).
+    if ! mkdir -p "$src/.git/info" \
+        || ! printf '%s\n' '* -filter -text -ident -working-tree-encoding' > "$src/.git/info/attributes"; then
+        echo "ERROR: cannot write $src/.git/info/attributes; $kept" >&2
+        return 1
+    fi
+    if [ -z "$sha" ] || ! _rc_src_git "$src" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
+        echo "ERROR: cannot check out $kind '$ref' of source $url in $src; $kept" >&2
+        return 1
+    fi
+    old="$(_rc_live_commit)"
+    if [ -n "$old" ] && [ "$old" != "$sha" ]; then
+        echo "source: $kind $ref ${old:0:12} -> ${sha:0:12}"
+    else
+        echo "source: $kind $ref at ${sha:0:12}"
+    fi
+    _RC_SRC_COMMIT="$sha"
+    _RC_SRC_FILE="$src/$spath"
+    # The repository is not trusted to stay inside itself: a symbolic link
+    # anywhere along source_path could lead the resolver to any file the
+    # user can read, so none is followed.
+    local part="" comp
+    local -a comps=()
+    IFS='/' read -r -a comps <<< "$spath"
+    for comp in "${comps[@]}"; do
+        [ -z "$comp" ] || [ "$comp" = . ] && continue
+        part="${part:+$part/}$comp"
+        if [ -L "$src/$part" ]; then
+            echo "ERROR: source_path '$spath' goes through the symbolic link '$part' in $url at '$ref'; a symbolic link is never followed out of the source repository: name the file itself; $kept" >&2
+            return 1
+        fi
+    done
+    if [ ! -f "$_RC_SRC_FILE" ]; then
+        echo "ERROR: source_path '$spath' is not a file in $url at '$ref'; $kept" >&2
+        return 1
+    fi
+}
+
+# Before the fetch (setup and sync): refuse anything but a link at
+# configs/manifest-resolved; holding the source lock, sweep what a killed
+# run (SIGKILL, a power cut) left: every generated directory, fetched
+# source, cache and link the live link does not point at; then make the
+# new generated directory configs/manifest-resolved.gen-XXXXXX. From here
+# the cleanup (_rc_resolve_cleanup) removes it, its fetched source <tmp>.src,
+# the resolver's cache <tmp>.cache and the new link <tmp>.link on every
+# exit, an interrupt included, unless the link already points at the new
+# directory (an interrupt just after the swap).
+_rc_resolve_begin() {
+    local configs link tmp
+    configs="$(_rc_root)/configs"
+    link="$configs/manifest-resolved"
+    mkdir -p "$configs" || return 1
+    if [ -e "$link" ] && [ ! -L "$link" ]; then
+        echo "ERROR: $link is not the link the adapter writes (a directory or file is there); move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes) and rerun" >&2
+        return 1
+    fi
+    # The sweep keeps the directory the link names; a link written another
+    # way (./name, an absolute path) would have its target swept, so it is
+    # refused before anything is swept or fetched.
+    local target
+    if [ -L "$link" ]; then
+        target="$(readlink -- "$link")"
+        if ! [[ "$target" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]]; then
+            echo "ERROR: $link points at '$target', not at a manifest-resolved.gen-XXXXXX name beside it as the adapter writes it; nothing was removed or fetched. If it names a generated directory in $configs, write the link with the name alone (cd $configs && ln -sfn manifest-resolved.gen-XXXXXX manifest-resolved); otherwise remove the link and run setup" >&2
+            return 1
+        fi
+    fi
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] && _rc_resolve_sweep "$configs"
+    _RC_RESOLVE_LINK="$link"
+    tmp="$(mktemp -d "$configs/manifest-resolved.gen-XXXXXX")" || return 1
+    _RC_RESOLVE_TMP="$tmp"
+    trap '_rc_resolve_cleanup' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+}
+
+# Resolve _RC_SRC_FILE for the registry line's role and distro into the
+# generated directory _rc_resolve_begin made, then point
+# configs/manifest-resolved at it and remove the previous one. A failure
+# (the resolver's, or a role and distro that select nothing) leaves the
+# previous directory and link as they are. Sets _RC_LAYERS_CHANGED (1 when
+# layers.txt or the distro changed).
+_rc_manifest_resolve() {
+    local configs link bin role distro tmp rc=0 err count prev old_layers new_layers
+    _RC_LAYERS_CHANGED=0
+    role="${ACTIVE_PROJECT_ROLE:-}"
+    distro="$(_rc_distro)" || return 1
+    bin="$(_rc_resolver_bin)"
+    tmp="${_RC_RESOLVE_TMP:?}"
+    link="${_RC_RESOLVE_LINK:?}"
+    configs="$(dirname "$tmp")"
+    # The path source's stamp is taken before the resolve, so an edit made
+    # while it runs shows in validate as a changed file.
+    local stamp=""
+    _rc_source_is_url || stamp="$(_rc_file_stamp "$_RC_SRC_FILE")"
+    err="$(_rc_nofd "$bin" resolve --manifest "$_RC_SRC_FILE" --role "$role" --distro "$distro" \
+        --out "$tmp" --layout manifest-dir --cache-dir "$tmp.cache" 2>&1 >/dev/null)" || rc=$?
+    rm -rf -- "$tmp.cache" "$tmp.src"
+    [ -n "$err" ] && printf '%s\n' "$err" >&2
+    if [ "$rc" -ne 0 ]; then
+        if [ "$rc" -eq 2 ] && [[ "$err" == *--layout* ]]; then
+            echo "ERROR: the resolver at $bin predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-ros-manifest (from the workspace main checkout)" >&2
+        else
+            echo "ERROR: the manifest resolver failed (exit $rc, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        fi
+        _rc_resolve_cleanup
+        return 1
+    fi
+    count="$(_rc_layer_lines "$tmp/layers.txt" | wc -l | tr -d '[:space:]')"
+    if [ "${count:-0}" -eq 0 ]; then
+        echo "ERROR: role '$role' and distro '$distro' select no repositories from $_RC_SRC_FILE; nothing changed (check role= and distro= on the registry line, and the manifest's roles and distros)" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
+    {
+        echo "# Written by the ros2_colcon adapter (issue #436): what this directory was resolved from. Read by adapter validate."
+        echo "route=manifest"
+        echo "source=${ACTIVE_PROJECT_SOURCE:-}"
+        echo "source_ref=${ACTIVE_PROJECT_SOURCE_REF:-}"
+        echo "source_path=${ACTIVE_PROJECT_SOURCE_PATH:-}"
+        echo "commit=$_RC_SRC_COMMIT"
+        echo "role=$role"
+        echo "distro=$distro"
+        if ! _rc_source_is_url; then
+            echo "file-stamp=$stamp"
+        fi
+    } > "$tmp/.resolved-from" || { _rc_resolve_cleanup; return 1; }
+    # The generated files' '#' provenance lines name the manifest the
+    # resolver read, for a URL source a temporary path gone after this run:
+    # name it as the resolver names an extends base, url#ref:path@commit.
+    if _rc_source_is_url && ! _rc_relabel_provenance "$tmp" "$_RC_SRC_FILE" \
+        "${ACTIVE_PROJECT_SOURCE}#${ACTIVE_PROJECT_SOURCE_REF:-}:${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}@$_RC_SRC_COMMIT"; then
+        echo "ERROR: cannot rewrite the provenance lines in $tmp; the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
+    prev=""
+    [ -L "$link" ] && prev="$(readlink -- "$link")"
+    # A package worktree's env.sh embeds the layers and the distro's
+    # underlay: either changing is announced.
+    old_layers="$(_rc_layer_lines "$link/layers.txt")
+distro=$(_rc_resolved_from "$link/.resolved-from" distro)"
+    new_layers="$(_rc_layer_lines "$tmp/layers.txt")
+distro=$distro"
+    # Swap atomically: a new relative link renamed over the old one.
+    if ! ln -s "$(basename "$tmp")" "$tmp.link"; then
+        _rc_resolve_cleanup
+        return 1
+    fi
+    # The form this mv supports, probed once: GNU mv -T or BSD mv -h, both
+    # rename(2) the link over the old one, never into the directory it
+    # points at. A failed probe, or a failure of that form, is an error
+    # that leaves the live link in place. Only an mv with neither (the
+    # probe says "none") removes the old link first, leaving a moment with
+    # no link, and a failure then says the link is gone.
+    local mvform rc_mv=0
+    if ! mvform="$(_rc_mv_link_form "$configs")"; then
+        echo "ERROR: cannot probe how mv renames a link in $configs (above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
+    case "$mvform" in
+        T) mv -T "$tmp.link" "$link" || rc_mv=$? ;;
+        h) mv -fh "$tmp.link" "$link" || rc_mv=$? ;;
+        none)
+            rm -f -- "$link"
+            if ! mv "$tmp.link" "$link"; then
+                echo "ERROR: this mv cannot rename a link over another, so the old link $link was removed first, and putting the new one in place failed (above): there is no resolved manifest link now; run sync again" >&2
+                _rc_resolve_cleanup
+                return 1
+            fi ;;
+    esac
+    if [ "$rc_mv" -ne 0 ]; then
+        echo "ERROR: cannot rename the new link over $link (mv -$mvform failed, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
+    _RC_RESOLVE_TMP=""
+    trap - EXIT HUP INT TERM
+    if [ -n "$prev" ] && [ "$prev" != "$(basename "$tmp")" ] \
+        && [[ "$prev" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]] && [ -d "$configs/$prev" ]; then
+        if [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ]; then
+            _rc_remove_generated "${configs:?}/$prev"
+        fi
+    fi
+    # Without flock no reader is guarded, so the directory just replaced is
+    # kept (a run may still read it) and only older ones are removed: at
+    # most the live directory and the one before it remain.
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] || _rc_prune_unlocked "$configs" "$(basename "$tmp")" "$prev"
+    [ -n "$prev" ] && [ "$old_layers" != "$new_layers" ] && _RC_LAYERS_CHANGED=1
+    echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
+}
+
+# In the '#' lines of every file under <dir>, replace the text <old> by
+# <new> (taken from the environment, so no character is special).
+_rc_relabel_provenance() {  # <dir> <old> <new>
+    local f
+    while IFS= read -r f; do
+        RC_OLD="$2" RC_NEW="$3" awk '
+            BEGIN { o = ENVIRON["RC_OLD"]; n = ENVIRON["RC_NEW"] }
+            /^#/ { out = ""; rest = $0
+                   while ((i = index(rest, o)) > 0) { out = out substr(rest, 1, i - 1) n; rest = substr(rest, i + length(o)) }
+                   $0 = out rest }
+            { print }' "$f" > "$f.relabel" && mv -- "$f.relabel" "$f" || return 1
+    done < <(find "$1" -type f ! -name .resolved-from)
+}
+
+# Remove the new generated directory, its fetched source, its cache and
+# its link, keeping the directory when the live link already points at it
+# (the swap happened). A further INT, TERM or HUP while it runs is
+# ignored (and so by rm, which inherits that), so a second Ctrl-C cannot
+# leave a half-removed directory; the exit status stays the first one's.
+_rc_resolve_cleanup() {
+    local tmp="${_RC_RESOLVE_TMP:-}"
+    trap '' INT TERM HUP
+    if [ -n "$tmp" ]; then
+        rm -rf -- "$tmp.src" "$tmp.cache" "$tmp.link"
+        if [ "$(readlink -- "${_RC_RESOLVE_LINK:-/nonexistent}" 2>/dev/null)" != "$(basename "$tmp")" ]; then
+            rm -rf -- "$tmp"
+        fi
+    fi
+    _RC_RESOLVE_TMP=""
+    trap - EXIT HUP INT TERM
+}
+
+# Which option of this mv renames a symbolic link to a directory over
+# another such link rather than into the directory: T (GNU), h (BSD), or
+# none; returns 1 when the probe itself cannot run. Probed once per resolve, in a scratch directory
+# <configs>/.mv-probe.XXXXXX that is removed (and swept if a kill left it).
+_rc_mv_link_form() {
+    local configs="$1" d f form=none
+    d="$(mktemp -d "$configs/.mv-probe.XXXXXX")" || return 1
+    for f in T h; do
+        rm -rf -- "${d:?}"/*
+        if ! { mkdir "$d/t" && ln -s t "$d/old" && ln -s t "$d/new"; }; then
+            rm -rf -- "$d"
+            return 1
+        fi
+        if [ "$f" = T ]; then
+            mv -T "$d/new" "$d/old" 2>/dev/null || continue
+        else
+            mv -fh "$d/new" "$d/old" 2>/dev/null || continue
+        fi
+        if [ -L "$d/old" ] && [ ! -e "$d/new" ] && [ ! -e "$d/t/new" ]; then
+            form="$f"
+            break
+        fi
+    done
+    rm -rf -- "$d"
+    echo "$form"
+}
+
+# Without flock: remove the generated directories (with their fetched
+# sources, caches and links) other than <keep1> and <keep2>.
+_rc_prune_unlocked() {
+    local configs="$1" keep1="$2" keep2="$3" e n base
+    for e in "$configs"/manifest-resolved.gen-*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        n="$(basename "$e")"
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link|\.src)?$ ]] || continue
+        base="${n%.cache}"
+        base="${base%.link}"
+        base="${base%.src}"
+        [ "$base" = "$keep1" ] || [ "$base" = "$keep2" ] && continue
+        rm -rf -- "$e"
+    done
+    return 0
+}
+
+# Remove configs/manifest-resolved.gen-XXXXXX directories, fetched sources (.src),
+# caches and links the live link does not point at: a killed run leaves them, and so does a
+# swap whose previous directory a run was still reading (removed here once
+# no run reads it, _rc_remove_generated). This runs only while the source
+# lock is held, so a concurrent run's new directory is never taken for a
+# leftover.
+_rc_resolve_sweep() {
+    local configs="$1" live="" e n
+    [ -L "$configs/manifest-resolved" ] && live="$(readlink -- "$configs/manifest-resolved")"
+    for e in "$configs"/manifest-resolved.gen-*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        n="$(basename "$e")"
+        [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}(\.cache|\.link|\.src)?$ ]] || continue
+        [ -n "$live" ] && [ "$n" = "$live" ] && continue
+        if [ -d "$e" ] && [ ! -L "$e" ] && [[ "$n" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]]; then
+            _rc_remove_generated "$e"
+        else
+            rm -rf -- "$e"
+        fi
+    done
+    for e in "$configs"/.mv-probe.*; do
+        [ -d "$e" ] && [[ "$(basename "$e")" =~ ^\.mv-probe\.[A-Za-z0-9]{6}$ ]] && rm -rf -- "$e"
+    done
+    return 0
+}
+
+# Everything the manifest route checks before it contacts any remote, then
+# fetch and resolve (setup and sync).
+_rc_manifest_prepare() {
+    local bin
+    _rc_check_single_source || return 1
+    if [ -z "${ACTIVE_PROJECT_ROLE:-}" ]; then
+        _rc_registry_field_missing role
+        return 1
+    fi
+    _rc_distro >/dev/null || return 1
+    bin="$(_rc_resolver_bin)"
+    if [ ! -x "$bin" ]; then
+        echo "ERROR: the manifest resolver is not installed at $bin; run: make install-ros-manifest (from the workspace main checkout)" >&2
+        return 1
+    fi
+    local rc=0
+    _rc_source_lock || return 1
+    # 9>&- keeps the lock's descriptor from git, the resolver and every
+    # other child (a detached one, git's auto gc say, would otherwise hold
+    # the lock after the adapter ends): bash saves fd 9 for the group under
+    # a close-on-exec copy, so this shell still holds the lock.
+    { _rc_resolve_begin && _rc_source_fetch && _rc_manifest_resolve; } 9>&- || rc=$?
+    [ "$rc" -eq 0 ] || _rc_resolve_cleanup
+    _rc_source_unlock
+    return "$rc"
+}
+
+# Take the project's source lock (see "Concurrency" above) on fd 9; sets
+# _RC_SOURCE_LOCKED (1 when held). Returns 1, saying so, when another run
+# holds it past the wait.
+_rc_source_lock() {
+    local configs lock wait="${ROS2_COLCON_LOCK_WAIT:-120}"
+    _RC_SOURCE_LOCKED=0
+    # Checked first, with or without flock, so a bad value is never taken
+    # for another run holding the lock (flock's usage error).
+    if ! [[ "$wait" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "ERROR: ROS2_COLCON_LOCK_WAIT='$wait' is not a number of seconds (digits, with an optional decimal part, such as 120 or 0.5); unset it for the default, 120" >&2
+        return 1
+    fi
+    command -v flock >/dev/null 2>&1 || return 0
+    configs="$(_rc_root)/configs"
+    mkdir -p "$configs" || return 1
+    lock="$configs/.lock.source"
+    if ! exec 9>>"$lock"; then
+        echo "ERROR: cannot open the lock file $lock" >&2
+        return 1
+    fi
+    if ! flock -x -w "$wait" 9; then
+        exec 9>&-
+        echo "ERROR: another setup or sync of project '$(_rc_name)' holds its lock $lock (waited $wait s); nothing changed: try again when it has ended" >&2
+        return 1
+    fi
+    _RC_SOURCE_LOCKED=1
+}
+
+_rc_source_unlock() {
+    [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] || return 0
+    exec 9>&-
+    _RC_SOURCE_LOCKED=0
+}
+
+# The value of <key> in a .resolved-from file (empty when absent).
+_rc_resolved_from() {
+    local file="$1" key="$2" line
+    [ -f "$file" ] || return 0
+    while IFS= read -r line; do
+        [ "${line%%=*}" = "$key" ] && { printf '%s\n' "${line#*=}"; return 0; }
+    done < "$file"
+    return 0
+}
+
+# validate's checks for the manifest route, after the directory is known
+# to exist: prints each problem (❌, counted) and each warning (⚠️, not
+# counted) on stderr; prints the count of problems on stdout.
+_rc_validate_manifest_route() {
+    local mdir rf name issues=0 key want got stamp
+    mdir="$(_rc_manifest_dir)"
+    rf="$mdir/.resolved-from"
+    name="$(_rc_name)"
+    local msg
+    if ! msg="$(_rc_check_single_source 2>&1)"; then
+        printf '❌ %s\n' "$msg" >&2
+        issues=$((issues + 1))
+    fi
+    if [ ! -f "$rf" ]; then
+        echo "❌ $rf is missing: the resolved manifest's origin is unknown (run: .agent/scripts/adapter --project $name sync)" >&2
+        echo $((issues + 1))
+        return 0
+    fi
+    local source_changed=0
+    for key in source source_ref source_path; do
+        case "$key" in
+            source) want="${ACTIVE_PROJECT_SOURCE:-}" ;;
+            source_ref) want="${ACTIVE_PROJECT_SOURCE_REF:-}" ;;
+            source_path) want="${ACTIVE_PROJECT_SOURCE_PATH:-}" ;;
+        esac
+        got="$(_rc_resolved_from "$rf" "$key")"
+        if [ "$got" != "$want" ]; then
+            echo "❌ the resolved manifest is from $key='$got' but the settings file says $key='$want' (run: .agent/scripts/adapter --project $name sync)" >&2
+            issues=$((issues + 1))
+            [ "$key" = source ] && source_changed=1
+        fi
+    done
+    for key in role distro; do
+        if [ "$key" = role ]; then want="${ACTIVE_PROJECT_ROLE:-}"; else want="${ACTIVE_PROJECT_DISTRO:-}"; fi
+        got="$(_rc_resolved_from "$rf" "$key")"
+        if [ -z "$want" ]; then
+            [ "$key" = role ] && { _rc_registry_field_missing role 2>&1 | sed 's/^/❌ /' >&2; issues=$((issues + 1)); }
+            continue
+        fi
+        if [ "$got" != "$want" ]; then
+            echo "❌ the resolved manifest is for $key '$got' but the registry line says $key=$want (run: .agent/scripts/adapter --project $name sync; to change it back, edit the line in .agent/projects.local)" >&2
+            issues=$((issues + 1))
+        fi
+    done
+    # A path source still the one resolved: warn when the file changed
+    # since (validate never fetches, so a URL source has no such check).
+    if [ "$source_changed" -eq 0 ] && [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && ! _rc_source_is_url; then
+        stamp="$(_rc_file_stamp "$ACTIVE_PROJECT_SOURCE" || true)"
+        got="$(_rc_resolved_from "$rf" file-stamp)"
+        if [ -z "$stamp" ]; then
+            echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE is missing or unreadable; the resolved manifest is kept, and sync fails until source names a readable file" >&2
+        elif [ "$stamp" != "$got" ]; then
+            echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE has changed since it was resolved (its content differs; run: .agent/scripts/adapter --project $name sync)" >&2
+        fi
+    fi
+    # vcs import never removes a checkout: one a role or distro change left
+    # behind is named, and the adapter removes nothing.
+    local ws layer d n
+    for ws in "$(_rc_root)"/layers/main/*_ws; do
+        [ -d "$ws/src" ] || continue
+        layer="$(basename "$ws")"
+        layer="${layer%_ws}"
+        for d in "$ws/src"/*; do
+            [ -d "$d" ] || continue
+            n="$(basename "$d")"
+            if ! _rc_repos_entries "$mdir/repos/${layer}.repos" | cut -f1 | grep -qxF -- "$n"; then
+                echo "⚠️  WARNING: layer '$layer': '$n' is checked out but not in the resolved manifest (role '${ACTIVE_PROJECT_ROLE:-}', distro '${ACTIVE_PROJECT_DISTRO:-}'); nothing removes it: remove $d by hand if it is not needed" >&2
+            fi
+        done
+    done
+    echo "$issues"
 }
 
 # Source a ROS setup script with nounset relaxed — ROS setup files
@@ -494,7 +1380,18 @@ adapter_setup() {
     # import each layer's repos with vcs. Optional layers
     # (optional_layers.txt) may fail — e.g. private repos; everything else
     # aborts loudly.
-    _rc_bootstrap_manifest || return 1
+    if [ "$(_rc_route)" = manifest ]; then
+        # vcs first: a missing tool is reported before any remote is
+        # contacted.
+        if ! command -v vcs >/dev/null 2>&1; then
+            echo "ERROR: 'vcs' (vcstool) not found — required to import layer repos." >&2
+            return 1
+        fi
+        _rc_manifest_prepare || return 1
+        echo "note: the adapter keeps configs/manifest-resolved* and configs/.lock.source in $(_rc_root) and edits no ignore file; if that root is a git checkout, ignore them there"
+    else
+        _rc_bootstrap_manifest || return 1
+    fi
     _rc_require_manifest || return 1
     if ! command -v vcs >/dev/null 2>&1; then
         echo "ERROR: 'vcs' (vcstool) not found — required to import layer repos." >&2
@@ -515,7 +1412,7 @@ adapter_setup() {
         fi
         echo "Setting up layer: $layer"
         mkdir -p "$layer_dir/src"
-        if ! vcs import --skip-existing "$layer_dir/src" < "$repos_file"; then
+        if ! _rc_nofd vcs import --skip-existing "$layer_dir/src" < "$repos_file"; then
             if _rc_is_optional_layer "$layer"; then
                 echo "WARNING: import failed for optional layer '$layer' (private repo?) — continuing"
                 continue
@@ -546,7 +1443,7 @@ adapter_build() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && colcon build --symlink-install \
+            && _rc_nofd colcon build --symlink-install \
                 --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: build failed for layer: $layer" >&2
@@ -581,7 +1478,7 @@ adapter_test() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && colcon test --event-handlers console_direct+ \
+            && _rc_nofd colcon test --event-handlers console_direct+ \
                 --return-code-on-test-failure "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: tests failed for layer: $layer" >&2
@@ -598,40 +1495,63 @@ adapter_test() {
 adapter_sync() {
     # Per package repo: pull --rebase when clean and on its .repos-pinned
     # branch; fetch otherwise. Never touches dirty or detached checkouts.
+    # On the manifest route (issue #436) the source is fetched and resolved
+    # first; a failure there stops sync with nothing changed.
+    local route missing=0
+    route="$(_rc_route)"
+    if [ "$route" = manifest ]; then
+        _rc_manifest_prepare || return 1
+    fi
     _rc_require_manifest || return 1
     local mdir layer layer_dir repos_file entry name version repo_dir branch
     mdir="$(_rc_manifest_dir)"
     while IFS= read -r layer; do
         layer_dir="$(_rc_layer_dir "$layer")"
         repos_file="$mdir/repos/${layer}.repos"
-        [ -d "$layer_dir/src" ] || continue
+        if [ ! -d "$layer_dir/src" ]; then
+            # A layer never set up (new after a role or distro change):
+            # every repository in it is still to be checked out.
+            while IFS= read -r entry; do
+                [ -n "$entry" ] && missing=$((missing + 1))
+            done < <(_rc_repos_entries "$repos_file")
+            continue
+        fi
         while IFS= read -r entry; do
             [ -z "$entry" ] && continue
             name="${entry%%$'\t'*}"
             version="${entry#*$'\t'}"
             repo_dir="$layer_dir/src/$name"
-            git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
-            if [ -n "$(git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
+            [ -d "$repo_dir" ] || missing=$((missing + 1))
+            _rc_nofd git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
+            if [ -n "$(_rc_nofd git -C "$repo_dir" status --porcelain 2>/dev/null)" ]; then
                 echo "  $layer/$name: skipped (uncommitted changes)"
                 continue
             fi
-            branch="$(git -C "$repo_dir" branch --show-current 2>/dev/null)"
+            branch="$(_rc_nofd git -C "$repo_dir" branch --show-current 2>/dev/null)"
             # A detached checkout has no branch; an empty pin must not
             # match it and send it down the pull path.
             if [ -n "$branch" ] && [ "$branch" = "$version" ]; then
                 echo "  $layer/$name: on '$branch' — pulling..."
-                if ! git -C "$repo_dir" pull --rebase 2>/dev/null; then
+                if ! _rc_nofd git -C "$repo_dir" pull --rebase 2>/dev/null; then
                     # Abort a wedged rebase so the checkout stays usable.
-                    git -C "$repo_dir" rebase --abort >/dev/null 2>&1 || true
+                    _rc_nofd git -C "$repo_dir" rebase --abort >/dev/null 2>&1 || true
                     echo "  $layer/$name: pull failed (continuing)" >&2
                 fi
             else
                 echo "  $layer/$name: on '${branch:-detached}' (pinned: $version) — fetching..."
-                git -C "$repo_dir" fetch 2>/dev/null \
+                _rc_nofd git -C "$repo_dir" fetch 2>/dev/null \
                     || echo "  $layer/$name: fetch failed (continuing)" >&2
             fi
         done < <(_rc_repos_entries "$repos_file")
     done < <(_rc_layers)
+    if [ "$route" = manifest ]; then
+        if [ "$missing" -gt 0 ]; then
+            echo "source: $missing repositor$([ "$missing" -eq 1 ] && echo y || echo ies) in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project $(_rc_name) setup"
+        fi
+        if [ "${_RC_LAYERS_CHANGED:-0}" -eq 1 ]; then
+            echo "source: the layers or the distro changed; existing package worktrees keep their old env.sh; recreate them"
+        fi
+    fi
     echo "Sync complete."
 }
 
@@ -645,6 +1565,11 @@ adapter_validate() {
     mdir="$(_rc_manifest_dir)"
     if ! _rc_distro >/dev/null; then
         issues=$((issues + 1))
+    fi
+    if [ "$(_rc_route)" = manifest ]; then
+        local route_issues
+        route_issues="$(_rc_validate_manifest_route)"
+        issues=$((issues + ${route_issues:-1}))
     fi
     while IFS= read -r layer; do
         repos_file="$mdir/repos/${layer}.repos"
@@ -730,7 +1655,7 @@ adapter_repos() {
         [ -d "$layer_dir/src" ] || continue
         for pkg_dir in "$layer_dir/src"/*; do
             [ -d "$pkg_dir" ] || continue
-            git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
+            _rc_nofd git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1 || continue
             echo "$(basename "$pkg_dir"):$pkg_dir"
             found=1
         done
@@ -808,7 +1733,7 @@ adapter_worktree_repos() {
         # workspace repo, say) when $pkg_dir has none of its own — compare
         # against --show-toplevel to require a repo rooted at $pkg_dir itself.
         local pkg_toplevel pkg_dir_real
-        pkg_toplevel="$(git -C "$pkg_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        pkg_toplevel="$(_rc_nofd git -C "$pkg_dir" rev-parse --show-toplevel 2>/dev/null || true)"
         pkg_dir_real="$(cd "$pkg_dir" && pwd -P)"
         if [ -z "$pkg_toplevel" ] || [ "$pkg_toplevel" != "$pkg_dir_real" ]; then
             echo "ERROR: $pkg_dir (layer '$layer', package '$pkg') is not a git repository" >&2
@@ -1035,14 +1960,14 @@ _rc_pin_kind() {
     # Either case: git reads an object name case-insensitively.
     [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] && is_hex=true
     # A ref git cannot name as a branch or tag is never asked about.
-    if ! git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
+    if ! _rc_nofd git check-ref-format "refs/heads/$ref" >/dev/null 2>&1; then
         if [ "$is_hex" = true ]; then echo commit; else echo unknown; fi
         return 0
     fi
     toplevel=""
     dir_real=""
     if [ -d "$dir" ]; then
-        toplevel="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        toplevel="$(_rc_nofd git -C "$dir" rev-parse --show-toplevel 2>/dev/null || true)"
         dir_real="$(cd "$dir" && pwd -P)"
     fi
     local cloned=false rc=1 why="could not be reached"
@@ -1051,7 +1976,7 @@ _rc_pin_kind() {
         # Bounded (#323): a prompt or a stalled host must not hang the
         # caller; a timeout falls to the local answer below.
         rc=0
-        out="$(_adapter_bounded_git -C "$dir" ls-remote origin \
+        out="$(_rc_nofd _adapter_bounded_git -C "$dir" ls-remote origin \
             "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null)" || rc=$?
         if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
             why="did not answer within $(_adapter_git_limit)s"
@@ -1065,9 +1990,9 @@ _rc_pin_kind() {
         fi
     elif [ "$cloned" = true ]; then
         echo "NOTE: repo_pin: origin of $dir $why; the kind of '$ref' comes from local refs (unverified)" >&2
-        if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+        if _rc_nofd git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$ref"; then
             kind=branch
-        elif git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
+        elif _rc_nofd git -C "$dir" show-ref --verify --quiet "refs/tags/$ref"; then
             kind=tag
         fi
     else
@@ -1233,7 +2158,7 @@ adapter_scope_for_pr() {
     local dir="$path"
     [ -d "$dir" ] || dir="$(dirname "$dir")"
     local url
-    if ! url="$(git -C "$dir" remote get-url origin 2>/dev/null)"; then
+    if ! url="$(_rc_nofd git -C "$dir" remote get-url origin 2>/dev/null)"; then
         echo "ERROR: no git repository with an 'origin' remote at or above: $path" >&2
         return 1
     fi

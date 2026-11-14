@@ -1,12 +1,21 @@
 """Resolve a manifest's `extends` chain into an ordered list, base first.
 
 Local-path extends resolve relative to the declaring manifest's own directory. Git-backed
-extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --branch
-<ref> --depth 1 -- <url> <dest>`, with the transports allowed stated on the command line, and
-re-used on a cache hit (same url+ref). The url and ref have already passed the allow-lists in
-``schema.py``. This module only ever invokes `git clone` (and `git rev-parse` on the clone) — it
-never fetches over the network in tests, which point `url` at a local git repository through a
-`file://` URL (a plain local path is not an accepted url).
+extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --no-checkout
+--branch <ref> --depth 1 -- <url>`, then checked out with `git reset --hard`, and re-used on a
+cache hit (same url+ref). The clone is untrusted content, so: the transports git may use are
+stated on the command line and in GIT_ALLOW_PROTOCOL; no hook, fsmonitor, submodule, filter
+driver or text conversion of the user's configuration runs on it; git's repository-locating
+environment variables are removed; git runs without a terminal, with GIT_TERMINAL_PROMPT=0, an
+empty core.askPass, no GIT_ASKPASS or SSH_ASKPASS and SSH_ASKPASS_REQUIRE=never, so neither git
+nor ssh can ask for a password or passphrase (a credential helper the user configured still
+runs); each call that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default
+60), after which git's process group is killed, as it is on an interrupt, or on a SIGTERM or
+SIGHUP that was not ignored (which is then delivered again to the previous handler);
+and the clone is made in a temporary sibling and renamed into the cache only when complete.
+The url and ref have already passed the allow-lists in ``schema.py``. This module invokes `git
+clone`, `git reset` and `git rev-parse` on the clone; tests point `url` at a local git
+repository through a `file://` URL (a plain local path is not an accepted url).
 
 Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
 manifest read from a git-backed `extends` clone is labelled `url#ref:path@<commit>` (the commit
@@ -20,7 +29,11 @@ its own path.
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
+import signal
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -40,6 +53,221 @@ _TRANSPORT_POLICY = (
     "-c",
     "protocol.file.allow=always",
 )
+
+# What a clone of an untrusted base never does with the user's configuration: run a hook (a
+# global `core.hooksPath` included) or an fsmonitor command. The checkout happens after the
+# clone, with every filter, text conversion, ident and encoding attribute switched off in
+# `.git/info/attributes`, so no filter driver (git-lfs's would contact a host the base names)
+# runs on the tree. No submodule is fetched.
+_SAFETY = (
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "submodule.recurse=false",
+    "-c",
+    "core.askPass=",
+)
+_NO_FILTERS = "* -filter -text -ident -working-tree-encoding\n"
+
+# The time limit on each git call that asks a remote, in seconds: ROS_MANIFEST_GIT_TIMEOUT,
+# default 60. When it runs out, git and everything it started are killed and the clone fails.
+_TIMEOUT_VAR = "ROS_MANIFEST_GIT_TIMEOUT"
+_TIMEOUT_DEFAULT = 60
+
+# Names git reads to find a repository (`git rev-parse --local-env-vars`, git 2.53's list as a
+# floor). Inherited from a hook they would send the clone into another repository, so they are
+# removed from git's environment. GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT carry the user's
+# own configuration (credentials, url.*.insteadOf) and are kept; the options above are on the
+# command line, which wins over them.
+_LOCAL_ENV_FLOOR = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+)
+_KEEP = {"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+
+
+def _git_env() -> dict:
+    """The environment for git: the repository-locating names removed, no prompt (terminal,
+    askpass), and the transports allowed by the environment too, which a user's own
+    `protocol.<name>.allow=always` cannot widen."""
+    env = {k: v for k, v in os.environ.items() if k not in _LOCAL_ENV_FLOOR}
+    names = set()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"], capture_output=True, env=env
+        ).stdout
+        names = set(out.decode("ascii", errors="replace").split())
+    except FileNotFoundError:
+        pass
+    for name in names - _KEEP:
+        env.pop(name, None)
+    for name in ("GIT_ASKPASS", "SSH_ASKPASS"):
+        env.pop(name, None)
+    env["SSH_ASKPASS_REQUIRE"] = "never"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GIT_ALLOW_PROTOCOL"] = "https:ssh:file"
+    return env
+
+
+def _git_timeout() -> float:
+    raw = os.environ.get(_TIMEOUT_VAR, "")
+    if raw == "":
+        return float(_TIMEOUT_DEFAULT)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = -1.0
+    if not value > 0:
+        raise ManifestError(
+            f"{_TIMEOUT_VAR}='{raw}' is not a number of seconds above 0; unset it for the"
+            f" default, {_TIMEOUT_DEFAULT}"
+        )
+    return value
+
+
+class _GitTimeout(Exception):
+    pass
+
+
+class _Signalled(BaseException):
+    """A SIGTERM or SIGHUP that arrived while git ran (git's group is then killed)."""
+
+    def __init__(self, signum: int) -> None:
+        super().__init__(signum)
+        self.signum = signum
+
+
+# Where a SIGTERM or SIGHUP (caught: not ignored on entry, main thread) can arrive in _run_git,
+# and what follows. "Cleanup" is the `finally`: block the two signals, kill and reap git's group
+# if git still runs, put the previous handlers back, take a signal left pending, put the entry
+# mask back; each step runs even if the one before it raised.
+#   before the handlers are installed  the previous handler gets it (git not started)
+#   installing .. Popen returned       recorded; raised as _Signalled once `proc` is set; cleanup
+#   while git is waited for            handler kills git's group and raises _Signalled; cleanup
+#   in the cleanup, before the block   same (the handler kills the group, so the skipped kill
+#     takes effect, or inside the        does not matter); handlers and the entry mask (read on
+#     masking call                       entry) are put back by the inner finally clauses
+#   in the cleanup, after the block    pending in the kernel; taken before the unmask and raised
+#                                      as _Signalled after it
+#   after the entry mask is back       the previous handler gets it
+# A _Signalled goes up to resolve_chain, which (after _clone_or_reuse removed the partial clone)
+# delivers the signal again to the previous handler. The handler disarms itself when it raises,
+# so a second signal in the same call is recorded, not raised; of several, one is delivered.
+_CAN_MASK = all(hasattr(signal, n) for n in ("pthread_sigmask", "sigpending", "sigwait"))
+
+
+def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, bytes]:
+    """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask on
+    one), stdin closed, stdout captured as bytes, stderr discarded. With `timeout`, git and
+    everything still in its process group are killed when it runs out (_GitTimeout); an
+    interrupt kills them too, and so does a SIGTERM or a SIGHUP that was not ignored when this
+    call began (_Signalled; an ignored one stays ignored). SIGTERM and SIGHUP are caught only
+    while git runs, in the main thread; the previous handlers and the signal mask are put back
+    on every path (see the table above)."""
+    entry_mask = signal.pthread_sigmask(signal.SIG_BLOCK, []) if _CAN_MASK else None
+    pending: List[int] = []
+    armed = False
+    proc = None
+
+    def on_signal(signum, _frame):
+        nonlocal armed
+        if not armed:  # git's group cannot be killed yet, or a signal is already on its way
+            pending.append(signum)
+            return
+        armed = False
+        if proc is not None:
+            _signal_group(proc)
+        raise _Signalled(signum)
+
+    previous = {}
+    for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)):
+        if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
+            continue  # ignored (as under nohup), or a handler Python cannot put back
+        try:
+            previous[sig] = signal.signal(sig, on_signal)
+        except ValueError:  # not the main thread: signals cannot be caught here
+            pass
+    mask = _CAN_MASK and bool(previous)
+    try:
+        try:
+            proc = subprocess.Popen(
+                ["git", *args],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=_git_env(),
+                start_new_session=True,
+            )
+        except FileNotFoundError:
+            pass
+        finally:
+            armed = True
+            if pending:
+                armed = False
+                raise _Signalled(pending.pop(0))
+        if proc is None:
+            raise ManifestError(_NO_GIT)
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise _GitTimeout() from None
+        return proc.returncode, out
+    finally:
+        try:
+            if mask:  # only now: a child inherits the mask
+                signal.pthread_sigmask(signal.SIG_BLOCK, set(previous))
+            armed = False
+            if proc is not None and proc.returncode is None:
+                _kill_group(proc)
+        finally:
+            try:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
+            finally:
+                took = list(pending)
+                try:
+                    if mask:
+                        for sig in sorted(signal.sigpending() & set(previous)):
+                            signal.sigwait({sig})
+                            took.append(sig)
+                finally:
+                    if mask:
+                        signal.pthread_sigmask(signal.SIG_SETMASK, entry_mask)
+                if took:
+                    raise _Signalled(took[0])
+
+
+def _signal_group(proc: subprocess.Popen) -> None:
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:  # pragma: no cover - not POSIX
+            proc.kill()
+    except ProcessLookupError:
+        pass
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    _signal_group(proc)  # the group may be gone already (the signal handler kills it too)
+    # git itself is dead now; a program that left its group may still hold the pipe, so the
+    # wait for the pipe is short, and only git's exit is waited for.
+    try:
+        proc.communicate(timeout=2)
+    except subprocess.TimeoutExpired:
+        proc.wait()
 
 
 def _cache_key(url: str, ref: str) -> str:
@@ -73,48 +301,75 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path, source: str = "a manife
             f" ({exc.strerror or 'an OS error'})"
         ) from None
     dest = cache_dir / _cache_key(url, ref)
+    # Only a finished clone is ever at `dest`: it is made in a temporary sibling and renamed
+    # there, so a failed, timed-out or interrupted clone leaves no entry a later run trusts.
     if dest.is_dir():
         return dest
+    timeout = _git_timeout()
+    tmp = Path(tempfile.mkdtemp(prefix=f".{dest.name}.partial-", dir=cache_dir))
     try:
-        result = subprocess.run(
-            [
-                "git",
-                *_TRANSPORT_POLICY,
-                "clone",
-                "--branch",
-                ref,
-                "--depth",
-                "1",
-                "--",
-                url,
-                str(dest),
-            ],
-            capture_output=True,
-        )
-    except FileNotFoundError:
-        raise ManifestError(_NO_GIT) from None
-    if result.returncode != 0:
-        raise ManifestError(
-            f"{source}: failed to clone its extends base (git exited with status"
-            f" {result.returncode})"
-        )
+        _clone_into(url, ref, tmp / "clone", timeout, source)
+        try:
+            os.rename(tmp / "clone", dest)
+        except OSError:
+            if not dest.is_dir():  # not another run's finished clone
+                raise
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return dest
 
 
-def _head_commit(clone_dir: Path, source: str) -> str:
+def _clone_into(url: str, ref: str, dest: Path, timeout: float, source: str) -> None:
+    """Clone `ref` of `url` one commit deep into `dest`, with no hook and no filter: the clone
+    checks nothing out, and the checkout comes after the attributes that switch filters off."""
+    clone = [
+        *_TRANSPORT_POLICY,
+        *_SAFETY,
+        "clone",
+        "--quiet",
+        "--no-checkout",
+        "--template=",
+        "--no-recurse-submodules",
+        "--branch",
+        ref,
+        "--depth",
+        "1",
+        "--",
+        url,
+        str(dest),
+    ]
+    _git_step(clone, timeout, source, "clone")
+    info = dest / ".git" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "attributes").write_text(_NO_FILTERS)
+    _git_step(
+        [*_SAFETY, "-C", str(dest), "reset", "--quiet", "--hard"], timeout, source, "check out"
+    )
+
+
+def _git_step(args: List[str], timeout: float, source: str, what: str) -> None:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
-            capture_output=True,
+        code, _ = _run_git(args, timeout)
+    except _GitTimeout:
+        raise ManifestError(
+            f"{source}: could not {what} its extends base within {timeout:g} s (the limit;"
+            f" {_TIMEOUT_VAR} raises it); nothing is kept in the cache"
+        ) from None
+    if code != 0:
+        raise ManifestError(
+            f"{source}: failed to {what} its extends base (git exited with status {code})"
         )
-    except FileNotFoundError:  # a cache hit skips the clone, so this is git's first run
-        raise ManifestError(_NO_GIT) from None
-    if result.returncode != 0:
+
+
+def _head_commit(clone_dir: Path, source: str) -> str:
+    # A cache hit skips the clone, so this may be git's first run (_run_git says so).
+    code, out = _run_git([*_SAFETY, "-C", str(clone_dir), "rev-parse", "HEAD"])
+    if code != 0:
         raise ManifestError(
             f"{source}: cannot read the commit of its extends base (clone: {clone_dir}; git"
-            f" exited with status {result.returncode})"
+            f" exited with status {code})"
         )
-    return result.stdout.decode("ascii", errors="replace").strip()
+    return out.decode("ascii", errors="replace").strip()
 
 
 @dataclass(frozen=True)
@@ -210,6 +465,15 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
             current_path, current_origin = _resolve_one(
                 manifest.extends, current_path.parent, current_origin, cache_dir, manifest.source
             )
+        except _Signalled as sig:
+            # git's group is killed, the partial clone removed and the previous handler back:
+            # the signal is delivered again, to end the process or to run the caller's handler
+            # (which runs before raise_signal returns, and whose exception propagates).
+            signal.raise_signal(sig.signum)
+            raise ManifestError(
+                f"{manifest.source}: git was stopped by {signal.Signals(sig.signum).name} while"
+                " fetching its extends base; nothing is kept in the cache"
+            ) from None
         except (OSError, RuntimeError) as exc:
             raise ManifestError(
                 f"{manifest.source}: its extends cannot be followed ({_os_reason(exc)})"

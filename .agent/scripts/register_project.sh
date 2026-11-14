@@ -31,7 +31,9 @@
 #   <type>         single_project, ros2_colcon, or the pseudo-type project
 #                  (a parent root grouping instances). Omitted: ros2_colcon
 #                  when <path>/configs/manifest exists or --set
-#                  bootstrap_url=... is given, else single_project.
+#                  bootstrap_url=... is given, else single_project. A
+#                  --set source=... does not choose the type: pass
+#                  ros2_colcon with it (issue #436).
 #   --name N       the project's name (default: the directory's name)
 #   --parent, --distro, --role, --worktrees, --default-instance
 #                  the registry's trailing fields (_project_registry.sh
@@ -1183,7 +1185,7 @@ if [ "$RUN_SETUP" -eq 1 ]; then
     echo ""
     echo "== adapter --project $NAME setup ($PROJECT_ROOT does not exist)"
     SETUP_RAN=1
-    "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url, say)"
+    "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url or source, say)"
 fi
 
 # 2. The static gate.

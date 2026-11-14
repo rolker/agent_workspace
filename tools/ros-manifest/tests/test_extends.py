@@ -512,23 +512,27 @@ def test_clone_states_the_transport_policy(tmp_path, monkeypatch):
 
     calls = []
 
-    def fake_run(argv, **kwargs):
-        calls.append(argv)
-        return subprocess.CompletedProcess(argv, 1, "", "stop here")
+    def fake_run_git(args, timeout=None):
+        calls.append(args)
+        return 1, b"stop here"
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(extends, "_run_git", fake_run_git)
     with pytest.raises(ManifestError, match="failed to clone"):
         extends._clone_or_reuse("https://example.com/a.git", "main", tmp_path / "cache")
-    argv = calls[0]
+    argv = ["git", *calls[0]]
     clone = argv.index("clone")
-    policy = argv[1:clone]
+    policy = argv[1:9]
     assert policy[:2] == ["-c", "protocol.allow=never"]
     assert {policy[i] for i in range(3, len(policy), 2)} == {
         "protocol.https.allow=always",
         "protocol.ssh.allow=always",
         "protocol.file.allow=always",
     }
+    assert "core.hooksPath=/dev/null" in argv[:clone]
+    assert "--no-checkout" in argv[clone:]
     assert argv[-3:-1] == ["--", "https://example.com/a.git"]
+    # A failed clone leaves nothing in the cache.
+    assert list((tmp_path / "cache").iterdir()) == []
 
 
 def test_a_failed_clone_reports_git_s_status_not_its_output(tmp_path, monkeypatch):
@@ -536,11 +540,10 @@ def test_a_failed_clone_reports_git_s_status_not_its_output(tmp_path, monkeypatc
     # file names are not UTF-8) and, when it decoded, quoted in the message.
     from ros_manifest import extends
 
-    def fake_run(argv, **kwargs):
-        assert "text" not in kwargs
-        return subprocess.CompletedProcess(argv, 128, b"", b"\xff" * 300 + b" remote-file-name")
+    def fake_run_git(args, timeout=None):
+        return 128, b"\xff" * 300 + b" remote-file-name"
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(extends, "_run_git", fake_run_git)
     with pytest.raises(ManifestError) as info:
         extends._clone_or_reuse("https://example.com/a.git", "main", tmp_path / "cache", "leaf")
     assert str(info.value) == (

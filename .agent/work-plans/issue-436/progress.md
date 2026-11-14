@@ -966,3 +966,899 @@ Local timeline since the Integrated Review at `c4c73224`: both of its findings w
 "Q9 yes, Q10 yes"
 
 Q9 as put to him: merge pull request 449 (pull request (a) of five)? The decision summary was presented in the session: seven pre-push rounds and two on the pull request, rounds 1 to 4's defects fixed, round 5's findings carried in issue 447 on his earlier decision, the later rounds README wording only, the final triage with nothing open, CI all passing, Gemini and Codex in rounds 1 and 2, Copilot failed on quota each time. Said to him: nothing calls the new layout yet, and whether manifests are untrusted input at all is the first question on issue 447.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:44 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+"yes, start 436 and adopt the type neutral names"
+
+His words in the workspace session on the second machine, 2026-11-13, in answer to the host's proposal to start pull request (b) with the plan's settings keys `manifest`, `manifest_ref` and `manifest_path` built as `source`, `source_ref` and `source_path`. He was not shown this checkpoint as a dialog: the plan (`plan.md` at `deca7bd8`, unchanged since its Plan Review) names the old keys, so `proceed` would implement what he has just changed, and `revise` is the only answer his words leave. The decision and its limits are in the issue comment of 2026-11-13 (issuecomment-6863123962): the three keys are renamed before they exist anywhere; renaming `bootstrap_url` and the registry field `distro` is left to issue 473; `role=` and `distro=` stay on the registry line as planned.
+
+State at this checkpoint: pull request 449 (pull request (a): the resolver additions, the install target, CI) merged on 2026-11-12. Pull request (c), the `repo_pin` verb, was delivered under issue 429 (pull requests 456 and 460, merged). Not delivered: (b) settings keys and the adapter route, (d) the records, (e) the manifest text and drafted issue. The issue is open because those parts remain. The owner's test on the second machine uses the new manifest, Rolling first and Lyrical as the follow-up; he does it himself, and agents do not create or use `~/project11`.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-13 14:49 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `e0cae07f`
+
+Revision after the owner's 2026-11-13 decision: pull request (b) planned in full with the type-neutral keys `source`, `source_ref`, `source_path` (refused for single_project through its unused_settings, no type detection by `source`); every cited line re-read against the current tree; (a) and (c) recorded as delivered; (d) and (e) kept as outlines. Names what (b) does not do: the empty-folder onboarding flow is issue 473's.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-13 14:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #436 — Use the new manifest format for the second-machine test: the ROS adapter calls the manifest resolver
+**Plan**: `.agent/work-plans/issue-436/plan.md` at `e0cae07f`
+**Branch**: `feature/issue-436`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request (b) in detail, about 13 files; (d) and (e) outlines. Large but one concern (the manifest route), with the design edit last. |
+| Issue alignment | Good | Owner's 2026-11-13 rename applied (`source`, `source_ref`, `source_path`); both questions his comment left to the revision (`unused_settings` refusal, message wording and the step 8 search) are settled. `bootstrap_url`/`distro` renames left to 473. Serves (checked): "Workspace goal "Modular" (README, Workspace goals) ... under `docs/design.md#registry-and-adapters`; the roadmap Direction acceptance case". |
+| File targeting | Needs work | `suites_for_files.sh` should not be in the list (findings 1); the registration end-to-end test's home needs naming (finding 5). |
+| Consequences | Good | Key list, header, value and cross-key rules, dispatcher exports, `unused_settings`, hints, example file, design, script reference all listed. |
+| Principle alignment | Needs work | "Test what breaks": the resolver wrapper as described could test main's resolver, or skip silently in CI (finding 2). |
+| ADR compliance | Good | 0003, 0009, 0011/0019, 0012, 0013, 0016/0021, 0017 addressed; the resolver is called by CLI only (issue 267 constraint). |
+| ROS conventions | N/A | Workspace plan; the adapter's distro handling keeps the existing `^[a-z0-9_]+$` check. |
+
+### Verified by the reviewer
+
+- `project_file_set` reuses the parse: it writes the whole resulting file to a temp file and runs `_project_file_parse` on it (`_project_registry.sh:1761`, `:1768`), so cross-key rules placed in `_project_file_parse` beside `_project_records_combination` (:1074) apply to `set` and `unset` too; `register_project.sh --set` goes through `project_file_set` (:1172) before `adapter setup` (:1186). The plan's "share one if not" branch is not needed.
+- Resolver, run read-only on `tools/ros-manifest/tests/fixtures/p11/manifest.yaml` (role `dev`, distro `rolling`, `--layout manifest-dir`, output in the session scratchpad): writes `repos/<layer>.repos`, `layers.txt`, `optional_layers.txt`, each text file starting with a `#` provenance line; `_rc_layers` and `_rc_is_optional_layer` already skip `#` lines. An unknown role exits 1 with `ERROR: unknown role 'nosuch' (known: ['dev'])` and writes no output dir. `emit.py:74` already omits an empty layer, so decision 8's first half is the resolver's existing behaviour.
+- Line citations: checked about forty; all point at the named code except `register_project.sh:602` (the key check is :605-606), `:181` (init; the flags are :193), `_project_registry.sh:1070` (the records check is :1074), `:976` (function starts a line or two later). None changes the plan.
+
+### Findings
+
+1. **[File targeting / tests]** `tools/ros-manifest/` is outside the `validate-script-tests` hook's `files:` scope (`^(\.agent/|\.claude/|...)`), so `suites_for_files.sh` can never map it: run on `tools/ros-manifest/src/ros_manifest/cli.py` it answers `ALL: ... outside the hook's files:/exclude: scope`, and pre-commit never passes such a file. Step 6's "check `suites_for_files.sh` maps `tools/ros-manifest/`" will fail, and the map is derived, not hand-edited (editing the script is itself a full-run trigger). The adapter files are already mapped: `ros2_colcon/adapter.sh`, `single_project/unused_settings`, `adapter` and `register_project.sh` each select `test_ros2_colcon.sh` and the registry/adapter suites; `_project_registry.sh` is a `_*.sh` helper, so it runs ALL. Resolution: drop `suites_for_files.sh` from Files to Change and replace the step 6 check with the fact that CI's `validate-adapter-contract` job runs `test_ros2_colcon.sh` on every push with the resolver installed. Severity: minor.
+2. **[Principle: Test what breaks]** The test resolver wrapper "running the real `ros_manifest.cli` under the repository's venv python" is underspecified in a way that matters: a worktree has no `.venv` (the plan says so), CI has none either (`validate.yml` does `pip install -e tools/ros-manifest` into setup-python's interpreter), and the main checkout's venv has an editable install of *main's* resolver, not the branch's. Resolution: the wrapper runs `python3 -I`-free `-m ros_manifest.cli` with `PYTHONPATH=$REAL_ROOT/tools/ros-manifest/src` and an interpreter that imports `yaml` (main checkout's `.venv/bin/python3` when present, else `python3`). The `SKIPPED` path must not be able to pass the CI adapter-contract job silently: either the suite fails when `ros-manifest` is on `PATH` but the wrapper cannot import, or the pull request description states the skip count seen locally and in CI. The CI `make lint` job (all files, system python, maybe no PyYAML) will skip them; that is fine only because the adapter-contract job runs them. Severity: moderate.
+3. **[Approach]** Cache location is stated two ways: the `extends` paragraph says `--cache-dir` "inside the temporary sibling directory ... discarded after", step 2 says `--cache-dir <tmp>.cache` (a sibling). If inside `<tmp>`, the cloned bases would be swapped in as part of `configs/manifest-resolved.<ts>/`. Resolution: use the sibling `<tmp>.cache` and remove it on success and failure (trap). Severity: minor.
+4. **[Approach]** "Rejects an empty `layers.txt`": the resolver always writes a `#` provenance line, so the check must count non-comment, non-blank lines (`_rc_layers` output), not file emptiness. Severity: minor.
+5. **[File targeting]** The "registration end to end" case is listed under `test_ros2_colcon.sh`, whose `make_sandbox` copies only `adapter`, `_project_registry.sh`, `validate_adapter.sh` and the two type dirs; `register_project.sh` needs more (registration.conf, `registration_verify.sh`, its helpers). Resolution: put that case in `test_register_project.sh` (its sandbox already runs registration) with the ros2_colcon stubs and the resolver wrapper, or say which files the colcon sandbox gains. Severity: minor.
+6. **[Approach]** Since `set`/`unset` re-parse the whole file, `unset <name> source` while `source_ref` remains is refused; the cross-key messages should give the one-command fix (`project_setting.sh unset <name> source source_ref source_path`, multi-key unset exists at `project_setting.sh:11`) and a test should cover it. Severity: minor.
+7. **[Approach]** The path-form `.resolved-from` mtime/size mismatch: step 3 does not say whether `validate` warns or fails on it. State it (a warning matches "the owner editing the manifest is a supported working style"). Severity: minor.
+
+### Owner decisions questioned
+
+- Decision 2 (any other bootstrap source alongside `source` is a hard error): `configs/project_bootstrap.url` may be a file tracked in the project's own repository, so an existing bootstrap-route project switching to `source` would have to change its project repository to use the workspace. Fine for the second-machine test (a fresh folder); worth one sentence in the message (or a veto note) for migration.
+- Decision 8: the first half is already the resolver's behaviour (`emit.py:74`); only the adapter's empty-result rejection is a new decision.
+- The others (1, 3, 4, 5, 6, 7, 9, 10) look right; 7's cost (network for every base on every `sync`) is stated.
+
+### Summary
+
+The plan is ready: the rename is applied consistently, the three items the planner could not verify check out (cross-key reuse holds, line numbers are right within a few lines), and the resolver's output matches what the adapter reads. Fold findings 1-7 into implementation; none needs an owner decision.
+
+### Recommended Actions
+
+- [ ] Drop `suites_for_files.sh` from Files to Change; name the CI adapter-contract job as coverage for resolver changes (finding 1).
+- [ ] Specify the test wrapper: branch source via `PYTHONPATH`, interpreter selection, and no silent skip in the adapter-contract job (finding 2).
+- [ ] Use a sibling cache dir removed on every exit (finding 3); count non-comment layers (finding 4).
+- [ ] Place the registration end-to-end case where `register_project.sh` can run (finding 5).
+- [ ] Cross-key messages name the multi-key unset; test it (finding 6); state warn-vs-fail for a changed path source (finding 7).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 14:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Q1 "Proceed (Recommended)"; Q2 "Hard error, clearer message (Recommended)".
+
+Q1 as put to him: proceed to implementation with F1 to F7 handed to the implementer as requirements? The plan is `plan.md` at `e0cae07f`, reviewed "ready" in the Plan Review at `24dce8d9`. F1 to F7 are that review's findings, quoted to him by their headings: F1 `tools/ros-manifest/` can't be mapped to a suite (drop the mapping edit, name the CI adapter job as the coverage); F2 the test resolver wrapper could test the wrong code or skip silently (run the branch's resolver source, a skip must not pass quietly); F3 the `extends` cache location is stated two ways (beside the temporary directory, removed on every exit); F4 the empty-result check must count real lines; F5 the registration end-to-end test belongs in `test_register_project.sh`; F6 unsetting `source` alone will be refused (messages give the multi-key unset command, with a test); F7 warn or fail is unstated for a changed path-form source (the reviewer suggests a warning).
+
+Q2 as put to him: when `source` is set and an old bootstrap source is also present, what should the adapter do? The reviewer had questioned plan decision 2 because `configs/project_bootstrap.url` may be tracked in the project's own repository. His answer keeps the plan's rule, one source only and never a silent choice, with a message that names the old source found and how to remove it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 15:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-436 at `1942d6c5`
+
+Pull request (b) only; (d) and (e) not started (outlines, as scoped).
+
+- `fb2ffb0e` settings keys `source`, `source_ref`, `source_path`: value rules and cross-key rules in `_project_registry.sh` (`_project_source_combination`, run by the parser, so `set`, `unset`, `check` and the dispatcher apply it; every refusal names `project_setting.sh unset <name> source source_ref source_path`, and `unset source` alone is refused while `source_ref` stays, F6, tested); `source` beside `bootstrap_url` refused; `single_project/unused_settings` refuses the three; the dispatcher exports `ACTIVE_PROJECT_SOURCE`, `_SOURCE_REF`, `_SOURCE_PATH`; header, `projects.local.example`, `registration.conf` comment, `register_project.sh` hint. Tests in `test_project_file.sh`, `test_project_registry.sh`, `test_adapter.sh`, `test_register_project.sh` (`--set source=` without the type refused, naming it).
+- `d3fd2b47` the `ros2_colcon` manifest route: fetch (the staleness table: ff-only when clean on the branch, switch when clean on another, never force a dirty clone or local commits, WARNING and `source-state=local`), resolve with `--cache-dir <tmp>.cache` (a sibling, removed on every exit path including TERM, F3), empty result counted by non-comment lines (F4), swap by link, previous kept on any failure; one source only, a hard error naming the old source and its path (owner's answer on decision 2); vcs, role=, distro= and the resolver checked before any remote; `validate` checks provenance, warns for local state, a changed path source (warning, not failure, F7) and checkouts left behind; `sync` names unimported repositories and the package-worktree `env.sh` notice. Tests: `test_ros2_colcon.sh` manifest-route section (16 functions), registration end to end in `test_register_project.sh` (F5).
+- `ad9e5a56` `script_reference.md` row; `56ccc7d2` merge of `origin/main`, no conflicts; `749d6821` `docs/design.md` Registry and adapters bullet and one change-log row (last, after the merge).
+- `1942d6c5` fix found by the pre-commit run: naming `register_project.sh` in the adapter's message and the `unused_settings` reasons made it a hub (36 suites; `test_script_tests_hook_scope.sh` hub guard failed); now worded without the path (13 suites).
+
+F2 (test resolver): the tests run THIS branch's `tools/ros-manifest/src` via `PYTHONPATH`, with the first python that imports it and yaml (the python of a `ros-manifest` on PATH, the main checkout's `.venv/bin/python3`, then `python3`), and assert the module path. With none, the tests print SKIPPED and the summary counts them; that is a FAIL when the resolver is meant to be present (`ros-manifest` on PATH, a main-checkout `.venv/bin/ros-manifest`, or `CI` set), so the adapter-contract job cannot pass on a quiet skip. Both paths were exercised by hand with a broken source path (FAIL with the venv resolver present; SKIP, exit 0, with neither). F1: `suites_for_files.sh` not edited; `tools/ros-manifest/` is outside the hook's scope, and CI's validate-adapter-contract job (resolver installed, runs `test_ros2_colcon.sh`) is the coverage for resolver changes.
+
+Tests: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: exit 0, 147 s, every hook passed. The script-test hook ran ALL 49 suites (the local `main` ref is stale at `56a9a913`, so the list included `inspiration_registry.yml` from the merged main, which maps to no suite). The first run of the same command failed only on the hub guard above; fixed and re-run. Manifest-route tests ran here (0 skipped). Not done: no network or real-project test (by rule); the BSD `mv` fallback (no `mv -T`) and BSD `stat` are untested on this Linux machine; no pre-existing test failed.
+
+Deviations: the register hint says "register it as type ros2_colcon" (the type is positional in `register_project.sh`, there is no `--type` flag). `sync` also reports repositories in the new result that are not checked out (sync never imports; setup does), which the plan did not list.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 15:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `408fa819`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~1,900 lines across 16 files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [x] (must-fix) A tag deleted on the source remote is still resolved as clean: neither fetch prunes tags (`--prune` without `--prune-tags`); add `--prune-tags` (or check with ls-remote) and a test — `.agent/project_types/ros2_colcon/adapter.sh:648`
+- [x] (must-fix) With a tag or commit `source_ref`, local commits on a detached HEAD in the clone are silently orphaned by `checkout --detach` and recorded `source-state=clean`; warn and keep (state local) as the branch case does, with a test — `.agent/project_types/ros2_colcon/adapter.sh:710`
+- [x] (suggestion) sync's "not checked out yet, run setup" notice skips a whole layer that is new (no `src/`), the role-change case it exists for — `.agent/project_types/ros2_colcon/adapter.sh:1097`
+- [x] (suggestion) validate: no warning for a clone made dirty after sync (HEAD unchanged, state clean) or a missing clone; spurious "file changed" warning when source itself changed — `.agent/project_types/ros2_colcon/adapter.sh:895`
+- [x] (suggestion) "validate also refuses it" is vacuous: no resolved dir exists yet, so validate fails at _rc_require_manifest, never at the single-source check; run after a good setup and assert on the output — `.agent/scripts/tests/test_ros2_colcon.sh:3011`
+- [x] (suggestion) No lock against concurrent setup/sync: two first setups can rm -rf each other's clone, two syncs collide in one clone, the loser's generated dir leaks; flock on configs/ — `.agent/project_types/ros2_colcon/adapter.sh:638`
+- [x] (suggestion) Interrupt after `mv -T` but before `_RC_RESOLVE_TMP=""` deletes the live target (dangling link); BSD fallback has a no-link window; SIGKILL leftovers never swept — `.agent/project_types/ros2_colcon/adapter.sh:798`
+- [x] (suggestion) `source_path` may be a symlink in the hostile repo pointing outside the clone; `[ -f ]` follows it; check realpath stays under the clone — `.agent/project_types/ros2_colcon/adapter.sh:722`
+- [x] (suggestion) Confusing errors: a half-made `--no-checkout` clone reads as dirty forever; `source_ref=HEAD` passes the registry and fails at `checkout -B HEAD` — `.agent/scripts/_project_registry.sh:813`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 16:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-436 at `7e9df8aa`
+**Addressed**: Local Review (Pre-Push) at `408fa819` (2026-11-13 15:41 -05:00)
+**Commits**: e4441c04, aa598101, 059a18bb, b4bc1dfd, efee9fbf, 6535a04e, 57cd541f, 97836cbf, 1681926a, 37aa3e3e, 7e9df8aa
+
+### Actions
+- [x] (must-fix) Deleted remote tag still resolved: one fetch `--prune --prune-tags --force`; test `deleted tag:` in test_mr_stale_leaf_commit_and_tag (fails without the fix, checked) — e4441c04 — `.agent/project_types/ros2_colcon/adapter.sh:648`
+- [x] (must-fix) Detached-HEAD local commits orphaned for a tag/commit ref: kept, warned, `source-state=local`, checked out again once on a branch; tests `detached local commit, tag/commit pin:` and `on a branch:` — aa598101 — `.agent/project_types/ros2_colcon/adapter.sh:710`
+- [x] (suggestion) sync's run-setup notice now counts the repositories of a layer with no `src/`; new test test_mr_sync_names_a_new_layer — 059a18bb — `.agent/project_types/ros2_colcon/adapter.sh:1097`
+- [x] (suggestion) validate warns on a clone edited after sync (state clean) and on a missing clone, and skips the source-state checks once `source` itself changed; new test test_mr_validate_source_state_warnings — b4bc1dfd — `.agent/project_types/ros2_colcon/adapter.sh:895`
+- [x] (suggestion) "validate also refuses it" now runs after a good setup (asserted exit 0 first) and asserts on validate's single-source message — efee9fbf — `.agent/scripts/tests/test_ros2_colcon.sh:3011`
+- [x] (suggestion) flock on `configs/.lock.source` around fetch and resolve (`ROS2_COLCON_LOCK_WAIT`, default 120 s, then refuses with nothing changed; unlocked without flock, as `project_file_set` is); new test test_mr_source_lock (held lock refuses a first setup and a sync with nothing changed, two concurrent syncs both succeed leaving one generated dir, a PATH without flock runs unlocked) — 6535a04e — `.agent/project_types/ros2_colcon/adapter.sh:638`
+- [x] (suggestion) Swap windows: the cleanup keeps the directory the live link points at; BSD `mv -fh` before the remove-then-rename fallback; leftovers of killed runs swept while the lock is held; new test test_mr_swap_interrupt_and_sweep (TERM right after `mv -T`, a stub BSD mv, planted leftovers; 5 of its assertions fail without the fix, checked) — 57cd541f — `.agent/project_types/ros2_colcon/adapter.sh:798`
+- [x] (suggestion) No symbolic link along `source_path` is followed (each component checked; stricter than a realpath-under-clone check: a link inside the repository is refused too); tests `symlink source_path evil.yaml / evildir/secret.yaml` — 97836cbf — `.agent/project_types/ros2_colcon/adapter.sh:722`
+- [x] (suggestion) A clone with no index (interrupted `--no-checkout` first clone) is checked out as fresh; the registry refuses `source_ref=HEAD`; new test test_mr_interrupted_first_clone_and_head_ref and a test_project_file.sh refused-value row — 1681926a — `.agent/scripts/_project_registry.sh:813`
+- [x] (cosmetic) `unused_settings` names the ros2_colcon type once; test asserts the doubled phrase is gone — 37aa3e3e
+- [x] docs/design.md Registry and adapters: one sentence for the source lock, change-log row — 7e9df8aa
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 795 passed, 0 failed, 0 skipped (was 720 before this pass).
+- `bash .agent/scripts/tests/test_project_file.sh`: 542 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit hides which suites it ran on a pass).
+- Not verified: the BSD `mv -h` path on a real BSD/macOS host (tested only with a stub mv on Linux); the no-flock fallback only with flock absent from PATH on Linux.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 16:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent acd44ebb128a81666, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `9329b41e`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~2,300 lines across 16 files)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round-1 findings: all nine addressed as described in the Implementation entry at `9329b41e`, verified by reading each fix and by tests; finding 2 (detached-HEAD commits) is fixed for tag and commit refs only (new must-fix 1 below).
+
+### Findings
+- [x] (must-fix) Changing source_ref from a tag or commit to a branch silently orphans local commits on the clone's detached HEAD: the branch switch runs `checkout --quiet`, which hides git's "leaving commits behind"; apply the detached-commit guard before the branch switch, with a test (Codex, Gemini, Claude adversarial and the lead all confirmed) — `.agent/project_types/ros2_colcon/adapter.sh:703`
+- [x] (must-fix) The leftovers sweep removes a user's moved-aside directory such as `manifest-resolved.backup` (any 6 alphanumerics match), which the adapter's own "move it aside" error invites; mark the adapter's own directories (e.g. require its `.resolved-from` header, or a distinct prefix) — `.agent/project_types/ros2_colcon/adapter.sh:878`
+- [x] (suggestion) A remote rewrite is taken for local commits and stays stale (with a misleading warning): a force-pushed branch, or a tag moved off commits no branch holds; treat HEAD equal to the recorded `commit=` as not local — `.agent/project_types/ros2_colcon/adapter.sh:732`
+- [x] (suggestion) Lock covers fetch and resolve only: setup's import loop, sync's pull loop and other readers follow the link unlocked, and a concurrent swap can `rm -rf` the directory mid-read; read one resolved directory per run, or state it in the header — `.agent/project_types/ros2_colcon/adapter.sh:908`
+- [x] (suggestion) fd 9 is inherited by git and the resolver during the critical section; a detached child (auto gc) would hold the lock; close it on those calls (`9>&-`) — `.agent/project_types/ros2_colcon/adapter.sh:922`
+- [x] (suggestion) An invalid ROS2_COLCON_LOCK_WAIT (e.g. `abc`) is reported as "another setup or sync holds its lock"; validate it or tell flock's exit 64 from 1 — `.agent/project_types/ros2_colcon/adapter.sh:926`
+- [x] (suggestion) `--prune-tags` deletes tags the user made in the clone, yet the detached warning says commits are "on no branch or tag" as if a tag protects them; say branch only — `.agent/project_types/ros2_colcon/adapter.sh:735`
+- [x] (suggestion) On GNU, a real `mv -T` failure falls through `mv -fh` (unknown there) to `rm -f` of the live link, leaving no link and letting the next sweep remove the previous directory; probe the option once instead of falling back on any failure — `.agent/project_types/ros2_colcon/adapter.sh:846`
+- [x] (suggestion) The two-syncs-at-once test catches a missing lock only through its directory-count assertion, about 19 runs in 20 (lock disabled in a scratch copy, 20 runs); the exit and tip assertions pass without the lock — `.agent/scripts/tests/test_ros2_colcon.sh:3137`
+- [x] (suggestion) A URL `source` refuses blanks but not other control characters (the path form and source_path refuse both) — `.agent/scripts/_project_registry.sh:804`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 16:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `a726fb95`
+**Addressed**: Local Review (Pre-Push) at `9329b41e` (2026-11-13 16:11 -05:00)
+**Commits**: de4b06c7, 7cf6984a, 0bf2c295, bb172236, 88f7b15c, 2e546705, 25cb45f5, 8d246c8d, bac379ac, a726fb95
+
+### Actions
+- [x] (must-fix) Tag/commit to branch orphaned detached local commits: the same guard now runs before the branch switch (kept, warned, state local); test `tag to branch, local commit:` in test_mr_stale_leaf_commit_and_tag, including a tag made in the clone being removed by the fetch — de4b06c7 — `.agent/project_types/ros2_colcon/adapter.sh:703`
+- [x] (must-fix) The sweep removed a moved-aside `manifest-resolved.backup`: generated directories take the prefix `manifest-resolved.gen-`, the sweep and the previous-directory removal touch only that prefix, and the error now suggests `manifest-resolved.old`; test plants `manifest-resolved.backup/notes.txt` (survives a sync) and checks the message — 0bf2c295 — `.agent/project_types/ros2_colcon/adapter.sh:878`
+- [x] (suggestion) A remote rewrite was taken for local commits: a clean clone at the `commit=` of the live resolved manifest (source unchanged, source-state=clean) follows the rewrite; new test test_mr_remote_rewrite_followed (force-pushed branch, tag moved off commits no branch holds; local commits on top still warned); 9 assertions fail without the fix, checked — 7cf6984a — `.agent/project_types/ros2_colcon/adapter.sh:732`
+- [x] (suggestion) Readers followed the link unlocked: each verb pins one generated directory in `_rc_require_manifest` and holds a shared flock on it (fd 8); a swap removes the previous directory only when an exclusive lock on it is free at once, else a later sweep does. Without flock a reader is unguarded, stated in the adapter header and design.md. New test test_mr_reader_pinned_to_one_result (a setup held mid-import while a sync swaps: its directory is kept, its next layer reads its own result, the next sync sweeps it); 3 assertions fail without the fix, checked — bac379ac, a726fb95 — `.agent/project_types/ros2_colcon/adapter.sh:908`
+- [x] (suggestion) fd 9 inherited by children: the fetch-and-resolve group runs with `9>&-` (bash keeps the lock under a close-on-exec copy); new test test_mr_lock_fd_not_inherited checks no git or resolver call sees fd 9 and the lock is held while the resolver runs; fails without the fix, checked — 88f7b15c — `.agent/project_types/ros2_colcon/adapter.sh:922`
+- [x] (suggestion) An invalid `ROS2_COLCON_LOCK_WAIT` is now named (digits with an optional decimal part), checked before flock; tests for `abc`, `-1`, `1 2`, `5s` — 2e546705 — `.agent/project_types/ros2_colcon/adapter.sh:926`
+- [x] (suggestion) The detached-commit warning says "on no branch" and that each fetch removes the tags the source does not have, so a tag made in the clone does not keep them; asserted in the tests above — de4b06c7 — `.agent/project_types/ros2_colcon/adapter.sh:735`
+- [x] (suggestion) mv's form (`-T` or `-h`) is probed once per resolve in `configs/.mv-probe.XXXXXX` (removed, and swept if a kill left it) and used alone; its failure is an error with the live link kept. Test with a stub mv whose `-T` fails on the real swap: exit 1, link and previous result unchanged, no stray directory — bb172236 — `.agent/project_types/ros2_colcon/adapter.sh:846`
+- [x] (suggestion) The two-syncs test is deterministic: the first sync is held inside the critical section by a resolver waiting on a file; the second must be seen waiting in `flock -x -w 117 9` (its unique wait value, via pgrep) without having reached the resolver, then resolve after release. With the lock disabled, 3 of its assertions fail, checked — 25cb45f5 — `.agent/scripts/tests/test_ros2_colcon.sh:3137`
+- [x] (suggestion) A URL `source` with control characters is refused (before, `https://e.invalid/m\x01.git` passed the value check and failed only on the missing source_ref); two refused-value rows (`\x01`, `\x7f`) in test_project_file.sh; fail without the fix, checked — 8d246c8d — `.agent/scripts/_project_registry.sh:804`
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 862 passed, 0 failed, 0 skipped (was 795 before this pass).
+- `bash .agent/scripts/tests/test_project_file.sh`: 546 passed, 0 failed; `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 149 s, every hook Passed or Skipped (no files), validate-script-tests Passed (pre-commit does not show which suites it ran on a pass).
+- Not verified: BSD `mv -h` and the no-flock paths on a real BSD/macOS host (Linux only, with stub mv and flock off PATH); `pgrep` is assumed present where the deterministic lock test runs (it is on this host and on Ubuntu CI images; not checked in CI here).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 16:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent acd44ebb128a81666, resume 2 of 3)
+
+**Branch**: feature/issue-436 at `c1642c68`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted manifest input becomes paths, git arguments and generated files; ~2,800 lines across 16 files)
+**Must-fix**: 4 | **Suggestions**: 6
+**Round**: 3 | **Ship**: continue — round 3: 4 must-fix is high; another independent read warranted
+
+Round-2 findings: all ten addressed as described in the Implementation entry at `c1642c68`, checked fix by fix. Three of the four must-fix below are in code the round-2 fixes added (fresh=1 on a clone with no index came from round 1's fix 9).
+
+### Findings
+- [x] (must-fix) A pre-existing clone with no index (e.g. after `rm .git/index`) is taken as just cloned (`fresh=1`): the dirty check is skipped and a later fetch or ref failure `rm -rf`s the clone with its local commits and edits; track "created by this run" apart from "needs a checkout" (Codex; confirmed by reading :752 and the fresh-only removals) — `.agent/project_types/ros2_colcon/adapter.sh:752`
+- [x] (must-fix) `kind=commit` accepts a commit only the clone holds and records it `source-state=clean`; when source_ref later turns to a branch, `_rc_head_is_last_resolved` waives the orphan guard and the local commit is left on no ref, silently; require the commit to be reachable from a remote ref (else state local), and the same in `_rc_head_is_last_resolved` (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:778`
+- [x] (must-fix) The rewrite rule's `reset --hard` overwrites an untracked file the rewritten remote now tracks when the user has `status.showUntrackedFiles=no` (porcelain then shows the clone as clean); use `status --porcelain --untracked-files=normal` in the dirty checks (Claude adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:826`
+- [x] (must-fix) The two-syncs lock test's `pgrep -f "flock -x -w 117 9"` searches the whole machine: without pgrep it always fails, and any process whose command line holds the string (a parallel run, an editor, a grep) makes the three lock assertions pass with the lock broken (both reproduced); tie the check to this run (a unique wait value per run plus p2's descendants, or a flock wrapper on the sandbox PATH that writes a file), and skip rather than fail without the tool — `.agent/scripts/tests/test_ros2_colcon.sh:3237`
+- [x] (suggestion) The rewrite rule knows only the last successful resolve: a fetch that moved the clone followed by a failed resolve (whose message then says "nothing changed"), or a branch revisited after another ref, is later taken for local commits after a force-push, and stays stuck on the old commit with a warning (Gemini) — `.agent/project_types/ros2_colcon/adapter.sh:694`
+- [x] (suggestion) Without flock, pinning makes readers worse off: a concurrent sync removes the pinned directory at once, so setup fails on a missing repos file and sync skips the layer silently (reproduced); pin only with flock, or never remove at the swap without it — `.agent/project_types/ros2_colcon/adapter.sh:140`
+- [x] (suggestion) A failed mv probe (mktemp error) silently takes the non-atomic remove-then-rename path on GNU, and a failure after its `rm` reports "nothing changed" with no link left — `.agent/project_types/ros2_colcon/adapter.sh:959`
+- [x] (suggestion) fd 8 reaches every child (a long-lived one, such as git auto gc or a ROS daemon, keeps that directory from the sweep), and where flock on a directory fails nothing is ever removed: one `gen-*` per sync accumulates unwarned — `.agent/project_types/ros2_colcon/adapter.sh:116`
+- [x] (suggestion) The registry accepts directory-like `source_path` values (`.`, `sub/`, `a//b`), refused only after a clone and fetch (Gemini) — `.agent/scripts/_project_registry.sh:831`
+- [x] (suggestion) An assertion still checks the loose prefix `configs/manifest-resolved.`; tighten it to `.gen-` — `.agent/scripts/tests/test_ros2_colcon.sh:2535`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 17:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"Simplify"
+
+Q1 as put to him: how should this go on, after round 3 of 3 ended without approval and the must-fix count rose (2, 2, then 4)? Round 3's must-fix findings were shown by their headings: F1 `adapter.sh:752` "A clone with no index is wiped on a fetch or ref failure"; F2 `adapter.sh:778` "A commit only the clone holds can be orphaned silently"; F3 `adapter.sh:826` "The rewrite rule's `reset --hard` can overwrite an untracked file"; F4 `test_ros2_colcon.sh:3237` "The lock test's `pgrep -f` searches the whole machine". The six open suggestions were named.
+
+The option he chose, as worded to him: "Simplify the rule (Recommended)": the clone becomes the adapter's own: clean and on the requested ref it is updated; in any other state setup and sync refuse, changing nothing, and point to the path form for local manifest work. The preservation and rewrite machinery is removed, then a fresh review. Changes a plan rule; undone by restoring the removed commits.
+
+He first asked "What does editing the manifest inside the adapter's clone mean?" and was told: the adapter clones a git-hosted source into `<project root>/configs/source-clone/`; the plan made editing the manifest there, and committing there, a supported working style, which is why the adapter had to preserve uncommitted files, local commits, detached heads, half-made clones and rewritten remotes; the path form (`source=/path/to/manifest.yaml`) does the same job from a checkout he controls. What is given up is editing in place under `configs/`.
+
+This changes the plan's rule in "One concern: a stale manifest" ("A dirty clone is never forced ... the owner editing the manifest in the clone is a supported working style, not an error"): a modified clone is now refused, never resolved and never reconciled. The other answers offered were: keep the rule and fix again; publish as it is; stop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 17:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 2 of 3)
+
+**Branch**: feature/issue-436 at `d8b05733`
+**Addressed**: Local Review (Pre-Push) at `c1642c68` (2026-11-13 16:50 -05:00), under the owner's Checkpoint (After: rounds, Decision: address, "Simplify")
+**Commits**: 94437a33, 742be1f5, 441106e7, 980428d0, d8b05733
+
+### The rule change (owner, 2026-11-13)
+The source clone is the adapter's own (94437a33). The adapter leaves it detached at the fetched commit and records it in `.git/ros2-colcon-adapter-commit`. An untouched clone (git clone of `source`, index, record, HEAD detached at the record, `git --no-optional-locks status --untracked-files=all --ignored=matching` empty) is fetched and moved to the ref's commit. Any other state is refused by setup, sync and validate with nothing changed, a recovery and the path form. Only a clone this run created (`created_here`) is removed on failure. A commit ref must be held by a remote ref or tag.
+Removed: the detached-commit guards and warnings, `source-state` (the field is gone from `.resolved-from`), resolving a dirty working tree, the rewrite rule (`_rc_head_is_last_resolved`, `reset --hard`), the half-made-clone re-checkout, and their tests (test_mr_stale_leaf_branch, test_mr_stale_leaf_commit_and_tag, test_mr_remote_rewrite_followed, test_mr_interrupted_first_clone_and_head_ref, test_mr_validate_source_state_warnings).
+Replaced by: test_mr_clone_refused_when_modified (9 states: uncommitted, untracked with `status.showUntrackedFiles=no`, ignored, HEAD moved, local branch with a commit, other origin, no index, no record, not a git clone; for setup and sync each: exit 1, the message names the state, recovery and path form, the clone byte for byte untouched by tree fingerprint, link and live result unchanged; validate fails with the same message; removing the clone recovers), test_mr_clone_follows_remote (moved branch, force-pushed branch, moved tag, commit ref, a commit origin does not hold refused, deleted tag an error with the checkout unchanged, `source_ref=HEAD` refused), test_mr_clone_removed_only_when_created_here (new clone removed on a bad ref; an existing clone kept on a bad ref and offline; a no-index clone refused, never removed). The fingerprint was checked to catch an index refresh: without `--no-optional-locks` four assertions fail.
+Line counts: adapter.sh 2044 before, 1998 after the rule change (94437a33), 2054 at the end (the suggestion-6/7/8 fixes in 441106e7 added 56). test_ros2_colcon.sh 3632 before, 3587 after the rule change, 3714 at the end.
+
+### Actions
+- [x] (must-fix 1) A no-index clone taken as fresh and wiped: removed with its code; `created_here` is its own fact, and a no-index clone not made by this run is refused and never removed (test_mr_clone_removed_only_when_created_here, test_mr_clone_refused_when_modified `no_index`) — 94437a33
+- [x] (must-fix 2) A commit only the clone holds orphaned: removed with its code (no orphan guard or last-resolved rule remain); a commit ref must be held by a remote ref or tag, and HEAD elsewhere or on a branch is refused (tests `a commit origin does not hold`, `head_moved`, `local_branch`) — 94437a33
+- [x] (must-fix 3) `reset --hard` over an untracked file hidden by `status.showUntrackedFiles=no`: removed with its code; untracked and ignored files are asked for explicitly and refused (test `untracked` sets `status.showUntrackedFiles=no`) — 94437a33
+- [x] (must-fix 4) Machine-wide `pgrep`: replaced by a `flock` wrapper on the second sync's own PATH that writes a file when that sync requests the lock, then a 1 s check that it is still blocked; no process search, no pgrep. With the lock disabled 3 assertions fail, checked — 742be1f5 — `.agent/scripts/tests/test_ros2_colcon.sh:3237`
+- [x] (suggestion 5) The rewrite rule after a failed resolve: removed with its code; an untouched clone is moved to origin's commit whatever happened before (test_mr_clone_follows_remote) — 94437a33
+- [x] (suggestion 6) Without flock a swap no longer removes the directory it replaces; only older ones go, so at most two remain (header says so); test: three unlocked syncs, the replaced dir kept and two dirs each time — 441106e7
+- [x] (suggestion 7) A failed mv probe is an error with nothing changed; with neither -T nor -h, a failed rename after removing the old link says the link is gone and never "nothing changed"; tests with stub mktemp and mv — 441106e7
+- [x] (suggestion 8) git, vcs, colcon and the resolver run through `_rc_nofd` (fds 8 and 9 closed); a directory flock cannot lock is left and said once per run; tests: fd-8 wrappers for vcs, colcon and git across setup, sync and build; a stub flock failing on directories (one warning, nothing removed, the sweep removes them once locking works) — 441106e7
+- [x] (suggestion 9) Directory-like `source_path` (`.`, `sub/`, `a//b.yaml`, `./m.yaml`) refused at the registry, with refused-value rows — 980428d0
+- [x] (suggestion 10) The cache-dir assertion checks the `.gen-` prefix — 94437a33
+- [x] Documents: plan "One concern: a stale manifest" states the new rule with the dated owner line, and its other old-rule phrases are corrected; design.md sentence and change-log row; projects.local.example; registry header — d8b05733
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1044 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 150 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
+- Not verified: BSD/macOS (`mv -h`, no flock, `stat -c` in the test's fingerprint helper is GNU); a run killed between the checkout and the record leaves a clone that is refused (stated in the header; not tested).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 17:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `105f5763`
+**Base**: origin/main
+**Depth**: Deep (reason: ~3,000 lines over 16 files; untrusted remote input reaching git, paths and generated files)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 4 | **Ship**: recommended — round 4: 2 mechanical must-fix (prev 4), not rising; fix and ship rather than another full round
+
+### Findings
+- [x] (must-fix) Origin check uses `git remote get-url`, which applies `url.*.insteadOf`; with such a rule every run after the first refuses the clone and re-cloning cannot recover. Compare `git config --get remote.origin.url` instead (reproduced by the Claude adversarial reviewer) — `.agent/project_types/ros2_colcon/adapter.sh:720`
+- [x] (must-fix) A file marked assume-unchanged or skip-worktree hides a local edit from `git status`, so the clone reads as untouched; when the ref has not moved, the edit is resolved and recorded as the remote commit. Refuse when `git ls-files -v` shows a lowercase or `S` flag (reproduced: the status is empty with the edit present) — `.agent/project_types/ros2_colcon/adapter.sh:744`
+- [x] (suggestion) INT/TERM/HUP between the fresh clone and the record (and a failed record write at :829) leaves a half-made clone this run created, which every later run refuses; the plan says this run removes it. Trap around the window or remove on these paths — `.agent/project_types/ros2_colcon/adapter.sh:790`
+- [x] (suggestion) `fetch --prune-tags --force` deletes local tags in a clone that reads as untouched (local work lost silently); refuse when a local tag is not on origin, or state it in the rule — `.agent/project_types/ros2_colcon/adapter.sh:802`
+- [x] (suggestion) Without flock, two runs can both see no clone; the loser's failed `git clone` then runs `rm -rf` on the winner's clone. Claim the path with `mkdir "$clone"` (no -p) before cloning into it — `.agent/project_types/ros2_colcon/adapter.sh:790`
+- [x] (suggestion) The path-source `file-stamp` is taken after the resolver ran, so an edit during resolve is recorded as resolved; take it before resolve (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:918`
+- [x] (suggestion) New test code uses GNU-only `stat -c`, `sha256sum` (mr_tree_hash) and bare `sed -i` (2940-3562); CI is ubuntu-only, but the suite cannot run on macOS where the adapter claims BSD support — `.agent/scripts/tests/test_ros2_colcon.sh:2662`
+- [x] (suggestion) The assertion that `.resolved-from` has no `source-state` guards only a key from the withdrawn rule; remove it — `.agent/scripts/tests/test_ros2_colcon.sh:2697`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 17:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Q1 "Fix all, then review once more (Recommended)"; Q2 "Refuse, like any modified clone (Recommended)".
+
+Q1 as put to him: round 4 is past the three-round limit, so how should this go on? Round 4 was a fresh reviewer after the simplification (Local Review (Pre-Push) at `2994e766`): 2 must-fix, down from 4, Ship "recommended". Shown to him by their text: F1 `adapter.sh:720`, the origin check compares the URL after git's `insteadOf` rewriting, so a user with such a rule is refused on every run after the first and removing the clone cannot recover; F2 `adapter.sh:744`, a file marked assume-unchanged or skip-worktree hides a local edit from `git status`, so the clone reads as untouched and the edited manifest is resolved silently; F3 `adapter.sh:790-829`, a Ctrl-C between the fresh clone and writing the record leaves a half-made clone every later run refuses; F4 `adapter.sh:783-796`, without flock two first runs can race and one removes the other's clone; F5 `adapter.sh:918`, the path-source stamp is taken after the resolver ran; F6 new test code uses GNU-only `stat -c`, `sha256sum` and `sed -i`; F7 `test_ros2_colcon.sh:2697`, one assertion only guards a key from the withdrawn rule; F8 Gemini's review failed this round (a tool call denied in headless mode), Codex and the adversarial reviewer ran. The option he chose: a fix pass for F1 to F7 and his Q2 answer, then one more pre-push review of those fixes before he is asked to publish.
+
+Q2 as put to him: what should the adapter do when its clone holds a tag the remote does not have (F9, `adapter.sh:802`: the fetch's `--prune-tags` deletes local tags in a clone that reads as untouched, so work held only by a tag is lost silently)? His answer: a local tag not on the remote counts as a modified clone; setup and sync refuse and change nothing, with the usual message.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 18:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcaf25f36914a15d, resume 3 of 3)
+
+**Branch**: feature/issue-436 at `f3633aec`
+**Addressed**: Local Review (Pre-Push) at `105f5763` (2026-11-13 17:33 -05:00), with the owner's Checkpoint answer on Q2 ("Refuse, like any modified clone")
+**Commits**: d550e90d, abee14e0, faa1a44f, 8ca65c84, ebec06cc, 10d997cd, f3633aec
+
+### Actions
+- [x] (must-fix 1) The origin check compares the stored `remote.origin.url` with `source` (no `insteadOf` rewriting); test test_mr_clone_with_insteadof_rule: setup then two syncs with a sandbox `url.<base>.insteadOf` rule all succeed, and 4 assertions fail without the fix, checked — d550e90d. Follow-up, not done here: the bootstrap route's same `remote get-url origin` pattern (`_rc_bootstrap_manifest`, adapter.sh near :540) predates this branch.
+- [x] (must-fix 2) A clone where `git ls-files -v` shows assume-unchanged (lowercase) or skip-worktree (`S`) is refused; refusal-test states `assume_unchanged` and `skip_worktree` with a hidden edit: refused by setup, sync and validate, clone byte for byte untouched, result unchanged; 26 assertions fail without the fix, checked — abee14e0
+- [x] (owner's decision, finding 9) Local tags: the adapter records the clone's tags (name and object, sorted) in `.git/ros2-colcon-adapter-tags` right after each successful fetch; before the next fetch the clone's tags must equal that record, else the clone is modified (a tag made, moved or deleted in the clone). Tags a fetch brings, moves or prunes are recorded again, so no false positive. Rule stated in the adapter header and the plan. Tests: refusal state `local_tag` (19 assertions fail without the fix, checked); a tag deleted on the remote is still seen as gone and the next sync is not refused; a tag moved on the remote is still followed — faa1a44f, f3633aec
+- [x] (suggestion 3) A clone this run created is removed on every exit until its record is written: errors, a failed record write and INT/TERM/HUP (`_rc_fetch_track_created`, `_rc_fetch_abort`, `_rc_fetch_done`); tests: TERM while a git stub holds the checkout (exit 143, clone gone) and a record path that cannot be written (exit 1, said, clone gone) — 8ca65c84
+- [x] (suggestion 4) The clone path is claimed with `mkdir` (no `-p`); a run whose mkdir fails refuses and removes nothing. Test without flock: a mkdir stub plays another run claiming the path between the check and the mkdir; this run exits 1 and the other run's file survives (fails on the old code, checked) — 8ca65c84
+- [x] (suggestion 5) The path source's `file-stamp` is taken before the resolve; test test_mr_path_source_edited_during_resolve (a resolver wrapper edits the file as it ends; validate reports it; fails on the old code, checked) — ebec06cc
+- [x] (suggestion 6) `mr_tree_hash` uses GNU-or-BSD stat (as `_rc_file_stamp`), `cksum` and plain sorted paths, and still catches an index refresh (checked by dropping `--no-optional-locks`); the manifest-route tests' bare `sed -i` became `mr_sed` (temporary file and mv). The `sed -i''` at test line 949 predates this branch and was left — 10d997cd
+- [x] (suggestion 7) The `source-state` absence assertion removed — 10d997cd
+
+Line counts: adapter.sh 2054 before, 2127 after (+73: the tag record and check, the flag check, the created-clone tracking and claim, the stored-URL read, header lines). test_ros2_colcon.sh 3714 before, 3846 after.
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1126 passed, 0 failed, 0 skipped. `test_project_file.sh`: 554 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 153 s, every hook Passed or Skipped (no files), validate-script-tests Passed.
+- Not verified: the BSD branches (`stat -f` in `mr_stat`, `mv -h`, no flock) on a BSD/macOS host; a kill between the fetch and the tag record (an existing clone would then read as modified; same class as the checkout-to-record window the header names).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 18:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8fe85cce68b8a999, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `09182232`
+**Base**: origin/main
+**Depth**: Deep (reason: ~3,260 lines over 16 files; untrusted remote input reaching git, paths and generated files)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 5 | **Ship**: recommended — round 5: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Round-4 findings checked against the code: all eight are fixed as described (d550e90d, abee14e0, faa1a44f, 8ca65c84, ebec06cc, 10d997cd). test_ros2_colcon.sh: 1126 passed, 0 failed, 0 skipped.
+
+### Findings
+- [x] (must-fix) A fetch that updates some refs and then fails, or a run killed between the fetch and the tag-record write, leaves an untouched clone that the next run refuses with "a tag made, moved or deleted in the clone", blaming the user for a tag the remote brought; the failure message's "nothing changed" is then false. The clone passed the untouched check under the lock, so rewrite the tag record after the fetch whether it succeeded or not, and correct the message; add a test (reproduced by the adversarial reviewer with a stale refs/tags/v3.lock) — `.agent/project_types/ros2_colcon/adapter.sh:861`
+- [x] (must-fix) Clone-local git state that changes what fetch or checkout see is not checked, so a touched clone reads as untouched and a stale or local result is resolved silently: a narrowed `remote.origin.fetch` leaves origin/<ref> stale (Codex), and a `refs/replace/*` entry swaps the resolved content under the recorded origin commit (reproduced). Fetch with explicit refspecs (`+refs/heads/*:refs/remotes/origin/*`, `+refs/tags/*:refs/tags/*`) and run the clone's git with `GIT_NO_REPLACE_OBJECTS=1`, or refuse replace refs; a test each — `.agent/project_types/ros2_colcon/adapter.sh:861`
+- [x] (suggestion) An empty clone directory left by a run killed after the mkdir claim is refused as "a file or directory the adapter did not make"; say it was left by an interrupted run (the advice to remove it works) — `.agent/project_types/ros2_colcon/adapter.sh:730` (deferred: removed with the kept clone (owner, 2026-11-13): no clone path is claimed, so no empty clone directory can be left or refused)
+- [x] (suggestion) The cleanup keeps the INT/TERM/HUP traps as `exit N`, so a second Ctrl-C kills its `rm -rf` and leaves a half-removed clone; set `trap '' INT TERM HUP` before the removal — `.agent/project_types/ros2_colcon/adapter.sh:800`
+- [x] (suggestion) validate takes no source lock, so during a concurrent sync (fetch-to-record or checkout-to-record window) it can report the clone as modified and advise removing it under the running sync; take the lock with a short wait, or say a sync may be running — `.agent/project_types/ros2_colcon/adapter.sh:1249` (deferred: no longer applies: validate reads only the generated directory it pins (shared flock, fd 8) and checks no clone; a concurrent sync swaps the link but never removes a pinned directory, so validate cannot misreport)
+- [x] (suggestion) `_rc_pin_kind` runs `_adapter_bounded_git` without `_rc_nofd`, so git and its descendants (an ssh ControlMaster, a credential helper) inherit the reader pin on fd 8 and can keep a generated directory from removal after the adapter ends (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:1929`
+- [x] (suggestion) Tests exercise only a tag added in the clone (the fixture remote has no tags); add a deleted and a moved tag (both refused correctly by hand); a moved tag's name is printed twice in the message (add `uniq`) — `.agent/scripts/tests/test_ros2_colcon.sh:2841` (deferred: removed with the kept clone: there are no local tags to record or refuse; the tag tests are replaced by moved and deleted remote tags in test_mr_url_follows_remote and test_mr_fetch_failures_keep_previous)
+- [x] (suggestion) A clone made before the tag record existed is refused as "tag made" when the remote has tags; affects only clones made earlier on this unmerged branch, so at most a line in the PR body — `.agent/project_types/ros2_colcon/adapter.sh:751` (deferred: removed with the kept clone: a configs/source-clone left by this branch is neither read nor touched (test_mr_old_source_clone_left_alone); one line in the PR notes)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 18:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"Go with your recommendation"
+
+Q1 as put to him: how should this go on, after round 5 (Local Review (Pre-Push) at `a272df7f`) again found 2 must-fix, level with round 4, with the reviewer's verdict "fix and publish"? Shown to him by their text: F1 `adapter.sh:861`, after a fetch that updates some refs and then fails, or a run killed between the fetch and writing the tag record, the next run refuses an untouched clone and blames the user for "a tag made, moved or deleted in the clone"; F2 `adapter.sh:861`, local git state in the clone that changes what fetch or checkout see is never checked: a narrowed fetch refspec or a `refs/replace/*` entry makes a touched clone read as untouched, and the result is resolved silently. The six open suggestions were named.
+
+The host's recommendation, which he chose, as worded to him: "Drop the kept clone (Recommended)": each setup and sync fetches the source fresh into a temporary directory and removes it afterwards; the untouched-clone checks, records and refusals are deleted. One more fix pass and a review; slower syncs on a large manifest repository. Undone by restoring the removed commits. The host said its reading differs from the reviewer's: rounds 4 and 5 each found new ways a kept clone can be altered without the check noticing, that list has no natural end, and the host's own advice at the previous checkpoint (refuse a modified clone) led there; since editing in the clone was withdrawn, the adapter has no need to keep a clone.
+
+He first asked "What about if the manifest is part of one of the project repos?" and was told: the adapter must fetch the manifest's repository on its own before any layer checkout exists, in either design; with a kept clone the project holds two lasting copies of that repository (`configs/source-clone/` and the package checkout), with a temporary fetch only the package checkout he works in; he edits the manifest there, tries it with the path form, and after the merge sets `source` back to the URL; the resolved result follows the remote ref unless the path form is used; the cost is that setup downloads that repository twice and every sync does a shallow fetch of it, not measured for his repository. The other answers offered were: fix F1, F2 and the six, then publish; publish as it is; stop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 19:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-436 at `35b42b36`
+**Addressed**: Local Review (Pre-Push) at `09182232` (2026-11-13 18:14 -05:00), under the owner's Checkpoint (After: rounds, Decision: address, "Drop the kept clone")
+**Commits**: 03f2ca70, b62e456d, 35b42b36
+
+### The design change (owner, 2026-11-13, round-5 checkpoint)
+No clone is kept (03f2ca70). setup and sync, under the lock on `configs/.lock.source`, make the new generated directory first (`_rc_resolve_begin`: link check, sweep, `mktemp`, traps) and fetch a URL source into its sibling `<gen>.src`: `git init --template=`, `ls-remote -- <url> refs/heads/<ref> refs/tags/<ref>` for the kind, a `--depth 1 --no-tags --no-recurse-submodules` fetch of that ref into FETCH_HEAD; a commit is fetched shallow by its full name, falling back (or for an abbreviated name) to a full fetch of the remote's branches and tags; then a detached checkout, the symlink refusal along `source_path`, and the resolver. `<gen>.src` is removed with the cache after the resolve and by `_rc_resolve_cleanup` on every exit path; the sweep and the unlocked prune match `.src` in the `gen-` family. A fetch failure says what failed and that the previous result is still in use (its link unchanged), never "nothing changed". validate keeps the provenance checks and the path-form changed-file warning only. A `configs/source-clone/` left by an earlier run is not read or removed.
+Removed: `_rc_clone_modified`, `_rc_clone_refusal`, `_rc_clone_tag_list`, the commit and tag records, `_rc_fetch_track_created`/`_abort`/`_done`, the mkdir claim, validate's clone block, and the tests test_mr_clone_follows_remote, test_mr_clone_with_insteadof_rule, test_mr_clone_refused_when_modified, test_mr_first_clone_interrupted_or_claimed, test_mr_clone_removed_only_when_created_here, test_mr_offline_keeps_previous.
+Replaced by: test_mr_url_follows_remote (moved, force-pushed branch; moved tag; full and abbreviated commit; push leaves a commit pin), test_mr_fetch_failures_keep_previous (branch and tag deleted on the remote, a commit the remote lacks, unreachable remote for sync and setup, a failed first setup: exit 1, link and live result unchanged, no "nothing changed"), test_mr_url_insteadof_rule (setup, sync, sync; fails without the rule), test_mr_hostile_source_repo (replace ref, `remote.origin.fetch`, `core.hooksPath` and hooks in the bare remote: main's commit resolved and recorded, no hook ran), test_mr_old_source_clone_left_alone (byte for byte across sync, setup, validate), test_mr_fetch_interrupted (TERM during the fetch, exit 143, with a second TERM during the cleanup; KILL, exit 137, leftover `.src` swept by the next sync). Each checks that no `.src`, `.cache`, `.link` or `configs/source-clone` is left (`mr_no_temp`).
+Line counts: adapter.sh 2127 before, 2036 after (2029 after the code commit; the header grew by 7). test_ros2_colcon.sh 3846 before, 3837 after.
+
+### Actions
+- [x] (must-fix 1) Tag record after a partly failed fetch: removed with its code (no clone, no tag record); the replacement is tested by test_mr_url_follows_remote and test_mr_fetch_failures_keep_previous — 03f2ca70
+- [x] (must-fix 2) Narrowed refspecs and replace refs not detected: removed with its code; every run fetches into a fresh `git init` with an explicit ref; test_mr_hostile_source_repo puts a replace ref, a refspec and hooks in the remote and shows main's commit is resolved — 03f2ca70
+- [x] (suggestion 3) Empty clone directory message: removed with the clone (no mkdir claim) — 03f2ca70 (deferred: removed with its code)
+- [x] (suggestion 4) Second Ctrl-C during cleanup: `_rc_resolve_cleanup` sets `trap '' INT TERM HUP` before removing; test_mr_fetch_interrupted sends a second TERM from inside the cleanup's rm; that assertion fails without the fix (checked) — 03f2ca70
+- [x] (suggestion 5) validate without the source lock: no longer applies; validate reads only its pinned generated directory and checks no clone (deferred, reason in the source entry)
+- [x] (suggestion 6) `_rc_pin_kind` and fd 8: `_adapter_bounded_git` and also `git check-ref-format` there now run through `_rc_nofd`; test_mr_pin_fd_not_inherited runs repo_pin against a checkout with an origin and fails without either change (checked) — b62e456d
+- [x] (suggestion 7) Deleted and moved local tags: removed with the clone; remote tag moves and deletions are tested (deferred: removed with its code)
+- [x] (suggestion 8) Clones made earlier on this branch: left alone, tested (deferred: one line in the PR notes)
+- [x] Documents: adapter header, plan "One concern" with the dated owner line (and the plan's other clone phrases), design.md sentence and change-log row, projects.local.example; script_reference.md never named the clone — 35b42b36
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 962 passed, 0 failed, 0 skipped. `bash .agent/scripts/tests/test_register_project.sh`: 206 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 150 s, every hook Passed or Skipped; pre-commit does not show which suites validate-script-tests ran on a pass.
+- Not verified: the shallow fetch by full commit name against a real server (on `file://` here; an HTTP server without allow-reachable-SHA1-in-want takes the full-fetch fallback, untested); BSD/macOS paths as before. No transport restriction is stated on the git command line, then or now: `source` is limited to http(s) and file URLs by the registry, and git's own `protocol.*.allow` applies.
+- Follow-up named, not done: the bootstrap route's `remote get-url origin` check (`_rc_bootstrap_manifest`, adapter.sh:540) applies `url.*.insteadOf` and predates this branch.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-13 19:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-436 at `00773e9e`
+**Base**: origin/main
+**Depth**: Deep (reason: ~3,200 lines over 16 files; untrusted remote content fetched, checked out and resolved on the user's machine)
+**Must-fix**: 2 | **Suggestions**: 11
+**Round**: 6 | **Ship**: recommended — round 6: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+A cold read of the branch after the owner's second design change (no kept clone). `bash .agent/scripts/tests/test_ros2_colcon.sh`: 962 passed, 0 failed, 0 skipped (this reviewer's run, and the adversarial reviewer's). Checked and sound: ref-name rules (leading `-`, `:`, `*`, `^`, `HEAD` refused at the registry; ls-remote matched exactly; branch wins over a same-name tag; a 40-hex branch name is a branch), annotated tags peeled, the abbreviated-commit full fetch, and the full-commit fallback (reproduced here with `protocol.version=0`: the shallow fetch is refused as unadvertised, the full fetch finds the commit, the repository is not left shallow); `--template=` does suppress `init.templateDir`; cleanup of `.src`, cache, link and a failed generated directory on every exit path, a second TERM ignored; the sweep anchored to the `gen-` and `.mv-probe` names, removing a link rather than following it.
+
+### Decision summary
+
+**What changed**: A `ros2_colcon` project can now take its manifest, in the new format, from a settings-file `source` (an absolute path, or an http(s)/file git URL with `source_ref` and `source_path`); `setup` and `sync` fetch it afresh each run, resolve it with the workspace's `ros-manifest` for the registry line's role and distro into a generated directory, and relink `configs/manifest-resolved`, under a lock, with readers pinned and a failed fetch or resolve leaving the previous result live. The registry refuses bad values and combinations (one source only, `single_project` refuses the keys). The owner changed the design twice on 2026-11-13: editing the manifest in the adapter's clone was withdrawn ("Simplify", after round 3), then the kept clone itself was dropped (after round 5), because each round found new ways a kept clone could be altered unnoticed.
+
+**Reviews and outcomes**: Plan review, then six pre-push rounds (must-fix 2, 2, 4, 2, 2, 2), each followed by a fix pass; round 6 (this one, a fresh reader) found 2 must-fix, both mechanical, and 11 suggestions: Ship recommended (fix and publish). Codex ran; Gemini failed again (tool call denied in headless mode, issue 364).
+
+**Open human calls**: Whether `source` should refuse plain `http://` (the resolver refuses it for `extends`; today the registry accepts it, as it does for `bootstrap_url`) and whether the adapter states the allowed git transports on its own command line, as the resolver's `extends` clone does.
+
+**Verified**: test_ros2_colcon.sh 962 passed, 0 failed, 0 skipped; both must-fix reproduced by the adversarial reviewer in a scratch sandbox; the filter-driver finding and the commit fallback reproduced by this reviewer with plain git.
+
+**Recommendation**: needs-work: fix the two must-fix (with tests), then publish.
+
+### Findings
+- [x] (must-fix) Inherited `GIT_DIR` / `GIT_INDEX_FILE` (set by git for every hook) send the temporary fetch and checkout into another repository: reproduced, the victim's HEAD detached at the manifest commit and its index altered, setup exit 0; `_rc_resolver_bin` follows `GIT_DIR` too. Clear `git rev-parse --local-env-vars` for these git calls; add a test — `.agent/project_types/ros2_colcon/adapter.sh:716`
+- [x] (must-fix) The sweep treats the live directory as live only when the link text is exactly `manifest-resolved.gen-XXXXXX`; a link rewritten as `./manifest-resolved.gen-XXXXXX` or absolute (which the pin reads through) has its live target removed, and a failing fetch then says the previous result "is still in use (its link unchanged)" while the link dangles (reproduced). Refuse such a link in `_rc_resolve_begin`, or compare normalised targets; add a test — `.agent/project_types/ros2_colcon/adapter.sh:1043`
+- [x] (suggestion) The fetched tree's `.gitattributes` selects filter drivers from the user's global config (git-lfs's would contact an LFS endpoint the repository names, a host the header's Network paragraph does not list), and a global `core.hooksPath` post-checkout hook runs in the fetched tree (both reproduced). Write `* -filter -text -ident -working-tree-encoding` to `$src/.git/info/attributes` before the checkout (reproduced as effective) and pass `-c core.hooksPath=/dev/null` — `.agent/project_types/ros2_colcon/adapter.sh:804`
+- [x] (suggestion) Transports: `source` accepts plain `http://` (registry and `_rc_source_is_url`), so a network attacker can swap the manifest that decides which repositories are cloned and built; the resolver refuses plain http for `extends` and states its transports on the command line. Refuse `http://` and pass `protocol.allow=never` with https, ssh (for a user's `insteadOf`) and file allowed (owner's call) — `.agent/scripts/_project_registry.sh:804`
+- [x] (suggestion) The "recreate package worktrees" notice compares layers only, but `env.sh` embeds the distro underlay, so a distro change with the same layers leaves worktrees on the old distro unsaid (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:964`
+- [x] (suggestion) `git init` without `--object-format`: a SHA-256 remote, or a user default of `init.defaultObjectFormat=sha256`, makes every fetch fail (reproduced), though 64-hex commits are advertised; init after ls-remote with the matching format, or drop the 64-hex claim — `.agent/project_types/ros2_colcon/adapter.sh:756`
+- [x] (suggestion) ls-remote and the fetches have no time limit (repo_pin uses `_adapter_bounded_git`); a stalled host holds `configs/.lock.source` indefinitely — `.agent/project_types/ros2_colcon/adapter.sh:762`
+- [x] (suggestion) Provenance headers in `layers.txt` and each `.repos` name the deleted temporary path `configs/manifest-resolved.gen-XXXXXX.src/manifest.yaml` (reproduced); name `url#ref:path@commit` as `extends` does — `.agent/project_types/ros2_colcon/adapter.sh:883`
+- [x] (suggestion) A `source` with `user:token@` passes the registry and is echoed in "source: fetching" and written to `.resolved-from`; refuse a password in the URL, as the resolver does — `.agent/scripts/_project_registry.sh:804`
+- [x] (suggestion) Tests: test_mr_hostile_source_repo passes under any implementation (a remote's config, hooks and replace refs never reach a client; `pre-upload-pack` is no git hook); test instead what the code defends against (user `core.hooksPath`, `.gitattributes` filters, inherited `GIT_*`); add a branch-and-tag-of-one-name case and the full-commit fallback (`GIT_CONFIG_COUNT` with `protocol.version=0` makes file:// refuse the shallow fetch) — `.agent/scripts/tests/test_ros2_colcon.sh:2872`
+- [x] (suggestion) The two-syncs lock test's "the second has not reached the resolver" rests on `sleep 1` and on a marker written when the flock wrapper starts, so a slow second run would pass without a lock — `.agent/scripts/tests/test_ros2_colcon.sh:3307`
+- [x] (suggestion) Leftovers of the withdrawn designs: comments "origin/HEAD in the clone" (`_project_registry.sh:826`) and "the link and the clone unchanged" (`test_ros2_colcon.sh:3275`); the header and plan sentences about `configs/source-clone`, test_mr_old_source_clone_left_alone and mr_no_temp's source-clone assertion guard a directory only this unmerged branch ever made (a PR-note line suffices); design.md change-log row of the "modified clone is refused" design that never reached main (fold into the no-kept-clone row); plan step 2 still names `manifest-resolved.<timestamp>` — `docs/design.md:1037`
+- [x] (suggestion) The path-source stamp is mtime in seconds plus size; an equal-size edit within the same second is invisible to validate; a `cksum` of the file would not be (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:668`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 22:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Q1 "Fix all, then publish (Recommended)"; Q2 "Refuse http, state transports (Recommended)".
+
+Q1 as put to him: how should this go on, after round 6 (Local Review (Pre-Push) at `346b009d`, a fresh reader after the kept clone was dropped) found 2 must-fix with the verdict "fix them and publish"? Shown to him: F1 `adapter.sh:716`, inherited git variables redirect the fetch: with `GIT_DIR` or `GIT_INDEX_FILE` set in the environment, as git sets for every hook, the temporary fetch and checkout go into another repository (reproduced: a victim repository's HEAD and index changed while setup exited 0); F2 `adapter.sh:1043`, the sweep removes the live result when the link was rewritten by hand as `./manifest-resolved.gen-...` or an absolute path; F3, the suggestions on hardening the fetch (the user's global filter drivers and checkout hooks run on the fetched tree; no time limit on the fetch while the lock is held; a SHA-256 remote fails; generated headers name a temporary path that no longer exists; a token in a URL would be echoed and stored); F4, the suggestions on tests and leftovers (the hostile-repository test passes under any implementation; the lock test relies on a one-second sleep; a distro change is not announced for existing worktrees; comments and one change-log row still describe the withdrawn designs). The option he chose, as worded to him: one fix pass for F1 to F4 and his Q2 answer, then the pull request is opened; its own review and the merge gate read the fixes, and nothing merges without his answer; saves a seventh pre-push round. The host told him it now agrees with the reviewer that the design has settled.
+
+Q2 as put to him: should `source` refuse plain `http://`, with the adapter stating which transports git may use (https, ssh for `insteadOf` rules, and file)? The reviewer's reason: plain http lets someone on the network swap the manifest that decides which repositories are cloned and built; the resolver already refuses it for `extends`. His answer: `source` accepts https and file URLs only, and the fetch names the transports git may use. The older `bootstrap_url` key is not changed.
+
+His Q1 answer also covers the step after this fix pass: once the fix pass has written its entry and its checks have passed, the host records the publish answer from these words and opens the pull request, with no seventh pre-push round.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 22:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3a431ed800fc6f06, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `9a07ff68`
+**Addressed**: Local Review (Pre-Push) at `00773e9e` (2026-11-13 19:14 -05:00), with the owner's Checkpoint answers (Q1 "Fix all, then publish", Q2 "Refuse http, state transports")
+**Commits**: 5074ba45, f651ae36, 81321c53, a8ef1147, 21be12ac, 99b7f22b, 92cd976b, fa646547, 2c182f7b, 9a07ff68
+
+### Actions
+- [x] (must-fix 1) Inherited `GIT_*`: `_rc_nofd`, through which every git, vcs, colcon and resolver call already goes, now unsets the names `git rev-parse --local-env-vars` lists (git 2.53's list as a floor), keeping `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT` because they carry the user's own configuration (deviation from the finding's "clear the list", stated in the code). This also covers `_rc_resolver_bin`, sync's package git calls and the bootstrap route's git calls. Test test_mr_inherited_git_env_ignored: setup and sync with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` naming a victim repository; it stays byte for byte unchanged and the result is right — f651ae36
+- [x] (must-fix 2) Link of another shape: `_rc_resolve_begin` refuses a link that is not the bare `manifest-resolved.gen-XXXXXX` name before any sweep or fetch, saying what it points at and how to rewrite it. Test test_mr_link_of_another_shape_refused (`./name` and absolute): nothing fetched, the link and its directory kept, a planted leftover not swept — 81321c53
+- [x] (suggestion) The user's hooks and filters: `-c core.hooksPath=/dev/null -c core.fsmonitor=false` on every git call on the temporary repository, and `* -filter -text -ident -working-tree-encoding` in its `.git/info/attributes` before the checkout. Test test_mr_user_hooks_and_filters_not_run (global hooks path and required filter driver through `GIT_CONFIG_COUNT`; a plain clone as control shows both spies do run) — a8ef1147
+- [x] (suggestion, owner's Q2) Transports: the registry refuses plain `http://` for `source` with the reason and what to use (5074ba45, rows in test_project_file.sh; `bootstrap_url` unchanged); the fetch passes `-c protocol.allow=never` and allows https, ssh and file, the form of `tools/ros-manifest/src/ros_manifest/extends.py`. Test test_mr_transports_limited: a `git://` reached through a user `insteadOf` rule is refused by git ("transport 'git' not allowed"), link and result unchanged — a8ef1147
+- [x] (suggestion) Distro notice: the "recreate worktrees" notice compares the layers and the distro (env.sh embeds both; not the role). test_mr_role_and_distro_changes asserts it for a distro change with the same layers — 99b7f22b
+- [x] (suggestion) SHA-256: the temporary repository is made with `--object-format=sha1` and made again as sha256 when ls-remote (which now also asks HEAD) shows 64-hex names. Test test_mr_sha256_source: a SHA-256 remote by branch and by full commit; a SHA-1 remote with a user `init.defaultObjectFormat=sha256` — a8ef1147
+- [x] (suggestion) Time limit: ls-remote and the fetches go through `_adapter_bounded_git` (`WT_FETCH_TIMEOUT`, default 60 s); the message says the host did not answer within the limit and that the previous result is still in use. Test test_mr_fetch_bounded (an ls-remote stub that sleeps, limit 1 s; the lock is free afterwards) — a8ef1147
+- [x] (suggestion) Provenance: for a URL source the `#` lines of every generated file name `url#ref:path@commit` in place of the temporary path. Test test_mr_provenance_names_the_source — 21be12ac
+- [x] (suggestion) Userinfo: `source` with a user name or password before the host is refused without printing the value; three rows with the secret asserted absent from the output — 5074ba45
+- [x] (suggestion) Tests: test_mr_hostile_source_repo removed; replaced by the user hooks and filter, inherited `GIT_*`, branch-and-tag-of-one-name (test_mr_branch_and_tag_of_one_name) and full-commit fallback (test_mr_full_commit_fallback: protocol v0 through `GIT_CONFIG_COUNT`, two fetches logged, the second the full one) tests — f651ae36, a8ef1147
+- [x] (suggestion) Lock test: a flock wrapper on the second sync's PATH writes ASK and, once flock returns, GOT; the first sync's held resolver writes GO when let go; the order must be `START ASK GO GOT START`; no sleep decides it — fa646547
+- [x] (suggestion) Leftovers: registry comment (5074ba45); the "link and the clone" test comment (fa646547); test_mr_old_source_clone_left_alone, mr_no_temp's and test_register_project.sh's source-clone checks (2c182f7b); the header and plan sentences, the folded design.md change-log row, plan step 2's `gen-XXXXXX` name (9a07ff68). PR-note line: "A `configs/source-clone/` left by an earlier run of this unmerged branch is no longer used; delete it by hand if present."
+- [x] (suggestion) Stamp: the path source's `file-stamp` is `cksum` of its content; the warning says the content differs. Test: an equal-size edit with the modification time put back (`touch -r`) is seen — 92cd976b
+
+Each adapter fix was checked to make its test fail when undone (one at a time, with the rest in place): the GIT env clearing, link shape, attributes, hooks path, transports, SHA-256 re-init, time limit, provenance rewrite, distro comparison, checksum stamp and (lock test) the lock itself. The commits were staged from one finished tree, and test_ros2_colcon.sh passed at each of the eight code stages (974, 989, 1014, 1017, 1020, 1021, 1018, 985 passed, 0 failed).
+
+Line counts: adapter.sh 2036 before this pass, 2154 after; test_ros2_colcon.sh 3837 before, 4012 after.
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 985 passed, 0 failed, 0 skipped. `test_project_file.sh`: 567 passed, 0 failed (twice). `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 151 s, every hook Passed or Skipped; pre-commit does not show which suites validate-script-tests ran on a pass.
+- Not verified: one run of test_project_file.sh, right after the registry edit, reported 566 passed and 1 failed; the failing line was not captured, and three later runs (one with identical content to the commit) passed 567/567. BSD/macOS paths (`mv -h`, no flock, `touch -r` and `cksum` are POSIX but untested there). The ssh transport is allowed but not exercised (no network). The `ext::` case is not tested separately (git refuses it by default either way).
+- Follow-up named, not done: the bootstrap route's `remote get-url origin` check (adapter.sh `_rc_bootstrap_manifest`) applies `url.*.insteadOf`; it predates this branch.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 23:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+
+"Fix all, then publish (Recommended)"
+
+His answer to Q1 at the round-6 checkpoint (the entry before the newest Implementation), recorded here now that its first half is done: the option as worded to him was one fix pass for the round-6 findings and his transport answer, then the pull request is opened; its own review and the merge gate read the fixes, and nothing merges without his answer; no seventh pre-push round. He was not asked again.
+
+What the host checked before recording this: the fix pass wrote its `## Implementation` entry (committed as `68cd7901`, exit contract OK); it reports all 13 round-6 items and the transport decision fixed, each undone on its own with its test then failing, and the full pre-commit run with no SKIP passing (exit 0, 151 s) on the final tree; the worktree is clean and level with origin/main; all 74 commits on the branch carry the agent identity. The fix pass reported one run of `test_project_file.sh` at 566 passed, 1 failed, with the failing assertion not captured; the host ran that suite six times in a row here, 567 passed, 0 failed each time, so the failure is not reproduced and its cause is not known. This last fix pass has had no pre-push review: the review on the pull request is the check on it.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-13 23:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a092a5a393b905218, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `cc1025ec`
+**Depth**: Deep (reason: ~3,800 lines over 16 files; untrusted remote content fetched, checked out and resolved on the user's machine)
+**Must-fix**: 1 | **Suggestions**: 7
+
+Every round-6 finding was checked against the code at `9a07ff68`, and each is fixed as its Implementation entry says. That includes `_rc_nofd` clearing git's local variables (the adapter's own `-c` options win over an inherited `GIT_CONFIG_COUNT`/`PARAMETERS`, reproduced; `core.worktree` from the environment is ignored by the checkout, reproduced), the refusal of a link of another shape (under the lock, before any sweep, in setup and sync; readers read such a link through, unpinned), the transports, SHA-256, the time limit (when it fires the lock is released, `.src` removed and the message right), provenance, the distro notice and the checksum stamp. Every git and vcs call in `adapter.sh` goes through `_rc_nofd`. The new tests fail for the reason they claim. CI on the head: every job passed except one Lint (pre-commit) job of the second workflow run, still pending at 23:12. The flaky `test_project_file.sh` run is not in this branch's rows (no timing, clock or shared state there; four parallel runs all 567/0); the likely source is the older lock tests that poll 10 s for a marker without asserting it appeared (`test_project_file.sh:881`, `:898`, `:973`, `:977`), an inference.
+
+### Decision summary
+
+**What changed**: A `ros2_colcon` project can take its manifest, in the new format, from the settings keys `source`, `source_ref` and `source_path`: an absolute path, or an `https://` or `file://` git URL fetched afresh by each `setup` and `sync` into a temporary directory, then resolved with the workspace's `ros-manifest` for the registry line's role and distro into a generated directory that `configs/manifest-resolved` is relinked to. This runs under a lock, with readers pinned and a failed fetch or resolve leaving the previous result live. The last fix pass, unreviewed until now, hardened the leaf fetch (inherited `GIT_*` cleared, the user's hooks and filters off, transports stated, SHA-256, a time limit) and refused a hand-rewritten link.
+
+**Reviews and outcomes**: PR-mode review of the last fix pass and the whole diff found 1 must-fix: the resolver's clone of an `extends` base gets none of the leaf's protections (the user's hooks and filters run on it, and it has no time limit or prompt guard while the source lock is held). Codex and the adversarial reviewer found it independently, and the adversarial reviewer reproduced it. 7 suggestions. Every round-6 fix checked and correct. Codex ran; Gemini failed (tool call denied in headless mode, issue 364). CI: all jobs passed but one Lint job still pending.
+
+**Open human calls**: Where the extends-base protection goes: in the resolver (`tools/ros-manifest/src/ros_manifest/extends.py`, the complete fix including filters), or partly from the adapter (hooks path through `GIT_CONFIG_COUNT`, `GIT_TERMINAL_PROMPT=0`, a time limit on the resolver), or a follow-up issue with the header's claims narrowed to the leaf.
+
+**Verified**: CI checks read with `gh pr checks 480`; the must-fix reproduced (user `core.hooksPath` and a required filter ran on a `file://` extends base during setup, exit 0); Ctrl-C delay reproduced with a shell probe (the trap ran at the bound, not at once); the adapter's `-c` precedence and `core.worktree` reproduced by the adversarial reviewer; four parallel runs of `test_project_file.sh` passed 567/0.
+
+**Recommendation**: needs-work: decide where the extends-base protection lives and do it (or narrow the claims and open the issue), then merge.
+
+### Findings
+- [x] (must-fix) The resolver's `extends` clone (`git clone` in `tools/ros-manifest/src/ros_manifest/extends.py:79`, run by the adapter under the source lock) gets none of the leaf's protections: the user's global hooks and filter drivers run on a tree the untrusted manifest chooses (reproduced: a filter ran twice and the post-checkout hook once, setup exit 0), with no time limit and no prompt guard, against the header and `_rc_src_net`'s "a stalled host cannot hold the source lock". Protect it the same way and add a test with a base that has filter attributes (Codex, adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:974`
+- [x] (suggestion) Ctrl-C during the fetch waits for the time limit (default 60 s): `timeout` without `--foreground` puts git in its own process group, so the terminal's SIGINT reaches only the adapter, whose trap runs when the child ends (reproduced). The limit also ends a slow full fetch of a large repository, and the message then says the host "did not answer". Use `--foreground` or say "did not finish" — `.agent/scripts/adapter:120`
+- [x] (suggestion) A user's own `protocol.<name>.allow=always` (for ext, or http) beats `protocol.allow=never`, so an `insteadOf` rule can still reach that transport (reproduced with ext); `GIT_ALLOW_PROTOCOL=https:ssh:file` on these calls makes "nothing else" hold — `.agent/project_types/ros2_colcon/adapter.sh:746`
+- [x] (suggestion) The SHA-256 check reads the first ls-remote line; a SHA-256 remote with an unborn HEAD and a commit `source_ref` advertises nothing, stays sha1 and fails with "offline, a wrong URL, or a transport..." (reproduced by hand); ask ls-remote without patterns or match the ref's length — `.agent/project_types/ros2_colcon/adapter.sh:830`
+- [x] (suggestion) The credential refusal is case-sensitive: `HTTPS://bob:s3cret@h/x` or `https:bob:s3cret@h/x` falls to the shape error, which prints the value with its password (reproduced); look for userinfo on any `scheme:` value first and never echo a value holding `://` — `.agent/scripts/_project_registry.sh:806`
+- [x] (suggestion) `cksum < "$1" 2>/dev/null` does not hide the redirection's own error: validate on a missing or unreadable path source prints a raw bash error, then says the content "differs" (reproduced); use `{ cksum < "$1"; } 2>/dev/null` and say the file is missing — `.agent/project_types/ros2_colcon/adapter.sh:697`
+- [x] (suggestion) The older lock tests poll 10 s for a marker and go on whether or not it appeared, so a loaded machine can fail an unrelated assertion: the likely source of the one 566/1 run (inference; not this branch's rows). Assert the marker appeared — `.agent/scripts/tests/test_project_file.sh:898`
+- [ ] (suggestion) The PR body's "Not verified" names `stat -f` as an adapter path, but the adapter now uses `cksum` (`stat -f` remains only in the test helper at `test_ros2_colcon.sh:2662`), and "credentials in the URL are refused" holds only for a lowercase scheme. Correct both sentences — PR #480 body
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 23:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3a431ed800fc6f06, resume 2 of 3)
+
+**PR**: #480 at `71fcaaa2`
+**Addressed**: Local Review at `cc1025ec` (2026-11-13 23:14 -05:00), with the owner's answer on the must-fix ("In the resolver")
+**Commits**: eb94172e, a6d2dece, e0c39e3e, 95375803, 4ac96ccc, 2fdff94e, 311d0dda, 71fcaaa2
+
+The branch was level with origin/main at the start (0 commits behind); no merge.
+
+### Actions
+- [x] (must-fix) The `extends` clone, fixed in the resolver (`tools/ros-manifest/src/ros_manifest/extends.py`). It now runs `clone --no-checkout --template= --no-recurse-submodules`, then writes `* -filter -text -ident -working-tree-encoding` to `.git/info/attributes`, then `git reset --hard`. Every git call gets `core.hooksPath=/dev/null`, `core.fsmonitor=false` and `submodule.recurse=false`, plus `GIT_ALLOW_PROTOCOL=https:ssh:file` beside the stated `-c` policy. The names `git rev-parse --local-env-vars` lists are removed from git's environment (git 2.53's list as a floor; `GIT_CONFIG_PARAMETERS`/`GIT_CONFIG_COUNT` kept), with `GIT_TERMINAL_PROMPT=0`, no `GIT_ASKPASS`/`SSH_ASKPASS`, stdin closed, and a session of its own (no terminal for ssh). Each call is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (default 60 s); on the limit or an interrupt git's process group is killed and the error names the limit and the variable. The clone is made in a `.partial-` sibling and renamed into the cache only when complete. The README states all of it. Tests in `tools/ros-manifest/tests/test_extends_safety.py` (six): user hooks path and required filter driver (with a plain-clone control), inherited `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE`, a stalled ssh remote failing within a 1 s limit with an empty cache, a bad limit value, a failed clone with an empty cache, and a user `ext::` rule with `protocol.ext.allow=always`. Five fail on the old resolver; the failed-clone guard passes on both. Two `test_extends.py` tests now patch `_run_git` instead of `subprocess.run`. Adapter-level test test_mr_extends_base_no_user_hooks_or_filters fails with the old resolver (checked) — eb94172e; header corrected — 71fcaaa2
+- [x] (suggestion 1) Ctrl-C and the limit message: `_adapter_bounded_git` in `.agent/scripts/adapter` uses `timeout --foreground` where the installed timeout has it (probed each call), so git stays in the caller's process group and a Ctrl-C reaches it at once. The limit now ends git itself, not programs git started; the helper's comment says so. Callers affected: ros2_colcon `_rc_src_net` (manifest fetch), ros2_colcon `_rc_pin_kind` (repo_pin) and single_project's origin HEAD query (`single_project/adapter.sh:313`). The fetch message now reads "it did not finish within N s (the limit; WT_FETCH_TIMEOUT raises it)". Test: test_mr_fetch_bounded runs a sync as its own job (`set -m`) and sends SIGINT to its process group during a hanging ls-remote with a 30 s limit; it exits 130 within 10 s. That assertion fails without `--foreground` (checked). test_repo_pin_hanging_origin_is_bounded and test_adapter.sh still pass — a6d2dece
+- [x] (suggestion 2) `GIT_ALLOW_PROTOCOL=https:ssh:file` on the leaf's `_rc_src_git` and `_rc_src_net`. test_mr_transports_limited adds a user with `protocol.ext.allow=always` and an `insteadOf` rule to `ext::`: the command never runs and the link is unchanged; a plain-git control does run it. Fails without the variable (checked) — e0c39e3e
+- [x] (suggestion 3) SHA-256 with an unborn HEAD: ls-remote now lists all refs, and any 64-hex name selects SHA-256. test_mr_sha256_source adds an unborn HEAD with the commit on another branch, by full and abbreviated commit; both fail on the previous code (checked) — 95375803
+- [x] (suggestion 4) Credentials, any case: a `source` with any scheme (any case, with or without `//`) is checked for userinfo first; plain http is matched in any case; the shape error for a URL-like value no longer prints it. Rows: seven userinfo forms (`HTTPS://`, `https:bob:...@`, `Http://`, `ftp://` among them) and four other URL-like refusals, each asserting the secret is absent; 12 assertions fail on the previous code (checked) — 4ac96ccc
+- [x] (suggestion 5) Missing path source: `{ cksum < "$1"; } 2>/dev/null`, and validate says the file is missing or unreadable. Three assertions fail on the previous code (checked) — 2fdff94e
+- [x] (suggestion 6) Lock-test waits: the nine 10 s marker polls in test_project_file.sh go through `wait_for_marker`, which records a FAIL naming the marker when it never appears (checked by calling it on a missing marker: one FAIL after 10 s); nothing else restructured — 311d0dda
+- [ ] (suggestion 7) PR body sentences: left open, not mine to change. The host edits the pull request body after this pass; the replacement text is in my report to the host.
+
+Line counts: adapter.sh 2154 before this pass, 2166 after; test_ros2_colcon.sh 4012 before, 4097 after; extends.py 219 before, 376 after.
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1006 passed, 0 failed, 0 skipped. `test_project_file.sh`: 591 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
+- Resolver: `PYTHONPATH=tools/ros-manifest/src python3 -m pytest -q -p no:cacheprovider tools/ros-manifest/tests` with the system python3 (3.14.4, PyYAML, pytest 9.0.2; the main checkout's `.venv` has no pytest): 314 passed, 2 failed. The two failures are `test_untrusted_input.py::test_an_extends_path_too_long_is_a_message_without_the_path` (both parameters). They fail the same way on the committed code before this pass (checked against a `git archive` of HEAD), so they are a Python 3.14 difference, not this change. CI's "ros-manifest tests" job runs `pip install -e tools/ros-manifest[test]` and `pytest tools/ros-manifest/tests` on Python 3.10; the new tests need only git (with `init -b`), `/bin/sh` and `sleep`.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 153 s, every hook Passed or Skipped (black reformatted the two Python files on the first commit attempt; recommitted).
+- Not verified: the resolver suite on Python 3.10 (CI's job will run it); a real ssh passphrase or host-key prompt (the no-terminal session is not exercised by a test); BSD/macOS, where `timeout` may lack `--foreground` (the probe then falls back to the old form, untested here).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 00:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a092a5a393b905218, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `88250e07`
+**Depth**: Deep (reason: ~4,000 lines over 18 files; untrusted remote content fetched, cloned and resolved on the user's machine; a standalone tool's network code changed)
+**Must-fix**: 2 | **Suggestions**: 5
+
+Each finding of the review at `cc1025ec` is fixed as the Implementation entry says. The extends clone checks out the requested branch, lightweight tag and annotated tag at the right commit; `info/attributes` stops filters, eol and encoding conversion against a user's `core.autocrlf`; `--template=` and `core.hooksPath=/dev/null` cover `init.templateDir`; six parallel resolvers on one cache leave one entry and no leftovers; SIGINT kills git's group and leaves nothing; the tool imports nothing from outside `tools/ros-manifest/` (all by the adversarial reviewer). Ctrl-C reaches git through `timeout --foreground`; when the limit fires, the command substitution returns at the limit and the lock is released, because git's ssh child holds a pipe to git, not the capture (reproduced; this refutes Codex's must-fix 1 as stated). The 3.14 failures are confirmed as older than the last pass: `test_untrusted_input.py::test_an_extends_path_too_long_is_a_message_without_the_path` fails twice on an archive of `eb94172e^` (308 passed, 2 failed) and at the head (314 passed, 2 failed). This reviewer's runs at the head: `test_ros2_colcon.sh` 1006 passed, 0 failed, 0 skipped; `test_project_file.sh` 591 passed, 0 failed. CI on `88250e07` at 23:59: Validate Adapter Contract, Validate Documentation and ros-manifest tests passed in both workflow runs; both Lint (pre-commit) jobs still pending; the ros-manifest job's log is not readable until its run finishes, so the new tests' lines in it were not seen.
+
+### Decision summary
+
+**What changed**: A `ros2_colcon` project can take its manifest, in the new format, from the settings keys `source`, `source_ref` and `source_path`: an absolute path, or an `https://` or `file://` git URL fetched afresh by each `setup` and `sync`, resolved with the workspace's `ros-manifest` for the registry line's role and distro into a generated directory that `configs/manifest-resolved` is relinked to. This runs under a lock, with readers pinned and a failed fetch or resolve leaving the previous result live. The last pass moved the protection of `extends` base clones into the resolver: no user hooks or filters, a clean environment, limited transports, a time limit, and a cache that holds only complete clones.
+
+**Reviews and outcomes**: Second review of this pull request (head `88250e07`). Every fix from the first review was checked and is correct. 2 must-fix, both mechanical. First, a terminal hangup or SIGTERM to the resolver leaves its git running in a session of its own, with no limit, writing into the cache: found by Codex and the adversarial reviewer, and reproduced. Second, a quoted or bracketed `source` URL with a password is still printed in the refusal message (reproduced). 5 suggestions. Codex ran; Gemini failed (tool call denied in headless mode, issue 364).
+
+**Open human calls**: None.
+
+**Verified**: `test_ros2_colcon.sh` 1006/0/0 and `test_project_file.sh` 591/0 run by this reviewer at `88250e07`; the resolver suite 314 passed, 2 failed at the head and 308 passed, 2 failed before the last pass (the same two 3.14 path-length cases); the signal orphan and the quoted-URL echo reproduced by the adversarial reviewer; CI read with `gh pr checks 480` (Lint pending).
+
+**Recommendation**: needs-work: fix the two must-fix (handlers for SIGTERM and SIGHUP in the resolver; never print a refused `source` value that holds `://` or `@`) and the untrue askpass sentence, then merge after a narrow check of that diff.
+
+### Findings
+- [x] (must-fix) git runs in its own session and only `BaseException` triggers `_kill_group`, so a SIGTERM or a terminal hangup ends Python and leaves git (and its ssh) running unbounded, writing a `.partial-*` into the cache the adapter is removing (reproduced: SIGINT clean, SIGTERM and SIGHUP leave the child and the partial directory). Install SIGTERM and SIGHUP handlers that raise, so the kill path runs, and test it (Codex, adversarial) — `tools/ros-manifest/src/ros_manifest/extends.py:149`
+- [x] (must-fix) A `source` value in quotes or angle brackets (`"https://u:SECRET@h/x"`, `<https://...>`) fails the scheme test and reaches the path branch's message, which ends `got '$value'` and prints the password (reproduced), against the rule "no refusal of a URL-like value prints it". Never echo a value holding `://` or `@` — `.agent/scripts/_project_registry.sh:829`
+- [x] (suggestion) Values that carry a secret are still accepted and later echoed ("source: fetching ... from"): `https://u:SE/CRET@h/x` (authority cut at the first `/`) and `https://h/x?token=SECRET` (reproduced) — `.agent/scripts/_project_registry.sh:813`
+- [x] (suggestion) The user's `core.askPass` still runs (reproduced with `git credential fill` under the same environment), so "no askpass to prompt with" (module docstring) and the README's "neither git nor ssh can wait on a prompt" are untrue; the limit still bounds it. Add `-c core.askPass=` and consider `SSH_ASKPASS_REQUIRE=never` — `tools/ros-manifest/src/ros_manifest/extends.py:9`
+- [x] (suggestion) After a timeout, `_kill_group` calls `communicate()` with no limit while stderr is an unread pipe, so a descendant that left the group and holds stderr delays `resolve` (reproduced: 23 s for a 1 s limit). Use `stderr=DEVNULL` and a short limit on that communicate — `tools/ros-manifest/src/ros_manifest/extends.py:172`
+- [x] (suggestion) With `timeout --foreground` an ssh git started outlives the limit (reproduced); the adapter and lock are not held (its pipe goes to git), but the comment's "exits when git's end of its pipe closes" is untrue for an ssh stalled while connecting (it lasts until its own connect timeout); say so (Codex rated this must-fix, claiming the capture waits; reproduction refutes that) — `.agent/scripts/adapter:114`
+- [x] (suggestion) The extends-base hooks-and-filter test in test_extends_safety.py has no control run showing the spies fire without the protection (the leaf's analogous test has one), so it could pass for the wrong reason — `tools/ros-manifest/tests/test_extends_safety.py` (deferred: already present: test_user_hooks_and_filter_drivers_do_not_run_on_a_base has had a plain-clone control (both spies fire) since eb94172e, test_extends_safety.py lines 91-98; no change)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 00:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3a431ed800fc6f06, resume 3 of 3)
+
+**PR**: #480 at `932e7cbf`
+**Addressed**: Local Review at `88250e07` (2026-11-14 00:01 -05:00)
+**Commits**: 09a2e42a, 45b63253, 2645321a, 28141d7d, 932e7cbf
+
+The branch was level with origin/main at the start (0 behind); no merge.
+
+### Actions
+- [x] (must-fix 1) SIGTERM or SIGHUP orphaned git: while git runs, `_run_git` installs SIGTERM and SIGHUP handlers that raise `_Signalled`, and puts the previous handlers back afterwards. The existing path then kills git's process group, the `finally` in `_clone_or_reuse` removes the `.partial-` directory, and `resolve_chain` re-sends the signal with the default handler, so the process ends by that signal. Tests: `test_a_signal_while_git_runs_kills_git_and_leaves_no_partial_clone[SIGTERM/SIGHUP]`: exit by the signal, the ssh stub's pid gone within 5 s, an empty cache. Both fail on the previous code (checked) — 28141d7d
+- [x] (must-fix 2) Quoted or bracketed URL printed: a refused `source` value holding `://` or `@` is now described without the value. Rows: `"https://u:SECRET@h/x"`, `<https://u:SECRET@h/x>`, and a relative path holding `@`, each asserting the secret is absent; those three assertions fail on the previous code (checked) — 09a2e42a
+- [x] (suggestion 3) A slashed password and a query or fragment are refused, neither message printing the value. A `:` in the part before the first `@` that does not start a port (digits up to `/`) is taken as a password. Refused rows: `https://u:s3cr3t/TOKEN@h/m.git`, `https://u:a/b/s3cr3tTOKEN@h/m.git`, `?token=`, `#`, and `file:///…?…`. Still accepted: `https://h:8443/m/x@y.git`, `https://h/owner/repo.git`, `file:///srv/abs/path.git`, `/abs/dir@2/manifest.yaml`. 10 assertions fail on the previous code (checked) — 45b63253
+- [x] (suggestion 4) askpass: the resolver passes `-c core.askPass=`, removes `GIT_ASKPASS` and `SSH_ASKPASS`, and sets `SSH_ASKPASS_REQUIRE=never`. The leaf fetch (`_rc_src_git`, `_rc_src_net`) passes `-c core.askPass=` and sets `GIT_ASKPASS=''`, `SSH_ASKPASS=''` and `SSH_ASKPASS_REQUIRE=never`. A credential helper the user configured still runs. Tests, each with a plain-git control where the spy runs: `test_no_askpass_runs` (resolver: `git credential fill` under the module's own `_SAFETY` and `_git_env()`) and `test_mr_fetch_no_askpass` (adapter: a git wrapper makes the fetch's ls-remote ask for a password with the options and environment the adapter gave it). Both fail on the previous code (checked) — 2645321a. The docstring, README and adapter header now say only this — 28141d7d, 932e7cbf
+- [x] (suggestion 5) Unbounded wait after a kill: git's stderr is discarded (`DEVNULL`), and `_kill_group` waits at most 2 s on stdout, then only for git's exit. Test `test_a_timed_out_clone_returns_soon_after_the_limit`: a detached holder (new session) started by the ssh git talks to, with `GIT_SSH_VARIANT=ssh` so the holder inherits git's real stderr; the resolver returns within 6 s of a 1 s limit (30 s on the previous code, checked) — 28141d7d
+- [x] (suggestion 6) Comment and header: the `_adapter_bounded_git` comment and the ros2_colcon header now say the leaf's limit ends git, not an ssh git started; that ssh may outlive it, until its own connect timeout when stalled while connecting, holding a pipe to git only, so the capture returns and no lock is held. No mechanism changed — 932e7cbf
+- [x] (suggestion 7) Control run: already present. `test_user_hooks_and_filter_drivers_do_not_run_on_a_base` has had a plain-clone control asserting both spies fire since eb94172e (now lines 94-100 of test_extends_safety.py); no change (deferred-ticked with that reason)
+
+### Verification
+- Resolver: `PYTHONPATH=tools/ros-manifest/src python3 -m pytest -q -p no:cacheprovider tools/ros-manifest/tests`, system python3 3.14.4 with PyYAML and pytest 9.0.2: 318 passed, 2 failed. The two failures are the same Python 3.14 cases of `test_untrusted_input.py::test_an_extends_path_too_long_is_a_message_without_the_path`, which fail on code older than this branch's resolver changes (as the review confirmed).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1009 passed, 0 failed, 0 skipped. `test_project_file.sh`: 619 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 152 s, every hook Passed or Skipped. On intermediate commits, shellcheck (SC1007, empty assignments written as `''`) and flake8 (a docstring line over 100) stopped the first attempt; fixed before committing.
+- Not verified: the resolver suite on Python 3.10 (CI's job); a real ssh prompt or a real stalled ssh connect; the signal handlers off the main thread (they are then not installed, as the code says); BSD/macOS.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 00:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a092a5a393b905218, resume 3 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `3fe6662a`
+**Depth**: Deep (reason: whole-diff tier, ~4,300 lines over 18 files with untrusted remote content; this check's subject is the fix diff `36171597..3fe6662a`, 9 files, +332 -51)
+**Must-fix**: 1 | **Suggestions**: 5
+
+The two must-fix and five suggestions of the review at `88250e07` are closed, with one new defect introduced by the signal fix. Checks against the code:
+- SIGTERM and SIGHUP while git runs kill git's group and leave no partial clone; the handlers are restored on every exit from `_run_git`, including a timeout, an exception and KeyboardInterrupt; off the main thread a clone still works (all reproduced by the adversarial reviewer).
+- Discarding git's stderr loses nothing: it was never printed. A wrong URL or a missing ref still gives "failed to clone its extends base (git exited with status N)".
+- A quoted or bracketed URL is not printed; slashed passwords, queries and fragments are refused without the value.
+- The askpass change covers `ls-remote` and every leaf fetch, the full-fetch fallback included. A configured `credential.helper` still runs and the user's `core.askPass` does not (reproduced).
+- The comment on what the limit ends is now accurate. Suggestion 5 was not needed: the plain-clone control is at `test_extends_safety.py:96-103` and asserts that both "filter" and "post-checkout" fire.
+
+This reviewer's runs at the head: `test_ros2_colcon.sh` 1009 passed, 0 failed, 0 skipped; `test_project_file.sh` 619 passed, 0 failed. The adversarial reviewer's resolver run gave 318 passed, 2 failed (the two known 3.14 path-length cases).
+
+CI on `3fe6662a` at 00:27: Validate Documentation, Validate Adapter Contract and ros-manifest tests passed in both runs; both Lint (pre-commit) jobs were pending; the job log was not yet readable. On the previous head `36171597` (same resolver code as `88250e07`), CI's log shows Python 3.10.22, `test_extends_safety.py ......` and "316 passed".
+
+### Decision summary
+
+**What changed**: A `ros2_colcon` project can take its manifest, in the new format, from the settings keys `source`, `source_ref` and `source_path`: an absolute path, or an `https://` or `file://` git URL fetched afresh by each `setup` and `sync`, resolved with the workspace's `ros-manifest` for the registry line's role and distro into a generated directory that `configs/manifest-resolved` is relinked to, under a lock, with readers pinned and a failed fetch or resolve leaving the previous result live. The leaf fetch and the resolver's `extends` clones run no user hook, filter, askpass or terminal prompt, use https, ssh and file only, and are time-limited; a `source` URL holding credentials, a query or a fragment is refused without printing it.
+
+**Reviews and outcomes**: Narrow check of the fix pass after the second review of this pull request: both must-fix and all five suggestions are closed. One new must-fix, mechanical: the resolver now catches SIGHUP and SIGTERM even when they were ignored, so a resolver started under `nohup` (or `nohup adapter setup`) dies on a hangup that it used to survive, and a library caller's own SIGTERM handler never runs (reproduced). 5 suggestions. Codex ran; Gemini failed (tool call denied in headless mode, issue 364).
+
+**Open human calls**: None.
+
+**Verified**: `test_ros2_colcon.sh` 1009/0/0 and `test_project_file.sh` 619/0 run by this reviewer at `3fe6662a`; the resolver suite 318 passed, 2 failed (known 3.14 cases); the nohup regression, the handler restoration, the credential helper and the URL cases reproduced by the adversarial reviewer; CI read with `gh pr checks 480` (Lint pending) and the previous head's ros-manifest log read.
+
+**Recommendation**: needs-work: leave an ignored SIGHUP or SIGTERM alone and put back the previous handler (not SIG_DFL) before re-delivering, with a test under an ignored SIGHUP; then merge.
+
+### Findings
+- [x] (must-fix) `_run_git` installs its handler over `SIG_IGN`, and `resolve_chain` forces `SIG_DFL` and kills itself, so a resolver under `nohup` (or `nohup adapter setup`, which inherits the ignore) now dies on a hangup (reproduced: "Hangup", rc 129), and a caller's own SIGTERM handler and `finally` never run (reproduced, rc 143). Leave an ignored signal alone; restore the previous handler and re-deliver; add a test — `tools/ros-manifest/src/ros_manifest/extends.py:162`
+- [x] (suggestion) The handler is installed before `Popen` forks; a signal after the fork but before `proc` is set leaves a git in its own session unkilled and unbounded (reading only, not reproduced). Install the handlers after `Popen` returns, or block the signals around it — `tools/ros-manifest/src/ros_manifest/extends.py:171`
+- [x] (suggestion) With git's stderr now discarded, test_a_timed_out_clone_returns_soon_after_the_limit no longer tests the 2 s bound: it passes in 1.02 s with a plain `communicate()` (reproduced), and its comment "inherits git's stderr" is wrong. Have the holder keep git's stdout open, or drop the test — `tools/ros-manifest/tests/test_extends_safety.py:215`
+- [x] (suggestion) Digits after ':' followed by '/' count as a port, so `https://user:123/abc@h/x` and `https://u:1/2@h/x` are accepted while carrying a password that git echoes in its errors (reproduced) — `.agent/scripts/_project_registry.sh:816`
+- [x] (suggestion) Ordinary values are refused as credentials: `https://[::1]:8443/a@b` and `https://[::1]/x@y` (the ':' inside the IPv6 brackets), `https://h/x:y@z/m.git` and `file:///srv/a:b@c/m.git` (a ':' and '@' in the path); and `file:///tmp/a#b` is refused while the path form `/tmp/a#b` is accepted (reproduced) — `.agent/scripts/_project_registry.sh:816`
+- [x] (suggestion) The PR body's proposed sentence (a) "No refusal of a `source` value that contains `://` or `@` prints that value" is untrue: the cross-key refusals still print it ("source '$src' is a URL, so source_ref ... is required", `_project_registry.sh:1221`, `:1225`), harmless only because a value that reaches them has passed the credential check. Sentence (c) "until the time limit" is untrue for an ssh already prompting on the terminal: the limit ends git, not that ssh — PR #480 body (deferred: the PR body is the host's to edit; corrected sentences (a) and (b) are in this pass's report)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 01:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #480 at `866a80a2`
+**Addressed**: Local Review at `3fe6662a` (2026-11-14 00:28 -05:00)
+**Commits**: 1fbcedc8, 67b79181, 74bdcf6b, 46e1a5b6, 866a80a2
+
+### Actions
+- [x] (must-fix) An ignored SIGTERM or SIGHUP stays ignored (no handler installed); otherwise git's group is killed, the partial clone removed, the previous handler put back and the signal delivered again with `signal.raise_signal` (default: ends by the signal; a caller's handler runs, then a ManifestError names the signal). Tests: ignored hangup under a 3 s limit, caller's own SIGTERM handler; both failed on the old code — `tools/ros-manifest/src/ros_manifest/extends.py:162` (1fbcedc8)
+- [x] (suggestion) A signal between Popen's fork and `proc` being set is held by the handler and raised once `proc` is set (not a sigmask: the child inherits the mask, so git would run with SIGTERM and SIGHUP blocked, checked). Test with a Popen that signals before returning; failed on the item-1 code with "git was left running" — `extends.py:171` (67b79181)
+- [x] (suggestion) The wait-bound test now has a detached holder keep git's stdout open (through an alias that runs a command; in a clone git's children get git's own pipes, and stderr is /dev/null) and calls `_run_git` with a 1 s limit; passes in about 3 s, fails at 20 s with the 2 s bound removed; comment corrected — `tools/ros-manifest/tests/test_extends_safety.py:215` (74bdcf6b)
+- [x] (suggestion) Credential rule by the URL grammar: refused exactly when the authority (after `//` up to the next `/`) holds `@`; `?`/`#` refused anywhere in https://, only in the authority of file:// — `.agent/scripts/_project_registry.sh:816` (46e1a5b6)
+- [x] (suggestion) The listed ordinary values (`https://[::1]:8443/a@b`, `https://[::1]/x@y`, `https://h/x:y@z/m.git`, `file:///srv/a:b@c/m.git`, `file:///tmp/a#b`) are accepted; 8 accepted rows failed on the old rule; the two slashed-"password" rows now assert the grammar's reading — `.agent/scripts/tests/test_project_file.sh` (46e1a5b6)
+- [x] (suggestion) PR body sentences — PR #480 body (deferred: the PR body is the host's to edit; corrected sentences are in this pass's report)
+
+### Verification
+- Resolver suite (`PYTHONPATH=tools/ros-manifest/src python3 -m pytest tools/ros-manifest/tests`, Python 3.14): 321 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases).
+- `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP: every hook passed or had no files; `validate-script-tests` ran all 49 suites, all passed (test_project_file.sh alone: 629 passed, 0 failed).
+- Not run on Python 3.10.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 01:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #480 at `bc07886c`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling, 20 files +4768/-226; this pass reviews the fix diff 9379bb77..bc07886c)
+**Must-fix**: 2 | **Suggestions**: 1
+
+Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-fix closed: an ignored SIGTERM/SIGHUP is left alone, the previous handler gets the signal through `signal.raise_signal`, and a caller's handler runs (new tests fail on the old extends.py: ignored-hangup, caller's-handler and signal-while-starting, checked in a scratch copy). Prior suggestions 2 (pending signal during Popen) and 3 (wait-bound test now holds git's stdout; it fails when the 2 s bound is removed, checked) closed. Suggestion 4 (URL-grammar `source` rule) closed for two-slash URLs, but introduced must-fix 1. git's own credential parser and the rule agree on '@' after the first '/' (checked with `git credential fill`); `file://` paths holding '?' or '#' work with `git ls-remote` (checked). Runs at the head: resolver suite 321 passed, 2 known failures (test_untrusted_input path-too-long); `test_project_file.sh` 629 passed, 0 failed; flake8 and shellcheck clean on the changed files. CI on bc07886c at 01:22: ros-manifest tests, Validate Adapter Contract, Validate Documentation pass in both runs; both Lint (pre-commit) jobs pending. Cross-model: Codex completed (both findings on code outside this diff, recorded as follow-ups in the report); Gemini failed with an empty response, a tool call denied in headless mode (issue 364).
+
+### Findings
+- [x] (must-fix) A `source` of the form `https:///user:pass@host/repo` (three or more slashes) is accepted: `${authority#//}` strips two slashes, the authority is empty, no '@' is seen. git sends the credential (reproduced: `git ls-remote http:///u:s3cr3tTOKEN@127.0.0.1:PORT/m.git` sent `Authorization: Basic dTpzM2NyM3RUT0tFTg==`); the old rule refused it. Refuse an empty authority for a URL with a scheme (or strip every leading '/'), and add the row to the refused list — `.agent/scripts/_project_registry.sh:817`
+- [x] (must-fix) The handler-restore `finally` runs with `armed` still True: a signal arriving after one handler is restored and before the other raises `_Signalled` out of the loop, leaving `on_signal` installed for the life of the process; `resolve_chain`'s `raise_signal` then re-enters it and `_Signalled` escapes as a traceback instead of ending the process by the signal (reproduced by the adversarial reviewer). Block SIGTERM/SIGHUP with `signal.pthread_sigmask` across the restore (the blocked signal is then delivered to the restored handler), or disarm first and restore in a loop that cannot be cut short — `tools/ros-manifest/src/ros_manifest/extends.py:208`
+- [x] (suggestion) A signal arriving at the top of `except subprocess.TimeoutExpired:` or `except BaseException:`, before `armed = False`, raises out of that clause, so `_kill_group` never runs and git keeps writing into the directory being removed (same few-bytecode window as before this diff; `armed` was meant to close it). The same `pthread_sigmask` block around the kill sections closes it; a second, different signal during a kill is still dropped (the fixer's stated gap) — `tools/ros-manifest/src/ros_manifest/extends.py:197` (deferred: deferred to issue 481 on the owner's decision of 2026-11-14: cannot be closed in Python (an except clause cannot be entered and the signal mask changed in one step); same window as before this pull request)
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-14 01:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 1 of 3)
+
+**PR**: #480 at `c288cff7`
+**Addressed**: Local Review at `bc07886c` (2026-11-14 01:23 -05:00)
+**Commits**: f4a14069, d828d07d, 5b7daf01, c288cff7
+
+### Actions
+- [x] (must-fix) `source` URL rule replaced by an allow-list matched whole: `https://<host>[:port]/<path>` (host a name or bracketed IPv6, port 1-5 digits, non-empty path without `?`/`#`) or `file:///<path>` (exactly three slashes); anything else with a scheme is refused without the value, with the specific message for an `@` before the path (any number of slashes), plain http, an https query/fragment, an upper-case scheme. 19 rows failed on the old rule; `test_project_file.sh` 692 passed — `.agent/scripts/_project_registry.sh:817` (d828d07d)
+- [x] (must-fix) The restore `finally` and both except clauses now first block SIGTERM and SIGHUP with `pthread_sigmask` (after Popen returned), and the entry mask is put back last; a signal during the restore or the kill goes to the restored previous handler. Tests: a signal while the handlers are put back, a signal while git is being killed (both failed on the previous code), handlers and mask as before on exit/timeout/signal/no-git paths — `tools/ros-manifest/src/ros_manifest/extends.py:208` (f4a14069, c288cff7)
+- [ ] (suggestion) Open: a signal at the top of `except TimeoutExpired:`/`except BaseException:`, before `block()` takes effect, still raises out of the clause and git is not killed. Python runs a handler at any bytecode boundary in the main thread, and an except clause cannot be entered with a mask change in the same step; the signals cannot be blocked earlier because they must reach the handler during `communicate` — `extends.py:197`
+
+### Verification
+- Resolver suite (Python 3.14): 327 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases); `test_extends_safety.py` passed 10 runs in a row after the reaping fix (c288cff7).
+- `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree: rc 0; `validate-script-tests` ran all 49 suites, all passed.
+- Not run on Python 3.10.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-14 08:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: address-findings
+
+"Defer F3 to #481, then go on (Recommended)"
+
+Q1 as put to him: the fix phase is recorded as partial; how should the loop go on? Shown to him: F1 (fixed), the `source` URL rule is an allow-list, only `https://host[:port]/path` and `file:///path` are accepted, and `https:///u:pw@h/x` is refused; the host ran `test_project_file.sh` at head `0aa0e45c` (692 passed, 0 failed) and tried seven values against the rule by hand. F2 (fixed), the resolver's cleanup after a signal runs with the two signals blocked; resolver suite 327 passed, 2 failed, the two known Python 3.14 cases. F3 (left open, the reason for "partial"), the suggestion about a signal in the first instant of the cleanup; the fixer's reason: "It cannot be closed in Python: an except clause cannot be entered and the mask changed in one step."; the window is the same size it was before this pull request. CI on the previous head had passed in full.
+
+The option he chose, as worded to him: the fix phase is run once more only to record F3 as deferred to follow-up issue #481 with the fixer's reason, and to write a complete entry; no code changes; then the narrow review for the merge gate, triage, and the merge question.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 08:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 2 of 3)
+
+**PR**: #480 at `fd4926ad`
+**Addressed**: Local Review at `bc07886c` (2026-11-14 01:23 -05:00)
+**Commits**: fd4926ad (records only)
+
+No code changed in this pass. The two must-fix of the review committed as 65522d84 were fixed in the previous pass (commits f4a14069, d828d07d, c288cff7, 5b7daf01; head 0aa0e45c).
+
+### Actions
+- [x] (must-fix) A `source` URL with three or more slashes passed with its credentials: fixed by the allow-list of two URL shapes — `.agent/scripts/_project_registry.sh:817` (d828d07d, 5b7daf01)
+- [x] (must-fix) The handler-restore `finally` could leave `on_signal` installed: the cleanup now runs with SIGTERM and SIGHUP blocked — `tools/ros-manifest/src/ros_manifest/extends.py:208` (f4a14069, c288cff7)
+- [x] (suggestion) A signal before the block takes effect in an except clause skips the kill — `extends.py:197` (deferred: deferred to issue 481 on the owner's decision of 2026-11-14: cannot be closed in Python (an except clause cannot be entered and the signal mask changed in one step); same window as before this pull request)
+
+### Verification (as reported in the previous pass, at head 0aa0e45c)
+- Resolver suite: 327 passed, 2 known failures on Python 3.14 (`test_an_extends_path_too_long_is_a_message_without_the_path`).
+- `test_project_file.sh`: 692 passed, 0 failed.
+- pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 08:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7f6eba07e9249f54, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `d3aeb6c1`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling; this pass reviews the fix diff 65522d84..d3aeb6c1)
+**Must-fix**: 1 | **Suggestions**: 3
+
+Scope: the fix pass for the review committed as 65522d84. Must-fix 1 of that review (three-slash `source` URL) is closed: the allow-list refuses `https:///u:p@h/x` and every variant tried; no accepted value gives git a user name (`git credential fill` on the accepted edge cases); `https://github.com/o/r.git`, a port, and `.`, `-`, `_`, `~`, `+`, `%20` in a path are accepted; a newline is refused; no refusal prints the value. Must-fix 2 (restore cut short) is closed on the except paths but not on the normal path (finding 1). The new mask tests fail on the old extends.py (signal while git is killed, signal while handlers are put back; checked in a scratch copy). Runs at the head: resolver suite 327 passed, 2 known failures (test_an_extends_path_too_long_is_a_message_without_the_path); `test_project_file.sh` 692 passed, 0 failed; flake8 and shellcheck clean on the changed files. CI on d3aeb6c1: ros-manifest tests, Validate Adapter Contract, Validate Documentation pass in both runs; both Lint (pre-commit) jobs pending. Cross-model: Codex completed (its two findings are on code outside this diff: adapter.sh:1535 a changed repository URL in a refreshed manifest is not noticed for an existing checkout, and the `inf` timeout; follow-ups); Gemini failed, empty response, a tool call denied in headless mode (issue 364).
+
+### Findings
+- [x] (must-fix) On the normal path (git exited) the `finally` starts with `armed` True and nothing blocked: a SIGTERM or SIGHUP before `block()` takes effect raises `_Signalled` out of the `finally`, leaving `on_signal` installed for good (reproduced: handler stayed `on_signal`, the caller's handler got nothing). Tripped during the `pthread_sigmask` call (which runs handlers after changing the mask), it also leaves `saved_mask` unset, so SIGTERM and SIGHUP stay blocked for the process (adversarial reviewer, reproduced with PyErr_SetInterruptEx); the same mask leak follows a signal tripped inside `block()` in an except clause, as the `finally`'s `block()` then saves the already-blocked mask. Read the entry mask before the handlers are installed, and restore handlers and that mask in a nested `try/finally` inside the `finally` — `tools/ros-manifest/src/ros_manifest/extends.py:220`
+- [x] (suggestion) A caught signal pending when the entry mask is put back (with the default disposition) ends the process before `_clone_or_reuse` removes its temporary directory: reproduced, a `.<key>.partial-*` directory is left in the cache (never trusted, never cleaned). Before unmasking, take a pending caught signal with `sigpending`/`sigwait` and raise `_Signalled`, so the usual cleanup and re-delivery run — `tools/ros-manifest/src/ros_manifest/extends.py:225`
+- [x] (suggestion) The host classes `[A-Za-z0-9]` follow the locale: under en_US.UTF-8 `https://é/x` and fullwidth letters are accepted, under C refused; no credential results (lookalike '@' and ':' are refused). Use explicit ASCII or `local LC_ALL=C` — `.agent/scripts/_project_registry.sh:820`
+- [x] (suggestion, for issue 481) The deferral's reason holds for the window but not for its harm: if `on_signal` kills git's process group itself before raising (it can read `proc`), a `_Signalled` that escapes an except clause leaves no git running — `tools/ros-manifest/src/ros_manifest/extends.py:163`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 09:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 3 of 3)
+
+**PR**: #480 at `386b219a`
+**Addressed**: Local Review at `d3aeb6c1` (2026-11-14 08:44 -05:00)
+**Commits**: f94ee93e, 932e13a5, d63b4b62, 386b219a
+
+### Actions
+- [x] (must-fix) `_run_git` is one try/finally; its finally blocks the two signals, kills and reaps git if it still runs, puts the handlers back, takes a pending caught signal, and puts back the mask read on entry, each step protected by the next. Tests: a signal at the start of the cleanup (through `resolve_chain`: the caller's handler gets it, handlers and mask as before, no cache entry), and a signal inside the masking call (no signal left blocked). Both use `PyErr_SetInterruptEx` (Python 3.10+) through ctypes and fail on the previous code — `tools/ros-manifest/src/ros_manifest/extends.py:220` (932e13a5)
+- [x] (suggestion) A caught signal held during the cleanup is taken with `sigpending`/`sigwait` before the unmask and raised as `_Signalled`, so the partial clone is removed before the signal is delivered again. Test: a resolver subprocess with the default disposition, SIGTERM sent from `_kill_group`: exits by SIGTERM with an empty cache. It left `.partial-*` on the previous code. The two earlier cleanup tests now expect `_Signalled` after the cleanup — `extends.py:225` (932e13a5)
+- [x] (suggestion) The URL shapes are matched in the C locale (`_project_matches_in_c`, `local LC_ALL=C`); blanks and control characters keep the caller's locale. Non-ASCII host rows run under en_US.utf8 (SKIP printed when there is no such locale); 3 failed on the previous rule — `.agent/scripts/_project_registry.sh:820` (d63b4b62)
+- [x] (suggestion) `on_signal`, when armed, disarms itself and kills git's group (`_signal_group`, no wait) before raising; `_kill_group` tolerates a group already gone. Test: a signal at the start of a timed-out git's cleanup; git is SIGKILLed and the group is gone. It fails on the previous code, and on the new code with only the handler's kill removed — `extends.py:163` (932e13a5)
+- Also: `test_a_signal_while_git_is_being_started_still_kills_git` (pass 1) signalled and watched `_git_env`'s `git rev-parse` instead of git. It now acts on git's own Popen and fails, as it should, on 1fbcedc8 (f94ee93e).
+
+### Verification
+- Resolver suite (Python 3.14), 5 runs in a row: 331 passed, 2 failed each time, both the known `test_an_extends_path_too_long_is_a_message_without_the_path` cases.
+- `test_project_file.sh`: 699 passed, 0 failed.
+- pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
+- Not run on Python 3.10.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 09:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7f6eba07e9249f54, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #480 at `59aadc52`
+**Depth**: Deep (reason: whole-PR classification, credential and signal handling; this pass reviews the fix diff e73091b9..59aadc52)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Scope: the fix pass for the review committed as e73091b9. Its must-fix (restore cut short on the normal path, mask leak) and its three suggestions (leftover `.partial-*` directory, locale-dependent host class, the handler killing git) are closed. Each row of the signal table beside `_run_git` was walked against the code: on every path out, the previous handlers and the entry mask are back, git's group is killed, and a signal taken in the cleanup is raised after the unmask so the partial clone is removed before re-delivery. All six new tests fail on the old extends.py (scratch copy). `_project_matches_in_c` keeps `LC_ALL` local (the caller's locale is unchanged afterwards), the blank and control-character rule applies to the whole value, and `https://é/x` is refused under en_US.UTF-8 while `https://h/é.git` and `https://github.com/o/r.git` are accepted. Runs at the head: resolver suite 3 runs, each 331 passed with the 2 known failures; `test_project_file.sh` 699 passed, 0 failed (no SKIP); flake8 and shellcheck clean. CI on 59aadc52: run 43603242761 completed, all jobs passed, Lint included; its ros-manifest job ran on Python 3.10.22, 333 passed (log read); in run 43603238006 every job passed except Lint, still pending. Cross-model: Codex completed (one finding, the `inf` timeout at extends.py:133, outside this diff; a follow-up); Gemini failed, empty response, a tool call denied in headless mode (issue 364). The fixer's two named limits (a second, different signal recorded, not delivered; a Ctrl-C and a SIGTERM together at the start of the cleanup leaving one handler) do not make merging unsafe for a command-line resolver whose process ends right after; they belong to issue 481.
+
+### Findings
+- [ ] (suggestion) A SIGTERM or SIGHUP the caller had blocked on entry is still in `previous`, so the cleanup's `sigpending()` takes it and raises `_Signalled` after a git that finished: the clone is discarded with "git was stopped by SIGTERM" (adversarial reviewer, reproduced). Leave out signals in `entry_mask` (`set(previous) - entry_mask` at the `sigpending` line) — `tools/ros-manifest/src/ros_manifest/extends.py:243`
+- [ ] (suggestion, for issue 481) Narrow cleanup windows besides the two named limits: a KeyboardInterrupt while the handlers are being installed (that loop is outside the `try`) or between `sigwait` and the final raise; `sigwait` could block if another thread takes the same signal between `sigpending` and `sigwait`; the handler's `killpg` runs on a reaped git's pid on the normal path (guard with `proc.returncode is None`) — `tools/ros-manifest/src/ros_manifest/extends.py:183`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-14 09:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #480 at `2fde7db6`
+**Sources**: 3 (Local Review @ `59aadc52` (covers `2fde7db6` via bookkeeping); open boxes earlier on this pull request's timeline, checked by hand against the head, among them the stale Local Review @ `cc1025ec`; CI rollup). On GitHub: 0 reviews, 0 inline comments, 0 conversation comments (Copilot's automatic review is off; no human review requested).
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Scope: this pull request's timeline from the `## Plan Authored` of 2026-11-13; nothing carried from pull request 449. CI at `2fde7db6` when read (`gh pr checks 480`, 09:22 -05:00): Validate Documentation and ros-manifest tests passed in both runs, Validate Adapter Contract passed in one run and pending in the other, Lint (pre-commit) pending in both. On `59aadc52` every job passed in both runs (Lint included); only `progress.md` changed since. Reviewer outcomes on this pull request: Codex completed in every round; Gemini failed from pre-push round 4 on (empty response, a tool call denied in headless mode, issue 364); a fresh adversarial reviewer ran in every round.
+
+Earlier open boxes on this timeline, checked at the head: the Plan Review's F1 to F7 (handed to the implementer as requirements at the 2026-11-13 14:57 Checkpoint) are met where spot-checked (F1 no `suites_for_files.sh` change, the CI ros-manifest job covers the resolver; F2 the test wrapper runs the branch's source through `PYTHONPATH` and reports a skip loudly; F3 `--cache-dir "$tmp.cache"`; F5 `source=` cases in `test_register_project.sh`; F6 the multi-key unset rule in `_project_registry.sh`); F4 and F7 not re-checked individually. The PR-body item of the Local Review @ `cc1025ec` and the Implementation's "suggestion 7" are closed: the body's "Not verified" now names only the test helper's `stat -f`, and the `source` rule is an allow-list matched whole, so an upper-case scheme with a password is refused without printing the value (`_project_registry.sh:826-846`). The "signal at the top of the except clause" suggestion was ticked as deferred to issue 481 on the owner's decision and is recorded in 481's comment of 2026-11-14 (item 8); the code since moved the cleanup into one `finally` whose handler kills git itself (`extends.py:185-193`).
+
+### Findings
+- [x] (suggestion, Local Review @ `59aadc52`, covers `2fde7db6` via bookkeeping) Valid, confirmed in the code: `previous` holds every SIGTERM/SIGHUP not ignored, including one the caller had blocked (it is in `entry_mask`); such a signal is never delivered while git runs, so git is not killed, but line 243 takes it with `sigwait` and line 250 raises `_Signalled` after a git that finished, and the complete clone is discarded. Fix: `signal.sigpending() & (set(previous) - entry_mask)` at line 243, with a test that blocks SIGTERM, sends it, and expects a cached clone. Not on issue 481 yet. Owner's call: before the merge or with 481 — `tools/ros-manifest/src/ros_manifest/extends.py:243` (deferred: owner 2026-11-14: merge now; recorded on issue 481 as item 9)
+- [x] (suggestion, for issue 481, Local Review @ `59aadc52`, covers `2fde7db6` via bookkeeping) Valid, confirmed in the code, narrow: the handler-install loop (lines 195-202) is outside the `try`; a KeyboardInterrupt between `sigwait` and the final raise; `sigwait` can block if another thread takes the signal between `sigpending` and `sigwait`; on the normal path `armed` stays True from Popen until line 232, so a signal after `communicate` returned runs `_signal_group` → `killpg` on a reaped git's pid (guard with `proc.returncode is None`). The reviewer deferred it to issue 481, but neither 481's body nor its one comment lists it yet; it needs recording there — `tools/ros-manifest/src/ros_manifest/extends.py:183` (deferred: owner 2026-11-14: merge now; recorded on issue 481 as item 10)
+- [x] (suggestion, triage: PR body) Two sentences are not true at triage time: "Its suggestions and the limits the fix pass named are recorded on follow-up issue #481" (Reviews and outcomes) and the first bullet of "Follow-ups, in #481" ("The last review's two suggestions, and the two limits the last fix pass named"). Issue 481's body (items 1-7) and its only comment (item 8 and the leftover `.partial` directory note) hold neither of the last review's suggestions nor the two named limits (a second, different signal recorded but not delivered; a Ctrl-C and a SIGTERM together at the start of the cleanup leaving one handler). Add them to 481 (a comment), then the sentences are true — PR #480 body (deferred: closed, no change to the pull request: the host posted the items to issue 481 on 2026-11-14 (items 9 to 11), which makes both sentences true)
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-14 10:17 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, F1 and F2 stay in #481 (Recommended)"
+
+Q1 as put to him: merge pull request 480? State shown: the last review (Local Review at `59aadc52`) approved, "ready to merge as it stands", 0 must-fix; CI passed in full on head `bb630eef`, lint and the resolver's Python 3.10 tests included (read by the host with `gh pr checks 480` after waiting for the last lint job); the branch level with main; GitHub reporting it mergeable and clean. The Integrated Review at `bb630eef` found no must-fix and these open items, shown by their text: F1 (suggestion, `extends.py:243`), a SIGTERM or SIGHUP the caller had blocked before the call is treated as a signal to git, so a finished clone is discarded; it does not happen in the command-line tool, which starts with nothing blocked; the fix is one line plus a test. F2 (suggestion, `extends.py:183`), narrow windows in the cleanup, already meant for the follow-up issue. F3 (closed), two sentences in the pull request body said these items were recorded on issue 481 when they were not yet; the host then posted them there (issue 481, comment of 2026-11-14, items 9 to 11), so the sentences are true.
+
+The option he chose, as worded to him: merges pull request 480 into main now and removes its worktree and branch; F1 and F2 are recorded as deferred to issue 481; undone only by a revert pull request. He was told that taking F1 first means a code change and another review at the new head, and that this merges pull request (b) of issue 436 while the issue stays open for its remaining parts.

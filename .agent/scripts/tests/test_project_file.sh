@@ -21,6 +21,15 @@ REAL_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 PASS=0
 FAIL=0
 
+# Wait up to 10 s for a lock test's marker file. A marker that never
+# appears is a failure naming it, so a slow machine fails here, loudly,
+# and not at a later assertion that depends on it.
+wait_for_marker() {  # <file> <what it marks>
+    local _i
+    for _i in $(seq 1 100); do [ -e "$1" ] && return 0; sleep 0.1; done
+    assert_eq "marker appeared within 10 s: $2 ($1)" "present" "absent"
+}
+
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -188,7 +197,7 @@ test_grammar_errors() {
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
     assert_eq "unknown key: exit 2" "2" "$rc"
     assert_contains "unknown key named with file:line" "$f:2: unknown key 'buld'" "$out"
-    assert_contains "known keys listed" "known keys: build test install bootstrap_url location location_path tracking instructions" "$out"
+    assert_contains "known keys listed" "known keys: build test install bootstrap_url source source_ref source_path location location_path tracking instructions" "$out"
 
     printf 'build=make\nbuild=make all\n' | write_pfile "$sb" alpha
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
@@ -878,7 +887,7 @@ test_set_lock_and_interrupt_cleanup() {
     # sleep, which all hold the lock's descriptor) can be ended at once.
     setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the lock holder took the lock"
     rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set alpha build=other 2>&1)" || rc=$?
     assert_eq "held lock: exit 1" "1" "$rc"
     assert_contains "held lock: says so" "another writer holds its lock $lock (waited 1 s)" "$out"
@@ -895,7 +904,7 @@ test_set_lock_and_interrupt_cleanup() {
         cmp() { touch "$_marker"; sleep 30; }
         project_file_set "$1" alpha build=interrupted' _ "$sb" "$marker" >/dev/null 2>&1 &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer reached its replaced cmp"
     assert_eq "interrupt: the temporary file exists while it runs" "1" "$(find "$sb/.agent/projects.d" -name '.alpha.*' | wc -l | tr -d ' ')"
     pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')" || pgid=""
     kill -TERM -- "-${pgid:-$pid}" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
@@ -927,7 +936,7 @@ test_set_lock_follows_shared_symlink_target() {
     marker="$(mktemp -u -p "$SANDBOX")"
     setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the lock holder took the lock"
     for name in alpha beta; do
         rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set "$name" build=held 2>&1)" || rc=$?
         assert_eq "$name: the target's held lock refuses: exit 1" "1" "$rc"
@@ -970,11 +979,11 @@ test_set_lock_follows_shared_symlink_target() {
     hold_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
         "$sb/.agent/scripts/project_setting.sh" set alpha build=moved > "$shared/out" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer started waiting for the lock"
     ln -sfn "$other" "$(pfile "$sb" alpha)"
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
     wait "$holder" 2>/dev/null || true
@@ -1008,11 +1017,11 @@ test_set_rechecks_the_file_after_the_lock_wait() {
     hold_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
         "$sb/.agent/scripts/project_setting.sh" set alpha test=replaced > "$stubdir/out" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    wait_for_marker "$marker" "the writer started waiting for the lock"
     rm -f "$f"
     mkdir "$f"
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
@@ -1060,11 +1069,11 @@ test_set_writer_orphaned_by_a_killed_caller() {
     done_marker="$(mktemp -u -p "$SANDBOX")"
     setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
     holder=$!
-    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$hold_marker" "the lock holder took the lock"
     (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$wait_marker" DONE_MARK="$done_marker" PROJECT_FILE_LOCK_WAIT=15 \
         exec "$sb/.agent/scripts/project_setting.sh" set alpha build=orphan > "$stubdir/out1" 2>&1) &
     pid=$!
-    for _ in $(seq 1 100); do [ -e "$wait_marker" ] && break; sleep 0.1; done
+    wait_for_marker "$wait_marker" "the writer started waiting for the lock"
     kill -KILL "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
     kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
@@ -1671,6 +1680,220 @@ test_bootstrap_url_precedence() {
     assert_eq "environment override first" "https://env.example/b.yaml" "$out"
 }
 
+test_source_keys() {
+    echo "TEST: source, source_ref, source_path (#436): values, the cross-key rules, set/unset judged as the whole file"
+    local sb rc_dir f out rc v
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
+    mkdir -p "$rc_dir"
+    echo "rc ros2_colcon $rc_dir role=dev distro=fakefox" >> "$sb/.agent/projects.local"
+    f="$(pfile "$sb" rc)"
+
+    # Accepted shapes.
+    for v in 'source=/abs/manifest.yaml' \
+        $'source=https://example.invalid/m.git\nsource_ref=main' \
+        $'source=file:///srv/m.git\nsource_ref=v1.2\nsource_path=sub/dir/manifest.yaml' \
+        $'source=https://example.invalid/m\nsource_ref=0123abc' \
+        $'source=https://example.invalid/m/x@y.git\nsource_ref=main' \
+        $'source=https://example.invalid/m.git\nsource_ref=release/2'; do
+        printf '%s\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "accepted: ${v//$'\n'/ }" "0" "$rc"
+    done
+
+    # Refused values, each naming its rule.
+    for v in 'source=relative/m.yaml|source must be an absolute path' \
+        'source=ftp://host/m.git|source must be an absolute path' \
+        'source=/a b/m.yaml|source must be an absolute path' \
+        $'source=https://e.invalid/m\x01.git|source must be an absolute path' \
+        $'source=file:///srv/m\x7f.git|source must be an absolute path' \
+        $'source=https://e.invalid/m.git\nsource_ref=-x|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=a..b|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=x.lock|source_ref must be a branch, tag or commit' \
+        $'source=https://e.invalid/m.git\nsource_ref=HEAD|source_ref must be a branch, tag or commit, not HEAD' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=/etc/m.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a/../../m.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=.|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=sub/|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=a//b.yaml|source_path must be the relative path of a file' \
+        $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=./m.yaml|source_path must be the relative path of a file'; do
+        printf '%s\n' "${v%%|*}" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        v="${v//$'\n'/ }"
+        assert_eq "refused: ${v%%|*}" "2" "$rc"
+        assert_contains "names the rule: ${v##*|}" "${v##*|}" "$out"
+    done
+
+    # Plain http is refused with its reason; bootstrap_url keeps http.
+    printf 'source=http://example.invalid/m.git\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "refused: plain http source" "2" "$rc"
+    assert_contains "plain http: says why" "the manifest decides which repositories are cloned and built" "$out"
+    assert_contains "plain http: says what to use" "use https://" "$out"
+    # A user name or password in the URL is refused without printing it:
+    # an '@' before the path begins, however many '/' follow the scheme
+    # (git sends https:///u:p@h/x's credential to h).
+    for v in 'https://alice:s3cr3tTOKEN@example.invalid/m.git' 'https://s3cr3tTOKEN@example.invalid/m.git' \
+        'file://s3cr3tTOKEN@localhost/srv/m.git' 'HTTPS://bob:s3cr3tTOKEN@example.invalid/m.git' \
+        'https:bob:s3cr3tTOKEN@example.invalid/m.git' 'Http://bob:s3cr3tTOKEN@example.invalid/m.git' \
+        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git' 'https://u:s3cr3tTOKEN@[::1]:8443/m.git' \
+        'https://s3cr3tTOKEN@example.invalid:8443/a@b/m.git' \
+        'https:///u:s3cr3tTOKEN@h/x' 'https:////u:s3cr3tTOKEN@h/x' 'https:/u:s3cr3tTOKEN@h/x' \
+        'https:u:s3cr3tTOKEN@h/x' 'HTTPS://u:s3cr3tTOKEN@h/x' 'https://u:s3cr3tTOKEN@h/x' \
+        'https://s3cr3tTOKEN@h/x' 'file://u:s3cr3tTOKEN@h/x' 'file:////u:s3cr3tTOKEN@h/x' \
+        'http:///u:s3cr3tTOKEN@h/x'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: userinfo in $v" "2" "$rc"
+        assert_contains "userinfo: names the rule" "source must not carry a user name or password in its URL" "$out"
+        assert_not_contains "userinfo: the secret is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # A query or a fragment in an https:// URL is refused without printing
+    # it (a file:// path may hold '?' and '#', below).
+    for v in 'https://example.invalid/m.git?token=s3cr3tTOKEN' 'https://example.invalid/m.git#s3cr3tTOKEN' \
+        'https://h/x?token=s3cr3tTOKEN' 'https://h/x#s3cr3tTOKEN'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: query or fragment in $v" "2" "$rc"
+        assert_contains "query or fragment: names the rule" "source must not have a query or a fragment" "$out"
+        assert_not_contains "query or fragment: the secret is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # Still accepted, as the two URL shapes read them: https://<host>
+    # [:port]/<path> and file:///<path>. An '@' or ':' in the path, a port
+    # and a bracketed IPv6 host are ordinary, and '?' and '#' in a file://
+    # path are characters of the path, as in the path form;
+    # https://user:123/abc@h/x is host 'user', port 123.
+    for v in 'https://example.invalid:8443/m/x@y.git' 'https://example.invalid/owner/repo.git' \
+        'file:///srv/abs/path.git' 'https://h/x.git' 'https://h.example.org:8443/a/b.git' \
+        'https://[::1]:8443/a@b' 'https://[::1]/x@y' \
+        'https://h/x:y@z/m.git' 'file:///srv/a:b@c/m.git' 'file:///tmp/a#b' 'file:///srv/m.git?x' \
+        'https://user:123/abc@h/x'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "still accepted: $v" "0" "$rc"
+    done
+    for v in 'source=/abs/dir@2/manifest.yaml' 'source=/tmp/a#b'; do
+        printf '%s\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "still accepted: ${v//$'\n'/ }" "0" "$rc"
+    done
+    # Any other refusal of a URL-like value does not print it either: a
+    # value with a scheme that is neither shape (no path after the host, no
+    # host, a file:// URL with a host or fewer slashes, another scheme).
+    # https://u:s3cr3t/TOKEN@... and https://u:a/b/TOKEN@... were accepted
+    # by the grammar's reading (host 'u', port 's3cr3t' or 'a'); the
+    # allow-list's port is digits, so they are refused. file://h?TOKEN/...
+    # was refused as a query in the authority; a file:// URL with a host
+    # is not a shape at all now.
+    for v in 'HTTPS://example.invalid/s3cr3tTOKEN.git' $'https://example.invalid/s3cr3tTOKEN\x01.git' \
+        'https://example.invalid/a s3cr3tTOKEN.git' 'ftp://example.invalid/s3cr3tTOKEN.git' \
+        '"https://u:s3cr3tTOKEN@example.invalid/m.git"' '<https://u:s3cr3tTOKEN@example.invalid/m.git>' \
+        'relative/u:s3cr3tTOKEN@m.yaml' 'https://s3cr3tTOKEN' 'https:///s3cr3tTOKEN/x' \
+        'file://s3cr3tTOKEN/x' 'file:/tmp/s3cr3tTOKEN' 'ssh://h/s3cr3tTOKEN' 'git://h/s3cr3tTOKEN' \
+        'https://u:s3cr3tTOKEN/x@example.invalid/m.git' 'https://u:a/b/s3cr3tTOKEN@example.invalid/m.git' \
+        'file://h?s3cr3tTOKEN/srv/m.git' $'https://h/a\ts3cr3tTOKEN'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: URL-like ${v//[[:cntrl:]]/?}" "2" "$rc"
+        assert_contains "URL-like: names the rule" "source must be an absolute path to a file, or an https:// or file:// URL" "$out"
+        assert_not_contains "URL-like: the value is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # A host is ASCII whatever the locale: under a UTF-8 locale where
+    # [A-Za-z] also matches 'é' and fullwidth letters, they are refused.
+    local utf8_locale="" loc
+    for loc in $(locale -a 2>/dev/null | grep -i 'utf-\?8'); do
+        if LC_ALL="$loc" bash -c '[[ "é" =~ ^[A-Za-z]$ ]]' 2>/dev/null; then
+            utf8_locale="$loc"; break
+        fi
+    done
+    if [ -z "$utf8_locale" ]; then
+        echo "  SKIP: non-ASCII host rows (no UTF-8 locale where [A-Za-z] matches 'é')"
+    else
+        for v in 'https://é/s3cr3tTOKEN' 'https://ｈ/s3cr3tTOKEN' 'https://hé.example/s3cr3tTOKEN'; do
+            printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+            rc=0; out="$(LC_ALL="$utf8_locale" ps_run "$sb" check rc 2>&1)" || rc=$?
+            assert_eq "refused under $utf8_locale: non-ASCII host in $v" "2" "$rc"
+            assert_not_contains "non-ASCII host: the value is not printed" "s3cr3tTOKEN" "$out"
+        done
+        printf 'source=https://h/%s\nsource_ref=main\n' 'é.git' | write_pfile "$sb" rc
+        rc=0; LC_ALL="$utf8_locale" ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+        assert_eq "accepted under $utf8_locale: a non-ASCII path" "0" "$rc"
+    fi
+    printf 'source=https://e.invalid/m.git\nsource_ref=a/.hidden\n' | write_pfile "$sb" rc
+    rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+    assert_eq "refused: a ref component starting with '.'" "2" "$rc"
+    printf 'source=https://e.invalid/m.git\nsource_path=a..b/m.yaml\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+    assert_eq "accepted: '..' inside a path component name" "0" "$rc"
+
+    # Cross-key rules.
+    printf 'source_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source_ref without source: exit 2" "2" "$rc"
+    assert_contains "source_ref without source: says why" "source_ref is only valid with source" "$out"
+    assert_contains "names the three-key unset" "project_setting.sh unset rc source source_ref source_path" "$out"
+    printf 'source_path=m.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source_path without source: exit 2" "2" "$rc"
+    assert_contains "source_path without source: says why" "source_path is only valid with source" "$out"
+    printf 'source=https://e.invalid/m.git\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "URL source without source_ref: exit 2" "2" "$rc"
+    assert_contains "URL source: source_ref required" "so source_ref (the branch, tag or commit to use) is required" "$out"
+    printf 'source=/abs/m.yaml\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "path source with source_ref: exit 2" "2" "$rc"
+    assert_contains "path source: source_ref does not apply" "is a path to a file, so source_ref does not apply" "$out"
+    printf 'source=/abs/m.yaml\nsource_path=m.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "path source with source_path: exit 2" "2" "$rc"
+    assert_contains "path source: source_path does not apply" "is a path to a file, so source_path does not apply" "$out"
+    printf 'source=/abs/m.yaml\nbootstrap_url=https://e.invalid/b.yaml\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "source beside bootstrap_url: exit 2" "2" "$rc"
+    assert_contains "one source only" "source and bootstrap_url are both set: a project has one source only" "$out"
+
+    # set and unset are judged as the whole resulting file.
+    rm -f "$f"
+    rc=0; out="$(ps_run "$sb" set rc source=https://e.invalid/m.git 2>&1)" || rc=$?
+    assert_eq "set a URL source alone: exit 2" "2" "$rc"
+    assert_eq "set a URL source alone: no file written" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set rc source=https://e.invalid/m.git source_ref=main source_path=m/manifest.yaml >/dev/null 2>&1 || rc=$?
+    assert_eq "set the three together: exit 0" "0" "$rc"
+    assert_eq "the three are stored" $'source=https://e.invalid/m.git\nsource_ref=main\nsource_path=m/manifest.yaml' "$(cat "$f")"
+    rc=0; out="$(ps_run "$sb" unset rc source 2>&1)" || rc=$?
+    assert_eq "unset source alone, source_ref left: refused" "2" "$rc"
+    assert_contains "the refusal names the multi-key unset" "remove the three together: .agent/scripts/project_setting.sh unset rc source source_ref source_path" "$out"
+    assert_contains "the file is unchanged" "source=https://e.invalid/m.git" "$(cat "$f")"
+    rc=0; ps_run "$sb" unset rc source source_ref source_path >/dev/null 2>&1 || rc=$?
+    assert_eq "the multi-key unset the message gives works" "0" "$rc"
+    assert_eq "the file is gone (nothing left)" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set rc bootstrap_url=https://e.invalid/b.yaml >/dev/null 2>&1 || rc=$?
+    rc=0; out="$(ps_run "$sb" set rc source=/abs/m.yaml 2>&1)" || rc=$?
+    assert_eq "set source beside a stored bootstrap_url: refused" "2" "$rc"
+    assert_contains "names bootstrap_url and its unset" "unset rc bootstrap_url" "$out"
+    rm -f "$f"
+
+    # single_project refuses the three, saying to register as ros2_colcon.
+    for v in source=/abs/m.yaml source_ref=main source_path=m.yaml; do
+        rc=0; out="$(ps_run "$sb" set alpha "$v" 2>&1)" || rc=$?
+        assert_eq "single_project set ${v%%=*}: exit 1" "1" "$rc"
+        assert_contains "single_project set ${v%%=*}: says why" "nothing resolves a source for it (a source for every type is issue #473)" "$out"
+        assert_contains "single_project set ${v%%=*}: names the type to use" "register it as type ros2_colcon" "$out"
+        assert_not_contains "single_project set ${v%%=*}: says it once" "give the type ros2_colcon" "$out"
+    done
+
+    # The dispatcher hands the keys to the adapter.
+    printf 'source=https://e.invalid/m.git\nsource_ref=v2\nsource_path=x/m.yaml\n' | write_pfile "$sb" rc
+    out="$(bash -c '
+        source "$1/.agent/scripts/_project_registry.sh"
+        e="$(project_file_entries "$1" rc)" || exit 9
+        printf "%s|%s|%s\n" "$(_project_file_value_of "$e" source)" "$(_project_file_value_of "$e" source_ref)" "$(_project_file_value_of "$e" source_path)"' _ "$sb")"
+    assert_eq "the parsed values" "https://e.invalid/m.git|v2|x/m.yaml" "$out"
+    assert_contains "the dispatcher exports ACTIVE_PROJECT_SOURCE*" 'ACTIVE_PROJECT_SOURCE_PATH="$(_project_file_value_of "$_PF_ENTRIES" source_path' "$(cat "$sb/.agent/scripts/adapter")"
+}
+
 test_no_file_is_all_defaults
 test_grammar_comments_blanks_crlf
 test_grammar_errors
@@ -1727,6 +1950,7 @@ test_unused_settings_list_unreadable_or_crlf
 test_env_inherited_commands_ignored
 test_settings_command_gets_no_config_environment
 test_bootstrap_url_precedence
+test_source_keys
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

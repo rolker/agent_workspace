@@ -124,7 +124,35 @@ As a second line, `resolve` refuses to write a header line, or a line of `layers
 `--out`, and writes nothing in that case. The repository entries under a `.repos` header are not
 checked again there; the character rule above is what keeps those characters out of them. The
 `extends` clone states the transports git may use (`https`, `ssh`, `file`; everything else,
-such as `ext::`, refused) on its own command line rather than relying on git's defaults.
+such as `ext::`, refused) on its own command line and in `GIT_ALLOW_PROTOCOL`, so a user's own
+`protocol.<name>.allow=always` cannot widen them.
+
+The tree of an `extends` base is untrusted too, so its clone uses none of the user's git
+configuration that would run a program on it: no hook (a global `core.hooksPath` included), no
+fsmonitor, no submodule, and no filter driver, text conversion, `ident` or encoding (the clone
+checks nothing out; `.git/info/attributes` switches those off before `git reset --hard` checks
+the commit out, so git-lfs's filter, which would contact a host the base names, never runs).
+git's repository-locating environment variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`
+and the rest of `git rev-parse --local-env-vars`, which git sets inside a hook) are removed;
+`GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, the user's own settings such as credentials and
+`url.<base>.insteadOf`, are kept. git runs in a session of its own with no terminal, stdin
+closed, `GIT_TERMINAL_PROMPT=0`, an empty `core.askPass`, no `GIT_ASKPASS` or `SSH_ASKPASS`
+and `SSH_ASKPASS_REQUIRE=never`, so neither git nor ssh can ask for a password or passphrase;
+a credential helper you configured still runs. Each git call that asks the remote is limited to
+`ROS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in the environment to change it): when
+the limit runs out, git and everything still in its process group are killed (a program that
+left the group, which ssh does not, is not) and `resolve` fails, saying so. An interrupt while
+git runs kills git's group the same way, removes the partial clone and ends `resolve` by that
+signal. So does a SIGTERM or a SIGHUP, unless it was ignored when git started (as under `nohup`):
+an ignored one stays ignored and the clone goes on. After git's group is killed and the partial
+clone removed, the signal is delivered again to the handler that was there before: by default it
+ends `resolve` by that signal; a program calling the resolver with its own handler has that
+handler run, and the clone then fails with a message naming the signal. The handler kills git's
+group itself as the signal arrives. While git's group is killed and the previous handlers and
+signal mask are put back, SIGTERM and SIGHUP are blocked; one that arrives then is handled as
+if it had come while git ran (the partial clone removed, then the signal delivered again). The
+previous handlers and the signal mask are put back whatever happens. SIGTERM and SIGHUP are
+caught only in the main thread; in another thread they keep their own handling.
 
 A `url` or `ref` that fails its rule is never printed, nor is a group's `default` that is not
 `include` or `exclude`; a failed `extends` clone gives git's exit status, not its output. Some
@@ -140,8 +168,12 @@ notice. Neither holds manifest text.
 
 ### The `extends` cache
 
-A git-backed `extends` is cloned with `git clone --branch <ref> --depth 1` into the cache
-directory (`--cache-dir`, default `.ros-manifest-cache` in the current directory) and reused on
+A git-backed `extends` is cloned one commit deep (`git clone --no-checkout --branch <ref>
+--depth 1`, then checked out as described above) into the cache directory (`--cache-dir`,
+default `.ros-manifest-cache` in the current directory). The clone is made in a temporary
+`.<key>.partial-*` directory beside its entry and renamed into place only when complete, so a
+failed, timed-out or interrupted clone leaves no entry a later run would trust (a run killed
+outright may leave a `.partial-*` directory, which is never read: delete it). An entry is reused on
 every later run with the same url and ref, so a branch that moved on the remote is **not**
 followed while that cache entry exists. To resolve what the remote holds now, delete the cache
 directory or pass a fresh `--cache-dir`. `extends.ref` must be a branch or a tag (`git clone
