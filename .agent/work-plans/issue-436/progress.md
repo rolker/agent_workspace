@@ -1787,3 +1787,26 @@ Scope: the fix pass for the review committed as 65522d84. Must-fix 1 of that rev
 - [x] (suggestion) A caught signal pending when the entry mask is put back (with the default disposition) ends the process before `_clone_or_reuse` removes its temporary directory: reproduced, a `.<key>.partial-*` directory is left in the cache (never trusted, never cleaned). Before unmasking, take a pending caught signal with `sigpending`/`sigwait` and raise `_Signalled`, so the usual cleanup and re-delivery run — `tools/ros-manifest/src/ros_manifest/extends.py:225`
 - [x] (suggestion) The host classes `[A-Za-z0-9]` follow the locale: under en_US.UTF-8 `https://é/x` and fullwidth letters are accepted, under C refused; no credential results (lookalike '@' and ':' are refused). Use explicit ASCII or `local LC_ALL=C` — `.agent/scripts/_project_registry.sh:820`
 - [x] (suggestion, for issue 481) The deferral's reason holds for the window but not for its harm: if `on_signal` kills git's process group itself before raising (it can read `proc`), a `_Signalled` that escapes an except clause leaves no git running — `tools/ros-manifest/src/ros_manifest/extends.py:163`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 09:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aba9811477ab5f1bc, resume 3 of 3)
+
+**PR**: #480 at `386b219a`
+**Addressed**: Local Review at `d3aeb6c1` (2026-11-14 08:44 -05:00)
+**Commits**: f94ee93e, 932e13a5, d63b4b62, 386b219a
+
+### Actions
+- [x] (must-fix) `_run_git` is one try/finally; its finally blocks the two signals, kills and reaps git if it still runs, puts the handlers back, takes a pending caught signal, and puts back the mask read on entry, each step protected by the next. Tests: a signal at the start of the cleanup (through `resolve_chain`: the caller's handler gets it, handlers and mask as before, no cache entry), and a signal inside the masking call (no signal left blocked). Both use `PyErr_SetInterruptEx` (Python 3.10+) through ctypes and fail on the previous code — `tools/ros-manifest/src/ros_manifest/extends.py:220` (932e13a5)
+- [x] (suggestion) A caught signal held during the cleanup is taken with `sigpending`/`sigwait` before the unmask and raised as `_Signalled`, so the partial clone is removed before the signal is delivered again. Test: a resolver subprocess with the default disposition, SIGTERM sent from `_kill_group`: exits by SIGTERM with an empty cache. It left `.partial-*` on the previous code. The two earlier cleanup tests now expect `_Signalled` after the cleanup — `extends.py:225` (932e13a5)
+- [x] (suggestion) The URL shapes are matched in the C locale (`_project_matches_in_c`, `local LC_ALL=C`); blanks and control characters keep the caller's locale. Non-ASCII host rows run under en_US.utf8 (SKIP printed when there is no such locale); 3 failed on the previous rule — `.agent/scripts/_project_registry.sh:820` (d63b4b62)
+- [x] (suggestion) `on_signal`, when armed, disarms itself and kills git's group (`_signal_group`, no wait) before raising; `_kill_group` tolerates a group already gone. Test: a signal at the start of a timed-out git's cleanup; git is SIGKILLed and the group is gone. It fails on the previous code, and on the new code with only the handler's kill removed — `extends.py:163` (932e13a5)
+- Also: `test_a_signal_while_git_is_being_started_still_kills_git` (pass 1) signalled and watched `_git_env`'s `git rev-parse` instead of git. It now acts on git's own Popen and fails, as it should, on 1fbcedc8 (f94ee93e).
+
+### Verification
+- Resolver suite (Python 3.14), 5 runs in a row: 331 passed, 2 failed each time, both the known `test_an_extends_path_too_long_is_a_message_without_the_path` cases.
+- `test_project_file.sh`: 699 passed, 0 failed.
+- pre-commit with no SKIP over the branch: rc 0, all 49 script suites passed.
+- Not run on Python 3.10.
