@@ -378,7 +378,13 @@ def test_handlers_and_mask_are_as_before_on_every_path(
     assert callers_handlers["got"] == []
 
 
-def test_a_signal_while_git_is_being_killed_goes_to_the_previous_handler(
+# A signal that arrives during the cleanup is held (blocked) and raised as _Signalled once the
+# previous handlers and the mask are back, so resolve_chain removes the partial clone before
+# it delivers the signal again to the previous handler: the caller's handler gets nothing from
+# _run_git itself.
+
+
+def test_a_signal_while_git_is_being_killed_is_raised_after_the_cleanup(
     callers_handlers, monkeypatch
 ):
     groups = []
@@ -390,14 +396,15 @@ def test_a_signal_while_git_is_being_killed_goes_to_the_previous_handler(
         real_kill_group(proc)
 
     monkeypatch.setattr(extends, "_kill_group", kill_group_signalled)
-    with pytest.raises(extends._GitTimeout):
+    with pytest.raises(extends._Signalled) as raised:
         extends._run_git(_HANG, timeout=0.5)
+    assert raised.value.signum == signal.SIGTERM
     _as_before(callers_handlers)
-    assert callers_handlers["got"] == [signal.SIGTERM]
+    assert callers_handlers["got"] == []
     assert _group_gone_within(groups[0], 5), "git's group was left running"
 
 
-def test_a_signal_while_the_handlers_are_put_back_goes_to_the_previous_handler(
+def test_a_signal_while_the_handlers_are_put_back_is_raised_after_the_cleanup(
     callers_handlers, monkeypatch
 ):
     real_signal = signal.signal
@@ -409,10 +416,104 @@ def test_a_signal_while_the_handlers_are_put_back_goes_to_the_previous_handler(
         return old
 
     monkeypatch.setattr(extends.signal, "signal", restore_then_hangup)
-    assert extends._run_git(["--version"])[0] == 0
+    with pytest.raises(extends._Signalled) as raised:
+        extends._run_git(["--version"])
+    monkeypatch.undo()
+    assert raised.value.signum == signal.SIGHUP
+    _as_before(callers_handlers)
+    assert callers_handlers["got"] == []
+
+
+def _trip(signum: int) -> None:
+    """Simulate `signum` arriving: its Python handler runs at the interpreter's next check, with
+    no OS signal (so a blocked mask does not hold it back). PyErr_SetInterruptEx is Python 3.10+.
+    """
+    import ctypes
+
+    fn = ctypes.pythonapi.PyErr_SetInterruptEx
+    fn.argtypes = [ctypes.c_int]
+    fn.restype = ctypes.c_int
+    assert fn(signum) == 0
+
+
+def _trip_at_the_block(monkeypatch, signum: int, after: bool) -> None:
+    """Make `signum` arrive as the cleanup blocks the caught signals: just before the masking
+    call takes effect, or (after=True) inside it, once the mask has changed."""
+    real = signal.pthread_sigmask
+    done = []
+
+    def masking(how, sigs):
+        if how == signal.SIG_BLOCK and set(sigs) and not done:
+            done.append(how)
+            if after:
+                old = real(how, sigs)
+                _trip(signum)
+                return old
+            _trip(signum)
+        return real(how, sigs)
+
+    monkeypatch.setattr(extends.signal, "pthread_sigmask", masking)
+
+
+def test_a_signal_at_the_start_of_the_cleanup_reaches_the_callers_handler(
+    callers_handlers, monkeypatch, tmp_path
+):
+    # git exited normally; the signal lands as the cleanup begins, before the block.
+    remote = _base_repo(tmp_path)
+    cache = tmp_path / "cache"
+    _trip_at_the_block(monkeypatch, signal.SIGTERM, after=False)
+    with pytest.raises(ManifestError, match="git was stopped by SIGTERM"):
+        resolve_chain(_leaf(tmp_path, remote.as_uri()), cache_dir=cache)
     monkeypatch.undo()
     _as_before(callers_handlers)
-    assert callers_handlers["got"] == [signal.SIGHUP]
+    assert callers_handlers["got"] == [signal.SIGTERM]
+    assert list(cache.iterdir()) == []
+
+
+def test_a_signal_inside_the_masking_call_leaves_no_signal_blocked(callers_handlers, monkeypatch):
+    _trip_at_the_block(monkeypatch, signal.SIGTERM, after=True)
+    with pytest.raises(extends._Signalled):
+        extends._run_git(["--version"])
+    monkeypatch.undo()
+    _as_before(callers_handlers)
+
+
+def test_the_handler_kills_git_when_the_signal_escapes_the_cleanup(callers_handlers, monkeypatch):
+    # The signal lands as the cleanup of a timed-out git begins, so the cleanup's own kill is
+    # skipped: the handler must have killed git's group itself.
+    started = _record_git(monkeypatch)
+    _trip_at_the_block(monkeypatch, signal.SIGTERM, after=False)
+    with pytest.raises(extends._Signalled):
+        extends._run_git(_HANG, timeout=0.5)
+    monkeypatch.undo()
+    _as_before(callers_handlers)
+    # The cleanup's kill, which also reaps git, was skipped: git is a zombie until reaped here.
+    assert started[0].wait(timeout=5) == -signal.SIGKILL, "git was left running"
+    assert _group_gone_within(started[0].pid, 5), "git's group was left running"
+    started[0].communicate()
+
+
+def test_a_signal_pending_at_the_unmask_leaves_no_partial_clone(tmp_path):
+    # The default disposition: a SIGTERM while git's group is killed (after the time limit) is
+    # held, then raised, so the partial clone is removed before the resolver ends by it.
+    proc, ssh_pid, cache = _resolver_with_stalled_clone(
+        tmp_path,
+        prelude=(
+            "import os, ros_manifest.extends as ex\n"
+            "real_kill_group = ex._kill_group\n"
+            "def kill_group(p):\n"
+            "    os.kill(os.getpid(), signal.SIGTERM)\n"
+            "    real_kill_group(p)\n"
+            "ex._kill_group = kill_group"
+        ),
+        limit="1",
+    )
+    try:
+        assert proc.wait(timeout=15) == -signal.SIGTERM
+        assert _gone_within(ssh_pid, 5), "git's ssh outlived the resolver"
+        assert list(cache.iterdir()) == []
+    finally:
+        _stop(proc)
 
 
 def test_a_timed_out_git_returns_soon_after_the_limit_while_a_child_holds_its_stdout(tmp_path):

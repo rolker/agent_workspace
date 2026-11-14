@@ -150,22 +150,47 @@ class _Signalled(BaseException):
         self.signum = signum
 
 
+# Where a SIGTERM or SIGHUP (caught: not ignored on entry, main thread) can arrive in _run_git,
+# and what follows. "Cleanup" is the `finally`: block the two signals, kill and reap git's group
+# if git still runs, put the previous handlers back, take a signal left pending, put the entry
+# mask back; each step runs even if the one before it raised.
+#   before the handlers are installed  the previous handler gets it (git not started)
+#   installing .. Popen returned       recorded; raised as _Signalled once `proc` is set; cleanup
+#   while git is waited for            handler kills git's group and raises _Signalled; cleanup
+#   in the cleanup, before the block   same (the handler kills the group, so the skipped kill
+#     takes effect, or inside the        does not matter); handlers and the entry mask (read on
+#     masking call                       entry) are put back by the inner finally clauses
+#   in the cleanup, after the block    pending in the kernel; taken before the unmask and raised
+#                                      as _Signalled after it
+#   after the entry mask is back       the previous handler gets it
+# A _Signalled goes up to resolve_chain, which (after _clone_or_reuse removed the partial clone)
+# delivers the signal again to the previous handler. The handler disarms itself when it raises,
+# so a second signal in the same call is recorded, not raised; of several, one is delivered.
+_CAN_MASK = all(hasattr(signal, n) for n in ("pthread_sigmask", "sigpending", "sigwait"))
+
+
 def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, bytes]:
     """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask on
     one), stdin closed, stdout captured as bytes, stderr discarded. With `timeout`, git and
     everything still in its process group are killed when it runs out (_GitTimeout); an
     interrupt kills them too, and so does a SIGTERM or a SIGHUP that was not ignored when this
     call began (_Signalled; an ignored one stays ignored). SIGTERM and SIGHUP are caught only
-    while git runs, in the main thread; the previous handlers are then put back, with the two
-    signals blocked until they are."""
+    while git runs, in the main thread; the previous handlers and the signal mask are put back
+    on every path (see the table above)."""
+    entry_mask = signal.pthread_sigmask(signal.SIG_BLOCK, []) if _CAN_MASK else None
     pending: List[int] = []
     armed = False
+    proc = None
 
     def on_signal(signum, _frame):
-        # Until `proc` is set, git's group cannot be killed: the signal waits until it is.
-        if armed:
-            raise _Signalled(signum)
-        pending.append(signum)
+        nonlocal armed
+        if not armed:  # git's group cannot be killed yet, or a signal is already on its way
+            pending.append(signum)
+            return
+        armed = False
+        if proc is not None:
+            _signal_group(proc)
+        raise _Signalled(signum)
 
     previous = {}
     for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)):
@@ -175,18 +200,7 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
             previous[sig] = signal.signal(sig, on_signal)
         except ValueError:  # not the main thread: signals cannot be caught here
             pass
-    saved_mask = None
-
-    def block():
-        # The cleanup (killing git's group, putting the handlers back) runs with the caught
-        # signals blocked, so no handler interrupts it; one that arrives meanwhile is delivered
-        # to the previous handler when the mask is put back, last. Only after Popen returned:
-        # a child inherits the mask.
-        nonlocal saved_mask
-        if saved_mask is None and previous and hasattr(signal, "pthread_sigmask"):
-            saved_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set(previous))
-
-    proc = None
+    mask = _CAN_MASK and bool(previous)
     try:
         try:
             proc = subprocess.Popen(
@@ -202,32 +216,41 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
         finally:
             armed = True
             if pending:
+                armed = False
                 raise _Signalled(pending.pop(0))
         if proc is None:
             raise ManifestError(_NO_GIT)
-        out, _ = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        block()
-        armed = False
-        _kill_group(proc)
-        raise _GitTimeout() from None
-    except BaseException:
-        block()
-        armed = False
-        if proc is not None:
-            _kill_group(proc)
-        raise
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise _GitTimeout() from None
+        return proc.returncode, out
     finally:
-        block()
-        armed = False
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
-        if saved_mask is not None:
-            signal.pthread_sigmask(signal.SIG_SETMASK, saved_mask)
-    return proc.returncode, out
+        try:
+            if mask:  # only now: a child inherits the mask
+                signal.pthread_sigmask(signal.SIG_BLOCK, set(previous))
+            armed = False
+            if proc is not None and proc.returncode is None:
+                _kill_group(proc)
+        finally:
+            try:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
+            finally:
+                took = list(pending)
+                try:
+                    if mask:
+                        for sig in sorted(signal.sigpending() & set(previous)):
+                            signal.sigwait({sig})
+                            took.append(sig)
+                finally:
+                    if mask:
+                        signal.pthread_sigmask(signal.SIG_SETMASK, entry_mask)
+                if took:
+                    raise _Signalled(took[0])
 
 
-def _kill_group(proc: subprocess.Popen) -> None:
+def _signal_group(proc: subprocess.Popen) -> None:
     try:
         if hasattr(os, "killpg"):
             os.killpg(proc.pid, signal.SIGKILL)
@@ -235,6 +258,10 @@ def _kill_group(proc: subprocess.Popen) -> None:
             proc.kill()
     except ProcessLookupError:
         pass
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    _signal_group(proc)  # the group may be gone already (the signal handler kills it too)
     # git itself is dead now; a program that left its group may still hold the pipe, so the
     # wait for the pipe is short, and only git's exit is waited for.
     try:
