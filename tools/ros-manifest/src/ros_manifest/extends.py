@@ -174,6 +174,17 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
             previous[sig] = signal.signal(sig, on_signal)
         except ValueError:  # not the main thread: signals cannot be caught here
             pass
+    saved_mask = None
+
+    def block():
+        # The cleanup (killing git's group, putting the handlers back) runs with the caught
+        # signals blocked, so no handler interrupts it; one that arrives meanwhile is delivered
+        # to the previous handler when the mask is put back, last. Only after Popen returned:
+        # a child inherits the mask.
+        nonlocal saved_mask
+        if saved_mask is None and previous and hasattr(signal, "pthread_sigmask"):
+            saved_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set(previous))
+
     proc = None
     try:
         try:
@@ -195,19 +206,23 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
             raise ManifestError(_NO_GIT)
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        block()
         armed = False
         _kill_group(proc)
-        if pending:  # a signal that came while git was being killed
-            raise _Signalled(pending.pop(0)) from None
         raise _GitTimeout() from None
     except BaseException:
+        block()
         armed = False
         if proc is not None:
             _kill_group(proc)
         raise
     finally:
+        block()
+        armed = False
         for sig, handler in previous.items():
             signal.signal(sig, handler)
+        if saved_mask is not None:
+            signal.pthread_sigmask(signal.SIG_SETMASK, saved_mask)
     return proc.returncode, out
 
 

@@ -304,6 +304,103 @@ def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
         os.killpg(started[0].pid, 0)
 
 
+@pytest.fixture
+def callers_handlers():
+    """A caller's own SIGTERM and SIGHUP handlers (recording what they get) and a signal mask
+    of its own (SIGUSR1 blocked), all put back after the test."""
+    got = []
+
+    def term(signum, _frame):
+        got.append(signum)
+
+    def hup(signum, _frame):
+        got.append(signum)
+
+    old = {s: signal.signal(s, h) for s, h in ((signal.SIGTERM, term), (signal.SIGHUP, hup))}
+    old_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+    try:
+        yield {"term": term, "hup": hup, "got": got, "mask": {signal.SIGUSR1} | set(old_mask)}
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+        for s, h in old.items():
+            signal.signal(s, h)
+
+
+def _as_before(handlers) -> None:
+    assert signal.getsignal(signal.SIGTERM) is handlers["term"]
+    assert signal.getsignal(signal.SIGHUP) is handlers["hup"]
+    assert signal.pthread_sigmask(signal.SIG_BLOCK, []) == handlers["mask"]
+
+
+_HANG = ["-c", "alias.hang=!sleep 30", "hang"]
+
+
+@pytest.mark.parametrize("path", ["exit", "timeout", "signal", "no git"])
+def test_handlers_and_mask_are_as_before_on_every_path(
+    callers_handlers, monkeypatch, path, tmp_path
+):
+    if path == "exit":
+        assert extends._run_git(["--version"])[0] == 0
+    elif path == "timeout":
+        with pytest.raises(extends._GitTimeout):
+            extends._run_git(_HANG, timeout=0.5)
+    elif path == "signal":
+        real_popen = subprocess.Popen
+
+        def popen_then_signal(*args, **kwargs):
+            child = real_popen(*args, **kwargs)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return child
+
+        monkeypatch.setattr(extends.subprocess, "Popen", popen_then_signal)
+        with pytest.raises(extends._Signalled):
+            extends._run_git(_HANG, timeout=60)
+    else:
+        monkeypatch.setenv("PATH", str(tmp_path))
+        with pytest.raises(ManifestError, match="git is not installed"):
+            extends._run_git(["--version"])
+    _as_before(callers_handlers)
+    assert callers_handlers["got"] == []
+
+
+def test_a_signal_while_git_is_being_killed_goes_to_the_previous_handler(
+    callers_handlers, monkeypatch
+):
+    groups = []
+    real_kill_group = extends._kill_group
+
+    def kill_group_signalled(proc):
+        groups.append(proc.pid)
+        os.kill(os.getpid(), signal.SIGTERM)
+        real_kill_group(proc)
+
+    monkeypatch.setattr(extends, "_kill_group", kill_group_signalled)
+    with pytest.raises(extends._GitTimeout):
+        extends._run_git(_HANG, timeout=0.5)
+    _as_before(callers_handlers)
+    assert callers_handlers["got"] == [signal.SIGTERM]
+    with pytest.raises(ProcessLookupError):
+        os.killpg(groups[0], 0)
+
+
+def test_a_signal_while_the_handlers_are_put_back_goes_to_the_previous_handler(
+    callers_handlers, monkeypatch
+):
+    real_signal = signal.signal
+
+    def restore_then_hangup(signum, handler):
+        old = real_signal(signum, handler)
+        if handler is callers_handlers["term"]:  # SIGTERM is put back first, SIGHUP next
+            os.kill(os.getpid(), signal.SIGHUP)
+        return old
+
+    monkeypatch.setattr(extends.signal, "signal", restore_then_hangup)
+    assert extends._run_git(["--version"])[0] == 0
+    monkeypatch.undo()
+    _as_before(callers_handlers)
+    assert callers_handlers["got"] == [signal.SIGHUP]
+
+
 def test_a_timed_out_git_returns_soon_after_the_limit_while_a_child_holds_its_stdout(tmp_path):
     # A program that left git's group and holds git's stdout (the one pipe _run_git reads;
     # stderr is /dev/null) must not keep _run_git waiting more than its 2 s bound after the
