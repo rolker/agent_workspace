@@ -623,7 +623,8 @@ _rc_bootstrap_manifest() {
 # commit by its full name one commit deep, or, when the server will not
 # serve that (or the name is abbreviated), by a full fetch of the remote's
 # branches and tags. ls-remote and the fetches are bounded by
-# WT_FETCH_TIMEOUT (default 60 s), as repo_pin's calls are. The commit is
+# WT_FETCH_TIMEOUT (default 60 s), as repo_pin's calls are, and a Ctrl-C
+# ends them at once. The commit is
 # checked out detached; no symbolic link along source_path is followed.
 # .resolved-from records source, source_ref, source_path and the commit
 # (a path source: a checksum of its content, for validate), and the
@@ -634,7 +635,13 @@ _rc_bootstrap_manifest() {
 # written other than as the bare generated name, before anything is swept
 # or fetched. Local manifest work uses the path form. Every `extends` base
 # is cloned afresh, the resolver's cache being a sibling of the new
-# generated directory removed on every exit.
+# generated directory removed on every exit; the resolver protects that
+# clone itself (tools/ros-manifest README: no user hook, filter driver or
+# submodule, git's repository variables cleared, no prompt, the same three
+# transports) and bounds each of its git calls by ROS_MANIFEST_GIT_TIMEOUT
+# (default 60 s). So while the source lock is held, every call that asks
+# a remote has a limit: WT_FETCH_TIMEOUT for the leaf, the resolver's for
+# each base.
 #
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none
@@ -761,7 +768,8 @@ _rc_src_git() {  # <src> <git args...>
 
 # The same, for a call that asks the source's host (ls-remote, fetch):
 # bounded as repo_pin's calls are (_adapter_bounded_git, WT_FETCH_TIMEOUT,
-# default 60 s), so a stalled host cannot hold the source lock. Exit 124
+# default 60 s), so a stalled source host cannot hold the source lock (an
+# `extends` host is bounded by the resolver, see the header). Exit 124
 # or 137 when the limit ended it.
 _rc_src_net() {  # <src> <git args...>
     local src="$1"

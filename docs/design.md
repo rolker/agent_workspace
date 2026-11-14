@@ -410,7 +410,8 @@ Status: `decided`
   new generated directory that `configs/manifest-resolved` is relinked to; every verb reads the
   directory the same way on both routes. One source only: `source` beside any other bootstrap source is
   a hard error that names it. Never silently stale: `setup` and `sync` fetch the ref's commit afresh and
-  keep no clone (owner, 2026-11-13), and clone every `extends` base afresh; a failed fetch or resolve
+  keep no clone (owner, 2026-11-13), and clone every `extends` base afresh (the resolver's clone runs no
+  user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`); a failed fetch or resolve
   keeps the previous directory. Local manifest work uses the path form. `setup` and
   `sync` fetch and resolve holding a flock on `configs/.lock.source`, never removed, and every verb
   reads one generated directory throughout, never removed while a run reads it (without `flock`, the
@@ -1036,6 +1037,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Registry and adapters | The manifest route's fetch and resolve hold a flock on `configs/.lock.source`, never removed, unlocked without `flock` as the settings writer is. One sentence in the existing bullet; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1086 |
 | 2026-11-13 | Registry and adapters | Every verb on the manifest route reads one generated directory throughout, never removed while a run reads it; unguarded without `flock`. The lock sentence grows by one line; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1088 |
 | 2026-11-13 | Registry and adapters | No kept clone (owner's decisions at the rounds checkpoints): a git `source` is fetched afresh by each `setup` and `sync` into a temporary directory removed afterwards, local manifest work uses the path form, and without `flock` the directory before the live one is kept; a URL `source` is `https://` or `file://` with no credentials and the fetch allows the https, ssh and file transports only. The rules live in the `ros2_colcon/adapter.sh` header | #436 | 1092 |
+| 2026-11-13 | Registry and adapters | The resolver's clone of an `extends` base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (owner's decision on pull request 480: in the resolver). One clause in the manifest-route bullet; the rules live in the `ros2_colcon/adapter.sh` header and the `tools/ros-manifest` README | #436 | 1094 |
 
 ## Glossary
 
