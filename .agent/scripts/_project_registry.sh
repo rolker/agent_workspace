@@ -65,8 +65,9 @@
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
 #     source                where the project's source description lives
 #                           (for ros2_colcon, its manifest; issue #436): an
-#                           absolute path to the file, or an http(s):// or
+#                           absolute path to the file, or an https:// or
 #                           file:// URL of a git repository that holds it
+#                           (not plain http://, no user name or password)
 #     source_ref            branch, tag or commit of a URL source (not
 #                           HEAD): required with a URL, refused with a path
 #     source_path           the file's path inside that repository
@@ -801,13 +802,26 @@ _project_file_value_error() {
             fi
             ;;
         source)
-            if [[ "$value" =~ ^(https?|file):// ]]; then
-                if ! [[ "$value" =~ ^(https?|file)://[^[:space:][:cntrl:]]+$ ]]; then
-                    echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+            # Plain http is refused: the manifest decides which repositories
+            # are cloned and built, so it must not be open to change on the
+            # way. A user name or password in the URL is refused without
+            # printing the value (it would be echoed and stored).
+            if [[ "$value" == http://* ]]; then
+                echo "source must not be a plain http:// URL: the manifest decides which repositories are cloned and built, and plain http lets anyone on the network change it on the way; use https:// (a url.<base>.insteadOf rule in your git configuration may send it to an ssh mirror), or file:// for a repository on this machine"
+                return 1
+            elif [[ "$value" =~ ^(https|file):// ]]; then
+                local authority="${value#*://}"
+                authority="${authority%%/*}"
+                if [[ "$authority" == *@* ]]; then
+                    echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
+                    return 1
+                fi
+                if ! [[ "$value" =~ ^(https|file)://[^[:space:][:cntrl:]]+$ ]]; then
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
                     return 1
                 fi
             elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
-                echo "source must be an absolute path to a file, or an http://, https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+                echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
                 return 1
             fi
             ;;
@@ -823,7 +837,7 @@ _project_file_value_error() {
                 return 1
             fi
             # HEAD is not a branch, tag or commit of the source but git's
-            # name for whatever is checked out (origin/HEAD in the clone).
+            # name for whatever a repository has checked out.
             if [ "$value" = HEAD ]; then
                 echo "source_ref must be a branch, tag or commit, not HEAD (git's name for what is checked out): name the branch, e.g. source_ref=main"
                 return 1

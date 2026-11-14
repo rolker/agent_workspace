@@ -1685,7 +1685,8 @@ test_source_keys() {
     for v in 'source=/abs/manifest.yaml' \
         $'source=https://example.invalid/m.git\nsource_ref=main' \
         $'source=file:///srv/m.git\nsource_ref=v1.2\nsource_path=sub/dir/manifest.yaml' \
-        $'source=http://example.invalid/m\nsource_ref=0123abc' \
+        $'source=https://example.invalid/m\nsource_ref=0123abc' \
+        $'source=https://example.invalid/m/x@y.git\nsource_ref=main' \
         $'source=https://example.invalid/m.git\nsource_ref=release/2'; do
         printf '%s\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
@@ -1713,6 +1714,22 @@ test_source_keys() {
         v="${v//$'\n'/ }"
         assert_eq "refused: ${v%%|*}" "2" "$rc"
         assert_contains "names the rule: ${v##*|}" "${v##*|}" "$out"
+    done
+
+    # Plain http is refused with its reason; bootstrap_url keeps http.
+    printf 'source=http://example.invalid/m.git\nsource_ref=main\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "refused: plain http source" "2" "$rc"
+    assert_contains "plain http: says why" "the manifest decides which repositories are cloned and built" "$out"
+    assert_contains "plain http: says what to use" "use https://" "$out"
+    # A user name or password in the URL is refused without printing it.
+    for v in 'https://alice:s3cr3tTOKEN@example.invalid/m.git' 'https://s3cr3tTOKEN@example.invalid/m.git' \
+        'file://s3cr3tTOKEN@localhost/srv/m.git'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: userinfo in $v" "2" "$rc"
+        assert_contains "userinfo: names the rule" "source must not carry a user name or password in its URL" "$out"
+        assert_not_contains "userinfo: the secret is not printed" "s3cr3tTOKEN" "$out"
     done
     printf 'source=https://e.invalid/m.git\nsource_ref=a/.hidden\n' | write_pfile "$sb" rc
     rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
