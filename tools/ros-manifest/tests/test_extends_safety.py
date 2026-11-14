@@ -304,26 +304,23 @@ def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
         os.killpg(started[0].pid, 0)
 
 
-def test_a_timed_out_clone_returns_soon_after_the_limit(tmp_path, monkeypatch):
-    # A program that left git's group and holds what git gave it must not keep the resolver
-    # waiting after the limit.
+def test_a_timed_out_git_returns_soon_after_the_limit_while_a_child_holds_its_stdout(tmp_path):
+    # A program that left git's group and holds git's stdout (the one pipe _run_git reads;
+    # stderr is /dev/null) must not keep _run_git waiting more than its 2 s bound after the
+    # kill. In a clone git's own children (ssh, a remote helper) get pipes of git's, not this
+    # one, so the holder is started the way any git child that inherits stdout would be: by an
+    # alias that runs a command.
     holder_pid = tmp_path / "holder.pid"
-    detach = (
+    hold = _script(
+        tmp_path / "hold",
         f'"{sys.executable}" -c "import os, time; os.setsid();'
-        f" open('{holder_pid}', 'w').write(str(os.getpid())); time.sleep(30)\" &\n"
+        f" open('{holder_pid}', 'w').write(str(os.getpid())); time.sleep(20)\" &\n"
+        "exec sleep 30\n",
     )
-    hang = _script(tmp_path / "hang-ssh", detach + "exec sleep 30\n")
-    monkeypatch.setenv("GIT_SSH_COMMAND", str(hang))
-    # No `ssh -G` probe first (git runs it with its output discarded): the holder is started
-    # by the ssh git really talks to, and inherits git's stderr.
-    monkeypatch.setenv("GIT_SSH_VARIANT", "ssh")
-    monkeypatch.setenv("ROS_MANIFEST_GIT_TIMEOUT", "1")
     started = time.monotonic()
     try:
-        with pytest.raises(ManifestError, match="within 1 s"):
-            resolve_chain(
-                _leaf(tmp_path, "ssh://git@example.invalid/base.git"), cache_dir=tmp_path / "c"
-            )
+        with pytest.raises(extends._GitTimeout):
+            extends._run_git(["-c", f"alias.hold=!{hold}", "hold"], timeout=1)
         assert time.monotonic() - started < 6
         assert holder_pid.exists(), "the detached holder never started"
     finally:
