@@ -3081,6 +3081,18 @@ test_mr_fetch_bounded() {
     assert_eq "stalled host: the lock is free afterwards" "0" "$rc"
 }
 
+test_mr_provenance_names_the_source() {
+    echo "TEST: manifest route: the generated files' provenance lines name url#ref:path@commit, not the temporary fetch"
+    local sb gen url c
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    url="file://$sb/mremote/leaf.git"
+    c="$(git -C "$sb/mwork/leaf" rev-parse HEAD)"
+    assert_contains "layers.txt names the source" "$url#main:manifest.yaml@$c" "$(head -n 1 "$gen/layers.txt")"
+    assert_contains "core.repos names the source" "$url#main:manifest.yaml@$c" "$(grep '^#' "$gen/repos/core.repos")"
+    assert_eq "no file names the temporary fetch" "" "$(grep -rl '\.src/' "$gen" 2>/dev/null || true)"
+}
+
 test_mr_old_source_clone_left_alone() {
     echo "TEST: manifest route: a configs/source-clone left by an earlier run is neither read nor touched"
     local sb clone hash rc out verb gen
@@ -3988,6 +4000,7 @@ mr_test test_mr_branch_and_tag_of_one_name
 mr_test test_mr_full_commit_fallback
 mr_test test_mr_sha256_source
 mr_test test_mr_fetch_bounded
+mr_test test_mr_provenance_names_the_source
 mr_test test_mr_old_source_clone_left_alone
 mr_test test_mr_fetch_interrupted
 mr_test test_mr_stale_extends_base

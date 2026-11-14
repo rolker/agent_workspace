@@ -991,6 +991,15 @@ _rc_manifest_resolve() {
             echo "file-stamp=$stamp"
         fi
     } > "$tmp/.resolved-from" || { _rc_resolve_cleanup; return 1; }
+    # The generated files' '#' provenance lines name the manifest the
+    # resolver read, for a URL source a temporary path gone after this run:
+    # name it as the resolver names an extends base, url#ref:path@commit.
+    if _rc_source_is_url && ! _rc_relabel_provenance "$tmp" "$_RC_SRC_FILE" \
+        "${ACTIVE_PROJECT_SOURCE}#${ACTIVE_PROJECT_SOURCE_REF:-}:${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}@$_RC_SRC_COMMIT"; then
+        echo "ERROR: cannot rewrite the provenance lines in $tmp; the previously resolved manifest, if any, is kept" >&2
+        _rc_resolve_cleanup
+        return 1
+    fi
     prev=""
     [ -L "$link" ] && prev="$(readlink -- "$link")"
     old_layers="$(_rc_layer_lines "$link/layers.txt")"
@@ -1042,6 +1051,20 @@ _rc_manifest_resolve() {
     [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] || _rc_prune_unlocked "$configs" "$(basename "$tmp")" "$prev"
     [ -n "$prev" ] && [ "$old_layers" != "$new_layers" ] && _RC_LAYERS_CHANGED=1
     echo "source: resolved role '$role' distro '$distro': $count layer(s) in $link"
+}
+
+# In the '#' lines of every file under <dir>, replace the text <old> by
+# <new> (taken from the environment, so no character is special).
+_rc_relabel_provenance() {  # <dir> <old> <new>
+    local f
+    while IFS= read -r f; do
+        RC_OLD="$2" RC_NEW="$3" awk '
+            BEGIN { o = ENVIRON["RC_OLD"]; n = ENVIRON["RC_NEW"] }
+            /^#/ { out = ""; rest = $0
+                   while ((i = index(rest, o)) > 0) { out = out substr(rest, 1, i - 1) n; rest = substr(rest, i + length(o)) }
+                   $0 = out rest }
+            { print }' "$f" > "$f.relabel" && mv -- "$f.relabel" "$f" || return 1
+    done < <(find "$1" -type f ! -name .resolved-from)
 }
 
 # Remove the new generated directory, its fetched source, its cache and
