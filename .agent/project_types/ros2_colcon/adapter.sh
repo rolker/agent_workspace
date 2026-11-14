@@ -680,9 +680,10 @@ _rc_layer_lines() {
     grep -v '^[[:space:]]*#' "$1" 2>/dev/null | grep -v '^[[:space:]]*$' || true
 }
 
-# "<mtime> <size>" of a file (GNU and uutils stat, then BSD stat).
+# "<checksum> <size>" of a file's content (POSIX cksum), so any edit shows,
+# one that keeps the size and the second included.
 _rc_file_stamp() {
-    stat -c '%Y %s' "$1" 2>/dev/null || stat -f '%m %z' "$1" 2>/dev/null
+    cksum < "$1" 2>/dev/null
 }
 
 # One source only, never a silent choice: on the manifest route every other
@@ -1280,7 +1281,7 @@ _rc_validate_manifest_route() {
         stamp="$(_rc_file_stamp "$ACTIVE_PROJECT_SOURCE" || true)"
         got="$(_rc_resolved_from "$rf" file-stamp)"
         if [ "$stamp" != "$got" ]; then
-            echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE has changed (modification time or size) since it was resolved (run: .agent/scripts/adapter --project $name sync)" >&2
+            echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE has changed since it was resolved (its content differs; run: .agent/scripts/adapter --project $name sync)" >&2
         fi
     fi
     # vcs import never removes a checkout: one a role or distro change left

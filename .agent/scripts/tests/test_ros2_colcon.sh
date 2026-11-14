@@ -3273,7 +3273,7 @@ test_mr_path_source_edited_during_resolve() {
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
-    assert_contains "validate: the edit is seen" "has changed (modification time or size) since it was resolved" "$out"
+    assert_contains "validate: the edit is seen" "has changed since it was resolved (its content differs" "$out"
 }
 
 test_mr_validate_link_missing_and_path_changed() {
@@ -3290,11 +3290,18 @@ test_mr_validate_link_missing_and_path_changed() {
     echo "# edited" >> "$sb/m/manifest.yaml"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "changed path source: validate still exit 0" "0" "$rc"
-    assert_contains "changed path source: warned" "has changed (modification time or size) since it was resolved" "$out"
+    assert_contains "changed path source: warned" "has changed since it was resolved (its content differs" "$out"
     run_mr "$sb" sync >/dev/null 2>&1
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "after sync: validate exit 0" "0" "$rc"
     assert_not_contains "after sync: no warning" "WARNING" "$out"
+    # An edit that keeps the size, the modification time put back.
+    touch -r "$sb/m/manifest.yaml" "$sb/stamp.ref"
+    mr_sed 's/pkg_a:/pkg_z:/' "$sb/m/manifest.yaml"
+    touch -r "$sb/stamp.ref" "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "same size, same time: the edit is seen" "has changed since it was resolved (its content differs" "$out"
+    run_mr "$sb" sync >/dev/null 2>&1
     rm -f "$sb/m/manifest.yaml"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "missing path source: exit 1" "1" "$rc"
