@@ -149,22 +149,23 @@ class _Signalled(BaseException):
         self.signum = signum
 
 
-def _raise_signalled(signum, _frame):
-    raise _Signalled(signum)
-
-
 def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, bytes]:
     """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask on
     one), stdin closed, stdout captured as bytes, stderr discarded. With `timeout`, git and
     everything still in its process group are killed when it runs out (_GitTimeout); an
-    interrupt, a SIGTERM or a SIGHUP kills them too (SIGTERM and SIGHUP are caught only while
-    git runs, then the previous handlers are put back)."""
+    interrupt kills them too, and so does a SIGTERM or a SIGHUP that was not ignored when this
+    call began (_Signalled; an ignored one stays ignored). SIGTERM and SIGHUP are caught only
+    while git runs, in the main thread; the previous handlers are then put back."""
+
+    def on_signal(signum, _frame):
+        raise _Signalled(signum)
+
     previous = {}
     for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)):
-        if sig is None:
-            continue
+        if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
+            continue  # ignored (as under nohup), or a handler Python cannot put back
         try:
-            previous[sig] = signal.signal(sig, _raise_signalled)
+            previous[sig] = signal.signal(sig, on_signal)
         except ValueError:  # not the main thread: signals cannot be caught here
             pass
     proc = None
@@ -406,10 +407,14 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
                 manifest.extends, current_path.parent, current_origin, cache_dir, manifest.source
             )
         except _Signalled as sig:
-            # git's group is killed and the partial clone removed; end as the signal would.
-            signal.signal(sig.signum, signal.SIG_DFL)
-            os.kill(os.getpid(), sig.signum)
-            raise
+            # git's group is killed, the partial clone removed and the previous handler back:
+            # the signal is delivered again, to end the process or to run the caller's handler
+            # (which runs before raise_signal returns, and whose exception propagates).
+            signal.raise_signal(sig.signum)
+            raise ManifestError(
+                f"{manifest.source}: git was stopped by {signal.Signals(sig.signum).name} while"
+                " fetching its extends base; nothing is kept in the cache"
+            ) from None
         except (OSError, RuntimeError) as exc:
             raise ManifestError(
                 f"{manifest.source}: its extends cannot be followed ({_os_reason(exc)})"

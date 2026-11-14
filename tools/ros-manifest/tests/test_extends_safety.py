@@ -184,41 +184,103 @@ def _gone_within(pid: int, seconds: float) -> bool:
     return False
 
 
-@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
-def test_a_signal_while_git_runs_kills_git_and_leaves_no_partial_clone(tmp_path, signum):
-    # The resolver in a process of its own, cloning from an ssh remote whose "ssh" records its
-    # pid and then never answers; the signal goes to the resolver alone, not to git's session.
+def _resolver_with_stalled_clone(tmp_path, prelude="", limit="60"):
+    """Start the resolver in a process of its own, cloning from an ssh remote whose "ssh"
+    records its pid and then never answers; `prelude` runs first in that process. Returns the
+    process, the ssh's pid once it is running, and the cache directory. Its stdout is the
+    message of a ManifestError, printed."""
     pidfile = tmp_path / "ssh.pid"
     hang = _script(tmp_path / "hang-ssh", f'echo $$ > "{pidfile}"\nexec sleep 30\n')
     cache = tmp_path / "cache"
     leaf = _leaf(tmp_path, "ssh://git@example.invalid/base.git")
     src = str(Path(extends.__file__).resolve().parents[1])
     code = (
-        "import sys; from pathlib import Path; from ros_manifest.extends import resolve_chain;"
-        " resolve_chain(Path(sys.argv[1]), cache_dir=Path(sys.argv[2]))"
+        "import sys, signal; from pathlib import Path\n"
+        "from ros_manifest.extends import resolve_chain\n"
+        "from ros_manifest.schema import ManifestError\n"
+        f"{prelude}\n"
+        "try:\n"
+        "    resolve_chain(Path(sys.argv[1]), cache_dir=Path(sys.argv[2]))\n"
+        "except ManifestError as exc:\n"
+        "    print(exc, flush=True)\n"
     )
-    env = dict(os.environ, GIT_SSH_COMMAND=str(hang), ROS_MANIFEST_GIT_TIMEOUT="60")
+    env = dict(os.environ, GIT_SSH_COMMAND=str(hang), ROS_MANIFEST_GIT_TIMEOUT=limit)
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
     proc = subprocess.Popen(
         [sys.executable, "-c", code, str(leaf), str(cache)],
         env=env,
-        stdout=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
     )
+    deadline = time.monotonic() + 20
+    while not (pidfile.exists() and pidfile.read_text().strip()):
+        if time.monotonic() >= deadline:
+            proc.kill()
+            proc.wait()
+            pytest.fail("the stalled ssh was never reached")
+        time.sleep(0.1)
+    return proc, int(pidfile.read_text().strip()), cache
+
+
+def _stop(proc) -> None:
+    if proc.poll() is None:
+        proc.kill()
+    proc.communicate()
+
+
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_a_signal_while_git_runs_kills_git_and_leaves_no_partial_clone(tmp_path, signum):
+    # The default disposition: the signal goes to the resolver alone, not to git's session,
+    # and the resolver ends by it once git's group is killed and the partial clone removed.
+    proc, ssh_pid, cache = _resolver_with_stalled_clone(tmp_path)
     try:
-        deadline = time.monotonic() + 20
-        while not (pidfile.exists() and pidfile.read_text().strip()):
-            assert time.monotonic() < deadline, "the stalled ssh was never reached"
-            time.sleep(0.1)
-        ssh_pid = int(pidfile.read_text().strip())
         proc.send_signal(signum)
         assert proc.wait(timeout=10) == -signum
         assert _gone_within(ssh_pid, 5), "git's ssh outlived the resolver"
         assert list(cache.iterdir()) == []
     finally:
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait()
+        _stop(proc)
+
+
+def test_an_ignored_hangup_does_not_end_the_clone(tmp_path):
+    # Under nohup SIGHUP is ignored; a hangup must leave the resolver and its clone running,
+    # here until the clone's own end, the time limit.
+    proc, ssh_pid, cache = _resolver_with_stalled_clone(
+        tmp_path, prelude="signal.signal(signal.SIGHUP, signal.SIG_IGN)", limit="3"
+    )
+    try:
+        proc.send_signal(signal.SIGHUP)
+        time.sleep(0.5)
+        assert proc.poll() is None, "the resolver ended on an ignored hangup"
+        assert _alive(ssh_pid), "git's ssh was killed on an ignored hangup"
+        out, _ = proc.communicate(timeout=15)
+        assert proc.returncode == 0
+        assert b"within 3 s (the limit" in out
+        assert list(cache.iterdir()) == []
+    finally:
+        _stop(proc)
+
+
+def test_a_callers_own_sigterm_handler_runs_after_git_is_killed(tmp_path):
+    marker = tmp_path / "handler-ran"
+    proc, ssh_pid, cache = _resolver_with_stalled_clone(
+        tmp_path,
+        prelude=(
+            "def mine(signum, frame):\n"
+            f"    open({str(marker)!r}, 'w').write('ran')\n"
+            "signal.signal(signal.SIGTERM, mine)"
+        ),
+    )
+    try:
+        proc.send_signal(signal.SIGTERM)
+        out, _ = proc.communicate(timeout=10)
+        assert proc.returncode == 0
+        assert marker.read_text() == "ran"
+        assert b"git was stopped by SIGTERM" in out
+        assert _gone_within(ssh_pid, 5), "git's ssh outlived the clone"
+        assert list(cache.iterdir()) == []
+    finally:
+        _stop(proc)
 
 
 def test_a_timed_out_clone_returns_soon_after_the_limit(tmp_path, monkeypatch):
