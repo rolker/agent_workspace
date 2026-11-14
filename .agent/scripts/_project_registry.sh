@@ -67,7 +67,9 @@
 #                           (for ros2_colcon, its manifest; issue #436): an
 #                           absolute path to the file, or an https:// or
 #                           file:// URL of a git repository that holds it
-#                           (not plain http://, no user name or password)
+#                           (not plain http://, no user name or password:
+#                           no '@' between '//' and the next '/'; an
+#                           https:// URL has no '?' or '#')
 #     source_ref            branch, tag or commit of a URL source (not
 #                           HEAD): required with a URL, refused with a path
 #     source_path           the file's path inside that repository

@@ -10,7 +10,8 @@ environment variables are removed; git runs without a terminal, with GIT_TERMINA
 empty core.askPass, no GIT_ASKPASS or SSH_ASKPASS and SSH_ASKPASS_REQUIRE=never, so neither git
 nor ssh can ask for a password or passphrase (a credential helper the user configured still
 runs); each call that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default
-60), after which git's process group is killed, as it is on an interrupt, SIGTERM or SIGHUP;
+60), after which git's process group is killed, as it is on an interrupt, or on a SIGTERM or
+SIGHUP that was not ignored (which is then delivered again to the previous handler);
 and the clone is made in a temporary sibling and renamed into the cache only when complete.
 The url and ref have already passed the allow-lists in ``schema.py``. This module invokes `git
 clone`, `git reset` and `git rev-parse` on the clone; tests point `url` at a local git

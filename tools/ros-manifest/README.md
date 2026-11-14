@@ -141,9 +141,14 @@ and `SSH_ASKPASS_REQUIRE=never`, so neither git nor ssh can ask for a password o
 a credential helper you configured still runs. Each git call that asks the remote is limited to
 `ROS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in the environment to change it): when
 the limit runs out, git and everything still in its process group are killed (a program that
-left the group, which ssh does not, is not) and `resolve` fails, saying so. An interrupt, a
-SIGTERM or a SIGHUP while git runs kills git's group the same way, removes the partial clone and
-ends `resolve` by that signal.
+left the group, which ssh does not, is not) and `resolve` fails, saying so. An interrupt while
+git runs kills git's group the same way, removes the partial clone and ends `resolve` by that
+signal. So does a SIGTERM or a SIGHUP, unless it was ignored when git started (as under `nohup`):
+an ignored one stays ignored and the clone goes on. After git's group is killed and the partial
+clone removed, the signal is delivered again to the handler that was there before: by default it
+ends `resolve` by that signal; a program calling the resolver with its own handler has that
+handler run, and the clone then fails with a message naming the signal. SIGTERM and SIGHUP are
+caught only in the main thread; in another thread they keep their own handling.
 
 A `url` or `ref` that fails its rule is never printed, nor is a group's `default` that is not
 `include` or `exclude`; a failed `extends` clone gives git's exit status, not its output. Some
