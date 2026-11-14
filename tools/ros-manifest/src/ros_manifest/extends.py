@@ -156,9 +156,14 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
     interrupt kills them too, and so does a SIGTERM or a SIGHUP that was not ignored when this
     call began (_Signalled; an ignored one stays ignored). SIGTERM and SIGHUP are caught only
     while git runs, in the main thread; the previous handlers are then put back."""
+    pending: List[int] = []
+    armed = False
 
     def on_signal(signum, _frame):
-        raise _Signalled(signum)
+        # Until `proc` is set, git's group cannot be killed: the signal waits until it is.
+        if armed:
+            raise _Signalled(signum)
+        pending.append(signum)
 
     previous = {}
     for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)):
@@ -180,12 +185,22 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
                 start_new_session=True,
             )
         except FileNotFoundError:
-            raise ManifestError(_NO_GIT) from None
+            pass
+        finally:
+            armed = True
+            if pending:
+                raise _Signalled(pending.pop(0))
+        if proc is None:
+            raise ManifestError(_NO_GIT)
         out, _ = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
+        armed = False
         _kill_group(proc)
+        if pending:  # a signal that came while git was being killed
+            raise _Signalled(pending.pop(0)) from None
         raise _GitTimeout() from None
     except BaseException:
+        armed = False
         if proc is not None:
             _kill_group(proc)
         raise

@@ -283,6 +283,27 @@ def test_a_callers_own_sigterm_handler_runs_after_git_is_killed(tmp_path):
         _stop(proc)
 
 
+def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
+    # A SIGTERM after git is forked but before `_run_git` holds it: git must still be killed.
+    started = []
+    real_popen = subprocess.Popen
+
+    def popen_then_signal(*args, **kwargs):
+        child = real_popen(*args, **kwargs)
+        started.append(child)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return child
+
+    monkeypatch.setattr(extends.subprocess, "Popen", popen_then_signal)
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(extends._Signalled):
+        extends._run_git(["-c", "alias.hang=!sleep 30", "hang"], timeout=60)
+    assert signal.getsignal(signal.SIGTERM) is before
+    assert started and started[0].poll() is not None, "git was left running"
+    with pytest.raises(ProcessLookupError):
+        os.killpg(started[0].pid, 0)
+
+
 def test_a_timed_out_clone_returns_soon_after_the_limit(tmp_path, monkeypatch):
     # A program that left git's group and holds what git gave it must not keep the resolver
     # waiting after the limit.
