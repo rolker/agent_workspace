@@ -1735,17 +1735,19 @@ test_source_keys() {
     for v in 'https://alice:s3cr3tTOKEN@example.invalid/m.git' 'https://s3cr3tTOKEN@example.invalid/m.git' \
         'file://s3cr3tTOKEN@localhost/srv/m.git' 'HTTPS://bob:s3cr3tTOKEN@example.invalid/m.git' \
         'https:bob:s3cr3tTOKEN@example.invalid/m.git' 'Http://bob:s3cr3tTOKEN@example.invalid/m.git' \
-        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git' 'https://u:s3cr3t/TOKEN@example.invalid/m.git' \
-        'https://u:a/b/s3cr3tTOKEN@example.invalid/m.git'; do
+        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git' 'https://u:s3cr3tTOKEN@[::1]:8443/m.git' \
+        'https://s3cr3tTOKEN@example.invalid:8443/a@b/m.git'; do
         printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "refused: userinfo in $v" "2" "$rc"
         assert_contains "userinfo: names the rule" "source must not carry a user name or password in its URL" "$out"
         assert_not_contains "userinfo: the secret is not printed" "s3cr3tTOKEN" "$out"
     done
-    # A query or a fragment is refused without printing it.
+    # A query or a fragment is refused without printing it: anywhere in an
+    # https:// URL, and in a file:// URL's authority (its path may hold
+    # '?' and '#', below).
     for v in 'https://example.invalid/m.git?token=s3cr3tTOKEN' 'https://example.invalid/m.git#s3cr3tTOKEN' \
-        'file:///srv/m.git?s3cr3tTOKEN'; do
+        'file://h?s3cr3tTOKEN/srv/m.git'; do
         printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "refused: query or fragment in $v" "2" "$rc"
@@ -1753,10 +1755,25 @@ test_source_keys() {
         assert_not_contains "query or fragment: the secret is not printed" "s3cr3tTOKEN" "$out"
     done
     # Still accepted: a port with an '@' later in the path, an ordinary
-    # repository URL, a file URL, and a path form holding '@'.
-    for v in $'source=https://example.invalid:8443/m/x@y.git\nsource_ref=main' \
-        $'source=https://example.invalid/owner/repo.git\nsource_ref=main' \
-        $'source=file:///srv/abs/path.git\nsource_ref=main' 'source=/abs/dir@2/manifest.yaml'; do
+    # repository URL, a file URL, and a path form holding '@'. By the URL
+    # grammar the authority ends at the first '/' after '//', and only
+    # there can a user name or password be: an '@' or ':' in the path, a
+    # port and a bracketed IPv6 host are ordinary, and '?' and '#' in a
+    # file:// path are characters of the path, as in the path form.
+    # https://u:s3cr3t/TOKEN@... and https://u:a/b/TOKEN@... were refused
+    # as a password holding '/' before; by the grammar they are host 'u',
+    # port 's3cr3t' or 'a', and a path holding '@', so they are accepted
+    # (git would fail on the port), as is https://user:123/abc@h/x.
+    for v in 'https://example.invalid:8443/m/x@y.git' 'https://example.invalid/owner/repo.git' \
+        'file:///srv/abs/path.git' 'https://[::1]:8443/a@b' 'https://[::1]/x@y' \
+        'https://h/x:y@z/m.git' 'file:///srv/a:b@c/m.git' 'file:///tmp/a#b' 'file:///srv/m.git?x' \
+        'https://user:123/abc@h/x' 'https://u:s3cr3t/TOKEN@example.invalid/m.git' \
+        'https://u:a/b/TOKEN@example.invalid/m.git'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "still accepted: $v" "0" "$rc"
+    done
+    for v in 'source=/abs/dir@2/manifest.yaml' 'source=/tmp/a#b'; do
         printf '%s\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "still accepted: ${v//$'\n'/ }" "0" "$rc"

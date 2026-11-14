@@ -806,32 +806,27 @@ _project_file_value_error() {
             # are cloned and built, so it must not be open to change on the
             # way. A value with a scheme (any case, with or without '//')
             # may hold a credential, so no refusal of one prints it, and a
-            # user name or password before the host is refused outright.
+            # user name or password is refused outright.
             local lower authority
             lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
             if [[ "$lower" =~ ^[a-z][a-z0-9+.-]*: ]]; then
+                # By the URL grammar the authority is the text after '//' up
+                # to the next '/' (or the end), and a user name or password
+                # can only be there, before an '@'. An '@' or ':' after that
+                # '/' is part of the path; a port or a bracketed IPv6 host
+                # in the authority is ordinary.
                 authority="${value#*:}"
                 authority="${authority#//}"
                 authority="${authority%%/*}"
-                # A password may hold '/', so the part before the first '@'
-                # is looked at too: a ':' there that does not start a port
-                # (digits, then '/' or the '@') is a password.
-                local before_at port
-                before_at="${value#*:}"
-                before_at="${before_at#//}"
-                if [[ "$before_at" == *@* ]]; then
-                    before_at="${before_at%%@*}"
-                    port="${before_at#*:}"
-                    port="${port%%/*}"
-                    if [[ "$before_at" == *:* ]] && ! [[ "$port" =~ ^[0-9]+$ ]]; then
-                        authority="@"
-                    fi
-                fi
                 if [[ "$authority" == *@* ]]; then
                     echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
                     return 1
                 fi
-                if [[ "$value" == *[?#]* ]]; then
+                # After a file:// URL's authority comes a path, where '?' and
+                # '#' are ordinary characters, as in the path form.
+                local query_part="$value"
+                [[ "$lower" == file:* ]] && query_part="$authority"
+                if [[ "$query_part" == *[?#]* ]]; then
                     echo "source must not have a query or a fragment (the part from '?' or '#'; the value is not shown: it may hold a token): name the repository's URL alone, and keep credentials in a git credential helper"
                     return 1
                 fi
