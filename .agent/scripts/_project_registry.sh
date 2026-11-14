@@ -813,8 +813,26 @@ _project_file_value_error() {
                 authority="${value#*:}"
                 authority="${authority#//}"
                 authority="${authority%%/*}"
+                # A password may hold '/', so the part before the first '@'
+                # is looked at too: a ':' there that does not start a port
+                # (digits, then '/' or the '@') is a password.
+                local before_at port
+                before_at="${value#*:}"
+                before_at="${before_at#//}"
+                if [[ "$before_at" == *@* ]]; then
+                    before_at="${before_at%%@*}"
+                    port="${before_at#*:}"
+                    port="${port%%/*}"
+                    if [[ "$before_at" == *:* ]] && ! [[ "$port" =~ ^[0-9]+$ ]]; then
+                        authority="@"
+                    fi
+                fi
                 if [[ "$authority" == *@* ]]; then
                     echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
+                    return 1
+                fi
+                if [[ "$value" == *[?#]* ]]; then
+                    echo "source must not have a query or a fragment (the part from '?' or '#'; the value is not shown: it may hold a token): name the repository's URL alone, and keep credentials in a git credential helper"
                     return 1
                 fi
                 if [[ "$lower" == http://* ]]; then

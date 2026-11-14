@@ -1735,12 +1735,31 @@ test_source_keys() {
     for v in 'https://alice:s3cr3tTOKEN@example.invalid/m.git' 'https://s3cr3tTOKEN@example.invalid/m.git' \
         'file://s3cr3tTOKEN@localhost/srv/m.git' 'HTTPS://bob:s3cr3tTOKEN@example.invalid/m.git' \
         'https:bob:s3cr3tTOKEN@example.invalid/m.git' 'Http://bob:s3cr3tTOKEN@example.invalid/m.git' \
-        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git'; do
+        'ftp://bob:s3cr3tTOKEN@example.invalid/m.git' 'https://u:s3cr3t/TOKEN@example.invalid/m.git' \
+        'https://u:a/b/s3cr3tTOKEN@example.invalid/m.git'; do
         printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "refused: userinfo in $v" "2" "$rc"
         assert_contains "userinfo: names the rule" "source must not carry a user name or password in its URL" "$out"
         assert_not_contains "userinfo: the secret is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # A query or a fragment is refused without printing it.
+    for v in 'https://example.invalid/m.git?token=s3cr3tTOKEN' 'https://example.invalid/m.git#s3cr3tTOKEN' \
+        'file:///srv/m.git?s3cr3tTOKEN'; do
+        printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "refused: query or fragment in $v" "2" "$rc"
+        assert_contains "query or fragment: names the rule" "source must not have a query or a fragment" "$out"
+        assert_not_contains "query or fragment: the secret is not printed" "s3cr3tTOKEN" "$out"
+    done
+    # Still accepted: a port with an '@' later in the path, an ordinary
+    # repository URL, a file URL, and a path form holding '@'.
+    for v in $'source=https://example.invalid:8443/m/x@y.git\nsource_ref=main' \
+        $'source=https://example.invalid/owner/repo.git\nsource_ref=main' \
+        $'source=file:///srv/abs/path.git\nsource_ref=main' 'source=/abs/dir@2/manifest.yaml'; do
+        printf '%s\n' "$v" | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "still accepted: ${v//$'\n'/ }" "0" "$rc"
     done
     # Any other refusal of a URL-like value does not print it either.
     for v in 'HTTPS://example.invalid/s3cr3tTOKEN.git' $'https://example.invalid/s3cr3tTOKEN\x01.git' \
