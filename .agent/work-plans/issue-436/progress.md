@@ -1630,3 +1630,45 @@ The branch was level with origin/main at the start (0 behind); no merge.
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1009 passed, 0 failed, 0 skipped. `test_project_file.sh`: 619 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 152 s, every hook Passed or Skipped. On intermediate commits, shellcheck (SC1007, empty assignments written as `''`) and flake8 (a docstring line over 100) stopped the first attempt; fixed before committing.
 - Not verified: the resolver suite on Python 3.10 (CI's job); a real ssh prompt or a real stalled ssh connect; the signal handlers off the main thread (they are then not installed, as the code says); BSD/macOS.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-14 00:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a092a5a393b905218, resume 3 of 3)
+**Verdict**: changes-requested
+
+**PR**: #480 at `3fe6662a`
+**Depth**: Deep (reason: whole-diff tier, ~4,300 lines over 18 files with untrusted remote content; this check's subject is the fix diff `36171597..3fe6662a`, 9 files, +332 -51)
+**Must-fix**: 1 | **Suggestions**: 5
+
+The two must-fix and five suggestions of the review at `88250e07` are closed, with one new defect introduced by the signal fix. Checks against the code:
+- SIGTERM and SIGHUP while git runs kill git's group and leave no partial clone; the handlers are restored on every exit from `_run_git`, including a timeout, an exception and KeyboardInterrupt; off the main thread a clone still works (all reproduced by the adversarial reviewer).
+- Discarding git's stderr loses nothing: it was never printed. A wrong URL or a missing ref still gives "failed to clone its extends base (git exited with status N)".
+- A quoted or bracketed URL is not printed; slashed passwords, queries and fragments are refused without the value.
+- The askpass change covers `ls-remote` and every leaf fetch, the full-fetch fallback included. A configured `credential.helper` still runs and the user's `core.askPass` does not (reproduced).
+- The comment on what the limit ends is now accurate. Suggestion 5 was not needed: the plain-clone control is at `test_extends_safety.py:96-103` and asserts that both "filter" and "post-checkout" fire.
+
+This reviewer's runs at the head: `test_ros2_colcon.sh` 1009 passed, 0 failed, 0 skipped; `test_project_file.sh` 619 passed, 0 failed. The adversarial reviewer's resolver run gave 318 passed, 2 failed (the two known 3.14 path-length cases).
+
+CI on `3fe6662a` at 00:27: Validate Documentation, Validate Adapter Contract and ros-manifest tests passed in both runs; both Lint (pre-commit) jobs were pending; the job log was not yet readable. On the previous head `36171597` (same resolver code as `88250e07`), CI's log shows Python 3.10.22, `test_extends_safety.py ......` and "316 passed".
+
+### Decision summary
+
+**What changed**: A `ros2_colcon` project can take its manifest, in the new format, from the settings keys `source`, `source_ref` and `source_path`: an absolute path, or an `https://` or `file://` git URL fetched afresh by each `setup` and `sync`, resolved with the workspace's `ros-manifest` for the registry line's role and distro into a generated directory that `configs/manifest-resolved` is relinked to, under a lock, with readers pinned and a failed fetch or resolve leaving the previous result live. The leaf fetch and the resolver's `extends` clones run no user hook, filter, askpass or terminal prompt, use https, ssh and file only, and are time-limited; a `source` URL holding credentials, a query or a fragment is refused without printing it.
+
+**Reviews and outcomes**: Narrow check of the fix pass after the second review of this pull request: both must-fix and all five suggestions are closed. One new must-fix, mechanical: the resolver now catches SIGHUP and SIGTERM even when they were ignored, so a resolver started under `nohup` (or `nohup adapter setup`) dies on a hangup that it used to survive, and a library caller's own SIGTERM handler never runs (reproduced). 5 suggestions. Codex ran; Gemini failed (tool call denied in headless mode, issue 364).
+
+**Open human calls**: None.
+
+**Verified**: `test_ros2_colcon.sh` 1009/0/0 and `test_project_file.sh` 619/0 run by this reviewer at `3fe6662a`; the resolver suite 318 passed, 2 failed (known 3.14 cases); the nohup regression, the handler restoration, the credential helper and the URL cases reproduced by the adversarial reviewer; CI read with `gh pr checks 480` (Lint pending) and the previous head's ros-manifest log read.
+
+**Recommendation**: needs-work: leave an ignored SIGHUP or SIGTERM alone and put back the previous handler (not SIG_DFL) before re-delivering, with a test under an ignored SIGHUP; then merge.
+
+### Findings
+- [ ] (must-fix) `_run_git` installs its handler over `SIG_IGN`, and `resolve_chain` forces `SIG_DFL` and kills itself, so a resolver under `nohup` (or `nohup adapter setup`, which inherits the ignore) now dies on a hangup (reproduced: "Hangup", rc 129), and a caller's own SIGTERM handler and `finally` never run (reproduced, rc 143). Leave an ignored signal alone; restore the previous handler and re-deliver; add a test — `tools/ros-manifest/src/ros_manifest/extends.py:162`
+- [ ] (suggestion) The handler is installed before `Popen` forks; a signal after the fork but before `proc` is set leaves a git in its own session unkilled and unbounded (reading only, not reproduced). Install the handlers after `Popen` returns, or block the signals around it — `tools/ros-manifest/src/ros_manifest/extends.py:171`
+- [ ] (suggestion) With git's stderr now discarded, test_a_timed_out_clone_returns_soon_after_the_limit no longer tests the 2 s bound: it passes in 1.02 s with a plain `communicate()` (reproduced), and its comment "inherits git's stderr" is wrong. Have the holder keep git's stdout open, or drop the test — `tools/ros-manifest/tests/test_extends_safety.py:215`
+- [ ] (suggestion) Digits after ':' followed by '/' count as a port, so `https://user:123/abc@h/x` and `https://u:1/2@h/x` are accepted while carrying a password that git echoes in its errors (reproduced) — `.agent/scripts/_project_registry.sh:816`
+- [ ] (suggestion) Ordinary values are refused as credentials: `https://[::1]:8443/a@b` and `https://[::1]/x@y` (the ':' inside the IPv6 brackets), `https://h/x:y@z/m.git` and `file:///srv/a:b@c/m.git` (a ':' and '@' in the path); and `file:///tmp/a#b` is refused while the path form `/tmp/a#b` is accepted (reproduced) — `.agent/scripts/_project_registry.sh:816`
+- [ ] (suggestion) The PR body's proposed sentence (a) "No refusal of a `source` value that contains `://` or `@` prints that value" is untrue: the cross-key refusals still print it ("source '$src' is a URL, so source_ref ... is required", `_project_registry.sh:1221`, `:1225`), harmless only because a value that reaches them has passed the credential check. Sentence (c) "until the time limit" is untrue for an ssh already prompting on the terminal: the limit ends git, not that ssh — PR #480 body
