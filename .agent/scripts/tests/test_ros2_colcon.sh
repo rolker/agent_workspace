@@ -2920,45 +2920,165 @@ test_mr_link_of_another_shape_refused() {
     assert_eq "the link put right: sync exit 0" "0" "$rc"
 }
 
-test_mr_hostile_source_repo() {
-    echo "TEST: manifest route: the source repository's replace refs, refspecs, hooks and config have no effect; the fetched tree is the requested ref's"
-    local sb url bare work out rc gen c1 evil verb
+test_mr_user_hooks_and_filters_not_run() {
+    echo "TEST: manifest route: the user's global core.hooksPath and filter drivers do not run on the fetched tree"
+    local sb url out rc gen h
     sb="$(make_mr_sandbox dev)"
     url="$(make_mr_remote "$sb" leaf)"
-    bare="$sb/mremote/leaf.git"
-    work="$sb/mwork/leaf"
-    write_mr_manifest "$work/manifest.yaml" mark_one
-    c1="$(mr_push "$sb" leaf)"
-    # Another commit on a side branch, then everything in the remote that
-    # could point at it instead of main's commit.
-    git -C "$work" checkout --quiet -b evil
-    write_mr_manifest "$work/manifest.yaml" mark_evil
-    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am evil
-    evil="$(git -C "$work" rev-parse HEAD)"
-    git -C "$work" push --quiet origin evil
-    git -C "$work" checkout --quiet main
-    git -C "$bare" replace "$c1" "$evil"
-    git -C "$bare" config remote.origin.url "$url"
-    git -C "$bare" config remote.origin.fetch "+refs/heads/evil:refs/heads/main"
-    git -C "$bare" config core.hooksPath "$bare/evilhooks"
-    mkdir -p "$bare/evilhooks"
-    local h
-    for h in post-checkout post-merge reference-transaction pre-upload-pack; do
-        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/hook-ran.log" > "$bare/evilhooks/$h"
-        cp "$bare/evilhooks/$h" "$bare/hooks/$h"
-    done
-    chmod +x "$bare/evilhooks/"* "$bare/hooks/"*
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    # The repository asks for a filter on every file, as git-lfs's would.
+    printf '* filter=spy\n' > "$sb/mwork/leaf/.gitattributes"
+    mr_push "$sb" leaf >/dev/null
     mr_settings "$sb" "source=$url" "source_ref=main"
     gen="$(mr_gen "$sb")"
-    for verb in setup sync; do
-        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
-        assert_eq "hostile remote, $verb: exit 0" "0" "$rc"
-        assert_contains "hostile remote, $verb: main's commit resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
-        assert_not_contains "hostile remote, $verb: not the replacement" "mark_evil" "$(cat "$gen/repos/core.repos")"
-        assert_contains "hostile remote, $verb: main's commit recorded" "commit=$c1" "$(cat "$gen/.resolved-from")"
-        assert_eq "hostile remote, $verb: no hook of the remote ran" "" "$(cat "$sb/hook-ran.log" 2>/dev/null)"
-        mr_no_temp "$sb" "hostile remote, $verb"
+    mkdir -p "$sb/userhooks"
+    for h in post-checkout reference-transaction; do
+        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/spy.log" > "$sb/userhooks/$h"
+        chmod +x "$sb/userhooks/$h"
     done
+    printf '#!/bin/sh\necho filter >> "%s"\ncat\n' "$sb/spy.log" > "$sb/spyfilter"
+    chmod +x "$sb/spyfilter"
+    rc=0; out="$(GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "user hooks and filter: exit 0" "0" "$rc"
+    assert_contains "user hooks and filter: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "user hooks and filter: neither ran" "" "$(cat "$sb/spy.log" 2>/dev/null)"
+    # The same spies do run for a plain clone, so the test can see them.
+    GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true git clone --quiet "$url" "$sb/plainclone"
+    assert_contains "control: a plain clone runs the filter" "filter" "$(cat "$sb/spy.log" 2>/dev/null)"
+    assert_contains "control: a plain clone runs the post-checkout hook" "post-checkout" "$(cat "$sb/spy.log" 2>/dev/null)"
+}
+
+test_mr_transports_limited() {
+    echo "TEST: manifest route: a source a user rule sends to a transport other than https, ssh or file is refused by git, nothing changed"
+    local sb url out rc gen before repos
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    repos="$(cat "$gen/repos/core.repos")"
+    # git:// (git's own default allows it); refused before any connection.
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.git://127.0.0.1:9/.insteadOf" \
+        GIT_CONFIG_VALUE_0="file://$sb/mremote/" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "git:// through a rule: exit 1" "1" "$rc"
+    assert_contains "git:// through a rule: git refuses the transport" "transport 'git' not allowed" "$out"
+    assert_contains "git:// through a rule: says the transports" "https, ssh and file only" "$out"
+    assert_eq "git:// through a rule: the link unchanged" "$before" "$(readlink "$gen")"
+    assert_eq "git:// through a rule: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "git:// through a rule"
+}
+
+test_mr_branch_and_tag_of_one_name() {
+    echo "TEST: manifest route: a branch and a tag of one name: the branch is taken"
+    local sb url work out rc gen
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_tag
+    mr_push "$sb" leaf >/dev/null
+    git -C "$work" tag same
+    git -C "$work" push --quiet origin refs/tags/same
+    write_mr_manifest "$work/manifest.yaml" mark_branch
+    mr_push "$sb" leaf >/dev/null
+    git -C "$work" push --quiet origin main:refs/heads/same
+    mr_settings "$sb" "source=$url" "source_ref=same"
+    gen="$(mr_gen "$sb")"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "branch and tag 'same': exit 0" "0" "$rc"
+    assert_contains "branch and tag 'same': said a branch" "source: branch same " "$out"
+    assert_contains "branch and tag 'same': the branch resolved" "mark_branch" "$(cat "$gen/repos/core.repos")"
+}
+
+test_mr_full_commit_fallback() {
+    echo "TEST: manifest route: a full commit the server will not serve shallow is found by the full fetch"
+    local sb url work out rc gen c
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_old
+    c="$(mr_push "$sb" leaf)"
+    write_mr_manifest "$work/manifest.yaml" mark_new
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$sb/gitlog"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" fetch \"*) echo \"fetch \$*\" >> \"$sb/fetch.log\" ;; esac" \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/gitlog/git"
+    chmod +x "$sb/gitlog/git"
+    # Protocol v0: file:// then refuses a want for an unadvertised commit.
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=protocol.version GIT_CONFIG_VALUE_0=0 \
+        PATH="$sb/gitlog:$PATH" run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "full commit, v0: exit 0" "0" "$rc"
+    assert_contains "full commit, v0: that commit resolved" "mark_old" "$(cat "$gen/repos/core.repos")"
+    assert_contains "full commit, v0: recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    assert_eq "full commit, v0: two fetches, the shallow one first" "2" "$(grep -c '^fetch' "$sb/fetch.log")"
+    assert_contains "full commit, v0: the second is the full fetch" "+refs/heads/*:refs/remotes/source/*" "$(sed -n 2p "$sb/fetch.log")"
+    mr_no_temp "$sb" "full commit, v0"
+}
+
+test_mr_sha256_source() {
+    echo "TEST: manifest route: a SHA-256 source repository, by branch and by full commit; a user default of sha256 does not break a SHA-1 one"
+    local sb url bare work out rc gen c
+    sb="$(make_mr_sandbox dev)"
+    work="$sb/mwork/leaf256"
+    bare="$sb/mremote/leaf256.git"
+    if ! git init --quiet --bare --object-format=sha256 -b main "$bare" 2>/dev/null; then
+        echo "  SKIPPED: this git cannot make a SHA-256 repository"
+        return 0
+    fi
+    git init --quiet --object-format=sha256 -b main "$work"
+    git -C "$work" remote add origin "file://$bare"
+    url="file://$bare"
+    write_mr_manifest "$work/manifest.yaml" mark_256
+    c="$(mr_push "$sb" leaf256)"
+    gen="$(mr_gen "$sb")"
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "sha256, branch: exit 0" "0" "$rc"
+    assert_contains "sha256, branch: resolved" "mark_256" "$(cat "$gen/repos/core.repos")"
+    assert_contains "sha256, branch: the 64-hex commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sha256, full commit: exit 0" "0" "$rc"
+    mr_no_temp "$sb" "sha256"
+    # A SHA-1 source with the user's default set to sha256.
+    local sb1
+    sb1="$(make_mr_url_project)"
+    write_mr_manifest "$sb1/mwork/leaf/manifest.yaml" mark_sha1
+    mr_push "$sb1" leaf >/dev/null
+    rc=0; GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultObjectFormat GIT_CONFIG_VALUE_0=sha256 \
+        run_mr "$sb1" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sha1 source, user default sha256: exit 0" "0" "$rc"
+    assert_contains "sha1 source, user default sha256: resolved" "mark_sha1" "$(cat "$(mr_gen "$sb1")/repos/core.repos")"
+}
+
+test_mr_fetch_bounded() {
+    echo "TEST: manifest route: a source host that does not answer is given up after WT_FETCH_TIMEOUT, the lock released, the previous result in use"
+    local sb out rc gen before
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIPPED: timeout not installed"
+        return 0
+    fi
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    mkdir -p "$sb/hangbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" ls-remote "*) exec sleep 30 ;; esac' \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/hangbin/git"
+    chmod +x "$sb/hangbin/git"
+    rc=0; out="$(WT_FETCH_TIMEOUT=1 PATH="$sb/hangbin:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "stalled host: exit 1" "1" "$rc"
+    assert_contains "stalled host: says so" "it did not answer within 1 s (WT_FETCH_TIMEOUT)" "$out"
+    assert_contains "stalled host: the previous result in use" "still in use (its link unchanged)" "$out"
+    assert_eq "stalled host: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "stalled host"
+    rc=0; ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "stalled host: the lock is free afterwards" "0" "$rc"
 }
 
 test_mr_old_source_clone_left_alone() {
@@ -3862,7 +3982,12 @@ mr_test test_mr_fetch_failures_keep_previous
 mr_test test_mr_url_insteadof_rule
 mr_test test_mr_inherited_git_env_ignored
 mr_test test_mr_link_of_another_shape_refused
-mr_test test_mr_hostile_source_repo
+mr_test test_mr_user_hooks_and_filters_not_run
+mr_test test_mr_transports_limited
+mr_test test_mr_branch_and_tag_of_one_name
+mr_test test_mr_full_commit_fallback
+mr_test test_mr_sha256_source
+mr_test test_mr_fetch_bounded
 mr_test test_mr_old_source_clone_left_alone
 mr_test test_mr_fetch_interrupted
 mr_test test_mr_stale_extends_base

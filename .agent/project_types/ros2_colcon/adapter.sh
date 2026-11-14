@@ -657,7 +657,7 @@ _rc_route() {
 
 # Is the source a git URL (else an absolute path to the manifest file)?
 _rc_source_is_url() {
-    [[ "${ACTIVE_PROJECT_SOURCE:-}" =~ ^(https?|file):// ]]
+    [[ "${ACTIVE_PROJECT_SOURCE:-}" =~ ^(https|file):// ]]
 }
 
 # The project's name for messages.
@@ -727,13 +727,43 @@ _rc_resolver_bin() {
     echo "$main/.venv/bin/ros-manifest"
 }
 
+# The transports the fetch may use, stated on its command line as the
+# resolver's extends clone states them (tools/ros-manifest extends.py):
+# https, ssh (a user's url.*.insteadOf rule may send https to an ssh
+# mirror) and file, nothing else.
+_RC_TRANSPORTS=(-c protocol.allow=never -c protocol.https.allow=always
+    -c protocol.ssh.allow=always -c protocol.file.allow=always)
+
 # git in the temporary repository <src> (a fresh `git init`, so only the
 # user's own global and system configuration applies, never the source
-# repository's): no prompt, no submodules, and fd 8 and 9 closed.
+# repository's): no prompt, no submodules, no hooks (a user's global
+# core.hooksPath included), no fsmonitor, the transports above, the
+# repository-locating variables cleared and fd 8 and 9 closed (_rc_nofd).
 _rc_src_git() {  # <src> <git args...>
     local src="$1"
     shift
-    GIT_TERMINAL_PROMPT=0 _rc_nofd git -c submodule.recurse=false -C "$src" "$@"
+    GIT_TERMINAL_PROMPT=0 _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
+}
+
+# The same, for a call that asks the source's host (ls-remote, fetch):
+# bounded as repo_pin's calls are (_adapter_bounded_git, WT_FETCH_TIMEOUT,
+# default 60 s), so a stalled host cannot hold the source lock. Exit 124
+# or 137 when the limit ended it.
+_rc_src_net() {  # <src> <git args...>
+    local src="$1"
+    shift
+    _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
+}
+
+# What failed in a call to the source's host, for messages.
+_rc_net_why() {  # <exit status>
+    if [ "$1" -eq 124 ] || [ "$1" -eq 137 ]; then
+        echo "it did not answer within $(_adapter_git_limit) s (WT_FETCH_TIMEOUT)"
+    else
+        echo "git's message above: offline, a wrong URL, or a transport this fetch does not allow (https, ssh and file only)"
+    fi
 }
 
 # The commit the live resolved manifest was resolved from, when it came
@@ -752,7 +782,7 @@ _rc_live_commit() {
 # cleanup removes on every exit. A failure returns 1, the previously
 # resolved manifest and its link as they were.
 _rc_source_fetch() {
-    local url ref spath src kind sha old remote fetched=0
+    local url ref spath src kind sha old remote fetched=0 rc=0
     _RC_SRC_FILE=""
     _RC_SRC_COMMIT=""
     url="${ACTIVE_PROJECT_SOURCE:-}"
@@ -770,15 +800,26 @@ _rc_source_fetch() {
     src="${_RC_RESOLVE_TMP:?}.src"
     local kept="the previously resolved manifest, if any, is still in use (its link unchanged)"
     # --template= : no hooks or other files copied into the new repository.
-    if ! mkdir -- "$src" || ! _rc_src_git "$src" init --quiet --template= >/dev/null; then
+    # The object format is stated (a user's init.defaultObjectFormat must
+    # not decide it) and matched to the remote's below.
+    if ! mkdir -- "$src" || ! _rc_src_git "$src" init --quiet --template= --object-format=sha1 >/dev/null; then
         echo "ERROR: cannot make the temporary repository $src for fetching source $url; $kept" >&2
         return 1
     fi
     echo "source: fetching '$ref' from $url"
-    # The remote names the kind: a branch first, then a tag.
-    if ! remote="$(_rc_src_git "$src" ls-remote -- "$url" "refs/heads/$ref" "refs/tags/$ref")"; then
-        echo "ERROR: cannot reach source $url (git's message above: offline, a wrong URL, or a transport git refused); $kept" >&2
+    # The remote names the kind: a branch first, then a tag. HEAD is asked
+    # too, only for the length of the remote's object names.
+    remote="$(_rc_src_net "$src" ls-remote -- "$url" HEAD "refs/heads/$ref" "refs/tags/$ref")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: cannot reach source $url ($(_rc_net_why "$rc")); $kept" >&2
         return 1
+    fi
+    # A SHA-256 remote: the temporary repository is made again to match.
+    if [[ "$(head -n 1 <<< "$remote")" =~ ^[0-9a-f]{64}[[:space:]] ]]; then
+        if ! rm -rf -- "${src:?}/.git" || ! _rc_src_git "$src" init --quiet --template= --object-format=sha256 >/dev/null; then
+            echo "ERROR: cannot make the temporary SHA-256 repository $src for fetching source $url; $kept" >&2
+            return 1
+        fi
     fi
     if awk -F'\t' -v r="refs/heads/$ref" '$2 == r { f = 1 } END { exit !f }' <<< "$remote"; then
         kind=branch
@@ -792,8 +833,9 @@ _rc_source_fetch() {
     fi
     if [ "$kind" != commit ]; then
         # One ref, one commit deep, into FETCH_HEAD only.
-        if ! _rc_src_git "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "refs/$([ "$kind" = branch ] && echo heads || echo tags)/$ref"; then
-            echo "ERROR: cannot fetch $kind '$ref' of source $url (git's message above); $kept" >&2
+        _rc_src_net "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "refs/$([ "$kind" = branch ] && echo heads || echo tags)/$ref" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "ERROR: cannot fetch $kind '$ref' of source $url ($(_rc_net_why "$rc")); $kept" >&2
             return 1
         fi
         sha="$(_rc_src_git "$src" rev-parse --verify --quiet "FETCH_HEAD^{commit}")" || sha=""
@@ -802,14 +844,15 @@ _rc_source_fetch() {
         # not serve it so, and an abbreviated name, take a full fetch of the
         # remote's branches and tags.
         if [[ "$ref" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] \
-            && _rc_src_git "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "$ref" 2>/dev/null; then
+            && _rc_src_net "$src" fetch --quiet --depth 1 --no-tags --no-recurse-submodules -- "$url" "$ref" 2>/dev/null; then
             fetched=1
-        elif _rc_src_git "$src" fetch --quiet --no-tags --no-recurse-submodules -- "$url" \
-            '+refs/heads/*:refs/remotes/source/*' '+refs/tags/*:refs/tags/*'; then
-            fetched=1
+        else
+            _rc_src_net "$src" fetch --quiet --no-tags --no-recurse-submodules -- "$url" \
+                '+refs/heads/*:refs/remotes/source/*' '+refs/tags/*:refs/tags/*' || rc=$?
+            [ "$rc" -eq 0 ] && fetched=1
         fi
         if [ "$fetched" -eq 0 ]; then
-            echo "ERROR: cannot fetch source $url to look for commit '$ref' (git's message above); $kept" >&2
+            echo "ERROR: cannot fetch source $url to look for commit '$ref' ($(_rc_net_why "$rc")); $kept" >&2
             return 1
         fi
         sha="$(_rc_src_git "$src" rev-parse --verify --quiet "$ref^{commit}" 2>/dev/null)" || sha=""
@@ -817,6 +860,14 @@ _rc_source_fetch() {
             echo "ERROR: source_ref '$ref' is not a branch or tag of $url, nor a commit it holds; $kept" >&2
             return 1
         fi
+    fi
+    # No attribute of the fetched tree may select a filter, an encoding or a
+    # line-ending conversion from the user's configuration (git-lfs's
+    # filter would contact a host the repository names).
+    if ! mkdir -p "$src/.git/info" \
+        || ! printf '%s\n' '* -filter -text -ident -working-tree-encoding' > "$src/.git/info/attributes"; then
+        echo "ERROR: cannot write $src/.git/info/attributes; $kept" >&2
+        return 1
     fi
     if [ -z "$sha" ] || ! _rc_src_git "$src" -c advice.detachedHead=false checkout --quiet --detach "$sha"; then
         echo "ERROR: cannot check out $kind '$ref' of source $url in $src; $kept" >&2
