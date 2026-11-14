@@ -868,6 +868,17 @@ _rc_resolve_begin() {
         echo "ERROR: $link is not the link the adapter writes (a directory or file is there); move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes) and rerun" >&2
         return 1
     fi
+    # The sweep keeps the directory the link names; a link written another
+    # way (./name, an absolute path) would have its target swept, so it is
+    # refused before anything is swept or fetched.
+    local target
+    if [ -L "$link" ]; then
+        target="$(readlink -- "$link")"
+        if ! [[ "$target" =~ ^manifest-resolved\.gen-[A-Za-z0-9]{6}$ ]]; then
+            echo "ERROR: $link points at '$target', not at a manifest-resolved.gen-XXXXXX name beside it as the adapter writes it; nothing was removed or fetched. If it names a generated directory in $configs, write the link with the name alone (cd $configs && ln -sfn manifest-resolved.gen-XXXXXX manifest-resolved); otherwise remove the link and run setup" >&2
+            return 1
+        fi
+    fi
     [ "${_RC_SOURCE_LOCKED:-0}" -eq 1 ] && _rc_resolve_sweep "$configs"
     _RC_RESOLVE_LINK="$link"
     tmp="$(mktemp -d "$configs/manifest-resolved.gen-XXXXXX")" || return 1

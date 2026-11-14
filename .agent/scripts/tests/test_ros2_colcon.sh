@@ -2896,6 +2896,30 @@ test_mr_inherited_git_env_ignored() {
     assert_contains "inherited GIT_*: its commit recorded" "commit=$(git -C "$sb/mwork/leaf" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
 }
 
+test_mr_link_of_another_shape_refused() {
+    echo "TEST: manifest route: a link rewritten as ./name or an absolute path is refused before anything is swept or fetched"
+    local sb gen cfg live shape out rc
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    live="$(readlink "$gen")"
+    mkdir -p "$cfg/manifest-resolved.gen-Left01"
+    for shape in "./$live" "$cfg/$live"; do
+        ln -sfn "$shape" "$gen"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "link '$shape': exit 1" "1" "$rc"
+        assert_contains "link '$shape': says what the link is" "points at '$shape', not at a manifest-resolved.gen-XXXXXX name" "$out"
+        assert_contains "link '$shape': how to put it right" "ln -sfn manifest-resolved.gen-XXXXXX manifest-resolved" "$out"
+        assert_not_contains "link '$shape': nothing fetched" "source: fetching" "$out"
+        assert_eq "link '$shape': the link as it was" "$shape" "$(readlink "$gen")"
+        assert_eq "link '$shape': its directory kept" "yes" "$([ -f "$cfg/$live/layers.txt" ] && echo yes || echo no)"
+        assert_eq "link '$shape': nothing swept" "yes" "$([ -d "$cfg/manifest-resolved.gen-Left01" ] && echo yes || echo no)"
+    done
+    ln -sfn "$live" "$gen"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "the link put right: sync exit 0" "0" "$rc"
+}
+
 test_mr_hostile_source_repo() {
     echo "TEST: manifest route: the source repository's replace refs, refspecs, hooks and config have no effect; the fetched tree is the requested ref's"
     local sb url bare work out rc gen c1 evil verb
@@ -3837,6 +3861,7 @@ mr_test test_mr_url_follows_remote
 mr_test test_mr_fetch_failures_keep_previous
 mr_test test_mr_url_insteadof_rule
 mr_test test_mr_inherited_git_env_ignored
+mr_test test_mr_link_of_another_shape_refused
 mr_test test_mr_hostile_source_repo
 mr_test test_mr_old_source_clone_left_alone
 mr_test test_mr_fetch_interrupted
