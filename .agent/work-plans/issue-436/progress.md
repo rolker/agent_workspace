@@ -1490,3 +1490,17 @@ Line counts: adapter.sh 2036 before this pass, 2154 after; test_ros2_colcon.sh 3
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 151 s, every hook Passed or Skipped; pre-commit does not show which suites validate-script-tests ran on a pass.
 - Not verified: one run of test_project_file.sh, right after the registry edit, reported 566 passed and 1 failed; the failing line was not captured, and three later runs (one with identical content to the commit) passed 567/567. BSD/macOS paths (`mv -h`, no flock, `touch -r` and `cksum` are POSIX but untested there). The ssh transport is allowed but not exercised (no network). The `ext::` case is not tested separately (git refuses it by default either way).
 - Follow-up named, not done: the bootstrap route's `remote get-url origin` check (adapter.sh `_rc_bootstrap_manifest`) applies `url.*.insteadOf`; it predates this branch.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 23:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+
+"Fix all, then publish (Recommended)"
+
+His answer to Q1 at the round-6 checkpoint (the entry before the newest Implementation), recorded here now that its first half is done: the option as worded to him was one fix pass for the round-6 findings and his transport answer, then the pull request is opened; its own review and the merge gate read the fixes, and nothing merges without his answer; no seventh pre-push round. He was not asked again.
+
+What the host checked before recording this: the fix pass wrote its `## Implementation` entry (committed as `68cd7901`, exit contract OK); it reports all 13 round-6 items and the transport decision fixed, each undone on its own with its test then failing, and the full pre-commit run with no SKIP passing (exit 0, 151 s) on the final tree; the worktree is clean and level with origin/main; all 74 commits on the branch carry the agent identity. The fix pass reported one run of `test_project_file.sh` at 566 passed, 1 failed, with the failing assertion not captured; the host ran that suite six times in a row here, 567 passed, 0 failed each time, so the failure is not reproduced and its cause is not known. This last fix pass has had no pre-push review: the review on the pull request is the check on it.
