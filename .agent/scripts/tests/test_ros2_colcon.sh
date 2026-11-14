@@ -2869,6 +2869,33 @@ test_mr_url_insteadof_rule() {
     assert_eq "without the rule: exit 1" "1" "$rc"
 }
 
+test_mr_inherited_git_env_ignored() {
+    echo "TEST: manifest route: GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE in the environment (as inside a git hook) neither redirect the fetch nor touch the repository they name"
+    local sb url victim hash out rc verb gen
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    victim="$sb/victim"
+    git init --quiet -b main "$victim"
+    echo mine > "$victim/notes.txt"
+    git -C "$victim" add notes.txt
+    git -C "$victim" -c user.name=t -c user.email=t@t commit --quiet -m mine
+    hash="$(mr_tree_hash "$victim")"
+    for verb in setup sync; do
+        [ "$verb" = sync ] && { write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two; mr_push "$sb" leaf >/dev/null; }
+        rc=0; out="$(GIT_DIR="$victim/.git" GIT_WORK_TREE="$victim" GIT_INDEX_FILE="$victim/.git/index" \
+            run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "inherited GIT_*, $verb: exit 0" "0" "$rc"
+        assert_eq "inherited GIT_*, $verb: the named repository byte for byte unchanged" "$hash" "$(mr_tree_hash "$victim")"
+        mr_no_temp "$sb" "inherited GIT_*, $verb"
+    done
+    assert_contains "inherited GIT_*: the remote's tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_contains "inherited GIT_*: its commit recorded" "commit=$(git -C "$sb/mwork/leaf" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
+}
+
 test_mr_hostile_source_repo() {
     echo "TEST: manifest route: the source repository's replace refs, refspecs, hooks and config have no effect; the fetched tree is the requested ref's"
     local sb url bare work out rc gen c1 evil verb
@@ -3809,6 +3836,7 @@ mr_test test_mr_url_source_branch_tag_commit
 mr_test test_mr_url_follows_remote
 mr_test test_mr_fetch_failures_keep_previous
 mr_test test_mr_url_insteadof_rule
+mr_test test_mr_inherited_git_env_ignored
 mr_test test_mr_hostile_source_repo
 mr_test test_mr_old_source_clone_left_alone
 mr_test test_mr_fetch_interrupted

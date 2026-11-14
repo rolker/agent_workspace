@@ -140,9 +140,26 @@ _rc_unpin_manifest_dir() {
 
 # Run a program without the reader pin (fd 8) or the source lock (fd 9),
 # so a child that outlives the adapter (git's auto gc, a ROS daemon a test
-# starts) holds neither.
+# starts) holds neither, and without the variables that tell git which
+# repository to use (_rc_git_local_vars): git sets GIT_DIR, GIT_INDEX_FILE
+# and the like for every hook, and a `git -C <dir>` would still act on the
+# repository they name.
 _rc_nofd() {
-    "$@" 8<&- 9>&-
+    _rc_git_local_vars
+    ( unset $_RC_GIT_LOCAL_VARS; "$@" ) 8<&- 9>&-
+}
+
+# The repository-locating names `git rev-parse --local-env-vars` prints,
+# with git's list as of 2.53 as a floor, less GIT_CONFIG_PARAMETERS and
+# GIT_CONFIG_COUNT, which carry the user's own `-c` and environment
+# configuration (credentials, url.*.insteadOf) and are kept. Computed once
+# per run into _RC_GIT_LOCAL_VARS.
+_rc_git_local_vars() {
+    [ -n "${_RC_GIT_LOCAL_VARS:-}" ] && return 0
+    local floor="GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG GIT_OBJECT_DIRECTORY GIT_DIR GIT_WORK_TREE GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE GIT_INDEX_FILE GIT_NO_REPLACE_OBJECTS GIT_REPLACE_REF_BASE GIT_PREFIX GIT_SHALLOW_FILE GIT_COMMON_DIR" more
+    # shellcheck disable=SC2086
+    more="$( unset $floor; git rev-parse --local-env-vars 2>/dev/null 8<&- 9>&- )" || more=""
+    _RC_GIT_LOCAL_VARS="$(printf '%s\n' $floor $more | grep -vx -e GIT_CONFIG_PARAMETERS -e GIT_CONFIG_COUNT | LC_ALL=C sort -u | tr '\n' ' ')"
 }
 
 # Remove a generated directory no run is reading (with flock only; the
