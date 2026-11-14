@@ -637,11 +637,16 @@ _rc_bootstrap_manifest() {
 # is cloned afresh, the resolver's cache being a sibling of the new
 # generated directory removed on every exit; the resolver protects that
 # clone itself (tools/ros-manifest README: no user hook, filter driver or
-# submodule, git's repository variables cleared, no prompt, the same three
-# transports) and bounds each of its git calls by ROS_MANIFEST_GIT_TIMEOUT
-# (default 60 s). So while the source lock is held, every call that asks
-# a remote has a limit: WT_FETCH_TIMEOUT for the leaf, the resolver's for
-# each base.
+# submodule, git's repository variables cleared, no terminal and no
+# askpass, the same three transports) and bounds each of its git calls by
+# ROS_MANIFEST_GIT_TIMEOUT (default 60 s). So while the source lock is
+# held, every call that asks a remote has a limit: WT_FETCH_TIMEOUT for
+# the leaf, the resolver's for each base. The leaf's limit ends git, not
+# an ssh git started, which may outlive it (until its own connect
+# timeout when stalled while connecting) but holds neither the adapter
+# nor the lock; the resolver's ends git's whole process group. On the
+# leaf no askpass runs, but an ssh started from a terminal can still ask
+# for a passphrase or a host key there, until the limit.
 #
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none

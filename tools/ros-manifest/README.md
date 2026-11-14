@@ -136,10 +136,14 @@ git's repository-locating environment variables (`GIT_DIR`, `GIT_WORK_TREE`, `GI
 and the rest of `git rev-parse --local-env-vars`, which git sets inside a hook) are removed;
 `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, the user's own settings such as credentials and
 `url.<base>.insteadOf`, are kept. git runs in a session of its own with no terminal, stdin
-closed and `GIT_TERMINAL_PROMPT=0`, so neither git nor ssh can wait on a prompt. Each git call
-that asks the remote is limited to `ROS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in
-the environment to change it): when the limit runs out git and everything it started are killed
-and `resolve` fails, saying so.
+closed, `GIT_TERMINAL_PROMPT=0`, an empty `core.askPass`, no `GIT_ASKPASS` or `SSH_ASKPASS`
+and `SSH_ASKPASS_REQUIRE=never`, so neither git nor ssh can ask for a password or passphrase;
+a credential helper you configured still runs. Each git call that asks the remote is limited to
+`ROS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in the environment to change it): when
+the limit runs out, git and everything still in its process group are killed (a program that
+left the group, which ssh does not, is not) and `resolve` fails, saying so. An interrupt, a
+SIGTERM or a SIGHUP while git runs kills git's group the same way, removes the partial clone and
+ends `resolve` by that signal.
 
 A `url` or `ref` that fails its rule is never printed, nor is a group's `default` that is not
 `include` or `exclude`; a failed `extends` clone gives git's exit status, not its output. Some

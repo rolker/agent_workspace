@@ -113,9 +113,11 @@ source "$_ADAPTER_SCRIPT_DIR/_project_registry.sh"
 # git's, or 124 (137 after the -k grace) when the limit ended it.
 # `timeout --foreground` (where this timeout has it) keeps git in the
 # caller's process group, so a Ctrl-C reaches git at once instead of
-# after the limit; the limit then ends git itself, not programs git
-# started (an ssh git started exits when git's end of its pipe closes, or
-# at its own timeout).
+# after the limit. The limit then ends git itself, not programs git
+# started: an ssh git started may outlive it, until it notices git is gone
+# or, when it is stalled while connecting, until its own connect timeout.
+# It holds a pipe to git only, so the caller's command substitution
+# returns at the limit and no lock the caller closed for git is held.
 # Usage: _adapter_bounded_git -C <repo> ls-remote ...
 _adapter_git_limit() {
     local limit="${WT_FETCH_TIMEOUT:-60}"
