@@ -2950,6 +2950,32 @@ test_mr_user_hooks_and_filters_not_run() {
     assert_contains "control: a plain clone runs the post-checkout hook" "post-checkout" "$(cat "$sb/spy.log" 2>/dev/null)"
 }
 
+test_mr_extends_base_no_user_hooks_or_filters() {
+    echo "TEST: manifest route: the resolver's clone of a file:// extends base runs no user hook or filter driver"
+    local sb burl out rc gen h
+    sb="$(make_mr_sandbox dev)"
+    burl="$(make_mr_remote "$sb" base)"
+    write_mr_base "$sb/mwork/base/base.yaml" base_one
+    printf '* filter=spy\n' > "$sb/mwork/base/.gitattributes"
+    mr_push "$sb" base >/dev/null
+    write_mr_manifest "$sb/m/manifest.yaml" "" "$burl" main
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$sb/userhooks"
+    for h in post-checkout reference-transaction; do
+        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/spy.log" > "$sb/userhooks/$h"
+        chmod +x "$sb/userhooks/$h"
+    done
+    printf '#!/bin/sh\necho filter >> "%s"\ncat\n' "$sb/spy.log" > "$sb/spyfilter"
+    chmod +x "$sb/spyfilter"
+    rc=0; out="$(GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "extends base, user hooks and filter: setup exit 0" "0" "$rc"
+    assert_contains "extends base, user hooks and filter: the base resolved" "base_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "extends base, user hooks and filter: neither ran" "" "$(cat "$sb/spy.log" 2>/dev/null)"
+}
+
 test_mr_transports_limited() {
     echo "TEST: manifest route: a source a user rule sends to a transport other than https, ssh or file is refused by git, nothing changed"
     local sb url out rc gen before repos
@@ -3980,6 +4006,7 @@ mr_test test_mr_url_insteadof_rule
 mr_test test_mr_inherited_git_env_ignored
 mr_test test_mr_link_of_another_shape_refused
 mr_test test_mr_user_hooks_and_filters_not_run
+mr_test test_mr_extends_base_no_user_hooks_or_filters
 mr_test test_mr_transports_limited
 mr_test test_mr_branch_and_tag_of_one_name
 mr_test test_mr_full_commit_fallback

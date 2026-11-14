@@ -1,11 +1,16 @@
 """Resolve a manifest's `extends` chain into an ordered list, base first.
 
 Local-path extends resolve relative to the declaring manifest's own directory. Git-backed
-extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --branch
-<ref> --depth 1 -- <url> <dest>`, with the transports allowed stated on the command line, and
-re-used on a cache hit (same url+ref). The url and ref have already passed the allow-lists in
-``schema.py``. This module only ever invokes `git clone` (and `git rev-parse` on the clone) — it
-never fetches over the network in tests, which point `url` at a local git repository through a
+extends (`url` + `ref` + `path`) are cloned into a cache directory with `git clone --no-checkout
+--branch <ref> --depth 1 -- <url>`, then checked out with `git reset --hard`, and re-used on a
+cache hit (same url+ref). The clone is untrusted content, so: the transports git may use are
+stated on the command line and in GIT_ALLOW_PROTOCOL; no hook, fsmonitor, submodule, filter
+driver or text conversion of the user's configuration runs on it; git's repository-locating
+environment variables are removed; git has no terminal and no askpass to prompt with; each call
+that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default 60); and the clone
+is made in a temporary sibling and renamed into the cache only when complete. The url and ref
+have already passed the allow-lists in ``schema.py``. This module invokes `git clone`, `git
+reset` and `git rev-parse` on the clone; tests point `url` at a local git repository through a
 `file://` URL (a plain local path is not an accepted url).
 
 Provenance labels: a manifest read from the local filesystem is labelled with its file path. A
@@ -20,7 +25,11 @@ its own path.
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
+import signal
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -40,6 +49,127 @@ _TRANSPORT_POLICY = (
     "-c",
     "protocol.file.allow=always",
 )
+
+# What a clone of an untrusted base never does with the user's configuration: run a hook (a
+# global `core.hooksPath` included) or an fsmonitor command. The checkout happens after the
+# clone, with every filter, text conversion, ident and encoding attribute switched off in
+# `.git/info/attributes`, so no filter driver (git-lfs's would contact a host the base names)
+# runs on the tree. No submodule is fetched.
+_SAFETY = (
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "submodule.recurse=false",
+)
+_NO_FILTERS = "* -filter -text -ident -working-tree-encoding\n"
+
+# The time limit on each git call that asks a remote, in seconds: ROS_MANIFEST_GIT_TIMEOUT,
+# default 60. When it runs out, git and everything it started are killed and the clone fails.
+_TIMEOUT_VAR = "ROS_MANIFEST_GIT_TIMEOUT"
+_TIMEOUT_DEFAULT = 60
+
+# Names git reads to find a repository (`git rev-parse --local-env-vars`, git 2.53's list as a
+# floor). Inherited from a hook they would send the clone into another repository, so they are
+# removed from git's environment. GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT carry the user's
+# own configuration (credentials, url.*.insteadOf) and are kept; the options above are on the
+# command line, which wins over them.
+_LOCAL_ENV_FLOOR = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+)
+_KEEP = {"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"}
+
+
+def _git_env() -> dict:
+    """The environment for git: the repository-locating names removed, no prompt (terminal,
+    askpass), and the transports allowed by the environment too, which a user's own
+    `protocol.<name>.allow=always` cannot widen."""
+    env = {k: v for k, v in os.environ.items() if k not in _LOCAL_ENV_FLOOR}
+    names = set()
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"], capture_output=True, env=env
+        ).stdout
+        names = set(out.decode("ascii", errors="replace").split())
+    except FileNotFoundError:
+        pass
+    for name in names - _KEEP:
+        env.pop(name, None)
+    for name in ("GIT_ASKPASS", "SSH_ASKPASS"):
+        env.pop(name, None)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GIT_ALLOW_PROTOCOL"] = "https:ssh:file"
+    return env
+
+
+def _git_timeout() -> float:
+    raw = os.environ.get(_TIMEOUT_VAR, "")
+    if raw == "":
+        return float(_TIMEOUT_DEFAULT)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = -1.0
+    if not value > 0:
+        raise ManifestError(
+            f"{_TIMEOUT_VAR}='{raw}' is not a number of seconds above 0; unset it for the"
+            f" default, {_TIMEOUT_DEFAULT}"
+        )
+    return value
+
+
+class _GitTimeout(Exception):
+    pass
+
+
+def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, bytes]:
+    """Run git with `args` in its own session (no controlling terminal, so ssh cannot ask for a
+    passphrase), stdin closed, output captured as bytes. With `timeout`, git and everything it
+    started are killed when it runs out (_GitTimeout); an interrupt kills them too."""
+    try:
+        proc = subprocess.Popen(
+            ["git", *args],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_git_env(),
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        raise ManifestError(_NO_GIT) from None
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        raise _GitTimeout() from None
+    except BaseException:
+        _kill_group(proc)
+        raise
+    return proc.returncode, out
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    try:
+        if hasattr(os, "killpg"):
+            os.killpg(proc.pid, signal.SIGKILL)
+        else:  # pragma: no cover - not POSIX
+            proc.kill()
+    except ProcessLookupError:
+        pass
+    proc.communicate()
 
 
 def _cache_key(url: str, ref: str) -> str:
@@ -73,48 +203,75 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path, source: str = "a manife
             f" ({exc.strerror or 'an OS error'})"
         ) from None
     dest = cache_dir / _cache_key(url, ref)
+    # Only a finished clone is ever at `dest`: it is made in a temporary sibling and renamed
+    # there, so a failed, timed-out or interrupted clone leaves no entry a later run trusts.
     if dest.is_dir():
         return dest
+    timeout = _git_timeout()
+    tmp = Path(tempfile.mkdtemp(prefix=f".{dest.name}.partial-", dir=cache_dir))
     try:
-        result = subprocess.run(
-            [
-                "git",
-                *_TRANSPORT_POLICY,
-                "clone",
-                "--branch",
-                ref,
-                "--depth",
-                "1",
-                "--",
-                url,
-                str(dest),
-            ],
-            capture_output=True,
-        )
-    except FileNotFoundError:
-        raise ManifestError(_NO_GIT) from None
-    if result.returncode != 0:
-        raise ManifestError(
-            f"{source}: failed to clone its extends base (git exited with status"
-            f" {result.returncode})"
-        )
+        _clone_into(url, ref, tmp / "clone", timeout, source)
+        try:
+            os.rename(tmp / "clone", dest)
+        except OSError:
+            if not dest.is_dir():  # not another run's finished clone
+                raise
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return dest
 
 
-def _head_commit(clone_dir: Path, source: str) -> str:
+def _clone_into(url: str, ref: str, dest: Path, timeout: float, source: str) -> None:
+    """Clone `ref` of `url` one commit deep into `dest`, with no hook and no filter: the clone
+    checks nothing out, and the checkout comes after the attributes that switch filters off."""
+    clone = [
+        *_TRANSPORT_POLICY,
+        *_SAFETY,
+        "clone",
+        "--quiet",
+        "--no-checkout",
+        "--template=",
+        "--no-recurse-submodules",
+        "--branch",
+        ref,
+        "--depth",
+        "1",
+        "--",
+        url,
+        str(dest),
+    ]
+    _git_step(clone, timeout, source, "clone")
+    info = dest / ".git" / "info"
+    info.mkdir(parents=True, exist_ok=True)
+    (info / "attributes").write_text(_NO_FILTERS)
+    _git_step(
+        [*_SAFETY, "-C", str(dest), "reset", "--quiet", "--hard"], timeout, source, "check out"
+    )
+
+
+def _git_step(args: List[str], timeout: float, source: str, what: str) -> None:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
-            capture_output=True,
+        code, _ = _run_git(args, timeout)
+    except _GitTimeout:
+        raise ManifestError(
+            f"{source}: could not {what} its extends base within {timeout:g} s (the limit;"
+            f" {_TIMEOUT_VAR} raises it); nothing is kept in the cache"
+        ) from None
+    if code != 0:
+        raise ManifestError(
+            f"{source}: failed to {what} its extends base (git exited with status {code})"
         )
-    except FileNotFoundError:  # a cache hit skips the clone, so this is git's first run
-        raise ManifestError(_NO_GIT) from None
-    if result.returncode != 0:
+
+
+def _head_commit(clone_dir: Path, source: str) -> str:
+    # A cache hit skips the clone, so this may be git's first run (_run_git says so).
+    code, out = _run_git([*_SAFETY, "-C", str(clone_dir), "rev-parse", "HEAD"])
+    if code != 0:
         raise ManifestError(
             f"{source}: cannot read the commit of its extends base (clone: {clone_dir}; git"
-            f" exited with status {result.returncode})"
+            f" exited with status {code})"
         )
-    return result.stdout.decode("ascii", errors="replace").strip()
+    return out.decode("ascii", errors="replace").strip()
 
 
 @dataclass(frozen=True)
