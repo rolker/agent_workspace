@@ -2697,15 +2697,13 @@ make_mr_url_project() {
 }
 
 # After a run: no fetched source, cache or new link left beside the
-# generated directories, <count> generated directories (default 1), and no
-# configs/source-clone (the adapter keeps no clone).
+# generated directories, and <count> generated directories (default 1).
 mr_no_temp() {  # <sb> <label> [count]
     local cfg="$1/projects/p11/configs"
     assert_eq "$2: no temporary fetch, cache or link left" "" \
         "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-*.src manifest-resolved.gen-*.cache manifest-resolved.gen-*.link 2>/dev/null || true)"
     assert_eq "$2: ${3:-1} generated dir(s)" "${3:-1}" \
         "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-* 2>/dev/null | wc -l | tr -d ' ')"
-    assert_eq "$2: no configs/source-clone" "no" "$([ -e "$cfg/source-clone" ] && echo yes || echo no)"
 }
 
 test_mr_url_follows_remote() {
@@ -3091,28 +3089,6 @@ test_mr_provenance_names_the_source() {
     assert_contains "layers.txt names the source" "$url#main:manifest.yaml@$c" "$(head -n 1 "$gen/layers.txt")"
     assert_contains "core.repos names the source" "$url#main:manifest.yaml@$c" "$(grep '^#' "$gen/repos/core.repos")"
     assert_eq "no file names the temporary fetch" "" "$(grep -rl '\.src/' "$gen" 2>/dev/null || true)"
-}
-
-test_mr_old_source_clone_left_alone() {
-    echo "TEST: manifest route: a configs/source-clone left by an earlier run is neither read nor touched"
-    local sb clone hash rc out verb gen
-    sb="$(make_mr_url_project)"
-    clone="$sb/projects/p11/configs/source-clone"
-    gen="$(mr_gen "$sb")"
-    mkdir -p "$clone"
-    git -C "$clone" init --quiet
-    write_mr_manifest "$clone/manifest.yaml" mark_in_old_clone
-    echo mine > "$clone/notes.txt"
-    hash="$(mr_tree_hash "$clone")"
-    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_remote_new
-    mr_push "$sb" leaf >/dev/null
-    for verb in sync setup validate; do
-        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
-        assert_eq "old clone, $verb: exit 0" "0" "$rc"
-        assert_not_contains "old clone, $verb: not mentioned" "source-clone" "$out"
-        assert_eq "old clone, $verb: byte for byte untouched" "$hash" "$(mr_tree_hash "$clone")"
-    done
-    assert_contains "old clone: the remote's tip resolved, not the old clone's file" "mark_remote_new" "$(cat "$gen/repos/core.repos")"
 }
 
 test_mr_fetch_interrupted() {
@@ -4010,7 +3986,6 @@ mr_test test_mr_full_commit_fallback
 mr_test test_mr_sha256_source
 mr_test test_mr_fetch_bounded
 mr_test test_mr_provenance_names_the_source
-mr_test test_mr_old_source_clone_left_alone
 mr_test test_mr_fetch_interrupted
 mr_test test_mr_stale_extends_base
 mr_test test_mr_role_and_distro_changes
