@@ -296,24 +296,34 @@ def test_a_callers_own_sigterm_handler_runs_after_git_is_killed(tmp_path):
         _stop(proc)
 
 
-def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
-    # A SIGTERM after git is forked but before `_run_git` holds it: git must still be killed.
+def _record_git(monkeypatch, then=None):
+    """Patch Popen to record git's own process (not the `git rev-parse --local-env-vars` that
+    _git_env runs first) and to call `then()` right after git is forked."""
     started = []
     real_popen = subprocess.Popen
 
-    def popen_then_signal(*args, **kwargs):
+    def popen(*args, **kwargs):
         child = real_popen(*args, **kwargs)
-        started.append(child)
-        os.kill(os.getpid(), signal.SIGTERM)
+        if "--local-env-vars" not in args[0]:
+            started.append(child)
+            if then is not None:
+                then()
         return child
 
-    monkeypatch.setattr(extends.subprocess, "Popen", popen_then_signal)
+    monkeypatch.setattr(extends.subprocess, "Popen", popen)
+    return started
+
+
+def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
+    # A SIGTERM after git is forked but before `_run_git` holds it: git must still be killed.
+    started = _record_git(monkeypatch, then=lambda: os.kill(os.getpid(), signal.SIGTERM))
     before = signal.getsignal(signal.SIGTERM)
     with pytest.raises(extends._Signalled):
         extends._run_git(["-c", "alias.hang=!sleep 30", "hang"], timeout=60)
     assert signal.getsignal(signal.SIGTERM) is before
-    assert started and started[0].poll() is not None, "git was left running"
+    assert len(started) == 1
     assert _group_gone_within(started[0].pid, 5), "git's group was left running"
+    started[0].communicate()
 
 
 @pytest.fixture
@@ -357,14 +367,7 @@ def test_handlers_and_mask_are_as_before_on_every_path(
         with pytest.raises(extends._GitTimeout):
             extends._run_git(_HANG, timeout=0.5)
     elif path == "signal":
-        real_popen = subprocess.Popen
-
-        def popen_then_signal(*args, **kwargs):
-            child = real_popen(*args, **kwargs)
-            os.kill(os.getpid(), signal.SIGTERM)
-            return child
-
-        monkeypatch.setattr(extends.subprocess, "Popen", popen_then_signal)
+        _record_git(monkeypatch, then=lambda: os.kill(os.getpid(), signal.SIGTERM))
         with pytest.raises(extends._Signalled):
             extends._run_git(_HANG, timeout=60)
     else:
