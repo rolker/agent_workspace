@@ -826,7 +826,13 @@ _project_file_value_error() {
                     return 1
                 fi
             elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
-                echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+                # A value holding '://' or '@' (a URL in quotes or brackets,
+                # say) may hold a credential: it is not shown.
+                if [[ "$value" == *://* ]] || [[ "$value" == *@* ]]; then
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository (a URL with nothing around it: no quotes or brackets), with no blanks or control characters (the value is not shown: it may hold a credential)"
+                else
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+                fi
                 return 1
             fi
             ;;

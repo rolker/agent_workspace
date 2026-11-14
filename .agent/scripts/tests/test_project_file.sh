@@ -1744,7 +1744,9 @@ test_source_keys() {
     done
     # Any other refusal of a URL-like value does not print it either.
     for v in 'HTTPS://example.invalid/s3cr3tTOKEN.git' $'https://example.invalid/s3cr3tTOKEN\x01.git' \
-        'https://example.invalid/a s3cr3tTOKEN.git' 'ftp://example.invalid/s3cr3tTOKEN.git'; do
+        'https://example.invalid/a s3cr3tTOKEN.git' 'ftp://example.invalid/s3cr3tTOKEN.git' \
+        '"https://u:s3cr3tTOKEN@example.invalid/m.git"' '<https://u:s3cr3tTOKEN@example.invalid/m.git>' \
+        'relative/u:s3cr3tTOKEN@m.yaml'; do
         printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
         rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
         assert_eq "refused: URL-like ${v//[[:cntrl:]]/?}" "2" "$rc"
