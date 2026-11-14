@@ -1799,6 +1799,27 @@ test_source_keys() {
         assert_contains "URL-like: names the rule" "source must be an absolute path to a file, or an https:// or file:// URL" "$out"
         assert_not_contains "URL-like: the value is not printed" "s3cr3tTOKEN" "$out"
     done
+    # A host is ASCII whatever the locale: under a UTF-8 locale where
+    # [A-Za-z] also matches 'é' and fullwidth letters, they are refused.
+    local utf8_locale="" loc
+    for loc in $(locale -a 2>/dev/null | grep -i 'utf-\?8'); do
+        if LC_ALL="$loc" bash -c '[[ "é" =~ ^[A-Za-z]$ ]]' 2>/dev/null; then
+            utf8_locale="$loc"; break
+        fi
+    done
+    if [ -z "$utf8_locale" ]; then
+        echo "  SKIP: non-ASCII host rows (no UTF-8 locale where [A-Za-z] matches 'é')"
+    else
+        for v in 'https://é/s3cr3tTOKEN' 'https://ｈ/s3cr3tTOKEN' 'https://hé.example/s3cr3tTOKEN'; do
+            printf 'source=%s\nsource_ref=main\n' "$v" | write_pfile "$sb" rc
+            rc=0; out="$(LC_ALL="$utf8_locale" ps_run "$sb" check rc 2>&1)" || rc=$?
+            assert_eq "refused under $utf8_locale: non-ASCII host in $v" "2" "$rc"
+            assert_not_contains "non-ASCII host: the value is not printed" "s3cr3tTOKEN" "$out"
+        done
+        printf 'source=https://h/%s\nsource_ref=main\n' 'é.git' | write_pfile "$sb" rc
+        rc=0; LC_ALL="$utf8_locale" ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+        assert_eq "accepted under $utf8_locale: a non-ASCII path" "0" "$rc"
+    fi
     printf 'source=https://e.invalid/m.git\nsource_ref=a/.hidden\n' | write_pfile "$sb" rc
     rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
     assert_eq "refused: a ref component starting with '.'" "2" "$rc"

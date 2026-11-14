@@ -764,6 +764,13 @@ _project_file_trim() {
     printf '%s' "$s"
 }
 
+# Whether $1 matches the extended regex $2 in the C locale, where [A-Za-z0-9]
+# is ASCII only (under en_US.UTF-8 it also matches 'é' and fullwidth letters).
+_project_matches_in_c() {
+    local LC_ALL=C
+    [[ "$1" =~ $2 ]]
+}
+
 # Check one value against its key's type. Prints the reason and returns 1
 # when the value is invalid.
 _project_file_value_error() {
@@ -821,7 +828,8 @@ _project_file_value_error() {
             local lower authority
             lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
             if [[ "$lower" =~ ^[a-z][a-z0-9+.-]*: ]]; then
-                if [[ "$value" =~ $https_re ]] || [[ "$value" =~ $file_re ]]; then
+                if { _project_matches_in_c "$value" "$https_re" || _project_matches_in_c "$value" "$file_re"; } \
+                    && [[ "$value" != *[[:space:][:cntrl:]]* ]]; then
                     return 0
                 fi
                 # The part before the path, however many '/' follow the
