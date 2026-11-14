@@ -3359,6 +3359,10 @@ test_mr_validate_link_missing_and_path_changed() {
     assert_contains "same size, same time: the edit is seen" "has changed since it was resolved (its content differs" "$out"
     run_mr "$sb" sync >/dev/null 2>&1
     rm -f "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "missing path source: validate says it is missing" "the source file $sb/m/manifest.yaml is missing or unreadable" "$out"
+    assert_not_contains "missing path source: no raw shell error" "No such file or directory" "$out"
+    assert_not_contains "missing path source: not called changed content" "its content differs" "$out"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "missing path source: exit 1" "1" "$rc"
     assert_contains "missing path source: named" "is not a readable file" "$out"

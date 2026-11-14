@@ -694,7 +694,7 @@ _rc_layer_lines() {
 # "<checksum> <size>" of a file's content (POSIX cksum), so any edit shows,
 # one that keeps the size and the second included.
 _rc_file_stamp() {
-    cksum < "$1" 2>/dev/null
+    { cksum < "$1"; } 2>/dev/null
 }
 
 # One source only, never a silent choice: on the manifest route every other
@@ -1293,7 +1293,9 @@ _rc_validate_manifest_route() {
     if [ "$source_changed" -eq 0 ] && [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && ! _rc_source_is_url; then
         stamp="$(_rc_file_stamp "$ACTIVE_PROJECT_SOURCE" || true)"
         got="$(_rc_resolved_from "$rf" file-stamp)"
-        if [ "$stamp" != "$got" ]; then
+        if [ -z "$stamp" ]; then
+            echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE is missing or unreadable; the resolved manifest is kept, and sync fails until source names a readable file" >&2
+        elif [ "$stamp" != "$got" ]; then
             echo "⚠️  WARNING: the source file $ACTIVE_PROJECT_SOURCE has changed since it was resolved (its content differs; run: .agent/scripts/adapter --project $name sync)" >&2
         fi
     fi
