@@ -3084,6 +3084,15 @@ test_mr_sha256_source() {
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "sha256, full commit: exit 0" "0" "$rc"
     mr_no_temp "$sb" "sha256"
+    # Its HEAD unborn (no branch main), the commit on another branch only.
+    git -C "$bare" symbolic-ref HEAD refs/heads/unborn
+    git -C "$work" push --quiet origin main:refs/heads/other ":refs/heads/main"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "sha256, unborn HEAD, full commit: exit 0" "0" "$rc"
+    mr_settings "$sb" "source=$url" "source_ref=${c:0:12}"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "sha256, unborn HEAD, abbreviated commit: exit 0" "0" "$rc"
+    assert_contains "sha256, unborn HEAD: the commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
     # A SHA-1 source with the user's default set to sha256.
     local sb1
     sb1="$(make_mr_url_project)"

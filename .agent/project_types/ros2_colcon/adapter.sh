@@ -820,15 +820,16 @@ _rc_source_fetch() {
         return 1
     fi
     echo "source: fetching '$ref' from $url"
-    # The remote names the kind: a branch first, then a tag. HEAD is asked
-    # too, only for the length of the remote's object names.
-    remote="$(_rc_src_net "$src" ls-remote -- "$url" HEAD "refs/heads/$ref" "refs/tags/$ref")" || rc=$?
+    # The remote names the kind: a branch first, then a tag. All its refs
+    # are listed, so the length of its object names is known even when its
+    # HEAD is unborn and source_ref is a commit.
+    remote="$(_rc_src_net "$src" ls-remote -- "$url")" || rc=$?
     if [ "$rc" -ne 0 ]; then
         echo "ERROR: cannot reach source $url ($(_rc_net_why "$rc")); $kept" >&2
         return 1
     fi
     # A SHA-256 remote: the temporary repository is made again to match.
-    if [[ "$(head -n 1 <<< "$remote")" =~ ^[0-9a-f]{64}[[:space:]] ]]; then
+    if grep -Eq '^[0-9a-f]{64}[[:space:]]' <<< "$remote"; then
         if ! rm -rf -- "${src:?}/.git" || ! _rc_src_git "$src" init --quiet --template= --object-format=sha256 >/dev/null; then
             echo "ERROR: cannot make the temporary SHA-256 repository $src for fetching source $url; $kept" >&2
             return 1
