@@ -606,24 +606,35 @@ _rc_bootstrap_manifest() {
 # source into <gen>.src, a sibling of the new generated directory, removed
 # after the resolve and on every exit path, signals included (a further
 # INT, TERM or HUP during that removal is ignored); a SIGKILL's leftover
-# is in the gen- family the sweep removes. The fetch goes into a fresh
-# `git init --template=`, so the source repository's config, hooks,
-# replace refs and refspecs never apply, while the user's own git
-# configuration (credentials, url.*.insteadOf) does; submodules are never
-# fetched, and nothing from the repository is run. ls-remote decides the
-# kind of source_ref (a branch, then a tag, else a commit of 7 to 64 hex
-# characters); a branch or tag is fetched one commit deep, a commit by its
-# full name one commit deep, or, when the server will not serve that (or
-# the name is abbreviated), by a full fetch of the remote's branches and
-# tags. The commit is checked out detached; no symbolic link along
-# source_path is followed. .resolved-from records source, source_ref,
-# source_path and the commit. A fetch failure (offline, a ref the remote
-# lacks, a refused transport) exits 1 and says the previous result is
-# still in use, its link unchanged. A configs/source-clone/ left by an
-# earlier version of this route is neither read nor removed. Local
-# manifest work uses the path form. Every `extends` base is cloned afresh,
-# the resolver's cache being a sibling of the new generated directory
-# removed on every exit.
+# is in the gen- family the sweep removes. A URL source is https:// or
+# file:// (the registry refuses plain http and a user name or password in
+# the URL), and the fetch names the transports git may use: https, ssh
+# (for a user's url.*.insteadOf rule) and file. The fetch goes into a
+# fresh `git init --template=` (SHA-1, or SHA-256 when the remote's object
+# names are), so the source repository's config, hooks, replace refs and
+# refspecs never apply, while the user's own git configuration
+# (credentials, url.*.insteadOf) does; GIT_DIR and the other variables
+# that name a repository are cleared for every program the adapter starts
+# (_rc_nofd); no hook runs (a global core.hooksPath included), no
+# attribute selects a filter or conversion (.git/info/attributes), no
+# submodule is fetched, and nothing from the repository is run. ls-remote
+# decides the kind of source_ref (a branch, then a tag, else a commit of
+# 7 to 64 hex characters); a branch or tag is fetched one commit deep, a
+# commit by its full name one commit deep, or, when the server will not
+# serve that (or the name is abbreviated), by a full fetch of the remote's
+# branches and tags. ls-remote and the fetches are bounded by
+# WT_FETCH_TIMEOUT (default 60 s), as repo_pin's calls are. The commit is
+# checked out detached; no symbolic link along source_path is followed.
+# .resolved-from records source, source_ref, source_path and the commit
+# (a path source: a checksum of its content, for validate), and the
+# generated files' provenance lines name url#ref:path@commit. A fetch
+# failure (offline, a ref the remote lacks, a refused transport, a host
+# that does not answer) exits 1 and says the previous result is still in
+# use, its link unchanged. setup and sync refuse a manifest-resolved link
+# written other than as the bare generated name, before anything is swept
+# or fetched. Local manifest work uses the path form. Every `extends` base
+# is cloned afresh, the resolver's cache being a sibling of the new
+# generated directory removed on every exit.
 #
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none

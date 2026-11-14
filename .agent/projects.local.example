@@ -78,8 +78,10 @@
 #   source                ros2_colcon only: the project's manifest in the
 #                         new format, resolved by the ros-manifest resolver
 #                         (make install-ros-manifest): an absolute path to
-#                         the file, or an http(s):// or file:// URL of a git
-#                         repository holding it. Not beside bootstrap_url.
+#                         the file, or an https:// or file:// URL of a git
+#                         repository holding it (not plain http://, no
+#                         user name or password; the fetch uses https, ssh
+#                         or file only). Not beside bootstrap_url.
 #                         A URL is fetched afresh by each setup and sync
 #                         into a temporary directory removed afterwards (no
 #                         clone is kept). To work on a manifest locally,
