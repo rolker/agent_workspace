@@ -1731,3 +1731,18 @@ Scope: the fix pass since the review at `3fe6662a` (entry 9379bb77). Prior must-
 - Resolver suite (Python 3.14): 327 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases); `test_extends_safety.py` passed 10 runs in a row after the reaping fix (c288cff7).
 - `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree: rc 0; `validate-script-tests` ran all 49 suites, all passed.
 - Not run on Python 3.10.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-14 08:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: address-findings
+
+"Defer F3 to #481, then go on (Recommended)"
+
+Q1 as put to him: the fix phase is recorded as partial; how should the loop go on? Shown to him: F1 (fixed), the `source` URL rule is an allow-list, only `https://host[:port]/path` and `file:///path` are accepted, and `https:///u:pw@h/x` is refused; the host ran `test_project_file.sh` at head `0aa0e45c` (692 passed, 0 failed) and tried seven values against the rule by hand. F2 (fixed), the resolver's cleanup after a signal runs with the two signals blocked; resolver suite 327 passed, 2 failed, the two known Python 3.14 cases. F3 (left open, the reason for "partial"), the suggestion about a signal in the first instant of the cleanup; the fixer's reason: "It cannot be closed in Python: an except clause cannot be entered and the mask changed in one step."; the window is the same size it was before this pull request. CI on the previous head had passed in full.
+
+The option he chose, as worded to him: the fix phase is run once more only to record F3 as deferred to follow-up issue #481 with the fixer's reason, and to write a complete entry; no code changes; then the narrow review for the merge gate, triage, and the merge question.
