@@ -184,6 +184,19 @@ def _gone_within(pid: int, seconds: float) -> bool:
     return False
 
 
+def _group_gone_within(pgid: int, seconds: float) -> bool:
+    # A killed member of git's group stays a zombie until its new parent reaps it, so the
+    # group may still answer for a moment after the kill.
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 def _resolver_with_stalled_clone(tmp_path, prelude="", limit="60"):
     """Start the resolver in a process of its own, cloning from an ssh remote whose "ssh"
     records its pid and then never answers; `prelude` runs first in that process. Returns the
@@ -300,8 +313,7 @@ def test_a_signal_while_git_is_being_started_still_kills_git(monkeypatch):
         extends._run_git(["-c", "alias.hang=!sleep 30", "hang"], timeout=60)
     assert signal.getsignal(signal.SIGTERM) is before
     assert started and started[0].poll() is not None, "git was left running"
-    with pytest.raises(ProcessLookupError):
-        os.killpg(started[0].pid, 0)
+    assert _group_gone_within(started[0].pid, 5), "git's group was left running"
 
 
 @pytest.fixture
@@ -379,8 +391,7 @@ def test_a_signal_while_git_is_being_killed_goes_to_the_previous_handler(
         extends._run_git(_HANG, timeout=0.5)
     _as_before(callers_handlers)
     assert callers_handlers["got"] == [signal.SIGTERM]
-    with pytest.raises(ProcessLookupError):
-        os.killpg(groups[0], 0)
+    assert _group_gone_within(groups[0], 5), "git's group was left running"
 
 
 def test_a_signal_while_the_handlers_are_put_back_goes_to_the_previous_handler(
