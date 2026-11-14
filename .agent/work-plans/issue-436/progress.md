@@ -1439,3 +1439,19 @@ A cold read of the branch after the owner's second design change (no kept clone)
 - [ ] (suggestion) The two-syncs lock test's "the second has not reached the resolver" rests on `sleep 1` and on a marker written when the flock wrapper starts, so a slow second run would pass without a lock — `.agent/scripts/tests/test_ros2_colcon.sh:3307`
 - [ ] (suggestion) Leftovers of the withdrawn designs: comments "origin/HEAD in the clone" (`_project_registry.sh:826`) and "the link and the clone unchanged" (`test_ros2_colcon.sh:3275`); the header and plan sentences about `configs/source-clone`, test_mr_old_source_clone_left_alone and mr_no_temp's source-clone assertion guard a directory only this unmerged branch ever made (a PR-note line suffices); design.md change-log row of the "modified clone is refused" design that never reached main (fold into the no-kept-clone row); plan step 2 still names `manifest-resolved.<timestamp>` — `docs/design.md:1037`
 - [ ] (suggestion) The path-source stamp is mtime in seconds plus size; an equal-size edit within the same second is invisible to validate; a `cksum` of the file would not be (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:668`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-13 22:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Q1 "Fix all, then publish (Recommended)"; Q2 "Refuse http, state transports (Recommended)".
+
+Q1 as put to him: how should this go on, after round 6 (Local Review (Pre-Push) at `346b009d`, a fresh reader after the kept clone was dropped) found 2 must-fix with the verdict "fix them and publish"? Shown to him: F1 `adapter.sh:716`, inherited git variables redirect the fetch: with `GIT_DIR` or `GIT_INDEX_FILE` set in the environment, as git sets for every hook, the temporary fetch and checkout go into another repository (reproduced: a victim repository's HEAD and index changed while setup exited 0); F2 `adapter.sh:1043`, the sweep removes the live result when the link was rewritten by hand as `./manifest-resolved.gen-...` or an absolute path; F3, the suggestions on hardening the fetch (the user's global filter drivers and checkout hooks run on the fetched tree; no time limit on the fetch while the lock is held; a SHA-256 remote fails; generated headers name a temporary path that no longer exists; a token in a URL would be echoed and stored); F4, the suggestions on tests and leftovers (the hostile-repository test passes under any implementation; the lock test relies on a one-second sleep; a distro change is not announced for existing worktrees; comments and one change-log row still describe the withdrawn designs). The option he chose, as worded to him: one fix pass for F1 to F4 and his Q2 answer, then the pull request is opened; its own review and the merge gate read the fixes, and nothing merges without his answer; saves a seventh pre-push round. The host told him it now agrees with the reviewer that the design has settled.
+
+Q2 as put to him: should `source` refuse plain `http://`, with the adapter stating which transports git may use (https, ssh for `insteadOf` rules, and file)? The reviewer's reason: plain http lets someone on the network swap the manifest that decides which repositories are cloned and built; the resolver already refuses it for `extends`. His answer: `source` accepts https and file URLs only, and the fetch names the transports git may use. The older `bootstrap_url` key is not changed.
+
+His Q1 answer also covers the step after this fix pass: once the fix pass has written its entry and its checks have passed, the host records the publish answer from these words and opens the pull request, with no seventh pre-push round.
