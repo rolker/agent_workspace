@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from ros_manifest import extends
 from ros_manifest.extends import resolve_chain
 from ros_manifest.schema import ManifestError
 
@@ -160,5 +161,33 @@ def test_a_user_rule_cannot_reach_another_transport(tmp_path, monkeypatch):
     # Control: with that configuration plain git does run it.
     subprocess.run(
         ["git", "ls-remote", "file:///alias/base.git"], capture_output=True, env=dict(os.environ)
+    )
+    assert marker.exists()
+
+
+def test_no_askpass_runs(tmp_path, monkeypatch):
+    # The user's askpass, by core.askPass and by GIT_ASKPASS and SSH_ASKPASS, is not run when git
+    # needs a password under the resolver's options and environment; plain git does run it.
+    marker = tmp_path / "askpass-ran"
+    spy = _script(tmp_path / "askpass-spy", f'touch "{marker}"\necho nope\n')
+    _user_config(monkeypatch, [("core.askPass", str(spy))])
+    monkeypatch.setenv("GIT_ASKPASS", str(spy))
+    monkeypatch.setenv("SSH_ASKPASS", str(spy))
+    ask = b"protocol=https\nhost=example.invalid\n\n"
+    subprocess.run(
+        ["git", *extends._SAFETY, "credential", "fill"],
+        input=ask,
+        capture_output=True,
+        env=extends._git_env(),
+        start_new_session=True,
+    )
+    assert not marker.exists()
+    # Control: plain git with the same configuration asks the spy.
+    subprocess.run(
+        ["git", "credential", "fill"],
+        input=ask,
+        capture_output=True,
+        env=dict(os.environ, GIT_TERMINAL_PROMPT="0"),
+        start_new_session=True,
     )
     assert marker.exists()

@@ -756,14 +756,19 @@ _RC_TRANSPORTS=(-c protocol.allow=never -c protocol.https.allow=always
 
 # git in the temporary repository <src> (a fresh `git init`, so only the
 # user's own global and system configuration applies, never the source
-# repository's): no prompt, no submodules, no hooks (a user's global
-# core.hooksPath included), no fsmonitor, the transports above, the
-# repository-locating variables cleared and fd 8 and 9 closed (_rc_nofd).
+# repository's): no terminal prompt and no askpass (GIT_TERMINAL_PROMPT=0,
+# an empty core.askPass, GIT_ASKPASS and SSH_ASKPASS empty,
+# SSH_ASKPASS_REQUIRE=never; a credential helper the user configured still
+# runs, and an ssh started from a terminal can still ask on it), no
+# submodules, no hooks (a user's global core.hooksPath included), no
+# fsmonitor, the transports above, the repository-locating variables
+# cleared and fd 8 and 9 closed (_rc_nofd).
 _rc_src_git() {  # <src> <git args...>
     local src="$1"
     shift
-    GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https:ssh:file _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
-        -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
+    GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https:ssh:file GIT_ASKPASS='' SSH_ASKPASS='' SSH_ASKPASS_REQUIRE=never \
+        _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.askPass= -C "$src" "$@"
 }
 
 # The same, for a call that asks the source's host (ls-remote, fetch):
@@ -774,8 +779,9 @@ _rc_src_git() {  # <src> <git args...>
 _rc_src_net() {  # <src> <git args...>
     local src="$1"
     shift
-    GIT_ALLOW_PROTOCOL=https:ssh:file _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
-        -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
+    GIT_ALLOW_PROTOCOL=https:ssh:file GIT_ASKPASS='' SSH_ASKPASS='' SSH_ASKPASS_REQUIRE=never \
+        _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+        -c core.hooksPath=/dev/null -c core.fsmonitor=false -c core.askPass= -C "$src" "$@"
 }
 
 # What failed in a call to the source's host, for messages.

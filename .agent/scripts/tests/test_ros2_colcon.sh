@@ -2918,6 +2918,39 @@ test_mr_link_of_another_shape_refused() {
     assert_eq "the link put right: sync exit 0" "0" "$rc"
 }
 
+test_mr_fetch_no_askpass() {
+    echo "TEST: manifest route: the user's askpass (core.askPass, GIT_ASKPASS, SSH_ASKPASS) does not run for the source fetch"
+    local sb url out rc realgit
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    printf '#!/bin/sh\ntouch "%s"\necho nope\n' "$sb/askpass-ran" > "$sb/askpass-spy"
+    chmod +x "$sb/askpass-spy"
+    # A git that, when the fetch asks the remote (ls-remote), asks for a
+    # password the way a host that wants one makes git do, with the same
+    # options and environment the adapter gave it.
+    realgit="$(command -v git)"
+    mkdir -p "$sb/askbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'opts=(); for a in "$@"; do [ "$a" = -C ] && break; opts+=("$a"); done' \
+        'case " $* " in *" ls-remote "*)' \
+        "    printf 'protocol=https\\nhost=example.invalid\\n\\n' | \"$realgit\" \"\${opts[@]}\" credential fill >/dev/null 2>&1 ;;" \
+        'esac' \
+        "exec \"$realgit\" \"\$@\"" > "$sb/askbin/git"
+    chmod +x "$sb/askbin/git"
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.askPass GIT_CONFIG_VALUE_0="$sb/askpass-spy" \
+        GIT_ASKPASS="$sb/askpass-spy" SSH_ASKPASS="$sb/askpass-spy" PATH="$sb/askbin:$PATH" \
+        run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "askpass: setup exit 0" "0" "$rc"
+    assert_eq "askpass: the user's askpass never ran" "no" "$([ -e "$sb/askpass-ran" ] && echo yes || echo no)"
+    # Control: plain git with the same configuration runs it.
+    printf 'protocol=https\nhost=example.invalid\n\n' | GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.askPass \
+        GIT_CONFIG_VALUE_0="$sb/askpass-spy" GIT_TERMINAL_PROMPT=0 git credential fill >/dev/null 2>&1 || true
+    assert_eq "control: plain git runs the askpass" "yes" "$([ -e "$sb/askpass-ran" ] && echo yes || echo no)"
+}
+
 test_mr_user_hooks_and_filters_not_run() {
     echo "TEST: manifest route: the user's global core.hooksPath and filter drivers do not run on the fetched tree"
     local sb url out rc gen h
@@ -4063,6 +4096,7 @@ mr_test test_mr_fetch_failures_keep_previous
 mr_test test_mr_url_insteadof_rule
 mr_test test_mr_inherited_git_env_ignored
 mr_test test_mr_link_of_another_shape_refused
+mr_test test_mr_fetch_no_askpass
 mr_test test_mr_user_hooks_and_filters_not_run
 mr_test test_mr_extends_base_no_user_hooks_or_filters
 mr_test test_mr_transports_limited

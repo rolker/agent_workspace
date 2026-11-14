@@ -62,6 +62,8 @@ _SAFETY = (
     "core.fsmonitor=false",
     "-c",
     "submodule.recurse=false",
+    "-c",
+    "core.askPass=",
 )
 _NO_FILTERS = "* -filter -text -ident -working-tree-encoding\n"
 
@@ -110,6 +112,7 @@ def _git_env() -> dict:
         env.pop(name, None)
     for name in ("GIT_ASKPASS", "SSH_ASKPASS"):
         env.pop(name, None)
+    env["SSH_ASKPASS_REQUIRE"] = "never"
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_ALLOW_PROTOCOL"] = "https:ssh:file"
     return env
