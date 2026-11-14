@@ -2993,6 +2993,21 @@ test_mr_transports_limited() {
     assert_eq "git:// through a rule: the link unchanged" "$before" "$(readlink "$gen")"
     assert_eq "git:// through a rule: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
     mr_no_temp "$sb" "git:// through a rule"
+    # ext:: which the user allowed (protocol.ext.allow=always): still refused.
+    printf '#!/bin/sh\ntouch "%s"\nexit 1\n' "$sb/ext-ran" > "$sb/ext-spy"
+    chmod +x "$sb/ext-spy"
+    rc=0; out="$(GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=protocol.ext.allow GIT_CONFIG_VALUE_0=always \
+        GIT_CONFIG_KEY_1="url.ext::$sb/ext-spy .insteadOf" GIT_CONFIG_VALUE_1="file://$sb/mremote/" \
+        run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "ext:: the user allowed, through a rule: exit 1" "1" "$rc"
+    assert_eq "ext:: the user allowed, through a rule: the command never ran" "no" "$([ -e "$sb/ext-ran" ] && echo yes || echo no)"
+    assert_eq "ext:: the user allowed, through a rule: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "ext:: the user allowed"
+    # Control: plain git with that configuration does run it.
+    GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=protocol.ext.allow GIT_CONFIG_VALUE_0=always \
+        GIT_CONFIG_KEY_1="url.ext::$sb/ext-spy .insteadOf" GIT_CONFIG_VALUE_1="file://$sb/mremote/" \
+        git ls-remote "$url" >/dev/null 2>&1 || true
+    assert_eq "control: plain git runs the ext:: command" "yes" "$([ -e "$sb/ext-ran" ] && echo yes || echo no)"
 }
 
 test_mr_branch_and_tag_of_one_name() {

@@ -742,7 +742,8 @@ _rc_resolver_bin() {
 # The transports the fetch may use, stated on its command line as the
 # resolver's extends clone states them (tools/ros-manifest extends.py):
 # https, ssh (a user's url.*.insteadOf rule may send https to an ssh
-# mirror) and file, nothing else.
+# mirror) and file, nothing else; GIT_ALLOW_PROTOCOL says the same in the
+# environment, which a user's own protocol.<name>.allow=always cannot widen.
 _RC_TRANSPORTS=(-c protocol.allow=never -c protocol.https.allow=always
     -c protocol.ssh.allow=always -c protocol.file.allow=always)
 
@@ -754,7 +755,7 @@ _RC_TRANSPORTS=(-c protocol.allow=never -c protocol.https.allow=always
 _rc_src_git() {  # <src> <git args...>
     local src="$1"
     shift
-    GIT_TERMINAL_PROMPT=0 _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+    GIT_TERMINAL_PROMPT=0 GIT_ALLOW_PROTOCOL=https:ssh:file _rc_nofd git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
         -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
 }
 
@@ -765,7 +766,7 @@ _rc_src_git() {  # <src> <git args...>
 _rc_src_net() {  # <src> <git args...>
     local src="$1"
     shift
-    _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
+    GIT_ALLOW_PROTOCOL=https:ssh:file _rc_nofd _adapter_bounded_git "${_RC_TRANSPORTS[@]}" -c submodule.recurse=false \
         -c core.hooksPath=/dev/null -c core.fsmonitor=false -C "$src" "$@"
 }
 
