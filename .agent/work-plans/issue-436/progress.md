@@ -1455,3 +1455,38 @@ Q1 as put to him: how should this go on, after round 6 (Local Review (Pre-Push) 
 Q2 as put to him: should `source` refuse plain `http://`, with the adapter stating which transports git may use (https, ssh for `insteadOf` rules, and file)? The reviewer's reason: plain http lets someone on the network swap the manifest that decides which repositories are cloned and built; the resolver already refuses it for `extends`. His answer: `source` accepts https and file URLs only, and the fetch names the transports git may use. The older `bootstrap_url` key is not changed.
 
 His Q1 answer also covers the step after this fix pass: once the fix pass has written its entry and its checks have passed, the host records the publish answer from these words and opens the pull request, with no seventh pre-push round.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-13 22:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3a431ed800fc6f06, resume 1 of 3)
+
+**Branch**: feature/issue-436 at `9a07ff68`
+**Addressed**: Local Review (Pre-Push) at `00773e9e` (2026-11-13 19:14 -05:00), with the owner's Checkpoint answers (Q1 "Fix all, then publish", Q2 "Refuse http, state transports")
+**Commits**: 5074ba45, f651ae36, 81321c53, a8ef1147, 21be12ac, 99b7f22b, 92cd976b, fa646547, 2c182f7b, 9a07ff68
+
+### Actions
+- [x] (must-fix 1) Inherited `GIT_*`: `_rc_nofd`, through which every git, vcs, colcon and resolver call already goes, now unsets the names `git rev-parse --local-env-vars` lists (git 2.53's list as a floor), keeping `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT` because they carry the user's own configuration (deviation from the finding's "clear the list", stated in the code). This also covers `_rc_resolver_bin`, sync's package git calls and the bootstrap route's git calls. Test test_mr_inherited_git_env_ignored: setup and sync with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` naming a victim repository; it stays byte for byte unchanged and the result is right — f651ae36
+- [x] (must-fix 2) Link of another shape: `_rc_resolve_begin` refuses a link that is not the bare `manifest-resolved.gen-XXXXXX` name before any sweep or fetch, saying what it points at and how to rewrite it. Test test_mr_link_of_another_shape_refused (`./name` and absolute): nothing fetched, the link and its directory kept, a planted leftover not swept — 81321c53
+- [x] (suggestion) The user's hooks and filters: `-c core.hooksPath=/dev/null -c core.fsmonitor=false` on every git call on the temporary repository, and `* -filter -text -ident -working-tree-encoding` in its `.git/info/attributes` before the checkout. Test test_mr_user_hooks_and_filters_not_run (global hooks path and required filter driver through `GIT_CONFIG_COUNT`; a plain clone as control shows both spies do run) — a8ef1147
+- [x] (suggestion, owner's Q2) Transports: the registry refuses plain `http://` for `source` with the reason and what to use (5074ba45, rows in test_project_file.sh; `bootstrap_url` unchanged); the fetch passes `-c protocol.allow=never` and allows https, ssh and file, the form of `tools/ros-manifest/src/ros_manifest/extends.py`. Test test_mr_transports_limited: a `git://` reached through a user `insteadOf` rule is refused by git ("transport 'git' not allowed"), link and result unchanged — a8ef1147
+- [x] (suggestion) Distro notice: the "recreate worktrees" notice compares the layers and the distro (env.sh embeds both; not the role). test_mr_role_and_distro_changes asserts it for a distro change with the same layers — 99b7f22b
+- [x] (suggestion) SHA-256: the temporary repository is made with `--object-format=sha1` and made again as sha256 when ls-remote (which now also asks HEAD) shows 64-hex names. Test test_mr_sha256_source: a SHA-256 remote by branch and by full commit; a SHA-1 remote with a user `init.defaultObjectFormat=sha256` — a8ef1147
+- [x] (suggestion) Time limit: ls-remote and the fetches go through `_adapter_bounded_git` (`WT_FETCH_TIMEOUT`, default 60 s); the message says the host did not answer within the limit and that the previous result is still in use. Test test_mr_fetch_bounded (an ls-remote stub that sleeps, limit 1 s; the lock is free afterwards) — a8ef1147
+- [x] (suggestion) Provenance: for a URL source the `#` lines of every generated file name `url#ref:path@commit` in place of the temporary path. Test test_mr_provenance_names_the_source — 21be12ac
+- [x] (suggestion) Userinfo: `source` with a user name or password before the host is refused without printing the value; three rows with the secret asserted absent from the output — 5074ba45
+- [x] (suggestion) Tests: test_mr_hostile_source_repo removed; replaced by the user hooks and filter, inherited `GIT_*`, branch-and-tag-of-one-name (test_mr_branch_and_tag_of_one_name) and full-commit fallback (test_mr_full_commit_fallback: protocol v0 through `GIT_CONFIG_COUNT`, two fetches logged, the second the full one) tests — f651ae36, a8ef1147
+- [x] (suggestion) Lock test: a flock wrapper on the second sync's PATH writes ASK and, once flock returns, GOT; the first sync's held resolver writes GO when let go; the order must be `START ASK GO GOT START`; no sleep decides it — fa646547
+- [x] (suggestion) Leftovers: registry comment (5074ba45); the "link and the clone" test comment (fa646547); test_mr_old_source_clone_left_alone, mr_no_temp's and test_register_project.sh's source-clone checks (2c182f7b); the header and plan sentences, the folded design.md change-log row, plan step 2's `gen-XXXXXX` name (9a07ff68). PR-note line: "A `configs/source-clone/` left by an earlier run of this unmerged branch is no longer used; delete it by hand if present."
+- [x] (suggestion) Stamp: the path source's `file-stamp` is `cksum` of its content; the warning says the content differs. Test: an equal-size edit with the modification time put back (`touch -r`) is seen — 92cd976b
+
+Each adapter fix was checked to make its test fail when undone (one at a time, with the rest in place): the GIT env clearing, link shape, attributes, hooks path, transports, SHA-256 re-init, time limit, provenance rewrite, distro comparison, checksum stamp and (lock test) the lock itself. The commits were staged from one finished tree, and test_ros2_colcon.sh passed at each of the eight code stages (974, 989, 1014, 1017, 1020, 1021, 1018, 985 passed, 0 failed).
+
+Line counts: adapter.sh 2036 before this pass, 2154 after; test_ros2_colcon.sh 3837 before, 4012 after.
+
+### Verification
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 985 passed, 0 failed, 0 skipped. `test_project_file.sh`: 567 passed, 0 failed (twice). `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP, on the final tree before this entry: exit 0 in 151 s, every hook Passed or Skipped; pre-commit does not show which suites validate-script-tests ran on a pass.
+- Not verified: one run of test_project_file.sh, right after the registry edit, reported 566 passed and 1 failed; the failing line was not captured, and three later runs (one with identical content to the commit) passed 567/567. BSD/macOS paths (`mv -h`, no flock, `touch -r` and `cksum` are POSIX but untested there). The ssh transport is allowed but not exercised (no network). The `ext::` case is not tested separately (git refuses it by default either way).
+- Follow-up named, not done: the bootstrap route's `remote get-url origin` check (adapter.sh `_rc_bootstrap_manifest`) applies `url.*.insteadOf`; it predates this branch.
