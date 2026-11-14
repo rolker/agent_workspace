@@ -147,8 +147,10 @@ signal. So does a SIGTERM or a SIGHUP, unless it was ignored when git started (a
 an ignored one stays ignored and the clone goes on. After git's group is killed and the partial
 clone removed, the signal is delivered again to the handler that was there before: by default it
 ends `resolve` by that signal; a program calling the resolver with its own handler has that
-handler run, and the clone then fails with a message naming the signal. SIGTERM and SIGHUP are
-caught only in the main thread; in another thread they keep their own handling.
+handler run, and the clone then fails with a message naming the signal. While git's group is
+killed and the previous handlers are put back, SIGTERM and SIGHUP are blocked; one that arrives
+then goes to the previous handler once that is back. SIGTERM and SIGHUP are caught only in the
+main thread; in another thread they keep their own handling.
 
 A `url` or `ref` that fails its rule is never printed, nor is a group's `default` that is not
 `include` or `exclude`; a failed `extends` clone gives git's exit status, not its output. Some

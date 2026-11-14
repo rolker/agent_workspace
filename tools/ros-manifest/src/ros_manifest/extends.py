@@ -156,7 +156,8 @@ def _run_git(args: List[str], timeout: Optional[float] = None) -> Tuple[int, byt
     everything still in its process group are killed when it runs out (_GitTimeout); an
     interrupt kills them too, and so does a SIGTERM or a SIGHUP that was not ignored when this
     call began (_Signalled; an ignored one stays ignored). SIGTERM and SIGHUP are caught only
-    while git runs, in the main thread; the previous handlers are then put back."""
+    while git runs, in the main thread; the previous handlers are then put back, with the two
+    signals blocked until they are."""
     pending: List[int] = []
     armed = False
 
