@@ -1671,4 +1671,26 @@ CI on `3fe6662a` at 00:27: Validate Documentation, Validate Adapter Contract and
 - [x] (suggestion) With git's stderr now discarded, test_a_timed_out_clone_returns_soon_after_the_limit no longer tests the 2 s bound: it passes in 1.02 s with a plain `communicate()` (reproduced), and its comment "inherits git's stderr" is wrong. Have the holder keep git's stdout open, or drop the test — `tools/ros-manifest/tests/test_extends_safety.py:215`
 - [x] (suggestion) Digits after ':' followed by '/' count as a port, so `https://user:123/abc@h/x` and `https://u:1/2@h/x` are accepted while carrying a password that git echoes in its errors (reproduced) — `.agent/scripts/_project_registry.sh:816`
 - [x] (suggestion) Ordinary values are refused as credentials: `https://[::1]:8443/a@b` and `https://[::1]/x@y` (the ':' inside the IPv6 brackets), `https://h/x:y@z/m.git` and `file:///srv/a:b@c/m.git` (a ':' and '@' in the path); and `file:///tmp/a#b` is refused while the path form `/tmp/a#b` is accepted (reproduced) — `.agent/scripts/_project_registry.sh:816`
-- [ ] (suggestion) The PR body's proposed sentence (a) "No refusal of a `source` value that contains `://` or `@` prints that value" is untrue: the cross-key refusals still print it ("source '$src' is a URL, so source_ref ... is required", `_project_registry.sh:1221`, `:1225`), harmless only because a value that reaches them has passed the credential check. Sentence (c) "until the time limit" is untrue for an ssh already prompting on the terminal: the limit ends git, not that ssh — PR #480 body
+- [x] (suggestion) The PR body's proposed sentence (a) "No refusal of a `source` value that contains `://` or `@` prints that value" is untrue: the cross-key refusals still print it ("source '$src' is a URL, so source_ref ... is required", `_project_registry.sh:1221`, `:1225`), harmless only because a value that reaches them has passed the credential check. Sentence (c) "until the time limit" is untrue for an ssh already prompting on the terminal: the limit ends git, not that ssh — PR #480 body (deferred: the PR body is the host's to edit; corrected sentences (a) and (b) are in this pass's report)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-14 01:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #480 at `866a80a2`
+**Addressed**: Local Review at `3fe6662a` (2026-11-14 00:28 -05:00)
+**Commits**: 1fbcedc8, 67b79181, 74bdcf6b, 46e1a5b6, 866a80a2
+
+### Actions
+- [x] (must-fix) An ignored SIGTERM or SIGHUP stays ignored (no handler installed); otherwise git's group is killed, the partial clone removed, the previous handler put back and the signal delivered again with `signal.raise_signal` (default: ends by the signal; a caller's handler runs, then a ManifestError names the signal). Tests: ignored hangup under a 3 s limit, caller's own SIGTERM handler; both failed on the old code — `tools/ros-manifest/src/ros_manifest/extends.py:162` (1fbcedc8)
+- [x] (suggestion) A signal between Popen's fork and `proc` being set is held by the handler and raised once `proc` is set (not a sigmask: the child inherits the mask, so git would run with SIGTERM and SIGHUP blocked, checked). Test with a Popen that signals before returning; failed on the item-1 code with "git was left running" — `extends.py:171` (67b79181)
+- [x] (suggestion) The wait-bound test now has a detached holder keep git's stdout open (through an alias that runs a command; in a clone git's children get git's own pipes, and stderr is /dev/null) and calls `_run_git` with a 1 s limit; passes in about 3 s, fails at 20 s with the 2 s bound removed; comment corrected — `tools/ros-manifest/tests/test_extends_safety.py:215` (74bdcf6b)
+- [x] (suggestion) Credential rule by the URL grammar: refused exactly when the authority (after `//` up to the next `/`) holds `@`; `?`/`#` refused anywhere in https://, only in the authority of file:// — `.agent/scripts/_project_registry.sh:816` (46e1a5b6)
+- [x] (suggestion) The listed ordinary values (`https://[::1]:8443/a@b`, `https://[::1]/x@y`, `https://h/x:y@z/m.git`, `file:///srv/a:b@c/m.git`, `file:///tmp/a#b`) are accepted; 8 accepted rows failed on the old rule; the two slashed-"password" rows now assert the grammar's reading — `.agent/scripts/tests/test_project_file.sh` (46e1a5b6)
+- [x] (suggestion) PR body sentences — PR #480 body (deferred: the PR body is the host's to edit; corrected sentences are in this pass's report)
+
+### Verification
+- Resolver suite (`PYTHONPATH=tools/ros-manifest/src python3 -m pytest tools/ros-manifest/tests`, Python 3.14): 321 passed, 2 failed (the two known `test_an_extends_path_too_long_is_a_message_without_the_path` cases).
+- `pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP: every hook passed or had no files; `validate-script-tests` ran all 49 suites, all passed (test_project_file.sh alone: 629 passed, 0 failed).
+- Not run on Python 3.10.
