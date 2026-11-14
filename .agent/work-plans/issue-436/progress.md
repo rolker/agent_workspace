@@ -1562,7 +1562,7 @@ The branch was level with origin/main at the start (0 commits behind); no merge.
 - [x] (suggestion 6) Lock-test waits: the nine 10 s marker polls in test_project_file.sh go through `wait_for_marker`, which records a FAIL naming the marker when it never appears (checked by calling it on a missing marker: one FAIL after 10 s); nothing else restructured — 311d0dda
 - [ ] (suggestion 7) PR body sentences: left open, not mine to change. The host edits the pull request body after this pass; the replacement text is in my report to the host.
 
-Line counts: adapter.sh 2154 before this pass, 2166 after; test_ros2_colcon.sh 4012 before, 4097 after; extends.py 232 before, 376 after.
+Line counts: adapter.sh 2154 before this pass, 2166 after; test_ros2_colcon.sh 4012 before, 4097 after; extends.py 219 before, 376 after.
 
 ### Verification
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1006 passed, 0 failed, 0 skipped. `test_project_file.sh`: 591 passed, 0 failed. `test_register_project.sh`: 206 passed, 0 failed. `test_adapter.sh`: 155 passed, 0 failed.
