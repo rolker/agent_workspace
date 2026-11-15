@@ -2350,6 +2350,14 @@ else
         _SK_WT=$(find_worktree_for_branch "$_SK_REPO" "$PR_BRANCH" || true)
         if [[ -z "$_SK_WT" ]]; then
             echo "  No worktree has '$PR_BRANCH' checked out — nothing to remove"
+        elif [[ "$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" \
+                == "$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]]; then
+            # The main checkout itself is on the skill branch: it is never
+            # removed (worktree_remove.sh --path refuses it), and Step 5's
+            # local branch delete will report the branch kept.
+            echo "  ⚠️  The main checkout $_SK_WT has '$PR_BRANCH' checked out — it is never removed;" >&2
+            echo "     switch it to the default branch, then delete '$PR_BRANCH' there by hand" >&2
+            _CLEANUP_INCOMPLETE=true
         else
             echo "  Removing worktree..."
             _WR_ARGS=(--path "$_SK_WT" --type "$WORKTREE_TYPE")
@@ -2406,9 +2414,17 @@ else
     delete_remote_branch "$BRANCH_REPO" "$PR_BRANCH" "${PR_REPO_SLUG:-origin}" || _CLEANUP_INCOMPLETE=true
 
     # --- Step 6: Sync ---
-    echo "  Syncing main..."
-    git pull --ff-only
-    echo "  ✅ Workspace synced"
+    if [[ "$(git branch --show-current 2>/dev/null)" == "$PR_BRANCH" ]]; then
+        # The workspace's main checkout is still on the merged branch (named
+        # above); its upstream was just deleted, so a pull has nothing to
+        # follow. Nothing is synced until it is switched back.
+        echo "  ⚠️  Workspace not synced: its checkout is on '$PR_BRANCH', not the default branch" >&2
+        _CLEANUP_INCOMPLETE=true
+    else
+        echo "  Syncing main..."
+        git pull --ff-only
+        echo "  ✅ Workspace synced"
+    fi
 
     # Also sync project repo for project-type merges
     if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then

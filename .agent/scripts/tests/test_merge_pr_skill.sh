@@ -234,6 +234,19 @@ check "workspace root's main fast-forwarded to origin" test "$(git -C "$sb" rev-
 check "the caller's checkout untouched" test "$(git -C "$elsewhere" rev-parse HEAD)" = "$elsewhere_sha"
 check "main synced" grep -q "Workspace synced" <<<"$out"
 
+echo "TEST: the main checkout on the skill branch is named as such, never removed, cleanup incomplete"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+git -C "$sb" switch --quiet -c "$SKILL_BR"
+git -C "$sb" push --quiet -u origin "$SKILL_BR"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0 (merged)" test "$rc" -eq 0
+check "names the main checkout" grep -q "The main checkout .* has '$SKILL_BR' checked out — it is never removed" <<<"$out"
+check "no pull on the merged branch" grep -q "Workspace not synced: its checkout is on '$SKILL_BR'" <<<"$out"
+check "no uncommitted-changes hint" bash -c "! grep -q 'check for uncommitted changes' <<<\"\$1\"" _ "$out"
+check "banner says cleanup incomplete" grep -q "merged, but cleanup incomplete" <<<"$out"
+check "main checkout still there" test -d "$sb/.git"
+
 # ======================================================= project skill PR ===
 echo "TEST: a project-repo skill PR (onboard-project) is merged, its project worktree removed, the project synced"
 sb="$(make_sandbox)"
