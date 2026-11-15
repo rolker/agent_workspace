@@ -529,10 +529,25 @@ if [[ -z "$ISSUE_NUM" ]]; then
     # one list, in _worktree_helpers.sh): a hand-named skill/<other>-...
     # branch is no skill worktree's, and taking it as one would skip the
     # gate a workspace PR has enforced.
+    # It must also be in the repository that skill makes worktrees of
+    # (skill_worktree_type: onboard-project the project, the others the
+    # workspace), and not from a fork: a fork's branch is no worktree here.
     if [[ "$PR_BRANCH" =~ ^skill/([A-Za-z0-9_.-]+)-([0-9]{8}-[0-9]{6})(-[0-9]+)?$ ]] \
         && is_allowed_skill "${BASH_REMATCH[1]}"; then
-        SKILL_PR=true
         SKILL_NAME="${BASH_REMATCH[1]}"
+        _sk_type="$(skill_worktree_type "$SKILL_NAME")"
+        if [[ "$PR_CROSS_REPO" == true ]]; then
+            echo "ERROR: PR #${PR_NUMBER} ('$PR_BRANCH') is from a fork; a skill pull request is merged only from a" >&2
+            echo "  skill worktree's branch in the ${_sk_type} repository itself. Nothing was merged." >&2
+            exit 1
+        fi
+        if [[ "${WORKTREE_TYPE:-}" != "$_sk_type" ]]; then
+            echo "ERROR: PR #${PR_NUMBER} ('$PR_BRANCH') is in the ${WORKTREE_TYPE:-package} repository, but skill" >&2
+            echo "  '$SKILL_NAME' makes ${_sk_type} worktrees only; it is not merged as a skill PR. Nothing was merged." >&2
+            exit 1
+        fi
+        unset _sk_type
+        SKILL_PR=true
     else
         echo "ERROR: Could not extract issue number from branch '$PR_BRANCH'" >&2
         echo "Expected pattern: feature/issue-<N>, feature/ISSUE-<N>-<desc>," >&2

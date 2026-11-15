@@ -296,6 +296,26 @@ for br in skill/handmade-20261115-101010 skill/research-x-20261115-101010-1; do
 done
 check "nothing merged" bash -c "! grep -q '^pr merge' '$sb/gh_calls.log' 2>/dev/null"
 
+echo "TEST: a skill branch in the other repository type, or from a fork, is not merged as a skill PR"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+make_repo_with_origin "$sb/project" premote
+pj_remote="$sb/project.premote.git"
+write_pr_fixture "$sb" "$remote" "skill/onboard-project-20261115-090000-1"
+rc=0; out="$(run_merge "$sb" --type workspace --no-roadmap-update 2>&1)" || rc=$?
+check "onboard-project on the workspace: exit 1" test "$rc" -eq 1
+check "onboard-project on the workspace: says why" grep -q "'onboard-project' makes project worktrees only" <<<"$out"
+write_pr_fixture "$sb" "$pj_remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --type project --no-roadmap-update 2>&1)" || rc=$?
+check "research on the project: exit 1" test "$rc" -eq 1
+check "research on the project: says why" grep -q "'research' makes workspace worktrees only" <<<"$out"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+fx="$sb/gh_fixtures/pr_view_$(printf '%s' "$remote" | tr '/' '_')_${PR}.json"
+jq -c '. + {isCrossRepository: true}' "$fx" > "$fx.new" && mv "$fx.new" "$fx"
+rc=0; out="$(run_merge "$sb" --type workspace --no-roadmap-update 2>&1)" || rc=$?
+check "fork skill PR: exit 1" test "$rc" -eq 1
+check "fork skill PR: says why" grep -q "is from a fork; a skill pull request is merged only" <<<"$out"
+check "nothing merged" bash -c "! grep -q '^pr merge' '$sb/gh_calls.log' 2>/dev/null"
+
 # =================================================== remote branch delete ===
 echo "TEST: a refused remote delete names the branch and ends 'cleanup incomplete', merged, exit 0"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
@@ -339,14 +359,15 @@ check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\""
 
 echo "TEST: a PR from a fork leaves origin's same-named branch alone"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
-add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
-write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+fork_br="feature/issue-9"
+add_worktree "$sb" "$sb/worktrees/workspace/issue-workspace-9" "$fork_br" push
+write_pr_fixture "$sb" "$remote" "$fork_br"
 fx="$sb/gh_fixtures/pr_view_$(printf '%s' "$remote" | tr '/' '_')_${PR}.json"
 jq -c '. + {isCrossRepository: true}' "$fx" > "$fx.new" && mv "$fx.new" "$fx"
-rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+rc=0; out="$(run_merge "$sb" --no-roadmap-update --report-only 2>&1)" || rc=$?
 check "exit 0" test "$rc" -eq 0
 check "says it is a fork PR" grep -q "Remote branch left alone: PR #$PR is from a fork" <<<"$out"
-check "origin's branch survives" has_ref "$remote" "$SKILL_BR"
+check "origin's branch survives" has_ref "$remote" "$fork_br"
 check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
 
 echo "TEST: a merged branch with its own commit and no upstream is deleted after main is synced"
