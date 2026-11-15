@@ -24,11 +24,17 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    "skill <name>" instead of "issue #".
 2. **Roadmap (Step 1)** — for `SKILL_PR`, print "Skill PR — no issue to mark done, skipping roadmap update" (stated no-op).
 3. **Gate (Step 1.5)** — for `SKILL_PR`, force report-only for this PR (same as project PRs), skip the
-   `progress.md` timeline lookup, and add the reason "skill pull request: no issue timeline". Review and
-   Decision-summary conditions are still evaluated against the PR (decision summary read from body/comments);
-   the gap is printed and recorded through the existing no-worktree PR-comment path of `_gate_record`
-   (as `## Merge (report-only)`), with the duplicate check (`_gate_already_recorded`) reading PR comments only.
-   `--force-unreviewed` keeps its meaning. Guard every `ISSUE_NUM`-derived path (lines 826-1250) so none runs with it empty.
+   `progress.md` timeline lookup, and use the reason "skill pull request: no issue timeline". Condition (a)
+   (review entry) is read only from `progress.md` (`progress_read.py "$_gate_progress"`, ~920-934), so for a
+   skill PR it is always unmet; **no PR-comment review reader is built** (new machinery the owner did not
+   choose). Only (b) (a `## Decision summary` on the PR body/comments) is actually checked. Every skill PR
+   merge therefore prints the gap and records a `## Merge (report-only)` comment on the PR, and the merge goes
+   ahead. The skill worktree is open, so `_gate_wt` (`find_worktree_for_branch`, ~742) resolves and
+   `_gate_record` (~1145-1255) would take its timeline branch and call `progress_append.sh ... "$ISSUE_NUM"`
+   with an empty issue: for `SKILL_PR`, force `_gate_wt` empty / force `_gate_record` onto the PR-comment path
+   with its own `why_comment`; no commit or push on the skill branch. `_gate_already_recorded` reads PR comments
+   only. `--force-unreviewed` keeps its meaning. Guard every `ISSUE_NUM`-derived path (~826-1250) so none runs
+   with it empty.
 4. **Cleanup (Step 4)** — for `SKILL_PR`, resolve the worktree with `find_worktree_for_branch` (workspace
    root, or the project root for a project PR, as at line 608), `cd "$ROOT_DIR"`, and remove that path
    (add a `--path <worktree>` selector to `worktree_remove.sh`, reusing its uncommitted-changes check, or
@@ -36,18 +42,29 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    No worktree found: say so and go on to branch deletion. Steps 5-6 (delete branches, sync main, sync project) unchanged.
 5. **Header and usage** — drop "Skill worktree branches are not supported" and the "issue-based only" limitation;
    document the skill path and the report-only treatment.
-6. **Design** — `docs/design.md#merge-gate`: add the skill-PR bullet (report-only like project PRs, record on
-   the PR, roadmap no-op, worktree resolved by branch); update the Rules row 164 text, the `merge_pr.sh` row
-   (line 447) and its line numbers, the Worktrees section if the removal selector changed, and the change log
+6. **Design** — `docs/design.md#merge-gate`: add the skill-PR bullet (report-only like project PRs, condition (a)
+   always unmet, record on the PR, roadmap no-op, worktree resolved by branch); update the Rules row 164 text and
+   refresh **every** `merge_pr.sh` line citation (grep the file: row 447, line ~632 "719-864, 1145-1320", Records
+   bullet, mechanism 1, others, as #379 did), the Worktrees section if the removal selector changed, and the change log
    (ADR-0017). `.agent/knowledge/script_reference.md` for the new `worktree_remove.sh` option, if added.
-7. **Skills** — `research`, `inspiration-tracker`, `onboard-project` SKILL.md: after "create PR", say the merge is
-   `.agent/scripts/merge_pr.sh --pr <N>` (owner's "merge it"; never `gh pr merge --delete-branch` from a worktree).
-   Run `make generate-skills` if these feed generated output.
+7. **Skills** — the merge is `merge_pr.sh` (owner's "merge it"; never `gh pr merge --delete-branch` from a worktree),
+   which removes the worktree and branches; the worktree stays until then so review fixes can land and the script finds it.
+   - `research/SKILL.md`: replace step 8 "Clean up the worktree when done" (line 110) and the "and clean up" tails
+     of lines 119 and 135 with "merged, and the worktree cleaned up, by `.agent/scripts/merge_pr.sh --pr <N>`".
+   - `inspiration-tracker/SKILL.md`: after the PR step (~299) add the same merge line; it has no early cleanup step (checked).
+   - `onboard-project/SKILL.md` (runs in a project session; PR is in the project repo): after step 7's `gh pr create`
+     add `"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <N> --project <settings-name>` (not `--repo`, which takes the
+     package path). Non-`origin` push remote: `merge_pr.sh` deletes the remote branch through `origin`
+     (~2283, `|| true`), so the merge still succeeds but the remote branch is left; state this in the skill and
+     in the script usage as a limitation, and cover it with a test if the sandbox can name the remote differently.
+   No `make generate-skills`: it only regenerates `/make_*` from Makefile targets; SKILL.md edits feed nothing generated.
 8. **Tests** (`.agent/scripts/tests/`, sandbox + `gh` stub as in `test_merge_pr.sh`; extend that file or
    `test_merge_pr_gate.sh`; a new `test_*.sh` gets `chmod +x`):
-   - workspace skill PR merges, worktree and branch removed, main synced, no `progress.md` touched;
+   - workspace skill PR merges, worktree and branch removed, main synced, no `progress.md` touched, and no commit
+     lands on the skill branch (its HEAD is unchanged by the gate record);
    - roadmap no-op line printed;
-   - missing review/decision summary: printed and recorded as a PR comment, merge proceeds; duplicate run records once;
+   - every skill PR merge (even with a decision summary, since (a) is always unmet) posts a `## Merge (report-only)`
+     comment with reason "skill pull request: no issue timeline"; merge proceeds; a duplicate run records once;
    - project-repo skill PR (`onboard-project`, `--type project`): merged, project worktree removed, project synced;
    - two worktrees of the same skill name: only the PR's branch worktree is removed, the other survives;
    - a non-issue, non-skill branch still errors; `--force-unreviewed` on a skill PR still records `Merge (unreviewed)`;
@@ -63,7 +80,8 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
 | `.agent/scripts/tests/test_merge_pr*.sh` | Skill-branch cases listed in step 8 |
 | `docs/design.md` | Merge gate, Rules row, `merge_pr.sh` row, change log |
 | `.agent/knowledge/script_reference.md` | Only if options change |
-| `.claude/skills/{research,inspiration-tracker,onboard-project}/SKILL.md` | Name `merge_pr.sh --pr <N>` as the merge path |
+| `.claude/skills/research/SKILL.md` | Replace the post-PR cleanup steps (110, 119, 135) with the merge |
+| `.claude/skills/{inspiration-tracker,onboard-project}/SKILL.md` | Name the merge (onboard-project: `$WS_ROOT/...` with `--project`; non-origin remote note) |
 
 ## Prior Art
 
@@ -103,8 +121,8 @@ Alters the merge gate: skill PRs get a report-only gate with the record on the P
 | If we change... | Also update... | Included? |
 |---|---|---|
 | `merge_pr.sh` header/error text | Usage, `script_reference.md` | Yes |
-| Gate treatment | `docs/design.md` Merge gate, Rules row 164, row 447 line numbers | Yes |
-| Skill PR step text | Generated skill output (`make generate-skills`) if applicable | Yes |
+| Gate treatment | `docs/design.md` Merge gate, Rules row 164, every `merge_pr.sh` line citation | Yes |
+| Skill PR step text | Generated skill output | Not applicable (`generate-skills` only builds `/make_*`) |
 | `worktree_remove.sh` option | its usage, tests, script_reference | Yes, if added |
 | #374 (newest-match) | Separate issue; not fixed here | No, follow-up |
 
