@@ -77,3 +77,11 @@ Owner's answer to "How should merge_pr.sh gate a skill-branch PR?": "G1 Report-o
 Host decisions for the plan (owner may veto):
 - The worktree merge_pr.sh removes for a skill PR is found by the PR's head branch (the worktree that has that branch checked out), not through `worktree_remove.sh --skill <name>`'s newest-match rule, so #374 is not a prerequisite and stays its own issue. Undoing it: fold #374 into this PR instead.
 - The roadmap update is a stated no-op for skill PRs (no issue number). Undoing it: none needed.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-15 10:05 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `536ca532`
+
+Classify skill/<name>-<ts> branches in merge_pr.sh and gate them report-only (owner's G1) with the record on the PR; roadmap stated no-op; remove the worktree found by head branch; design, three skills and tests (incl. project-repo skill PR, two same-name worktrees) updated in one PR.
