@@ -277,8 +277,11 @@ delete_remote_branch() {  # <checkout> <branch> <label>
         return 0
     fi
     # GitHub's auto-delete can land between the ls-remote and the push:
-    # the ref is gone, which is the end state wanted.
-    if [[ "$err" == *"remote ref does not exist"* ]]; then
+    # the ref is gone, which is the end state wanted. Asked again by exit
+    # code (rc 2: no such ref), not by git's message, which is localized.
+    lsr_rc=0
+    git -C "$repo" ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || lsr_rc=$?
+    if [[ $lsr_rc -eq 2 ]]; then
         echo "  ✅ Remote branch already gone ($label, auto-deleted on merge)"
         return 0
     fi

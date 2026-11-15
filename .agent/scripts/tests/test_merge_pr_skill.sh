@@ -357,10 +357,19 @@ echo "TEST: a push --delete that finds the ref already gone (auto-delete race) c
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR"
 write_pr_fixture "$sb" "$remote" "$SKILL_BR"
-# ls-remote answers "present" (rc 0), as it would just before GitHub's
-# auto-delete lands; every other git call is the real git.
+# The first ls-remote answers "present" (rc 0), as it would just before
+# GitHub's auto-delete lands; push --delete then fails with a localized
+# message (no English "remote ref does not exist" to match on); every
+# other git call, the second ls-remote included, is the real git.
 real_git="$(command -v git)"
-printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = ls-remote ] && exit 0; done\nexec %q "$@"\n' "$real_git" > "$sb/stubbin/git"
+cat > "$sb/stubbin/git" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+    if [ "\$a" = ls-remote ] && [ ! -e "$sb/lsr.seen" ]; then : > "$sb/lsr.seen"; exit 0; fi
+    if [ "\$a" = --delete ]; then echo "erreur : impossible de supprimer la référence distante" >&2; exit 1; fi
+done
+exec $(printf '%q' "$real_git") "\$@"
+EOF
 chmod +x "$sb/stubbin/git"
 rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
 rm -f "$sb/stubbin/git"
