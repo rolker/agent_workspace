@@ -59,48 +59,51 @@ Key takeaways:
 
 ## Command Runner Alternatives to Make
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 | **Sources**: [just](https://github.com/casey/just), [Task](https://github.com/go-task/task), [mise](https://github.com/jdx/mise)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-15 | **Sources**: [just](https://github.com/casey/just), [just releases](https://github.com/casey/just/releases), [Task](https://github.com/go-task/task), [Task remote Taskfiles GA](https://taskfile.dev/blog/remote-taskfiles), [mise](https://github.com/jdx/mise), [task-mcp](https://docs.rs/crate/task-mcp/0.5.0/source/README.md)
 
 Key takeaways:
-- Versions on 2026-10-15: just 1.59.0, Task v3.54.0 (2026-10-01), mise v2026.10.11 (calendar versioning); all actively released (~36k, ~16k, ~35k stars). Feature changes since April not reviewed.
-- `just` is the strongest candidate for replacing Make as a command runner — closest syntax, built-in `just --list`, no `.PHONY` needed, multi-language recipes
-- `just-mcp` ([PromptExecution/just-mcp](https://github.com/PromptExecution/just-mcp)) provides an MCP adapter, enabling any MCP-compatible agent to invoke workspace commands; alive but low-traffic (60 stars, last push 2026-07-15)
+- Versions on 2026-11-15: just 1.59.0 (2026-10-15), Task v3.54.0 (2026-10-01), mise v2026.11.8 (2026-11-13, calendar versioning); all actively developed (~36.7k, ~16.4k, ~36.2k stars)
+- `just` is the strongest candidate for replacing Make as a command runner — closest syntax, built-in `just --list`, no `.PHONY` needed, multi-language recipes. Since July: `[timestamp]` recipe attribute (1.58), `[cache(environment)]` cache keys and `--usage` for whole modules (1.59), markdown justfiles found by name (1.57). 1.59 is breaking: justfile paths must be Unicode
+- Task: remote Taskfiles went GA in v3.53 and gained a per-command `timeout` (exit 124); v3.54 adds per-host `remote.headers` and fixes a remote Git Taskfile cache-poisoning advisory (GHSA-679p-658w-m3wr), relevant only if remote includes are used
+- MCP adapters for just: [PromptExecution/just-mcp](https://github.com/PromptExecution/just-mcp) is still low-traffic (60 stars, last push 2026-07-15, last release v0.1.5 on 2025-11-15); [toolprint/just-mcp](https://github.com/toolprint/just-mcp) has been dormant since 2025-08; `task-mcp` (crate 0.5.1, 2026-04-28) runs on just and hides recipes from agents unless they carry an `allow-agent` attribute, an opt-in model that fits this workspace's permission posture better
 - `task` (Go/YAML) offers namespace includes but is more verbose; `mise` (Rust/TOML) bundles tool version management but adds little for ROS 2 where `apt`/`rosdep` manage toolchains
 - `colcon defaults.yaml` can absorb build flags currently hardcoded in scripts, regardless of which runner is chosen
 
-**Relevance**: The workspace uses Make purely as a command runner, not for dependency-based builds. Switching to `just` would reduce boilerplate and provide a pathway to MCP-accessible commands.
+**Relevance**: The workspace uses Make purely as a command runner, not for dependency-based builds. Switching to `just` would reduce boilerplate and provide a pathway to MCP-accessible commands (an allowlisting adapter such as task-mcp would keep agent access opt-in per recipe).
 
 ---
 
 ## AGENTS.md — Cross-Platform Agent Instruction Standard
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 | **Sources**: [agents.md spec](https://agents.md/), [GitHub repo](https://github.com/agentsmd/agents.md), [OpenAI Codex guide](https://developers.openai.com/codex/guides/agents-md/), [Agentic AI Foundation](https://openai.com/index/agentic-ai-foundation/), [deep dive](https://prpm.dev/blog/agents-md-deep-dive), [sync strategy](https://kau.sh/blog/agents-md/)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-15 | **Sources**: [agents.md spec](https://agents.md/), [GitHub repo](https://github.com/agentsmd/agents.md), [OpenAI Codex guide](https://learn.chatgpt.com/docs/agent-configuration/agents-md), [Claude Code memory docs](https://code.claude.com/docs/en/memory), [AAIF — Measuring AGENTS.md (2026-07-22)](https://aaif.io/blog/measuring-agents-md-what-five-runs-show-that-one-doesn-t), [AAIF — Writing an effective AGENTS.md (2026-08-13)](https://aaif.io/blog/writing-an-effective-agents-md), [Agentic AI Foundation](https://openai.com/index/agentic-ai-foundation/), [sync strategy](https://kau.sh/blog/agents-md/)
 
 Key takeaways:
-- Vendor-neutral spec stewarded by the Agentic AI Foundation (Linux Foundation, which also stewards MCP and goose), with contributions from OpenAI, Anthropic, and others
-- agents.md still claims 60,000+ open-source projects adopted (figure unchanged since April); the 28.6% runtime / 16.6% token reduction figures were not re-verified
-- Supported by Codex, Cursor, Devin, Gemini CLI, GitHub Copilot, Jules, VS Code, Windsurf, Aider, Zed, Amp and more. **Claude Code now reads AGENTS.md natively** (v2.1.277+, per the [memory docs](https://code.claude.com/docs/en/memory)): with AGENTS.md and no CLAUDE.md it reads AGENTS.md; if both exist only CLAUDE.md is read, so import AGENTS.md from CLAUDE.md. `/doctor prompt-audit` covers AGENTS.md
-- Recommended size: ≤150 lines; closest `AGENTS.md` to the edited file wins; user prompts override all
-- For multi-tool workspaces, the `@AGENTS.md` import pattern in framework-specific files (e.g., CLAUDE.md) is preferred over symlinking, and remains required whenever a CLAUDE.md exists
+- Vendor-neutral spec stewarded by the Agentic AI Foundation (Linux Foundation; "a Series of LF Projects, LLC"), which also stewards MCP and goose. A Technical Charter was added to the repo on 2026-09-10; the spec itself has no version number and the site has had no content change since March
+- agents.md still claims "60k+" open-source projects (unchanged since April). Efficiency figures now verified via AAIF: Lulla et al. (124 PR tasks, 10 repos) report 28.64% lower median runtime and 16.58% fewer median output tokens (efficiency only, not correctness); Gloaguen et al. find context files do not significantly raise task success, increase steps and cost, and that developer-written files beat LLM-generated ones. AAIF's own five-run test: a 12-line file cut wall time by 27% on an ambiguous task, where a single-run pilot pointed the opposite way, so compare medians over several runs
+- Supported by Codex, Cursor, Devin, Gemini CLI, GitHub Copilot, Jules, Junie, Augment Code, VS Code, Windsurf, Aider, Zed, Amp, Warp, goose and more. **Claude Code reads AGENTS.md natively** (v2.1.277+): by default (`claude-md-or-agents-md`) it reads AGENTS.md only when no CLAUDE.md, `.claude/CLAUDE.md` or CLAUDE.local.md exists in or above the working directory. A **Project instructions** setting (`/config`, or `pluginConfigs` → `cc-plugin-agents-md@builtin`, honoured only in user/managed/`--settings` files; ID was `agents-md@builtin` before v2.1.285) adds `claude-md-and-agents-md`, which loads both and dedupes an imported AGENTS.md. AGENTS.md read via the setting does not fire `InstructionsLoaded` hooks
+- Size: the spec sets no limit (the earlier "≤150 lines" claim had no primary source and is dropped). Tool limits: Claude Code targets <200 lines per CLAUDE.md, Cursor suggests <500 lines, and Codex caps combined content at 32 KiB (`project_doc_max_bytes`). Closest `AGENTS.md` to the edited file wins; user prompts override all. Codex also honours `AGENTS.override.md` and walks from the root down to the working directory, one file per directory
+- AAIF guidance: include structure-with-meaning, exact commands, boundaries and a definition of done; leave out what's discoverable, generic advice, copied docs, linter-enforceable rules and secrets. AGENTS.md guides but does not enforce — enforcement belongs in CI, branch protection and sandboxing
+- For multi-tool workspaces, the `@AGENTS.md` import in CLAUDE.md remains right whenever a CLAUDE.md exists; the Claude Code docs say keeping the import never double-loads AGENTS.md under either setting
 
-**Relevance**: Already adopted in this workspace. AGENTS.md consolidates shared rules; framework-specific files contain only agent-specific behavioral rules. This eliminated the previous four-file duplication problem.
+**Relevance**: Already adopted in this workspace. AGENTS.md consolidates shared rules; framework-specific files contain only agent-specific behavioral rules. This eliminated the previous four-file duplication problem. The AAIF "guide, don't enforce" line matches this workspace's hook-based enforcement; the 200-line AGENTS.md budget sits within the published tool limits.
 
 ---
 
 ## AI Agent Spec Writing Best Practices
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 | **Sources**: [Osmani, "How to Write a Good Spec for AI Agents" (O'Reilly, Jan 2026)](https://www.oreilly.com/radar/how-to-write-a-good-spec-for-ai-agents/), [addyosmani.com](https://addyosmani.com/blog/good-spec/)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-15 | **Sources**: [Osmani, "How to Write a Good Spec for AI Agents" (O'Reilly, Jan 2026)](https://www.oreilly.com/radar/how-to-write-a-good-spec-for-ai-agents/), [addyosmani.com](https://addyosmani.com/blog/good-spec/), [github/spec-kit](https://github.com/github/spec-kit), [Kiro specs docs](https://kiro.dev/docs/specs/), [Böckeler, "Understanding SDD: Kiro, spec-kit, and Tessl" (martinfowler.com, 2025-10-15)](https://www.martinfowler.com/articles/exploring-gen-ai/sdd-3-tools.html)
 
 Key takeaways:
-- Informed by GitHub's analysis of 2,500+ agent configuration files
+- Informed by GitHub's analysis of 2,500+ agent configuration files (Osmani's article, dated 2026-01-13, still resolves with no revision noted)
 - **Three-tier boundary system**: categorize rules as "Always" (autonomous), "Ask first" (human approval), or "Never" (hard stop) — more effective than flat rule lists
 - **Self-audit instruction**: tell agents to compare results against the spec and list unmet items
 - **SPEC.md as session anchor**: persistent spec file survives context resets across sessions
 - **Conformance suites**: language-independent tests that any implementation must pass
 - **Two-phase task pattern**: draft spec first (plan mode), then execute incrementally
-- **Spec-driven tooling has gone mainstream**: [github/spec-kit](https://github.com/github/spec-kit) (~141k stars, v1.2.0 on 2026-10-13) and AWS Kiro (requirements/design/tasks files, EARS-notation requirements; launch and pricing dates disagree across sources, check kiro.dev). Osmani's article is dated 2026-01-13 and still resolves
+- **Spec-driven tooling has gone mainstream**: github/spec-kit (~150k stars, v1.4.0 on 2026-11-10, near-daily releases; now maps reasoning effort and context size for Copilot, Codex and Claude Code). Kiro specs are requirements.md (or bugfix.md for Bugfix Specs) + design.md + tasks.md, with Requirements-First/Design-First variants and a one-pass Quick Spec; the docs no longer mention EARS notation (EARS status unverified). Kiro ships a CLI (3.3.0, 2026-11-12) and mobile app; no GA date on its changelog
+- **Counterpoint (Böckeler)**: one heavy workflow doesn't fit every change size (a small bug became 4 user stories / 16 acceptance criteria); verbose spec markdown can be harder to review than code; specs don't guarantee determinism (agents ignored notes and duplicated classes; regeneration from one spec varied). Scale spec depth to change risk
 
-**Relevance**: The Always/Ask/Never taxonomy was adopted directly into AGENTS.md. The self-audit pattern maps to our post-task verification checklist.
+**Relevance**: The Always/Ask/Never taxonomy was adopted directly into AGENTS.md. The self-audit pattern maps to our post-task verification checklist. Böckeler's sizing critique supports keeping plan/review depth proportional to risk (as review-code already does), and Kiro's separate Bugfix Spec suggests a lighter plan template for bug fixes.
 
 ---
 
