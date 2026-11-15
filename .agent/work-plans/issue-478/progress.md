@@ -147,3 +147,40 @@ Read the newest Plan Review (6c07c48c). Revise the plan for all six findings: co
 **Plan**: `.agent/work-plans/issue-478/plan.md` at `c1950481`
 
 Revision after the Plan Review (6c07c48c): condition (a) is stated always unmet for a skill PR (no PR-comment review reader), _gate_record is forced onto the PR-comment path with a no-commit test, research's post-PR cleanup steps are replaced by the merge, onboard-project uses $WS_ROOT merge_pr.sh --project with the non-origin remote documented, every merge_pr.sh citation in docs/design.md is refreshed, and make generate-skills is dropped.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-15 10:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #478 — merge_pr.sh refuses skill-branch pull requests; they are merged by hand
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `c1950481`
+**Branch**: `feature/issue-478`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR: script, optional `worktree_remove.sh` selector, tests, design, three skills. |
+| Issue alignment | Good | Owner's G1 (Checkpoint 2026-11-15) applied, not reopened. All six findings of the first Plan Review (6c07c48c) are addressed: (1) step 3 states condition (a) is always unmet and no PR-comment review reader is built, tests expect a report-only record on every skill merge; (2) `_gate_record` forced onto the PR-comment path, test that the skill branch HEAD is unchanged; (3) research lines 110/119/135 replaced by the merge line; (4) onboard-project uses `"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <N> --project <settings-name>`; (5) every `merge_pr.sh` citation in `docs/design.md` refreshed; (6) `make generate-skills` dropped as not applicable. Serves, as checked: "Easy to use, and Trust, control and information - `docs/design.md#merge-gate`". |
+| File targeting | Needs work | The non-`origin` remote handling describes behavior the script does not have (finding 1); forcing `_gate_wt` empty also blanks `_ci_wt` (finding 2). |
+| Consequences | Good | Design section, Rules row, all line citations, script_reference (if options change), #374 left as follow-up. |
+| Principle alignment | Needs work | Finding 1 documents a silent failure where the fix is a few lines (AGENTS.md Quality Standard; "Enforce what matters"). Otherwise reuses existing paths, design updated in the same PR, tests planned. |
+| ADR compliance | Good | 0013, 0017, 0002 addressed; 0004/0005 by the owner's recorded choice. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting / Principle alignment]** (should-fix) — Step 7's non-`origin` statement ("the merge still succeeds but the remote branch is left") does not match the source. `merge_pr.sh` resolves a project PR only through the project root's `origin`: `PJ_REMOTE=$(git -C "$PJ_REPO_ROOT" remote get-url origin)` (line 273); with no `origin` it exits with "has no 'origin' remote configured" (274-277), and with an `origin` that is not the PR's GitHub repo `query_pr "$PJ_REMOTE"` (406) finds no open PR. So a project whose GitHub remote is not `origin` cannot reach the merge at all; it fails loudly and early, which is acceptable, but the skill and usage text must say that (merge such a PR by hand, or name `origin` to the GitHub remote), not the leftover-branch story. Separately, the `|| true` on the remote delete (line 2283) is a real silent failure for every PR, and the fix is within reach: delete through the PR's own repository, independent of remote names (`gh api -X DELETE "repos/$PR_REPO_SLUG/git/refs/heads/$PR_BRANCH"`, treating "reference does not exist" as already deleted), or at minimum replace `|| true` with a warning naming the branch left on the remote and set `_CLEANUP_INCOMPLETE`. Add a test: the remote delete fails and the output names the branch. Drop the "test if the sandbox can name the remote differently" hedge; instead test the no-`origin` refusal message for a project skill PR if the plan documents it.
+2. **[File targeting]** (minor) — Step 3 says "force `_gate_wt` empty / force `_gate_record` onto the PR-comment path". `_gate_wt` also feeds `_ci_wt` (lines 870-881), the local fetch that sets the CI target and the review-fix exemption (1522-1523). Blanking it would push skill PRs onto the `gh` headRefOid fallback for no reason. Pick the second form: keep `_gate_wt`, skip the timeline read and force only `_gate_record`'s PR-comment branch for `SKILL_PR`.
+
+### Summary
+
+The revision addresses all six earlier findings and stays within the owner's G1. One should-fix remains: the non-`origin` remote case is described wrongly, and the silent `|| true` remote-branch delete should be replaced by a deletion through the PR's repository or a warning naming the branch, with a test. Ready once that and the minor `_gate_wt` wording are fixed.
+
+### Recommended Actions
+
+- [ ] Step 7 / usage: state that a project whose GitHub remote is not `origin` is refused by `merge_pr.sh` (line 273-277 / 406), and what the skill does then; drop the "merge succeeds, branch left" claim.
+- [ ] Step 4/5: replace `|| true` on the remote-branch delete (line 2283) with deletion through `$PR_REPO_SLUG` via `gh api` (already-deleted treated as success), or at least a warning naming the branch and `_CLEANUP_INCOMPLETE=true`; add a test for the failure output.
+- [ ] Step 3: keep `_gate_wt` (it feeds `_ci_wt`); for `SKILL_PR` skip only the timeline read and force `_gate_record` onto the PR-comment path.
