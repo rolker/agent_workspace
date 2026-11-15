@@ -300,6 +300,13 @@ gh pr create --title "Update inspiration digest: <name>" --body-file "$BODY_FILE
 rm -f "$BODY_FILE"
 ```
 
+Leave the worktree in place. Once the owner says to merge, the PR is merged,
+and the worktree cleaned up, by `.agent/scripts/merge_pr.sh --pr <N>` (never
+`gh pr merge --delete-branch` from the worktree): it removes the worktree on
+the PR's branch and deletes its branches. A skill PR has no issue timeline, so
+the merge gate is report-only for it and records a `## Merge (report-only)`
+comment on the PR.
+
 ### 11. Interactive add flow
 
 When invoked with `add` or `add <url>`:

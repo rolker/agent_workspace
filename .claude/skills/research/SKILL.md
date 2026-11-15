@@ -107,7 +107,10 @@ The worktree type depends on the scope:
 6. Commit in the correct repo: workspace digest commits go in the workspace
    repo; project digest commits go in the project repo (not the workspace)
 7. Push and create a PR: `git push -u origin HEAD && gh pr create --fill`
-8. Clean up the worktree when done
+8. Leave the worktree in place: once the owner says to merge, the PR is
+   merged, and the worktree cleaned up, by `.agent/scripts/merge_pr.sh --pr <N>`
+   (never `gh pr merge --delete-branch` from the worktree). It removes the
+   worktree on the PR's branch and its branches; until then review fixes land there.
 
 ### Ingesting a URL (`/research --ingest <url>`)
 
@@ -116,7 +119,7 @@ The worktree type depends on the scope:
 3. Extract key takeaways relevant to the workspace or project
 4. Determine scope (workspace or project) from content — or ask if unclear
 5. Append to the appropriate digest
-6. Commit, push, create PR, and clean up
+6. Commit, push and create the PR; it is merged, and the worktree cleaned up, by `.agent/scripts/merge_pr.sh --pr <N>`
 
 ### Refreshing (`/research --refresh`)
 
@@ -132,7 +135,7 @@ The worktree type depends on the scope:
    - Update the entry's `Last verified` date to today
    - Mark as stale or remove if no longer relevant
 5. Update the top-level `Last full refresh` timestamp to today
-6. Commit, push, create PR, and clean up
+6. Commit, push and create the PR; it is merged, and the worktree cleaned up, by `.agent/scripts/merge_pr.sh --pr <N>`
 
 ## Guidelines
 
