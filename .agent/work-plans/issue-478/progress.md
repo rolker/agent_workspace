@@ -327,3 +327,28 @@ Round 1's seven addressed findings checked: all fixed as described (cd hoisted, 
 - [x] (suggestion) Main-checkout detection compares two `rev-parse ... 2>/dev/null` outputs; a stale worktree whose folder is gone gives two empty strings and is misreported as "the main checkout"; require a non-empty git-dir first — `.agent/scripts/merge_pr.sh:2378`
 - [x] (suggestion) Auto-delete race match `*"remote ref does not exist"*` depends on git's locale; run the push with `LC_ALL=C` or re-check `ls-remote` (rc 2 = gone) after a failed push — `.agent/scripts/merge_pr.sh:277`
 - [x] (suggestion) Fork PR: origin delete is skipped, but Step 4/5 still remove a local worktree and `branch -d` a local branch that only shares the head's name; skip local cleanup when `PR_CROSS_REPO` is true — `.agent/scripts/merge_pr.sh:2375,2414`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-15 11:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ab4465ed7661b5e22, resume 1 of 3)
+
+**Branch**: feature/issue-478 at `6676cd24`
+**Addressed**: Local Review (Pre-Push) at `5a1317c7` (2026-11-15 11:21 -05:00)
+**Commits**: 4fd1c142, e73e989b, c125e3fb, 0945c3e5, b9fe05fe, 6676cd24
+
+### Actions
+- [x] (must-fix) Local `branch -d` moved after Step 6's syncs (workspace and project); the remote delete stays in Step 5. Test: a branch with its own commit, pushed without upstream, merged on origin's main first; deleted, no warning, clean banner (3 failures without the fix) — `.agent/scripts/merge_pr.sh` Steps 5-6 (4fd1c142)
+- [x] (must-fix) Every `merge_pr.sh` / `worktree_remove.sh` line citation in `docs/design.md` (Table 1 rows, Records bullet, project-timeline bullet, mechanism 1) refreshed last, each number checked against the line it names in the final file; change-log row extended — `docs/design.md:446-447,549-565,638` (6676cd24)
+- [x] (suggestion) Classifier also requires `skill_worktree_type` to match the PR's repository type and refuses a cross-repository PR as a skill PR; tests for onboard-project on the workspace, research on the project, a fork skill PR (nothing merged); fork remote-delete test moved to an issue branch — `.agent/scripts/merge_pr.sh:530` (e73e989b)
+- [x] (suggestion) Main-checkout check needs a non-empty git dir; a stale entry whose folder is gone is pruned with a note; test (4 failures without the fix) — `.agent/scripts/merge_pr.sh` Step 4 (c125e3fb)
+- [x] (suggestion) Race detection re-asks `ls-remote` after a failed push (rc 2 = gone) instead of matching git's English message; test's push fails with a French message (3 failures without the fix) — `.agent/scripts/merge_pr.sh` `delete_remote_branch` (0945c3e5)
+- [x] (suggestion) Fork PR: Step 4 and the local branch delete leave a same-named local worktree and branch alone; test; header and design.md bullet updated — `.agent/scripts/merge_pr.sh` Steps 4-6 (b9fe05fe)
+
+### Notes
+- Finding 8 of the first round stays deferred by the host, pending the owner's answer on a follow-up issue (not "deferred by the owner").
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: every hook passed, exit 0; `validate-script-tests` ran every suite (full run: the branch changes the shared helper `_worktree_helpers.sh`).
+- `test_merge_pr_skill.sh` 132 passed, 0 failed (also run directly while fixing).
