@@ -14,6 +14,30 @@ _WT_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_WT_HELPERS_DIR/_project_registry.sh"
 unset _WT_HELPERS_DIR
 
+# --- Skill worktree allowlist (the one list) ---
+# Skills allowed to create worktrees without a GitHub issue
+# (onboard-project: a project's onboarding branch when it uses no issues).
+# worktree_create.sh enforces it when a skill worktree is made, and
+# merge_pr.sh takes a skill/<name>-... branch as a skill PR only for a name
+# on it (issue 478), so a hand-named skill branch is not merged as one.
+ALLOWED_SKILLS=("research" "inspiration-tracker" "onboard-project")
+# The one worktree type each is for: the living-document skills keep
+# workspace documents; onboard-project changes a project's repository.
+skill_worktree_type() {
+    case "$1" in
+        onboard-project) echo project ;;
+        *) echo workspace ;;
+    esac
+}
+# is_allowed_skill <name>: succeeds when <name> is on ALLOWED_SKILLS.
+is_allowed_skill() {
+    local allowed
+    for allowed in "${ALLOWED_SKILLS[@]}"; do
+        [ "$allowed" = "$1" ] && return 0
+    done
+    return 1
+}
+
 # --- Worktree base directory helpers ---
 # Worktrees live under whichever root owns them (issue #265):
 #   worktrees/workspace/                — workspace worktrees (unchanged)

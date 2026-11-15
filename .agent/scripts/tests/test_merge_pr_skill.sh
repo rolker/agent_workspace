@@ -246,6 +246,17 @@ for br in feature/something skill/research skill/research-2026-1010; do
 done
 check "nothing merged" bash -c "! grep -q '^pr merge' '$sb/gh_calls.log' 2>/dev/null"
 
+echo "TEST: a skill-shaped branch for a skill not on the allowlist is refused (it would skip the enforced gate)"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+for br in skill/handmade-20261115-101010 skill/research-x-20261115-101010-1; do
+    write_pr_fixture "$sb" "$remote" "$br"
+    rc=0; out="$(run_merge "$sb" --no-roadmap-update --report-only 2>&1)" || rc=$?
+    check "$br: exit 1" test "$rc" -eq 1
+    check "$br: not taken as a skill PR" bash -c "! grep -q 'Merging PR' <<<\"\$1\"" _ "$out"
+    check "$br: names the allowlist" grep -q "one of the skill worktree allowlist: research inspiration-tracker onboard-project" <<<"$out"
+done
+check "nothing merged" bash -c "! grep -q '^pr merge' '$sb/gh_calls.log' 2>/dev/null"
+
 # =================================================== remote branch delete ===
 echo "TEST: a refused remote delete names the branch and ends 'cleanup incomplete', merged, exit 0"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"

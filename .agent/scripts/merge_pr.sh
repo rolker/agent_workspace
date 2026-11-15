@@ -498,7 +498,12 @@ SKILL_PR=false
 SKILL_NAME=""
 ISSUE_NUM=$(echo "$PR_BRANCH" | sed -nE 's#^feature/([A-Za-z0-9_.-]+-)?[Ii]ssue-([0-9]+).*#\2#p')
 if [[ -z "$ISSUE_NUM" ]]; then
-    if [[ "$PR_BRANCH" =~ ^skill/([A-Za-z0-9_.-]+)-([0-9]{8}-[0-9]{6})(-[0-9]+)?$ ]]; then
+    # Only a skill on worktree_create.sh's allowlist (ALLOWED_SKILLS, the
+    # one list, in _worktree_helpers.sh): a hand-named skill/<other>-...
+    # branch is no skill worktree's, and taking it as one would skip the
+    # gate a workspace PR has enforced.
+    if [[ "$PR_BRANCH" =~ ^skill/([A-Za-z0-9_.-]+)-([0-9]{8}-[0-9]{6})(-[0-9]+)?$ ]] \
+        && is_allowed_skill "${BASH_REMATCH[1]}"; then
         SKILL_PR=true
         SKILL_NAME="${BASH_REMATCH[1]}"
     else
@@ -506,6 +511,7 @@ if [[ -z "$ISSUE_NUM" ]]; then
         echo "Expected pattern: feature/issue-<N>, feature/ISSUE-<N>-<desc>," >&2
         echo "feature/<repo>-issue-<N> (package-worktree sibling repo)," >&2
         echo "or skill/<name>-<YYYYMMDD>-<HHMMSS>[-<n>] (skill worktree)" >&2
+        echo "  (<name> is one of the skill worktree allowlist: ${ALLOWED_SKILLS[*]})" >&2
         exit 1
     fi
 fi

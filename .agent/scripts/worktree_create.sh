@@ -168,17 +168,9 @@ for _arg in "$@"; do
 done
 unset _arg
 
-# Skills allowed to create worktrees without a GitHub issue
-# (onboard-project: a project's onboarding branch when it uses no issues)
-ALLOWED_SKILLS=("research" "inspiration-tracker" "onboard-project")
-# The one worktree type each is for: the living-document skills keep
-# workspace documents; onboard-project changes a project's repository.
-skill_worktree_type() {
-    case "$1" in
-        onboard-project) echo project ;;
-        *) echo workspace ;;
-    esac
-}
+# Skills allowed to create worktrees without a GitHub issue: ALLOWED_SKILLS,
+# is_allowed_skill and skill_worktree_type come from _worktree_helpers.sh
+# (the one list, shared with merge_pr.sh's skill-branch classifier, issue 478).
 
 show_usage() {
     echo "Usage: $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
@@ -362,14 +354,7 @@ fi
 
 # Validate skill against allowlist
 if [ -n "$SKILL_NAME" ]; then
-    VALID_SKILL=false
-    for allowed in "${ALLOWED_SKILLS[@]}"; do
-        if [ "$allowed" == "$SKILL_NAME" ]; then
-            VALID_SKILL=true
-            break
-        fi
-    done
-    if [ "$VALID_SKILL" = false ]; then
+    if ! is_allowed_skill "$SKILL_NAME"; then
         echo "Error: Skill '$SKILL_NAME' is not in the allowlist"
         echo "Allowed skills: ${ALLOWED_SKILLS[*]}"
         exit 1
