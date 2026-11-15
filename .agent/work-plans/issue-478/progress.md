@@ -305,3 +305,25 @@ Owner's answer to "Proceed to implementation?" after the third Plan Review (read
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: all hooks passed, exit 0; `validate-script-tests` ran every suite (full run: a `.agent/scripts/_*.sh` helper, `_worktree_helpers.sh`, changed).
 - `test_merge_pr_skill.sh` 112 passed, 0 failed; `test_worktree_create.sh` 79 passed, 0 failed (also run directly while fixing).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-15 11:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-478 at `5a1317c7`
+**Base**: main
+**Depth**: Deep (reason: 1376 changed lines, 13 files; skill, knowledge and design files; fix round keeps whole-diff tier)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round 1's seven addressed findings checked: all fixed as described (cd hoisted, shared allowlist, local delete reported, --path refusals, main-checkout named, exact ref + race, fork guard on origin). Finding 8 deferred by owner, not re-raised. Two regressions from the fix round below (1, 2).
+
+### Findings
+- [ ] (must-fix) Step 5's local `git branch -d` (now reported, a716475b) runs before Step 6's pull: a merged branch with no upstream (worktree_create.sh makes it `--no-track`; a plain `git push origin <b>`) or a pruned tracking ref is checked against the unpulled local main, fails "not fully merged", and an ordinary merged PR ends "cleanup incomplete" with a "branch -D if abandoned" hint; the test hides it (`add_worktree` puts the branch at main). Delete after the sync (both workspace and project checkouts), add a test with a branch carrying its own commit and no upstream — `.agent/scripts/merge_pr.sh:2414-2457`, `.agent/scripts/tests/test_merge_pr_skill.sh:115`
+- [ ] (must-fix) `docs/design.md` merge_pr.sh line citations are stale after the fix round (e.g. PJ_ROOT_EFFECTIVE 344 cited 329; lookups 707/842 cited 676/811; main-tree guards 978/1291 cited 947/1260; project report-only 1583/1600 cited 1552/1569; cleanup ~2411-2457 cited 2371-2394; mechanism 1 and Records ranges likewise); refresh all — `docs/design.md:447,560-567`
+- [ ] (suggestion) Classifier checks only `is_allowed_skill`: also require `skill_worktree_type` to match the PR's repo type and refuse a cross-repository (fork) PR as a skill PR, so `skill/onboard-project-<ts>` on the workspace or a fork's `skill/research-<ts>` does not get the report-only gate — `.agent/scripts/merge_pr.sh:530`
+- [ ] (suggestion) Main-checkout detection compares two `rev-parse ... 2>/dev/null` outputs; a stale worktree whose folder is gone gives two empty strings and is misreported as "the main checkout"; require a non-empty git-dir first — `.agent/scripts/merge_pr.sh:2378`
+- [ ] (suggestion) Auto-delete race match `*"remote ref does not exist"*` depends on git's locale; run the push with `LC_ALL=C` or re-check `ls-remote` (rc 2 = gone) after a failed push — `.agent/scripts/merge_pr.sh:277`
+- [ ] (suggestion) Fork PR: origin delete is skipped, but Step 4/5 still remove a local worktree and `branch -d` a local branch that only shares the head's name; skip local cleanup when `PR_CROSS_REPO` is true — `.agent/scripts/merge_pr.sh:2375,2414`
