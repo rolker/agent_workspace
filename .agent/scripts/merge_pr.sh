@@ -2383,7 +2383,21 @@ else
     else
         BRANCH_REPO="$ROOT_DIR"
     fi
-    git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
+    # Safe delete (-d), as the package path does: a local branch that is
+    # absent is nothing to do; one that git will not delete (unmerged work,
+    # still checked out in a worktree) is reported with git's stderr and
+    # marks the cleanup incomplete, never silently kept (issue 478).
+    if git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
+        if _git_err="$(git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>&1)"; then
+            echo "  ✅ Local branch deleted"
+        else
+            echo "  ⚠️  Kept local branch '$PR_BRANCH' in $BRANCH_REPO:" >&2
+            echo "     ${_git_err:-git branch -d failed with no output}" >&2
+            echo "     Delete it with: git -C $BRANCH_REPO branch -D $PR_BRANCH   (if that work is truly abandoned)" >&2
+            _CLEANUP_INCOMPLETE=true
+        fi
+        unset _git_err
+    fi
     # The same rule as the package path (issue 478): an auto-deleted branch
     # is not a failure; any other failure is printed with git's stderr,
     # naming the branch left behind, and marks the cleanup incomplete.

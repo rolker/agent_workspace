@@ -295,6 +295,19 @@ check "git's own stderr shown" grep -q "deletes are refused here" <<<"$out"
 check "banner says cleanup incomplete" grep -q "merged, but cleanup incomplete" <<<"$out"
 check "branch still on origin" has_ref "$remote" "$SKILL_BR"
 
+echo "TEST: a local branch git will not delete is reported with git's stderr and ends 'cleanup incomplete'"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
+git -C "$sb/worktrees/workspace/skill-a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m unpushed
+git -C "$sb" worktree remove "$sb/worktrees/workspace/skill-a"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0 (merged)" test "$rc" -eq 0
+check "warning names the kept branch" grep -q "Kept local branch '$SKILL_BR'" <<<"$out"
+check "git's own stderr shown" grep -q "not fully merged" <<<"$out"
+check "banner says cleanup incomplete" grep -q "merged, but cleanup incomplete" <<<"$out"
+check "local branch still there" has_ref "$sb" "$SKILL_BR"
+
 echo "TEST: an issue branch's remote delete uses the same rule: an already-gone branch is no warning"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 add_worktree "$sb" "$sb/worktrees/workspace/issue-workspace-9" feature/issue-9
