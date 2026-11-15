@@ -129,3 +129,13 @@ The approach is sound and follows the owner's G1 decision, reusing existing gate
 - [ ] Step 7: for `onboard-project`, use `"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <N> --project <settings-name>`; address the non-`origin` remote case.
 - [ ] Step 6: refresh every `merge_pr.sh` line citation in `docs/design.md`, not only row 447.
 - [ ] Drop `make generate-skills` from step 7 and the Consequences table.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-15 10:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (Plan Review verdict needs-work: four should-fix and two minor findings, all plan amendments within the owner's G1 decision; none needs the owner)
+**After**: plan
+**Decision**: revise
+
+Read the newest Plan Review (6c07c48c). Revise the plan for all six findings: condition (a) is always unmet for a skill PR (no new PR-comment review reader; expect a report-only record on every skill merge); force _gate_record onto the PR-comment path for skill PRs with a test that no commit lands on the skill branch; replace research SKILL.md's post-PR cleanup steps; onboard-project's merge call uses --project and the plan handles or documents a non-origin push remote; refresh every merge_pr.sh line citation in docs/design.md; drop the make generate-skills step.
