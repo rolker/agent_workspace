@@ -184,3 +184,13 @@ The revision addresses all six earlier findings and stays within the owner's G1.
 - [ ] Step 7 / usage: state that a project whose GitHub remote is not `origin` is refused by `merge_pr.sh` (line 273-277 / 406), and what the skill does then; drop the "merge succeeds, branch left" claim.
 - [ ] Step 4/5: replace `|| true` on the remote-branch delete (line 2283) with deletion through `$PR_REPO_SLUG` via `gh api` (already-deleted treated as success), or at least a warning naming the branch and `_CLEANUP_INCOMPLETE=true`; add a test for the failure output.
 - [ ] Step 3: keep `_gate_wt` (it feeds `_ci_wt`); for `SKILL_PR` skip only the timeline read and force `_gate_record` onto the PR-comment path.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-15 10:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (second Plan Review, e7d1ffab: one should-fix and one minor, both within G1; second host revise in a row, so the next plan checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+Revise for the second Plan Review's two findings: (1) correct the non-origin remote case (merge_pr.sh fails early and loudly: no origin exits at ~273-277; an origin that is not the PR's repo finds no PR at ~406) and say so in the skill and usage text; replace the silent `|| true` remote-branch delete (~2283) with a delete through the PR's own repo (`gh api -X DELETE repos/$PR_REPO_SLUG/git/refs/heads/$PR_BRANCH`, already-gone counts as success), and on failure a warning naming the branch plus _CLEANUP_INCOMPLETE, with a test; (2) keep _gate_wt (it feeds _ci_wt); for skill PRs skip only the timeline read and send _gate_record to the PR-comment path.
