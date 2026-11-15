@@ -246,3 +246,17 @@ Both earlier findings are resolved and the plan stays within G1. One minor prior
 **Decision**: proceed
 
 Owner's answer to "Proceed to implementation?" after the third Plan Review (ready, 9c87f026): "Proceed (Recommended)". The review's one minor note goes to the implementer: the package-PR path already deletes the remote branch without hiding failures (~2118-2133); reuse it through a shared helper, or keep gh api and make the two paths behave the same.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-15 10:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-478 at `df6f4895`
+
+- `merge_pr.sh`: branch classifier accepts `skill/<name>-<YYYYMMDD>-<HHMMSS>[-<n>]` (`SKILL_PR`, banner "skill <name>"); any other non-issue branch is still refused, and a skill branch in a package repository is refused. Roadmap step prints "Skill PR — no issue to mark done". Gate: report-only for skill PRs in every mode, no timeline read (`_gate_wt` kept for `_ci_wt`), reason "skill pull request: no issue timeline", record always posted as a PR comment (nothing committed or pushed on the skill branch); duplicate check on PR comments; `--force-unreviewed` records `Merge (unreviewed)`. Step 4 removes the worktree git reports on the PR's head branch via `worktree_remove.sh --path`.
+- Remote-branch delete (Plan Review 3's minor note): reused the package path's mechanism through a shared helper, `delete_remote_branch` (ls-remote rc 2 = already gone; else `push origin --delete`, failure prints git's stderr naming the branch and sets `_CLEANUP_INCOMPLETE`), used by both the package path and the workspace/project path, which had a silent `|| true`. The plan's `gh api` delete was not built: one mechanism, offline-testable, and `origin` is the PR's repository on every path.
+- `worktree_remove.sh --path <worktree>`: linked single-repository worktree top folder only (main checkout, sub-folder refused); keeps the uncommitted-changes check.
+- Tests: new `test_merge_pr_skill.sh` (68 checks: workspace and project skill PRs, report-only record and dedup, decision summary still unmet, force-unreviewed, two same-skill worktrees, no worktree, non-skill branches refused, refused remote delete -> "cleanup incomplete", already-gone issue branch, no-origin refusal, `--path` refusals); ROOT_READERS entry added in `test_script_tests_hook_scope.sh`.
+- Docs: `docs/design.md` Merge gate (skill-PR and remote-delete bullets), Rules row, Table 1 rows, Records bullet, mechanism 1 and all `merge_pr.sh`/`worktree_remove.sh` citations refreshed, Worktrees note, change-log row; `script_reference.md` rows.
+- Skills: research (early cleanup steps replaced), inspiration-tracker, onboard-project (`merge_pr.sh --pr <M> --project <settings-name>`, non-origin remote note) name the merge.
+- Verification: `pre-commit run --files $(git diff --name-only main...HEAD)` passed with no SKIP; the script-test hook ran all 39 suites (mapper chose ALL), shellcheck and design-anchor checks passed.
