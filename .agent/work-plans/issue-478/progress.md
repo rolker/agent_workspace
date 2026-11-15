@@ -63,3 +63,17 @@ Further instance: PR #482 (branch `skill/research-20261115-092631-794043070`, me
 - [ ] Make the roadmap step a no-op for skill PRs (no issue to mark done) and say so in the output, instead of skipping it silently.
 - [ ] Test the project-repo skill PR case (`onboard-project`) and the two-same-name-worktrees case.
 - [ ] Update the three skills' PR step to name `merge_pr.sh --pr <N>` as the merge path.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-15 10:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner's answer to "How should merge_pr.sh gate a skill-branch PR?": "G1 Report-only (Recommended)" — like project PRs: CI is still awaited; the missing review is printed and recorded as a comment on the PR; the merge goes ahead on the owner's "merge it". The Merge gate section of docs/design.md records this.
+
+Host decisions for the plan (owner may veto):
+- The worktree merge_pr.sh removes for a skill PR is found by the PR's head branch (the worktree that has that branch checked out), not through `worktree_remove.sh --skill <name>`'s newest-match rule, so #374 is not a prerequisite and stays its own issue. Undoing it: fold #374 into this PR instead.
+- The roadmap update is a stated no-op for skill PRs (no issue number). Undoing it: none needed.
