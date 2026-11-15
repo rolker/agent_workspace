@@ -247,6 +247,18 @@ check "no uncommitted-changes hint" bash -c "! grep -q 'check for uncommitted ch
 check "banner says cleanup incomplete" grep -q "merged, but cleanup incomplete" <<<"$out"
 check "main checkout still there" test -d "$sb/.git"
 
+echo "TEST: a stale worktree entry (folder gone) is pruned, not taken for the main checkout"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
+rm -rf "$sb/worktrees/workspace/skill-a"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0" test "$rc" -eq 0
+check "not called the main checkout" bash -c "! grep -q 'The main checkout' <<<\"\$1\"" _ "$out"
+check "stale entry pruned" grep -q "is gone already — pruning its stale entry" <<<"$out"
+check "local branch deleted" bash -c "! git -C '$sb' show-ref --verify --quiet 'refs/heads/$SKILL_BR'"
+check "banner: merged, cleaned up, and synced" grep -q "merged, cleaned up, and synced" <<<"$out"
+
 # ======================================================= project skill PR ===
 echo "TEST: a project-repo skill PR (onboard-project) is merged, its project worktree removed, the project synced"
 sb="$(make_sandbox)"

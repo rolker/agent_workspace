@@ -2390,9 +2390,18 @@ else
         _SK_REPO="$ROOT_DIR"
         [[ "$WORKTREE_TYPE" == "project" ]] && _SK_REPO="$PJ_ROOT_EFFECTIVE"
         _SK_WT=$(find_worktree_for_branch "$_SK_REPO" "$PR_BRANCH" || true)
+        # Its git dir, empty when git cannot read it: only a readable git
+        # dir equal to the common dir is a main checkout (two empty outputs
+        # are not). A stale entry whose folder is gone is pruned; anything
+        # else goes to worktree_remove.sh, which says what it is.
+        _SK_GITDIR=""
+        [[ -n "$_SK_WT" ]] && _SK_GITDIR="$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
         if [[ -z "$_SK_WT" ]]; then
             echo "  No worktree has '$PR_BRANCH' checked out — nothing to remove"
-        elif [[ "$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" \
+        elif [[ ! -d "$_SK_WT" ]]; then
+            echo "  Worktree $_SK_WT is gone already — pruning its stale entry"
+            git -C "$_SK_REPO" worktree prune
+        elif [[ -n "$_SK_GITDIR" && "$_SK_GITDIR" \
                 == "$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]]; then
             # The main checkout itself is on the skill branch: it is never
             # removed (worktree_remove.sh --path refuses it), and Step 5's
@@ -2411,7 +2420,7 @@ else
                 _CLEANUP_INCOMPLETE=true
             fi
         fi
-        unset _SK_REPO _SK_WT _WR_ARGS
+        unset _SK_REPO _SK_WT _SK_GITDIR _WR_ARGS
     elif [[ -n "$WORKTREE_TYPE" ]]; then
         echo "  Removing worktree..."
         _WR_ARGS=(--issue "$ISSUE_NUM" --type "$WORKTREE_TYPE")
