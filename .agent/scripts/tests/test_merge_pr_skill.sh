@@ -337,6 +337,18 @@ check "already gone reported" grep -q "Remote branch already gone" <<<"$out"
 check "no warning" bash -c "! grep -q 'Could not delete remote branch' <<<\"\$1\"" _ "$out"
 check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
 
+echo "TEST: a PR from a fork leaves origin's same-named branch alone"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+fx="$sb/gh_fixtures/pr_view_$(printf '%s' "$remote" | tr '/' '_')_${PR}.json"
+jq -c '. + {isCrossRepository: true}' "$fx" > "$fx.new" && mv "$fx.new" "$fx"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0" test "$rc" -eq 0
+check "says it is a fork PR" grep -q "Remote branch left alone: PR #$PR is from a fork" <<<"$out"
+check "origin's branch survives" has_ref "$remote" "$SKILL_BR"
+check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
+
 echo "TEST: a local branch git will not delete is reported with git's stderr and ends 'cleanup incomplete'"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push

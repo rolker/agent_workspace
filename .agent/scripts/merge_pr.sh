@@ -70,7 +70,8 @@
 #      did this for a package-repo PR, in its own repo). The remote branch
 #      is deleted the same way on both paths (delete_remote_branch): an
 #      already-gone branch counts as deleted, any other failure is printed
-#      with git's stderr and marks the cleanup incomplete
+#      with git's stderr and marks the cleanup incomplete; a PR from a fork
+#      (isCrossRepository) deletes nothing on origin
 #   6. Pull main to sync (workspace and project repos; legacy path only)
 #
 # The wait step (issue #186; SHA-targeted poll and mergeability settle
@@ -256,6 +257,12 @@ find_worktree_for_branch() {
 # is the PR's repository on every path: the PR was found through it.
 delete_remote_branch() {  # <checkout> <branch> <label>
     local repo="$1" branch="$2" label="$3" lsr_rc=0 err=""
+    # A PR from a fork: its head branch lives in the fork, and a branch of
+    # the same name on origin is someone else's, so nothing is deleted.
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        echo "  ℹ️  Remote branch left alone: PR #${PR_NUMBER} is from a fork, so '$branch' on origin ($label) is not its head branch"
+        return 0
+    fi
     # The full ref name: ls-remote patterns match a ref's tail, so a bare
     # "$branch" would also match refs/heads/<x>/$branch.
     git -C "$repo" ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || lsr_rc=$?
@@ -352,15 +359,18 @@ PJ_ROOT_EFFECTIVE="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
 # Query a single repo. On OPEN PR, populates QUERY_BRANCH/QUERY_TITLE
 # and returns 0. On not-found OR not-OPEN, returns 1 silently. On other
 # errors (auth, network), prints the error and returns 2.
+# QUERY_CROSS is "true" for a PR from a fork (isCrossRepository): its head
+# branch lives in the fork, not in this repository's origin.
 QUERY_BRANCH=""
 QUERY_TITLE=""
+QUERY_CROSS=""
 query_pr() {
     local remote="$1"
     local out err rc=0
     local err_file
     err_file=$(mktemp)
     out=$(gh pr view "$PR_NUMBER" -R "$remote" \
-            --json state,headRefName,title 2>"$err_file") || rc=$?
+            --json state,headRefName,title,isCrossRepository 2>"$err_file") || rc=$?
     err=$(<"$err_file")
     rm -f "$err_file"
 
@@ -370,6 +380,7 @@ query_pr() {
         if [[ "$state" == "OPEN" ]]; then
             QUERY_BRANCH=$(echo "$out" | jq -r '.headRefName // empty')
             QUERY_TITLE=$(echo "$out" | jq -r '.title // empty')
+            QUERY_CROSS=$(echo "$out" | jq -r '.isCrossRepository // false')
             return 0
         fi
         return 1   # exists but not OPEN — irrelevant for merge
@@ -396,12 +407,14 @@ query_pr() {
 
 GH_REPO_ARGS=()
 PR_BRANCH=""
+PR_CROSS_REPO=false
 PR_REPO_SLUG=""
 
 if [[ -n "$REPO_ARG" ]]; then
     # --- Explicit repo — no workspace/project auto-detection ---
     if query_pr "$REPO_ARG"; then
         PR_BRANCH="$QUERY_BRANCH"
+        PR_CROSS_REPO="$QUERY_CROSS"
         GH_REPO_ARGS=("-R" "$REPO_ARG")
         PR_REPO_SLUG="$REPO_ARG"
         # Derive what kind of repo this is from the remotes we know about,
@@ -438,14 +451,15 @@ if [[ -n "$REPO_ARG" ]]; then
         exit 1
     fi
 else
-    WS_HIT=false; WS_BRANCH=""; WS_TITLE=""
-    PJ_HIT=false; PJ_BRANCH=""; PJ_TITLE=""
+    WS_HIT=false; WS_BRANCH=""; WS_TITLE=""; WS_CROSS=false
+    PJ_HIT=false; PJ_BRANCH=""; PJ_TITLE=""; PJ_CROSS=false
 
     if [[ -z "$WORKTREE_TYPE" || "$WORKTREE_TYPE" == "workspace" ]] && [[ -n "$WS_REMOTE" ]]; then
         if query_pr "$WS_REMOTE"; then
             WS_HIT=true
             WS_BRANCH="$QUERY_BRANCH"
             WS_TITLE="$QUERY_TITLE"
+            WS_CROSS="$QUERY_CROSS"
         elif [[ $? -eq 2 ]]; then
             echo "  Pass --type to bypass auto-detection." >&2
             exit 1
@@ -457,6 +471,7 @@ else
             PJ_HIT=true
             PJ_BRANCH="$QUERY_BRANCH"
             PJ_TITLE="$QUERY_TITLE"
+            PJ_CROSS="$QUERY_CROSS"
         elif [[ $? -eq 2 ]]; then
             echo "  Pass --type to bypass auto-detection." >&2
             exit 1
@@ -472,6 +487,7 @@ else
     elif $WS_HIT; then
         WORKTREE_TYPE="workspace"
         PR_BRANCH="$WS_BRANCH"
+        PR_CROSS_REPO="$WS_CROSS"
         # Set -R for the workspace too — `gh pr merge` without -R falls back to
         # the CWD's git remote, which is the project repo when the script is
         # invoked from a project worktree (or anywhere else not under the
@@ -482,6 +498,7 @@ else
     elif $PJ_HIT; then
         WORKTREE_TYPE="project"
         PR_BRANCH="$PJ_BRANCH"
+        PR_CROSS_REPO="$PJ_CROSS"
         GH_REPO_ARGS=("-R" "$PJ_REMOTE")
         PR_REPO_SLUG="$(extract_gh_slug "$PJ_REMOTE")"
     else

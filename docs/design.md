@@ -800,7 +800,8 @@ Status: `decided`
 - After the merge, the head branch is deleted on `origin` the same way for every pull request
   (`delete_remote_branch`): a branch already gone (GitHub's auto-delete) counts as deleted, and any
   other failure prints git's error naming the branch and ends with "cleanup incomplete"; it was
-  silently ignored for workspace and project pull requests before issue 478.
+  silently ignored for workspace and project pull requests before issue 478. A pull request from a
+  fork is the exception: its head branch is the fork's, so nothing on `origin` is deleted.
 - The gate's calls to origin (its fetch, the CI-target fetch, the record push) are time-limited
   (`wt_bounded_git`: `WT_FETCH_TIMEOUT`, default 60 s, no terminal prompt), so an SSH passphrase or
   host-key prompt with no agent fails at the limit instead of prompting. The gate then judges from the
