@@ -194,3 +194,11 @@ The revision addresses all six earlier findings and stays within the owner's G1.
 **Decision**: revise
 
 Revise for the second Plan Review's two findings: (1) correct the non-origin remote case (merge_pr.sh fails early and loudly: no origin exits at ~273-277; an origin that is not the PR's repo finds no PR at ~406) and say so in the skill and usage text; replace the silent `|| true` remote-branch delete (~2283) with a delete through the PR's own repo (`gh api -X DELETE repos/$PR_REPO_SLUG/git/refs/heads/$PR_BRANCH`, already-gone counts as success), and on failure a warning naming the branch plus _CLEANUP_INCOMPLETE, with a test; (2) keep _gate_wt (it feeds _ci_wt); for skill PRs skip only the timeline read and send _gate_record to the PR-comment path.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-15 10:11 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `5438f827`
+
+Revision after plan review: non-origin remotes fail early (corrected description); remote-branch delete goes through the PR's repo via gh api with a warning and _CLEANUP_INCOMPLETE on failure, with tests; _gate_wt kept, skill PRs skip only the timeline read and record on the PR.
