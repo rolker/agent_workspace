@@ -352,3 +352,21 @@ Round 1's seven addressed findings checked: all fixed as described (cd hoisted, 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: every hook passed, exit 0; `validate-script-tests` ran every suite (full run: the branch changes the shared helper `_worktree_helpers.sh`).
 - `test_merge_pr_skill.sh` 132 passed, 0 failed (also run directly while fixing).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-15 11:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae4f8ccbe340f2017, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-478 at `8220d187`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: round 2 findings 1-6 against 4fd1c142..6676cd24, and regressions in that diff only. Cross-model: skipped (round-3 convergence check, per handoff). All six fixed as described: local `branch -d` now after both syncs and after the remote delete (so a tracking ref removed by `push --delete` no longer matters); design.md citations spot-checked against the final file (350, 460-509, 645-668, 728, 841/863, 999/1312, 1024/1437, 1604/1621, 2448-2503 all land on the named code); classifier refuses a fork PR and a skill/repo-type mismatch before SKILL_PR is set; main-checkout check needs a non-empty git dir and a missing folder is pruned; race decided by a second `ls-remote` exit code; fork PR leaves local worktree and branch alone. No regressions found. `test_merge_pr_skill.sh` 132 passed, 0 failed (run here); shellcheck --severity=warning clean on merge_pr.sh and the test.
+
+### Findings
+- [ ] No issues found. LGTM.
