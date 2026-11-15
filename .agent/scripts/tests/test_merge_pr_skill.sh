@@ -378,7 +378,7 @@ check "already gone reported" grep -q "Remote branch already gone" <<<"$out"
 check "no warning" bash -c "! grep -q 'Could not delete remote branch' <<<\"\$1\"" _ "$out"
 check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
 
-echo "TEST: a PR from a fork leaves origin's same-named branch alone"
+echo "TEST: a PR from a fork leaves origin's same-named branch, and the local worktree and branch, alone"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 fork_br="feature/issue-9"
 add_worktree "$sb" "$sb/worktrees/workspace/issue-workspace-9" "$fork_br" push
@@ -389,6 +389,9 @@ rc=0; out="$(run_merge "$sb" --no-roadmap-update --report-only 2>&1)" || rc=$?
 check "exit 0" test "$rc" -eq 0
 check "says it is a fork PR" grep -q "Remote branch left alone: PR #$PR is from a fork" <<<"$out"
 check "origin's branch survives" has_ref "$remote" "$fork_br"
+check "says the local worktree is left alone" grep -q "Local worktree left alone: PR #$PR is from a fork" <<<"$out"
+check "the local worktree survives" test -d "$sb/worktrees/workspace/issue-workspace-9"
+check "the local branch survives" has_ref "$sb" "$fork_br"
 check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
 
 echo "TEST: a merged branch with its own commit and no upstream is deleted after main is synced"

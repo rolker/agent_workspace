@@ -801,7 +801,8 @@ Status: `decided`
   (`delete_remote_branch`): a branch already gone (GitHub's auto-delete) counts as deleted, and any
   other failure prints git's error naming the branch and ends with "cleanup incomplete"; it was
   silently ignored for workspace and project pull requests before issue 478. A pull request from a
-  fork is the exception: its head branch is the fork's, so nothing on `origin` is deleted.
+  fork is the exception: its head branch is the fork's, so nothing on `origin` is deleted, and no
+  local worktree or branch of the same name is removed.
 - The gate's calls to origin (its fetch, the CI-target fetch, the record push) are time-limited
   (`wt_bounded_git`: `WT_FETCH_TIMEOUT`, default 60 s, no terminal prompt), so an SSH passphrase or
   host-key prompt with no agent fails at the limit instead of prompting. The gate then judges from the

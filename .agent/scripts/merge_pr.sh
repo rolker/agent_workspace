@@ -71,7 +71,8 @@
 #      is deleted the same way on both paths (delete_remote_branch): an
 #      already-gone branch counts as deleted, any other failure is printed
 #      with git's stderr and marks the cleanup incomplete; a PR from a fork
-#      (isCrossRepository) deletes nothing on origin
+#      (isCrossRepository) deletes nothing on origin and removes no local
+#      worktree or branch of the same name
 #   6. Pull main to sync (workspace and project repos; legacy path only),
 #      then delete the local branch (`branch -d`, after the sync so a
 #      merged branch with no upstream reads as merged into HEAD)
@@ -2383,7 +2384,12 @@ else
     # current directory, which must be the workspace root on every branch
     # below, including a skill PR with no worktree to remove (issue 478).
     cd "$ROOT_DIR"
-    if [[ "$SKILL_PR" == true ]]; then
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        # A PR from a fork: its head branch is the fork's. A local worktree
+        # or branch of the same name is someone's local work, not this PR's,
+        # so none is removed (the local branch delete below skips it too).
+        echo "  ℹ️  Local worktree left alone: PR #${PR_NUMBER} is from a fork, so '$PR_BRANCH' here is not its head branch"
+    elif [[ "$SKILL_PR" == true ]]; then
         # A skill PR (issue 478): the worktree that has the PR's head branch
         # checked out, found by git (the workspace root, or the project root
         # for a project PR, as Step 1 looks), and removed by its path, never
@@ -2480,8 +2486,11 @@ else
     # Safe delete (-d), as the package path does: a local branch that is
     # absent is nothing to do; one that git will not delete (unmerged work,
     # still checked out in a worktree) is reported with git's stderr and
-    # marks the cleanup incomplete, never silently kept.
-    if git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
+    # marks the cleanup incomplete, never silently kept. A PR from a fork
+    # has no local branch of its own here (Step 4).
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        echo "  ℹ️  Local branch left alone: PR #${PR_NUMBER} is from a fork"
+    elif git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
         if _git_err="$(git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>&1)"; then
             echo "  ✅ Local branch deleted"
         else
