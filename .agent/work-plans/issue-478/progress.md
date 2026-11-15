@@ -281,4 +281,27 @@ Owner's answer to "Proceed to implementation?" after the third Plan Review (read
 - [x] (suggestion) Main checkout on the skill branch: `--path` correctly refuses, but merge_pr prints "check for uncommitted changes"; name the real reason or skip a main tree — `.agent/scripts/merge_pr.sh:2347-2350`
 - [x] (suggestion) `delete_remote_branch`: use `refs/heads/$branch` in `ls-remote` (pattern tail-matches `x/$branch`), and treat a push failing with "remote ref does not exist" (auto-delete race) as gone — `.agent/scripts/merge_pr.sh:257-271`
 - [x] (suggestion) Fork PR: `origin` delete can hit a same-named base-repo branch; pre-existing (old `push --delete || true` did the same), check `headRepositoryOwner` or open a follow-up — `.agent/scripts/merge_pr.sh:264`
-- [ ] (suggestion) Follow-up issue, not this PR: research's `gh pr create --fill` adds no AI signature, and inspiration-tracker's quoted heredoc posts literal `$AGENT_NAME`/`$AGENT_MODEL` (both pre-existing, untouched by this diff) — `.claude/skills/research/SKILL.md:109`, `.claude/skills/inspiration-tracker/SKILL.md:290-299`
+- [x] (suggestion) Follow-up issue, not this PR: research's `gh pr create --fill` adds no AI signature, and inspiration-tracker's quoted heredoc posts literal `$AGENT_NAME`/`$AGENT_MODEL` (both pre-existing, untouched by this diff) — `.claude/skills/research/SKILL.md:109`, `.claude/skills/inspiration-tracker/SKILL.md:290-299` (deferred: proposed to the owner as a follow-up issue)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-15 11:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-478 at `fbd10caf`
+**Addressed**: Local Review (Pre-Push) at `396d4aad` (2026-11-15 10:57 -05:00)
+**Commits**: e3479395, 6cb352f1, a716475b, 520b1371, 969b99e1, 13687f6c, fbd10caf
+
+### Actions
+- [x] (must-fix) `cd "$ROOT_DIR"` hoisted to the top of Step 4 on every path; test runs merge_pr.sh from another worktree with no upstream and checks the workspace root's main is fast-forwarded and the caller's checkout untouched (fails without the fix) — `.agent/scripts/merge_pr.sh` Step 4 (e3479395)
+- [x] (must-fix) `ALLOWED_SKILLS`, `is_allowed_skill`, `skill_worktree_type` moved to `_worktree_helpers.sh` (one list for worktree_create.sh and merge_pr.sh); the classifier takes a skill branch only for an allowlisted name; test: `skill/handmade-...` and `skill/research-x-...` refused, nothing merged — `.agent/scripts/merge_pr.sh:501` (6cb352f1)
+- [x] (suggestion) Step 5's local `branch -d` reports a kept branch with git's stderr and marks the cleanup incomplete (absent branch is a no-op); test with an unmerged local commit — `.agent/scripts/merge_pr.sh` Step 5 (a716475b)
+- [x] (suggestion) `worktree_remove.sh --path` refuses a folder under a `.worktree-repos` manifest and a worktree whose git common dir is not the `--type`/`--project` repository; merge_pr.sh passes `--project`; tests for package entry and both type mismatches; script_reference.md and design.md updated — `.agent/scripts/worktree_remove.sh` (520b1371)
+- [x] (suggestion) A main checkout on the skill branch is named as such (never removed, cleanup incomplete), and Step 6 skips the pull when the workspace checkout is on the merged branch (it had aborted under `set -e`); test — `.agent/scripts/merge_pr.sh` Step 4/6 (969b99e1)
+- [x] (suggestion) `ls-remote ... refs/heads/<branch>` in delete_remote_branch and the package sibling cleanup; "remote ref does not exist" from push --delete counts as already gone; tests for a tail-matching `x/<branch>` and the race (both fail without the fix) — `.agent/scripts/merge_pr.sh:257-271` (13687f6c)
+- [x] (suggestion) Fork PR: the PR lookup reads `isCrossRepository`; delete_remote_branch leaves origin alone with a message for a cross-repository PR; test; design.md bullet updated — `.agent/scripts/merge_pr.sh:264` (fbd10caf)
+- [x] (suggestion) AI signature in research's `gh pr create --fill` and inspiration-tracker's quoted heredoc — `.claude/skills/research/SKILL.md:109`, `.claude/skills/inspiration-tracker/SKILL.md:290-299` (deferred: proposed to the owner as a follow-up issue)
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP on the final tree: all hooks passed, exit 0; `validate-script-tests` ran every suite (full run: a `.agent/scripts/_*.sh` helper, `_worktree_helpers.sh`, changed).
+- `test_merge_pr_skill.sh` 112 passed, 0 failed; `test_worktree_create.sh` 79 passed, 0 failed (also run directly while fixing).
