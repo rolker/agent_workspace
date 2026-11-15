@@ -370,3 +370,13 @@ Scope: round 2 findings 1-6 against 4fd1c142..6676cd24, and regressions in that 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-15 11:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (round 3 pre-push review e2660137 approved, Ship: recommended, 0 must-fix, 0 suggestions)
+**After**: publish
+**Decision**: publish
+
+Push the branch and open the pull request with the round 3 Decision summary.
