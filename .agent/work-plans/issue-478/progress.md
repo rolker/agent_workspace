@@ -139,3 +139,11 @@ The approach is sound and follows the owner's G1 decision, reusing existing gate
 **Decision**: revise
 
 Read the newest Plan Review (6c07c48c). Revise the plan for all six findings: condition (a) is always unmet for a skill PR (no new PR-comment review reader; expect a report-only record on every skill merge); force _gate_record onto the PR-comment path for skill PRs with a test that no commit lands on the skill branch; replace research SKILL.md's post-PR cleanup steps; onboard-project's merge call uses --project and the plan handles or documents a non-origin push remote; refresh every merge_pr.sh line citation in docs/design.md; drop the make generate-skills step.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-15 10:08 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `c1950481`
+
+Revision after the Plan Review (6c07c48c): condition (a) is stated always unmet for a skill PR (no PR-comment review reader), _gate_record is forced onto the PR-comment path with a no-commit test, research's post-PR cleanup steps are replaced by the merge, onboard-project uses $WS_ROOT merge_pr.sh --project with the non-origin remote documented, every merge_pr.sh citation in docs/design.md is refreshed, and make generate-skills is dropped.
