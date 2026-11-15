@@ -31,8 +31,9 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    merge therefore prints the gap and records a `## Merge (report-only)` comment on the PR, and the merge goes
    ahead. The skill worktree is open, so `_gate_wt` (`find_worktree_for_branch`, ~742) resolves and
    `_gate_record` (~1145-1255) would take its timeline branch and call `progress_append.sh ... "$ISSUE_NUM"`
-   with an empty issue: for `SKILL_PR`, force `_gate_wt` empty / force `_gate_record` onto the PR-comment path
-   with its own `why_comment`; no commit or push on the skill branch. `_gate_already_recorded` reads PR comments
+   with an empty issue. Keep `_gate_wt` (it feeds `_ci_wt`, ~870-881, the local-history CI check): for `SKILL_PR`
+   skip only the timeline read and send `_gate_record` to the PR-comment path with its own `why_comment`; no commit
+   or push on the skill branch. `_gate_already_recorded` reads PR comments
    only. `--force-unreviewed` keeps its meaning. Guard every `ISSUE_NUM`-derived path (~826-1250) so none runs
    with it empty.
 4. **Cleanup (Step 4)** — for `SKILL_PR`, resolve the worktree with `find_worktree_for_branch` (workspace
@@ -40,6 +41,11 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    (add a `--path <worktree>` selector to `worktree_remove.sh`, reusing its uncommitted-changes check, or
    `git worktree remove` if the script cannot take a path; decide when reading the script, keep the check).
    No worktree found: say so and go on to branch deletion. Steps 5-6 (delete branches, sync main, sync project) unchanged.
+4b. **Remote-branch delete (Step 5, ~2283, affects every PR)** — replace `git push origin --delete ... || true`
+   with a delete through the PR's own repository: `gh api -X DELETE repos/$PR_REPO_SLUG/git/refs/heads/$PR_BRANCH`;
+   "already gone" (HTTP 404/422 "Reference does not exist", e.g. GitHub auto-delete on merge) counts as success.
+   Any other failure prints a warning naming the branch left behind and sets `_CLEANUP_INCOMPLETE=true` (final
+   banner at ~2299 already reports it). No more silent `|| true`.
 5. **Header and usage** — drop "Skill worktree branches are not supported" and the "issue-based only" limitation;
    document the skill path and the report-only treatment.
 6. **Design** — `docs/design.md#merge-gate`: add the skill-PR bullet (report-only like project PRs, condition (a)
@@ -54,9 +60,9 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    - `inspiration-tracker/SKILL.md`: after the PR step (~299) add the same merge line; it has no early cleanup step (checked).
    - `onboard-project/SKILL.md` (runs in a project session; PR is in the project repo): after step 7's `gh pr create`
      add `"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <N> --project <settings-name>` (not `--repo`, which takes the
-     package path). Non-`origin` push remote: `merge_pr.sh` deletes the remote branch through `origin`
-     (~2283, `|| true`), so the merge still succeeds but the remote branch is left; state this in the skill and
-     in the script usage as a limitation, and cover it with a test if the sandbox can name the remote differently.
+     package path). Non-`origin` push remote: `merge_pr.sh` fails early and loudly, not silently
+     (no `origin` on the project checkout: exit at ~273-277; an `origin` that is not the PR's repository: no PR
+     found, ~406). Say so in the skill text and in the usage text (the PR's repo must be reachable as `origin`).
    No `make generate-skills`: it only regenerates `/make_*` from Makefile targets; SKILL.md edits feed nothing generated.
 8. **Tests** (`.agent/scripts/tests/`, sandbox + `gh` stub as in `test_merge_pr.sh`; extend that file or
    `test_merge_pr_gate.sh`; a new `test_*.sh` gets `chmod +x`):
@@ -68,6 +74,10 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
    - project-repo skill PR (`onboard-project`, `--type project`): merged, project worktree removed, project synced;
    - two worktrees of the same skill name: only the PR's branch worktree is removed, the other survives;
    - a non-issue, non-skill branch still errors; `--force-unreviewed` on a skill PR still records `Merge (unreviewed)`;
+   - remote-branch delete: `gh` stub returning an error for the DELETE call prints the warning naming the branch,
+     ends with the "cleanup incomplete" banner and still exits 0 after the merge; a stubbed "Reference does not
+     exist" response counts as deleted with no warning; the call targets `repos/<PR slug>/git/refs/heads/<branch>`;
+   - non-origin remote: sandbox with no `origin` (project PR) exits 1 with the "no 'origin' remote" error;
    - existing issue-branch cases unchanged (run all three `test_merge_pr*.sh`).
 9. **Verify** — `make lint`, the three merge_pr test files, shellcheck on changed scripts.
 
@@ -75,7 +85,7 @@ ahead. Host decisions (owner may veto): the worktree is found by the PR's head b
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/merge_pr.sh` | Branch classifier, skill paths in roadmap, gate, cleanup; header/usage |
+| `.agent/scripts/merge_pr.sh` | Branch classifier, skill paths in roadmap, gate, cleanup; remote-branch delete via `gh api`; header/usage |
 | `.agent/scripts/worktree_remove.sh` | Optional `--path` selector (step 4) |
 | `.agent/scripts/tests/test_merge_pr*.sh` | Skill-branch cases listed in step 8 |
 | `docs/design.md` | Merge gate, Rules row, `merge_pr.sh` row, change log |
