@@ -256,13 +256,21 @@ find_worktree_for_branch() {
 # is the PR's repository on every path: the PR was found through it.
 delete_remote_branch() {  # <checkout> <branch> <label>
     local repo="$1" branch="$2" label="$3" lsr_rc=0 err=""
-    git -C "$repo" ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 || lsr_rc=$?
+    # The full ref name: ls-remote patterns match a ref's tail, so a bare
+    # "$branch" would also match refs/heads/<x>/$branch.
+    git -C "$repo" ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || lsr_rc=$?
     if [[ $lsr_rc -eq 2 ]]; then
         echo "  ✅ Remote branch already gone ($label, auto-deleted on merge)"
         return 0
     fi
     if err="$(git -C "$repo" push origin --delete "$branch" 2>&1)"; then
         echo "  ✅ Remote branch deleted ($label)"
+        return 0
+    fi
+    # GitHub's auto-delete can land between the ls-remote and the push:
+    # the ref is gone, which is the end state wanted.
+    if [[ "$err" == *"remote ref does not exist"* ]]; then
+        echo "  ✅ Remote branch already gone ($label, auto-deleted on merge)"
         return 0
     fi
     echo "  ⚠️  Could not delete remote branch '$branch' in $label:" >&2
@@ -2293,7 +2301,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
                 _cm_remote="$(git -C "$_cm_origin" remote get-url origin 2>/dev/null || echo "")"
                 _cm_slug="$(extract_gh_slug "$_cm_remote")"
                 _cm_lsremote_rc=0
-                git -C "$_cm_origin" ls-remote --exit-code --heads origin "$_cm_branch" >/dev/null 2>&1 || _cm_lsremote_rc=$?
+                git -C "$_cm_origin" ls-remote --exit-code origin "refs/heads/$_cm_branch" >/dev/null 2>&1 || _cm_lsremote_rc=$?
                 case $_cm_lsremote_rc in
                     0)
                         echo "  ℹ️  Branch '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place"

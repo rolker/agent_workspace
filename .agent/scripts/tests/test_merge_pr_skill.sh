@@ -310,6 +310,33 @@ check "git's own stderr shown" grep -q "deletes are refused here" <<<"$out"
 check "banner says cleanup incomplete" grep -q "merged, but cleanup incomplete" <<<"$out"
 check "branch still on origin" has_ref "$remote" "$SKILL_BR"
 
+echo "TEST: a remote branch that only tail-matches (x/<branch>) is not taken for the PR's branch"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR"
+git -C "$sb" push --quiet origin "$SKILL_BR:refs/heads/x/$SKILL_BR"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0" test "$rc" -eq 0
+check "already gone reported" grep -q "Remote branch already gone" <<<"$out"
+check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
+check "the other branch untouched" has_ref "$remote" "x/$SKILL_BR"
+
+echo "TEST: a push --delete that finds the ref already gone (auto-delete race) counts as gone"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+# ls-remote answers "present" (rc 0), as it would just before GitHub's
+# auto-delete lands; every other git call is the real git.
+real_git="$(command -v git)"
+printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = ls-remote ] && exit 0; done\nexec %q "$@"\n' "$real_git" > "$sb/stubbin/git"
+chmod +x "$sb/stubbin/git"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+rm -f "$sb/stubbin/git"
+check "exit 0" test "$rc" -eq 0
+check "already gone reported" grep -q "Remote branch already gone" <<<"$out"
+check "no warning" bash -c "! grep -q 'Could not delete remote branch' <<<\"\$1\"" _ "$out"
+check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
+
 echo "TEST: a local branch git will not delete is reported with git's stderr and ends 'cleanup incomplete'"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
