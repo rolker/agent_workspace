@@ -202,3 +202,37 @@ Revise for the second Plan Review's two findings: (1) correct the non-origin rem
 **Plan**: `.agent/work-plans/issue-478/plan.md` at `5438f827`
 
 Revision after plan review: non-origin remotes fail early (corrected description); remote-branch delete goes through the PR's repo via gh api with a warning and _CLEANUP_INCOMPLETE on failure, with tests; _gate_wt kept, skill PRs skip only the timeline read and record on the PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-15 10:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #478 — merge_pr.sh refuses skill-branch pull requests; they are merged by hand
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `5438f827`
+**Branch**: `feature/issue-478`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one PR (script, optional `worktree_remove.sh` selector, tests, design, three skills). |
+| Issue alignment | Good | Owner's G1 applied, not reopened. Both findings of the second Plan Review (e7d1ffab) addressed: (1) step 7 now states a non-`origin` remote fails early and loudly (no `origin`: exit ~273-277; wrong `origin`: no PR ~406), says so in skill and usage text, and tests the no-`origin` refusal; step 4b replaces the silent `|| true` remote delete (line 2283) with a delete through `$PR_REPO_SLUG`, already-gone counted as success, other failures warn by branch name and set `_CLEANUP_INCOMPLETE`, with tests; (2) step 3 keeps `_gate_wt` (feeds `_ci_wt`) and skips only the timeline read. Serves, as checked: "Easy to use, and Trust, control and information - `docs/design.md#merge-gate`". |
+| File targeting | Good | Files match the steps; `PR_REPO_SLUG` is set before Step 5 (lines 349-436), and the final banner already reads `_CLEANUP_INCOMPLETE` with a `:-false` default (~2297). |
+| Consequences | Good | Design section, Rules row, all line citations, script_reference (if options change), #374 left as follow-up. Step 4b changes behavior for every PR; the design change-log entry should name it (covered by step 6's change log). |
+| Principle alignment | Good | One minor prior-art note (finding 1). |
+| ADR compliance | Good | 0013, 0017, 0002 addressed; 0004/0005 by the owner's recorded choice. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — prior art]** (minor, non-blocking) — `merge_pr.sh` already has a non-silent remote-branch delete in the package-PR path (lines ~2118-2133): `ls-remote --exit-code` rc 2 = "already gone", else `push origin --delete` with git's stderr and `_CLEANUP_INCOMPLETE=true`. Step 4b introduces a second mechanism (`gh api -X DELETE`) without citing it. Either reuse that pattern (factor a small helper used by both paths; the plan already establishes that `origin` must be the PR's repo, and a sandbox bare remote tests it without a new `gh` stub branch) or keep `gh api` and say why. Implementer's choice; just keep the two paths consistent and name the choice in the Prior Art section or PR description.
+
+### Summary
+
+Both earlier findings are resolved and the plan stays within G1. One minor prior-art note on the remote-branch delete; it does not block implementation. Ready.
+
+### Recommended Actions
+
+- [ ] Step 4b: reuse (or factor out) the package-path delete at ~2118-2133, or state why `gh api` is preferred; keep both paths' behavior consistent.
