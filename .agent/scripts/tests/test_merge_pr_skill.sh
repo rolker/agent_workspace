@@ -17,7 +17,9 @@
 #   - remote delete: a refused delete names the branch and ends "cleanup
 #     incomplete" (exit 0, merged); an already-gone branch is no warning
 #   - a project checkout with no `origin` is refused early
-#   - worktree_remove.sh --path refuses a main checkout and a sub-folder
+#   - worktree_remove.sh --path refuses a main checkout, a sub-folder, a
+#     package worktree's entry and a worktree of another repository than
+#     --type names
 # Everything runs in sandboxes (mktemp) with the real scripts copied in; gh
 # is a fixture stub (no network): `pr view` answers from files, `pr comment`
 # appends to comments_posted.md, every call is logged.
@@ -334,6 +336,30 @@ rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/wor
 check "--path with --skill: exit 1" test "$rc" -eq 1
 check "--path with --skill: mutually exclusive" grep -q "mutually exclusive" <<<"$out"
 check "worktree still there" test -d "$sb/worktrees/workspace/skill-a"
+
+echo "TEST: worktree_remove.sh --path refuses a package worktree's entry and a worktree of another repository than --type names"
+sb="$(make_sandbox)"
+pkg="$sb/worktrees/workspace/issue-workspace-5"
+mkdir -p "$pkg"
+printf 'x\t.\tfeature/issue-5\nx\tsrc/a\tfeature/a-issue-5\n' > "$pkg/.worktree-repos"
+add_worktree "$sb" "$pkg/src/a" feature/a-issue-5
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$pkg/src/a" --type workspace 2>&1)" || rc=$?
+check "package entry: exit 1" test "$rc" -eq 1
+check "package entry: says why" grep -q "is an entry of the package worktree" <<<"$out"
+check "package entry still there" test -d "$pkg/src/a"
+make_repo_with_origin "$sb/project" premote
+add_worktree "$sb/project" "$sb/worktrees/project/proj/skill-p" "skill/onboard-project-20261115-090000-1"
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/project/proj/skill-p" --type workspace 2>&1)" || rc=$?
+check "project worktree as --type workspace: exit 1" test "$rc" -eq 1
+check "project worktree as --type workspace: says why" grep -q "is not a worktree of the workspace repository" <<<"$out"
+check "project worktree still there" test -d "$sb/worktrees/project/proj/skill-p"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-w" "$SKILL_BR"
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/workspace/skill-w" --type project 2>&1)" || rc=$?
+check "workspace worktree as --type project: exit 1" test "$rc" -eq 1
+check "workspace worktree as --type project: says why" grep -q "is not a worktree of the project repository" <<<"$out"
+check "workspace worktree still there" test -d "$sb/worktrees/workspace/skill-w"
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/project/proj/skill-p" --type project 2>&1)" || rc=$?
+check "project worktree as --type project: removed" test "$rc" -eq 0 -a ! -e "$sb/worktrees/project/proj/skill-p"
 
 echo ""
 echo "test_merge_pr_skill: $PASS passed, $FAIL failed"

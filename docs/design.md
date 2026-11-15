@@ -501,7 +501,8 @@ Status: `decided`
   from the cwd when it is omitted (`worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`; see
   [Registry and adapters](#registry-and-adapters), Table 1).
   `worktree_remove.sh` finds the worktree by `--issue` or `--skill` (the newest of that name), or takes
-  its path with `--path`, which accepts only a linked single-repository worktree's top folder;
+  its path with `--path`, which accepts only a linked single-repository worktree's top folder (never a
+  package worktree's entry) of the repository `--type` names;
   `merge_pr.sh` removes a skill pull request's worktree that way, the one git reports on its head
   branch (issue 478).
 - A workspace worktree is a worktree of the workspace repository, under `worktrees/workspace/`. A

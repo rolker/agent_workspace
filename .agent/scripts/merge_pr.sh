@@ -2352,14 +2352,16 @@ else
             echo "  No worktree has '$PR_BRANCH' checked out — nothing to remove"
         else
             echo "  Removing worktree..."
-            if "$SCRIPT_DIR/worktree_remove.sh" --path "$_SK_WT" --type "$WORKTREE_TYPE"; then
+            _WR_ARGS=(--path "$_SK_WT" --type "$WORKTREE_TYPE")
+            [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PROJECT_ARG" ]] && _WR_ARGS+=(--project "$PROJECT_ARG")
+            if "$SCRIPT_DIR/worktree_remove.sh" "${_WR_ARGS[@]}"; then
                 echo "  ✅ Worktree removed"
             else
                 echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
                 _CLEANUP_INCOMPLETE=true
             fi
         fi
-        unset _SK_REPO _SK_WT
+        unset _SK_REPO _SK_WT _WR_ARGS
     elif [[ -n "$WORKTREE_TYPE" ]]; then
         echo "  Removing worktree..."
         _WR_ARGS=(--issue "$ISSUE_NUM" --type "$WORKTREE_TYPE")
