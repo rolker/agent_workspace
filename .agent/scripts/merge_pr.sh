@@ -2333,6 +2333,11 @@ elif [[ "${REPO_KIND:-}" == "package" ]]; then
     echo "  (Remote branch left as-is; delete it on GitHub if the merge did not.)"
 else
     # --- Step 4 (workspace / legacy single-repo project PR) ---
+    # From the workspace root before anything else: worktree removal must
+    # not run from inside the worktree, and Step 6's `git pull` syncs the
+    # current directory, which must be the workspace root on every branch
+    # below, including a skill PR with no worktree to remove (issue 478).
+    cd "$ROOT_DIR"
     if [[ "$SKILL_PR" == true ]]; then
         # A skill PR (issue 478): the worktree that has the PR's head branch
         # checked out, found by git (the workspace root, or the project root
@@ -2347,8 +2352,6 @@ else
             echo "  No worktree has '$PR_BRANCH' checked out — nothing to remove"
         else
             echo "  Removing worktree..."
-            # Must run from root, not from inside the worktree
-            cd "$ROOT_DIR"
             if "$SCRIPT_DIR/worktree_remove.sh" --path "$_SK_WT" --type "$WORKTREE_TYPE"; then
                 echo "  ✅ Worktree removed"
             else
@@ -2359,8 +2362,6 @@ else
         unset _SK_REPO _SK_WT
     elif [[ -n "$WORKTREE_TYPE" ]]; then
         echo "  Removing worktree..."
-        # Must run from root, not from inside the worktree
-        cd "$ROOT_DIR"
         _WR_ARGS=(--issue "$ISSUE_NUM" --type "$WORKTREE_TYPE")
         [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PROJECT_ARG" ]] && _WR_ARGS+=(--project "$PROJECT_ARG")
         if "$SCRIPT_DIR/worktree_remove.sh" "${_WR_ARGS[@]}"; then

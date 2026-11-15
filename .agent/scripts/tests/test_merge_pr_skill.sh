@@ -208,6 +208,30 @@ check "exit 0" test "$rc" -eq 0
 check "says no worktree" grep -q "No worktree has '$SKILL_BR' checked out — nothing to remove" <<<"$out"
 check "remote branch deleted" bash -c "! git -C '$remote' show-ref --verify --quiet 'refs/heads/$SKILL_BR'"
 
+echo "TEST: a skill PR with no worktree, run from another checkout, syncs the workspace root, not the caller's checkout"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
+git -C "$sb" worktree remove "$sb/worktrees/workspace/skill-a"
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+# A new commit on origin's main, for the workspace root's pull to bring in.
+upd="$(mktemp -d -p "$SANDBOX")"
+git clone --quiet "$remote" "$upd/c"
+git -C "$upd/c" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m upstream
+git -C "$upd/c" push --quiet origin main
+upstream_sha=$(git -C "$upd/c" rev-parse HEAD)
+# The caller's directory: another (issue) worktree whose branch has no
+# upstream, where a bare `git pull --ff-only` fails.
+elsewhere="$sb/worktrees/workspace/issue-workspace-7"
+add_worktree "$sb" "$elsewhere" feature/issue-7
+elsewhere_sha=$(git -C "$elsewhere" rev-parse HEAD)
+rc=0; out="$(cd "$elsewhere" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+    MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
+    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --no-wait --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0" test "$rc" -eq 0
+check "workspace root's main fast-forwarded to origin" test "$(git -C "$sb" rev-parse main)" = "$upstream_sha"
+check "the caller's checkout untouched" test "$(git -C "$elsewhere" rev-parse HEAD)" = "$elsewhere_sha"
+check "main synced" grep -q "Workspace synced" <<<"$out"
+
 # ======================================================= project skill PR ===
 echo "TEST: a project-repo skill PR (onboard-project) is merged, its project worktree removed, the project synced"
 sb="$(make_sandbox)"
