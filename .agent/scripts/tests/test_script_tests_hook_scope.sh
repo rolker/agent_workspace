@@ -215,6 +215,7 @@ declare -A ROOT_READERS=(
     [test_gh_create_issue.sh]=".agent/scripts"
     [test_merge_pr_gate.sh]=".agent/scripts"
     [test_merge_pr_root_resolution.sh]=""
+    [test_merge_pr_skill.sh]=".agent/scripts"
     [test_merge_pr.sh]=".agent/scripts"
     [test_precommit_hook_path.sh]="Makefile .agent/scripts"
     # Reads the real plugin manifests and every skill's frontmatter

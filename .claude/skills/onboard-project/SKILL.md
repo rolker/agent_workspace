@@ -567,6 +567,26 @@ by its own name, and the repository is named with its host because a bare
 to the same repository.
 Leave out the `Closes #<N>` line when step 1 opened no issue.
 
+Leave the worktree in place. Once the user says to merge, the pull request
+is merged, and the worktree and its branches cleaned up, by the workspace's
+merge script, never `gh pr merge --delete-branch` from the worktree:
+
+```bash
+"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <M> --project <settings-name>
+```
+
+`--project` takes the settings name, as `worktree_create.sh` did (not
+`--repo`, which takes a package repository). On a
+`skill/onboard-project-<timestamp>` branch the merge gate is report-only
+(no issue, so no timeline) and records a `## Merge (report-only)` comment on
+the pull request. `merge_pr.sh` finds the pull request through the project
+checkout's `origin` remote: with no `origin` it stops before merging ("has no
+'origin' remote configured"), and with an `origin` that is not
+`<owner>/<repo>` it finds no open pull request. In either case say so and
+leave the merge to the user, by hand on GitHub, with the worktree removed
+afterwards by
+`"$WS_ROOT/.agent/scripts/worktree_remove.sh" --path <worktree> --type project`.
+
 The body's heredoc is quoted (`<<'EOF'`): finding text often carries
 backticked commands and `$`, which an unquoted heredoc would run or
 expand. The signature is appended after it by `printf`, from the

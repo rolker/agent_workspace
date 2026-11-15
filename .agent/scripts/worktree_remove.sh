@@ -5,11 +5,21 @@
 # Usage:
 #   ./worktree_remove.sh --issue <number> --type workspace|project [--project <name>] [--repo-slug <slug>] [--force]
 #   ./worktree_remove.sh --skill <name> --type workspace|project [--project <name>] [--repo-slug <slug>] [--force]
+#   ./worktree_remove.sh --path <worktree> --type workspace|project [--project <name>] [--force]
+#
+# --path names the worktree itself (issue 478): merge_pr.sh resolves a skill
+# pull request's worktree by the PR's head branch and removes exactly that
+# one, so two worktrees of the same skill never get mixed up. The path must
+# be a linked single-repository git worktree (its own top folder, not a main
+# checkout, not a package worktree's container or one of its entries) of
+# the repository --type names: the workspace checkout, or the project's own
+# repository (--project picks it when several are registered).
 #
 # Examples:
 #   ./worktree_remove.sh --issue 123 --type workspace
 #   ./worktree_remove.sh --issue 123 --type project --force
 #   ./worktree_remove.sh --skill research --type workspace
+#   ./worktree_remove.sh --path worktrees/workspace/skill-workspace-research-20261115-101010-1 --type workspace
 #
 # This will:
 #   1. Check for uncommitted changes (unless --force)
@@ -25,17 +35,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ISSUE_NUM=""
 SKILL_NAME=""
+PATH_ARG=""
 WORKTREE_TYPE=""
 FORCE=false
 REPO_SLUG=""
 PROJECT_REPO=""
 
 show_usage() {
-    echo "Usage: $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
+    echo "Usage: $0 (--issue <number> | --skill <name> | --path <worktree>) --type workspace|project [options]"
     echo ""
     echo "Options:"
     echo "  --issue <number>        Issue number (required, unless --skill is used)"
     echo "  --skill <name>          Skill name (alternative to --issue)"
+    echo "  --path <worktree>       The worktree's own path (alternative to --issue/--skill;"
+    echo "                          a linked single-repository worktree only)"
     echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
     echo "  --project <name>        Registered project name (for multi-project disambiguation; alias: --repo)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
@@ -55,6 +68,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             SKILL_NAME="$2"
+            shift 2
+            ;;
+        --path)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --path requires a worktree path"
+                show_usage
+                exit 1
+            fi
+            PATH_ARG="$2"
             shift 2
             ;;
         --type)
@@ -116,13 +138,17 @@ if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
     ISSUE_NUM="${ISSUE_NUM##*#}"
 fi
 
-if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
-    echo "Error: --issue and --skill are mutually exclusive"
+_SELECTORS=0
+[ -n "$ISSUE_NUM" ] && _SELECTORS=$((_SELECTORS + 1))
+[ -n "$SKILL_NAME" ] && _SELECTORS=$((_SELECTORS + 1))
+[ -n "$PATH_ARG" ] && _SELECTORS=$((_SELECTORS + 1))
+if [ "$_SELECTORS" -gt 1 ]; then
+    echo "Error: --issue, --skill and --path are mutually exclusive"
     show_usage
     exit 1
 fi
-if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
-    echo "Error: either --issue or --skill is required"
+if [ "$_SELECTORS" -eq 0 ]; then
+    echo "Error: one of --issue, --skill or --path is required"
     show_usage
     exit 1
 fi
@@ -218,9 +244,68 @@ _resolve_base_dirs() {
 
 WORKTREE_DIR=""
 
-_resolve_base_dirs "$WORKTREE_TYPE" || exit 1
+if [ -n "$PATH_ARG" ]; then
+    # No lookup: the caller names the worktree. It must be a linked
+    # single-repository worktree's own top folder; a main checkout (the
+    # workspace's or a project's), a folder inside a worktree, or a package
+    # worktree's container (not a git checkout itself) is refused.
+    if [ ! -d "$PATH_ARG" ]; then
+        echo "Error: --path '$PATH_ARG' is not a directory"
+        exit 1
+    fi
+    _p_abs="$(cd "$PATH_ARG" && pwd -P)"
+    _p_top="$(git -C "$_p_abs" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -z "$_p_top" ] || [ "$(cd "$_p_top" && pwd -P)" != "$_p_abs" ]; then
+        echo "Error: --path '$PATH_ARG' is not a git worktree's top folder"
+        exit 1
+    fi
+    _p_gitdir="$(git -C "$_p_abs" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+    _p_common="$(git -C "$_p_abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [ -z "$_p_gitdir" ] || [ "$_p_gitdir" = "$_p_common" ]; then
+        echo "Error: --path '$PATH_ARG' is a main checkout, not a linked worktree; it is never removed"
+        exit 1
+    fi
+    # A package worktree's entry is a linked worktree's top folder too, but
+    # it is one repository of several: removing it alone would leave the
+    # package worktree half-gone. Any folder above it with a .worktree-repos
+    # manifest marks it as such; that worktree is removed with --issue.
+    _p_up="$(dirname "$_p_abs")"
+    while :; do
+        if [ -f "$_p_up/.worktree-repos" ]; then
+            echo "Error: --path '$PATH_ARG' is an entry of the package worktree $_p_up; --path removes a single-repository worktree only (use --issue)"
+            exit 1
+        fi
+        [ "$_p_up" = "/" ] && break
+        _p_up="$(dirname "$_p_up")"
+    done
+    if wt_is_package_worktree "$_p_abs"; then
+        echo "Error: --path '$PATH_ARG' is a package worktree; --path removes a single-repository worktree only (use --issue)"
+        exit 1
+    fi
+    # The worktree must belong to the repository --type (and --project)
+    # names: the workspace checkout, or the project's own repository.
+    if [ "$WORKTREE_TYPE" = "workspace" ]; then
+        _p_repo="$ROOT_DIR"
+    elif ! _p_repo="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_REPO")"; then
+        echo "Error: could not resolve the project repository for --path '$PATH_ARG'${PROJECT_REPO:+ (--project $PROJECT_REPO)}"
+        exit 1
+    fi
+    _p_want="$(git -C "$_p_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    _p_want="$( [ -n "$_p_want" ] && cd "$_p_want" 2>/dev/null && pwd -P || true)"
+    _p_have="$(cd "$_p_common" 2>/dev/null && pwd -P || true)"
+    if [ -z "$_p_want" ] || [ "$_p_have" != "$_p_want" ]; then
+        echo "Error: --path '$PATH_ARG' is not a worktree of the $WORKTREE_TYPE repository ($_p_repo)"
+        exit 1
+    fi
+    WORKTREE_DIR="$_p_abs"
+    unset _p_abs _p_top _p_gitdir _p_common _p_up _p_repo _p_want _p_have
+elif ! _resolve_base_dirs "$WORKTREE_TYPE"; then
+    exit 1
+fi
 
-if [ -n "$SKILL_NAME" ]; then
+if [ -n "$PATH_ARG" ]; then
+    :
+elif [ -n "$SKILL_NAME" ]; then
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
     elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_skill "$TRANSITION_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
@@ -259,7 +344,9 @@ BRANCH_NAME=$(git -C "$WORKTREE_DIR" branch --show-current 2>/dev/null || echo "
 echo "========================================"
 echo "Removing Worktree"
 echo "========================================"
-if [ -n "$SKILL_NAME" ]; then
+if [ -n "$PATH_ARG" ]; then
+    :
+elif [ -n "$SKILL_NAME" ]; then
     echo "  Skill:  $SKILL_NAME"
 else
     echo "  Issue:  #$ISSUE_NUM"
@@ -281,7 +368,9 @@ if [[ "$CALLER_PWD" == "$WORKTREE_DIR" || "$CALLER_PWD" == "$WORKTREE_DIR/"* ]];
     echo "❌ Error: Your shell is currently inside this worktree."
     echo ""
     echo "   Run this first:  cd $ROOT_DIR"
-    if [ -n "$SKILL_NAME" ]; then
+    if [ -n "$PATH_ARG" ]; then
+        echo "   Then re-run:     $0 --path $WORKTREE_DIR --type $WORKTREE_TYPE"
+    elif [ -n "$SKILL_NAME" ]; then
         echo "   Then re-run:     $0 --skill $SKILL_NAME --type $WORKTREE_TYPE"
     else
         echo "   Then re-run:     $0 --issue $ISSUE_NUM --type $WORKTREE_TYPE"
