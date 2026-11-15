@@ -85,3 +85,47 @@ Host decisions for the plan (owner may veto):
 **Plan**: `.agent/work-plans/issue-478/plan.md` at `536ca532`
 
 Classify skill/<name>-<ts> branches in merge_pr.sh and gate them report-only (owner's G1) with the record on the PR; roadmap stated no-op; remove the worktree found by head branch; design, three skills and tests (incl. project-repo skill PR, two same-name worktrees) updated in one PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-15 10:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #478 — merge_pr.sh refuses skill-branch pull requests; they are merged by hand
+**Plan**: `.agent/work-plans/issue-478/plan.md` at `536ca532`
+**Branch**: `feature/issue-478`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One script, an optional `worktree_remove.sh` selector, tests, design and three skills: one PR. |
+| Issue alignment | Good | All four "What is wanted" items and every review-issue recommendation are covered; the owner's G1 (Checkpoint 2026-11-15) is applied as decided and not reopened; #374 handled by branch lookup per the host decision. Serves, as checked: "Easy to use, and Trust, control and information - `docs/design.md#merge-gate`" (both goals exist in README Workspace goals; section exists). |
+| File targeting | Needs work | Gate condition (a) and the `_gate_record` path need sharper statements (findings 1, 2); the `research` skill's own "clean up the worktree" step conflicts with merge-time cleanup (finding 3); the `onboard-project` merge command is wrong for a project session (finding 4). |
+| Consequences | Needs work | `docs/design.md` cites `merge_pr.sh` line numbers outside row 447 (finding 5); `make generate-skills` is irrelevant (finding 6). |
+| Principle alignment | Good | Reuses the report-only and PR-comment paths (Only what's needed); design updated in the same PR (Keep one current design); tests that fail on a refused skill branch (Test what breaks); prior art stated. |
+| ADR compliance | Good | 0013 (PR-comment record, comment-only duplicate check), 0017 (step 6), 0002 (branch's own worktree, removed from root) addressed. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting]** (should-fix) — Step 3 says "Review and Decision-summary conditions are still evaluated against the PR". In source, condition (a) is read only from `progress.md` (`progress_read.py "$_gate_progress"`, merge_pr.sh ~920-934); nothing reads review entries from PR comments. For a skill PR (a) is therefore always unmet, and only (b) (Decision summary on the PR) is actually checked. State that, so the implementer does not build a new PR-comment review reader (new machinery the owner did not choose), and make the tests expect that every skill PR merge posts a `## Merge (report-only)` comment with the reason "skill pull request: no issue timeline".
+2. **[File targeting]** (should-fix) — A skill PR's worktree is open, so `_gate_wt` resolves (`find_worktree_for_branch`, line 742) and `_gate_record` (1145-1255) would take its timeline branch and call `progress_append.sh ... "$ISSUE_NUM"` with an empty issue. "The existing no-worktree PR-comment path" is not reached on its own: the plan should say `_gate_record` is forced to the PR-comment path for `SKILL_PR` with its own `why_comment`, and a test should assert no commit lands on the skill branch.
+3. **[File targeting]** (should-fix) — `.claude/skills/research/SKILL.md` lines 110, 119, 135 say "create PR, and clean up" / "Clean up the worktree when done" right after the PR is opened. With merge_pr.sh now removing the worktree at merge, step 7 must replace that cleanup step (leave the worktree until the merge, so review fixes can land and merge_pr.sh finds it), not only add a merge line after "create PR".
+4. **[File targeting]** (should-fix) — Step 7 gives the merge as `.agent/scripts/merge_pr.sh --pr <N>` for all three skills. `onboard-project` runs in a project session (its SKILL.md uses `$WS_ROOT/.agent/scripts/...`), so the path must be `"$WS_ROOT/.agent/scripts/merge_pr.sh"`, and the PR is in the project repo: name `--project <settings-name>` (not `--repo`, which sends the PR down the package path and its "nothing local to clean up" branch at ~2246-2254). The skill also allows pushing to a remote not named `origin`; merge_pr.sh resolves and deletes branches through `origin` — say what happens then, or test/document it as a limitation.
+5. **[Consequences]** (minor) — Step 6 refreshes only the `merge_pr.sh` row (447). `docs/design.md` also cites `merge_pr.sh` line ranges at line 632 ("719-864, 1145-1320") and elsewhere; refresh every `merge_pr.sh` line citation (grep the file), as #379 did.
+6. **[Consequences]** (minor) — Step 7 and the Consequences row "Generated skill output (`make generate-skills`) if applicable": `generate-skills` runs `generate_make_skills.sh`, which only regenerates `/make_*` commands from Makefile `.PHONY` targets; SKILL.md text edits feed nothing generated. Drop the step and the row (state "not applicable").
+
+### Summary
+
+The approach is sound and follows the owner's G1 decision, reusing existing gate paths. Before implementing, tighten step 3 (what the gate actually checks for a skill PR and forcing the PR-comment record) and step 7 (research's early cleanup, onboard-project's command in a project session), and widen the design line-number refresh.
+
+### Recommended Actions
+
+- [ ] Step 3: state that condition (a) is always unmet for a skill PR (no PR-comment review reader is built); tests expect a `## Merge (report-only)` comment on every skill PR merge.
+- [ ] Step 3: force `_gate_record` to the PR-comment path for `SKILL_PR` (the skill worktree is open); test that no commit is added to the skill branch.
+- [ ] Step 7: replace the `research` skill's "clean up the worktree" steps (lines 110, 119, 135) with "merged and cleaned up by merge_pr.sh".
+- [ ] Step 7: for `onboard-project`, use `"$WS_ROOT/.agent/scripts/merge_pr.sh" --pr <N> --project <settings-name>`; address the non-`origin` remote case.
+- [ ] Step 6: refresh every `merge_pr.sh` line citation in `docs/design.md`, not only row 447.
+- [ ] Drop `make generate-skills` from step 7 and the Consequences table.
