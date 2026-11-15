@@ -260,3 +260,25 @@ Owner's answer to "Proceed to implementation?" after the third Plan Review (read
 - Docs: `docs/design.md` Merge gate (skill-PR and remote-delete bullets), Rules row, Table 1 rows, Records bullet, mechanism 1 and all `merge_pr.sh`/`worktree_remove.sh` citations refreshed, Worktrees note, change-log row; `script_reference.md` rows.
 - Skills: research (early cleanup steps replaced), inspiration-tracker, onboard-project (`merge_pr.sh --pr <M> --project <settings-name>`, non-origin remote note) name the merge.
 - Verification: `pre-commit run --files $(git diff --name-only main...HEAD)` passed with no SKIP; the script-test hook ran all 39 suites (mapper chose ALL), shellcheck and design-anchor checks passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-15 10:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-478 at `396d4aad`
+**Base**: main
+**Depth**: Deep (reason: 972 changed lines, 11 files; skill and knowledge files)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Skill PR with no worktree never runs `cd "$ROOT_DIR"`, so Step 6 `git pull --ff-only` pulls the caller's current checkout (or aborts under `set -e` with no upstream) and still prints "Workspace synced"; hoist the `cd` above the `_SK_WT` check and add a test run from another directory — `.agent/scripts/merge_pr.sh:2341-2352,2387`
+- [ ] (must-fix) Classifier accepts any `skill/<name>-<timestamp>`, so a workspace PR on a hand-named skill branch skips the enforced gate; accept only `worktree_create.sh`'s `ALLOWED_SKILLS` (one shared list), with a test — `.agent/scripts/merge_pr.sh:501`
+- [ ] (suggestion) Local branch delete still `branch -d ... 2>/dev/null || true`; next to the new "one rule" remote delete and the docs' "deletes its branches" claim, print git's stderr and set `_CLEANUP_INCOMPLETE` as the package path does — `.agent/scripts/merge_pr.sh:2379`
+- [ ] (suggestion) `worktree_remove.sh --path` accepts a package worktree's entry (contradicts the "single-repository only" doc claim) and does not check the path's repository against `--type`/`--project`; refuse an ancestor with `.worktree-repos` and compare the git common dir — `.agent/scripts/worktree_remove.sh:245-268`
+- [ ] (suggestion) Main checkout on the skill branch: `--path` correctly refuses, but merge_pr prints "check for uncommitted changes"; name the real reason or skip a main tree — `.agent/scripts/merge_pr.sh:2347-2350`
+- [ ] (suggestion) `delete_remote_branch`: use `refs/heads/$branch` in `ls-remote` (pattern tail-matches `x/$branch`), and treat a push failing with "remote ref does not exist" (auto-delete race) as gone — `.agent/scripts/merge_pr.sh:257-271`
+- [ ] (suggestion) Fork PR: `origin` delete can hit a same-named base-repo branch; pre-existing (old `push --delete || true` did the same), check `headRepositoryOwner` or open a follow-up — `.agent/scripts/merge_pr.sh:264`
+- [ ] (suggestion) Follow-up issue, not this PR: research's `gh pr create --fill` adds no AI signature, and inspiration-tracker's quoted heredoc posts literal `$AGENT_NAME`/`$AGENT_MODEL` (both pre-existing, untouched by this diff) — `.claude/skills/research/SKILL.md:109`, `.claude/skills/inspiration-tracker/SKILL.md:290-299`
