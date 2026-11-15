@@ -72,7 +72,9 @@
 #      already-gone branch counts as deleted, any other failure is printed
 #      with git's stderr and marks the cleanup incomplete; a PR from a fork
 #      (isCrossRepository) deletes nothing on origin
-#   6. Pull main to sync (workspace and project repos; legacy path only)
+#   6. Pull main to sync (workspace and project repos; legacy path only),
+#      then delete the local branch (`branch -d`, after the sync so a
+#      merged branch with no upstream reads as merged into HEAD)
 #
 # The wait step (issue #186; SHA-targeted poll and mergeability settle
 # added by #284/#271) is covered by automated tests, not manual steps:
@@ -2408,7 +2410,7 @@ else
         unset _WR_ARGS
     fi
 
-    # --- Step 5: Delete branches ---
+    # --- Step 5: Delete branches (remote now, local after the sync) ---
     echo "  Cleaning up branches..."
     # The project's checkout root (#265): PJ_REPO_ROOT (registered or
     # legacy project/, resolved above) when this is a project PR, else the
@@ -2417,21 +2419,6 @@ else
         BRANCH_REPO="$PJ_REPO_ROOT"
     else
         BRANCH_REPO="$ROOT_DIR"
-    fi
-    # Safe delete (-d), as the package path does: a local branch that is
-    # absent is nothing to do; one that git will not delete (unmerged work,
-    # still checked out in a worktree) is reported with git's stderr and
-    # marks the cleanup incomplete, never silently kept (issue 478).
-    if git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
-        if _git_err="$(git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>&1)"; then
-            echo "  ✅ Local branch deleted"
-        else
-            echo "  ⚠️  Kept local branch '$PR_BRANCH' in $BRANCH_REPO:" >&2
-            echo "     ${_git_err:-git branch -d failed with no output}" >&2
-            echo "     Delete it with: git -C $BRANCH_REPO branch -D $PR_BRANCH   (if that work is truly abandoned)" >&2
-            _CLEANUP_INCOMPLETE=true
-        fi
-        unset _git_err
     fi
     # The same rule as the package path (issue 478): an auto-deleted branch
     # is not a failure; any other failure is printed with git's stderr,
@@ -2455,6 +2442,28 @@ else
     if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
         echo "  Syncing project..."
         git -C "$PJ_REPO_ROOT" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
+    fi
+
+    # --- Step 5, local half: after the sync (issue 478) ---
+    # `branch -d` asks whether the branch is merged into its upstream or
+    # into HEAD. A skill branch has no upstream (worktree_create.sh makes it
+    # --no-track) and a tracking ref may be pruned, so HEAD decides, and it
+    # must be the default branch with the merge pulled in: before the sync
+    # an ordinary merged branch would read as "not fully merged".
+    # Safe delete (-d), as the package path does: a local branch that is
+    # absent is nothing to do; one that git will not delete (unmerged work,
+    # still checked out in a worktree) is reported with git's stderr and
+    # marks the cleanup incomplete, never silently kept.
+    if git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
+        if _git_err="$(git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>&1)"; then
+            echo "  ✅ Local branch deleted"
+        else
+            echo "  ⚠️  Kept local branch '$PR_BRANCH' in $BRANCH_REPO:" >&2
+            echo "     ${_git_err:-git branch -d failed with no output}" >&2
+            echo "     Delete it with: git -C $BRANCH_REPO branch -D $PR_BRANCH   (if that work is truly abandoned)" >&2
+            _CLEANUP_INCOMPLETE=true
+        fi
+        unset _git_err
     fi
 fi
 

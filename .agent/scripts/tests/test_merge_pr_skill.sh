@@ -349,6 +349,27 @@ check "says it is a fork PR" grep -q "Remote branch left alone: PR #$PR is from 
 check "origin's branch survives" has_ref "$remote" "$SKILL_BR"
 check "no incomplete banner" bash -c "! grep -q 'cleanup incomplete' <<<\"\$1\"" _ "$out"
 
+echo "TEST: a merged branch with its own commit and no upstream is deleted after main is synced"
+sb="$(make_sandbox)"; remote="${sb}.remote.git"
+wt="$sb/worktrees/workspace/skill-a"
+add_worktree "$sb" "$wt" "$SKILL_BR"
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "skill work"
+# Pushed without -u, as worktree_create.sh's --no-track branch is: no upstream.
+git -C "$wt" push --quiet origin "$SKILL_BR"
+check "the branch has no upstream" bash -c "! git -C '$wt' rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1"
+git -C "$sb" worktree remove "$wt"
+# GitHub's merge (the gh stub merges nothing): a merge commit on origin's main.
+upd="$(mktemp -d -p "$SANDBOX")"
+git clone --quiet "$remote" "$upd/c"
+git -C "$upd/c" -c user.name=t -c user.email=t@t merge --quiet --no-ff -m "Merge PR" "origin/$SKILL_BR"
+git -C "$upd/c" push --quiet origin main
+write_pr_fixture "$sb" "$remote" "$SKILL_BR"
+rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
+check "exit 0" test "$rc" -eq 0
+check "local branch deleted" bash -c "! git -C '$sb' show-ref --verify --quiet 'refs/heads/$SKILL_BR'"
+check "no kept-branch warning" bash -c "! grep -q 'Kept local branch' <<<\"\$1\"" _ "$out"
+check "banner: merged, cleaned up, and synced" grep -q "merged, cleaned up, and synced" <<<"$out"
+
 echo "TEST: a local branch git will not delete is reported with git's stderr and ends 'cleanup incomplete'"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
 add_worktree "$sb" "$sb/worktrees/workspace/skill-a" "$SKILL_BR" push
