@@ -251,3 +251,26 @@ Owner rule: the dispatcher text, run-issue step 4, address-findings steps 3 and 
 - Left as is: the suites_for_files.sh leaf change of the previous pass (accepted by the review); the pull-request description still needs to list it as a mechanism decision the owner may veto.
 - Not changed: the host_standing_rules.md hook-rule row. It stays true (it states the first failure going back as findings) but does not mention the second-failure cap; add it there if the row should carry the whole rule.
 - AGENTS.md, CLAUDE.md and docs/design.md untouched; none of them states the changed rules.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-16 13:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adf2b4e2a1bdf0477, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-465 at `fd40b9c4`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-diff classification, 14 files, about 960 changed lines; .pre-commit-config.yaml, skill and knowledge files are override triggers)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Reviewers: static analysis (shellcheck on the 3 changed scripts) clean; governance, plan drift, Claude adversarial (fresh subagent) ran; Gemini (agy) and Codex completed (EXIT=0). Suites on fd40b9c4: test_skill_paths.sh 158/0, test_dispatch_phase.sh 233/0, test_checkpoint_269.sh 43/0, test_script_tests_hook_scope.sh 333/0.
+
+Round 1 findings: all four closed in the text and pinned (55847375, 99b5532d, 9082fc15, 6414f4ff); the must-fix's fix opened the new must-fix below. The grep does what the sentence says: `-w` treats `_` as a word character, so `phase.sh` does not match `x_phase.sh`, and a leading `_` is fine; it selects 11 suites at most for common helpers. The three texts carry the same words (pinned), and the rule still says the owner's 2026-11-13 rule. host_standing_rules.md need not carry the second-failure cap: that file holds the owner's rules, and the cap is the host's mechanism decision for his veto, like the record-push rule.
+
+### Findings
+- [ ] (must-fix) Any later `## Implementation` closes the host full-pass failure, a partial or failed one too: after such a pass, phase-failed `retry` dispatches address-findings again, the rule (and "even when its handoff still quotes it") says the failure is closed, `open` is empty after an approved review, and the retry exits "nothing to address" with the failure unfixed; say a `**Status**: complete` `## Implementation`, in both places — `.claude/skills/address-findings/SKILL.md:111`, `.claude/skills/run-issue/SKILL.md:796`
+- [ ] (suggestion) The second failure goes to the owner, but nothing says his `address` answer's checkpoint entry and the handoff quote the failure; without the quote address-findings finds nothing open and exits — `.claude/skills/run-issue/SKILL.md:803`
+- [ ] (suggestion) "Second failure in a row" counts the newest earlier `publish`/`rounds` checkpoint, so a review-findings `rounds` `address` between two failed passes hides the first; count the previous full-pass result instead, use the same words in the orchestrator clause, and say a full-pass `address` does not count toward the two-at-`rounds` limit — `.claude/skills/run-issue/SKILL.md:803`, `.claude/skills/orchestrator/SKILL.md:87`
+- [ ] (suggestion) The grep finds direct mentions only: a module reached by import (`lib/workspace.py`: 1 suite by grep, about 31 by the hook's map) or a helper sourced through another script gets fewer suites; add that a suite reaching a script only through another script or an import is the host pass's, and list the move away from the plan's `suites_for_files.sh` selection in the pull request description — `.agent/scripts/dispatch_phase.sh:619` (mirrored in run-issue step 4 and address-findings step 4)
