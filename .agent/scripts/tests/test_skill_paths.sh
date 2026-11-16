@@ -759,6 +759,13 @@ has "$AF" "address-findings: a quoted host full-pass failure is an open finding;
     'set `SKIP=validate-script-tests` on every commit, the step 5 entry'"'"'s commit included' \
     'runs no full pre-commit pass over the branch' \
     '`**Addressed**: host full pass at <head sha> (Checkpoint <its When>)`'
+# A fix pass's ## Implementation closes the quoted failure: the pass after
+# a changes-requested review of that fix (no new checkpoint) must not act
+# on it again (issue #465 pre-push review, must-fix).
+has "$AF" "address-findings: a host full-pass failure is open only while no ## Implementation follows the checkpoint that quotes it" \
+    'that failure is an open finding only while no `## Implementation` entry follows the checkpoint that quotes it.' \
+    'does not act on it again or name it in `**Addressed**`, even when its handoff still quotes it.' \
+    '**`open` is empty and no host full-pass failure is open**'
 has "$WS_ROOT/.agent/knowledge/host_standing_rules.md" "host standing rules: the 2026-11-13 hook rule row with the owner's words" \
     'The host runs the full pre-commit pass once per pull request, when the `publish` checkpoint is raised and before the push, with no SKIP' \
     '"yes, do the third option on both machines" (owner, 2026-11-13, on the second machine); "yes, one local run before a pr" (owner, 2026-11-13)'

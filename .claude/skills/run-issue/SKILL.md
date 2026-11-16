@@ -783,7 +783,8 @@ not passed.
   the owner's 2026-11-13 rule sends a failure back as findings)`) quotes
   each failing hook or suite with its failing lines, and the
   `address-findings` handoff quotes the same; that skill's step 2 takes
-  it as its open finding. A fixing hook (trailing whitespace, end of file,
+  it as its open finding until a fix pass's `## Implementation` follows
+  that checkpoint. A fixing hook (trailing whitespace, end of file,
   line endings, `black`) that rewrote a file is a failure too: quote it,
   then `git restore` that file so the fix is the fix pass's commit. The
   fix pass's `## Implementation` routes to another `review-code --branch`
