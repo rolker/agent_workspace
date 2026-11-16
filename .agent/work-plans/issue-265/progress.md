@@ -398,3 +398,11 @@ His direction for part 4, given the same day when he started this drive: "265, p
 **Decision**: revise
 
 The plan is rewritten for part 4 only (retire `project/` and `projects/` and the worktree fallback, and register the project11 instances, as the roadmap's deferral line words it), then reviewed, before any implementation. The owner's direction of 2026-11-16 goes into the plan-task and review-plan handoffs: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-16 12:41 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `a0460f10`
+
+Revision 3, part 4 only: retire the `project/` symlink, the `projects/<name>` default and the `worktrees/project/` fallback so the registry is the only link. One pull request: registry and worktree scripts, dispatcher and project-reading scripts, a stale-shape warning in validate, skills and docs, tests. No directory on disk is removed; registering the project11 instances is out of scope (second-machine agent).
