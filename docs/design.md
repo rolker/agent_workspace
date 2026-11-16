@@ -161,7 +161,7 @@ only.
 | Hooks are not skipped (no `--no-verify`) | Enforce what matters, as simply as possible | `CI` | The Lint job runs `make lint`, which runs every hook on all files; the four local-state hooks above are skipped there. A local `--no-verify` is not detected |
 | Issue number matches the branch | Leave a trail; start limits strict | `nothing` | `.agent/hooks/verify-issue-branch.py` prints the issue's title and state and always returns 0 (its docstring: "Informational only") |
 | A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
-| Merge only after a current review and a decision summary | Leave a trail; start limits strict | `script` | The gate in `merge_pr.sh` refuses by default on workspace PRs and is report-only for project PRs. It is local only: the script's own comment says a Merge click on GitHub bypasses it, and the server-side complement is not built |
+| Merge only after a current review and a decision summary | Leave a trail; start limits strict | `script` | The gate in `merge_pr.sh` refuses by default on workspace PRs and is report-only for project PRs and for skill PRs (no issue, so no timeline; issue 478). It is local only: the script's own comment says a Merge click on GitHub bypasses it, and the server-side complement is not built |
 | The owner decides every merge; the loop pauses at a merge checkpoint and no phase merges on its own judgment | Leave a trail; start limits strict | `review only` | `run-issue/SKILL.md` step 11 stops the loop at the `merge` checkpoint and passes the gate-relaxing flags only on the owner's answer; `merge_pr.sh` does not check who runs it (its gate checks the review and the decision summary, not the person), so a reviewer checks the host against the skill |
 | The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
@@ -361,8 +361,9 @@ Status: `decided`
   repository today (`adapter validate`), although any registered folder is a project (owner,
   2026-11-12): a folder in no git repository is refused and rolled back, a named gap.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
-  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
-  records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
+  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
+  `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
+  settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
   project has none"; anything that needs a shell is a script the key points at. A command set in the
   file runs without sourcing the legacy or shared config below, so nothing they export (an SDK path,
@@ -373,7 +374,8 @@ Status: `decided`
   so settings kept in a git checkout through a link leave that untracked file there. A key the
   project's type never reads is refused the same way: each type lists such keys in
   `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
-  owns; `single_project`: `bootstrap_url`), so no setting is stored and silently ignored. Per
+  owns; `single_project`: `bootstrap_url`, `source`, `source_ref` and `source_path`), so no setting
+  is stored and silently ignored. Per
   setting, the adapters read the file; for a setting it leaves unset, the legacy
   `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
   when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
@@ -394,8 +396,34 @@ Status: `decided`
   for the two type names finds only help text and docstrings, and the `single_project` default in
   `_resolve_project_type` (`adapter:80`) (2026-10-09).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
-  colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
-  order and the distro rule.
+  colcon layers driven by a manifest directory, `configs/manifest` or the generated
+  `configs/manifest-resolved`, and its `adapter.sh` header holds the layers, the bootstrap URL order
+  and the distro rule.
+- `ros2_colcon` has two routes to that directory (#436), chosen by one fact, the settings file setting
+  `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
+  new format, is an absolute path read in place or a git repository (an `https://` or `file://` URL with
+  no credentials; the fetch allows the https, ssh and file transports only) fetched afresh by each
+  `setup` and `sync` into a temporary directory removed afterwards (`source_ref`, `source_path`, default
+  `manifest.yaml`), resolved for the
+  registry line's `role=` and `distro=` (both required) by the workspace-installed resolver,
+  `<main checkout>/.venv/bin/ros-manifest` from `make install-ros-manifest`, called by CLI only, into a
+  new generated directory that `configs/manifest-resolved` is relinked to; every verb reads the
+  directory the same way on both routes. One source only: `source` beside any other bootstrap source is
+  a hard error that names it. Never silently stale: `setup` and `sync` fetch the ref's commit afresh and
+  keep no clone (owner, 2026-11-13), and clone every `extends` base afresh (the resolver's clone runs no
+  user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`); a failed fetch or resolve
+  keeps the previous directory. Local manifest work uses the path form. `setup` and
+  `sync` fetch and resolve holding a flock on `configs/.lock.source`, never removed, and every verb
+  reads one generated directory throughout, never removed while a run reads it (without `flock`, the
+  one before the live one is kept instead). `validate` also fails when the directory was resolved from
+  another source, ref, role or distro, and names checkouts the manifest no longer lists; the adapter
+  removes none.
+  Network is needed at `setup` and `sync` (the source, every `extends` host, every package host) and
+  for the resolver's install. A package worktree's `env.sh` is not rewritten when `sync` changes the
+  layers; `sync` says to recreate it. The adapter edits no ignore file. Registration works for a path
+  that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set source=...`
+  runs `setup`); `source` does not choose the type, and onboarding an empty session folder from a
+  source is #473's.
 - The active project is resolved in this order: `--project`, then the cwd inside a registered hosting
   directory (longest match), then the legacy `project/` checkout (`adapter` header, "Multi-tenant
   resolution").
@@ -415,8 +443,8 @@ probe, not a description to keep current.
 | Script | What differs | Lines |
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
-| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 243-287, 391-436, 608, 741, 875 and 1182, 1472 and 1485, 2274-2294 |
+| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 156-183 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 306-350, 460-509, 728, 863, 999 and 1312, 1604 and 1621, 2448-2503 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 283-332, 507, 649, 737, 769, 908 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -472,6 +500,11 @@ Status: `decided`
   (ADR-0002). There are two kinds, and the worktree scripts take `--type workspace|project`, derived
   from the cwd when it is omitted (`worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`; see
   [Registry and adapters](#registry-and-adapters), Table 1).
+  `worktree_remove.sh` finds the worktree by `--issue` or `--skill` (the newest of that name), or takes
+  its path with `--path`, which accepts only a linked single-repository worktree's top folder (never a
+  package worktree's entry) of the repository `--type` names;
+  `merge_pr.sh` removes a skill pull request's worktree that way, the one git reports on its head
+  branch (issue 478).
 - A workspace worktree is a worktree of the workspace repository, under `worktrees/workspace/`. A
   project worktree is a worktree of the project's repository, under the registered root's own
   `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir`. An unregistered
@@ -513,24 +546,25 @@ Status: `decided`
   Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
   changes nothing for them. `merge_pr.sh`'s gate reads the owning repository's pull request
   (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
-  entry's path travels with the match (`PKG_OWN_REL`, lines 535-558) and becomes the gate's worktree
-  (lines 719-743). The gate reads that checkout's timeline only when the checkout is its repository's
+  entry's path travels with the match (`PKG_OWN_REL`, lines 645-668) and becomes the gate's worktree
+  (lines 841-865). The gate reads that checkout's timeline only when the checkout is its repository's
   top folder, has the pull request's branch checked out and its HEAD equals origin's copy of it (a
   bounded fetch); otherwise it gives the reason and the record goes on the pull request (lines
-  744-811). It then reads the committed `progress.md` at that commit, never the working copy, so
+  866-933). It then reads the committed `progress.md` at that commit, never the working copy, so
   nothing uncommitted in the checkout changes what it reads; none committed means no timeline (lines
-  812-864). The record is committed there only when the working copy's `progress.md` is the committed
+  934-988). The record is committed there only when the working copy's `progress.md` is the committed
   one (`_gate_rec_not_committed`), else it goes on the pull request. A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 896-903 and 1305-1306). Package pull requests stay
+  record goes on its own pull request (lines 1024-1031 and 1437-1438). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 287: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 608 and
-  741), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 875 and 1182). The gate is still report-only for project pull requests (lines 1472 and
-  1485).
+  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 350: the resolved project root, else the legacy
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 728 and
+  863), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 999 and 1312). The gate is still report-only for project pull requests (lines 1604 and
+  1621). A skill worktree's pull request (issue 478) has no issue and so no timeline: the gate reads
+  none and its record goes on the pull request ([Merge gate](#merge-gate)).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
   branch; the owner's `--base <branch>` overrides the pin. `dispatch_phase.sh base` and
@@ -601,7 +635,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    555, 601, 603, 665, 940: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (719-864, 1145-1320: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (841-988, 1273-1452: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -752,6 +786,23 @@ Status: `decided`
   request reads none, and its record goes on that pull request ([Worktrees](#worktrees), Records). `--force-unreviewed` bypasses both conditions
   with a banner and a `## Merge (unreviewed)` entry. A merge that does not end merged after one of
   those entries goes to the `merge-refused` checkpoint.
+- A skill worktree's pull request (`skill/<name>-<timestamp>`: `research`, `inspiration-tracker`,
+  `onboard-project`) goes through `merge_pr.sh` too (owner's choice G1, issue 478). It has no issue, so
+  it is report-only like a project pull request: condition (a) is read only from an issue's timeline
+  and is always unmet, (b) is checked, CI is still awaited, and the `## Merge (report-only)` record (or
+  `## Merge (unreviewed)` with `--force-unreviewed`) goes on the pull request with the reason "skill
+  pull request: no issue timeline"; nothing is committed on the skill branch. The roadmap step says it
+  has no issue to mark done. The worktree removed is the one git reports on the pull request's head
+  branch (`worktree_remove.sh --path`), never the newest of that skill's name (#374). A branch that is
+  neither an issue branch nor a skill branch is refused. The pull request's repository must be the checkout's
+  `origin`: a project checkout with no `origin` is refused early, and one whose `origin` is another
+  repository finds no open pull request.
+- After the merge, the head branch is deleted on `origin` the same way for every pull request
+  (`delete_remote_branch`): a branch already gone (GitHub's auto-delete) counts as deleted, and any
+  other failure prints git's error naming the branch and ends with "cleanup incomplete"; it was
+  silently ignored for workspace and project pull requests before issue 478. A pull request from a
+  fork is the exception: its head branch is the fork's, so nothing on `origin` is deleted, and no
+  local worktree or branch of the same name is removed.
 - The gate's calls to origin (its fetch, the CI-target fetch, the record push) are time-limited
   (`wt_bounded_git`: `WT_FETCH_TIMEOUT`, default 60 s, no terminal prompt), so an SSH passphrase or
   host-key prompt with no agent fails at the limit instead of prompting. The gate then judges from the
@@ -1005,6 +1056,12 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Change log | Main merged into issue 459's branch (pull request 467) after issue 429's last pull request (461) landed: the rows of both sides are kept, issue 429's 2026-11-13 rows (already on main) before #459's, and their line counts are each side's own file at the time; the `dispatch_phase.sh` line numbers in Table 1 and the Target's mechanism 1 are refreshed for the merged script (#459 had moved them by six to twenty lines); this row's count is the merged file's | #459 | 1038 |
 | 2026-11-13 | Sessions and roots, Registry and adapters, Decision register, Open questions | A project session may register its own folder (#466, ADR-0021, superseding ADR-0016 decision 5): the Sessions and roots Now block names ADR-0021; the exceptions bullet becomes two exceptions, the settings file and a session registering the folder it was started in through `register_session_root.sh`, which is not promoted, so each call asks for permission; the registration bullet says registration is done from the workspace or from the folder's own session; the onboarding bullet says an unregistered folder is offered registration (dry run, one yes in text, the real call's permission prompt as a second gate, build and test not run) and names the no-git gap; Registry and adapters Now says what `register_session_root.sh` takes, refuses and hands over, and that registration needs a git repository today; its Target names both ways to register; register row 0016 notes decision 5 superseded, row 0021 is added and the count says 21 (it said 19, two rows behind); C4's answer names the new way. Sessions and roots is 149 lines and Registry and adapters 139, both past the 60-line prompt, and grow by 12 and 8: the bullets name the script and the ADR that hold the rules, so no detail moves | #466 | 1060 |
 | 2026-11-13 | Worktrees, Registry and adapters | `merge_pr.sh` line numbers in Table 1, the Records bullet and the Target's mechanism 1 refreshed after the owning checkout's reason came to cap each value rather than the whole sentence (issue 444, pull request 468: a comment of six lines moved everything after line 750); no statement changes | #444 | 1061 |
+| 2026-11-13 | Registry and adapters | The settings keys `source`, `source_ref` and `source_path` (refused for `single_project` through its `unused_settings`), and the `ros2_colcon` manifest route: `source` selects it, the workspace-installed `ros-manifest` resolves the manifest for the registry line's role and distro into `configs/manifest-resolved`, one source only, never silently stale, its network needs and its registration limit. Section is 161 lines, past the 60-line prompt: asked whether the detail moves next to the code; the route's mechanics are in the `ros2_colcon/adapter.sh` header and the key grammar in the `_project_registry.sh` header, and the bullet keeps only what crosses them (the settings file, the registry line, the resolver install and registration) | #436 | 1084 |
+| 2026-11-13 | Registry and adapters | The manifest route's fetch and resolve hold a flock on `configs/.lock.source`, never removed, unlocked without `flock` as the settings writer is. One sentence in the existing bullet; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1086 |
+| 2026-11-13 | Registry and adapters | Every verb on the manifest route reads one generated directory throughout, never removed while a run reads it; unguarded without `flock`. The lock sentence grows by one line; the rules live in the `ros2_colcon/adapter.sh` header | #436 | 1088 |
+| 2026-11-13 | Registry and adapters | No kept clone (owner's decisions at the rounds checkpoints): a git `source` is fetched afresh by each `setup` and `sync` into a temporary directory removed afterwards, local manifest work uses the path form, and without `flock` the directory before the live one is kept; a URL `source` is `https://` or `file://` with no credentials and the fetch allows the https, ssh and file transports only. The rules live in the `ros2_colcon/adapter.sh` header | #436 | 1092 |
+| 2026-11-13 | Registry and adapters | The resolver's clone of an `extends` base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (owner's decision on pull request 480: in the resolver). One clause in the manifest-route bullet; the rules live in the `ros2_colcon/adapter.sh` header and the `tools/ros-manifest` README | #436 | 1094 |
+| 2026-11-15 | Merge gate, Rules, Worktrees, Registry and adapters | Skill pull requests go through `merge_pr.sh` (issue 478, owner's choice G1): report-only like a project pull request, condition (a) always unmet, the record on the pull request, the roadmap step a stated no-op, the worktree removed by its path (`worktree_remove.sh --path`, the one on the head branch); every pull request's remote branch is deleted by one rule (`delete_remote_branch`: already gone counts, any other failure is said and marks the cleanup incomplete), no more silent `|| true` on the workspace and project path; the Rules row, Table 1's `merge_pr.sh` and `worktree_remove.sh` rows, the Records bullet and mechanism 1 citations are refreshed. Merge gate grows by 15 lines to 73, past the 60-line prompt: the two new bullets state what crosses the scripts (gate treatment, cleanup rule) and the mechanics stay in the `merge_pr.sh` header and `delete_remote_branch`, so no detail moves. After the pre-push review rounds: `--path` names a package entry and the repository check, a pull request from a fork touches no branch or worktree, and every `merge_pr.sh` and `worktree_remove.sh` line citation (Table 1, the Records bullet, mechanism 1) is refreshed | #478 | 1118 |
 
 ## Glossary
 

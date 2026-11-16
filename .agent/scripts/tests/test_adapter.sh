@@ -257,6 +257,21 @@ test_validator_checks_unused_settings() {
         echo "  SKIP: unreadable-list case (running as root)"
     fi
 
+    # The shipped list (source, source_ref, source_path: issue #436) is
+    # valid: each a known key, once, with a reason.
+    cp "$REAL_ROOT/.agent/project_types/single_project/unused_settings" "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "the shipped single_project list: exit 0" "0" "$rc"
+    local k
+    for k in bootstrap_url source source_ref source_path; do
+        assert_contains "the shipped list refuses $k" $'\n'"$k " $'\n'"$(cat "$list")"
+    done
+    printf 'source\nsource_ref cloned by hand\nsourc a typo\n' > "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "source without a reason, a misspelt source key: exit 1" "1" "$rc"
+    assert_contains "source without a reason named" "line 1: 'source' has no reason" "$out"
+    assert_contains "misspelt source key named" "line 3: unknown settings key 'sourc'" "$out"
+
     rm -f "$list"
     rc=0; "$sb/.agent/scripts/validate_adapter.sh" >/dev/null 2>&1 || rc=$?
     assert_eq "no list at all: exit 0" "0" "$rc"

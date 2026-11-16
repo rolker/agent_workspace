@@ -63,12 +63,33 @@
 #                           (build=./scripts/build.sh, or an absolute path).
 #     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
+#     source                where the project's source description lives
+#                           (for ros2_colcon, its manifest; issue #436): an
+#                           absolute path to the file, or a URL of a git
+#                           repository that holds it, of one of two shapes:
+#                           https://<host>[:port]/<path> (an ASCII host,
+#                           no user name or password, no '?' or '#') or
+#                           file:///<path>
+#                           (not plain http://)
+#     source_ref            branch, tag or commit of a URL source (not
+#                           HEAD): required with a URL, refused with a path
+#     source_path           the file's path inside that repository
+#                           (relative; no '..', '.' or empty component, no
+#                           trailing '/'; default manifest.yaml); refused
+#                           with a path
+#   source_ref and source_path are refused without source, and source is
+#   refused beside bootstrap_url (one source only). Each refusal names the
+#   one command that removes the three together (project_setting.sh unset
+#   <name> source source_ref source_path), since set and unset judge the
+#   whole resulting file: unsetting source alone, while source_ref stays,
+#   is refused.
 # - a key the project's type never reads is an error, at `set` and in the
 #   parser (so a hand-written one fails check and stops the adapter): each
 #   type lists such keys with the reason in
 #   .agent/project_types/<type>/unused_settings (_project_type_unused_setting).
 #   Today ros2_colcon lists build and test (colcon owns them; it reads
-#   install), and single_project lists bootstrap_url.
+#   install), and single_project lists bootstrap_url, source, source_ref
+#   and source_path.
 #     location              project | outside       where the loop's records
 #     location_path         absolute path           (work plans, progress
 #     tracking              project | untracked | repo   timelines) live
@@ -703,7 +724,7 @@ registry_repo_slugs() {
 # The file .agent/projects.d/<name>; grammar and keys in the header above.
 
 # Keys the per-project file accepts.
-_PROJECT_FILE_KEYS=" build test install bootstrap_url location location_path tracking instructions "
+_PROJECT_FILE_KEYS=" build test install bootstrap_url source source_ref source_path location location_path tracking instructions "
 # The records keys, which are set and validated together.
 _PROJECT_RECORDS_KEYS=" location location_path tracking "
 # Characters refused in a command value: anything that needs them is a script.
@@ -744,6 +765,13 @@ _project_file_trim() {
     printf '%s' "$s"
 }
 
+# Whether $1 matches the extended regex $2 in the C locale, where [A-Za-z0-9]
+# is ASCII only (under en_US.UTF-8 it also matches 'é' and fullwidth letters).
+_project_matches_in_c() {
+    local LC_ALL=C
+    [[ "$1" =~ $2 ]]
+}
+
 # Check one value against its key's type. Prints the reason and returns 1
 # when the value is invalid.
 _project_file_value_error() {
@@ -780,6 +808,95 @@ _project_file_value_error() {
         bootstrap_url)
             if ! [[ "$value" =~ ^(https?|file)://[^[:space:]]+$ ]]; then
                 echo "bootstrap_url must be an http://, https:// or file:// URL with no blanks, got '$value'"
+                return 1
+            fi
+            ;;
+        source)
+            # A value with a scheme (any case, with or without '//') may hold
+            # a credential, so no refusal of one prints it. It is accepted
+            # only if it matches one of two shapes whole (an allow-list):
+            #   https://<host>[:port]/<path>, the host a name of letters,
+            #     digits, '.' and '-' (starting and ending with a letter or
+            #     digit) or an IPv6 address in brackets, the port 1 to 5
+            #     digits, the path not empty and without '?' or '#';
+            #   file:///<path>: exactly three slashes (no authority), the
+            #     path not empty ('?', '#', '@' and ':' are ordinary in it).
+            # So there is no place for a user name or password. A refusal
+            # names the cause where it can be told.
+            local https_re file_re
+            https_re='^https://([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?/[^?#[:space:][:cntrl:]]+$'
+            file_re='^file:///[^/[:space:][:cntrl:]][^[:space:][:cntrl:]]*$'
+            local lower authority
+            lower="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$lower" =~ ^[a-z][a-z0-9+.-]*: ]]; then
+                if { _project_matches_in_c "$value" "$https_re" || _project_matches_in_c "$value" "$file_re"; } \
+                    && [[ "$value" != *[[:space:][:cntrl:]]* ]]; then
+                    return 0
+                fi
+                # The part before the path, however many '/' follow the
+                # scheme: an '@' there is a user name or password to git.
+                authority="${value#*:}"
+                while [[ "$authority" == /* ]]; do authority="${authority#/}"; done
+                authority="${authority%%/*}"
+                if [[ "$authority" == *@* ]]; then
+                    echo "source must not carry a user name or password in its URL (the part before '@'; the value is not shown): credentials belong in a git credential helper, or use an ssh mirror through a url.<base>.insteadOf rule"
+                elif [[ "$lower" == http:* ]]; then
+                    # The manifest decides which repositories are cloned and
+                    # built, so it must not be open to change on the way.
+                    echo "source must not be a plain http:// URL: the manifest decides which repositories are cloned and built, and plain http lets anyone on the network change it on the way; use https:// (a url.<base>.insteadOf rule in your git configuration may send it to an ssh mirror), or file:// for a repository on this machine"
+                elif [[ "$lower" == https:* ]] && [[ "$value" == *[?#]* ]]; then
+                    echo "source must not have a query or a fragment (the part from '?' or '#'; the value is not shown: it may hold a token): name the repository's URL alone, and keep credentials in a git credential helper"
+                elif [[ "$lower" =~ ^(https|file):// ]] && ! [[ "$value" =~ ^(https|file):// ]]; then
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL (scheme in lower case) of a git repository, with no blanks or control characters (the value is not shown: a URL may hold a credential)"
+                else
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of one of two shapes: https://<host>[:port]/<path> (the host a name or an IPv6 address in brackets, no '?' or '#') or file:///<path> (three slashes), with no blanks or control characters (the value is not shown: a URL may hold a credential)"
+                fi
+                return 1
+            elif [[ "$value" != /* ]] || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
+                # A value holding '://' or '@' (a URL in quotes or brackets,
+                # say) may hold a credential: it is not shown.
+                if [[ "$value" == *://* ]] || [[ "$value" == *@* ]]; then
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository (a URL with nothing around it: no quotes or brackets), with no blanks or control characters (the value is not shown: it may hold a credential)"
+                else
+                    echo "source must be an absolute path to a file, or an https:// or file:// URL of a git repository, with no blanks or control characters, got '$value'"
+                fi
+                return 1
+            fi
+            ;;
+        source_ref)
+            # A branch, tag or commit, never an option: letters, digits,
+            # '.', '_', '/', '-', starting with a letter or digit, no '..',
+            # no '//', not ending in '/', '.' or '.lock' (git's ref rules,
+            # and the manifest resolver's).
+            if ! [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || [[ "$value" == *..* ]] \
+                || [[ "$value" == *//* ]] || [[ "$value" == */ ]] || [[ "$value" == *. ]] \
+                || [[ "$value" == *.lock ]] || [[ "$value" == */.* ]]; then
+                echo "source_ref must be a branch, tag or commit: letters, digits, '.', '_', '/' and '-', starting with a letter or digit, with no '..' or '//' and not ending in '/', '.' or '.lock', got '$value'"
+                return 1
+            fi
+            # HEAD is not a branch, tag or commit of the source but git's
+            # name for whatever a repository has checked out.
+            if [ "$value" = HEAD ]; then
+                echo "source_ref must be a branch, tag or commit, not HEAD (git's name for what is checked out): name the branch, e.g. source_ref=main"
+                return 1
+            fi
+            ;;
+        source_path)
+            local comp bad=0
+            local -a comps=()
+            # A file, never a directory: no '.' or empty component, no
+            # trailing '/'.
+            if [[ "$value" == /* ]] || [[ "$value" == */ ]] || [[ "$value" == *//* ]] \
+                || [[ "$value" == *[[:space:][:cntrl:]]* ]]; then
+                bad=1
+            else
+                IFS='/' read -r -a comps <<< "$value"
+                for comp in "${comps[@]}"; do
+                    case "$comp" in ..|.|'') bad=1 ;; esac
+                done
+            fi
+            if [ "$bad" -eq 1 ]; then
+                echo "source_path must be the relative path of a file inside the source repository: no '..' or '.' component, no leading or trailing '/', no '//' and no blanks, got '$value'"
                 return 1
             fi
             ;;
@@ -1075,7 +1192,48 @@ _project_file_parse() {
         echo "ERROR: ${file}: $reason" >&2
         return 2
     fi
+    if ! reason="$(_project_source_combination "$entries" "$name")"; then
+        echo "ERROR: ${file}: $reason" >&2
+        return 2
+    fi
     [ -n "$entries" ] && printf '%s\n' "$entries"
+    return 0
+}
+
+# The source keys together (issue #436): source_ref and source_path need
+# source; a URL source needs source_ref; a path source takes neither; and
+# source is refused beside bootstrap_url (one source only, never a silent
+# choice). Prints the reason and returns 1 for a refused combination; each
+# reason names the one command that removes all three, since unsetting
+# source alone (source_ref left) is itself refused. Pure: no filesystem.
+# Usage: reason=$(_project_source_combination "$entries" "$name")
+_project_source_combination() {
+    local entries="$1" name="$2" src ref spath boot fix
+    src="$(_project_file_value_of "$entries" source)" || src=""
+    ref="$(_project_file_value_of "$entries" source_ref)" || ref=""
+    spath="$(_project_file_value_of "$entries" source_path)" || spath=""
+    boot="$(_project_file_value_of "$entries" bootstrap_url)" || boot=""
+    fix="to stop using a source, remove the three together: .agent/scripts/project_setting.sh unset $name source source_ref source_path"
+    if [ -z "$src" ]; then
+        if [ -n "$ref" ] || [ -n "$spath" ]; then
+            echo "$([ -n "$ref" ] && echo source_ref || echo source_path) is only valid with source (set source=<url-or-path>); $fix"
+            return 1
+        fi
+        return 0
+    fi
+    if [ -n "$boot" ]; then
+        echo "source and bootstrap_url are both set: a project has one source only; remove bootstrap_url (.agent/scripts/project_setting.sh unset $name bootstrap_url), or $fix"
+        return 1
+    fi
+    if [[ "$src" =~ ^(https?|file):// ]]; then
+        if [ -z "$ref" ]; then
+            echo "source '$src' is a URL, so source_ref (the branch, tag or commit to use) is required; set it with: .agent/scripts/project_setting.sh set $name source_ref=<ref>, or $fix"
+            return 1
+        fi
+    elif [ -n "$ref" ] || [ -n "$spath" ]; then
+        echo "source '$src' is a path to a file, so $([ -n "$ref" ] && echo source_ref || echo source_path) does not apply (it is for a URL source); remove it with: .agent/scripts/project_setting.sh unset $name source_ref source_path, or $fix"
+        return 1
+    fi
     return 0
 }
 

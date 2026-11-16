@@ -1,9 +1,62 @@
 # Inspiration Digest: engram
 
 Type: inspiration
-Last checked: 2026-09-14
-Repo: shiblon/engram @ 2050c00b1ef66cc3e432d7a7a6b21907a2eb0f21
-Previously checked: 2026-07-14 @ 243fb2c; 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+Last checked: 2026-11-13
+Repo: shiblon/engram @ c0c7990a2442b9c9d8058e5491b69cc9dcfa0ad6 (v0.16.5)
+Previously checked: 2026-09-14 @ 2050c00; 2026-07-14 @ 243fb2c; 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+
+## Changelog (2026-09-14 → 2026-11-13)
+
+15 commits (2050c00..c0c7990), v0.16.0 → v0.16.5 (five patch releases,
+2026-09-21 to 2026-10-06), 33 files touched. GitHub compare was complete
+(15/15 commits, 33 files). Sources: compare API, `CHANGELOG.md` and
+`docs/topic-notes.md` in the clone. Still 3 PRs total (all merged, none
+new), no issues. Two thirds of the diff is one new experiment plus
+README rework.
+
+### `engram topic` — bounded pub/sub streams between concurrent agents (v0.16.1, experimental)
+
+New `topics` experiment (`cmd/engram/topic.go`, `pkg/engram/topics.go`,
+`docs/topic-notes.md`): project-local named topics with a purpose and a
+"retire when" statement; each topic holds subtopics, each subtopic a
+lossy checkpoint plus a short tail. Message ordering uses SQLite-assigned
+strictly increasing timestamps (agent clocks never consulted). Inject
+carries only a one-line-per-topic index (name, purpose, retire-when);
+agents read subtopics on demand and keep one background monitor per
+relevant topic. Limits: 8 active topics, 16 subtopics each. Topics are
+explicitly "not memory": durable findings are copied to long-term memory
+before retirement. v0.16.2 added `topic check` (one-shot snapshot) and
+removed the `monitor --once` mode; made the experimental-collaboration
+guidance proactive.
+
+- **Workspace relevance**: Medium. Directly addresses concurrent agents in
+  the same project (several sessions on different issues at once) sharing
+  findings without durable subscriber identity. The workspace today has no
+  agent-to-agent channel except the issue progress timeline and the
+  inbox. The design is another example of the experiment-registry rule
+  (hypothesis, promote event, remove event) already roadmapped from the
+  2026-09-14 round.
+
+### `mem append`, legacy-database report, bootstrap preview (v0.16.1–0.16.4)
+
+- `engram mem append` extends an existing memory body in one atomic update,
+  bumps the timestamp, logs only the appended text in the curation log, and
+  warns past 3000 characters so the agent proposes consolidation. Reinforces
+  the already-roadmapped memory-consolidation rule.
+- Inject reports a `## Legacy database` section when memory still lives at
+  the old `.claude/engram.db` path; `engram migrate` now writes the
+  `.engram/.gitignore`.
+- `bootstrap` previews plans by default (v0.16.1); v0.16.3 distinguishes
+  live kernel drift from an already-completed bootstrap.
+  Relates to the deferred `bootstrap-dry-run-diff` item.
+- v0.16.5: release config writes Homebrew `postflight_steps` via
+  `custom_block` to work around a GoReleaser limitation. Packaging detail,
+  no workspace relevance.
+
+### README
+
+README rewritten (+246/-108); personality discussion refined
+(2026-09-23). The personality-as-canary framing is unchanged in substance.
 
 ## Changelog (2026-07-14 → 2026-09-14)
 
@@ -156,6 +209,26 @@ enforcement with alias normalization at migration; append-only
 "a local build no longer claims to BE the release" (Go stamps
 pseudo-versions, and stamps no `vcs.*` at all when building from a
 linked git worktree — a worktree gotcha worth knowing).
+
+## Pending Review (2026-11-13 round)
+
+(none pending from this round)
+
+## Deferred (2026-11-13 decisions)
+
+- `engram-1` `topic-pubsub-streams` — experimental upstream. Note for when it
+  resurfaces: it is the shared-notice-board model (topics with a purpose and a
+  "retire when" statement, a one-line index in context, bounded compaction,
+  "topics are not memory"), the counterpart to the direct session-to-session
+  messaging the owner is experimenting with; input for the orchestrator
+  design. The owner asked whether it was relevant, then deferred: "I think the
+  roadmap is busy enough" (2026-11-13)
+
+## Skipped (2026-11-13 decisions)
+
+- `engram-2` `mem-append-with-size-warning` — informational: a mechanism for
+  the roadmapped memory-consolidation rule, which uses no such tool here
+  (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 
@@ -370,7 +443,11 @@ status line stops showing your agent's name, context coherence is breaking.
 
 ### Testing approach
 
-**None.** Zero `*_test.go` files in the repo. The author treats it as
+**Correction 2026-11-13: not "none" any more** — the clone at c0c7990 has
+36 `*_test.go` files and CI runs them on PRs (see CI/CD patterns). The
+text below describes the original 2026-04-26 survey.
+
+**None (as of 2026-04-26).** Zero `*_test.go` files in the repo. The author treats it as
 single-user infrastructure where the test loop is "use it, fix it." For our
 purposes, this is a credibility asterisk on any pattern we adopt — we'd
 need to validate behavior ourselves.
@@ -378,8 +455,11 @@ need to validate behavior ourselves.
 ### CI/CD patterns
 
 - GoReleaser via `.github/workflows/release.yml` for cross-platform binary
-  builds on tag push. Single workflow file. No CI on PRs (no test suite to
-  run anyway).
+  builds on tag push.
+- **Correction 2026-11-13**: the earlier "single workflow file, no CI on
+  PRs" was stale. `.github/workflows/test.yml` runs `go build`, `go vet`
+  and `go test` on push to `main` and on every pull request (confirmed in
+  the clone at c0c7990).
 
 ### Documentation patterns
 
@@ -387,7 +467,9 @@ need to validate behavior ourselves.
   with *why* (token savings, joyfulness, personality canary) before *what*.
 - In-tool help via `cobra` — `engram --help`, `engram mem --help` produce
   structured CLI documentation.
-- No separate ARCHITECTURE.md or design docs.
+- No separate ARCHITECTURE.md. *(Correction 2026-11-13: `docs/` now holds
+  `design-notes.md`, `dispatch-notes.md`, `memory-notes.md` and
+  `topic-notes.md`.)*
 
 ### Hooks model
 
@@ -451,7 +533,9 @@ issues or PRs — author works on `main` directly.
 
 ## Activity Snapshot
 
-- **No issues, no PRs.** Author still works on `main` directly.
+- **2026-11-13**: no issues; 3 PRs ever (all merged, none new since
+  2026-08-05); latest release v0.16.5 (2026-10-06); CI on push/PR.
+- *Earlier snapshot (2026-05-07):* **No issues, no PRs.** Author still works on `main` directly.
 - **36 commits total** (was 27 at last check; +9 in 11 days).
 - Direction: consolidation toward multi-agent platform support via MCP +
   agentinfo, plus migration infrastructure for in-the-wild DBs.

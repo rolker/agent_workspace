@@ -1807,8 +1807,66 @@ test_derive_type_from_dir() {
 }
 
 
+test_source_combination_table() {
+    echo "TEST: _project_source_combination (#436): the source keys together, pure"
+    local sb row entries want got rc
+    sb="$(make_sandbox)"
+    # entries (key<TAB>value lines, '|' between) => ok, or a fragment of the reason
+    while IFS='=' read -r row want; do
+        [ -n "$row" ] || continue
+        entries="$(tr '|' '\n' <<< "$row" | sed 's/:/\t/')"
+        rc=0; got="$(reg "$sb" _project_source_combination "$entries" demo)" || rc=$?
+        if [ "$want" = ok ]; then
+            assert_eq "accepted: $row" "0" "$rc"
+        else
+            assert_eq "refused: $row" "1" "$rc"
+            assert_contains "says why: $row" "$want" "$got"
+            assert_contains "names the three-key unset: $row" "unset demo source source_ref source_path" "$got"
+        fi
+    done <<'ROWS'
+build:make=ok
+source:/m.yaml=ok
+source:https://h/m.git|source_ref:main=ok
+source:https://h/m.git|source_ref:main|source_path:a/m.yaml=ok
+source_ref:main=source_ref is only valid with source
+source_path:m.yaml=source_path is only valid with source
+source:https://h/m.git=source_ref (the branch, tag or commit to use) is required
+source:/m.yaml|source_ref:main=so source_ref does not apply
+source:/m.yaml|source_path:m.yaml=so source_path does not apply
+source:/m.yaml|bootstrap_url:https://h/b.yaml=one source only
+ROWS
+}
+
+test_dispatcher_exports_source_keys() {
+    echo "TEST: the dispatcher hands source, source_ref, source_path and role/distro to the adapter (#436)"
+    local sb proj out
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/project_types/probe_type" "$sb/.agent/projects.d"
+    cat > "$sb/.agent/project_types/probe_type/adapter.sh" <<'EOF2'
+adapter_project_root() {
+    echo "src=${ACTIVE_PROJECT_SOURCE}|ref=${ACTIVE_PROJECT_SOURCE_REF}|path=${ACTIVE_PROJECT_SOURCE_PATH}|role=${ACTIVE_PROJECT_ROLE}|distro=${ACTIVE_PROJECT_DISTRO}"
+}
+EOF2
+    proj="$(mktemp -d -p "$SANDBOX")"
+    echo "probe probe_type $proj role=dev distro=fakefox" > "$sb/.agent/projects.local"
+    printf 'source=https://example.invalid/m.git\nsource_ref=v1\nsource_path=x/m.yaml\n' > "$sb/.agent/projects.d/probe"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project probe project_root 2>&1)"
+    assert_eq "every value reaches the adapter" "src=https://example.invalid/m.git|ref=v1|path=x/m.yaml|role=dev|distro=fakefox" "$out"
+    rm -f "$sb/.agent/projects.d/probe"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project probe project_root 2>&1)"
+    assert_eq "unset keys are empty" "src=|ref=|path=|role=dev|distro=fakefox" "$out"
+    printf 'source_ref=v1\n' > "$sb/.agent/projects.d/probe"
+    local rc=0
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project probe project_root 2>&1)" || rc=$?
+    assert_eq "an invalid combination stops the dispatcher" "1" "$rc"
+    assert_contains "and names the rule" "source_ref is only valid with source" "$out"
+}
+
+
 test_review_plan_issue_fallback_finds_plan_under_registered_root
 test_derive_type_from_dir
+test_source_combination_table
+test_dispatcher_exports_source_keys
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

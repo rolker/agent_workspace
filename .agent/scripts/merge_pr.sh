@@ -15,10 +15,24 @@
 # If --type is omitted, the script auto-detects by checking which worktree
 # exists for the issue. If neither or both exist, it asks.
 #
+# Branches it merges:
+#   - issue branches: feature/issue-<N> (owning repo) or
+#     feature/<repo>-issue-<N> (package-worktree sibling repo, ADR-0012)
+#   - skill branches (issue 478): skill/<name>-<YYYYMMDD>-<HHMMSS>[-<n>],
+#     the research / inspiration-tracker (workspace) and onboard-project
+#     (project repo) worktrees. A skill PR has no issue and so no timeline:
+#     the gate is report-only for it (owner's G1), condition (a) is always
+#     unmet, and the `## Merge (report-only)` record goes on the PR as a
+#     comment. The roadmap step is a stated no-op. Step 4 removes the
+#     worktree that has the PR's head branch checked out
+#     (worktree_remove.sh --path), never the newest of that skill's name.
+#   Any other branch is refused.
+#
 # Limitations:
-#   - Only works for issue-based branches: feature/issue-<N> (owning repo)
-#     or feature/<repo>-issue-<N> (package-worktree sibling repo, ADR-0012)
-#   - Skill worktree branches are not supported
+#   - A project PR is found through the project checkout's `origin`
+#     remote: it must be the PR's GitHub repository. No `origin` exits
+#     early ("has no 'origin' remote configured"); an `origin` that is
+#     another repository finds no open PR. Such a PR is merged by hand.
 #   - If run from inside the worktree being removed, your shell's CWD
 #     will be invalid after the script completes — cd to the workspace root
 #
@@ -53,8 +67,15 @@
 #        worktree and print which package PRs still block cleanup, otherwise
 #        remove the worktree.
 #   5. Delete local and remote branches (legacy path only — step 4 already
-#      did this for a package-repo PR, in its own repo)
-#   6. Pull main to sync (workspace and project repos; legacy path only)
+#      did this for a package-repo PR, in its own repo). The remote branch
+#      is deleted the same way on both paths (delete_remote_branch): an
+#      already-gone branch counts as deleted, any other failure is printed
+#      with git's stderr and marks the cleanup incomplete; a PR from a fork
+#      (isCrossRepository) deletes nothing on origin and removes no local
+#      worktree or branch of the same name
+#   6. Pull main to sync (workspace and project repos; legacy path only),
+#      then delete the local branch (`branch -d`, after the sync so a
+#      merged branch with no upstream reads as merged into HEAD)
 #
 # The wait step (issue #186; SHA-targeted poll and mergeability settle
 # added by #284/#271) is covered by automated tests, not manual steps:
@@ -98,7 +119,8 @@ NO_WAIT=false
 # merge. --report-only restores the earlier behaviour — print what would
 # have been refused, record it, proceed. --enforce is kept as an explicit
 # alias of the default. Project/package PRs stay report-only in every mode
-# until #265 settles where their timelines live.
+# until #265 settles where their timelines live; skill PRs (no issue, so no
+# timeline) are report-only in every mode too (owner's G1, issue 478).
 ENFORCE_MERGE_GATE=true
 FORCE_UNREVIEWED=false
 # A code-review check-run that is still running (Copilot's, #300) holds the
@@ -228,6 +250,47 @@ find_worktree_for_branch() {
         '
 }
 
+# --- Helper: delete the PR's head branch on a checkout's origin ---
+# One mechanism for every PR (issue 478; the package path's rule, factored
+# out): GitHub may auto-delete the head branch on merge, so an absent ref
+# (ls-remote --exit-code rc 2) is the desired end state, not a failure. A
+# ref that is still there, or a remote that cannot be asked, goes through
+# push --delete. A failure prints git's own stderr, naming the branch left
+# behind, and returns 1; the caller marks the cleanup incomplete. `origin`
+# is the PR's repository on every path: the PR was found through it.
+delete_remote_branch() {  # <checkout> <branch> <label>
+    local repo="$1" branch="$2" label="$3" lsr_rc=0 err=""
+    # A PR from a fork: its head branch lives in the fork, and a branch of
+    # the same name on origin is someone else's, so nothing is deleted.
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        echo "  ℹ️  Remote branch left alone: PR #${PR_NUMBER} is from a fork, so '$branch' on origin ($label) is not its head branch"
+        return 0
+    fi
+    # The full ref name: ls-remote patterns match a ref's tail, so a bare
+    # "$branch" would also match refs/heads/<x>/$branch.
+    git -C "$repo" ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || lsr_rc=$?
+    if [[ $lsr_rc -eq 2 ]]; then
+        echo "  ✅ Remote branch already gone ($label, auto-deleted on merge)"
+        return 0
+    fi
+    if err="$(git -C "$repo" push origin --delete "$branch" 2>&1)"; then
+        echo "  ✅ Remote branch deleted ($label)"
+        return 0
+    fi
+    # GitHub's auto-delete can land between the ls-remote and the push:
+    # the ref is gone, which is the end state wanted. Asked again by exit
+    # code (rc 2: no such ref), not by git's message, which is localized.
+    lsr_rc=0
+    git -C "$repo" ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1 || lsr_rc=$?
+    if [[ $lsr_rc -eq 2 ]]; then
+        echo "  ✅ Remote branch already gone ($label, auto-deleted on merge)"
+        return 0
+    fi
+    echo "  ⚠️  Could not delete remote branch '$branch' in $label:" >&2
+    echo "     ${err:-no output}" >&2
+    return 1
+}
+
 # --- Discover the workspace and (optional) project remotes ---
 # Workspace remote always exists (we just resolved ROOT_DIR via git).
 # Project remote is only resolved when project/ is configured. Empty
@@ -302,15 +365,18 @@ PJ_ROOT_EFFECTIVE="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
 # Query a single repo. On OPEN PR, populates QUERY_BRANCH/QUERY_TITLE
 # and returns 0. On not-found OR not-OPEN, returns 1 silently. On other
 # errors (auth, network), prints the error and returns 2.
+# QUERY_CROSS is "true" for a PR from a fork (isCrossRepository): its head
+# branch lives in the fork, not in this repository's origin.
 QUERY_BRANCH=""
 QUERY_TITLE=""
+QUERY_CROSS=""
 query_pr() {
     local remote="$1"
     local out err rc=0
     local err_file
     err_file=$(mktemp)
     out=$(gh pr view "$PR_NUMBER" -R "$remote" \
-            --json state,headRefName,title 2>"$err_file") || rc=$?
+            --json state,headRefName,title,isCrossRepository 2>"$err_file") || rc=$?
     err=$(<"$err_file")
     rm -f "$err_file"
 
@@ -320,6 +386,7 @@ query_pr() {
         if [[ "$state" == "OPEN" ]]; then
             QUERY_BRANCH=$(echo "$out" | jq -r '.headRefName // empty')
             QUERY_TITLE=$(echo "$out" | jq -r '.title // empty')
+            QUERY_CROSS=$(echo "$out" | jq -r '.isCrossRepository // false')
             return 0
         fi
         return 1   # exists but not OPEN — irrelevant for merge
@@ -346,12 +413,14 @@ query_pr() {
 
 GH_REPO_ARGS=()
 PR_BRANCH=""
+PR_CROSS_REPO=false
 PR_REPO_SLUG=""
 
 if [[ -n "$REPO_ARG" ]]; then
     # --- Explicit repo — no workspace/project auto-detection ---
     if query_pr "$REPO_ARG"; then
         PR_BRANCH="$QUERY_BRANCH"
+        PR_CROSS_REPO="$QUERY_CROSS"
         GH_REPO_ARGS=("-R" "$REPO_ARG")
         PR_REPO_SLUG="$REPO_ARG"
         # Derive what kind of repo this is from the remotes we know about,
@@ -388,14 +457,15 @@ if [[ -n "$REPO_ARG" ]]; then
         exit 1
     fi
 else
-    WS_HIT=false; WS_BRANCH=""; WS_TITLE=""
-    PJ_HIT=false; PJ_BRANCH=""; PJ_TITLE=""
+    WS_HIT=false; WS_BRANCH=""; WS_TITLE=""; WS_CROSS=false
+    PJ_HIT=false; PJ_BRANCH=""; PJ_TITLE=""; PJ_CROSS=false
 
     if [[ -z "$WORKTREE_TYPE" || "$WORKTREE_TYPE" == "workspace" ]] && [[ -n "$WS_REMOTE" ]]; then
         if query_pr "$WS_REMOTE"; then
             WS_HIT=true
             WS_BRANCH="$QUERY_BRANCH"
             WS_TITLE="$QUERY_TITLE"
+            WS_CROSS="$QUERY_CROSS"
         elif [[ $? -eq 2 ]]; then
             echo "  Pass --type to bypass auto-detection." >&2
             exit 1
@@ -407,6 +477,7 @@ else
             PJ_HIT=true
             PJ_BRANCH="$QUERY_BRANCH"
             PJ_TITLE="$QUERY_TITLE"
+            PJ_CROSS="$QUERY_CROSS"
         elif [[ $? -eq 2 ]]; then
             echo "  Pass --type to bypass auto-detection." >&2
             exit 1
@@ -422,6 +493,7 @@ else
     elif $WS_HIT; then
         WORKTREE_TYPE="workspace"
         PR_BRANCH="$WS_BRANCH"
+        PR_CROSS_REPO="$WS_CROSS"
         # Set -R for the workspace too — `gh pr merge` without -R falls back to
         # the CWD's git remote, which is the project repo when the script is
         # invoked from a project worktree (or anywhere else not under the
@@ -432,6 +504,7 @@ else
     elif $PJ_HIT; then
         WORKTREE_TYPE="project"
         PR_BRANCH="$PJ_BRANCH"
+        PR_CROSS_REPO="$PJ_CROSS"
         GH_REPO_ARGS=("-R" "$PJ_REMOTE")
         PR_REPO_SLUG="$(extract_gh_slug "$PJ_REMOTE")"
     else
@@ -444,20 +517,57 @@ else
     fi
 fi
 
-# Issue number extraction accepts both branch shapes: the owning repo's
-# feature/issue-<N>, and a package-worktree sibling repo's
-# feature/<repo>-issue-<N> (ADR-0012; repo name only, no owner).
+# Branch classifier. Issue number extraction accepts both issue branch
+# shapes: the owning repo's feature/issue-<N>, and a package-worktree
+# sibling repo's feature/<repo>-issue-<N> (ADR-0012; repo name only, no
+# owner). A skill worktree's branch, skill/<name>-<YYYYMMDD>-<HHMMSS>
+# with worktree_create.sh's optional -<n> suffix (issue 478), sets
+# SKILL_PR and leaves ISSUE_NUM empty: every issue-derived step below
+# (roadmap, timeline read and record, issue worktree removal) is skipped
+# for it, by name.
+SKILL_PR=false
+SKILL_NAME=""
 ISSUE_NUM=$(echo "$PR_BRANCH" | sed -nE 's#^feature/([A-Za-z0-9_.-]+-)?[Ii]ssue-([0-9]+).*#\2#p')
 if [[ -z "$ISSUE_NUM" ]]; then
-    echo "ERROR: Could not extract issue number from branch '$PR_BRANCH'" >&2
-    echo "Expected pattern: feature/issue-<N>, feature/ISSUE-<N>-<desc>," >&2
-    echo "or feature/<repo>-issue-<N> (package-worktree sibling repo)" >&2
-    echo "Note: skill worktree branches are not supported by this script" >&2
-    exit 1
+    # Only a skill on worktree_create.sh's allowlist (ALLOWED_SKILLS, the
+    # one list, in _worktree_helpers.sh): a hand-named skill/<other>-...
+    # branch is no skill worktree's, and taking it as one would skip the
+    # gate a workspace PR has enforced.
+    # It must also be in the repository that skill makes worktrees of
+    # (skill_worktree_type: onboard-project the project, the others the
+    # workspace), and not from a fork: a fork's branch is no worktree here.
+    if [[ "$PR_BRANCH" =~ ^skill/([A-Za-z0-9_.-]+)-([0-9]{8}-[0-9]{6})(-[0-9]+)?$ ]] \
+        && is_allowed_skill "${BASH_REMATCH[1]}"; then
+        SKILL_NAME="${BASH_REMATCH[1]}"
+        _sk_type="$(skill_worktree_type "$SKILL_NAME")"
+        if [[ "$PR_CROSS_REPO" == true ]]; then
+            echo "ERROR: PR #${PR_NUMBER} ('$PR_BRANCH') is from a fork; a skill pull request is merged only from a" >&2
+            echo "  skill worktree's branch in the ${_sk_type} repository itself. Nothing was merged." >&2
+            exit 1
+        fi
+        if [[ "${WORKTREE_TYPE:-}" != "$_sk_type" ]]; then
+            echo "ERROR: PR #${PR_NUMBER} ('$PR_BRANCH') is in the ${WORKTREE_TYPE:-package} repository, but skill" >&2
+            echo "  '$SKILL_NAME' makes ${_sk_type} worktrees only; it is not merged as a skill PR. Nothing was merged." >&2
+            exit 1
+        fi
+        unset _sk_type
+        SKILL_PR=true
+    else
+        echo "ERROR: Could not extract issue number from branch '$PR_BRANCH'" >&2
+        echo "Expected pattern: feature/issue-<N>, feature/ISSUE-<N>-<desc>," >&2
+        echo "feature/<repo>-issue-<N> (package-worktree sibling repo)," >&2
+        echo "or skill/<name>-<YYYYMMDD>-<HHMMSS>[-<n>] (skill worktree)" >&2
+        echo "  (<name> is one of the skill worktree allowlist: ${ALLOWED_SKILLS[*]})" >&2
+        exit 1
+    fi
 fi
 
 echo "========================================"
-echo "Merging PR #${PR_NUMBER} (issue #${ISSUE_NUM})"
+if [[ "$SKILL_PR" == true ]]; then
+    echo "Merging PR #${PR_NUMBER} (skill ${SKILL_NAME})"
+else
+    echo "Merging PR #${PR_NUMBER} (issue #${ISSUE_NUM})"
+fi
 echo "========================================"
 
 # --- Manifest-driven worktree lookup (ADR-0012 package worktrees) ---
@@ -561,6 +671,14 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
 fi
 IS_PACKAGE_PR=false
 [[ -n "$PKG_WT_DIR" ]] && IS_PACKAGE_PR=true
+# Skill worktrees are single-repository workspace or project worktrees
+# (worktree_create.sh); a skill branch in a package repository is nothing
+# this script knows how to clean up, so it is refused before anything runs.
+if [[ "$SKILL_PR" == true ]] && { [[ "$IS_PACKAGE_PR" == true ]] || [[ "${REPO_KIND:-}" == "package" ]]; }; then
+    echo "ERROR: PR #${PR_NUMBER} is a skill branch ('$PR_BRANCH') in package repository ${PR_REPO_SLUG:-?};" >&2
+    echo "  skill pull requests are merged only for the workspace or the project repository. Nothing was merged." >&2
+    exit 1
+fi
 
 # --- Capture the reviewed head, before any push this run makes (#284) ---
 # This is the SHA a `## Local Review` / `## Integrated Review` entry
@@ -596,6 +714,8 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
     if [[ "$IS_PACKAGE_PR" == true ]] || [[ "${REPO_KIND:-}" == "package" ]]; then
         echo "  Package PR (repo: $PR_REPO_SLUG) — skipping roadmap update"
         echo "  (the roadmap lives in this repo, not the package repo)"
+    elif [[ "$SKILL_PR" == true ]]; then
+        echo "  Skill PR — no issue to mark done, skipping roadmap update"
     else
         echo "  Checking roadmap for #${ISSUE_NUM}..."
 
@@ -680,7 +800,9 @@ fi
 #   default        enforce (#300) — refuses (exit 1, no merge, no entry) —
 #                  workspace PRs only (owner's containment measure 2;
 #                  project/package PRs stay report-only until #265 settles
-#                  where their timelines live). --enforce is an explicit
+#                  where their timelines live; skill PRs, which have no
+#                  issue timeline, are report-only too, issue 478).
+#                  --enforce is an explicit
 #                  alias of this default.
 #   --report-only  names what it would have refused, proceeds, and records
 #                  a `## Merge (report-only)` entry (the pre-#300 default)
@@ -851,8 +973,10 @@ if [[ -n "$_GATE_OWN_SHA" ]]; then
     else
         _gate_refusal=$(head -n1 <<< "$_gate_refusal" | sed 's/^ERROR: //')
     fi
-elif [[ -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" && "$_GATE_PKG_ROLE" != "owning" ]]; then
-    # The path passes the records gate (records_path) like every other
+elif [[ "$SKILL_PR" != true && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" && "$_GATE_PKG_ROLE" != "owning" ]]; then
+    # A skill PR (issue 478) has no issue, so no timeline is read; its
+    # _gate_wt is still resolved above, since it feeds _ci_wt (the CI
+    # target's local history). The path passes the records gate (records_path) like every other
     # records read.
     _gate_cand="$_gate_wt/$_gate_rel"
     if _gate_refusal=$(records_path "$_gate_cand" "$_gate_wt" 2>&1 >/dev/null); then
@@ -893,7 +1017,11 @@ _gate_review=""
 if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
 elif [[ -z "$_gate_progress" ]]; then
-    if [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
+    if [[ "$SKILL_PR" == true ]]; then
+        # Condition (a) is read only from an issue's progress.md, so it is
+        # always unmet for a skill PR: no PR-comment review reader exists.
+        _gate_reasons+=("skill pull request: no issue timeline")
+    elif [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
         # A sibling's gate is not read in the owning checkout: that timeline
         # is the owning PR's. Name where the issue's records are, when the
         # manifest has an owning entry (the one place: issue_checkout_of).
@@ -1169,7 +1297,9 @@ _gate_record() {  # <entry type> <one-line why>
     # package worktree container lives under the workspace checkout, so the
     # naive check would resolve to the live main tree and commit there
     # (round-2 review). A sibling package PR never takes this path at all.
-    if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" ]]; then
+    # A skill PR (issue 478) never takes it either: it has no issue, so no
+    # timeline, and nothing is committed or pushed on its branch.
+    if [[ "$SKILL_PR" != true && "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM" && -z "$_GATE_OWN_NOREAD" ]]; then
         wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
@@ -1302,6 +1432,8 @@ _gate_record() {  # <entry type> <one-line why>
             fi
             _gate_rec_snapshot_drop
         fi
+    elif [[ "$SKILL_PR" == true ]]; then
+        why_comment="a skill pull request has no issue timeline, so its record goes on the PR"
     elif [[ "$_GATE_PKG_ROLE" == "sibling" ]]; then
         why_comment="a sibling repository's pull request records on its own PR, not in the owning checkout's timeline"
     elif [[ -n "$_GATE_OWN_PROBLEM" ]]; then
@@ -1469,7 +1601,7 @@ else
     if [[ "$FORCE_UNREVIEWED" == true ]]; then
         echo "  ⚠️  --force-unreviewed: bypassing the review gate — ${_gate_why}"
         _gate_already_recorded "Merge (unreviewed)" "$_gate_why" || _gate_record "Merge (unreviewed)" "$_gate_why"
-    elif [[ "$ENFORCE_MERGE_GATE" == true && "$WORKTREE_TYPE" == "workspace" ]]; then
+    elif [[ "$ENFORCE_MERGE_GATE" == true && "$WORKTREE_TYPE" == "workspace" && "$SKILL_PR" != true ]]; then
         {
             echo "ERROR: review gate refused to merge PR #${PR_NUMBER}:"
             for _r in "${_gate_reasons[@]}"; do echo "  - $_r"; done
@@ -1482,7 +1614,12 @@ else
         _gate_mode_note="report-only"
         # Don't name --enforce here: enforcement is the default, so the
         # caller usually passed no flag at all (#300 round 4).
-        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: gate enforcement applies to workspace PRs only until #265 settles project timelines"
+        if [[ "$SKILL_PR" == true ]]; then
+            # Owner's G1 (issue 478): a skill PR is gated like a project PR.
+            [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: a skill pull request has no issue timeline, so the gate reports and records on the PR"
+        else
+            [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: gate enforcement applies to workspace PRs only until #265 settles project timelines"
+        fi
         echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
         _gate_already_recorded "Merge (report-only)" "$_gate_why" || _gate_record "Merge (report-only)" "$_gate_why"
     fi
@@ -2117,21 +2254,9 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     _WORKTREE_KEPT=false
     if [[ -n "$_OWN_ORIGIN" ]]; then
         _git_err=""
-        # GitHub may auto-delete the head branch on merge; an absent ref is
-        # the desired end state, not a failure. Only a ref that is still
-        # there (or an unreachable remote) goes through push --delete.
-        _lsr_rc=0
-        git -C "$_OWN_ORIGIN" ls-remote --exit-code --heads origin "$PR_BRANCH" >/dev/null 2>&1 || _lsr_rc=$?
-        if [[ $_lsr_rc -eq 2 ]]; then
-            echo "  ✅ Remote branch already gone ($PR_REPO_SLUG, auto-deleted on merge)"
-        elif _git_err="$(git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>&1)"; then
-            echo "  ✅ Remote branch deleted ($PR_REPO_SLUG)"
-        else
-            echo "  ⚠️  Could not delete remote branch '$PR_BRANCH' in $PR_REPO_SLUG:" >&2
-            echo "     ${_git_err:-no output}" >&2
-            _CLEANUP_INCOMPLETE=true
-        fi
-        unset _lsr_rc
+        # An auto-deleted branch is not a failure; any other failure is
+        # printed and marks the cleanup incomplete (delete_remote_branch).
+        delete_remote_branch "$_OWN_ORIGIN" "$PR_BRANCH" "$PR_REPO_SLUG" || _CLEANUP_INCOMPLETE=true
         # Fast-forward the owning repository's own checkout (the layer's
         # src/<repo> the worktree was made from) only when it is clean and
         # on the branch this PR merged into; anywhere else a pull would
@@ -2214,7 +2339,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
                 _cm_remote="$(git -C "$_cm_origin" remote get-url origin 2>/dev/null || echo "")"
                 _cm_slug="$(extract_gh_slug "$_cm_remote")"
                 _cm_lsremote_rc=0
-                git -C "$_cm_origin" ls-remote --exit-code --heads origin "$_cm_branch" >/dev/null 2>&1 || _cm_lsremote_rc=$?
+                git -C "$_cm_origin" ls-remote --exit-code origin "refs/heads/$_cm_branch" >/dev/null 2>&1 || _cm_lsremote_rc=$?
                 case $_cm_lsremote_rc in
                     0)
                         echo "  ℹ️  Branch '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place"
@@ -2254,10 +2379,59 @@ elif [[ "${REPO_KIND:-}" == "package" ]]; then
     echo "  (Remote branch left as-is; delete it on GitHub if the merge did not.)"
 else
     # --- Step 4 (workspace / legacy single-repo project PR) ---
-    if [[ -n "$WORKTREE_TYPE" ]]; then
+    # From the workspace root before anything else: worktree removal must
+    # not run from inside the worktree, and Step 6's `git pull` syncs the
+    # current directory, which must be the workspace root on every branch
+    # below, including a skill PR with no worktree to remove (issue 478).
+    cd "$ROOT_DIR"
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        # A PR from a fork: its head branch is the fork's. A local worktree
+        # or branch of the same name is someone's local work, not this PR's,
+        # so none is removed (the local branch delete below skips it too).
+        echo "  ℹ️  Local worktree left alone: PR #${PR_NUMBER} is from a fork, so '$PR_BRANCH' here is not its head branch"
+    elif [[ "$SKILL_PR" == true ]]; then
+        # A skill PR (issue 478): the worktree that has the PR's head branch
+        # checked out, found by git (the workspace root, or the project root
+        # for a project PR, as Step 1 looks), and removed by its path, never
+        # by skill name (worktree_remove.sh --skill takes the newest match,
+        # #374). worktree_remove.sh refuses a main checkout and, without
+        # --force, a worktree with uncommitted changes.
+        _SK_REPO="$ROOT_DIR"
+        [[ "$WORKTREE_TYPE" == "project" ]] && _SK_REPO="$PJ_ROOT_EFFECTIVE"
+        _SK_WT=$(find_worktree_for_branch "$_SK_REPO" "$PR_BRANCH" || true)
+        # Its git dir, empty when git cannot read it: only a readable git
+        # dir equal to the common dir is a main checkout (two empty outputs
+        # are not). A stale entry whose folder is gone is pruned; anything
+        # else goes to worktree_remove.sh, which says what it is.
+        _SK_GITDIR=""
+        [[ -n "$_SK_WT" ]] && _SK_GITDIR="$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+        if [[ -z "$_SK_WT" ]]; then
+            echo "  No worktree has '$PR_BRANCH' checked out — nothing to remove"
+        elif [[ ! -d "$_SK_WT" ]]; then
+            echo "  Worktree $_SK_WT is gone already — pruning its stale entry"
+            git -C "$_SK_REPO" worktree prune
+        elif [[ -n "$_SK_GITDIR" && "$_SK_GITDIR" \
+                == "$(git -C "$_SK_WT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]]; then
+            # The main checkout itself is on the skill branch: it is never
+            # removed (worktree_remove.sh --path refuses it), and Step 5's
+            # local branch delete will report the branch kept.
+            echo "  ⚠️  The main checkout $_SK_WT has '$PR_BRANCH' checked out — it is never removed;" >&2
+            echo "     switch it to the default branch, then delete '$PR_BRANCH' there by hand" >&2
+            _CLEANUP_INCOMPLETE=true
+        else
+            echo "  Removing worktree..."
+            _WR_ARGS=(--path "$_SK_WT" --type "$WORKTREE_TYPE")
+            [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PROJECT_ARG" ]] && _WR_ARGS+=(--project "$PROJECT_ARG")
+            if "$SCRIPT_DIR/worktree_remove.sh" "${_WR_ARGS[@]}"; then
+                echo "  ✅ Worktree removed"
+            else
+                echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
+                _CLEANUP_INCOMPLETE=true
+            fi
+        fi
+        unset _SK_REPO _SK_WT _SK_GITDIR _WR_ARGS
+    elif [[ -n "$WORKTREE_TYPE" ]]; then
         echo "  Removing worktree..."
-        # Must run from root, not from inside the worktree
-        cd "$ROOT_DIR"
         _WR_ARGS=(--issue "$ISSUE_NUM" --type "$WORKTREE_TYPE")
         [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PROJECT_ARG" ]] && _WR_ARGS+=(--project "$PROJECT_ARG")
         if "$SCRIPT_DIR/worktree_remove.sh" "${_WR_ARGS[@]}"; then
@@ -2269,7 +2443,7 @@ else
         unset _WR_ARGS
     fi
 
-    # --- Step 5: Delete branches ---
+    # --- Step 5: Delete branches (remote now, local after the sync) ---
     echo "  Cleaning up branches..."
     # The project's checkout root (#265): PJ_REPO_ROOT (registered or
     # legacy project/, resolved above) when this is a project PR, else the
@@ -2279,18 +2453,53 @@ else
     else
         BRANCH_REPO="$ROOT_DIR"
     fi
-    git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
-    git -C "$BRANCH_REPO" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted" || true
+    # The same rule as the package path (issue 478): an auto-deleted branch
+    # is not a failure; any other failure is printed with git's stderr,
+    # naming the branch left behind, and marks the cleanup incomplete.
+    delete_remote_branch "$BRANCH_REPO" "$PR_BRANCH" "${PR_REPO_SLUG:-origin}" || _CLEANUP_INCOMPLETE=true
 
     # --- Step 6: Sync ---
-    echo "  Syncing main..."
-    git pull --ff-only
-    echo "  ✅ Workspace synced"
+    if [[ "$(git branch --show-current 2>/dev/null)" == "$PR_BRANCH" ]]; then
+        # The workspace's main checkout is still on the merged branch (named
+        # above); its upstream was just deleted, so a pull has nothing to
+        # follow. Nothing is synced until it is switched back.
+        echo "  ⚠️  Workspace not synced: its checkout is on '$PR_BRANCH', not the default branch" >&2
+        _CLEANUP_INCOMPLETE=true
+    else
+        echo "  Syncing main..."
+        git pull --ff-only
+        echo "  ✅ Workspace synced"
+    fi
 
     # Also sync project repo for project-type merges
     if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
         echo "  Syncing project..."
         git -C "$PJ_REPO_ROOT" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
+    fi
+
+    # --- Step 5, local half: after the sync (issue 478) ---
+    # `branch -d` asks whether the branch is merged into its upstream or
+    # into HEAD. A skill branch has no upstream (worktree_create.sh makes it
+    # --no-track) and a tracking ref may be pruned, so HEAD decides, and it
+    # must be the default branch with the merge pulled in: before the sync
+    # an ordinary merged branch would read as "not fully merged".
+    # Safe delete (-d), as the package path does: a local branch that is
+    # absent is nothing to do; one that git will not delete (unmerged work,
+    # still checked out in a worktree) is reported with git's stderr and
+    # marks the cleanup incomplete, never silently kept. A PR from a fork
+    # has no local branch of its own here (Step 4).
+    if [[ "${PR_CROSS_REPO:-false}" == true ]]; then
+        echo "  ℹ️  Local branch left alone: PR #${PR_NUMBER} is from a fork"
+    elif git -C "$BRANCH_REPO" show-ref --verify --quiet "refs/heads/$PR_BRANCH"; then
+        if _git_err="$(git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>&1)"; then
+            echo "  ✅ Local branch deleted"
+        else
+            echo "  ⚠️  Kept local branch '$PR_BRANCH' in $BRANCH_REPO:" >&2
+            echo "     ${_git_err:-git branch -d failed with no output}" >&2
+            echo "     Delete it with: git -C $BRANCH_REPO branch -D $PR_BRANCH   (if that work is truly abandoned)" >&2
+            _CLEANUP_INCOMPLETE=true
+        fi
+        unset _git_err
     fi
 fi
 

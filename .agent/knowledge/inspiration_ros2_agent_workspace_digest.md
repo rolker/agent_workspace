@@ -4,9 +4,47 @@ The current parity record (what still blocks moving off the fork) is
 [`docs/fork_parity.md`](../../docs/fork_parity.md) (2026-11-10, #253).
 
 Type: fork
-Last checked: 2026-09-29
-Repo: rolker/ros2_agent_workspace @ 323306a823ac6ae76bbd54a621612b8ed45e86f3 (origin/main)
-Previously checked: 2026-09-14 @ 3b365a53bcdf47892f8b76425650ac40454d00bf
+Last checked: 2026-11-13
+Repo: rolker/ros2_agent_workspace @ 323306a823ac6ae76bbd54a621612b8ed45e86f3 (origin/main; unchanged since 2026-09-29)
+Previously checked: 2026-09-29 @ 323306a823ac6ae76bbd54a621612b8ed45e86f3 (before that: 2026-09-14 @ 3b365a53bcdf47892f8b76425650ac40454d00bf)
+
+## Changelog (2026-09-29 → 2026-11-13): nothing new upstream
+
+No upstream change to review. `git ls-remote origin HEAD` and the GitHub
+compare API (`323306a...main`, status `identical`, 0 commits) both show
+`main` still at `323306a8` (last push 2026-09-25, "Merge pull request #661").
+The local clone was moved to that head (`git reset --hard origin/main`, same
+SHA). No file-level diff by category was run this round, because there is
+nothing new to diff; the 2026-09-29 round's category diff stands.
+
+Upstream activity snapshot (checked 2026-11-13 with `gh`): 93 open issues
+(newest update 2026-09-21), 2 open PRs (#663 dependency bump, #657 parked
+merge-verification change; both last updated 2026-09-22 and 2026-09-25), no
+issues closed and no PRs merged since 2026-10-14 (the 30-day window used),
+no releases, 3 stars. Upstream is quiet for 49 days, consistent with the
+winding-down noted on 2026-09-29.
+
+The fork is not dormant locally: `docs/fork_parity.md` (2026-11-10, #253,
+closed) records daily agent work in the fork checkout on 2026-11-10 that is
+not pushed upstream (package worktrees, scratchpad). That work is out of
+reach of this tracker (it only sees `origin`); the parity audit is the record
+of it. Everything in this digest's earlier rounds that the audit also covers
+(rows 1-61 of the table, "Closed-since-fork issues", "Issues to open") is not
+repeated here.
+
+Corrections to earlier survey lines (facts changed in this repo since
+2026-09-29, checked 2026-11-13 with `gh issue view -R rolker/agent_workspace`):
+
+- A3 said the Copilot cross-model arm drop was "our open #344": #344 closed
+  2026-10-13 (completed, PR #391). Inline note added at A3.
+- P1 (reviewer-helper hardening) is tracked as #363, which closed 2026-10-01
+  (completed, PR #372). The "Decisions (2026-09-29 round)" line says only
+  "filed as #363" and stays true as history; the P1 text "none in ours" no
+  longer holds. Inline note added at P1. Whether all seven sub-fixes landed
+  was not re-checked against the scripts this round.
+- #364 (P2), #365 (P3), #366 (P4), #367 (P7) are still open; #342 still open;
+  #335 closed 2026-10-12; #253 closed 2026-11-10; #389 closed 2026-10-13 (the
+  A5 note already says so).
 
 ## Changelog (2026-09-14 → 2026-09-29): absorption triage
 
@@ -47,6 +85,8 @@ top port candidates (P1, P2).
 - **A3. Drop the Copilot cross-model arm** — upstream removed the Copilot
   specialist (same Claude/GPT models, spends Premium quota). Same direction as
   our open #344; nothing new to take.
+  *Note 2026-11-13:* #344 closed 2026-10-13 (completed, PR #391); the text
+  above is kept as written.
 - **A4. Provisional ADR status** (upstream #620, closed) — `docs/decisions/0016-session-roots-and-the-user-tier.md`
   already uses it, with a status-line-only promotion rule. Upstream's
   `adr_template.md` did not gain a Provisional line either.
@@ -64,6 +104,10 @@ top port candidates (P1, P2).
 our source; no agent_workspace issue covers them — #342 is the broader
 "external reviewer contract" umbrella and does not name them). Verified
 against `.agent/scripts/{_cli_review,_agy_review,cross_model_review}.sh`:
+
+*Note 2026-11-13:* #363 closed 2026-10-01 (PR #372, commits tagged `(#363)`
+in `git log` of `cross_model_review.sh`); P1a is verified in (see changelog
+above). The text below is kept as written for 2026-09-29.
 
 - **P1a. Refuse `AGENT_KILL_AFTER=0`** (upstream 5af570f). `timeout -k 0`
   *disables* the SIGKILL escalation rather than sending it at once, so a CLI
@@ -415,6 +459,19 @@ lookups knowledge, Gazebo research (#369).
 Upstream's digest of *us* (checked 2026-07-14) records the #172 push and
 their own #208/#209-equivalents porting field mode in reverse. Nothing
 new to pull back; their next check of us will see #226/#232/#236/#238.
+
+## Pending Review (2026-11-13 round)
+
+(none pending from this round)
+
+(No upstream items to triage: nothing changed. Earlier items remain decided
+below and in the 2026-09-29 "Decisions" section.)
+
+## Deferred (2026-11-13 decisions)
+
+- **fork-1.** `registry-status-after-cutover` — keep the registry entry until
+  the cutover; nothing new upstream since 2026-09-29. Revisit at cutover
+  (2026-11-13)
 
 ## Pending Review (2026-09-14 round)
 

@@ -136,6 +136,11 @@ layer_ws="$(basename "$(dirname "$target")")"
 case " ${VCS_FAIL_LAYERS:-} " in
     *" ${layer_ws%_ws} "*) exit 1 ;;
 esac
+# VCS_MKDIRS=1: a directory per repository, as a real import leaves.
+if [ -n "${VCS_MKDIRS:-}" ]; then
+    sed -n 's/^  \([A-Za-z0-9_.-]*\):[[:space:]]*$/\1/p' "$target/.vcs_input" \
+        | while IFS= read -r n; do mkdir -p "$target/$n"; done
+fi
 exit 0
 EOF
     chmod +x "$sb/bin/colcon" "$sb/bin/vcs"
@@ -2313,6 +2318,1694 @@ test_repo_pin_two_layers() {
     assert_eq "--layer l2 agrees" "pinned	branch" "$out"
 }
 
+# ---- manifest route (issue #436) ----
+#
+# The resolver these tests run is THIS checkout's source
+# (tools/ros-manifest/src on PYTHONPATH), never a copy installed elsewhere
+# (the main checkout's venv holds main's code; a worktree and CI have no
+# venv of their own). The interpreter is the first that imports both yaml
+# and that source: the python of a ros-manifest on PATH (CI installs one),
+# the main checkout's .venv python, then python3. When none can, the tests
+# are SKIPPED loudly, and that is a FAILURE where the resolver is meant to
+# be present: a ros-manifest on PATH, a main-checkout .venv/bin/ros-manifest,
+# or CI set (the adapter-contract job installs the resolver, so a quiet
+# skip there would pass the job without running these tests).
+
+MR_SRC="$REAL_ROOT/tools/ros-manifest/src"
+MR_PY=""
+MR_SKIPPED=0
+mr_pick_python() {
+    local c onpath shebang common
+    local -a cands=()
+    onpath="$(command -v ros-manifest 2>/dev/null || true)"
+    if [ -n "$onpath" ] && IFS= read -r shebang < "$onpath" && [[ "$shebang" == '#!'* ]]; then
+        shebang="${shebang#\#!}"
+        case "$shebang" in
+            "/usr/bin/env "*) cands+=("$(command -v "${shebang#/usr/bin/env }" 2>/dev/null || true)") ;;
+            *) cands+=("$shebang") ;;
+        esac
+    fi
+    common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    [ -n "$common" ] && cands+=("${common%/.git}/.venv/bin/python3")
+    cands+=("$(command -v python3 2>/dev/null || true)")
+    for c in "${cands[@]}"; do
+        [ -n "$c" ] && [ -x "$c" ] || continue
+        if PYTHONPATH="$MR_SRC" "$c" -c '
+import sys, yaml, ros_manifest
+sys.exit(0 if ros_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
+            MR_PY="$c"
+            return 0
+        fi
+    done
+    return 1
+}
+if ! mr_pick_python; then
+    _mr_common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if command -v ros-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_mr_common" ] && [ -x "${_mr_common%/.git}/.venv/bin/ros-manifest" ]; }; then
+        echo "  FAIL: manifest-route tests: no python imports both yaml and $MR_SRC, though the resolver is meant to be present here (a ros-manifest on PATH, a main-checkout .venv/bin/ros-manifest, or CI)"
+        FAIL=$((FAIL + 1))
+    fi
+fi
+
+# Run a manifest-route test function, or skip it loudly.
+mr_test() {
+    if [ -z "$MR_PY" ]; then
+        echo "TEST: $1"
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC); install it (make install-ros-manifest, or a python3 with PyYAML)"
+        MR_SKIPPED=$((MR_SKIPPED + 1))
+        return 0
+    fi
+    "$1"
+}
+
+# The resolver wrapper at <sb>/.venv/bin/ros-manifest, where the adapter
+# looks (the sandbox is not a git checkout, so it is its own main checkout).
+make_mr_resolver() {
+    local sb="$1"
+    mkdir -p "$sb/.venv/bin"
+    cat > "$sb/.venv/bin/ros-manifest" <<EOF
+#!/usr/bin/env bash
+echo "RESOLVER_RAN:\$*" >> "$sb/resolver.log"
+PYTHONPATH="$MR_SRC" exec "$MR_PY" -m ros_manifest.cli "\$@"
+EOF
+    chmod +x "$sb/.venv/bin/ros-manifest"
+}
+
+# A manifest in the new format. Layers core and extra (extra optional);
+# pkg_a has a per-distro ref for fakefox (a quoted number), pkg_b is absent
+# for fakefox, pkg_c (layer extra) is in a group the role "lite"
+# subtracts. <marker>, when given, is one more core repository, so a test
+# can tell which commit of the manifest was resolved. With <extends_url>
+# and <extends_ref>, the manifest extends base.yaml there.
+write_mr_manifest() {  # <file> [marker] [extends_url extends_ref]
+    local file="$1" marker="${2:-}" eurl="${3:-}" eref="${4:-}"
+    mkdir -p "$(dirname "$file")"
+    {
+        if [ -n "$eurl" ]; then
+            printf 'extends:\n  url: %s\n  ref: %s\n  path: base.yaml\n' "$eurl" "$eref"
+        fi
+        cat <<'EOF'
+layers:
+  - core
+  - extra
+optional_layers:
+  - extra
+repos:
+  core:
+    pkg_a:
+      url: file:///nonexistent/pkg_a.git
+      ref: main
+      distros:
+        fakefox:
+          ref: "2.0"
+    pkg_b:
+      url: file:///nonexistent/pkg_b.git
+      ref: main
+      distros:
+        fakefox:
+          absent: true
+EOF
+        if [ -n "$marker" ]; then
+            printf '    %s:\n      url: file:///nonexistent/%s.git\n      ref: main\n' "$marker" "$marker"
+        fi
+        cat <<'EOF'
+  extra:
+    pkg_c:
+      url: file:///nonexistent/pkg_c.git
+      ref: v1
+groups:
+  extras:
+    default: include
+    repos: [pkg_c]
+roles:
+  dev: {}
+  lite:
+    subtract: [extras]
+EOF
+    } > "$file"
+}
+
+# A base manifest (for extends) with one core repository named <marker>.
+write_mr_base() {  # <file> <marker>
+    mkdir -p "$(dirname "$1")"
+    printf 'layers:\n  - core\nrepos:\n  core:\n    %s:\n      url: file:///nonexistent/%s.git\n      ref: main\nroles:\n  dev: {}\n  lite: {}\n' "$2" "$2" > "$1"
+}
+
+# A manifest repository: a work clone at <sb>/mwork/<name> pushing to the
+# bare remote <sb>/mremote/<name>.git (branch main). Prints the remote's
+# file:// URL.
+make_mr_remote() {  # <sb> <name>
+    local sb="$1" name="$2" work bare
+    work="$sb/mwork/$name"
+    bare="$sb/mremote/$name.git"
+    mkdir -p "$work" "$(dirname "$bare")"
+    git init --quiet --bare -b main "$bare"
+    git -C "$work" init --quiet -b main
+    git -C "$work" remote add origin "file://$bare"
+    echo "file://$bare"
+}
+
+# Commit and push the work clone's current files; prints the commit.
+mr_push() {  # <sb> <name> [extra push refspecs...]
+    local work="$1/mwork/$2"
+    shift 2
+    git -C "$work" add -A
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -m "change" --allow-empty
+    git -C "$work" push --quiet --force origin main "$@"
+    git -C "$work" rev-parse HEAD
+}
+
+# A sandbox for the manifest route: toolchain stubs, underlay, resolver
+# wrapper, and p11 registered (not created: setup creates it) with
+# role=<role> distro=fakefox and the given settings lines.
+make_mr_sandbox() {  # <role-or-empty> <settings lines...>
+    local role="$1" sb fields=""
+    shift
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_underlay "$sb"
+    make_mr_resolver "$sb"
+    [ -n "$role" ] && fields=" role=$role"
+    echo "p11 ros2_colcon projects/p11$fields distro=fakefox" > "$sb/.agent/projects.local"
+    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
+    [ $# -gt 0 ] && printf '%s\n' "$@" > "$sb/.agent/projects.d/p11"
+    echo "$sb"
+}
+
+mr_settings() {  # <sb> <settings lines...>
+    local sb="$1"
+    shift
+    printf '%s\n' "$@" > "$sb/.agent/projects.d/p11"
+}
+
+# The adapter on p11, with vcs creating a directory per imported repo.
+run_mr() {
+    local sb="$1"
+    shift
+    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 "$@")
+}
+
+mr_gen() { echo "$1/projects/p11/configs/manifest-resolved"; }
+
+test_mr_wrapper_runs_this_checkouts_resolver() {
+    echo "TEST: manifest route: the test resolver is this checkout's tools/ros-manifest/src"
+    local out
+    out="$(PYTHONPATH="$MR_SRC" "$MR_PY" -c 'import ros_manifest; print(ros_manifest.__file__)')"
+    assert_contains "ros_manifest imported from this checkout" "$MR_SRC/ros_manifest/" "$out"
+}
+
+test_mr_setup_from_path_source() {
+    echo "TEST: manifest route: setup from a path source resolves, imports and validates; every verb reads the generated dir"
+    local sb out rc=0 gen
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    gen="$(mr_gen "$sb")"
+    assert_eq "configs/manifest-resolved is a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
+    assert_contains "the link points at a generated dir" "manifest-resolved.gen-" "$(readlink "$gen")"
+    assert_eq "layers.txt: core and extra" $'core\nextra' "$(grep -v '^#' "$gen/layers.txt")"
+    assert_eq "optional_layers.txt: extra" "extra" "$(grep -v '^#' "$gen/optional_layers.txt")"
+    assert_contains "per-distro ref honoured (quoted number)" "version: '2.0'" "$(cat "$gen/repos/core.repos")"
+    assert_not_contains "a repository absent for the distro is left out" "pkg_b" "$(cat "$gen/repos/core.repos")"
+    assert_contains "the resolver got role, distro and the layout" "--role dev --distro fakefox --out" "$(cat "$sb/resolver.log")"
+    assert_contains "the cache is a sibling of the generated dir" "--layout manifest-dir --cache-dir $sb/projects/p11/configs/manifest-resolved.gen-" "$(cat "$sb/resolver.log")"
+    assert_eq "no cache left behind" "" "$(cd "$sb/projects/p11/configs" && ls -d -- *.cache 2>/dev/null || true)"
+    assert_contains "core imported" "core_ws/src" "$(cat "$sb/vcs.log")"
+    assert_contains "extra imported" "extra_ws/src" "$(cat "$sb/vcs.log")"
+    assert_contains "says it edits no ignore file" "edits no ignore file" "$out"
+    assert_contains ".resolved-from records the source" "source=$sb/m/manifest.yaml" "$(cat "$gen/.resolved-from")"
+    assert_contains ".resolved-from records role and distro" $'role=dev\ndistro=fakefox' "$(cat "$gen/.resolved-from")"
+    assert_contains ".resolved-from records the file's stamp" "file-stamp=" "$(cat "$gen/.resolved-from")"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "validate: exit 0" "0" "$rc"
+    assert_not_contains "validate: no warning" "WARNING" "$out"
+    # env, build, test, repos, worktree_repos and repo_pin read the generated dir.
+    out="$(run_mr "$sb" env 2>&1)"
+    assert_contains "env: the distro underlay" "rosroot/fakefox/setup.bash" "$out"
+    rc=0; run_mr "$sb" build >/dev/null 2>&1 || rc=$?
+    assert_eq "build: exit 0" "0" "$rc"
+    assert_contains "build ran colcon in core" "core_ws CMD:build" "$(cat "$sb/colcon.log")"
+    assert_contains "build ran colcon in extra" "extra_ws CMD:build" "$(cat "$sb/colcon.log")"
+    out="$(run_mr "$sb" env 2>&1)"
+    assert_contains "env: the built core layer" "core_ws/install/local_setup.bash" "$out"
+    rc=0; run_mr "$sb" test >/dev/null 2>&1 || rc=$?
+    assert_eq "test: exit 0" "0" "$rc"
+    out="$(run_mr "$sb" repo_pin pkg_a 2>/dev/null)"
+    assert_eq "repo_pin reads the generated .repos" "2.0" "${out%%$'\t'*}"
+    local d
+    for d in pkg_a pkg_c; do
+        git -C "$sb/projects/p11/layers/main/$([ "$d" = pkg_c ] && echo extra || echo core)_ws/src/$d" init --quiet
+    done
+    out="$(run_mr "$sb" repos 2>&1)"
+    assert_contains "repos lists pkg_a" "pkg_a:$sb/projects/p11/layers/main/core_ws/src/pkg_a" "$out"
+    assert_contains "repos lists pkg_c" "pkg_c:" "$out"
+    rc=0; out="$(run_mr "$sb" worktree_repos --issue owner/pkg_a#5 --layer core --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "worktree_repos: exit 0" "0" "$rc"
+    assert_contains "worktree_repos reads layers.txt" "core_ws/src/pkg_a" "$out"
+}
+
+test_mr_url_source_branch_tag_commit() {
+    echo "TEST: manifest route: a URL source at a branch, a tag and a commit"
+    local sb url out rc c1 gen
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    c1="$(mr_push "$sb" leaf)"
+    git -C "$sb/mwork/leaf" tag v1
+    git -C "$sb/mwork/leaf" push --quiet origin v1
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
+    mr_push "$sb" leaf >/dev/null
+    gen="$(mr_gen "$sb")"
+
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "branch: setup exit 0" "0" "$rc"
+    assert_contains "branch: checked out" "source: branch main at " "$out"
+    assert_contains "branch: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+
+    mr_settings "$sb" "source=$url" "source_ref=v1"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "tag: sync exit 0" "0" "$rc"
+    assert_contains "tag: says the commit" "source: tag v1 " "$out"
+    assert_contains "tag: the commit named" "-> ${c1:0:12}" "$out"
+    assert_contains "tag: its commit resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+
+    mr_settings "$sb" "source=$url" "source_ref=$c1"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "commit: sync exit 0" "0" "$rc"
+    assert_contains "commit: named" "source: commit $c1 at ${c1:0:12}" "$out"
+    assert_contains "commit: recorded" "commit=$c1" "$(cat "$gen/.resolved-from")"
+    # sync never imports a repository the new result adds; setup does.
+    rc=0; run_mr "$sb" validate >/dev/null 2>&1 || rc=$?
+    assert_eq "commit: validate fails until the new repository is imported" "1" "$rc"
+    run_mr "$sb" setup >/dev/null 2>&1
+    rc=0; run_mr "$sb" validate >/dev/null 2>&1 || rc=$?
+    assert_eq "commit: validate exit 0" "0" "$rc"
+
+    mr_settings "$sb" "source=$url" "source_ref=nosuchref"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "unknown ref: exit 1" "1" "$rc"
+    assert_contains "unknown ref: named" "source_ref 'nosuchref' is not a branch or tag" "$out"
+    assert_contains "unknown ref: the previous result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+
+    # source_path: the file inside the repository.
+    mkdir -p "$sb/mwork/leaf/sub"
+    write_mr_manifest "$sb/mwork/leaf/sub/other.yaml" mark_sub
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main" "source_path=sub/other.yaml"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "source_path: exit 0" "0" "$rc"
+    assert_contains "source_path: that file resolved" "mark_sub" "$(cat "$gen/repos/core.repos")"
+    mr_settings "$sb" "source=$url" "source_ref=main" "source_path=nope.yaml"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "missing source_path: exit 1" "1" "$rc"
+    assert_contains "missing source_path: named" "source_path 'nope.yaml' is not a file" "$out"
+
+    # A committed symbolic link out of the repository is never followed,
+    # as the file or as a directory on the way to it.
+    write_mr_manifest "$sb/outside/secret.yaml" mark_secret
+    ln -s "$sb/outside/secret.yaml" "$sb/mwork/leaf/evil.yaml"
+    ln -s "$sb/outside" "$sb/mwork/leaf/evildir"
+    mr_push "$sb" leaf >/dev/null
+    local spath
+    for spath in evil.yaml evildir/secret.yaml; do
+        mr_settings "$sb" "source=$url" "source_ref=main" "source_path=$spath"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "symlink source_path $spath: exit 1" "1" "$rc"
+        assert_contains "symlink source_path $spath: named" "source_path '$spath' goes through the symbolic link '${spath%%/*}'" "$out"
+        assert_not_contains "symlink source_path $spath: not resolved" "mark_secret" "$(cat "$gen/repos/core.repos")"
+    done
+
+    # Another repository as source: fetched like the first, nothing kept.
+    local other
+    other="$(make_mr_remote "$sb" other)"
+    write_mr_manifest "$sb/mwork/other/manifest.yaml" mark_other
+    mr_push "$sb" other >/dev/null
+    mr_settings "$sb" "source=$other" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "another source: exit 0" "0" "$rc"
+    assert_contains "another source: resolved" "mark_other" "$(cat "$gen/repos/core.repos")"
+    assert_not_contains "another source: no old -> new line across sources" " -> " "$out"
+    mr_no_temp "$sb" "another source"
+}
+
+# A fingerprint of everything under <dir>: paths, link targets, file
+# modes, modification times and contents, so "untouched" means byte for
+# byte (and not even re-written with the same bytes). Portable: GNU or
+# BSD stat (as the adapter's _rc_file_stamp), cksum, no NUL-separated
+# lists (the fixtures' paths hold no newline).
+mr_stat() {
+    stat -c '%a %Y' "$1" 2>/dev/null || stat -f '%Lp %m' "$1"
+}
+
+mr_tree_hash() {
+    (cd "$1" && find . | LC_ALL=C sort | while IFS= read -r f; do
+        if [ -L "$f" ]; then
+            printf 'L %s %s\n' "$f" "$(readlink "$f")"
+        elif [ -f "$f" ]; then
+            printf 'F %s %s %s\n' "$f" "$(mr_stat "$f")" "$(cksum < "$f")"
+        else
+            printf 'D %s\n' "$f"
+        fi
+    done) | cksum
+}
+
+# sed -i without GNU or BSD differences: <sed args...> <file>.
+mr_sed() {
+    local f="${*: -1}"
+    sed "${@:1:$#-1}" "$f" > "$f.mr_sed" && mv -- "$f.mr_sed" "$f"
+}
+
+# A sandbox whose p11 was set up from a URL source at main (two commits,
+# so HEAD~1 exists). Prints the sandbox; the remote's URL is
+# file://<sb>/mremote/leaf.git.
+make_mr_url_project() {
+    local sb url
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" setup >/dev/null 2>&1
+    echo "$sb"
+}
+
+# After a run: no fetched source, cache or new link left beside the
+# generated directories, and <count> generated directories (default 1).
+mr_no_temp() {  # <sb> <label> [count]
+    local cfg="$1/projects/p11/configs"
+    assert_eq "$2: no temporary fetch, cache or link left" "" \
+        "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-*.src manifest-resolved.gen-*.cache manifest-resolved.gen-*.link 2>/dev/null || true)"
+    assert_eq "$2: ${3:-1} generated dir(s)" "${3:-1}" \
+        "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-* 2>/dev/null | wc -l | tr -d ' ')"
+}
+
+test_mr_url_follows_remote() {
+    echo "TEST: manifest route: each sync fetches afresh and follows a moved branch, a force-pushed branch, a moved tag and a commit ref (full or abbreviated)"
+    local sb url out rc gen work c y
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    work="$sb/mwork/leaf"
+    gen="$(mr_gen "$sb")"
+    assert_contains "setup: the tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_contains "setup: the commit recorded" "commit=$(git -C "$work" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "setup"
+    # A moved branch.
+    write_mr_manifest "$work/manifest.yaml" mark_three
+    c="$(mr_push "$sb" leaf)"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "moved branch: exit 0" "0" "$rc"
+    assert_contains "moved branch: said" "-> ${c:0:12}" "$out"
+    assert_contains "moved branch: the new tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
+    assert_contains "moved branch: the commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "moved branch"
+    # A force-pushed branch (the last commit rewritten).
+    write_mr_manifest "$work/manifest.yaml" mark_rewritten
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet --amend -am rewritten
+    git -C "$work" push --quiet --force origin main
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "force-pushed branch: exit 0" "0" "$rc"
+    assert_not_contains "force-pushed branch: no warning" "WARNING" "$out"
+    assert_contains "force-pushed branch: at the remote's tip" "commit=$(git -C "$work" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
+    assert_contains "force-pushed branch: resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    # A tag on a commit no branch holds, then moved to another such commit.
+    git -C "$work" checkout --quiet --detach
+    write_mr_manifest "$work/manifest.yaml" mark_x
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am x
+    git -C "$work" tag t
+    git -C "$work" push --quiet origin t
+    mr_settings "$sb" "source=$url" "source_ref=t"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "tag: exit 0" "0" "$rc"
+    assert_contains "tag: resolved" "mark_x" "$(cat "$gen/repos/core.repos")"
+    git -C "$work" checkout --quiet --detach main
+    write_mr_manifest "$work/manifest.yaml" mark_y
+    git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -am y
+    y="$(git -C "$work" rev-parse HEAD)"
+    git -C "$work" tag -f t >/dev/null
+    git -C "$work" push --quiet --force origin t
+    git -C "$work" checkout --quiet main
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "moved tag: exit 0" "0" "$rc"
+    assert_not_contains "moved tag: no warning" "WARNING" "$out"
+    assert_contains "moved tag: followed" "source: tag t " "$out"
+    assert_contains "moved tag: the new commit named" "-> ${y:0:12}" "$out"
+    assert_contains "moved tag: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "moved tag"
+    # A commit ref: a push changes nothing until source_ref changes.
+    c="$(git -C "$work" rev-parse main)"
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "commit: exit 0" "0" "$rc"
+    assert_contains "commit: resolved" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    write_mr_manifest "$work/manifest.yaml" mark_later
+    mr_push "$sb" leaf >/dev/null
+    run_mr "$sb" sync >/dev/null 2>&1
+    assert_contains "commit: a push changes nothing" "mark_rewritten" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "commit"
+    # An abbreviated commit (a full fetch, then the name looked up).
+    mr_settings "$sb" "source=$url" "source_ref=${y:0:10}"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "abbreviated commit: exit 0" "0" "$rc"
+    assert_contains "abbreviated commit: resolved" "mark_y" "$(cat "$gen/repos/core.repos")"
+    assert_contains "abbreviated commit: the full commit recorded" "commit=$y" "$(cat "$gen/.resolved-from")"
+    mr_no_temp "$sb" "abbreviated commit"
+    # source_ref=HEAD is refused by the settings file's rules.
+    mr_settings "$sb" "source=$url" "source_ref=HEAD"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "source_ref=HEAD: refused" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    assert_contains "source_ref=HEAD: names the rule" "source_ref must be a branch, tag or commit, not HEAD" "$out"
+}
+
+test_mr_fetch_failures_keep_previous() {
+    echo "TEST: manifest route: a ref deleted on the remote, a commit it does not hold, and an unreachable remote fail with the previous result live and unchanged"
+    local sb url out rc gen work before repos verb ref
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    work="$sb/mwork/leaf"
+    gen="$(mr_gen "$sb")"
+    # A branch and a tag, each resolved once, then deleted on the remote.
+    git -C "$work" branch feature
+    git -C "$work" tag v9
+    git -C "$work" push --quiet origin feature v9
+    for ref in feature v9; do
+        mr_settings "$sb" "source=$url" "source_ref=$ref"
+        rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+        assert_eq "$ref: resolved first (exit 0)" "0" "$rc"
+        before="$(readlink "$gen")"
+        repos="$(cat "$gen/repos/core.repos")"
+        git -C "$work" push --quiet origin ":$([ "$ref" = feature ] && echo refs/heads || echo refs/tags)/$ref"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "$ref deleted on the remote: exit 1" "1" "$rc"
+        assert_contains "$ref deleted on the remote: named" "source_ref '$ref' is not a branch or tag of $url" "$out"
+        assert_contains "$ref deleted on the remote: says the previous is in use" "the previously resolved manifest, if any, is still in use (its link unchanged)" "$out"
+        assert_not_contains "$ref deleted on the remote: never says nothing changed" "nothing changed" "$out"
+        assert_eq "$ref deleted on the remote: the link unchanged" "$before" "$(readlink "$gen")"
+        assert_eq "$ref deleted on the remote: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+        mr_no_temp "$sb" "$ref deleted on the remote"
+    done
+    # A full commit name the remote does not hold.
+    mr_settings "$sb" "source=$url" "source_ref=0123456789abcdef0123456789abcdef01234567"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "a commit the remote does not hold: exit 1" "1" "$rc"
+    assert_contains "a commit the remote does not hold: named" "is not a branch or tag of $url, nor a commit it holds" "$out"
+    assert_eq "a commit the remote does not hold: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "a commit the remote does not hold"
+    # The remote unreachable (gone), for sync and setup.
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    run_mr "$sb" sync >/dev/null 2>&1
+    before="$(readlink "$gen")"
+    repos="$(cat "$gen/repos/core.repos")"
+    mv "$sb/mremote/leaf.git" "$sb/mremote/leaf.away"
+    for verb in sync setup; do
+        rc=0; out="$(run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "unreachable, $verb: exit 1" "1" "$rc"
+        assert_contains "unreachable, $verb: says what failed" "cannot reach source $url" "$out"
+        assert_contains "unreachable, $verb: says the previous is in use" "still in use (its link unchanged)" "$out"
+        assert_not_contains "unreachable, $verb: never says nothing changed" "nothing changed" "$out"
+        assert_eq "unreachable, $verb: the link unchanged" "$before" "$(readlink "$gen")"
+        assert_eq "unreachable, $verb: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+        mr_no_temp "$sb" "unreachable, $verb"
+    done
+    mv "$sb/mremote/leaf.away" "$sb/mremote/leaf.git"
+    # A first setup that fails leaves nothing at all.
+    local sb2
+    sb2="$(make_mr_sandbox dev)"
+    mr_settings "$sb2" "source=file://$sb2/mremote/none.git" "source_ref=main"
+    rc=0; run_mr "$sb2" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "first setup, unreachable: exit 1" "1" "$rc"
+    assert_eq "first setup, unreachable: no link" "no" "$([ -L "$(mr_gen "$sb2")" ] && echo yes || echo no)"
+    mr_no_temp "$sb2" "first setup, unreachable" 0
+}
+
+test_mr_url_insteadof_rule() {
+    echo "TEST: manifest route: a user url.<base>.insteadOf rule applies to the fetch for setup and repeated syncs"
+    local sb out rc gen i
+    sb="$(make_mr_sandbox dev)"
+    make_mr_remote "$sb" leaf >/dev/null
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    # source names an alias that only the rule rewrites to the real remote.
+    mr_settings "$sb" "source=file://$sb/alias/leaf.git" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    for i in setup sync sync; do
+        rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$sb/mremote/.insteadOf" \
+            GIT_CONFIG_VALUE_0="file://$sb/alias/" run_mr "$sb" "$i" 2>&1)" || rc=$?
+        assert_eq "insteadOf, $i: exit 0" "0" "$rc"
+        mr_no_temp "$sb" "insteadOf, $i"
+    done
+    assert_contains "insteadOf: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_contains "insteadOf: the source recorded as set" "source=file://$sb/alias/leaf.git" "$(cat "$gen/.resolved-from")"
+    # Without the rule the alias does not exist: the rule was what worked.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "without the rule: exit 1" "1" "$rc"
+}
+
+test_mr_inherited_git_env_ignored() {
+    echo "TEST: manifest route: GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE in the environment (as inside a git hook) neither redirect the fetch nor touch the repository they name"
+    local sb url victim hash out rc verb gen
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    victim="$sb/victim"
+    git init --quiet -b main "$victim"
+    echo mine > "$victim/notes.txt"
+    git -C "$victim" add notes.txt
+    git -C "$victim" -c user.name=t -c user.email=t@t commit --quiet -m mine
+    hash="$(mr_tree_hash "$victim")"
+    for verb in setup sync; do
+        [ "$verb" = sync ] && { write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two; mr_push "$sb" leaf >/dev/null; }
+        rc=0; out="$(GIT_DIR="$victim/.git" GIT_WORK_TREE="$victim" GIT_INDEX_FILE="$victim/.git/index" \
+            run_mr "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "inherited GIT_*, $verb: exit 0" "0" "$rc"
+        assert_eq "inherited GIT_*, $verb: the named repository byte for byte unchanged" "$hash" "$(mr_tree_hash "$victim")"
+        mr_no_temp "$sb" "inherited GIT_*, $verb"
+    done
+    assert_contains "inherited GIT_*: the remote's tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_contains "inherited GIT_*: its commit recorded" "commit=$(git -C "$sb/mwork/leaf" rev-parse HEAD)" "$(cat "$gen/.resolved-from")"
+}
+
+test_mr_link_of_another_shape_refused() {
+    echo "TEST: manifest route: a link rewritten as ./name or an absolute path is refused before anything is swept or fetched"
+    local sb gen cfg live shape out rc
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    live="$(readlink "$gen")"
+    mkdir -p "$cfg/manifest-resolved.gen-Left01"
+    for shape in "./$live" "$cfg/$live"; do
+        ln -sfn "$shape" "$gen"
+        rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "link '$shape': exit 1" "1" "$rc"
+        assert_contains "link '$shape': says what the link is" "points at '$shape', not at a manifest-resolved.gen-XXXXXX name" "$out"
+        assert_contains "link '$shape': how to put it right" "ln -sfn manifest-resolved.gen-XXXXXX manifest-resolved" "$out"
+        assert_not_contains "link '$shape': nothing fetched" "source: fetching" "$out"
+        assert_eq "link '$shape': the link as it was" "$shape" "$(readlink "$gen")"
+        assert_eq "link '$shape': its directory kept" "yes" "$([ -f "$cfg/$live/layers.txt" ] && echo yes || echo no)"
+        assert_eq "link '$shape': nothing swept" "yes" "$([ -d "$cfg/manifest-resolved.gen-Left01" ] && echo yes || echo no)"
+    done
+    ln -sfn "$live" "$gen"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "the link put right: sync exit 0" "0" "$rc"
+}
+
+test_mr_fetch_no_askpass() {
+    echo "TEST: manifest route: the user's askpass (core.askPass, GIT_ASKPASS, SSH_ASKPASS) does not run for the source fetch"
+    local sb url out rc realgit
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    printf '#!/bin/sh\ntouch "%s"\necho nope\n' "$sb/askpass-ran" > "$sb/askpass-spy"
+    chmod +x "$sb/askpass-spy"
+    # A git that, when the fetch asks the remote (ls-remote), asks for a
+    # password the way a host that wants one makes git do, with the same
+    # options and environment the adapter gave it.
+    realgit="$(command -v git)"
+    mkdir -p "$sb/askbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'opts=(); for a in "$@"; do [ "$a" = -C ] && break; opts+=("$a"); done' \
+        'case " $* " in *" ls-remote "*)' \
+        "    printf 'protocol=https\\nhost=example.invalid\\n\\n' | \"$realgit\" \"\${opts[@]}\" credential fill >/dev/null 2>&1 ;;" \
+        'esac' \
+        "exec \"$realgit\" \"\$@\"" > "$sb/askbin/git"
+    chmod +x "$sb/askbin/git"
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.askPass GIT_CONFIG_VALUE_0="$sb/askpass-spy" \
+        GIT_ASKPASS="$sb/askpass-spy" SSH_ASKPASS="$sb/askpass-spy" PATH="$sb/askbin:$PATH" \
+        run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "askpass: setup exit 0" "0" "$rc"
+    assert_eq "askpass: the user's askpass never ran" "no" "$([ -e "$sb/askpass-ran" ] && echo yes || echo no)"
+    # Control: plain git with the same configuration runs it.
+    printf 'protocol=https\nhost=example.invalid\n\n' | GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.askPass \
+        GIT_CONFIG_VALUE_0="$sb/askpass-spy" GIT_TERMINAL_PROMPT=0 git credential fill >/dev/null 2>&1 || true
+    assert_eq "control: plain git runs the askpass" "yes" "$([ -e "$sb/askpass-ran" ] && echo yes || echo no)"
+}
+
+test_mr_user_hooks_and_filters_not_run() {
+    echo "TEST: manifest route: the user's global core.hooksPath and filter drivers do not run on the fetched tree"
+    local sb url out rc gen h
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    # The repository asks for a filter on every file, as git-lfs's would.
+    printf '* filter=spy\n' > "$sb/mwork/leaf/.gitattributes"
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$sb/userhooks"
+    for h in post-checkout reference-transaction; do
+        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/spy.log" > "$sb/userhooks/$h"
+        chmod +x "$sb/userhooks/$h"
+    done
+    printf '#!/bin/sh\necho filter >> "%s"\ncat\n' "$sb/spy.log" > "$sb/spyfilter"
+    chmod +x "$sb/spyfilter"
+    rc=0; out="$(GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "user hooks and filter: exit 0" "0" "$rc"
+    assert_contains "user hooks and filter: resolved" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "user hooks and filter: neither ran" "" "$(cat "$sb/spy.log" 2>/dev/null)"
+    # The same spies do run for a plain clone, so the test can see them.
+    GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true git clone --quiet "$url" "$sb/plainclone"
+    assert_contains "control: a plain clone runs the filter" "filter" "$(cat "$sb/spy.log" 2>/dev/null)"
+    assert_contains "control: a plain clone runs the post-checkout hook" "post-checkout" "$(cat "$sb/spy.log" 2>/dev/null)"
+}
+
+test_mr_extends_base_no_user_hooks_or_filters() {
+    echo "TEST: manifest route: the resolver's clone of a file:// extends base runs no user hook or filter driver"
+    local sb burl out rc gen h
+    sb="$(make_mr_sandbox dev)"
+    burl="$(make_mr_remote "$sb" base)"
+    write_mr_base "$sb/mwork/base/base.yaml" base_one
+    printf '* filter=spy\n' > "$sb/mwork/base/.gitattributes"
+    mr_push "$sb" base >/dev/null
+    write_mr_manifest "$sb/m/manifest.yaml" "" "$burl" main
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$sb/userhooks"
+    for h in post-checkout reference-transaction; do
+        printf '#!/bin/sh\necho %s >> "%s"\n' "$h" "$sb/spy.log" > "$sb/userhooks/$h"
+        chmod +x "$sb/userhooks/$h"
+    done
+    printf '#!/bin/sh\necho filter >> "%s"\ncat\n' "$sb/spy.log" > "$sb/spyfilter"
+    chmod +x "$sb/spyfilter"
+    rc=0; out="$(GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$sb/userhooks" \
+        GIT_CONFIG_KEY_1=filter.spy.smudge GIT_CONFIG_VALUE_1="$sb/spyfilter" \
+        GIT_CONFIG_KEY_2=filter.spy.required GIT_CONFIG_VALUE_2=true run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "extends base, user hooks and filter: setup exit 0" "0" "$rc"
+    assert_contains "extends base, user hooks and filter: the base resolved" "base_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "extends base, user hooks and filter: neither ran" "" "$(cat "$sb/spy.log" 2>/dev/null)"
+}
+
+test_mr_transports_limited() {
+    echo "TEST: manifest route: a source a user rule sends to a transport other than https, ssh or file is refused by git, nothing changed"
+    local sb url out rc gen before repos
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    repos="$(cat "$gen/repos/core.repos")"
+    # git:// (git's own default allows it); refused before any connection.
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.git://127.0.0.1:9/.insteadOf" \
+        GIT_CONFIG_VALUE_0="file://$sb/mremote/" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "git:// through a rule: exit 1" "1" "$rc"
+    assert_contains "git:// through a rule: git refuses the transport" "transport 'git' not allowed" "$out"
+    assert_contains "git:// through a rule: says the transports" "https, ssh and file only" "$out"
+    assert_eq "git:// through a rule: the link unchanged" "$before" "$(readlink "$gen")"
+    assert_eq "git:// through a rule: the live result unchanged" "$repos" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "git:// through a rule"
+    # ext:: which the user allowed (protocol.ext.allow=always): still refused.
+    printf '#!/bin/sh\ntouch "%s"\nexit 1\n' "$sb/ext-ran" > "$sb/ext-spy"
+    chmod +x "$sb/ext-spy"
+    rc=0; out="$(GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=protocol.ext.allow GIT_CONFIG_VALUE_0=always \
+        GIT_CONFIG_KEY_1="url.ext::$sb/ext-spy .insteadOf" GIT_CONFIG_VALUE_1="file://$sb/mremote/" \
+        run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "ext:: the user allowed, through a rule: exit 1" "1" "$rc"
+    assert_eq "ext:: the user allowed, through a rule: the command never ran" "no" "$([ -e "$sb/ext-ran" ] && echo yes || echo no)"
+    assert_eq "ext:: the user allowed, through a rule: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "ext:: the user allowed"
+    # Control: plain git with that configuration does run it.
+    GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=protocol.ext.allow GIT_CONFIG_VALUE_0=always \
+        GIT_CONFIG_KEY_1="url.ext::$sb/ext-spy .insteadOf" GIT_CONFIG_VALUE_1="file://$sb/mremote/" \
+        git ls-remote "$url" >/dev/null 2>&1 || true
+    assert_eq "control: plain git runs the ext:: command" "yes" "$([ -e "$sb/ext-ran" ] && echo yes || echo no)"
+}
+
+test_mr_branch_and_tag_of_one_name() {
+    echo "TEST: manifest route: a branch and a tag of one name: the branch is taken"
+    local sb url work out rc gen
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_tag
+    mr_push "$sb" leaf >/dev/null
+    git -C "$work" tag same
+    git -C "$work" push --quiet origin refs/tags/same
+    write_mr_manifest "$work/manifest.yaml" mark_branch
+    mr_push "$sb" leaf >/dev/null
+    git -C "$work" push --quiet origin main:refs/heads/same
+    mr_settings "$sb" "source=$url" "source_ref=same"
+    gen="$(mr_gen "$sb")"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "branch and tag 'same': exit 0" "0" "$rc"
+    assert_contains "branch and tag 'same': said a branch" "source: branch same " "$out"
+    assert_contains "branch and tag 'same': the branch resolved" "mark_branch" "$(cat "$gen/repos/core.repos")"
+}
+
+test_mr_full_commit_fallback() {
+    echo "TEST: manifest route: a full commit the server will not serve shallow is found by the full fetch"
+    local sb url work out rc gen c
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    work="$sb/mwork/leaf"
+    write_mr_manifest "$work/manifest.yaml" mark_old
+    c="$(mr_push "$sb" leaf)"
+    write_mr_manifest "$work/manifest.yaml" mark_new
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    gen="$(mr_gen "$sb")"
+    mkdir -p "$sb/gitlog"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" fetch \"*) echo \"fetch \$*\" >> \"$sb/fetch.log\" ;; esac" \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/gitlog/git"
+    chmod +x "$sb/gitlog/git"
+    # Protocol v0: file:// then refuses a want for an unadvertised commit.
+    rc=0; out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=protocol.version GIT_CONFIG_VALUE_0=0 \
+        PATH="$sb/gitlog:$PATH" run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "full commit, v0: exit 0" "0" "$rc"
+    assert_contains "full commit, v0: that commit resolved" "mark_old" "$(cat "$gen/repos/core.repos")"
+    assert_contains "full commit, v0: recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    assert_eq "full commit, v0: two fetches, the shallow one first" "2" "$(grep -c '^fetch' "$sb/fetch.log")"
+    assert_contains "full commit, v0: the second is the full fetch" "+refs/heads/*:refs/remotes/source/*" "$(sed -n 2p "$sb/fetch.log")"
+    mr_no_temp "$sb" "full commit, v0"
+}
+
+test_mr_sha256_source() {
+    echo "TEST: manifest route: a SHA-256 source repository, by branch and by full commit; a user default of sha256 does not break a SHA-1 one"
+    local sb url bare work out rc gen c
+    sb="$(make_mr_sandbox dev)"
+    work="$sb/mwork/leaf256"
+    bare="$sb/mremote/leaf256.git"
+    if ! git init --quiet --bare --object-format=sha256 -b main "$bare" 2>/dev/null; then
+        echo "  SKIPPED: this git cannot make a SHA-256 repository"
+        return 0
+    fi
+    git init --quiet --object-format=sha256 -b main "$work"
+    git -C "$work" remote add origin "file://$bare"
+    url="file://$bare"
+    write_mr_manifest "$work/manifest.yaml" mark_256
+    c="$(mr_push "$sb" leaf256)"
+    gen="$(mr_gen "$sb")"
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "sha256, branch: exit 0" "0" "$rc"
+    assert_contains "sha256, branch: resolved" "mark_256" "$(cat "$gen/repos/core.repos")"
+    assert_contains "sha256, branch: the 64-hex commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    mr_settings "$sb" "source=$url" "source_ref=$c"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sha256, full commit: exit 0" "0" "$rc"
+    mr_no_temp "$sb" "sha256"
+    # Its HEAD unborn (no branch main), the commit on another branch only.
+    git -C "$bare" symbolic-ref HEAD refs/heads/unborn
+    git -C "$work" push --quiet origin main:refs/heads/other ":refs/heads/main"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "sha256, unborn HEAD, full commit: exit 0" "0" "$rc"
+    mr_settings "$sb" "source=$url" "source_ref=${c:0:12}"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "sha256, unborn HEAD, abbreviated commit: exit 0" "0" "$rc"
+    assert_contains "sha256, unborn HEAD: the commit recorded" "commit=$c" "$(cat "$gen/.resolved-from")"
+    # A SHA-1 source with the user's default set to sha256.
+    local sb1
+    sb1="$(make_mr_url_project)"
+    write_mr_manifest "$sb1/mwork/leaf/manifest.yaml" mark_sha1
+    mr_push "$sb1" leaf >/dev/null
+    rc=0; GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=init.defaultObjectFormat GIT_CONFIG_VALUE_0=sha256 \
+        run_mr "$sb1" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sha1 source, user default sha256: exit 0" "0" "$rc"
+    assert_contains "sha1 source, user default sha256: resolved" "mark_sha1" "$(cat "$(mr_gen "$sb1")/repos/core.repos")"
+}
+
+test_mr_fetch_bounded() {
+    echo "TEST: manifest route: a source host that does not answer is given up after WT_FETCH_TIMEOUT, the lock released, the previous result in use"
+    local sb out rc gen before
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "  SKIPPED: timeout not installed"
+        return 0
+    fi
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    mkdir -p "$sb/hangbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" ls-remote "*) exec sleep 30 ;; esac' \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/hangbin/git"
+    chmod +x "$sb/hangbin/git"
+    rc=0; out="$(WT_FETCH_TIMEOUT=1 PATH="$sb/hangbin:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "stalled host: exit 1" "1" "$rc"
+    assert_contains "stalled host: says the limit was reached and what raises it" "it did not finish within 1 s (the limit; WT_FETCH_TIMEOUT raises it)" "$out"
+    assert_contains "stalled host: the previous result in use" "still in use (its link unchanged)" "$out"
+    assert_eq "stalled host: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "stalled host"
+    rc=0; ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "stalled host: the lock is free afterwards" "0" "$rc"
+    # A Ctrl-C during the bounded call takes effect at once, not at the
+    # limit: the sync runs as a job of its own (set -m), and SIGINT goes to
+    # its whole process group, as a terminal sends it.
+    if ! timeout --foreground 5 true >/dev/null 2>&1; then
+        echo "  SKIPPED (Ctrl-C part): this timeout has no --foreground"
+        return 0
+    fi
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" ls-remote \"*) touch \"$sb/hang.ready\"; exec sleep 30 ;; esac" \
+        "exec \"$(command -v git)\" \"\$@\"" > "$sb/hangbin/git"
+    local jpid started elapsed i
+    before="$(readlink "$gen")"
+    rc=0
+    (
+        set -m
+        cd "$sb" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
+            "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1 &
+        jpid=$!
+        for i in $(seq 1 100); do [ -e "$sb/hang.ready" ] && break; sleep 0.1; done
+        started=$SECONDS
+        kill -INT -- "-$jpid" 2>/dev/null
+        rc=0; wait "$jpid" || rc=$?
+        echo "rc=$rc elapsed=$((SECONDS - started))" > "$sb/int.result"
+    ) || true
+    assert_eq "Ctrl-C: reached the bounded call" "yes" "$([ -e "$sb/hang.ready" ] && echo yes || echo no)"
+    assert_contains "Ctrl-C: exit 130" "rc=130 " "$(cat "$sb/int.result" 2>/dev/null)"
+    elapsed="$(sed 's/.*elapsed=//' "$sb/int.result" 2>/dev/null)"
+    assert_eq "Ctrl-C: took effect well before the 30 s limit" "yes" "$([ "${elapsed:-99}" -lt 10 ] && echo yes || echo no)"
+    assert_eq "Ctrl-C: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "Ctrl-C"
+}
+
+test_mr_provenance_names_the_source() {
+    echo "TEST: manifest route: the generated files' provenance lines name url#ref:path@commit, not the temporary fetch"
+    local sb gen url c
+    sb="$(make_mr_url_project)"
+    gen="$(mr_gen "$sb")"
+    url="file://$sb/mremote/leaf.git"
+    c="$(git -C "$sb/mwork/leaf" rev-parse HEAD)"
+    assert_contains "layers.txt names the source" "$url#main:manifest.yaml@$c" "$(head -n 1 "$gen/layers.txt")"
+    assert_contains "core.repos names the source" "$url#main:manifest.yaml@$c" "$(grep '^#' "$gen/repos/core.repos")"
+    assert_eq "no file names the temporary fetch" "" "$(grep -rl '\.src/' "$gen" 2>/dev/null || true)"
+}
+
+test_mr_fetch_interrupted() {
+    echo "TEST: manifest route: TERM during the fetch removes the temporary fetch (a second TERM during that removal is ignored); a KILL's leftover is swept by the next run"
+    local sb url gen cfg before realgit realrm apid rc i
+    sb="$(make_mr_url_project)"
+    url="file://$sb/mremote/leaf.git"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_three
+    mr_push "$sb" leaf >/dev/null
+    realgit="$(command -v git)"
+    realrm="$(command -v rm)"
+    mkdir -p "$sb/gitstub"
+    # A git whose fetch waits on a file while $sb/hold exists, then marks
+    # that it ended; an rm that, once, sends its caller TERM while removing
+    # the temporary fetch (while $sb/rmterm exists).
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" fetch "*)' \
+        "    if [ -e \"$sb/hold\" ]; then touch \"$sb/ready\"; while [ ! -e \"$sb/go\" ]; do sleep 0.1; done; fi" \
+        "    \"$realgit\" \"\$@\"; rc=\$?; touch \"$sb/fetchdone\"; exit \$rc ;;" \
+        'esac' \
+        "exec \"$realgit\" \"\$@\"" > "$sb/gitstub/git"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "if [ -e \"$sb/rmterm\" ] && [[ \" \$* \" == *.src\\ * ]] && mkdir \"$sb/rmterm.done\" 2>/dev/null; then" \
+        "    kill -TERM \"\$PPID\"; sleep 0.5" \
+        'fi' \
+        "exec \"$realrm\" \"\$@\"" > "$sb/gitstub/rm"
+    chmod +x "$sb/gitstub/git" "$sb/gitstub/rm"
+    _mr_held_sync() {
+        rm -f "$sb/ready" "$sb/go" "$sb/fetchdone"
+        touch "$sb/hold"
+        (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
+        apid=$!
+        for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    }
+    # TERM, then a second TERM while the cleanup removes the fetch.
+    touch "$sb/rmterm"
+    _mr_held_sync
+    assert_eq "TERM: held in the fetch" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    assert_eq "TERM: the fetch goes to a .src sibling of a generated dir" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-*.src 2>/dev/null | wc -l | tr -d ' ')"
+    kill -TERM "$apid" 2>/dev/null || true
+    touch "$sb/go"
+    rc=0; wait "$apid" || rc=$?
+    assert_eq "TERM: exit 143" "143" "$rc"
+    assert_eq "TERM: the second TERM was sent during the cleanup" "yes" "$([ -d "$sb/rmterm.done" ] && echo yes || echo no)"
+    assert_eq "TERM: the link unchanged" "$before" "$(readlink "$gen")"
+    mr_no_temp "$sb" "TERM, a second TERM during the cleanup"
+    rm -f "$sb/rmterm"
+    # KILL: nothing runs a cleanup; the leftover is the gen- family only.
+    _mr_held_sync
+    kill -KILL "$apid" 2>/dev/null || true
+    touch "$sb/go"
+    rc=0; wait "$apid" || rc=$?
+    assert_eq "KILL: exit 137" "137" "$rc"
+    for i in $(seq 1 100); do [ -e "$sb/fetchdone" ] && break; sleep 0.1; done
+    assert_eq "KILL: a .src leftover" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-*.src 2>/dev/null | wc -l | tr -d ' ')"
+    assert_eq "KILL: the link unchanged" "$before" "$(readlink "$gen")"
+    rm -f "$sb/hold"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "after KILL: sync exit 0" "0" "$rc"
+    assert_contains "after KILL: the new tip resolved" "mark_three" "$(cat "$gen/repos/core.repos")"
+    mr_no_temp "$sb" "after KILL: the leftover swept"
+    unset -f _mr_held_sync
+}
+
+test_mr_stale_extends_base() {
+    echo "TEST: manifest route: every sync clones the extends base afresh; a commit as extends.ref is the resolver's error"
+    local sb burl out rc gen bc
+    sb="$(make_mr_sandbox dev)"
+    burl="$(make_mr_remote "$sb" base)"
+    write_mr_base "$sb/mwork/base/base.yaml" base_one
+    bc="$(mr_push "$sb" base)"
+    write_mr_manifest "$sb/m/manifest.yaml" "" "$burl" main
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "setup with a git extends: exit 0" "0" "$rc"
+    gen="$(mr_gen "$sb")"
+    assert_contains "the base's repository resolved" "base_one" "$(cat "$gen/repos/core.repos")"
+    write_mr_base "$sb/mwork/base/base.yaml" base_two
+    mr_push "$sb" base >/dev/null
+    run_mr "$sb" sync >/dev/null 2>&1
+    assert_contains "base branch moved: followed" "base_two" "$(cat "$gen/repos/core.repos")"
+    assert_eq "no cache left in or beside the generated dir" "" \
+        "$(cd "$sb/projects/p11/configs" && { ls -d -- *.cache 2>/dev/null; ls -d -- manifest-resolved/*cache* 2>/dev/null; } || true)"
+    write_mr_manifest "$sb/m/manifest.yaml" "" "$burl" "$bc"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "commit as extends.ref: exit 1" "1" "$rc"
+    assert_contains "the resolver's clone error passed through" "failed to clone its extends base" "$out"
+    assert_contains "the previous result kept" "base_two" "$(cat "$gen/repos/core.repos")"
+    assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+}
+
+test_mr_role_and_distro_changes() {
+    echo "TEST: manifest route: a role or distro change fails validate until sync; a checkout left behind is named"
+    local sb out rc gen
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    assert_contains "role dev: pkg_c selected" "pkg_c" "$(cat "$gen/repos/extra.repos")"
+    mr_sed 's/role=dev/role=lite/' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "role changed: validate exit 1" "1" "$rc"
+    assert_contains "role changed: names the registry line and sync" "is for role 'dev' but the registry line says role=lite (run: .agent/scripts/adapter --project p11 sync" "$out"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "role changed: sync exit 0" "0" "$rc"
+    assert_contains "role changed: the layers changed message" "existing package worktrees keep their old env.sh; recreate them" "$out"
+    assert_eq "role lite: extra left out" "core" "$(grep -v '^#' "$gen/layers.txt")"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "role lite: validate exit 0" "0" "$rc"
+    assert_contains "role lite: pkg_c's checkout named" "layer 'extra': 'pkg_c' is checked out but not in the resolved manifest" "$out"
+    assert_eq "role lite: nothing removed" "yes" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src/pkg_c" ] && echo yes || echo no)"
+    mr_sed 's/distro=fakefox/distro=otherfox/' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "distro changed: validate exit 1" "1" "$rc"
+    assert_contains "distro changed: named" "is for distro 'fakefox' but the registry line says distro=otherfox" "$out"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "distro changed: sync exit 0" "0" "$rc"
+    assert_eq "distro changed: the layers are the same" "core" "$(grep -v '^#' "$gen/layers.txt")"
+    assert_contains "distro changed, same layers: worktrees told to recreate env.sh" "the layers or the distro changed; existing package worktrees keep their old env.sh; recreate them" "$out"
+    assert_contains "distro otherfox: pkg_b present there" "pkg_b" "$(cat "$gen/repos/core.repos")"
+    assert_contains "distro otherfox: pkg_a at its default ref" "version: main" "$(cat "$gen/repos/core.repos")"
+}
+
+test_mr_sync_names_a_new_layer() {
+    echo "TEST: manifest route: sync's run-setup notice counts a layer that is new (never set up)"
+    local sb out rc
+    sb="$(make_mr_sandbox lite)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    assert_eq "role lite: extra never set up" "no" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src" ] && echo yes || echo no)"
+    mr_sed 's/role=lite/role=dev/' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "role dev: sync exit 0" "0" "$rc"
+    assert_contains "role dev: the new layer's repository counted" "source: 1 repository in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project p11 setup" "$out"
+    run_mr "$sb" setup >/dev/null 2>&1
+    out="$(run_mr "$sb" sync 2>&1)"
+    assert_not_contains "after setup: no notice" "not checked out yet" "$out"
+}
+
+test_mr_path_source_edited_during_resolve() {
+    echo "TEST: manifest route: a path source edited while the resolver runs is reported by validate"
+    local sb out rc
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "\"$sb/.venv/bin/ros-manifest.real\" \"\$@\"; rc=\$?" \
+        "echo '# edited during the resolve' >> \"$sb/m/manifest.yaml\"" \
+        'exit $rc' > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "validate: the edit is seen" "has changed since it was resolved (its content differs" "$out"
+}
+
+test_mr_validate_link_missing_and_path_changed() {
+    echo "TEST: manifest route: validate fails with no resolved manifest; warns when a path source changed"
+    local sb out rc
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    mkdir -p "$sb/projects/p11"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "no link: exit 1" "1" "$rc"
+    assert_contains "no link: run setup" "Run: .agent/scripts/adapter --project p11 setup" "$out"
+    run_mr "$sb" setup >/dev/null 2>&1
+    echo "# edited" >> "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "changed path source: validate still exit 0" "0" "$rc"
+    assert_contains "changed path source: warned" "has changed since it was resolved (its content differs" "$out"
+    run_mr "$sb" sync >/dev/null 2>&1
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "after sync: validate exit 0" "0" "$rc"
+    assert_not_contains "after sync: no warning" "WARNING" "$out"
+    # An edit that keeps the size, the modification time put back.
+    touch -r "$sb/m/manifest.yaml" "$sb/stamp.ref"
+    mr_sed 's/pkg_a:/pkg_z:/' "$sb/m/manifest.yaml"
+    touch -r "$sb/stamp.ref" "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "same size, same time: the edit is seen" "has changed since it was resolved (its content differs" "$out"
+    run_mr "$sb" sync >/dev/null 2>&1
+    rm -f "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_contains "missing path source: validate says it is missing" "the source file $sb/m/manifest.yaml is missing or unreadable" "$out"
+    assert_not_contains "missing path source: no raw shell error" "No such file or directory" "$out"
+    assert_not_contains "missing path source: not called changed content" "its content differs" "$out"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "missing path source: exit 1" "1" "$rc"
+    assert_contains "missing path source: named" "is not a readable file" "$out"
+}
+
+test_mr_layer_failures() {
+    echo "TEST: manifest route: an optional layer's import failure is tolerated, a required one aborts"
+    local sb out rc
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    rc=0; out="$(VCS_FAIL_LAYERS=extra run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "optional extra fails: exit 0" "0" "$rc"
+    assert_contains "optional extra fails: warned" "import failed for optional layer 'extra'" "$out"
+    rc=0; out="$(VCS_FAIL_LAYERS=core run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "required core fails: exit 1" "1" "$rc"
+    assert_contains "required core fails: named" "vcs import failed for layer 'core'" "$out"
+}
+
+test_mr_resolver_failures() {
+    echo "TEST: manifest route: a resolver failure keeps the previous result; absent or stale resolver; an empty result"
+    local sb out rc gen before
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_one
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    printf 'layers: [core\n' > "$sb/m/manifest.yaml"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "bad manifest: exit 1" "1" "$rc"
+    assert_contains "bad manifest: the resolver's error passed through" "ERROR:" "$out"
+    assert_contains "bad manifest: says the previous is kept" "the previously resolved manifest, if any, is kept" "$out"
+    assert_eq "bad manifest: link unchanged" "$before" "$(readlink "$gen")"
+    assert_eq "bad manifest: no stray generated dir" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+
+    # A role and distro that select nothing.
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_sed 's/distro=fakefox/distro=emptyfox/' "$sb/.agent/projects.local"
+    cat > "$sb/m/manifest.yaml" <<'EOF'
+layers:
+  - core
+repos:
+  core:
+    pkg_a:
+      url: file:///nonexistent/pkg_a.git
+      ref: main
+      distros:
+        emptyfox:
+          absent: true
+roles:
+  dev: {}
+EOF
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "empty result: exit 1" "1" "$rc"
+    assert_contains "empty result: says so" "select no repositories" "$out"
+    assert_eq "empty result: link unchanged" "$before" "$(readlink "$gen")"
+    mr_sed 's/distro=emptyfox/distro=fakefox/' "$sb/.agent/projects.local"
+    write_mr_manifest "$sb/m/manifest.yaml"
+
+    # A stale resolver (no --layout): the reinstall message.
+    cat > "$sb/.venv/bin/ros-manifest" <<'EOF'
+#!/usr/bin/env bash
+echo "ros-manifest: error: unrecognized arguments: --layout manifest-dir" >&2
+exit 2
+EOF
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "stale resolver: exit 1" "1" "$rc"
+    assert_contains "stale resolver: reinstall" "predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-ros-manifest" "$out"
+
+    # No resolver: one message naming the make target, before any fetch.
+    rm -f "$sb/.venv/bin/ros-manifest"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "no resolver: exit 1" "1" "$rc"
+    assert_contains "no resolver: names the path and make target" "the manifest resolver is not installed at $sb/.venv/bin/ros-manifest; run: make install-ros-manifest" "$out"
+}
+
+test_mr_interrupt_cleans_up() {
+    echo "TEST: manifest route: an interrupted or failed resolve removes its new directory and the cache beside it"
+    local sb rc gen before apid i
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    # A resolver that fills --out and --cache-dir, then fails (or, with
+    # MR_WAIT, waits to be interrupted).
+    cat > "$sb/.venv/bin/ros-manifest" <<EOF
+#!/usr/bin/env bash
+while [ \$# -gt 0 ]; do
+    case "\$1" in --out) out="\$2"; shift ;; --cache-dir) cache="\$2"; shift ;; esac
+    shift
+done
+mkdir -p "\$out/repos" "\$cache/clone"
+printf 'core\n' > "\$out/layers.txt"
+echo "\$out" > "$sb/resolve.out"
+if [ -n "\${MR_WAIT:-}" ]; then
+    touch "$sb/ready"
+    while [ ! -e "$sb/go" ]; do sleep 0.1; done
+    exit 0
+fi
+exit 1
+EOF
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "failed resolve: exit 1" "1" "$rc"
+    assert_eq "failed resolve: its directory removed" "no" "$([ -e "$(cat "$sb/resolve.out")" ] && echo yes || echo no)"
+    assert_eq "failed resolve: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
+    assert_eq "failed resolve: link unchanged" "$before" "$(readlink "$gen")"
+    # Interrupted (TERM) while the resolver runs.
+    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" MR_WAIT=1 \
+        exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
+    apid=$!
+    for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    kill -TERM "$apid" 2>/dev/null || true
+    touch "$sb/go"
+    rc=0; wait "$apid" || rc=$?
+    assert_eq "interrupted: exit 143" "143" "$rc"
+    assert_eq "interrupted: its directory removed" "no" "$([ -e "$(cat "$sb/resolve.out")" ] && echo yes || echo no)"
+    assert_eq "interrupted: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
+    assert_eq "interrupted: link unchanged" "$before" "$(readlink "$gen")"
+    assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+}
+
+test_mr_source_lock() {
+    echo "TEST: manifest route: setup and sync hold a lock on configs/; a second run waits, then refuses with nothing changed; without flock they run unlocked"
+    local sb url out rc gen before hpid i tool
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIPPED: flock not installed"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    # A first setup refused while another run holds the lock: no clone made.
+    mkdir -p "$sb/projects/p11/configs"
+    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+      while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
+    hpid=$!
+    for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
+    rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "held, first setup: exit 1" "1" "$rc"
+    assert_contains "held, first setup: says so" "another setup or sync of project 'p11' holds its lock $sb/projects/p11/configs/.lock.source (waited 1 s); nothing changed" "$out"
+    assert_eq "held, first setup: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
+    assert_eq "held, first setup: the resolver not run" "no" "$([ -e "$sb/resolver.log" ] && echo yes || echo no)"
+    # A wait that is not a number is said to be one, not taken for a held lock.
+    local badwait
+    for badwait in abc -1 "1 2" 5s; do
+        rc=0; out="$(ROS2_COLCON_LOCK_WAIT="$badwait" run_mr "$sb" setup 2>&1)" || rc=$?
+        assert_eq "ROS2_COLCON_LOCK_WAIT='$badwait': exit 1" "1" "$rc"
+        assert_contains "ROS2_COLCON_LOCK_WAIT='$badwait': named" "ROS2_COLCON_LOCK_WAIT='$badwait' is not a number of seconds" "$out"
+        assert_not_contains "ROS2_COLCON_LOCK_WAIT='$badwait': not a held lock" "holds its lock" "$out"
+    done
+    touch "$sb/release"
+    wait "$hpid" 2>/dev/null || true
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "released: setup exit 0" "0" "$rc"
+    gen="$(mr_gen "$sb")"
+    before="$(readlink "$gen")"
+    # A sync refused while held: the link and the result unchanged.
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
+    mr_push "$sb" leaf >/dev/null
+    rm -f "$sb/held" "$sb/release"
+    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+      while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
+    hpid=$!
+    for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
+    rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "held, sync: exit 1" "1" "$rc"
+    assert_eq "held, sync: link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "held, sync: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+    touch "$sb/release"
+    wait "$hpid" 2>/dev/null || true
+    # Two syncs at once. The first is held inside the critical section (its
+    # resolver waits on a file). A flock wrapper on the second's own PATH
+    # writes ASK to an order log as it asks for the lock and GOT once flock
+    # returns with it; the first's resolver writes GO when it is let go,
+    # before its run releases the lock. A working lock gives ASK, GO, GOT
+    # in that order; a lock taken at once writes GOT before the test lets
+    # the first go, and no lock at all writes no ASK. No sleep decides it.
+    local p1 p2 r1=0 r2=0 realflock
+    realflock="$(command -v flock)"
+    mkdir -p "$sb/flockbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "case \" \$* \" in *\" -w \"*) ;; *) exec \"$realflock\" \"\$@\" ;; esac" \
+        "echo ASK >> \"$sb/order.log\"" \
+        "\"$realflock\" \"\$@\"; rc=\$?" \
+        "[ \"\$rc\" -eq 0 ] && echo GOT >> \"$sb/order.log\"" \
+        'exit $rc' > "$sb/flockbin/flock"
+    chmod +x "$sb/flockbin/flock"
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo START >> \"$sb/order.log\"" \
+        "if [ -e \"$sb/hold\" ] && mkdir \"$sb/held.d\" 2>/dev/null; then" \
+        "    touch \"$sb/ready\"" \
+        "    while [ ! -e \"$sb/go\" ]; do sleep 0.1; done" \
+        "    echo GO >> \"$sb/order.log\"" \
+        'fi' \
+        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    touch "$sb/hold"
+    run_mr "$sb" sync >"$sb/s1.out" 2>&1 & p1=$!
+    for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
+    assert_eq "two syncs: the first is inside the critical section" "yes" "$([ -e "$sb/ready" ] && echo yes || echo no)"
+    PATH="$sb/flockbin:$PATH" run_mr "$sb" sync >"$sb/s2.out" 2>&1 & p2=$!
+    for i in $(seq 1 100); do grep -qx ASK "$sb/order.log" 2>/dev/null && break; sleep 0.1; done
+    touch "$sb/go"
+    wait "$p1" || r1=$?
+    wait "$p2" || r2=$?
+    assert_eq "two syncs: both exit 0" "0 0" "$r1 $r2"
+    assert_eq "two syncs: the second asked while the first held the lock, and got it only after the first was let go" \
+        "START ASK GO GOT START" "$(tr '\n' ' ' < "$sb/order.log" | sed 's/ $//')"
+    assert_contains "two syncs: the second resolved" "source: resolved role 'dev'" "$(cat "$sb/s2.out")"
+    assert_contains "two syncs: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
+    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    rm -f "$sb/hold"
+    # No flock on PATH: sync runs unlocked.
+    mkdir -p "$sb/isolatedbin"
+    for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
+        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    assert_eq "no flock: sync exit 0" "0" "$rc"
+    assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
+}
+
+test_mr_pin_fd_not_inherited() {
+    echo "TEST: manifest route: vcs, colcon and git started after the pin do not inherit its descriptor (fd 8)"
+    local sb rc realgit tool
+    if ! command -v flock >/dev/null 2>&1 || [ ! -d /proc/self/fd ]; then
+        echo "  SKIPPED: needs flock and /proc"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    realgit="$(command -v git)"
+    mkdir -p "$sb/fdbin"
+    for tool in vcs colcon; do
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "echo $tool >> \"$sb/ran.log\"" \
+            "[ -e /proc/self/fd/8 ] && echo $tool >> \"$sb/fd8.log\"" \
+            "exec \"$sb/bin/$tool\" \"\$@\"" > "$sb/fdbin/$tool"
+    done
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo \"git \$*\" >> \"$sb/ran.log\"" \
+        "[ -e /proc/self/fd/8 ] && echo \"git \$*\" >> \"$sb/fd8.log\"" \
+        "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
+    chmod +x "$sb/fdbin/"*
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" init --quiet
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "sync: exit 0" "0" "$rc"
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
+        "$sb/.agent/scripts/adapter" --project p11 build >/dev/null 2>&1) || rc=$?
+    assert_eq "build: exit 0" "0" "$rc"
+    # repo_pin asks origin through _adapter_bounded_git.
+    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" remote add origin "file://$sb/nonexistent.git"
+    (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" \
+        "$sb/.agent/scripts/adapter" --project p11 repo_pin pkg_a >/dev/null 2>&1) || true
+    assert_contains "repo_pin asked origin" "ls-remote origin" "$(cat "$sb/ran.log")"
+    assert_contains "vcs ran" "vcs" "$(cat "$sb/ran.log")"
+    assert_contains "colcon ran" "colcon" "$(cat "$sb/ran.log")"
+    assert_contains "git ran" "git" "$(cat "$sb/ran.log")"
+    assert_eq "none of them got fd 8" "" "$(cat "$sb/fd8.log" 2>/dev/null)"
+}
+
+test_mr_swap_failures_and_unguarded_leftovers() {
+    echo "TEST: manifest route: a failed mv probe changes nothing; a failed swap without -T/-h says the link is gone; a directory that cannot be locked is said once; without flock at most two generated dirs remain and the replaced one is kept"
+    local sb out rc gen cfg before realmv realmktemp realflock tool i prev
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_one
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    mkdir -p "$sb/stub"
+    # The probe's scratch directory cannot be made: an error, nothing changed.
+    realmktemp="$(command -v mktemp)"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *.mv-probe.*) echo "mktemp: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmktemp\" \"\$@\"" > "$sb/stub/mktemp"
+    chmod +x "$sb/stub/mktemp"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_two
+    rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "probe fails: exit 1" "1" "$rc"
+    assert_contains "probe fails: said, nothing changed" "cannot probe how mv renames a link in $cfg (above); nothing changed" "$out"
+    assert_eq "probe fails: the link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "probe fails: the old result kept" "mark_one" "$(cat "$gen/repos/core.repos")"
+    assert_eq "probe fails: no new generated dir" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    rm -f "$sb/stub/mktemp"
+    # An mv with neither -T nor -h whose rename fails after the old link was removed.
+    realmv="$(command -v mv)"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" -T "*|*" -fh "*) echo "mv: illegal option" >&2; exit 64 ;; esac' \
+        'case " $* " in *"/manifest-resolved ") echo "mv: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/stub/mv"
+    chmod +x "$sb/stub/mv"
+    rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "no -T/-h, rename fails: exit 1" "1" "$rc"
+    assert_contains "no -T/-h, rename fails: says the link is gone" "there is no resolved manifest link now; run sync again" "$out"
+    assert_not_contains "no -T/-h, rename fails: never says nothing changed" "nothing changed" "$out"
+    assert_eq "no -T/-h, rename fails: indeed no link" "no" "$([ -L "$gen" ] && echo yes || echo no)"
+    rm -f "$sb/stub/mv"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "then: sync puts the link back" "0" "$rc"
+    assert_contains "then: the new result live" "mark_two" "$(cat "$gen/repos/core.repos")"
+    if command -v flock >/dev/null 2>&1; then
+        # flock cannot lock a directory here: nothing removed, said once per run.
+        realflock="$(command -v flock)"
+        printf '%s\n' '#!/usr/bin/env bash' \
+            'case " $* " in *" -E 75 "*) echo "flock: simulated failure" >&2; exit 66 ;; esac' \
+            "exec \"$realflock\" \"\$@\"" > "$sb/stub/flock"
+        chmod +x "$sb/stub/flock"
+        mkdir -p "$cfg/manifest-resolved.gen-Old111" "$cfg/manifest-resolved.gen-Old222"
+        rc=0; out="$(PATH="$sb/stub:$PATH" run_mr "$sb" sync 2>&1)" || rc=$?
+        assert_eq "no directory lock: sync exit 0" "0" "$rc"
+        assert_eq "no directory lock: said once" "1" "$(printf '%s\n' "$out" | grep -c 'WARNING: cannot lock or remove')"
+        assert_contains "no directory lock: names the remedy" "remove those the link manifest-resolved does not point at by hand" "$out"
+        assert_eq "no directory lock: nothing removed" "yes" "$([ -d "$cfg/manifest-resolved.gen-Old111" ] && [ -d "$cfg/manifest-resolved.gen-Old222" ] && echo yes || echo no)"
+        rm -f "$sb/stub/flock"
+        run_mr "$sb" sync >/dev/null 2>&1
+        assert_eq "with a lock again: the sweep removes them" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    fi
+    # No flock at all: the directory just replaced is kept, older ones removed.
+    mkdir -p "$sb/isolatedbin"
+    for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
+        basename dirname printf env ls sort wc tr readlink mktemp stat date touch; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    for i in 1 2 3; do
+        prev="$(readlink "$gen")"
+        write_mr_manifest "$sb/m/manifest.yaml" "mark_unlocked_$i"
+        rc=0; (cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+        assert_eq "no flock, sync $i: exit 0" "0" "$rc"
+        assert_eq "no flock, sync $i: the replaced directory kept" "yes" "$([ -f "$cfg/$prev/layers.txt" ] && echo yes || echo no)"
+        assert_eq "no flock, sync $i: at most two generated dirs" "2" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+        assert_contains "no flock, sync $i: the new result live" "mark_unlocked_$i" "$(cat "$gen/repos/core.repos")"
+    done
+}
+
+test_mr_swap_interrupt_and_sweep() {
+    echo "TEST: manifest route: an interrupt just after the link swap keeps the new directory; BSD mv -h swaps; a killed run's leftovers are swept"
+    local sb out rc gen realmv cfg live before
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_one
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    run_mr "$sb" setup >/dev/null 2>&1
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    realmv="$(command -v mv)"
+    mkdir -p "$sb/mvbin"
+    # An mv that does the swap, then has its caller sent TERM.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "\"$realmv\" \"\$@\"; rc=\$?" \
+        'case " $* " in *" -T "*"/manifest-resolved ") kill -TERM "$PPID" ;; esac' \
+        'exit $rc' > "$sb/mvbin/mv"
+    chmod +x "$sb/mvbin/mv"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_two
+    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "TERM after the swap: exit 143" "143" "$rc"
+    live="$(readlink "$gen")"
+    assert_eq "TERM after the swap: the link's target kept" "yes" "$([ -d "$cfg/$live" ] && echo yes || echo no)"
+    assert_contains "TERM after the swap: the new result is live" "mark_two" "$(cat "$gen/repos/core.repos")"
+    # The previous directory is a leftover; the next sync sweeps it.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "after TERM: sync exit 0" "0" "$rc"
+    assert_eq "after TERM: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    # A BSD mv: no -T, but -h renames over the link.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in' \
+        '    *" -T "*) echo "mv: illegal option -- T" >&2; exit 64 ;;' \
+        "    *\" -fh \"*) shift; echo BSD_MV_H >> \"$sb/mv.log\"; exec \"$realmv\" -fT \"\$@\" ;;" \
+        'esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_three
+    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    assert_eq "BSD mv: sync exit 0" "0" "$rc"
+    assert_contains "BSD mv: mv -fh used" "BSD_MV_H" "$(cat "$sb/mv.log" 2>/dev/null)"
+    assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
+    assert_contains "BSD mv: the new result is live" "mark_three" "$(cat "$gen/repos/core.repos")"
+    # GNU mv whose -T fails on the real swap (the probe succeeds): an
+    # error, and the live link is never removed.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'case " $* " in *" -T "*"/manifest-resolved ") echo "mv: simulated failure" >&2; exit 1 ;; esac' \
+        "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
+    before="$(readlink "$gen")"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_four
+    rc=0; out="$(cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    assert_eq "mv -T fails: exit 1" "1" "$rc"
+    assert_contains "mv -T fails: said" "cannot rename the new link over $gen (mv -T failed, above); nothing changed" "$out"
+    assert_eq "mv -T fails: the live link unchanged" "$before" "$(readlink "$gen")"
+    assert_contains "mv -T fails: the previous result kept" "mark_three" "$(cat "$gen/repos/core.repos")"
+    assert_eq "mv -T fails: no new generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "mv -T fails: no probe dir left" "" "$(cd "$cfg" && ls -d -- .mv-probe.* 2>/dev/null || true)"
+    write_mr_manifest "$sb/m/manifest.yaml" mark_three
+    run_mr "$sb" sync >/dev/null 2>&1
+    # What a SIGKILLed run leaves: a directory, a cache and a link.
+    mkdir -p "$cfg/manifest-resolved.gen-Ab12Cd/repos" "$cfg/manifest-resolved.gen-Ab12Cd.cache/clone"
+    ln -s manifest-resolved.gen-Ab12Cd "$cfg/manifest-resolved.gen-Ab12Cd.link"
+    mkdir -p "$cfg/manifest-resolved.notmine-keep"
+    # A directory a person moved aside, with six letters after the dot (the
+    # adapter's own "move it aside" error invites this).
+    mkdir -p "$cfg/manifest-resolved.backup"
+    echo keep > "$cfg/manifest-resolved.backup/notes.txt"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "leftovers: sync exit 0" "0" "$rc"
+    assert_eq "leftovers: swept" "" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-Ab12Cd* 2>/dev/null || true)"
+    assert_eq "leftovers: a name the adapter never makes is kept" "yes" "$([ -d "$cfg/manifest-resolved.notmine-keep" ] && echo yes || echo no)"
+    assert_eq "leftovers: a moved-aside manifest-resolved.backup and its file kept" "keep" "$(cat "$cfg/manifest-resolved.backup/notes.txt" 2>/dev/null)"
+    assert_contains "leftovers: the live result intact" "mark_three" "$(cat "$gen/repos/core.repos")"
+    # A directory where the link belongs: the error suggests a name the
+    # adapter never removes.
+    rm -f "$gen"
+    mkdir -p "$gen"
+    rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
+    assert_eq "a directory at the link: exit 1" "1" "$rc"
+    assert_contains "a directory at the link: suggests a safe name" "move it aside (to manifest-resolved.old, say: the adapter removes only the manifest-resolved.gen-* names it makes)" "$out"
+}
+
+test_mr_reader_pinned_to_one_result() {
+    echo "TEST: manifest route: a run reads one generated directory throughout; a sync meanwhile never removes it under the run; a later sweep does"
+    local sb out rc gen cfg pa dir_a dir_b
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIPPED: flock not installed"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    gen="$(mr_gen "$sb")"
+    cfg="$sb/projects/p11/configs"
+    # A vcs that holds the first import (layer core) until released.
+    mkdir -p "$sb/waitbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "if [ -e \"$sb/vhold\" ] && mkdir \"$sb/vheld.d\" 2>/dev/null; then" \
+        "    touch \"$sb/vready\"" \
+        "    while [ ! -e \"$sb/vgo\" ]; do sleep 0.1; done" \
+        'fi' \
+        "exec \"$sb/bin/vcs\" \"\$@\"" > "$sb/waitbin/vcs"
+    chmod +x "$sb/waitbin/vcs"
+    touch "$sb/vhold"
+    (cd "$sb" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >"$sb/a.out" 2>&1) & pa=$!
+    for i in $(seq 1 100); do [ -e "$sb/vready" ] && break; sleep 0.1; done
+    assert_eq "setup A: held in its first import" "yes" "$([ -e "$sb/vready" ] && echo yes || echo no)"
+    dir_a="$(readlink "$gen")"
+    # Meanwhile the manifest changes (pkg_c, layer extra, v1 -> v2) and a sync swaps the link.
+    mr_sed 's/ref: v1/ref: v2/' "$sb/m/manifest.yaml"
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sync B: exit 0" "0" "$rc"
+    dir_b="$(readlink "$gen")"
+    assert_eq "sync B: the link swapped" "yes" "$([ "$dir_a" != "$dir_b" ] && echo yes || echo no)"
+    assert_contains "sync B: the new result has v2" "version: v2" "$(cat "$gen/repos/extra.repos")"
+    assert_eq "sync B: A's directory kept while A reads it" "yes" "$([ -f "$cfg/$dir_a/layers.txt" ] && echo yes || echo no)"
+    touch "$sb/vgo"
+    rc=0; wait "$pa" || rc=$?
+    assert_eq "setup A: exit 0" "0" "$rc"
+    assert_contains "setup A: layer extra imported from its own result (v1)" "version: v1" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
+    assert_not_contains "setup A: not from the newer result (v2)" "version: v2" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
+    # Once A has ended, the next sync sweeps A's directory.
+    rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
+    assert_eq "sync C: exit 0" "0" "$rc"
+    assert_eq "sync C: A's directory swept" "no" "$([ -e "$cfg/$dir_a" ] && echo yes || echo no)"
+    assert_eq "sync C: one generated dir left" "1" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_contains "sync C: the live result intact" "version: v2" "$(cat "$gen/repos/extra.repos")"
+}
+
+test_mr_lock_fd_not_inherited() {
+    echo "TEST: manifest route: git and the resolver do not inherit the lock's descriptor, and the lock is held while they run"
+    local sb url rc realgit lock
+    if ! command -v flock >/dev/null 2>&1 || [ ! -d /proc/self/fd ]; then
+        echo "  SKIPPED: needs flock and /proc"
+        return 0
+    fi
+    sb="$(make_mr_sandbox dev)"
+    url="$(make_mr_remote "$sb" leaf)"
+    write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
+    mr_push "$sb" leaf >/dev/null
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    lock="$sb/projects/p11/configs/.lock.source"
+    realgit="$(command -v git)"
+    mkdir -p "$sb/fdbin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "echo \"git \$*\" >> \"$sb/git.log\"" \
+        "[ -e /proc/self/fd/9 ] && echo \"git \$1 \$2 \$3\" >> \"$sb/fd9.log\"" \
+        "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
+    chmod +x "$sb/fdbin/git"
+    # The resolver: says whether it got fd 9 and whether the lock is held.
+    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "[ -e /proc/self/fd/9 ] && echo resolver >> \"$sb/fd9.log\"" \
+        "flock -n \"$lock\" true && echo NOT_HELD >> \"$sb/held.log\"" \
+        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/ros-manifest"
+    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    assert_contains "the git wrapper saw the fetch" "fetch --quiet --depth 1 --no-tags" "$(cat "$sb/git.log" 2>/dev/null)"
+    assert_contains "the resolver ran" "RESOLVER_RAN:resolve" "$(cat "$sb/resolver.log" 2>/dev/null)"
+    assert_eq "no git or resolver call got fd 9" "" "$(cat "$sb/fd9.log" 2>/dev/null)"
+    assert_eq "the lock held while the resolver ran" "" "$(cat "$sb/held.log" 2>/dev/null)"
+}
+
+test_mr_preflight_before_any_fetch() {
+    echo "TEST: manifest route: missing vcs, role= or distro= is reported before any remote is contacted"
+    local sb out rc tool url
+    sb="$(make_mr_sandbox dev)"
+    url="file://$sb/mremote/never.git"
+    mr_settings "$sb" "source=$url" "source_ref=main"
+    mkdir -p "$sb/isolatedbin"
+    for tool in bash sh git grep sed awk cut head tail cat mkdir rm mv ln \
+        basename dirname printf env ls sort wc tr readlink mktemp stat; do
+        command -v "$tool" >/dev/null 2>&1 \
+            && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
+    done
+    rc=0; out="$(cd "$sb" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "no vcs: exit 1" "1" "$rc"
+    assert_contains "no vcs: named" "'vcs' (vcstool) not found" "$out"
+    assert_not_contains "no vcs: the source was not contacted" "source: fetching" "$out"
+    assert_eq "no vcs: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
+
+    mr_sed 's/ role=dev//' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "no role=: exit 1" "1" "$rc"
+    assert_contains "no role=: names the field" "which needs role=<name> on its registry line" "$out"
+    assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
+    assert_not_contains "no role=: not contacted" "source: fetching" "$out"
+
+    mr_sed 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "no distro=: exit 1" "1" "$rc"
+    assert_contains "no distro=: names the field" "which needs distro=<name> on its registry line" "$out"
+    assert_not_contains "no distro=: not contacted" "source: fetching" "$out"
+    # A legacy ROS_DISTRO is not accepted on this route.
+    echo "ROS_DISTRO=fakefox" >> "$sb/.agent/projects.d/p11.sh"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "legacy ROS_DISTRO does not stand in for distro=: exit 1" "1" "$rc"
+}
+
+test_mr_one_source_only() {
+    echo "TEST: manifest route: source beside any other bootstrap source is a hard error naming it"
+    local sb out rc
+    sb="$(make_mr_sandbox dev)"
+    write_mr_manifest "$sb/m/manifest.yaml"
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    rc=0; out="$(BOOTSTRAP_URL=https://example.invalid/b.yaml run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "BOOTSTRAP_URL: exit 1" "1" "$rc"
+    assert_contains "BOOTSTRAP_URL: one source only" "a project has one source only, never a silent choice" "$out"
+    assert_contains "BOOTSTRAP_URL: named" "BOOTSTRAP_URL=https://example.invalid/b.yaml in the environment" "$out"
+    assert_contains "names the way back" "unset p11 source source_ref source_path" "$out"
+
+    echo 'MANIFEST_BOOTSTRAP_URL="https://example.invalid/legacy.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "legacy MANIFEST_BOOTSTRAP_URL: exit 1" "1" "$rc"
+    assert_contains "legacy MANIFEST_BOOTSTRAP_URL: names the file" "MANIFEST_BOOTSTRAP_URL=https://example.invalid/legacy.yaml in $sb/.agent/projects.d/p11.sh (the legacy per-project config): remove that line" "$out"
+    mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
+
+    # A good setup first, so validate reaches the single-source check.
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "one source: setup exit 0" "0" "$rc"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "one source: validate exit 0" "0" "$rc"
+    echo "https://example.invalid/b.yaml" > "$sb/projects/p11/configs/project_bootstrap.url"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "project_bootstrap.url: exit 1" "1" "$rc"
+    assert_contains "project_bootstrap.url: names the file and its path" "the file $sb/projects/p11/configs/project_bootstrap.url (in the project's root; it may be tracked in the project's own repository): remove it" "$out"
+    rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
+    assert_eq "validate also refuses it: exit 1" "1" "$rc"
+    assert_contains "validate also refuses it: the single-source check" "❌ ERROR: project 'p11' sets source=$sb/m/manifest.yaml (the manifest route), and another bootstrap source was found" "$out"
+    assert_contains "validate also refuses it: names the file" "the file $sb/projects/p11/configs/project_bootstrap.url" "$out"
+    rm -f "$sb/projects/p11/configs/project_bootstrap.url"
+
+    mr_settings "$sb" "source=$sb/m/manifest.yaml" "bootstrap_url=https://example.invalid/b.yaml"
+    rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
+    assert_eq "bootstrap_url in the settings file: exit 1" "1" "$rc"
+    assert_contains "bootstrap_url in the settings file: refused by the parser" "source and bootstrap_url are both set" "$out"
+
+    # A configs/manifest left from an earlier bootstrap is ignored.
+    mr_settings "$sb" "source=$sb/m/manifest.yaml"
+    mkdir -p "$sb/projects/p11/configs/manifest/repos"
+    printf 'old\n' > "$sb/projects/p11/configs/manifest/layers.txt"
+    rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
+    assert_eq "an old configs/manifest: setup exit 0" "0" "$rc"
+    assert_not_contains "an old configs/manifest: its layer not imported" "old_ws" "$(cat "$sb/vcs.log")"
+}
+
+test_bootstrap_no_url_names_source() {
+    echo "TEST: bootstrap route: the no-URL error also names source= (#436)"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names source=" "project_setting.sh set p11 source=<git URL or absolute path>" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
@@ -2394,7 +4087,45 @@ test_repo_pin_not_cloned
 test_repo_pin_not_found
 test_repo_pin_entry_without_version
 test_repo_pin_two_layers
+test_bootstrap_no_url_names_source
+mr_test test_mr_wrapper_runs_this_checkouts_resolver
+mr_test test_mr_setup_from_path_source
+mr_test test_mr_url_source_branch_tag_commit
+mr_test test_mr_url_follows_remote
+mr_test test_mr_fetch_failures_keep_previous
+mr_test test_mr_url_insteadof_rule
+mr_test test_mr_inherited_git_env_ignored
+mr_test test_mr_link_of_another_shape_refused
+mr_test test_mr_fetch_no_askpass
+mr_test test_mr_user_hooks_and_filters_not_run
+mr_test test_mr_extends_base_no_user_hooks_or_filters
+mr_test test_mr_transports_limited
+mr_test test_mr_branch_and_tag_of_one_name
+mr_test test_mr_full_commit_fallback
+mr_test test_mr_sha256_source
+mr_test test_mr_fetch_bounded
+mr_test test_mr_provenance_names_the_source
+mr_test test_mr_fetch_interrupted
+mr_test test_mr_stale_extends_base
+mr_test test_mr_role_and_distro_changes
+mr_test test_mr_sync_names_a_new_layer
+mr_test test_mr_validate_link_missing_and_path_changed
+mr_test test_mr_path_source_edited_during_resolve
+mr_test test_mr_layer_failures
+mr_test test_mr_resolver_failures
+mr_test test_mr_interrupt_cleans_up
+mr_test test_mr_swap_interrupt_and_sweep
+mr_test test_mr_swap_failures_and_unguarded_leftovers
+mr_test test_mr_pin_fd_not_inherited
+mr_test test_mr_preflight_before_any_fetch
+mr_test test_mr_source_lock
+mr_test test_mr_lock_fd_not_inherited
+mr_test test_mr_reader_pinned_to_one_result
+mr_test test_mr_one_source_only
 
 echo ""
-echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
+if [ "$MR_SKIPPED" -gt 0 ]; then
+    echo "=== SKIPPED: $MR_SKIPPED manifest-route test(s): PyYAML not importable with $MR_SRC ==="
+fi
+echo "=== Results: ${PASS} passed, ${FAIL} failed, ${MR_SKIPPED} skipped ==="
 [[ $FAIL -eq 0 ]]
