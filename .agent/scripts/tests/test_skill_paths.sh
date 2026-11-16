@@ -291,6 +291,8 @@ if [[ -f "$ORCH" ]]; then
         'two host `revise` answers at `plan` in a row' \
         'two host `address` answers at `rounds` in a row' \
         "that checkpoint's next answer is the owner's"
+    has "$ORCH" "orchestrator: a second failed full pass in a row is the owner's (issue 465)" \
+        'or one host `address` answer to a failed full pass at `publish` or `rounds` (`run-issue` step 7) when the next full pass fails too, that checkpoint'"'"'s next answer is the owner'"'"'s.'
     has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
         'gh issue comment 398 -R "$WS_REPO" --body-file' \
         '## What reached the owner, and why' '## Decisions made, and any vetoes' \
@@ -742,7 +744,9 @@ has "$RI" "run-issue step 4: the hook rule skips the suites on every commit, run
 has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog is shown, at rounds only once publish is chosen; a failure is answered address by the host, quoted, never fixed by the host" \
     'When `next` prints `action=checkpoint:publish`, the host runs every hook once over the branch, with no SKIP, before the checkpoint dialog is shown: the host answers a failure itself, without asking the owner (below)' \
     'At `checkpoint:rounds` the pass runs only once `publish` is the chosen answer, by the owner or by the host, and before that answer is recorded' \
-    '**It fails**: the host answers the checkpoint `address` and fixes nothing itself, without showing the dialog.' \
+    '**It fails**: the host answers the checkpoint `address` and fixes nothing itself, without showing the dialog (a second failure in a row is the owner'"'"'s, below).' \
+    '**It fails again**: a second failure in a row goes to the owner.' \
+    'the host does not answer: it shows the checkpoint dialog with the failure quoted, and the answer is the owner'"'"'s.' \
     '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
     'The pass runs on the exact head that will be pushed' \
     'a run that was cut off has not passed' \

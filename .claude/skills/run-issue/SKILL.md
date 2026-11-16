@@ -786,7 +786,8 @@ not passed.
   (step 6), at `publish` through its dialog; on `publish`, push and
   create the pull request (below).
 - **It fails**: the host answers the checkpoint `address` and fixes
-  nothing itself, without showing the dialog. The `## Checkpoint`
+  nothing itself, without showing the dialog (a second failure in a row
+  is the owner's, below). The `## Checkpoint`
   entry (`**After**: publish`, or `rounds` at that checkpoint,
   `**Decision**: address`, `**Decided-by**: host (the full pass failed;
   the owner's 2026-11-13 rule sends a failure back as findings)`) quotes
@@ -799,6 +800,12 @@ not passed.
   fix pass's `## Implementation` routes to another `review-code --branch`
   round, and that round's approval raises `publish` again, with a fresh
   full pass.
+- **It fails again**: a second failure in a row goes to the owner. When
+  the newest earlier `## Checkpoint` at `publish` or `rounds` was the
+  host's `address` for a failed full pass (its `**Decided-by**` says so;
+  count on the timeline, as `/orchestrator` does) and this pass fails too,
+  the host does not answer: it shows the checkpoint dialog with the
+  failure quoted, and the answer is the owner's.
 
 `action=publish` (`--pr none` only, row 16): push the branch, then create
 the PR:
