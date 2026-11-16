@@ -804,23 +804,28 @@ not passed.
 - **It fails again**: a second failure in a row goes to the owner. "In a
   row" is judged by the previous full-pass result, not by the checkpoints
   between (a `rounds` `address` for review findings between two failed
-  passes does not hide the first). When this pass fails and the previous
-  full-pass result was a failure too (on the timeline: a full pass is
-  recorded only when it fails, in the checkpoint that quotes it, and one
-  that passes is followed by the push), the host does not answer: it
-  shows the checkpoint dialog with the failure quoted, and the answer is
-  the owner's. A failure followed by a `## Checkpoint` with
-  `**Decision**: publish` is not the previous result: that decision is
-  recorded only after a pass that passed, at `publish` and at `rounds`
-  alike (at `rounds` the pass runs once `publish` is chosen, and a failure
-  is recorded as `address` instead), and the push ended that run, so a
-  failure from an earlier pull request of the same issue does not count.
-  When he answers `address`, his `## Checkpoint` entry
-  (`**Decided-by**: owner`, his words in the body) and the
-  `address-findings` handoff quote the failure as for the host's answer,
-  so that skill's step 2 finds it open. A host `address` answer to a
-  failed full pass does not count toward `/orchestrator`'s limit of two host `address` answers at
-  `rounds` in a row; that limit counts review rounds.
+  passes does not hide the first). On the timeline, each full pass ends
+  in the `## Checkpoint` that answers it: an entry with `**After**:
+  publish` (the pass runs before that dialog), or one with `**After**:
+  rounds` whose `**Decision**` is `publish` or which quotes a full-pass
+  failure (at `rounds` the pass runs only once `publish` is chosen). The
+  previous result was a failure when the newest such entry before this
+  pass quotes a full-pass failure and its `**Decision**` is not
+  `publish`. A failure followed by a `## Checkpoint` with `**Decision**:
+  publish` is not the previous result: that decision is reached only
+  after a pass that passed, or on the owner's own say after a failure,
+  and the push ended that run, so a failure from an earlier pull request
+  of the same issue does not count. A `restart` does not reset it: the
+  previous result is still the last pass's. When this pass fails and the
+  previous result was a failure too, the host does not answer: it shows
+  the checkpoint dialog with the failure quoted, and the answer is the
+  owner's. His `## Checkpoint` entry (`**Decided-by**: owner`, his words
+  in the body) quotes the failure as the host's would, whatever he
+  answers; on `address` the `address-findings` handoff quotes it too, so
+  that skill's step 2 finds it open. A host `address` answer to a
+  failed full pass does not count toward `/orchestrator`'s limit of two
+  host `address` answers at `rounds` in a row; that limit counts review
+  rounds.
 
 `action=publish` (`--pr none` only, row 16): push the branch, then create
 the PR:

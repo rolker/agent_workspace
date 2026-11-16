@@ -747,9 +747,11 @@ has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog
     '**It fails**: the host answers the checkpoint `address` and fixes nothing itself, without showing the dialog (a second failure in a row is the owner'"'"'s, below).' \
     '**It fails again**: a second failure in a row goes to the owner.' \
     '"In a row" is judged by the previous full-pass result, not by the checkpoints between' \
-    'When this pass fails and the previous full-pass result was a failure too' \
-    'A failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result: that decision is recorded only after a pass that passed, at `publish` and at `rounds` alike' \
-    'When he answers `address`, his `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) and the `address-findings` handoff quote the failure as for the host'"'"'s answer, so that skill'"'"'s step 2 finds it open.' \
+    'The previous result was a failure when the newest such entry before this pass quotes a full-pass failure and its `**Decision**` is not `publish`.' \
+    'A failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result: that decision is reached only after a pass that passed, or on the owner'"'"'s own say after a failure, and the push ended that run' \
+    'A `restart` does not reset it: the previous result is still the last pass'"'"'s.' \
+    'When this pass fails and the previous result was a failure too, the host does not answer' \
+    'His `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) quotes the failure as the host'"'"'s would, whatever he answers; on `address` the `address-findings` handoff quotes it too, so that skill'"'"'s step 2 finds it open.' \
     'the host does not answer: it shows the checkpoint dialog with the failure quoted, and the answer is the owner'"'"'s.' \
     'A host `address` answer to a failed full pass does not count toward `/orchestrator`'"'"'s limit of two host `address` answers at `rounds` in a row' \
     '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
