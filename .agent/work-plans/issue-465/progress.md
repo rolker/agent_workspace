@@ -300,3 +300,29 @@ Round 1 findings: all four closed in the text and pinned (55847375, 99b5532d, 90
 
 ### Not changed
 - host_standing_rules.md (host decision: the row needs no change). AGENTS.md, CLAUDE.md, docs/design.md untouched.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-16 13:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adf2b4e2a1bdf0477, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-465 at `035cb089`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Scope: the round-2 entry's four findings and the fix diff 275ab7c0..035cb089 (60c2c7ee, 7ba303bc, cf745e3f, 82ead841). Cross-model reviewers: skipped (round-3 convergence check, per handoff); the Claude adversarial specialist was not dispatched for this narrow check. Static analysis: shellcheck on the 3 changed scripts clean. Suites on 035cb089: test_skill_paths.sh 160/0, test_dispatch_phase.sh 233/0, test_checkpoint_269.sh 43/0.
+
+Round-2 findings, all closed:
+- must-fix (a partial or failed Implementation closed a host-pass failure): closed; only a `**Status**: complete` `## Implementation` closes it, in address-findings step 2 and run-issue step 7, and a partial or failed one leaves it open for the retry; pinned.
+- owner's `address` quotes the failure: closed in run-issue step 7; pinned.
+- "in a row" counting: closed; judged by the previous full-pass result in run-issue step 7 and the orchestrator clause, and a full-pass `address` does not count toward the two at `rounds`; pinned.
+- indirect reach: closed; the same sentence in the dispatcher text, run-issue step 4 and address-findings step 4; pinned in both test files.
+
+Nothing new opened. Note, below the finding threshold: a passing full pass is not recorded, so in an issue delivered in several pull requests (or after a restart) the newest recorded result can be an earlier pull request's failure, and a first failure would go to the owner instead of being answered by the host. That only asks him one extra question; bounding the look-back at the pull request's start (pr_start.py round_start) would remove it.
+
+### Findings
+- [ ] No issues found. LGTM.
