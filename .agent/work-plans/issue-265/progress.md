@@ -480,3 +480,15 @@ The retirement is the right next step and the inventory is mostly right, but the
 - [ ] Name a refusal test per changed script; fix the adapter test's cwd (finding 7)
 - [ ] Say whether the pull request closes #265 and where registering is tracked (finding 8)
 - [ ] Draft the AGENTS.md text for Q4 as a held last commit
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work and its finding 1 needs a re-plan; second host revise in a row at this checkpoint, so the next plan answer is the owner's)
+**After**: plan
+**Decision**: revise
+
+The host's first handoff did not point plan-task at the recorded design: `.agent/work-plans/issue-295/plan.md`, section "Pull request B and C (one pull request): the legacy fallbacks and the `.sh` reading go", written 2026-11-12 by the owner's direction ("done together with the fourth pull request of issue 265"), "Planned as one pull request, closing issue 265". The review's owner questions Q1 and Q3 are answered by that record and are not asked again: this pull request also stops reading the old per-project `.sh` files and the shared `project_config.sh`, and it closes issue 265. Q2 (deleting the `project` symlink and the clones under `projects/` on this machine) is the record's "machine steps", run after the merge and only on the owner's yes at that time. Q4 (AGENTS.md) is the record's held last commit, shown to the owner at the merge checkpoint. Q5 (whether gather-project-knowledge is still wanted) is parked in the inbox; the skill is only reworded where it names an old shape.
+
+The re-plan carries the review's findings 2 to 7 and suggestions S1 to S5 as binding instructions. The owner's direction of 2026-11-16 stands: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
