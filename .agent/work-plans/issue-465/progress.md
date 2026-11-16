@@ -274,3 +274,29 @@ Round 1 findings: all four closed in the text and pinned (55847375, 99b5532d, 90
 - [x] (suggestion) The second failure goes to the owner, but nothing says his `address` answer's checkpoint entry and the handoff quote the failure; without the quote address-findings finds nothing open and exits — `.claude/skills/run-issue/SKILL.md:803`
 - [x] (suggestion) "Second failure in a row" counts the newest earlier `publish`/`rounds` checkpoint, so a review-findings `rounds` `address` between two failed passes hides the first; count the previous full-pass result instead, use the same words in the orchestrator clause, and say a full-pass `address` does not count toward the two-at-`rounds` limit — `.claude/skills/run-issue/SKILL.md:803`, `.claude/skills/orchestrator/SKILL.md:87`
 - [x] (suggestion) The grep finds direct mentions only: a module reached by import (`lib/workspace.py`: 1 suite by grep, about 31 by the hook's map) or a helper sourced through another script gets fewer suites; add that a suite reaching a script only through another script or an import is the host pass's, and list the move away from the plan's `suites_for_files.sh` selection in the pull request description — `.agent/scripts/dispatch_phase.sh:619` (mirrored in run-issue step 4 and address-findings step 4)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-16 13:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9120ef3cbfa67853, resume 1 of 3)
+
+**Branch**: feature/issue-465 at `82ead841`
+**Addressed**: Local Review (Pre-Push) at `fd40b9c4` (2026-11-16 13:10 -05:00)
+**Commits**: 60c2c7ee, 7ba303bc, cf745e3f, 82ead841
+
+### Actions
+- [x] (must-fix) Any later `## Implementation` closed the host full-pass failure, a partial or failed one too — `.claude/skills/address-findings/SKILL.md` step 2, `.claude/skills/run-issue/SKILL.md` step 7. Host decision (for the owner's veto): the closing entry is a `## Implementation` with `**Status**: complete`; a partial or failed one leaves the failure open, so a retry still fixes it. address-findings now: "only while no `## Implementation` entry with `**Status**: complete` follows the checkpoint that quotes it", "A `partial` or `failed` `## Implementation` leaves it open, so a retry still fixes it", and the check is `grep -nE '^(## |\*\*Status\*\*)' <progress.md>`. run-issue step 7 says the same. Pins updated in test_skill_paths.sh. (60c2c7ee)
+- [x] (suggestion) The owner's `address` to a second failure did not say it quotes the failure — run-issue step 7. Host decision (for the owner's veto): adopt. Now: "When he answers `address`, his `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) and the `address-findings` handoff quote the failure as for the host's answer, so that skill's step 2 finds it open." Pinned. (7ba303bc)
+- [x] (suggestion) "Second failure in a row" counted the newest earlier `publish`/`rounds` checkpoint — run-issue step 7, orchestrator repeat-limit paragraph. Host decision (for the owner's veto): adopt. run-issue: "\"In a row\" is judged by the previous full-pass result, not by the checkpoints between", "When this pass fails and the previous full-pass result was a failure too" (a full pass is recorded only when it fails; one that passes is followed by the push), and "A host `address` answer to a failed full pass does not count toward `/orchestrator`'s limit of two host `address` answers at `rounds` in a row". Orchestrator clause, same words: "or a full pass that fails when the previous full-pass result was a failure too (`run-issue` step 7; a host `address` answer to a failed full pass does not count toward the two at `rounds`)". Pins updated. (cf745e3f)
+- [x] (suggestion) The grep finds direct mentions only — dispatcher hook rule, run-issue step 4, address-findings step 4. Host decision (for the owner's veto): adopt the one clause, same words in the three: "A suite that reaches a script only through another script or an import is left to the host's full pass." Pinned in test_dispatch_phase.sh and test_skill_paths.sh. The pull-request-description notes (the move away from the plan's suites_for_files.sh selection; the suites_for_files.sh leaf change) are the host's. (82ead841)
+
+### Suites (each on its own with bash, from the worktree, on the final content)
+- test_skill_paths.sh: 160 passed, 0 failed (skill text, and a changed suite)
+- test_dispatch_phase.sh: 233 passed, 0 failed (dispatch_phase.sh changed, and a changed suite)
+- Suites that name dispatch_phase.sh, by the branch's rule: test_records_write_gate.sh 68 passed, 0 failed; test_review_code_convergence.sh 38 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed
+- Extra, for the dispatcher-text mapper risk: test_script_tests_hook_scope.sh 333 passed, 0 failed; `suites_for_files.sh -- .agent/scripts/register_project.sh` still selects 13 suites.
+- Full pass left to the host; every commit used `SKIP=validate-script-tests`, no `--no-verify`.
+
+### Not changed
+- host_standing_rules.md (host decision: the row needs no change). AGENTS.md, CLAUDE.md, docs/design.md untouched.
