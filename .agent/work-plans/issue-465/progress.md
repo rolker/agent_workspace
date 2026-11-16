@@ -363,3 +363,20 @@ Rounds 1 and 2 each had one must-fix and three suggestions; all eight are ticked
 **Decision**: address
 
 Address the open finding: a failure followed by a `## Checkpoint` with `**Decision**: publish` is not "the previous full-pass result" (run-issue step 7 "It fails again", the orchestrator clause, a pin in test_skill_paths.sh).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-16 13:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9120ef3cbfa67853, resume 2 of 3)
+
+**PR**: #490 at `e125a7fe`
+**Addressed**: Integrated Review at `30a4939` (2026-11-16 13:25 -05:00)
+**Commits**: e125a7fe
+
+### Actions
+- [x] (suggestion) "In a row" read back to the newest recorded full-pass failure with no bound, so a failure from an earlier pull request of the issue sent a first failure to the owner — `.claude/skills/run-issue/SKILL.md` step 7 "It fails again", `.claude/skills/orchestrator/SKILL.md` repeat-limit clause. Host answer `address`, fixed as the triage spells out. run-issue now: "A failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result: that decision is recorded only after a pass that passed, at `publish` and at `rounds` alike (at `rounds` the pass runs once `publish` is chosen, and a failure is recorded as `address` instead), and the push ended that run, so a failure from an earlier pull request of the same issue does not count." Orchestrator clause adds: "a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result". Checked against the `rounds` path: step 7 records a `rounds` failure as the host's `address`, never `publish`, so the sentence holds there. Pinned in test_skill_paths.sh (both texts). Nothing else changed.
+
+### Suites (each on its own with bash, from the worktree, on the final content)
+- test_skill_paths.sh: 160 passed, 0 failed (skill text and a changed suite; no script changed, so no other suite by the branch's rule)
+- Commits used `SKIP=validate-script-tests`, no `--no-verify`; after publish, CI on the push is the check.
