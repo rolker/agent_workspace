@@ -292,7 +292,7 @@ if [[ -f "$ORCH" ]]; then
         'two host `address` answers at `rounds` in a row' \
         "that checkpoint's next answer is the owner's"
     has "$ORCH" "orchestrator: a second failed full pass in a row is the owner's (issue 465)" \
-        'or a full pass that fails when the previous full-pass result was a failure too (`run-issue` step 7; a host `address` answer to a failed full pass does not count toward the two at `rounds`), that checkpoint'"'"'s next answer is the owner'"'"'s.'
+        'or a full pass that fails when the previous full-pass result was a failure too (`run-issue` step 7; a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result; a host `address` answer to a failed full pass does not count toward the two at `rounds`), that checkpoint'"'"'s next answer is the owner'"'"'s.'
     has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
         'gh issue comment 398 -R "$WS_REPO" --body-file' \
         '## What reached the owner, and why' '## Decisions made, and any vetoes' \
@@ -748,6 +748,7 @@ has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog
     '**It fails again**: a second failure in a row goes to the owner.' \
     '"In a row" is judged by the previous full-pass result, not by the checkpoints between' \
     'When this pass fails and the previous full-pass result was a failure too' \
+    'A failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result: that decision is recorded only after a pass that passed, at `publish` and at `rounds` alike' \
     'When he answers `address`, his `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) and the `address-findings` handoff quote the failure as for the host'"'"'s answer, so that skill'"'"'s step 2 finds it open.' \
     'the host does not answer: it shows the checkpoint dialog with the failure quoted, and the answer is the owner'"'"'s.' \
     'A host `address` answer to a failed full pass does not count toward `/orchestrator`'"'"'s limit of two host `address` answers at `rounds` in a row' \
