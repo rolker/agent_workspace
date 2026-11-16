@@ -809,7 +809,10 @@ not passed.
   recorded only when it fails, in the checkpoint that quotes it, and one
   that passes is followed by the push), the host does not answer: it
   shows the checkpoint dialog with the failure quoted, and the answer is
-  the owner's. A host `address` answer to a failed full pass does not
+  the owner's. When he answers `address`, his `## Checkpoint` entry
+  (`**Decided-by**: owner`, his words in the body) and the
+  `address-findings` handoff quote the failure as for the host's answer,
+  so that skill's step 2 finds it open. A host `address` answer to a failed full pass does not
   count toward `/orchestrator`'s limit of two host `address` answers at
   `rounds` in a row; that limit counts review rounds.
 

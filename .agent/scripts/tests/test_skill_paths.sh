@@ -748,6 +748,7 @@ has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog
     '**It fails again**: a second failure in a row goes to the owner.' \
     '"In a row" is judged by the previous full-pass result, not by the checkpoints between' \
     'When this pass fails and the previous full-pass result was a failure too' \
+    'When he answers `address`, his `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) and the `address-findings` handoff quote the failure as for the host'"'"'s answer, so that skill'"'"'s step 2 finds it open.' \
     'the host does not answer: it shows the checkpoint dialog with the failure quoted, and the answer is the owner'"'"'s.' \
     'A host `address` answer to a failed full pass does not count toward `/orchestrator`'"'"'s limit of two host `address` answers at `rounds` in a row' \
     '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
