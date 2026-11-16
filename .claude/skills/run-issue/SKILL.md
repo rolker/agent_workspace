@@ -470,9 +470,13 @@ handoff's `conventions=` carries it; paste it verbatim. The pass sets
 `SKIP=validate-script-tests` on every commit, its progress entry's commit
 included; every other hook still runs, and `--no-verify` is never allowed.
 It runs no full pre-commit pass. It runs the suites that test what it
-changed, each on its own with `bash`: the `test_<name>.sh` (and any
-`test_<name>_*.sh`) of each script it changed, `test_skill_paths.sh` when it
-changed skill or knowledge text, and any suite file it changed. Its entry
+changed, each on its own with `bash`: for each script it changed, its
+`test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is the script's file
+name without a leading `_` and without `.sh` or `.py`), and every suite that
+names the script's file, which one grep lists: `grep -lwF <file name>
+<worktree>/.agent/scripts/tests/test_*.sh`;
+`test_skill_paths.sh` when it changed skill or knowledge text; and any suite
+file it changed. Its entry
 names each suite with its result line, names a changed script that has no
 suite of its own, and says the full pass was left to the host. The full
 pass is the host's, once per pull request, when the `publish` checkpoint is

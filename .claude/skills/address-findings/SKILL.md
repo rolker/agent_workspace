@@ -192,10 +192,12 @@ pull request before the push (`run-issue` step 7), and after publish CI
 checks every push. Follow the rule as the handoff prints it: run the
 suites that test what you changed, each on its own with
 `bash <worktree>/.agent/scripts/tests/<suite>`, the issue worktree's own
-copy (never `$WS_ROOT`'s, which is the main checkout's) — the
-`test_<name>.sh` and any `test_<name>_*.sh` of each script you changed,
-`test_skill_paths.sh` when you changed skill or knowledge text, and any
-suite file you changed. A changed script with no suite of its own gets
+copy (never `$WS_ROOT`'s, which is the main checkout's): for each script
+you changed, its `test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is
+the script's file name without a leading `_` and without `.sh` or `.py`),
+and every suite that names the script's file, which one grep lists:
+`grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`; `test_skill_paths.sh` when you changed
+skill or knowledge text; and any suite file you changed. A changed script with no suite of its own gets
 none; name it in step 5's entry. If a suite fails, fix the cause (a commit
 of its own) and run that suite again before step 5. Step 5's entry names
 each suite you ran with its result line and says the full pass was left

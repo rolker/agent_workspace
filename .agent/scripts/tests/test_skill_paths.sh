@@ -759,6 +759,13 @@ has "$AF" "address-findings: a quoted host full-pass failure is an open finding;
     'set `SKIP=validate-script-tests` on every commit, the step 5 entry'"'"'s commit included' \
     'runs no full pre-commit pass over the branch' \
     '`**Addressed**: host full pass at <head sha> (Checkpoint <its When>)`'
+# Which suites a dispatched pass runs: the suites named after each changed
+# script and every suite that names its file, one grep. The dispatcher
+# text, run-issue step 4 and address-findings step 4 carry the same words;
+# test_dispatch_phase.sh pins the dispatcher's copy of this fragment.
+SUITE_RULE='its `test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is the script'"'"'s file name without a leading `_` and without `.sh` or `.py`), and every suite that names the script'"'"'s file, which one grep lists: `grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`'
+has "$RI" "run-issue step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
+has "$AF" "address-findings step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
 # A fix pass's ## Implementation closes the quoted failure: the pass after
 # a changes-requested review of that fix (no new checkpoint) must not act
 # on it again (issue #465 pre-push review, must-fix).

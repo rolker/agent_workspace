@@ -955,7 +955,7 @@ for sk in implement address-findings; do
         && "$conv" == *"\`SKIP=validate-script-tests\` on every commit you make, your progress entry's commit included"* \
         && "$conv" == *"\`--no-verify\` is never allowed"* \
         && "$conv" == *"Run only the suites that test what you changed, each on its own with \`bash .agent/scripts/tests/<suite>\`"* \
-        && "$conv" == *"its \`test_<name>.sh\` and any \`test_<name>_*.sh\`"* \
+        && "$conv" == *"its \`test_<name>.sh\` and any \`test_<name>_*.sh\` (\`<name>\` is the script's file name without a leading \`_\` and without \`.sh\` or \`.py\`), and every suite that names the script's file, which one grep lists: \`grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh\`"* \
         && "$conv" == *"\`test_skill_paths.sh\` when you changed text under \`.claude/skills/\` or \`.agent/knowledge/\`"* \
         && "$conv" == *"A changed script with no such suite gets none: name it in your entry. Any other changed file (documentation, configuration) gets none either; the host's pass covers both."* \
         && "$conv" == *"In your entry, name each suite you ran with its result line, and say the full pass was left to the host."* \
@@ -967,6 +967,33 @@ for sk in implement address-findings; do
         && pass "handoff: $sk (workspace) conventions= carries the 2026-11-13 hook rule (SKIP on every commit, own suites only, host's full pass), no pre-commit command, and the existing conventions" \
         || fail "handoff $sk hook rule (conv=$conv)"
 done
+
+# The grep the hook rule prints, run as printed from this checkout: for
+# dispatch_phase.sh it lists the suite named after it, and the whole-word
+# match keeps a file name from matching inside a longer one.
+out=$(run_handoff --issue 9 --skill implement)
+conv=$(printf '%s\n' "$out" | grep '^conventions=')
+suite_grep="${conv#*which one grep lists: \`}"
+suite_grep="${suite_grep%%\`*}"
+if [[ "$suite_grep" == "grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh" ]]; then
+    # Unquoted on purpose: the printed command is split into words and its
+    # glob expands (no repository path has a space).
+    cmd="${suite_grep/<worktree>/$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+    # shellcheck disable=SC2086
+    listed=$(${cmd/<file name>/dispatch_phase.sh} | xargs -n1 basename)
+    wtmp="$(mktemp -d -p "$SANDBOX")"
+    mkdir -p "$wtmp/.agent/scripts/tests"
+    printf 'bash scripts/x_phase.sh\n' > "$wtmp/.agent/scripts/tests/test_a.sh"
+    printf 'bash scripts/phase.sh\n' > "$wtmp/.agent/scripts/tests/test_b.sh"
+    cmd="${suite_grep/<worktree>/$wtmp}"
+    # shellcheck disable=SC2086
+    word=$(${cmd/<file name>/phase.sh} | xargs -n1 basename)
+    [[ $'\n'"$listed"$'\n' == *$'\ntest_dispatch_phase.sh\n'* && "$word" == "test_b.sh" ]] \
+        && pass "handoff: the printed suite grep lists test_dispatch_phase.sh for dispatch_phase.sh and matches whole file names only" \
+        || fail "handoff suite grep (listed=$listed word=$word)"
+else
+    fail "handoff: the hook rule prints no suite grep in the expected form (got: $suite_grep)"
+fi
 
 for sk in review-issue plan-task review-plan review-code triage-reviews; do
     out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
