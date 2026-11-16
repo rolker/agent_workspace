@@ -162,3 +162,14 @@ Stopped early on the coordinator's word (machine shutting down). Every plan step
 - Find out whether the hook-scope hub-guard failure is caused by this branch (compare against origin/main), and fix if so.
 - Run test_run_script_tests.sh.
 - test_address_findings.sh not run: it does not read the skill text.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first retry for this phase; the partial entry says every plan step is written and committed and only verification is left: three failing checks in test_script_tests_hook_scope.sh not yet compared with main; the owner asked on 2026-11-16 to "have agents work on the other in progress issues we had going")
+**After**: phase-failed
+**Decision**: retry
+**Phase**: implement
+
+Re-dispatch the implement pass to finish the verification and write a complete entry.
