@@ -336,3 +336,26 @@ path	Path 3	less waiting for the same care	In the owner's words (2026-11-13): "W
 **Decision**: publish
 
 Read: the Local Review (Pre-Push) at 395f1bb4 and its report; the full pass output. The owner is shutting the machine down; the pull request is published so it is safe on GitHub, and the drive parks here: triage and the merge checkpoint are for the next session.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-16 12:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #479 at `e90d8f17`
+**Sources**: 2 (Local Review (Pre-Push) R1 @ `92229a53` (covers `e90d8f17` via bookkeeping; approved, 0 findings; Gemini and Codex ran inside it), CI rollup). On GitHub: 0 reviews, 0 inline comments, 0 conversation comments; Copilot absent (no review arrived, not a pass); no human review.
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+`review_progress.sh sources` at `e90d8f17` returned no open local findings, no dropped entries and no candidates; the commits since `92229a53` (`395f1bb4`, `e90d8f17`) touch only this progress.md. CI at `e90d8f17` (`gh pr checks 479`, read 2026-11-16): Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests passed in both runs (8 of 8).
+
+Main since the merge base `03eefc2d` (2026-11-13 14:46, 169 commits, 32 files): none of this pull request's six non-record files changed, nor `sitrep_checks.sh`, `sitrep_root.sh` or review-issue's skill; the newest main commits to the sit-rep skill and the roadmap (`a3d257ac`, `ff897b1e`) are older than the merge base and already in this branch. `docs/design.md` changed on main (registry, merge gate and change-log rows) but not its line 105. So nothing on main makes the sit-rep change stale or conflicting in meaning. Checked by running: a scratch merge of `e90d8f17` with origin/main (`dbb4dbb4`) had no conflicts, and on it `test_skill_paths.sh` gave 149 passed, 0 failed and `test_sitrep_checks.sh` 211 passed, 0 failed (scratch worktree removed). Not run: the full suite.
+
+The owner's two approved texts (roadmap Path 3 paragraph, README bullet) are as the PR body quotes them; no finding proposes rewording them.
+
+### Findings
+- [x] (suggestion, Gemini via Local Review (Pre-Push) R1 @ `92229a53`, covers `e90d8f17` via bookkeeping) Valid, confirmed in the awk: a Serves line that names a goal and quotes "A safeguard has to earn its cost" in order to deny it reads Path 3, since the match is plain `index()` after the `none` test. Cost is one wrong path word in the sit-rep — `.claude/skills/sitrep/SKILL.md:423` (accepted, no fix: weighed in the second Plan Review and not carried by the host at the 2026-11-13 15:03 Checkpoint; the PR body's Reviews paragraph says so)
+- [ ] (suggestion, triage) `docs/design.md` line 105 still says the roadmap "names the two paths", false once this merges. The deferral is recorded in plan.md and the PR body's Known limits, but issue 477's list of later pull requests does not carry it, so the design.md pull request it is left for may not pick it up. Fix: add it to issue 477 (a comment naming the later design.md pull request), no code change here — `docs/design.md:105`
+
+### False positives
+- None.
