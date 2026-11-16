@@ -224,3 +224,30 @@ Owner rule: the dispatcher text, run-issue step 4, address-findings steps 3 and 
 - [x] (suggestion) The suite-naming rule finds no suite for 44 of 69 scripts, many of them named directly by suites (review_progress.sh 8, _worktree_helpers.sh 11, suites_for_files.sh 4, pr_start.py 3), so the pass runs none and a defect first shows at the host's pass after approval, costing another round; e.g. add the suites that name the changed script's file — `.agent/scripts/dispatch_phase.sh:619` (mirrored in run-issue step 4 and address-findings step 4)
 - [x] (suggestion) No repeat cap on host `address` answers at `publish` after a failed full pass (orchestrator caps `rounds` only, SKILL.md:84-86); a pass that keeps failing loops publish, address, review indefinitely; say the second failure in a row goes to the owner — `.claude/skills/run-issue/SKILL.md:779`
 - [x] (suggestion) Step 7 sequencing: say the pass runs before the checkpoint dialog is shown and a failure is answered by the host without asking; at `rounds` run it only once `publish` is the chosen answer, since an `address` answer changes the code anyway — `.claude/skills/run-issue/SKILL.md:745`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-16 13:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-465 at `6414f4ff`
+**Addressed**: Local Review (Pre-Push) at `ecc3ca00` (2026-11-16 12:56 -05:00)
+**Commits**: 55847375, 99b5532d, 9082fc15, 6414f4ff
+
+### Actions
+- [x] (must-fix) A host full-pass failure is reopened by a later fix pass — `.claude/skills/address-findings/SKILL.md` step 2. Host decision (for the owner's veto): fix it. Now: the failure "is an open finding only while no `## Implementation` entry follows the checkpoint that quotes it"; a later pass "does not act on it again or name it in `**Addressed**`, even when its handoff still quotes it"; the exit line reads "no host full-pass failure is open". run-issue step 7 says the same ("until a fix pass's `## Implementation` follows that checkpoint"). Pinned in test_skill_paths.sh beside the neighbouring address-findings pins. (55847375)
+- [x] (suggestion) The suite-naming rule finds no suite for most scripts — `.agent/scripts/dispatch_phase.sh` hook rule, run-issue step 4, address-findings step 4. Host decision (for the owner's veto): adopt; reason: a defect that first shows at the host's full pass, after an approving review, costs a fix round and a review round. The three places now carry the same words: "its `test_<name>.sh` and any `test_<name>_*.sh` (...), and every suite that names the script's file, which one grep lists: `grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`". The owner's meaning is unchanged (only the suites that test what the pass changed; the host runs the one full pass). Measured on this tree: 8 of 66 scripts outside tests/ get no suite (bootstrap.sh, generate_make_skills.sh, git_bug_setup.sh, git_helpers.sh, lock.sh, pr_status.sh, revert_feature.sh, unlock.sh), the most any script selects is 18 (_project_registry.sh). Pins: test_skill_paths.sh (run-issue, address-findings) and test_dispatch_phase.sh (dispatcher) check the same fragment; test_dispatch_phase.sh also runs the printed grep (lists test_dispatch_phase.sh for dispatch_phase.sh; whole-word match, so `phase.sh` does not match `x_phase.sh`). The skills write `<worktree>/` before the path because test_skill_paths.sh forbids a bare workspace-relative path in a skill. (99b5532d)
+- [x] (suggestion) No limit on host `address` answers at `publish` after a failed full pass — `.claude/skills/run-issue/SKILL.md` step 7, `.claude/skills/orchestrator/SKILL.md` repeat-limit paragraph. Host decision (for the owner's veto): adopt. run-issue step 7 has a new bullet "**It fails again**: a second failure in a row goes to the owner", the host shows the dialog with the failure quoted; the orchestrator paragraph gets one clause: "or one host `address` answer to a failed full pass at `publish` or `rounds` (`run-issue` step 7) when the next full pass fails too". Pinned in test_skill_paths.sh. (6414f4ff)
+- [x] (suggestion) Step 7 sequencing — `.claude/skills/run-issue/SKILL.md` step 7. Host decision (for the owner's veto): adopt both points. Now: the pass runs "before the checkpoint dialog is shown: the host answers a failure itself, without asking the owner"; "At `checkpoint:rounds` the pass runs only once `publish` is the chosen answer, by the owner or by the host, and before that answer is recorded"; a failure there is recorded as the host's `address`, the chosen `publish` and who chose it named in the entry's body. Pin updated in test_skill_paths.sh. (9082fc15)
+
+### Suites (each on its own with bash, from the worktree, on the final content)
+- test_skill_paths.sh: 158 passed, 0 failed (skill and orchestrator text, and a changed suite)
+- test_dispatch_phase.sh: 233 passed, 0 failed (dispatch_phase.sh changed, and a changed suite)
+- Suites that name dispatch_phase.sh, by the new rule: test_records_write_gate.sh 68 passed, 0 failed; test_review_code_convergence.sh 38 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed
+- Extra, because the previous round's mapper problem came from the dispatcher text: test_script_tests_hook_scope.sh 333 passed, 0 failed; test_run_script_tests.sh 170 passed, 0 failed; `suites_for_files.sh -- .agent/scripts/register_project.sh` still selects 13 suites.
+- Full pass left to the host (owner's 2026-11-13 rule); every commit here used `SKIP=validate-script-tests`, no `--no-verify`.
+
+### Notes for the host
+- Left as is: the suites_for_files.sh leaf change of the previous pass (accepted by the review); the pull-request description still needs to list it as a mechanism decision the owner may veto.
+- Not changed: the host_standing_rules.md hook-rule row. It stays true (it states the first failure going back as findings) but does not mention the second-failure cap; add it there if the row should carry the whole rule.
+- AGENTS.md, CLAUDE.md and docs/design.md untouched; none of them states the changed rules.
