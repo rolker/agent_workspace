@@ -398,3 +398,20 @@ The triage finding is closed: run-issue step 7 and the orchestrator clause carry
 
 ### Findings
 - [x] (suggestion) "that decision is recorded only after a pass that passed" is not true on one path: at a second failure in a row the owner answers the dialog, and `publish` is one of his answers (orchestrator table, `publish`/`rounds` row), so a `publish` can follow a failed pass. The rule's outcome still holds there (the push ended that run); say "after a pass that passed, or on the owner's own say after a failure" — `.claude/skills/run-issue/SKILL.md:812`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-16 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9120ef3cbfa67853, resume 3 of 3)
+
+**PR**: #490 at `c57d992b`
+**Addressed**: Local Review at `f65693d` (2026-11-16 13:27 -05:00)
+**Commits**: c57d992b
+
+### Actions
+- [x] (suggestion) "that decision is recorded only after a pass that passed" was false when the owner answers `publish` after a second failure — `.claude/skills/run-issue/SKILL.md` step 7, "It fails again". Now: "that decision is reached only after a pass that passed, or on the owner's own say after a failure, and the push ended that run". Reading the whole bullet against every path (host at `publish`, host at `rounds`, owner after a second failure, a `restart`) found two more statements false on one path each, fixed in the same commit: (1) "a full pass is recorded only when it fails ... and one that passes is followed by the push" was false when a passing pass is answered `address` at `publish`; the bullet now reads the previous result from the `## Checkpoint` that answers each pass (any `**After**: publish` entry; an `**After**: rounds` entry with `**Decision**: publish` or quoting a full-pass failure) and counts it a failure when that entry quotes one and its `**Decision**` is not `publish`; (2) only the owner's `address` entry was said to quote the failure, so a `stop` from him could leave a failed pass unrecorded; his entry now "quotes the failure as the host's would, whatever he answers". Added "A `restart` does not reset it: the previous result is still the last pass's." The orchestrator clause carries no reason and stays true; unchanged. Pins updated in test_skill_paths.sh.
+
+### Suites (each on its own with bash, from the worktree, on the final content)
+- test_skill_paths.sh: 160 passed, 0 failed (skill text and a changed suite; no script changed)
+- Commit used `SKIP=validate-script-tests`, no `--no-verify`; CI on the push is the check.
