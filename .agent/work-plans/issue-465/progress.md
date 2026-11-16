@@ -326,3 +326,13 @@ Nothing new opened. Note, below the finding threshold: a passing full pass is no
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 13:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3, a narrow convergence check, is approved with no must-fix and no suggestions; rounds 1 and 2 each had one must-fix, both fixed and pinned by tests; Gemini and Codex ran in rounds 1 and 2; the host's one full pre-commit pass ran after the approval on f0f9f6ca, the reviewed head, every hook and every suite with no SKIP: exit 0 in 227 s)
+**After**: publish
+**Decision**: publish
+
+Publish the branch as a pull request and wait for the review sources, then triage. The merge is the owner's.
