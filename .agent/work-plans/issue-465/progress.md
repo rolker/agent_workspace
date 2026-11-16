@@ -200,3 +200,27 @@ Retry of the partial entry at 5c857dfd: verification finished, and the one faili
 ### Full pass
 - This handoff's conventions (printed by main's dispatcher, still the 2026-10-20 rule) asked for one `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP; run at f8557cfc, exit 0, 3 min 46 s on 16 CPUs. Every hook Passed (validate-script-tests ran every suite: the branch touches the runner, the mapper and the hook config) except adapter contract, black, flake8, pylint: no files to check.
 - AGENTS.md, CLAUDE.md, docs/design.md, merge_pr.sh, .github/workflows untouched (`git diff --stat origin/main...HEAD` lists none of them).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-16 12:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-465 at `ecc3ca00`
+**Base**: origin/main
+**Depth**: Deep (reason: 13 files, about 830 changed lines; .pre-commit-config.yaml, skill and knowledge files are override triggers)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Reviewers: static analysis (shellcheck, yamllint) clean; governance, plan drift, Claude adversarial (fresh subagent) ran; Gemini (agy) and Codex completed (EXIT=0, short but substantive). Suites run here on ecc3ca00: test_run_script_tests.sh 170/0, test_script_tests_hook_scope.sh 333/0, test_dispatch_phase.sh 232/0, test_skill_paths.sh 154/0, test_checkpoint_269.sh 43/0.
+
+Plan drift, suites_for_files.sh leaf change: accepted on its merits. Old and new mapper --dump on this branch's tree: 858 closure edges drop, none gained, and no file is left with no suite. No suite and no script runs another suite by name (grep: suite names appear only as fixture strings, comments, the runner and CI YAML), so no dropped edge was a real test of the file. A future suite that runs another suite would need a `# covers:` line; the new comment says so. List it in the pull request description as a mechanism decision the host may veto.
+
+Owner rule: the dispatcher text, run-issue step 4, address-findings steps 3 and 4 and host_standing_rules.md agree with each other and with the 2026-11-13 words. AGENTS.md and CLAUDE.md are untouched.
+
+### Findings
+- [ ] (must-fix) A host full-pass failure is reopened by a later fix pass: step 2 counts it when "the newest `## Checkpoint`" quotes it, but a changes-requested review after the fix routes to address-findings with no new checkpoint (dispatch_phase.sh next, Local Review (Pre-Push) row), so the second pass re-acts on the fixed failure and stamps `**Addressed**: host full pass` again; count it only while no `## Implementation` follows that checkpoint (or only when the handoff quotes it) — `.claude/skills/address-findings/SKILL.md:108`
+- [ ] (suggestion) The suite-naming rule finds no suite for 44 of 69 scripts, many of them named directly by suites (review_progress.sh 8, _worktree_helpers.sh 11, suites_for_files.sh 4, pr_start.py 3), so the pass runs none and a defect first shows at the host's pass after approval, costing another round; e.g. add the suites that name the changed script's file — `.agent/scripts/dispatch_phase.sh:619` (mirrored in run-issue step 4 and address-findings step 4)
+- [ ] (suggestion) No repeat cap on host `address` answers at `publish` after a failed full pass (orchestrator caps `rounds` only, SKILL.md:84-86); a pass that keeps failing loops publish, address, review indefinitely; say the second failure in a row goes to the owner — `.claude/skills/run-issue/SKILL.md:779`
+- [ ] (suggestion) Step 7 sequencing: say the pass runs before the checkpoint dialog is shown and a failure is answered by the host without asking; at `rounds` run it only once `publish` is the chosen answer, since an `address` answer changes the code anyway — `.claude/skills/run-issue/SKILL.md:745`
