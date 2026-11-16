@@ -739,12 +739,13 @@ has "$RI" "run-issue step 4: the hook rule skips the suites on every commit, run
     '`SKIP=validate-script-tests` on every commit, its progress entry'"'"'s commit included' \
     'It runs no full pre-commit pass.' \
     'The full pass is the host'"'"'s, once per pull request, when the `publish` checkpoint is raised (step 7); a failed pass runs again once its fix is approved.'
-has "$RI" "run-issue step 7: the host's full pass runs before the publish checkpoint is answered; a failure is answered address, quoted, never fixed by the host" \
-    'When `next` prints `action=checkpoint:publish`, the host runs every hook once over the branch, with no SKIP, before the checkpoint is answered' \
+has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog is shown, at rounds only once publish is chosen; a failure is answered address by the host, quoted, never fixed by the host" \
+    'When `next` prints `action=checkpoint:publish`, the host runs every hook once over the branch, with no SKIP, before the checkpoint dialog is shown: the host answers a failure itself, without asking the owner (below)' \
+    'At `checkpoint:rounds` the pass runs only once `publish` is the chosen answer, by the owner or by the host, and before that answer is recorded' \
+    '**It fails**: the host answers the checkpoint `address` and fixes nothing itself, without showing the dialog.' \
     '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
     'The pass runs on the exact head that will be pushed' \
     'a run that was cut off has not passed' \
-    '**It fails**: the host answers the checkpoint `address` and fixes nothing itself.' \
     'that skill'"'"'s step 2 takes it as its open finding'
 has "$RI" "run-issue step 9: after publish CI on each push is the check, confirmed before the merge checkpoint" \
     'After publish, CI on each push is the check on a fix pass'"'"'s commits' \

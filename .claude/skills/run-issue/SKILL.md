@@ -749,11 +749,14 @@ acme-widgets#57 (PR #61): Retry failed uploads — phase 5 of 8 (review-code); r
 **The host's full pass comes first** (a workspace issue; the Hook rule in
 step 4, owner-decided 2026-11-13). When `next` prints
 `action=checkpoint:publish`, the host runs every hook once over the
-branch, with no SKIP, before the checkpoint is answered, by the owner or
-by the host. `checkpoint:rounds` gets the same pass before its answer,
-since `publish` is one of its answers; a failure there is answered
-`address` as below, within `/orchestrator`'s limit on repeated host
-answers at `rounds`.
+branch, with no SKIP, before the checkpoint dialog is shown: the host
+answers a failure itself, without asking the owner (below), so only a
+branch that passed reaches the dialog. At `checkpoint:rounds` the pass
+runs only once `publish` is the chosen answer, by the owner or by the
+host, and before that answer is recorded: an `address` answer changes the
+code anyway, so a pass before it would be spent on a head that is never
+pushed. A failure there is recorded as the host's `address` instead, as
+below, the chosen `publish` and who chose it named in the entry's body.
 
 ```text
 cd <worktree> && <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)
@@ -780,10 +783,12 @@ or give the call a long timeout (600000 ms); a run that was cut off has
 not passed.
 
 - **It passes**: the checkpoint is answered as usual and recorded
-  (step 6); on `publish`, push and create the pull request (below).
+  (step 6), at `publish` through its dialog; on `publish`, push and
+  create the pull request (below).
 - **It fails**: the host answers the checkpoint `address` and fixes
-  nothing itself. The `## Checkpoint` entry (`**After**: publish`, or
-  `rounds` at that checkpoint, `**Decision**: address`, `**Decided-by**: host (the full pass failed;
+  nothing itself, without showing the dialog. The `## Checkpoint`
+  entry (`**After**: publish`, or `rounds` at that checkpoint,
+  `**Decision**: address`, `**Decided-by**: host (the full pass failed;
   the owner's 2026-11-13 rule sends a failure back as findings)`) quotes
   each failing hook or suite with its failing lines, and the
   `address-findings` handoff quotes the same; that skill's step 2 takes
