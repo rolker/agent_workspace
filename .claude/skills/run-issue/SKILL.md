@@ -801,12 +801,17 @@ not passed.
   fix pass's `## Implementation` routes to another `review-code --branch`
   round, and that round's approval raises `publish` again, with a fresh
   full pass.
-- **It fails again**: a second failure in a row goes to the owner. When
-  the newest earlier `## Checkpoint` at `publish` or `rounds` was the
-  host's `address` for a failed full pass (its `**Decided-by**` says so;
-  count on the timeline, as `/orchestrator` does) and this pass fails too,
-  the host does not answer: it shows the checkpoint dialog with the
-  failure quoted, and the answer is the owner's.
+- **It fails again**: a second failure in a row goes to the owner. "In a
+  row" is judged by the previous full-pass result, not by the checkpoints
+  between (a `rounds` `address` for review findings between two failed
+  passes does not hide the first). When this pass fails and the previous
+  full-pass result was a failure too (on the timeline: a full pass is
+  recorded only when it fails, in the checkpoint that quotes it, and one
+  that passes is followed by the push), the host does not answer: it
+  shows the checkpoint dialog with the failure quoted, and the answer is
+  the owner's. A host `address` answer to a failed full pass does not
+  count toward `/orchestrator`'s limit of two host `address` answers at
+  `rounds` in a row; that limit counts review rounds.
 
 `action=publish` (`--pr none` only, row 16): push the branch, then create
 the PR:

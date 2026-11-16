@@ -84,10 +84,10 @@ else waits for the owner, written `**Decided-by**: owner`.
 A host answer that repeats does not loop without the owner: after two
 host `retry` answers in a row for the same phase, two host `revise`
 answers at `plan` in a row, two host `address` answers at `rounds` in
-a row (each one a review round past the limit), or one host `address`
-answer to a failed full pass at `publish` or `rounds` (`run-issue` step 7)
-when the next full pass fails too, that checkpoint's next answer is the
-owner's.
+a row (each one a review round past the limit), or a full pass that fails
+when the previous full-pass result was a failure too (`run-issue` step 7;
+a host `address` answer to a failed full pass does not count toward the
+two at `rounds`), that checkpoint's next answer is the owner's.
 Count the `**Decided-by**: host` checkpoints on the timeline, not from
 memory, so a resumed session counts the same.
 
