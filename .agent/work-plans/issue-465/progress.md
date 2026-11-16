@@ -173,3 +173,30 @@ Stopped early on the coordinator's word (machine shutting down). Every plan step
 **Phase**: implement
 
 Re-dispatch the implement pass to finish the verification and write a complete entry.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-16 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-465 at `f8557cfc`
+
+Retry of the partial entry at 5c857dfd: verification finished, and the one failing suite fixed.
+
+### The merged tree
+- Since the old merge base, main changed none of the files this plan edits except one line in test_script_tests_hook_scope.sh (a ROOT_READERS row, PR 478). A grep of the tree for the old rule's wording ("intermediate commits", "about 7 when", "about 2 minutes", "once ... before its entry") finds only the new negative pin in test_skill_paths.sh. No rework needed.
+
+### The three hook-scope failures: this branch's, now fixed
+- `suites_for_files.sh -- .agent/scripts/register_project.sh` selects 13 suites (12 + test_checkpoint_269.sh) in the main checkout at d06cce95, 37 on this branch before the fix: the failure was this branch's.
+- Cause: the dispatcher's hook-rule text names `test_dispatch_phase.sh` and `test_skill_paths.sh`, and test_dispatch_phase.sh pins that text. The mapper expanded the closure through every referenced code file, suites included, so every suite that reads dispatch_phase.sh inherited test_skill_paths.sh's reach. Removing the two names in a scratch clone brought the count back to 13 (14 with the pin).
+- Fix (`f8557cfc`, mechanism decision for the host's veto): in suites_for_files.sh a suite reached through another file joins the closure but is not expanded (naming a suite does not run it; only the runner runs one by name, the required suite). Measured with `--dump`: on main's tree 283 closure edges drop, all reached through a suite named as data, and no file loses its last suite; on this branch register_project.sh is back to 13. Header comment and the script_reference.md row say so. New cases in test_run_script_tests.sh (case l, ast fixture): a script naming a suite and a suite reading that script; the leaf case fails on the old mapper (169 passed, 1 failed, checked in a scratch clone) and passes on the new.
+- Rejected: spelling the suite names in pieces in the dispatcher text so the mapper cannot see them; that hides the edge instead of fixing it.
+
+### Suites (each on its own, final tree content)
+- test_script_tests_hook_scope.sh: 333 passed, 0 failed
+- test_run_script_tests.sh: 170 passed, 0 failed
+- test_dispatch_phase.sh: 232 passed, 0 failed
+- test_skill_paths.sh: 154 passed, 0 failed
+
+### Full pass
+- This handoff's conventions (printed by main's dispatcher, still the 2026-10-20 rule) asked for one `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP; run at f8557cfc, exit 0, 3 min 46 s on 16 CPUs. Every hook Passed (validate-script-tests ran every suite: the branch touches the runner, the mapper and the hook config) except adapter contract, black, flake8, pylint: no files to check.
+- AGENTS.md, CLAUDE.md, docs/design.md, merge_pr.sh, .github/workflows untouched (`git diff --stat origin/main...HEAD` lists none of them).
