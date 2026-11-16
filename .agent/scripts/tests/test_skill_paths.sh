@@ -750,7 +750,7 @@ has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog
     '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
     'The pass runs on the exact head that will be pushed' \
     'a run that was cut off has not passed' \
-    'that skill'"'"'s step 2 takes it as its open finding'
+    'that skill'"'"'s step 2 takes it as its open finding until a fix pass'"'"'s `## Implementation` with `**Status**: complete` follows that checkpoint (a `partial` or `failed` one leaves it open, so a retry still fixes it).'
 has "$RI" "run-issue step 9: after publish CI on each push is the check, confirmed before the merge checkpoint" \
     'After publish, CI on each push is the check on a fix pass'"'"'s commits' \
     'confirmed before the merge checkpoint, never assumed'
@@ -774,9 +774,10 @@ has "$AF" "address-findings step 4: a pass runs the suites named after each chan
 # A fix pass's ## Implementation closes the quoted failure: the pass after
 # a changes-requested review of that fix (no new checkpoint) must not act
 # on it again (issue #465 pre-push review, must-fix).
-has "$AF" "address-findings: a host full-pass failure is open only while no ## Implementation follows the checkpoint that quotes it" \
-    'that failure is an open finding only while no `## Implementation` entry follows the checkpoint that quotes it.' \
+has "$AF" "address-findings: a host full-pass failure is open only while no complete ## Implementation follows the checkpoint that quotes it" \
+    'that failure is an open finding only while no `## Implementation` entry with `**Status**: complete` follows the checkpoint that quotes it.' \
     'does not act on it again or name it in `**Addressed**`, even when its handoff still quotes it.' \
+    'A `partial` or `failed` `## Implementation` leaves it open, so a retry still fixes it.' \
     '**`open` is empty and no host full-pass failure is open**'
 has "$WS_ROOT/.agent/knowledge/host_standing_rules.md" "host standing rules: the 2026-11-13 hook rule row with the owner's words" \
     'The host runs the full pre-commit pass once per pull request, when the `publish` checkpoint is raised and before the push, with no SKIP' \

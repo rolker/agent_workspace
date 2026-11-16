@@ -109,15 +109,18 @@ looked at) and `open`: each unchecked finding with its `index`, `text`, and
   `## Checkpoint` entry (`**After**: publish` or `rounds`, `**Decision**:
   address`), quotes a failure of the host's full pre-commit pass
   (`run-issue` step 7), that failure is an open finding only while no
-  `## Implementation` entry follows the checkpoint that quotes it. Once
-  one does, a fix pass has answered it: a later pass (a changes-requested
-  review of that fix routes here with no new checkpoint) does not act on
-  it again or name it in `**Addressed**`, even when its handoff still
-  quotes it. The headings in file order tell which: `grep -n '^## '
-  <progress.md>`. While open, it counts in addition to `open` and even
-  when `open` is empty (an approved review leaves it empty). Act on it in
-  step 3 like any other finding, with no box to check (skip 3.4 for it),
-  and list it under Actions in step 5.
+  `## Implementation` entry with `**Status**: complete` follows the
+  checkpoint that quotes it. Once one does, a fix pass has answered it: a
+  later pass (a changes-requested review of that fix routes here with no
+  new checkpoint) does not act on it again or name it in `**Addressed**`,
+  even when its handoff still quotes it. A `partial` or `failed`
+  `## Implementation` leaves it open, so a retry still fixes it. The
+  headings and statuses in file order tell which:
+  `grep -nE '^(## |\*\*Status\*\*)' <progress.md>`. While open, it
+  counts in addition to `open` and even when `open` is empty (an approved
+  review leaves it empty). Act on it in step 3 like any other finding,
+  with no box to check (skip 3.4 for it), and list it under Actions in
+  step 5.
 - **`open` is empty and no host full-pass failure is open** — report
   "nothing to address — the latest review has no open actions" and exit
   without a commit.
