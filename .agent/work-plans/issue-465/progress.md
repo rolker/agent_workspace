@@ -353,3 +353,13 @@ Rounds 1 and 2 each had one must-fix and three suggestions; all eight are ticked
 - [ ] (suggestion, Local Review (Pre-Push) round 3 @ `035cb089`, note below its threshold; already in the PR's Known limits) "In a row" reads back to the newest recorded full-pass failure with no bound, and a passing pass leaves no record, so on an issue delivered in several pull requests (this one is "Part of #465") or after a restart an earlier failure counts as "previous" and a first failure goes to the owner instead of the host. Errs toward asking, not toward a silent pass, but it costs him a question the rule meant the host to answer. Five-minute fix: a `publish` decision at `checkpoint:publish` is only reached after a pass that passed (step 7, lines 751-759, 785-787), so say in step 7's "It fails again" bullet and the orchestrator clause that a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result (the push ended that run), and pin it in test_skill_paths.sh — `.claude/skills/run-issue/SKILL.md`, `.claude/skills/orchestrator/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 13:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (one open suggestion, valid, with a five-minute text fix the triage spells out; fixing it now costs one fix pass and a re-check in the background, leaving it costs the owner a question the rule meant the host to answer)
+**After**: findings
+**Decision**: address
+
+Address the open finding: a failure followed by a `## Checkpoint` with `**Decision**: publish` is not "the previous full-pass result" (run-issue step 7 "It fails again", the orchestrator clause, a pin in test_skill_paths.sh).
