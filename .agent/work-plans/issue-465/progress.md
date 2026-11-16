@@ -415,3 +415,20 @@ The triage finding is closed: run-issue step 7 and the orchestrator clause carry
 ### Suites (each on its own with bash, from the worktree, on the final content)
 - test_skill_paths.sh: 160 passed, 0 failed (skill text and a changed suite; no script changed)
 - Commit used `SKIP=validate-script-tests`, no `--no-verify`; CI on the push is the check.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-16 13:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #490 at `895e46a`
+**Depth**: Deep (reason: whole-diff classification; fix re-review scoped by the handoff to f65693d3..895e46a, the code change c57d992b, against the Local Review at `f65693d`)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: run-issue step 7's "It fails again" bullet and its pins in test_skill_paths.sh; the rest of the diff is appended progress.md entries, no earlier entry edited. Cross-model reviewers: skipped (fix re-review, per handoff); Claude adversarial not dispatched for this narrow check. Checks: test_skill_paths.sh 160 passed, 0 failed (run with bash on 895e46a); shellcheck (via pre-commit) passed on test_skill_paths.sh.
+
+The previous finding is closed: "reached only after a pass that passed, or on the owner's own say after a failure" is true (the dispatcher records `publish` at `publish`/`rounds` only from a passing pass or the owner's answer to a second failure, and step 10 pushes at publish whether or not a pull request exists). The rewritten bullet holds on every path checked: host `address` after a first failure (an `**After**: publish` entry quoting it); a review-findings `address` at `rounds` between two failures (no quote, not `publish`, so not a pass entry, and the first failure stays the previous result); a passing pass answered `address` (no quote, so a pass); the owner's `publish` (quote but `publish`, so not a failure, and the push follows), `stop` or `address` after a second failure (quote and not `publish`, so still a failure; address-findings step 2 keys on the entry, not on `**Decided-by**`, so his `address` is found); `rounds` with `publish` chosen, passing (`publish` entry) or failing (`address` quoting it); a `restart` (its entry is a pass entry only at `publish`/`rounds`, and then quotes a failure exactly when the last pass failed); a resumed session (all read from the timeline; a pass with no answering entry simply runs again). The orchestrator repeat-limit clause carries the same rule and does not contradict it. Pins match the text.
+
+### Findings
+- [ ] (suggestion) Step 7's opening paragraph states the host-answers rule with no second-failure exception, and two of its statements are false on that path: "so only a branch that passed reaches the dialog" (a second failure in a row is shown in the dialog, failure quoted, per "It fails again") and "A failure there is recorded as the host's `address` instead" at `rounds` (a second failure there is the owner's answer). The "(below)" and "as below" pointers lead to the exception but do not make either clause true; say "a second failure in a row excepted" or similar, and update the pin at test_skill_paths.sh:746 if its text changes — `.claude/skills/run-issue/SKILL.md:752-759`
