@@ -376,3 +376,15 @@ test_resolve_work_plans_dir 21/21 — all green.
 **Mode**: report-only
 **Scope**: workspace
 **Conditions**: latest Local Review entry is at `6737065`, not the PR head `1b5ff2d` (stale review)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Records the owner's merges of the earlier parts, made before this timeline kept merge answers: pull requests 266 (part 1, merged 2026-09-16), 273 (part 2, merged 2026-09-17) and 326 (part 3, delivered under issue 317, merged 2026-09-23), all shown as merged on GitHub. The host asked on 2026-11-16: "May I record on the timeline that you merged parts 1 to 3 of issue 265, so the drive can move on to planning part 4? (yes / no)". The owner answered: "yes".
+
+His direction for part 4, given the same day when he started this drive: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
