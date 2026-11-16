@@ -500,3 +500,94 @@ The re-plan carries the review's findings 2 to 7 and suggestions S1 to S5 as bin
 **Plan**: `.agent/work-plans/issue-265/plan.md` at `bb27a842`
 
 Revision 4, part 4 as one pull request (`Closes #265`, `Part of #295`), rebuilt from the issue 295 plan's B and C section re-verified against the tree: the `project/`, `projects/` and worktree fallbacks go, and so does the reading of per-project `.sh` files and the shared `project_config.sh`; eight commits by shape (the last is the held AGENTS.md text); stale-shape report, named refusal tests, the 454 carry-overs, after-merge machine steps kept separate. Nothing is deleted on any machine.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-16 13:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #265 — Step 5: hosted projects under projects/ with project-rooted sessions and per-project CLAUDE.md
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `bb27a842`
+**Branch**: `feature/issue-265`
+
+Second review, of revision 4. Judged against the source on this branch (main `d06cce95` plus the plan), the issue 295 plan's B and C section, the first review and the host Checkpoint, and this machine's main checkout (`.agent/projects.local`, `.agent/projects.d/`, `.agent/project_config.sh`, `project`, `projects/`; read only, nothing changed). Verdict ready means: no finding needs a re-plan; the six must-fix items below are bounded instructions the implement handoff carries.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request rebuilt from the 295 plan's B and C, `Closes #265`, `Part of #295`; about 55 files. The stated split point is not yet coherent (N4), fixed by moving three items between commits. |
+| Issue alignment | Good | Serves line, as checked: "Goals 'Light touch on projects' and 'Flexibility' (README Workspace goals); design sections `docs/design.md#sessions-and-roots`, `docs/design.md#registry-and-adapters` and `docs/design.md#worktrees`." Correct. First-review findings 1 to 8 and S1 to S5 are all answered (table below). |
+| File targeting | Good | Every reader of the old shapes found by grep on this branch is in the work list (`adapter`, both types, the worktree scripts, `merge_pr`, `gh_create_*`, `pr_status`, `discover_governance`, `configure_git_identity`, `session_root`, `dashboard`, `setup.sh`, `lib/workspace.py`, the two skills). One swallowed error the C1 contract change makes silent: `merge_pr.sh:637` (S6). |
+| Consequences | Needs work | Removing the `.gitignore` lines makes the main checkout dirty on this machine and stops `make sync` syncing the workspace (N1). `make install` for the single-repository project goes silent at the moment of use, and the planned notices do not cover it (N2). The shared-file per-key report would give false advice for the two ROS instances (N3). |
+| Principle alignment | Good | "Fail loudly": met once N2 and N3 are carried. "Test what breaks": named refusal tests per script, with a `project/` symlink present. "Keep one current design": sections, register rows, Table 2 rows and a change-log row named. |
+| ADR compliance | Good | ADR-0011: the `sync` constant is acceptable as written (point 3 below). ADR-0016 decision 1 respected by the warning; N1 is the one place the plan works against it. ADR-0003: synthetic fixtures, names only in the after-merge record. No ADR edited (Q-ADR stays the owner's). |
+| ROS conventions | N/A | Workspace plan. |
+
+### First review, item by item (checked in the plan text and against the tree)
+
+| Item | Closed? | Evidence |
+|---|---|---|
+| 1 scope | Closed | Restarted from the 295 plan's B and C; `.sh` and shared-config reading in (C4); `Closes #265`. |
+| 2 machine consequence | Closed | Context paragraph names each no-name call site (verified: `_worktree_helpers.sh:191`, `session_root.sh:204`, `worktree_create.sh:515`, `adapter:212`/258, `merge_pr.sh:999`/1312, `gh_create_*` 144/172, `pr_status.sh:40`, `discover_governance.sh:127`); adapter test from inside the workspace with a `project/` symlink and three registered. |
+| 3 `sync` | Closed | Constant to `single_project`; `sync.py` with no `--project-root` is the workspace-only branch (verified `sync.py` 167-210); fresh-clone (d), (f) unchanged. N1 affects whether that sync actually syncs on this machine. |
+| 4 warning | Closed | Only an unowned directory under `projects/`; registered in-tree roots silent and tested. |
+| 5 missed sites | Closed | All sites listed; grep check in C7, plus an exact symbol grep. |
+| 6 F1, F2 | Closed | C6. |
+| 7 tests | Closed | Test plan table, one row per script. |
+| 8 closing | Closed | `Closes #265` (Checkpoint). Registering is "no tracking issue" in the plan, but the Direction row for #433 covers the Rolling instance on the second machine (S7). |
+| S1 split by shape | Partly | Split by shape adopted, but the C1/C2/C3 contents do not yet match it (N4). |
+| S2 remove resolves owners first | Closed | C2. |
+| S3 neutral fixture names | Closed | Test plan. |
+| S4 overlaps | Closed | Overlap table matches `git diff --stat main...` for 465, 477 (PR 479 open) and 429 (empty). |
+| S5 skill reworded only | Closed | Q5 parked. |
+
+### Findings
+
+- **N1 [Consequences] must-fix, bounded: keep the five `.gitignore` lines.** On this machine, removing them makes the main checkout show `?? project`, `?? projects/` and `?? .agent/project_config.sh` (`git check-ignore` today attributes them to `.gitignore` lines 5, 10 and 48). `make sync` reaches `single_project/sync.py`, whose `sync_repo` skips any repository where `git status --porcelain` is non-empty (`sync.py:50-74`, untracked files count), so `make sync` prints "Skipping: Uncommitted changes detected." for the workspace, then "No project was synced", then "Sync complete": nothing is synced, the very exception C3 keeps. `dashboard.sh:250` and 318 report "uncommitted changes" too. This lasts until machine steps 6 and 7 run, and for ever if the owner keeps the clones (step 5 is "if the clones go"), and on any machine with a root registered under `<ws>/projects/`, which ADR-0016 decision 1 allows and the plan's own C5 rule keeps silent. `merge_pr.sh`'s `git pull --ff-only` (2470) is not affected. Instruction: C7 keeps the lines, with the comment reworded to say these are retired shapes, still ignored so a machine that keeps them stays clean, and that the stale-shape report names them. Drop the Decisions bullet and the `.gitignore` part of the C7 grep expectation accordingly. (Listed for the owner's veto: it reverses one line of the 295 plan, a mechanism choice.)
+
+- **N2 [Consequences] must-fix, bounded: make the lost install command loud at `make install`, not only in `make validate`.** After C4, `make install PROJECT=gz4d`-shaped calls (settings file without `install`, shared file setting `INSTALL_CMD`) print "INSTALL_CMD not set — nothing to install (this is fine for most projects)." and exit 0 (`single_project/adapter.sh:204-207`; `ros2_colcon/adapter.sh:1636-1638` says the same). C5's adapter NOTE fires only for a `<name>.sh`, not for the shared file, and `make validate`/`dashboard` run only on demand (no hook or session start runs them). Instruction: (a) the adapter's stderr NOTE also fires when `.agent/project_config.sh` exists and, by N3's rule, applies to the active project, naming each key it sets that the settings file lacks and the exact `project_setting.sh set` command; (b) `install` with no `install` key in that case exits non-zero with that text instead of "nothing to install" (the stale file is detected, not read for a value). Test both in `test_adapter.sh`. And see Q-PRE: machine steps 1 to 3 change nothing under today's code (the settings file and the registry `distro=` win over both old files; the bootstrap single-source check runs only on the manifest route, `ros2_colcon/adapter.sh:715`, and both instances are on the bootstrap route), so they can run before the merge and close the window entirely.
+
+- **N3 [Consequences] must-fix, bounded: the per-key report must follow today's resolution order.** Today the shared `.agent/project_config.sh` is read only for a project with no `.agent/projects.d/<name>.sh` (`project_command_source`, `_single_project_resolve_cmd`, `_rc_config_file`, ros2 `adapter_install`). C5 as written reports "per registered project and key", excluding only `build`/`test` for ros2_colcon. On this machine both ROS instances have a `<name>.sh`, so the shared file never applied to them, yet the report would say "`.agent/project_config.sh` sets INSTALL_CMD, which `.agent/projects.d/p11-jazzy` lacks: `project_setting.sh set p11-jazzy install=<command>`", and following it would give a ROS instance the other project's `cmake --install` line. Instruction: the shared file is reported only for projects without a `<name>.sh`; a `<name>.sh` gets its own per-key lines, each with the right remedy: `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD`/`MANIFEST_BOOTSTRAP_URL` via `project_setting.sh set` (key names `build test install bootstrap_url`), `ROS_DISTRO` via `distro=<v>` on the registry line by hand and only when neither the registry nor the manifest declares one (`project_setting.sh` has no `distro` key: `_PROJECT_FILE_KEYS`, `_project_registry.sh:727`), `ROS_ROOT_DIR` via the environment. The plan's generic text "move its settings with `project_setting.sh set`" is wrong for `ROS_DISTRO`, the one load-bearing value in `p11-jazzy.sh`. Add a test: a `<name>.sh` beside a shared file with `INSTALL_CMD` reports nothing from the shared file for that project. Keep a reader for the old files for this report (C4 deletes `_project_config_value` "if nothing else uses it"; C5 then needs it or a Python equivalent; say which).
+
+- **N4 [Scope] must-fix, bounded: move three items so each commit, and the stated split, leaves the suites green.** (a) C1 changes `registry_worktree_dir` to refuse an unknown name, but `wt_project_base` (`_worktree_helpers.sh:76`), `wt_legacy_worktree_dirs` (133) and `wt_transition_project_base` (149) rely on its `<ws>/worktrees/project/<name>` fallback until C2 deletes them; `test_project_registry.sh` 1183 ("legacy fallback") and 1409 ("an unregistered project (legacy project/ symlink only) still worktrees under `<ws>/worktrees/project/<repo>/`") fail at C1. Move that refusal to C2. (b) C1's `registry_resolve_project_arg` refusal breaks the legacy `--project <unregistered>` paths of `worktree_enter.sh:200` and `worktree_remove.sh:204` before C2 removes them; move it to C2. (c) C2 removes the unregistered worktree key (`worktree_create.sh` 561, 771-776), but the `project/` branch that feeds it (`worktree_create.sh:515-516`), `wt_resolve_project_repo_root` step 2 (`_worktree_helpers.sh:191`) and `worktree_enter.sh:346-347` stay until C3, so between C2 and C3 (and in the first pull request of a split) a `project/` checkout leads into a removed path. Move those three into C2, so C2 is "the worktree scripts are registry-only" and C3 is the remaining `project/` readers. With that, C1+C2 versus C3 to C7 is a coherent cut.
+
+- **N5 [Principle alignment, Verify before claiming] must-fix, bounded: the held AGENTS.md text says `make build`, `make test` with no project.** After C3, `make build` and `make test` from the workspace with no `PROJECT=` refuse (the plan's own fresh-clone (g)), so the new Build & Test sentence "then `make build`, `make test` ..." is false as written; it should read `make build PROJECT=<name>`, `make test PROJECT=<name>`. Also "Set a registered project's build and test commands" is true only for types that use them: for `ros2_colcon`, colcon owns build and test (`registration.conf`, `unused_settings`); a clause saying so, or "a single-repository project's", keeps it true. The other three edits are true of the code after the change: the 200-line budget holds (199 + 1; `check_agents_md_budget.sh` LIMIT=200, "at most"); "git and a hosting service are optional" matches the 2026-11-12 decision and `test_register_project.sh:354` ("no remote: supported"); the repo-ownership paragraph is true, with the edge that a root registered inside the workspace tree is a separate folder nested in it.
+
+- **N6 [Consequences] must-fix, bounded: stale step reference in the machine steps.** "88 repositories under the two ROS clones were checked clean ...; re-check before step 3" carries the 295 plan's numbering: step 3 is now the bootstrap URLs; the deletion is step 6. Instruction: "re-check before step 6". Also step 2 (distro) is pointless if step 5 removes the entries, like step 3; say so.
+
+### Suggestions
+
+- **S6 [File targeting]** `merge_pr.sh:637` `registry_resolve_project_arg ... 2>/dev/null || echo "$PROJECT_ARG"` swallows the refusal C1/C2 introduces. The resolution block at 312-333 exits on an unresolvable `--project` only when `--type project` is explicit; otherwise an unregistered name reaches 637 and is compared raw, matching nothing, silently. Make it refuse there (or validate `--project` up front whatever the type), test it, and add the `registry_resolve_project_arg .* || echo` pattern to the C7 exact grep.
+- **S7 [Issue alignment]** The plan says registering the project11 instances has "no tracking issue"; the Direction row "The Rolling instance builds on the second machine ... (#433)" tracks it (#433 open). Cite #433 in the Consequences row and in row 181's tail instead of "by its own agent".
+- **S8 [Consequences]** Keep `project_config_extra_vars` for the stale report: a `.sh` or shared file that exports a variable beyond the read set (a PATH or SDK variable) should be named when its commands are moved, as `register_project.sh`'s `EXTRA_WARN` does today. None of this machine's files do, so this is for other machines.
+- **S9 [Consequences]** Roadmap: `update_roadmap.sh` (called by `merge_pr.sh:742` at merge) marks rows 181 and 202 `done` itself (issue column `#265`), so C7's hand edit is consistent and becomes a no-op then. Deleting row 86 is safe for `sitrep_checks.sh` (a table with fewer rows; the suites that read a roadmap use synthetic ones). Run `sitrep_checks.sh` on the edited roadmap once and quote the deferral lines in the Implementation entry.
+
+### Points the host asked about
+
+- **2, silent cases after C4 on a machine with only the old files.** Build and test of the single-repository project: unaffected (settings file has both). Install: silent today as planned (N2). `ROS_DISTRO` of the jazzy instance: loud ("cannot resolve the ROS distro"), but the NOTE's remedy text is wrong (N3). Bootstrap URLs: needed only when `configs/manifest` is missing; both clones have one; the failure is loud and names `project_setting.sh`. `ROS_ROOT_DIR`: neither file sets it here. Order: steps 1 to 3 are harmless under today's code, so the safe order is steps 1 to 3 before the merge (Q-PRE), then merge, then 4 to 8; with N2 the window is loud even if they run after.
+- **3, the `sync` constant against ADR-0011.** Acceptable as written. ADR-0011's own dispatcher rule (lines 52-54) says the dispatcher resolves the type "(default: `single_project`)"; the "never branch on project type" rule (57-59) binds workflow scripts and skills, not the dispatcher. The constant keeps that default without the config read. Moving `sync_repo`/`sync_gitbug` to `lib/` now would be redone by the 295 plan's later pull request, which adds a `workspace` adapter type whose `sync` is the natural home; the constant's comment should name that pull request as its replacement. No owner decision on the ADR is needed beyond Q-ADR.
+- **4, `.gitignore`.** N1. No script requires a clean main checkout to run, but `make sync` skips a dirty one and the dashboard flags it. `git clean` is denied to agents (`.claude/settings.json` deny list).
+- **5, AGENTS.md.** N5.
+- **6, roadmap.** S9 and S7: consistent at merge; parsing unaffected.
+- **7, size and order.** About 55 files, eight commits, implementable; N4 fixes the order.
+
+### For the owner (goal, scope, outward or hard to undo)
+
+- **Q-PRE** Moving three settings on your first machine before the merge instead of after it: the single-repository project's install command into its settings file, `distro=jazzy` on the jazzy instance's registry line, and the two bootstrap URLs into the instances' settings files. Under today's code these change nothing (the new values win over the old files and are the same values); done before the merge, `make install` for that project never goes silent. May the host do them at the merge checkpoint, before merging? (Changes: the order of the machine steps only; undo is deleting three settings.)
+- **Q-ADR, Q-AGENTS, Q-ROADMAP, Q5** stand as the plan words them; Q-AGENTS should be shown with N5's correction.
+
+### Summary
+
+Revision 4 closes every first-review finding and is ready to implement. Six bounded must-fix instructions ride the implement handoff: keep the `.gitignore` lines (N1), make the lost install loud at `make install` (N2), report the shared file only where it applied today, with the right remedy per key (N3), move three items between commits so each commit and the split point stay green (N4), correct the held AGENTS.md Build & Test sentence (N5), and fix a stale step number (N6). None needs a re-plan; Q-PRE is the one new owner question.
+
+### Recommended Actions
+
+- [ ] Keep the five `.gitignore` lines, comment reworded (N1)
+- [ ] Adapter NOTE for the shared file and a non-zero `install` when a stale file sets `INSTALL_CMD` the settings file lacks; tests (N2)
+- [ ] Per-key report follows today's resolution order; per-key remedies for `<name>.sh`, `ROS_DISTRO` via the registry line; test (N3)
+- [ ] Move `registry_worktree_dir` and `registry_resolve_project_arg` refusals, and the worktree scripts' `project/` branches, into C2 (N4)
+- [ ] AGENTS.md Build & Test: `PROJECT=<name>`, type clause (N5)
+- [ ] "re-check before step 6" (N6)
+- [ ] Ask Q-PRE at the merge checkpoint
