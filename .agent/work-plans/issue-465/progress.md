@@ -380,3 +380,21 @@ Address the open finding: a failure followed by a `## Checkpoint` with `**Decisi
 ### Suites (each on its own with bash, from the worktree, on the final content)
 - test_skill_paths.sh: 160 passed, 0 failed (skill text and a changed suite; no script changed, so no other suite by the branch's rule)
 - Commits used `SKIP=validate-script-tests`, no `--no-verify`; after publish, CI on the push is the check.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-16 13:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adf2b4e2a1bdf0477, resume 3 of 3)
+**Verdict**: changes-requested
+
+**PR**: #490 at `f65693d`
+**Depth**: Deep (reason: whole-diff classification; fix re-review scoped by the handoff to 035cb089..f65693d and the triage finding at 444c9b9e)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the code change e125a7fe (run-issue step 7 "It fails again", the orchestrator repeat-limit clause, one pin in test_skill_paths.sh); the rest of the diff is appended progress.md entries, no earlier entry edited. Cross-model reviewers: skipped (fix re-review, per handoff); Claude adversarial not dispatched for this narrow check. Suites on f65693d: test_skill_paths.sh 160/0, test_checkpoint_269.sh 43/0.
+
+The triage finding is closed: run-issue step 7 and the orchestrator clause carry the same rule (a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result), and it is pinned. On the host's paths it holds: at `publish` the dialog is shown only after a pass that passed, and at `rounds` the pass runs once `publish` is chosen and a failure is recorded as `address`. A pull request delivered earlier in the same issue ended with such a decision, so its failures no longer count. The two long lines are rewrapped; nothing else changed.
+
+### Findings
+- [ ] (suggestion) "that decision is recorded only after a pass that passed" is not true on one path: at a second failure in a row the owner answers the dialog, and `publish` is one of his answers (orchestrator table, `publish`/`rounds` row), so a `publish` can follow a failed pass. The rule's outcome still holds there (the push ended that run); say "after a pass that passed, or on the owner's own say after a failure" — `.claude/skills/run-issue/SKILL.md:812`
