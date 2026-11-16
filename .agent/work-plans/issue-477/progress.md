@@ -355,7 +355,7 @@ The owner's two approved texts (roadmap Path 3 paragraph, README bullet) are as 
 
 ### Findings
 - [x] (suggestion, Gemini via Local Review (Pre-Push) R1 @ `92229a53`, covers `e90d8f17` via bookkeeping) Valid, confirmed in the awk: a Serves line that names a goal and quotes "A safeguard has to earn its cost" in order to deny it reads Path 3, since the match is plain `index()` after the `none` test. Cost is one wrong path word in the sit-rep — `.claude/skills/sitrep/SKILL.md:423` (accepted, no fix: weighed in the second Plan Review and not carried by the host at the 2026-11-13 15:03 Checkpoint; the PR body's Reviews paragraph says so)
-- [ ] (suggestion, triage) `docs/design.md` line 105 still says the roadmap "names the two paths", false once this merges. The deferral is recorded in plan.md and the PR body's Known limits, but issue 477's list of later pull requests does not carry it, so the design.md pull request it is left for may not pick it up. Fix: add it to issue 477 (a comment naming the later design.md pull request), no code change here — `docs/design.md:105`
+- [x] (suggestion, triage) `docs/design.md` line 105 still says the roadmap "names the two paths", false once this merges. The deferral is recorded in plan.md and the PR body's Known limits, but issue 477's list of later pull requests does not carry it, so the design.md pull request it is left for may not pick it up. Fix: add it to issue 477 (a comment naming the later design.md pull request), no code change here — `docs/design.md:105` (deferred: left for the later design.md pull request under this issue, as the plan and its review decided; now tracked by a comment on issue 477 (host, 2026-11-16))
 
 ### False positives
 - None.
