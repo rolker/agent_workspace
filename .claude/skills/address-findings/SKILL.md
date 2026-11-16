@@ -199,9 +199,11 @@ copy (never `$WS_ROOT`'s, which is the main checkout's): for each script
 you changed, its `test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is
 the script's file name without a leading `_` and without `.sh` or `.py`),
 and every suite that names the script's file, which one grep lists:
-`grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`; `test_skill_paths.sh` when you changed
-skill or knowledge text; and any suite file you changed. A changed script with no suite of its own gets
-none; name it in step 5's entry. If a suite fails, fix the cause (a commit
+`grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`;
+`test_skill_paths.sh` when you changed skill or knowledge text; and any
+suite file you changed. A suite that reaches a script only through
+another script or an import is left to the host's full pass. A changed
+script with no suite of its own gets none; name it in step 5's entry. If a suite fails, fix the cause (a commit
 of its own) and run that suite again before step 5. Step 5's entry names
 each suite you ran with its result line and says the full pass was left
 to the host. A run of every suite takes about 4 minutes at 4 jobs (240 s),

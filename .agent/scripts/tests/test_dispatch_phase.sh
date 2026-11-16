@@ -957,6 +957,7 @@ for sk in implement address-findings; do
         && "$conv" == *"Run only the suites that test what you changed, each on its own with \`bash .agent/scripts/tests/<suite>\`"* \
         && "$conv" == *"its \`test_<name>.sh\` and any \`test_<name>_*.sh\` (\`<name>\` is the script's file name without a leading \`_\` and without \`.sh\` or \`.py\`), and every suite that names the script's file, which one grep lists: \`grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh\`"* \
         && "$conv" == *"\`test_skill_paths.sh\` when you changed text under \`.claude/skills/\` or \`.agent/knowledge/\`"* \
+        && "$conv" == *"A suite that reaches a script only through another script or an import is left to the host's full pass."* \
         && "$conv" == *"A changed script with no such suite gets none: name it in your entry. Any other changed file (documentation, configuration) gets none either; the host's pass covers both."* \
         && "$conv" == *"In your entry, name each suite you ran with its result line, and say the full pass was left to the host."* \
         && "$conv" == *"the host runs the full pass once before the push, and CI checks every push"* \

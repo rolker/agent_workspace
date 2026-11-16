@@ -476,8 +476,8 @@ name without a leading `_` and without `.sh` or `.py`), and every suite that
 names the script's file, which one grep lists: `grep -lwF <file name>
 <worktree>/.agent/scripts/tests/test_*.sh`;
 `test_skill_paths.sh` when it changed skill or knowledge text; and any suite
-file it changed. Its entry
-names each suite with its result line, names a changed script that has no
+file it changed. A suite that reaches a script only through another script
+or an import is left to the host's full pass. Its entry names each suite with its result line, names a changed script that has no
 suite of its own, and says the full pass was left to the host. The full
 pass is the host's, once per pull request, when the `publish` checkpoint is
 raised (step 7); a failed pass runs again once its fix is approved.

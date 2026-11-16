@@ -775,6 +775,9 @@ has "$AF" "address-findings: a quoted host full-pass failure is an open finding;
 SUITE_RULE='its `test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is the script'"'"'s file name without a leading `_` and without `.sh` or `.py`), and every suite that names the script'"'"'s file, which one grep lists: `grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`'
 has "$RI" "run-issue step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
 has "$AF" "address-findings step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
+INDIRECT_RULE='A suite that reaches a script only through another script or an import is left to the host'"'"'s full pass.'
+has "$RI" "run-issue step 4: a suite reaching a script only indirectly is the host pass's" "$INDIRECT_RULE"
+has "$AF" "address-findings step 4: a suite reaching a script only indirectly is the host pass's" "$INDIRECT_RULE"
 # A fix pass's ## Implementation closes the quoted failure: the pass after
 # a changes-requested review of that fix (no new checkpoint) must not act
 # on it again (issue #465 pre-push review, must-fix).
