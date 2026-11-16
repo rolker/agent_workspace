@@ -336,3 +336,20 @@ Nothing new opened. Note, below the finding threshold: a passing full pass is no
 **Decision**: publish
 
 Publish the branch as a pull request and wait for the review sources, then triage. The merge is the owner's.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-16 13:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #490 at `30a4939`
+**Sources**: 4 (Local Review (Pre-Push) round 1 @ `ecc3ca00` and round 2 @ `fd40b9c4`, both stale and closed by later fix passes; Local Review (Pre-Push) round 3 @ `035cb089` (covers 30a4939 via bookkeeping: only progress.md changed since); CI rollup). Copilot absent: no review, no review request, no check-run on the PR (not a pass). No human reviews, no inline or conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Rounds 1 and 2 each had one must-fix and three suggestions; all eight are ticked and closed (Implementation entries at 6414f4ff and 82ead841, confirmed closed by round 3), and `review_progress.sh sources` returns no open local finding and no dropped entry at this head. Gemini (agy) and Codex ran in rounds 1 and 2; round 3 was a narrow convergence check without them. CI at 13:24: Validate Documentation, Validate Adapter Contract and ros-manifest tests pass in both workflow runs; Lint (pre-commit) still pending in both. The host's one full pre-commit pass (no SKIP) ran on f0f9f6ca, exit 0.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) round 3 @ `035cb089`, note below its threshold; already in the PR's Known limits) "In a row" reads back to the newest recorded full-pass failure with no bound, and a passing pass leaves no record, so on an issue delivered in several pull requests (this one is "Part of #465") or after a restart an earlier failure counts as "previous" and a first failure goes to the owner instead of the host. Errs toward asking, not toward a silent pass, but it costs him a question the rule meant the host to answer. Five-minute fix: a `publish` decision at `checkpoint:publish` is only reached after a pass that passed (step 7, lines 751-759, 785-787), so say in step 7's "It fails again" bullet and the orchestrator clause that a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result (the push ended that run), and pin it in test_skill_paths.sh — `.claude/skills/run-issue/SKILL.md`, `.claude/skills/orchestrator/SKILL.md`
+
+### False positives
