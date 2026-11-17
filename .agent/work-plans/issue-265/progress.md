@@ -926,3 +926,31 @@ Reviewers: a fresh Claude adversarial specialist, given one job (find destructiv
 **Decision**: address
 
 Read: the round 4 `## Local Review (Pre-Push)` entry at `a3714229` (2 must-fix, 3 suggestions, verdict changes-requested, ship signal recommended). M1 is removal advice that can still lose work (detached-HEAD commits, gitignored files, stashes not covered by the check-first text; wrong "recreate it under its project's root" for a `.workspace-worktrees/` worktree). M2 is a comment in `configure_git_identity.sh` made false by the round 3 fix. The owner's answer at the previous rounds checkpoint was "one more fix pass, then a narrow check"; he said afterwards he is overloaded with other agents and wants only this job kept moving. A mechanism decision, listed for his veto in the next hand-back: fix M1, M2 and suggestions 1 and 2 in one small pass, then a diff-only confirmation of that pass before publishing; suggestion 3 (pre-existing, `dispatch_phase.sh` parent-root mapping) goes on issue 295 as a follow-up note.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 3 of 3)
+
+**Branch**: feature/issue-265 at `14e41a1f`
+**Addressed**: Local Review (Pre-Push) at `14f2f24c` (2026-11-17 12:06 -05:00)
+**Commits**: `6327c07b`, `a8ad1535`, `14e41a1f` (box checks)
+
+Fix round 4, scope set by the host's Checkpoint: M1, M2 and suggestions 1 and 2; suggestion 3 left open (follow-up noted on issue 295 by the host); round 3's suggestion 6 stays open as before. AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed; no push.
+
+The one check-first text, `CHECK_BEFORE_REMOVING` in `_project_registry.sh`, used by P5, the retired-worktree line (worktrees and plain clones) and all three `worktree_remove.sh` refusal hints, word for word:
+"after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
+
+### Actions
+- [x] M1, removal advice that could still lose work — `.agent/scripts/_project_registry.sh`, `.agent/scripts/worktree_remove.sh` (`6327c07b`). One shared text (above). The retired-worktree line drops "refuses one with uncommitted changes and keeps its branch", puts the check before removing a worktree too, and says where to recreate: "under its project's registered root with .agent/scripts/worktree_create.sh --type project" for `worktrees/project/`, "as a workspace worktree with .agent/scripts/worktree_create.sh --type workspace" for `.workspace-worktrees/`. Pinned word for word in `test_validate_workspace_stale.sh` (P5 for `project` and `projects/`, W2 for both locations, plus "keeps its branch" never printed) and in the worktree_remove test (both branches). The table header's P5 and W2 outcomes and its adversarial paragraph are updated; design.md's Retirement paragraph names the shared check.
+- [x] M2, configure_git_identity's comment — `.agent/scripts/configure_git_identity.sh` (`a8ad1535`). It now says a repository is a `.git` directory, or a `.git` file whose git dir is its common dir (`--separate-git-dir`); a linked worktree or submodule is not; the root's worktree dir is skipped by its path.
+- [x] S1, unquoted paths in printed commands — `.agent/scripts/_project_registry.sh`, `.agent/scripts/worktree_remove.sh` (`6327c07b`). `rm`, `rm -r` and `git -C` paths are printed with `printf %q`. Tests run the printed command as printed on paths with a space: a dangling `projects/my link` (removed), the package entry `pkg b` (removed, then the removal goes through), and `git -C <origins/pkg c> worktree prune` (git no longer lists the worktree).
+- [x] S2, no submodule test — `.agent/scripts/tests/test_commit_identity.sh` (`a8ad1535`). A registered superproject with a submodule: the superproject is configured, the submodule (`.git` file) is not.
+- [ ] S3, `resolve_worktree` and a parent root name — not changed: follow-up noted on issue 295 by the host.
+
+Pre-fix failure counts (the new tests against the scripts at `14e41a1f`'s parent): `test_validate_workspace_stale.sh` 7 (P5 ×2, W2 ×2 and "keeps its branch", P10 quoting ×2); `test_project_registry.sh` 1 failure, then the suite stopped at the next step (the advice it follows was not printed). The submodule test passes on the old code (the round-3 exclusion worked; it had no test).
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `a8ad1535`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 105 passed, 0 failed; test_discover_governance.sh 32 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_registry.sh 425 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 126 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. The full pre-commit pass is left to the host.
+
+Not verified: that `git log --all --not --remotes` lists a detached HEAD's commits in every git version (checked against git's documented `--all`, not reproduced here); the `%q` output for paths with characters other than a space (only a space is tested).
