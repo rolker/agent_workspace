@@ -120,11 +120,11 @@ Two things follow from the key being a path:
 | `type` | yes | As in a `.repos` file. The tools here are designed for `git`. |
 | `url` | yes | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
-| `absent` | no | `true` if the repo is not part of the system unless a distro says so. |
+| `absent` | no | `true` if the repo is not part of the system unless a distro says so. `false` if left out. |
 | `layer` | no | The layer the repo belongs to. The unnamed first layer if left out. |
 | `groups` | no | The groups the repo belongs to. |
 | `distros` | no | Per-distro differences from the default. |
-| `optional` | no | `true` if the system is still usable without this repo. |
+| `optional` | no | `true` if the system is still usable without this repo. `false` if left out. |
 
 ### Versions and distros
 
@@ -267,7 +267,8 @@ Open: whether a role should also be able to name single repos, or pick layers.
 
 ## Building on another manifest
 
-`base:` names one or more other manifests that this one builds on, each by its location.
+`base:` names the manifests this one builds on, each by its location. It is one location or
+a list of them.
 
 ```yaml
 base: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
@@ -286,8 +287,9 @@ These three forms are the ones every tool is expected to read:
 - An `http` or `https` URL of the file. Plain `http` gives no protection against the file
   being changed on the way, so it is for networks the person trusts.
 - A file in a git repo, given as a mapping with the repo's `url`, a `version` (a branch or
-  tag; the repo's default branch if left out) and the `path` of the file in the repo. Any URL
-  git can clone works, so a repo on a private server reached over ssh is named this way.
+  tag; the repo's default branch if left out) and the `path` of the file in the repo. The
+  `url` is any that is allowed for a repo, so a repo on a private server reached over ssh is
+  named this way.
 
 ```yaml
 base:
@@ -330,10 +332,11 @@ repositories:
 ```
 
 An empty block also drops any `absent: true` the earlier entry had under a distro. A later
+entry can undo an earlier `absent: true` or `optional: true` on the repo by giving `false`. A later
 entry that changes one distro gives the whole block, with the other distros repeated.
 
-A parent may itself build on other manifests. A chain that comes back to a manifest it has
-already read is an error.
+A parent may itself build on other manifests. A manifest that builds on itself, directly or
+through others, is an error. Two parents may share a parent.
 
 vcs2l is adding an `extends` key to `.repos` files (on its main branch at the time of
 writing) that does part of this: a file builds on other local files, and a later entry
@@ -397,18 +400,18 @@ refuses a manifest that fails one:
 
 - The file is loaded as data. Loading a manifest never runs code.
 - Everything lands inside the directory the system is set up in, at a place of its own.
-  - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is the
-    start of another key's path, so one repo is never cloned inside another.
+  - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is
+    another key followed by `/` and more, so one repo is never cloned inside another.
   - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`
     and `-`, starting with a letter.
   - A layer is not named `src`, `build`, `install` or `log`. Those names are used for the
     directories of the unnamed layer.
-- `git` is not handed anything that makes it run a program.
+- No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
-    read one as an option. The `path` of a location has no `..` in it.
-  - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, the `user@host:path`
-    form, or a path on the local disk. Others are refused; `git` has transports that run a
-    command.
+    read one as an option. The `path` of a location is relative and has no `..` in it.
+  - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the
+    `user@host:path` form, or an absolute path on the local disk. Anything else is refused,
+    and so is every `name::address` form; `git` has transports that run a command.
   - These apply to a repo and to a location named under `base:` alike.
 - The file has no invisible characters and none that change the direction of text. They can
   make a file read differently from what it does.

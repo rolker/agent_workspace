@@ -26,6 +26,7 @@ A system is set up in one directory. Each layer is a colcon workspace inside it.
 my_system/
   .repos-manifest/
     config.yaml      what init recorded
+    state.yaml       the version sync last put each repo on
     resolved/        the .repos files from the last resolve, and the layer order
   underlay/
     src/             the repos of the layer
@@ -229,7 +230,7 @@ way to look at a manifest before setting anything up.
 
 A manifest can build on others, and what a machine gets depends on the role, the distro, the
 extra groups and where repos are fetched from. `show` prints the result of all of that for
-a person to read, before anything is fetched:
+a person to read, before any repo is cloned:
 
 ```
 $ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
@@ -280,9 +281,7 @@ Each file starts with a comment that says which manifest, role and distro it cam
 
 ### sync
 
-1. Update the clones that manifests are read from, each on the branch it is on. That is the
-   clone `local_manifest` points into, and the clone of any parent manifest that is read
-   from the system directory.
+1. Update the clone that `local_manifest` points into, on the branch it is on.
 2. Resolve.
 3. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
    the repos that are missing, and update the ones that are there.
@@ -299,8 +298,13 @@ a time with `git`, because `vcs import` does not do what is wanted for them. Tes
 vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest's branch,
 and it refuses a repo whose URL has changed.
 
+Parents are read from where their locations say, each time. A parent at a relative path
+comes from the same clone as the manifest that names it, which step 1 has updated. A parent
+in another git repo or at a URL is fetched afresh.
+
 Sync does not discard work, and it tells a change in the manifest from a change a person
-made. It records the version it last put each repo on.
+made. It records the version it last put each repo on, in `.repos-manifest/state.yaml`. A
+repo it has no record for is treated as one a person has moved.
 
 - A repo that is still on that version follows the manifest: it is updated, and moved to a
   new version when the manifest names one.
@@ -320,7 +324,8 @@ access to.
 ### build
 
 For each layer in order, run `colcon build` in the layer's directory with the layers before
-it sourced. Then write `setup.bash` in the system directory. It sources the setup file of
+it sourced. Then write `setup.bash` in the system directory, or in the distro's directory
+when the system directory holds more than one distro. It sources the setup file of
 the last layer, in the manifest's order, that has been built, whichever layers this run
 built.
 
@@ -353,21 +358,27 @@ as optional, or present but no longer in the manifest.
 
 ### freeze
 
-Writes a manifest that records the exact commit of every repo the machine has. It is one
-complete manifest that builds on no other, for the one distro the machine has: everything
-the manifest in use and its parents say is merged in, the `distros:` list names only that
-distro, and each repo the machine has is given its commit as its `version` with no
-per-distro entries left to override it. Each `url` is the published one, not the place this
-machine fetched from.
+Writes a manifest that records the exact commit of every repo the machine has, for one
+distro. With more than one distro in the system directory it acts on one at a time, as
+`build` does.
+
+It is one complete manifest that builds on no other. Everything the manifest in use and its
+parents say is merged in, and then:
+
+- the `distros:` list names only this distro;
+- each repo the machine has is given its commit as its `version`, and loses its `absent` key
+  and its per-distro entries, so nothing overrides the commit;
+- a repo that is not part of the system on this distro is left out;
+- each `url` is the published one, not the place this machine fetched from.
 
 It is a record of what a machine ran, and `init` and `sync` accept it like any manifest, so
 the same state can be set up on another machine.
 
 It is kept simple, and has limits it states in its output:
 
-- Repos the machine does not have, because its role or distro leaves them out, keep the
-  versions the manifest named. A record that pins every repo is made on a machine that has
-  them all.
+- Repos the machine does not have, because its role leaves them out or because they were
+  skipped as optional, keep the versions the manifest named. A record that pins every repo
+  is made on a machine that has them all.
 - A commit that was never pushed cannot be fetched elsewhere. `freeze` names the repos with
   uncommitted changes or unpushed commits.
 - A machine set up from the record has each repo at a commit with no local branch. See
@@ -417,7 +428,8 @@ the other place. Two repos in a manifest with the same name and different owners
 be fetched this way, and `resolve` says so.
 
 The rule applies to every repo the manifest resolves to, whichever manifest in the chain its
-URL came from, and to the repo that holds the manifest. `status` shows where each repo was
+URL came from, to the repo that holds the manifest, and to a parent manifest that is named
+as a file in a git repo. `status` shows where each repo was
 fetched from.
 
 A machine that should run exactly what is published leaves `fetch_from` unset.

@@ -59,17 +59,17 @@ Specialists: governance, Claude adversarial, Gemini (complete). Codex failed (us
 Specialists: Claude adversarial, Gemini (complete). Codex failed (usage limit). Governance findings of round 1 checked inline (resolved). Static analysis: no profile for Markdown. Plan drift: no work plan.
 
 ### Findings
-- [ ] (must-fix) sync step 1 updates parent manifests' clones before the chain is known (gemini) — `tools/ros-manifest/docs/design.md:283`
-- [ ] (must-fix) "Any URL git can clone works" contradicts the transport rule (adversarial) — `tools/ros-manifest/docs/spec.md:289`
-- [ ] (must-fix) freeze leaves repo-level absent in place, so a repo present only by a distro entry is frozen as absent; a repo absent on the distro would come back (adversarial, gemini) — `tools/ros-manifest/docs/design.md:356`
-- [ ] (must-fix) A location's path may be absolute; the sentence that git is handed nothing that runs a program overstates (gemini) — `tools/ros-manifest/docs/spec.md:407`
-- [ ] (suggestion) Where sync records the last version is unstated; a repo with no record is undefined — `tools/ros-manifest/docs/design.md:302`
-- [ ] (suggestion) A local path as url does not exclude the name::address transport form; file:// neither listed nor refused — `tools/ros-manifest/docs/spec.md:409`
-- [ ] (suggestion) "No key is the start of another key's path" can be read as a string prefix — `tools/ros-manifest/docs/spec.md:400`
-- [ ] (suggestion) base is "one or more" manifests but the list form is never stated — `tools/ros-manifest/docs/spec.md:270`
-- [ ] (suggestion) A chain "that comes back to a manifest already read" also catches two parents sharing a parent — `tools/ros-manifest/docs/spec.md:335`
-- [ ] (suggestion) A later manifest cannot clear an inherited absent: true or optional: true — `tools/ros-manifest/docs/spec.md:123`
-- [ ] (suggestion) fetch_from does not cover a parent manifest given in the git form — `tools/ros-manifest/docs/design.md:418`
-- [ ] (suggestion) freeze and build's setup.bash are undefined for a system directory with several distros — `tools/ros-manifest/docs/design.md:357`
-- [ ] (suggestion) show "before anything is fetched" sits against the later paragraph on what it fetches — `tools/ros-manifest/docs/design.md:231`
-- [ ] (suggestion) Roadmap prose says each line has a check; most do not yet — `tools/ros-manifest/docs/roadmap.md:8`
+- [x] (must-fix) sync step 1 updates parent manifests' clones before the chain is known (gemini) — `tools/ros-manifest/docs/design.md:283`
+- [x] (must-fix) "Any URL git can clone works" contradicts the transport rule (adversarial) — `tools/ros-manifest/docs/spec.md:289`
+- [x] (must-fix) freeze leaves repo-level absent in place, so a repo present only by a distro entry is frozen as absent; a repo absent on the distro would come back (adversarial, gemini) — `tools/ros-manifest/docs/design.md:356`
+- [x] (must-fix) A location's path may be absolute; the sentence that git is handed nothing that runs a program overstates (gemini) — `tools/ros-manifest/docs/spec.md:407`
+- [x] (suggestion) Where sync records the last version is unstated; a repo with no record is undefined — `tools/ros-manifest/docs/design.md:302`
+- [x] (suggestion) A local path as url does not exclude the name::address transport form; file:// neither listed nor refused — `tools/ros-manifest/docs/spec.md:409`
+- [x] (suggestion) "No key is the start of another key's path" can be read as a string prefix — `tools/ros-manifest/docs/spec.md:400`
+- [x] (suggestion) base is "one or more" manifests but the list form is never stated — `tools/ros-manifest/docs/spec.md:270`
+- [x] (suggestion) A chain "that comes back to a manifest already read" also catches two parents sharing a parent — `tools/ros-manifest/docs/spec.md:335`
+- [x] (suggestion) A later manifest cannot clear an inherited absent: true or optional: true — `tools/ros-manifest/docs/spec.md:123`
+- [x] (suggestion) fetch_from does not cover a parent manifest given in the git form — `tools/ros-manifest/docs/design.md:418`
+- [x] (suggestion) freeze and build's setup.bash are undefined for a system directory with several distros — `tools/ros-manifest/docs/design.md:357`
+- [x] (suggestion) show "before anything is fetched" sits against the later paragraph on what it fetches — `tools/ros-manifest/docs/design.md:231`
+- [x] (suggestion) Roadmap prose says each line has a check; most do not yet — `tools/ros-manifest/docs/roadmap.md:8`
