@@ -11,7 +11,7 @@ The format of a manifest is in [spec.md](spec.md). This document is about the to
 - The specification of the manifest format.
 - A resolver: given a manifest, a role, a distro and any extra groups, it works out which
   repos a machine gets, at which version, in which layer. It reads and writes files and
-  fetches manifests. It does not clone repos or build anything.
+  fetches manifests. It does not clone the system's repos or build anything.
 - A set of commands on top of the resolver that fetch, update and build a system by calling
   `vcs` and `colcon`.
 
@@ -72,6 +72,7 @@ remotes:
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `distro` | The distro of this system, if the manifest has distros. |
+| `distros` | In place of `distro`, when the system directory holds more than one. See "More than one distro". |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 
@@ -140,8 +141,8 @@ repos-manifest init git@git.example.org:field/unh_marine_autonomy.git \
     --manifest-version jazzy --manifest-path project11.manifest.yaml --role robot --distro jazzy
 ```
 
-The git form is read by cloning the one commit and taking the file out of it, with `git` as
-it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
+The git form is read by making a shallow clone of the branch or tag and taking the file out
+of it, with `git` as it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
 read the manifest: ssh keys, an ssh agent, entries in `~/.ssh/config`, a credential helper.
 When a command is run at a terminal and git or ssh needs a password or passphrase, it asks.
 When there is no terminal, as in CI, it fails with a message and does not wait.
@@ -218,13 +219,19 @@ Each file starts with a comment that says which manifest, role and distro it cam
 ### sync
 
 1. Resolve, using the manifest as it is on the machine now.
-2. For each layer in order, run `vcs import` on the layer's `.repos` file into the layer's
-   `src/`.
+2. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
+   the repos that are missing, and update the ones that are there.
 3. Look at the manifest again. If its content changed during step 2, because the repo that
    holds it was updated, resolve and do step 2 once more.
 
 Step 3 happens at most once per sync. If the manifest changes again during the second pass,
 `sync` says so and stops; the next `sync` picks it up.
+
+Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
+a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
+vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest's branch, it
+refuses a repo whose URL has changed, and one repo with local changes makes the whole run
+fail.
 
 Sync does not discard work. A repo with uncommitted changes, or on a branch other than the
 one the manifest names, is left as it is and reported. A repo that is no longer in the
@@ -272,9 +279,8 @@ manifest: on the expected version, on a different one, with local changes, missi
 as optional, or present but no longer in the manifest. It also says whether each layer has
 been built since its repos last changed.
 
-`status --exact` writes a manifest that records the exact commit of every repo. It gets the
-commits by calling `vcs export --exact`, and writes them as a manifest that extends the one
-in use:
+`status --exact` writes a manifest that records the exact commit of every repo. It reads
+each commit with `git` and writes them as a manifest that extends the one in use:
 
 ```yaml
 extends:
@@ -510,9 +516,10 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 
 ## What the tools rely on
 
-- `vcs`, from vcs2l, to fetch and update repos and to record exact commits.
+- `vcs`, from vcs2l, to clone repos.
 - `colcon`, to build a layer.
-- `git`, to check whether a repo exists at another place and to add remotes.
+- `git`, to update repos that are already cloned, to read their state, to check whether a
+  repo exists at another place and to add remotes.
 - Python with PyYAML.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries.
@@ -565,9 +572,6 @@ extra remotes are not built.
 
 - What happens to a system directory when its manifest gains layers. The repos move from
   `src/` to `<layer>/src/`. `sync` could move them, or say what to move.
-- How `sync` updates a repo that is already cloned without touching local work, using `vcs`.
-  `vcs import` and `vcs pull` each do part of it, and what they do to a repo with local
-  changes needs testing.
 - With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
   for every repo on every sync costs a network call per repo.
 - With more than one distro, whether a distro needs its own settings, such as a different

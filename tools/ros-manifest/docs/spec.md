@@ -14,8 +14,11 @@ reads and adds keys that `vcs` ignores. Two things follow from that:
 
 - A `.repos` file is already a valid manifest. It describes a system with one variant and
   one layer.
-- `vcs import` on a manifest still works. It fetches every repo at its default version into
-  one directory, with no role, distro or layer applied.
+- `vcs import` on a manifest that stands on its own still fetches its repos, each at its
+  default version into one directory. It knows nothing of roles, distros or layers, so it
+  also fetches repos that a role or a distro would leave out. It is not a way to use a
+  manifest that extends another: `vcs` does not read a manifest's `extends`, and skips an
+  entry that leaves out `type` or `url`.
 
 We checked that `vcs` ignores keys it does not know, at the top level and inside a repo
 entry, with vcs2l 1.1.7 and vcstool 0.3.0.
