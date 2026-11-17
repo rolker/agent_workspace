@@ -1487,7 +1487,7 @@ registry_stale_settings_lines() {
     fi
     type="$(cut -f1 <<< "$entry")"
     if ! entries="$(project_file_entries "$root" "$name" 2>/dev/null)"; then
-        echo "$rel: '$name''s settings file .agent/projects.d/$name is invalid, so what is left in $rel to move cannot be told: fix it (.agent/scripts/project_setting.sh check $name), then look again"
+        echo "$rel: the settings file of '$name', .agent/projects.d/$name, is invalid, so what is left in $rel to move cannot be told: fix it (.agent/scripts/project_setting.sh check $name), then look again"
         return 1
     fi
     while IFS=$'\t' read -r var val; do
@@ -1534,73 +1534,139 @@ _registry_phys_nofollow() {
     echo "${d%/}/$(basename "$p")"
 }
 
+# How folder <x> stands to the registered roots in <full> (the
+# registry_entries_full lines). <mode> 'name' compares the path that names
+# <x> (lexical, and with its parents resolved but <x> itself not followed);
+# 'target' compares what <x> resolves to (physical). Each root is compared
+# in the same forms (lexical, parents resolved, physical). Prints
+# "<relation>\t<root name>" for the first match, relation 'self' (the same
+# folder), 'inside' (<x> lies in the root) or 'holds' (the root lies in
+# <x>), 'self' first; returns 1 when <x> stands in no relation to any root.
+# Usage: rel=$(_stale_root_relation "$full" "$x" name)
+_stale_root_relation() {
+    local full="$1" x="$2" mode="$3" name type path fields f r best="" bestname=""
+    local -a xs=() rs=()
+    if [ "$mode" = name ]; then
+        xs=("$(_registry_normpath "$x")" "$(_registry_phys_nofollow "$x")")
+    else
+        f="$(cd "$x" 2>/dev/null && pwd -P)" || return 1
+        xs=("$f")
+    fi
+    while IFS=$'\t' read -r name type path fields; do
+        [ -n "$name" ] || continue
+        rs=("$(_registry_normpath "$path")" "$(_registry_phys_nofollow "$path")")
+        f="$(cd "$path" 2>/dev/null && pwd -P)" && rs+=("$f")
+        for f in "${xs[@]}"; do
+            for r in "${rs[@]}"; do
+                if [ "$f" = "$r" ]; then
+                    printf 'self\t%s\n' "$name"
+                    return 0
+                elif [[ "$f" == "$r/"* ]]; then
+                    [ -z "$best" ] && { best=inside; bestname="$name"; }
+                elif [[ "$r" == "$f/"* ]]; then
+                    [ -z "$best" ] && { best=holds; bestname="$name"; }
+                fi
+            done
+        done
+    done <<< "$full"
+    [ -n "$best" ] || return 1
+    printf '%s\t%s\n' "$best" "$bestname"
+}
+
+# The line for one retired folder, <ws>/project or an entry under
+# <ws>/projects/ (<label> is how the line names it), or nothing. The case
+# table is in the header of tests/test_validate_workspace_stale.sh. Sets
+# _STALE_UNREGISTERED=1 when it names a folder that is not registered (an
+# old-order reader of the shared config file may have been it).
+_stale_folder_line() {
+    local root="$1" full="$2" x="$3" label="$4" rel target tabs
+    # The path that names it is, holds or lies in a registered root: the
+    # registry reads it (or reads through it), so it is silent.
+    _stale_root_relation "$full" "$x" name >/dev/null && return 0
+    if [ -L "$x" ]; then
+        target="$(readlink "$x")"
+        if [ ! -e "$x" ]; then
+            echo "$label is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $x)"
+            return 0
+        fi
+        if ! tabs="$(cd "$x" 2>/dev/null && pwd -P)"; then
+            echo "$label is a link to $target, which is not a folder; nothing reads the link any more: remove it (rm $x)"
+            return 0
+        fi
+        if rel="$(_stale_root_relation "$full" "$x" target)"; then
+            case "${rel%%$'\t'*}" in
+                self) echo "$label is a link to registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
+                inside) echo "$label is a link to $tabs, inside registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
+                holds) echo "$label is a link to $tabs, which holds registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
+            esac
+            return 0
+        fi
+        _STALE_UNREGISTERED=1
+        echo "$label is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $x)"
+        return 0
+    fi
+    [ -d "$x" ] || return 0
+    _STALE_UNREGISTERED=1
+    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
+}
+
+# The variables retired config file <file> sets (the read set's non-empty
+# ones, then the extra ones), comma separated. Return 1 when it cannot be
+# sourced.
+_stale_set_names() {
+    local file="$1" vals extra
+    vals="$(_stale_config_values "$file")" || return 1
+    extra="$(project_config_extra_vars "$file")" || return 1
+    { [ -n "$vals" ] && cut -f1 <<< "$vals"; [ -n "$extra" ] && printf '%s\n' "$extra"; } | paste -sd, - | sed 's/,/, /g'
+}
+
+# The deepest a checkout sits under a retired worktree location in the
+# layouts that used it (worktrees/project/<name>/<worktree>/<ws>/src/<repo>
+# is 5); the scan goes no deeper.
+_STALE_WORKTREE_SCAN_DEPTH=6
+
 # The whole stale-shape report for the workspace whose registry is at
 # <root> (the main checkout): one warning per line, nothing when the
 # machine holds no retired shape. A root registered inside the workspace
 # tree (projects/<name>, or <ws>/project itself) is silent: ADR-0016
 # decision 1 allows it. A registry with errors gives one line saying so and
 # nothing else: what is registered decides every other line, and a
-# registry read as empty would advise removing registered checkouts.
+# registry read as empty would advise removing registered checkouts. The
+# case table every check follows is the header of
+# tests/test_validate_workspace_stale.sh.
 # Always returns 0 (a report, never a failure).
 # Usage: registry_stale_report "$main_root"
 registry_stale_report() {
-    local root="$1" full name type path fields pabs tabs d dabs dphys owned f n lines shared any
-    local self target wt g gdir base skip applied rootdir plines
+    local root="$1" full name type path fields d dphys f n lines shared any
+    local wt g base skip applied rootdir plines setnames insts why
     local -a bases=()
     if ! full="$(registry_entries_full "$root" 2>/dev/null)"; then
         echo ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again"
         return 0
     fi
-    # project/: a root registered there (silent), a link to a registered
-    # root, a link to nothing, or anything else.
+    _STALE_UNREGISTERED=0
+    # <ws>/project.
     if [ -L "$root/project" ] || [ -e "$root/project" ]; then
-        self="$(_registry_phys_nofollow "$root/project")"
-        n=""
-        while IFS=$'\t' read -r name type path fields; do
-            [ -n "$name" ] || continue
-            [ "$(_registry_phys_nofollow "$path")" = "$self" ] && { n="$name"; break; }
-        done <<< "$full"
-        if [ -z "$n" ]; then
-            tabs="$(cd "$root/project" 2>/dev/null && pwd -P)" || tabs=""
-            if [ -n "$tabs" ]; then
-                while IFS=$'\t' read -r name type path fields; do
-                    [ -n "$name" ] || continue
-                    pabs="$(cd "$path" 2>/dev/null && pwd -P)" || continue
-                    [ "$pabs" = "$tabs" ] && { n="$name"; break; }
-                done <<< "$full"
-            fi
-            if [ -L "$root/project" ]; then
-                target="$(readlink "$root/project")"
-                if [ -z "$tabs" ]; then
-                    echo "project is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $root/project)"
-                elif [ -n "$n" ]; then
-                    echo "project is a link to registered project '$n'; nothing reads the link any more: remove it (rm $root/project)"
-                else
-                    echo "project is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $root/project)"
-                fi
-            elif [ -z "$n" ]; then
-                echo "project exists and is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
-            fi
-        fi
+        _stale_folder_line "$root" "$full" "$root/project" project
     fi
-    # The retired worktree locations: any checkout (a .git file or
-    # directory) left under them, at any depth, that no registered root or
-    # worktrees= directory holds. Empty folders left after the worktrees
-    # were removed are not named.
+    # The retired worktree locations: a checkout (a folder holding .git) left
+    # under them that no registered root or worktrees= directory holds. The
+    # walk stops at each checkout (never descending into it) and at
+    # _STALE_WORKTREE_SCAN_DEPTH. Empty folders left after the worktrees were
+    # removed are not named.
     while IFS=$'\t' read -r name type path fields; do
         [ -n "$name" ] || continue
-        bases+=("$(cd "$path" 2>/dev/null && pwd -P || _registry_normpath "$path")")
+        bases+=("$(_registry_normpath "$path")" "$(cd "$path" 2>/dev/null && pwd -P || _registry_normpath "$path")")
         wt="$(_registry_field_of "$fields" worktrees)" || continue
-        bases+=("$(cd "$wt" 2>/dev/null && pwd -P || _registry_normpath "$wt")")
+        bases+=("$(_registry_normpath "$wt")" "$(cd "$wt" 2>/dev/null && pwd -P || _registry_normpath "$wt")")
     done <<< "$full"
     for d in "$root/worktrees/project" "$root/.workspace-worktrees"; do
         [ -d "$d" ] || continue
         dphys="$(cd "$d" && pwd -P)" || continue
         while IFS= read -r g; do
-            gdir="$(dirname "$g")"
             skip=0
             for base in ${bases[@]+"${bases[@]}"}; do
-                if [ "$gdir" = "$base" ] || [[ "$gdir" == "$base/"* ]]; then
+                if [ "$g" = "$base" ] || [[ "$g" == "$base/"* ]]; then
                     skip=1
                     break
                 fi
@@ -1608,32 +1674,39 @@ registry_stale_report() {
             [ "$skip" -eq 1 ] && continue
             echo "${d#"$root/"}/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path>, then recreate it under its project's root"
             break
-        done < <(find "$dphys" -mindepth 1 -name .git -prune -print 2>/dev/null)
+        done < <(find "$dphys" -mindepth 1 -maxdepth "$_STALE_WORKTREE_SCAN_DEPTH" \
+            \( -name .git -prune \) -o \( -type d -exec test -e '{}/.git' \; -prune -print \) 2>/dev/null)
     done
-    # projects/<dir> that no registry entry owns.
+    # <ws>/projects/<entry>: a folder, a link, a link to nothing.
     if [ -d "$root/projects" ]; then
-        for d in "$root/projects"/*/; do
-            [ -d "$d" ] || continue
-            dabs="$(cd "$d" && pwd -P)" || continue
-            owned=0
-            while IFS=$'\t' read -r name type path fields; do
-                [ -n "$name" ] || continue
-                pabs="$(cd "$path" 2>/dev/null && pwd -P)" || pabs="$(_registry_normpath "$path")"
-                if [ "$pabs" = "$dabs" ] || [[ "$pabs" == "$dabs/"* ]] || [[ "$dabs" == "$pabs/"* ]]; then
-                    owned=1
-                    break
-                fi
-            done <<< "$full"
-            [ "$owned" -eq 1 ] && continue
-            echo "projects/$(basename "$d") is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
+        for d in "$root/projects"/*; do
+            [ -L "$d" ] || [ -d "$d" ] || continue
+            _stale_folder_line "$root" "$full" "$d" "projects/$(basename "$d")"
         done
     fi
     # projects.d/<name>.sh, each read as the old layer of its project.
     for f in "$root/.agent/projects.d"/*.sh; do
         [ -f "$f" ] || continue
         n="$(basename "$f" .sh)"
-        if ! grep -qxF -- "$n" <<< "$(cut -f1 <<< "$full")"; then
-            echo ".agent/projects.d/$n.sh belongs to no registered project and nothing reads it any more: delete it"
+        if ! type="$(registry_lookup "$root" "$n" 2>/dev/null | cut -f1)" || [ -z "$type" ]; then
+            if ! setnames="$(_stale_set_names "$f")"; then
+                echo ".agent/projects.d/$n.sh belongs to no registered project and cannot be sourced: read it by hand; if '$n' is a project not registered yet, register it first (.agent/scripts/register_project"".sh <path>) and this report names what to move; otherwise delete it"
+            elif [ -n "$setnames" ]; then
+                echo ".agent/projects.d/$n.sh belongs to no registered project and still sets $setnames: if '$n' is a project not registered yet, register it first (.agent/scripts/register_project"".sh <path>) and this report names what to move; otherwise delete it"
+            else
+                echo ".agent/projects.d/$n.sh belongs to no registered project and sets nothing; nothing reads it any more: delete it"
+            fi
+            continue
+        fi
+        if [ "$type" = "$REGISTRY_PARENT_TYPE" ]; then
+            insts="$(registry_instances "$root" "$n" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+            if ! setnames="$(_stale_set_names "$f")"; then
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own (its instances have theirs: ${insts:-none registered}), and cannot be sourced: read it by hand, move what an instance needs with .agent/scripts/project_setting.sh set <instance> <key>=<value> (a distro goes on the instance's line in .agent/projects.local), then delete it"
+            elif [ -n "$setnames" ]; then
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own (its instances have theirs: ${insts:-none registered}), and still sets $setnames: move what an instance needs with .agent/scripts/project_setting.sh set <instance> <key>=<value> (a distro goes on the instance's line in .agent/projects.local), then delete it"
+            else
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own, and sets nothing; nothing reads it any more: delete it"
+            fi
             continue
         fi
         lines="$(registry_stale_settings_lines "$root" "$n" "$f")" || true
@@ -1645,13 +1718,16 @@ registry_stale_report() {
     done
     # The shared file: per registered project it applied to (no .sh of its
     # own), per key; its ROS_ROOT_DIR and extra-variable lines once, and
-    # only when a project it applied to would have read them.
+    # only when a project it applied to would have read them. While it
+    # still sets something and applied to no registered project, or an
+    # unregistered folder named above may have read it, it is never called
+    # safe to delete.
     shared="$root/.agent/project_config.sh"
     if [ -f "$shared" ]; then
         any=0
         applied=0
         rootdir=0
-        if lines="$(_stale_config_values "$shared")"; then
+        if lines="$(_stale_config_values "$shared")" && setnames="$(_stale_set_names "$shared")"; then
             while IFS=$'\t' read -r name type path fields; do
                 [ -n "$name" ] || continue
                 [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
@@ -1670,6 +1746,15 @@ registry_stale_report() {
             done <<< "$lines"
             if [ "$applied" -eq 1 ] && lines="$(project_config_extra_vars "$shared")" && [ -n "$lines" ]; then
                 echo ".agent/project_config.sh sets or exports $(printf '%s' "$lines" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'), which no command gets any more: move that environment into the scripts the projects' settings keys point at"
+                any=1
+            fi
+            if [ -n "$setnames" ] && { [ "$applied" -eq 0 ] || [ "$_STALE_UNREGISTERED" -eq 1 ]; }; then
+                if [ "$applied" -eq 0 ]; then
+                    why="it applies to no registered project (none is registered, or each has its own .agent/projects.d/<name>.sh)"
+                else
+                    why="an unregistered folder named above may have used it"
+                fi
+                echo ".agent/project_config.sh still sets $setnames, and $why: register that project first (.agent/scripts/register_project"".sh <path>) and this report names what to move; delete the file only when no project needs it"
                 any=1
             fi
         else
