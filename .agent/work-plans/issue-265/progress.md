@@ -1024,3 +1024,27 @@ The build-in-hosting-dir point is not a defect of this pull request. On main, `_
 
 ### Findings
 - [x] (must-fix, mechanical) design.md's `merge_pr.sh` line citations are now 4 lines off. `c7a50a0e` added 4 lines at 316-347, and the fix refreshed the `adapter` citations but not these. The Table 1 `merge_pr.sh` row cites "313-354, 731, 866, 1002 and 1315, 2451-2480", which should now be 313-358, 735, 870, 1006 and 1319, 2455-2484 (731 now lands on a comment, not the `_WT_REPO` line). The mechanism-1 sentence cites "841-988, 1273-1452", which should now be 845-992, 1277-1456. Earlier rounds of this repository treated stale design.md citations as must-fix (the issue 478 review). — `docs/design.md:490`, `docs/design.md:684`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3e1b61b2a87b2d3d, resume 1 of 3)
+
+**PR**: #491 at `c3f21d83`
+**Addressed**: Local Review at `71ddd4a8` (2026-11-17 12:47 -05:00)
+**Commits**: `c3f21d83`
+
+### Actions
+- [x] (must-fix, mechanical) design.md's `merge_pr.sh` line citations refreshed. Each was checked at the head by what its sentence says, not shifted by 4. Several were already loose before `c7a50a0e`, so some new numbers differ from the review's +4 values — `docs/design.md:490,595-612,684`
+
+### Citations checked (merge_pr.sh at `c3f21d83`)
+- Table 1 row: 313-354 → 313-358 (PJ_REPO_ROOT block, through the origin check's `fi`); 731 → 735 (Step 1 `_WT_REPO=PJ_REPO_ROOT`); 866 → 870 (gate's `_gate_wt_repo=PJ_REPO_ROOT`); 1002 → 1006 and 1315 → 1319 (main-tree guards); 2451-2480 → 2455-2485 (branch deletion in `BRANCH_REPO` through the project pull's `fi`)
+- Records bullet: `PKG_OWN_REL` 645-668 → 649-672; gate's worktree 841-865 → 848-872; owning-checkout rule 866-933 → 873-940; committed read 934-988 → 941-982 (the owning branch only); sibling 1024-1031 → 1031-1038 and 1437-1438 → 1443-1444; PJ_REPO_ROOT 313-354 → 313-358; 731 → 735 and 866 → 870; 1002 → 1006 and 1315 → 1319; report-only 1604 → 1611 (`elif` enforcing on workspace PRs only) and 1621 → 1628 (the report-only note for project PRs)
+- Mechanism 1: 841-988 → 848-995 (gate lookup, from its worktree resolution to the end of the timeline read); 1273-1452 → 1280-1459 (`_gate_record`, which writes the `Merge` entry)
+- `adapter` line 84 (two citations, design.md 318 and 439): checked, unchanged (`_WORKSPACE_ONLY_SYNC_TYPE=`)
+- `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`: no `merge_pr.sh` or `adapter` line citations (the grep's hits are PR numbers, verb counts and the fork's `ros2_colcon/adapter.sh` in an inspiration digest); nothing changed
+
+### Suites run
+- test_design_anchors.sh: `test_design_anchors: 47 passed, 0 failed`
+- No script changed. The commit used `SKIP=validate-script-tests`; the full pass is left to the host.
