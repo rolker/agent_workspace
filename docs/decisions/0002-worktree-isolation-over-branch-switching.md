@@ -4,6 +4,8 @@
 
 Accepted
 
+Note (2026-11-17): the `worktrees/project/<repo>/` location named below is retired; a project's worktrees live under its registered root (issue #265 part 4).
+
 ## Context
 
 AI coding agents working in a shared repository cause problems when they switch branches:

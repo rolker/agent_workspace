@@ -9,6 +9,8 @@ Amended by [ADR-0012](0012-worktree-composition-is-an-adapter-concern.md):
 verbs, not 10. Amended by [ADR-0019](0019-repo-pin-verb.md): +1 verb
 (`repo_pin`) — now 13.
 
+Note (2026-11-17): the `project/` location and `.agent/project_config.sh` named below are retired; the type and commands come from the registry and the project's settings file (issue #265 part 4).
+
 ## Context
 
 [ADR-0003](0003-workspace-infrastructure-is-project-agnostic.md) made the
