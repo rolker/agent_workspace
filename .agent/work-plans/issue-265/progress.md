@@ -723,3 +723,35 @@ Mechanism decisions (each listed for veto):
 Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `892d86e2`, all scripts final): test_adapter.sh 240 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 97 passed, 0 failed; test_discover_governance.sh 27 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_issue_review_entry.sh 6 passed, 0 failed; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_plan_correlation.sh 18 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_project_registry.sh 404 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_records_write_gate.sh 68 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_review_code_convergence.sh 38 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_triage_reviews_integration.sh 69 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_user_tier_install.sh 276 passed, 0 failed; test_validate_workspace_stale.sh 64 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. `single_project/setup.sh` is not under `.agent/scripts/`; test_adapter.sh covers it. The full pre-commit pass and every other suite are left to the host.
 
 Not done, and why: ADR-0002, ADR-0003 (line 33), ADR-0011 and ADR-0018 (lines 261, 304) still describe the retired shapes (the owner's Q-ADR; no ADR or CLAUDE.md edited). The AGENTS.md commits `a80f3dc2` and `557fffe5` wait for the owner at the merge checkpoint.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 10:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `adec411d`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff, 78 files; enforcement and governance files: AGENTS.md, Makefile, .gitignore, registry, adapter dispatcher)
+**Must-fix**: 3 | **Suggestions**: 8
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted (all three are mechanical file:line fixes)
+
+Round 1's 13 boxes: checked against the code at `892d86e2`; all 13 are closed as claimed (M1 one line on registry errors; M2 install refuses when the file cannot be told; M3 AGENTS.md wording). The two held AGENTS.md commits (`a80f3dc2`, `557fffe5`) are now true of the code: registration needs git (design.md 384-386), `make build PROJECT=<name>`, ros2_colcon's commands from colcon. The new findings below are cases the round-1 rewrite and the round-1 review both missed, plus what the fixes opened.
+
+`--type` omitted from a cwd in a `worktrees=` dir under the workspace (the fixer's open question): `registry_derive_type_from_dir` is unchanged from origin/main, so not introduced here; the round-1 fix made the explicit-`--type` path count `worktrees=` dirs, leaving this one inconsistent. Effect: `worktree_create.sh` prints "Note: derived --type workspace" and makes a workspace worktree, the wrong repository; enter and remove refuse; `capture.sh` mislabels. Reach is narrow (an override under the workspace, `--type` left out). Suggestion, with a one-line fix and a test that this pull request can carry.
+
+Specialists: governance, plan drift, a fresh Claude adversarial sub-review of the fix diff (ran 3 suites: test_validate_workspace_stale 64, test_commit_identity 97, test_dispatch_phase 236, all passing), Gemini (agy) ran: 6 findings; Codex ran: 3 findings; Copilot CLI not a reviewer here (#344). Static analysis not re-run on the fix diff.
+
+### Findings
+- [ ] (must-fix) the shared `.agent/project_config.sh` gets "holds nothing left to move: delete it" when it applied to no registered project (none registered yet, or the unregistered `project/` still uses it), even when it sets BUILD_CMD/INSTALL_CMD; say what it sets and to register and move first (Gemini) — `.agent/scripts/_project_registry.sh:1679`
+- [ ] (must-fix) the `project/` check matches registered roots by equality only: a root registered under `<ws>/project/` gets "remove it", and a link to a subfolder of a registered root gets "register <sub>"; use the descendant test the `projects/` check uses (Codex, Gemini, Claude) — `.agent/scripts/_project_registry.sh:1557-1584`
+- [ ] (must-fix) `-not -path "*/worktrees/*"` now runs on absolute paths, so a root whose path has a `worktrees` component (e.g. `/srv/worktrees/product`) has every repository skipped, silently; exclude that root's own worktree dir instead (Codex, Gemini) — `.agent/scripts/configure_git_identity.sh:165`
+- [ ] (suggestion) `registry_derive_type_from_dir` ignores `worktrees=` dirs, so `--type` omitted under such a dir in the workspace derives `workspace` (pre-existing; try registry_resolve_session_dir first; add an omitted-`--type` test) — `.agent/scripts/_project_registry.sh:644`, `.agent/scripts/worktree_create.sh:376`
+- [ ] (suggestion) the retired-worktree scan prunes only at `.git`, so it walks every checkout's whole tree on each validate and dashboard run; prune at the checkout — `.agent/scripts/_project_registry.sh:1611`
+- [ ] (suggestion) a `projects.d/<parent>.sh` for a parent root gets `project_setting.sh set <parent>` and `distro=` remedies, both invalid for a parent (Gemini) — `.agent/scripts/_project_registry.sh:1632-1644`
+- [ ] (suggestion) `discover_governance.sh` reads a registry with errors as empty (`|| true`), new in this branch; same class as the round-1 fix for configure_git_identity and dispatch_phase (Gemini) — `.agent/scripts/discover_governance.sh:135`
+- [ ] (suggestion) `worktree_list.sh` still lists `.workspace-worktrees/` worktrees, now as type `main`; WORKTREE_GUIDE says no script lists them and that validate warns about `project/worktrees/`, which the report does not check (Codex, Gemini) — `.agent/scripts/worktree_list.sh:171`, `.agent/WORKTREE_GUIDE.md:106-110`
+- [ ] (suggestion) the `rm -r` advice can destroy unpushed history when the entry is a plain clone; say to check `git status` and unpushed commits first — `.agent/scripts/worktree_remove.sh:404`
+- [ ] (suggestion) the NOTE heading "and it still sets:" sits above a "cannot be told" line — `.agent/scripts/adapter:353`
+- [ ] (suggestion) `'$name''s` prints as `'demo''s` — `.agent/scripts/_project_registry.sh:1490`
