@@ -799,3 +799,39 @@ Mechanism decisions (each listed for veto):
 Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `698eaa23`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 100 passed, 0 failed; test_discover_governance.sh 30 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_project_registry.sh 417 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 98 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. The full pre-commit pass and every other suite are left to the host.
 
 Not done, and why: ADR-0002, ADR-0003, ADR-0011 and ADR-0018 wait for the owner (Q-ADR); the held AGENTS.md commits `a80f3dc2` and `557fffe5` wait for the merge checkpoint. Not verified: the scan's cold-cache time; the dashboard's display of the new lines (it prints whatever the report says; its suite is not one this rule selects).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 11:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `04f5b886`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff; enforcement and governance files). Full round, not a convergence check: the handoff did not name one.
+**Must-fix**: 4 | **Suggestions**: 7
+**Round**: 3 | **Ship**: continue — round 3: 4 must-fix is high (rising from 3); another independent read warranted
+
+Round 2's 11 boxes: closed as claimed at `698eaa23`, except that the `-type d` added for round 1 now skips a root whose `.git` is a file (M3 below). AGENTS.md was not touched this round, and its text stays true.
+
+Case table (header of test_validate_workspace_stale.sh): one row is missing, and its outcome is destructive. A registered project's `worktrees=` folder under `projects/` or at `project` is treated as an unregistered folder (M1). No listed row states wrong advice. The claim that every row has a test whose label carries its id is false: R, P1, P2, W1, W3, W5, S1-S4 and C1 are covered only by older tests without the id, and C7 has no id-labelled assertion. P3, P4, P8 and P11 are tested for `project` only.
+
+`registry_derive_type_from_dir` now goes through `registry_resolve_session_dir`. Only its four callers changed behaviour (worktree_create, worktree_enter, worktree_remove with `--type` omitted, and capture.sh): a cwd in a `worktrees=` folder now derives that project, as intended. The other callers of `registry_resolve_session_dir` did not change, because that function did not change. One new case is wrong: with `worktrees=.` or `worktrees=worktrees`, which the parser accepts, a workspace worktree derives a project (S1).
+
+Blocking: M1 blocks publishing (it is the same class of destructive gap found in rounds 1 and 2). M2 and M3 were opened by the fix rounds and are one-line fixes; carry them with M1. M4 could ship as a follow-up, since the next command fails loudly and nothing is lost, but it is one line of text. Suggestions can be follow-ups. After one fix pass, a narrow round-4 convergence check is enough.
+
+Specialists: governance, plan drift, a fresh Claude adversarial sub-review (test_validate_workspace_stale 98 passed; sandbox reproductions of M1, M2, S1, S2, S3), Gemini (agy) ran: 3 findings; Codex ran: 2 findings; Copilot CLI is not a reviewer here (#344). I reproduced M1 in my own sandbox. Static analysis was not re-run.
+
+### Findings
+- [ ] (must-fix) A registered `worktrees=` folder under `projects/` or at `<ws>/project` is told "not registered ...: register it ..., or remove it". Removing it deletes live worktrees, and it also feeds C3. Count each root's `worktrees=` folder in `_stale_root_relation` and add a case-table row and a test (reproduced; Claude sub-review) — `.agent/scripts/_project_registry.sh:1547-1612`
+- [ ] (must-fix) The dashboard filter drops the new `[retired]` header line but keeps its indented Path/Branch/Status lines, so they read as part of the previous worktree. WORKTREE_GUIDE also says no script counts these worktrees, but dashboard WT_COUNT does (Gemini; reproduced by the Claude sub-review) — `.agent/scripts/dashboard.sh:388`, `.agent/WORKTREE_GUIDE.md:108`
+- [ ] (must-fix) `-type d` silently skips a registered root whose `.git` is a file (a `--separate-git-dir` checkout), so its identity is never configured. Include the root itself when it is a checkout's top folder, or tell a linked worktree apart by git-dir versus common-dir (Codex) — `.agent/scripts/configure_git_identity.sh:173`
+- [ ] (must-fix) The remedy "rm -r, then run this command again: an entry already gone is skipped" is false for a single-repository worktree, where the entry is the worktree itself: the rerun finds no worktree. Say to run `git worktree prune` instead (Gemini) — `.agent/scripts/worktree_remove.sh:404`
+- [ ] (suggestion) The parser accepts `worktrees=.` and `worktrees=worktrees`, and then a workspace worktree or `<ws>/.agent` derives `project <name>`. Refuse a `worktrees=` that holds `<ws>/worktrees/workspace` or the workspace root (Claude sub-review, reproduced) — `.agent/scripts/_project_registry.sh` registry parser, derive at :645
+- [ ] (suggestion) C3 counts only P5 and P9 folders. An unregistered retired checkout (W2) leaves the shared file told "delete it" (Claude sub-review, reproduced) — `.agent/scripts/_project_registry.sh:1752`
+- [ ] (suggestion) A retired checkout that holds a registered root gets "remove each with git worktree remove"; the W skip lacks the "holds" relation — `.agent/scripts/_project_registry.sh:1667-1679`
+- [ ] (suggestion) P5's "or remove it" for an unregistered checkout should say to check for unpushed or uncommitted work first, as worktree_remove now does — `.agent/scripts/_project_registry.sh:1611`
+- [ ] (suggestion) The case-table header claims id-labelled tests for every row (false for 11 rows; C7 has no id-labelled assertion); P3, P4, P8 and P11 are tested for `project` only; W2 says depth 1 to 5 while depth 6 is reported — `.agent/scripts/tests/test_validate_workspace_stale.sh:13-66`
+- [ ] (suggestion) validate and the dashboard still execute retired config files, orphan `.sh` files included, to read them. Consider reading the assignments without executing (Codex, repeated from round 1) — `.agent/scripts/_project_registry.sh:1406`
+- [ ] (suggestion) discover_governance prints absolute paths for in-tree roots when run from a linked worktree, against its comment (Gemini); gather-project-knowledge does not say that exit 1 means an incomplete inventory — `.agent/scripts/discover_governance.sh:130-140`, `.claude/skills/gather-project-knowledge/SKILL.md:40`
