@@ -1434,22 +1434,45 @@ registry_stale_config_for() {
     return 0
 }
 
+# Does project type <type> read what retired variable <var> used to set?
+# ROS_DISTRO became the registry line's distro=, which the dispatcher hands
+# a type's adapter as ACTIVE_PROJECT_DISTRO; ROS_ROOT_DIR is read from the
+# environment by name. The answer is the type's own adapter.sh naming that
+# variable, so no script here names a type (ADR-0011). An empty or unknown
+# type answers yes: advice is never dropped for want of a type.
+# Usage: _stale_type_reads "$root" "$type" ROS_DISTRO
+_stale_type_reads() {
+    local root="$1" type="$2" var="$3" word f
+    case "$var" in
+        ROS_DISTRO) word=ACTIVE_PROJECT_DISTRO ;;
+        ROS_ROOT_DIR) word=ROS_ROOT_DIR ;;
+        *) return 1 ;;
+    esac
+    [ -n "$type" ] || return 0
+    f="$root/.agent/project_types/$type/adapter.sh"
+    [ -f "$f" ] || return 0
+    grep -qw -- "$word" "$f"
+}
+
 # One line per setting a retired config file holds for registered project
 # <name> that its settings file lacks, each with its remedy (plan review
 # N3): build/test/install/bootstrap_url by project_setting.sh set (skipped
 # for a key the project's type never reads, its unused_settings); ROS_DISTRO
 # by distro= on the registry line, by hand (project_setting.sh has no such
 # key), only while the line has none; ROS_ROOT_DIR from the environment;
+# each ROS_* line only for a type that reads it (_stale_type_reads);
 # variables beyond the read set (plan review S8) belong in the script a key
 # points at. <file> defaults to registry_stale_config_for's; with
-# <shared_only>=1 the ROS_* and extra-variable lines are left out (the
-# whole report says those once for the shared file). Prints nothing when
-# nothing is left to move. Return 1 when the file cannot be sourced (a line
-# says so).
+# <shared_only>=1 the ROS_ROOT_DIR and extra-variable lines are left out
+# (the whole report says those once for the shared file). Prints nothing
+# when nothing is left to move. Return 1 when what is left cannot be told
+# (a line says why): the file cannot be sourced, the registry has errors,
+# or the project's settings file is invalid. Never read as "nothing left":
+# the adapter's install refuses on it, the report shows the line.
 # Usage: registry_stale_settings_lines "$root" "$name" [<file>] [<shared_only>]
 registry_stale_settings_lines() {
     local root="$1" name="$2" file="${3:-}" shared_only="${4:-0}"
-    local rel vals var val key type entries extra distro
+    local rel vals var val key type entry entries extra distro rc=0
     [ -n "$file" ] || file="$(registry_stale_config_for "$root" "$name")"
     [ -n "$file" ] || return 0
     rel=".agent/${file#"$root/.agent/"}"
@@ -1457,8 +1480,16 @@ registry_stale_settings_lines() {
         echo "$rel cannot be sourced, so what is left in it for '$name' is unknown: read it by hand, move what it sets with .agent/scripts/project_setting.sh set $name <key>=<value>, then delete it"
         return 1
     fi
-    type="$(registry_lookup "$root" "$name" 2>/dev/null | cut -f1)" || type=""
-    entries="$(project_file_entries "$root" "$name" 2>/dev/null)" || entries=""
+    entry="$(registry_lookup "$root" "$name" 2>/dev/null)" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "$rel: .agent/projects.local has errors, so what is left in $rel for '$name' cannot be told: fix the registry (make validate names each bad line), then look again"
+        return 1
+    fi
+    type="$(cut -f1 <<< "$entry")"
+    if ! entries="$(project_file_entries "$root" "$name" 2>/dev/null)"; then
+        echo "$rel: '$name''s settings file .agent/projects.d/$name is invalid, so what is left in $rel to move cannot be told: fix it (.agent/scripts/project_setting.sh check $name), then look again"
+        return 1
+    fi
     while IFS=$'\t' read -r var val; do
         [ -n "$var" ] || continue
         key="$(_stale_var_key "$var")"
@@ -1472,7 +1503,7 @@ registry_stale_settings_lines() {
             fi
             continue
         fi
-        [ "$shared_only" = 1 ] && continue
+        _stale_type_reads "$root" "$type" "$var" || continue
         case "$var" in
             ROS_DISTRO)
                 distro="$(registry_field "$root" "$name" distro 2>/dev/null)" || distro=""
@@ -1480,6 +1511,7 @@ registry_stale_settings_lines() {
                 echo "$rel sets ROS_DISTRO=\"$val\", which nothing reads any more: if $name's manifest declares no distro, add distro=$val to its line in .agent/projects.local by hand"
                 ;;
             ROS_ROOT_DIR)
+                [ "$shared_only" = 1 ] && continue
                 echo "$rel sets ROS_ROOT_DIR=\"$val\", which is no longer read from a file: export ROS_ROOT_DIR=$val in the environment that runs the adapter"
                 ;;
         esac
@@ -1492,38 +1524,91 @@ registry_stale_settings_lines() {
     return 0
 }
 
+# <path> as the filesystem names it, without following <path> itself when
+# it is a link: its parent resolved physically, then its own name. Falls
+# back to the lexical form when the parent does not exist.
+_registry_phys_nofollow() {
+    local p d
+    p="$(_registry_normpath "$1")"
+    d="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || { echo "$p"; return 0; }
+    echo "${d%/}/$(basename "$p")"
+}
+
 # The whole stale-shape report for the workspace whose registry is at
 # <root> (the main checkout): one warning per line, nothing when the
 # machine holds no retired shape. A root registered inside the workspace
-# tree (projects/<name>, say) is silent: ADR-0016 decision 1 allows it.
+# tree (projects/<name>, or <ws>/project itself) is silent: ADR-0016
+# decision 1 allows it. A registry with errors gives one line saying so and
+# nothing else: what is registered decides every other line, and a
+# registry read as empty would advise removing registered checkouts.
 # Always returns 0 (a report, never a failure).
 # Usage: registry_stale_report "$main_root"
 registry_stale_report() {
-    local root="$1" entries name type path pabs tabs d dabs owned f n lines shared any
-    entries="$(registry_entries "$root" 2>/dev/null)" || entries=""
-    # project/: a link to a registered root, or anything else.
+    local root="$1" full name type path fields pabs tabs d dabs dphys owned f n lines shared any
+    local self target wt g gdir base skip applied rootdir plines
+    local -a bases=()
+    if ! full="$(registry_entries_full "$root" 2>/dev/null)"; then
+        echo ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again"
+        return 0
+    fi
+    # project/: a root registered there (silent), a link to a registered
+    # root, a link to nothing, or anything else.
     if [ -L "$root/project" ] || [ -e "$root/project" ]; then
-        tabs="$(cd "$root/project" 2>/dev/null && pwd -P)" || tabs=""
+        self="$(_registry_phys_nofollow "$root/project")"
         n=""
-        if [ -n "$tabs" ]; then
-            while IFS=$'\t' read -r name type path; do
-                [ -n "$name" ] || continue
-                pabs="$(cd "$path" 2>/dev/null && pwd -P)" || continue
-                [ "$pabs" = "$tabs" ] && { n="$name"; break; }
-            done <<< "$entries"
-        fi
-        if [ -n "$n" ] && [ -L "$root/project" ]; then
-            echo "project is a link to registered project '$n'; nothing reads the link any more: remove it (rm $root/project)"
-        elif [ -z "$n" ]; then
-            echo "project exists and is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
+        while IFS=$'\t' read -r name type path fields; do
+            [ -n "$name" ] || continue
+            [ "$(_registry_phys_nofollow "$path")" = "$self" ] && { n="$name"; break; }
+        done <<< "$full"
+        if [ -z "$n" ]; then
+            tabs="$(cd "$root/project" 2>/dev/null && pwd -P)" || tabs=""
+            if [ -n "$tabs" ]; then
+                while IFS=$'\t' read -r name type path fields; do
+                    [ -n "$name" ] || continue
+                    pabs="$(cd "$path" 2>/dev/null && pwd -P)" || continue
+                    [ "$pabs" = "$tabs" ] && { n="$name"; break; }
+                done <<< "$full"
+            fi
+            if [ -L "$root/project" ]; then
+                target="$(readlink "$root/project")"
+                if [ -z "$tabs" ]; then
+                    echo "project is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $root/project)"
+                elif [ -n "$n" ]; then
+                    echo "project is a link to registered project '$n'; nothing reads the link any more: remove it (rm $root/project)"
+                else
+                    echo "project is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $root/project)"
+                fi
+            elif [ -z "$n" ]; then
+                echo "project exists and is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
+            fi
         fi
     fi
-    # The retired worktree locations.
+    # The retired worktree locations: any checkout (a .git file or
+    # directory) left under them, at any depth, that no registered root or
+    # worktrees= directory holds. Empty folders left after the worktrees
+    # were removed are not named.
+    while IFS=$'\t' read -r name type path fields; do
+        [ -n "$name" ] || continue
+        bases+=("$(cd "$path" 2>/dev/null && pwd -P || _registry_normpath "$path")")
+        wt="$(_registry_field_of "$fields" worktrees)" || continue
+        bases+=("$(cd "$wt" 2>/dev/null && pwd -P || _registry_normpath "$wt")")
+    done <<< "$full"
     for d in "$root/worktrees/project" "$root/.workspace-worktrees"; do
         [ -d "$d" ] || continue
-        if find "$d" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
+        dphys="$(cd "$d" && pwd -P)" || continue
+        while IFS= read -r g; do
+            gdir="$(dirname "$g")"
+            skip=0
+            for base in ${bases[@]+"${bases[@]}"}; do
+                if [ "$gdir" = "$base" ] || [[ "$gdir" == "$base/"* ]]; then
+                    skip=1
+                    break
+                fi
+            done
+            [ "$skip" -eq 1 ] && continue
             echo "${d#"$root/"}/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path>, then recreate it under its project's root"
-        fi
+            break
+        done < <(find "$dphys" -mindepth 1 -name .git -prune -print 2>/dev/null)
     done
     # projects/<dir> that no registry entry owns.
     if [ -d "$root/projects" ]; then
@@ -1531,14 +1616,14 @@ registry_stale_report() {
             [ -d "$d" ] || continue
             dabs="$(cd "$d" && pwd -P)" || continue
             owned=0
-            while IFS=$'\t' read -r name type path; do
+            while IFS=$'\t' read -r name type path fields; do
                 [ -n "$name" ] || continue
                 pabs="$(cd "$path" 2>/dev/null && pwd -P)" || pabs="$(_registry_normpath "$path")"
                 if [ "$pabs" = "$dabs" ] || [[ "$pabs" == "$dabs/"* ]] || [[ "$dabs" == "$pabs/"* ]]; then
                     owned=1
                     break
                 fi
-            done <<< "$entries"
+            done <<< "$full"
             [ "$owned" -eq 1 ] && continue
             echo "projects/$(basename "$d") is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
         done
@@ -1547,7 +1632,7 @@ registry_stale_report() {
     for f in "$root/.agent/projects.d"/*.sh; do
         [ -f "$f" ] || continue
         n="$(basename "$f" .sh)"
-        if ! registry_lookup "$root" "$n" >/dev/null 2>&1; then
+        if ! grep -qxF -- "$n" <<< "$(cut -f1 <<< "$full")"; then
             echo ".agent/projects.d/$n.sh belongs to no registered project and nothing reads it any more: delete it"
             continue
         fi
@@ -1559,26 +1644,31 @@ registry_stale_report() {
         fi
     done
     # The shared file: per registered project it applied to (no .sh of its
-    # own), per key; its ROS_* and extra-variable lines once.
+    # own), per key; its ROS_ROOT_DIR and extra-variable lines once, and
+    # only when a project it applied to would have read them.
     shared="$root/.agent/project_config.sh"
     if [ -f "$shared" ]; then
         any=0
-        while IFS=$'\t' read -r name type path; do
-            [ -n "$name" ] || continue
-            [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
-            [ -f "$root/.agent/projects.d/$name.sh" ] && continue
-            lines="$(registry_stale_settings_lines "$root" "$name" "$shared" 1)" || true
-            [ -n "$lines" ] && { printf '%s\n' "$lines"; any=1; }
-        done <<< "$entries"
+        applied=0
+        rootdir=0
         if lines="$(_stale_config_values "$shared")"; then
+            while IFS=$'\t' read -r name type path fields; do
+                [ -n "$name" ] || continue
+                [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
+                [ -f "$root/.agent/projects.d/$name.sh" ] && continue
+                applied=1
+                _stale_type_reads "$root" "$type" ROS_ROOT_DIR && rootdir=1
+                plines="$(registry_stale_settings_lines "$root" "$name" "$shared" 1)" || true
+                [ -n "$plines" ] && { printf '%s\n' "$plines"; any=1; }
+            done <<< "$full"
             local var val
             while IFS=$'\t' read -r var val; do
-                case "$var" in
-                    ROS_DISTRO) echo ".agent/project_config.sh sets ROS_DISTRO=\"$val\", which nothing reads any more: a project whose manifest declares no distro needs distro=$val on its line in .agent/projects.local"; any=1 ;;
-                    ROS_ROOT_DIR) echo ".agent/project_config.sh sets ROS_ROOT_DIR=\"$val\", which is no longer read from a file: export ROS_ROOT_DIR=$val in the environment that runs the adapter"; any=1 ;;
-                esac
+                if [ "$var" = ROS_ROOT_DIR ] && [ "$rootdir" -eq 1 ]; then
+                    echo ".agent/project_config.sh sets ROS_ROOT_DIR=\"$val\", which is no longer read from a file: export ROS_ROOT_DIR=$val in the environment that runs the adapter"
+                    any=1
+                fi
             done <<< "$lines"
-            if lines="$(project_config_extra_vars "$shared")" && [ -n "$lines" ]; then
+            if [ "$applied" -eq 1 ] && lines="$(project_config_extra_vars "$shared")" && [ -n "$lines" ]; then
                 echo ".agent/project_config.sh sets or exports $(printf '%s' "$lines" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'), which no command gets any more: move that environment into the scripts the projects' settings keys point at"
                 any=1
             fi
