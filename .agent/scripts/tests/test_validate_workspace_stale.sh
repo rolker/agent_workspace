@@ -28,7 +28,7 @@
 #    P2  the path that names it is a registered root ....... silent
 #    P3  a registered root lies under it (by that path) .... silent
 #    P4  it lies inside a registered root .................. silent
-#    P5  a folder, unregistered (nothing registered too) ... "<label> is not registered ...: register it ..., or, after checking any repository in it for uncommitted work ... and commits on no remote ..., remove it"
+#    P5  a folder, unregistered (nothing registered too) ... "<label> is not registered ...: register it ..., or, <check before removing>, remove it"
 #    P6  a link to a registered root ....................... "... a link to registered project '<n>' ...: remove the link"
 #    P7  a link to a folder inside a registered root ....... "... a link to <t>, inside registered project '<n>' ...: remove the link"
 #    P8  a link to a folder holding a registered root ...... "... which holds registered project '<n>' ...: remove the link"
@@ -44,7 +44,8 @@
 # W  worktrees/project/ and .workspace-worktrees/:
 #    W1  absent, empty, or only empty folders ............. silent
 #    W2  a checkout (a folder holding .git), depth 1 to 6,
-#        not a registered folder, not in one, holding none  "<loc>/ holds worktrees that are no longer found: ... git worktree remove ... (it refuses one with uncommitted changes and keeps its branch) ...; a plain clone there ...: after checking ..., move or delete it"
+#        not a registered folder, not in one, holding none  "<loc>/ holds worktrees that are no longer found: for each, <check before removing>, remove it (git worktree remove, or move or delete a plain clone), then recreate it": under its project's registered root for worktrees/project/, as a workspace worktree for .workspace-worktrees/
+#    <check before removing> is CHECK_BEFORE_REMOVING (_project_registry.sh), the one text every remove or delete hint for a checkout uses, worktree_remove.sh's too: git status --ignored, git stash list, git log --all --not --remotes.
 #    W3  a checkout in a registered worktrees= folder ...... silent
 #    W4  a checkout that is or lies in a registered root ... silent
 #    W5  nothing registered ............................... as W2
@@ -81,8 +82,9 @@
 # (each wrong case has a silent row above): P5 a folder and any repository
 # in it (P2-P4, P13, P15; the line says to check first); P6-P8, P10, P11,
 # P14 a link only (P3, P16: a line naming a root through it); W2 a worktree
-# (git refuses one with changes and keeps its branch; W3, W4, W7, W8; a plain
-# clone gets check-first); S4, S8, S10 a .sh holding nothing a reader takes
+# or plain clone, with its ignored files, stashes and a detached HEAD's
+# commits, which git worktree remove does not protect (W3, W4, W7, W8; the
+# line says to check first, for worktrees too); S4, S8, S10 a .sh holding nothing a reader takes
 # (S5, S6: cannot be told; a value the settings file already has never ran);
 # C2, C5 the shared file (C3, C4, C6, C8).
 #
@@ -124,6 +126,8 @@ make_ws() {
 git_repo() { mkdir -p "$1" && git -C "$1" init -q; }
 report() { bash -c 'source "$1/.agent/scripts/_project_registry.sh" && registry_stale_report "$1"' _ "$1"; }
 validate() { python3 "$1/.agent/scripts/validate_workspace.py" 2>&1; }
+# The check-first text, pinned here word for word (review round 4).
+CHECK="after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
 
 echo "TEST: a clean machine reports nothing"
 sb="$(make_ws)"
@@ -147,7 +151,7 @@ rm "$sb/project"
 git_repo "$sb/project"
 out="$(report "$sb")"
 has "P5: an unregistered checkout: register it, or check it and remove it" \
-    "project is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes), remove it" "$out"
+    "project is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, $CHECK, remove it" "$out"
 echo "proj single_project $sb/project" >> "$sb/.agent/projects.local"
 out="$(report "$sb")"
 hasnt "P2: a root registered at <ws>/project itself is silent (never 'remove it')" "project" "$out"
@@ -182,9 +186,9 @@ mkdir -p "$sb/worktrees/project/alpha"
 git -C "$sb/origin" worktree add -q "$sb/worktrees/project/alpha/issue-alpha-1" -b wt1 2>/dev/null
 git -C "$sb/origin" worktree add -q "$sb/.workspace-worktrees/issue-workspace-2" -b wt2 2>/dev/null
 out="$(report "$sb")"
-has "W2, W5: worktrees/project/ named (a worktree two levels down, nothing registered)" "worktrees/project/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path> (it refuses one with uncommitted changes and keeps its branch)" "$out"
-has "W2: .workspace-worktrees/ named" ".workspace-worktrees/ holds worktrees that are no longer found" "$out"
-has "W2: a plain clone there gets the check-first advice" "a plain clone there is not a worktree: after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes), move or delete it" "$out"
+has "W2, W5: worktrees/project/ named, check first for worktrees too, recreated under the project's root (a worktree two levels down, nothing registered)" "worktrees/project/ holds worktrees that are no longer found: for each, $CHECK, remove it (a worktree with git -C <its repository> worktree remove <path>; a plain clone, which is not a worktree, by moving or deleting it), then recreate it under its project's registered root with .agent/scripts/worktree_create.sh --type project" "$out"
+has "W2: .workspace-worktrees/ named, recreated as a workspace worktree" ".workspace-worktrees/ holds worktrees that are no longer found: for each, $CHECK, remove it (a worktree with git -C <its repository> worktree remove <path>; a plain clone, which is not a worktree, by moving or deleting it), then recreate it as a workspace worktree with .agent/scripts/worktree_create.sh --type workspace" "$out"
+hasnt "W2: never the false 'refuses one with uncommitted changes and keeps its branch'" "keeps its branch" "$out"
 git -C "$sb/origin" worktree remove "$sb/worktrees/project/alpha/issue-alpha-1"
 git -C "$sb/origin" worktree remove "$sb/.workspace-worktrees/issue-workspace-2"
 out="$(report "$sb")"
@@ -247,7 +251,7 @@ mkdir -p "$sb/projects/group/one" "$sb/projects/orphan"
 git -C "$sb/projects/group/one" init -q
 printf 'inner single_project projects/inner\ngroup-one single_project projects/group/one\n' > "$sb/.agent/projects.local"
 out="$(report "$sb")"
-has "P5 (projects/): the unowned directory" "projects/orphan is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, after checking any repository in it for uncommitted work" "$out"
+has "P5 (projects/): the unowned directory" "projects/orphan is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, $CHECK, remove it" "$out"
 hasnt "P2 (projects/): a registered root under projects/ is silent" "projects/inner" "$out"
 hasnt "P3 (projects/): a directory holding a registered root is silent" "projects/group" "$out"
 out="$(validate "$sb")"; rc=$?
@@ -492,6 +496,12 @@ has "P6 (projects/): a link to a registered root: remove the link" "projects/lnk
 has "P8 (projects/): a link holding a registered root: remove the link" "projects/holder is a link to $rp, which holds registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/projects/holder)" "$out"
 has "P11 (projects/): a link to a file: remove it" "projects/afile is a link to $sb/roots/afile, which is not a folder; nothing reads the link any more: remove it (rm $sb/projects/afile)" "$out"
 rm "$sb/projects/holder" "$sb/projects/afile"
+ln -s "$sb/roots/gone" "$sb/projects/my link"
+out="$(report "$sb")"
+has "P10 (projects/): a path with a space is quoted in the printed rm (review round 4)" "remove it (rm $(printf '%q' "$sb/projects/my link"))" "$out"
+cmd="$(grep -F "projects/my link is a link" <<< "$out" | sed -n 's/.*remove it (\(rm .*\))$/\1/p')"
+eval "$cmd" 2>/dev/null
+[[ ! -L "$sb/projects/my link" ]] && pass "P10: the printed rm, run as printed, removes that link only" || fail "P10: printed rm did not remove the link: $cmd"
 has "P7 (projects/): a link into a registered root: remove it" "projects/into is a link to $rp/alpha/sub, inside registered project 'alpha'" "$out"
 has "P9 (projects/): a link to an unregistered folder: register the target, remove the link" "projects/loose is a link to $sb/roots/loose, which is not registered; nothing reads the link any more: register $rp/loose" "$out"
 has "P10 (projects/): a dangling link: remove it" "projects/gone is a link to $sb/roots/gone, which does not exist; nothing reads the link any more: remove it (rm $sb/projects/gone)" "$out"

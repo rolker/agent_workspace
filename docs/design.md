@@ -327,10 +327,12 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   root's `worktrees=` folder. `project` and each entry of `projects/` follow one rule: silent when
   the path that names it is, holds or lies in a registered folder (ADR-0016 decision 1); a link to,
   into or holding one, to a file or to nothing is to be removed (the link only); an unregistered
-  folder or link target is to be registered, or removed after checking any repository in it for
-  uncommitted work and commits on no remote. A checkout under the retired worktree locations (the
-  walk stops at each checkout and at depth 6) that is not, does not lie in and does not hold a
-  registered folder is named. A `projects.d/<name>.sh` and the shared
+  folder or link target is to be registered, or removed after the check every removal hint shares
+  (`CHECK_BEFORE_REMOVING`, `worktree_remove.sh` too: `git status --ignored`, `git stash list`,
+  `git log --all --not --remotes`). A checkout under the retired worktree locations (the walk stops
+  at each checkout and at depth 6) that is not, does not lie in and does not hold a registered folder
+  is named, with the same check before it is removed, then recreated under its project's root or, from
+  `.workspace-worktrees/`, as a workspace worktree. A `projects.d/<name>.sh` and the shared
   `.agent/project_config.sh` are reported per setting the project's settings file lacks, under the old
   order (the shared file only for a project with no `.sh` of its own; `ROS_DISTRO` and `ROS_ROOT_DIR`
   only for a type whose adapter reads them); a parent root's `.sh` is told to move what an instance

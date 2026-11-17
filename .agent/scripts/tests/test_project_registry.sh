@@ -1810,24 +1810,28 @@ test_worktree_remove_unresolvable_owner_removes_nothing() {
     git -C "$origin_a" worktree add -q "$wt/l1_ws/src/pkg_a" -b feature/issue-77 >/dev/null 2>&1
     # The second entry exists but is not a git worktree: its owner cannot be
     # resolved, and there is no project/ checkout to fall back on.
-    mkdir -p "$wt/l1_ws/src/pkg_b"
+    mkdir -p "$wt/l1_ws/src/pkg b"
     {
         printf '# project=agg issue=owner/pkg_a#77 layer=l1\n'
         printf '%s\t%s\t%s\n' "$origin_a" "l1_ws/src/pkg_a" "feature/issue-77"
-        printf '%s\t%s\t%s\n' "$sb/origins/pkg_b" "l1_ws/src/pkg_b" "feature/issue-77"
+        printf '%s\t%s\t%s\n' "$sb/origins/pkg b" "l1_ws/src/pkg b" "feature/issue-77"
     } > "$wt/.worktree-repos"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "names the entry whose owner is unknown" "cannot resolve the repository that owns $wt/l1_ws/src/pkg_b; nothing was removed" "$out"
+    assert_contains "names the entry whose owner is unknown" "cannot resolve the repository that owns $wt/l1_ws/src/pkg b; nothing was removed" "$out"
     assert_eq "the first entry is still a worktree" "yes" "$([ -d "$wt/l1_ws/src/pkg_a" ] && git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
     assert_eq "the aggregate dir is kept" "yes" "$([ -f "$wt/.worktree-repos" ] && echo yes || echo no)"
     assert_not_contains "never advises --path, which refuses the same entry (review suggestion)" "--path" "$out"
-    assert_contains "advises deleting the entry by hand, then running again" "delete it by hand (rm -r $wt/l1_ws/src/pkg_b), then run this command again" "$out"
-    assert_contains "says to check uncommitted work before rm -r (review round 2)" "check git status there for uncommitted work" "$out"
-    assert_contains "says to check commits on no remote before rm -r (review round 2)" "git log --branches --not --remotes for commits that are on no remote" "$out"
-    assert_contains "rm -r comes only after the checks" "Only when nothing in it is needed, delete it by hand" "$out"
-    # Following the advice works: the entry gone, the removal goes through.
-    rm -r "$wt/l1_ws/src/pkg_b"
+    # The one check-first text every removal hint uses, pinned word for word
+    # (review round 4), and the path quoted as the shell reads it.
+    local check="after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
+    assert_contains "the check comes first, then rm -r with the path quoted, then running again" \
+        "Only $check, delete it by hand (rm -r $(printf '%q' "$wt/l1_ws/src/pkg b")), then run this command again: an entry already gone is skipped." "$out"
+    # Following the advice, as printed: the entry gone, the removal goes through.
+    local cmd
+    cmd="$(sed -n 's/.*delete it by hand (\(rm -r .*\)), then run this command again.*/\1/p' <<< "$out")"
+    eval "$cmd"
+    assert_eq "the printed rm -r, run as printed, removed the entry with a space in its path" "no" "$([ -e "$wt/l1_ws/src/pkg b" ] && echo yes || echo no)"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
     assert_eq "after the advised deletion: exit 0 (out: ${out:0:200})" "0" "$rc"
@@ -1836,18 +1840,21 @@ test_worktree_remove_unresolvable_owner_removes_nothing() {
     # A single-repository worktree whose one entry is the worktree itself:
     # deleting it leaves nothing for a rerun to find, so the advice is
     # git worktree prune in the repository it was made from (review round 3).
-    local swt="$sb/projects/agg/worktrees/issue-agg-78"
-    git -C "$origin_a" worktree add -q "$swt" -b feature/issue-78 >/dev/null 2>&1
-    printf '# project=agg issue=78\n%s\t.\tfeature/issue-78\n' "$origin_a" > "$swt/.worktree-repos"
+    local swt="$sb/projects/agg/worktrees/issue-agg-78" origin_c="$sb/origins/pkg c"
+    make_git_repo "$origin_c" "file:///nonexistent/pkg_c.git"
+    seed_commit "$origin_c"
+    git -C "$origin_c" worktree add -q "$swt" -b feature/issue-78 >/dev/null 2>&1
+    printf '# project=agg issue=78\n%s\t.\tfeature/issue-78\n' "$origin_c" > "$swt/.worktree-repos"
     rm -f "$swt/.git"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 78 --type project --project agg --force 2>&1)" || rc=$?
     assert_eq "single-repository worktree, not a checkout: exit 1" "1" "$rc"
-    assert_contains "single entry: advises git worktree prune in its repository" "delete it by hand (rm -r $swt), then drop git's record of the worktree in the repository it was made from: git -C $origin_a worktree prune." "$out"
+    assert_contains "single entry: advises git worktree prune in its repository" "Only $check, delete it by hand (rm -r $swt), then drop git's record of the worktree in the repository it was made from: git -C $(printf '%q' "$origin_c") worktree prune." "$out"
     assert_not_contains "single entry: never 'run this command again'" "run this command again" "$out"
     rm -r "$swt"
-    git -C "$origin_a" worktree prune
-    assert_eq "following the advice: git no longer lists the worktree" "no" "$(git -C "$origin_a" worktree list | grep -qF "$swt" && echo yes || echo no)"
+    cmd="$(sed -n "s/.*the repository it was made from: \(git -C .* worktree prune\)\.\$/\1/p" <<< "$out")"
+    eval "$cmd"
+    assert_eq "following the advice as printed (its repository's path has a space): git no longer lists the worktree" "no" "$(git -C "$origin_c" worktree list | grep -qF "$swt" && echo yes || echo no)"
 }
 
 test_wt_ensure_exclusion_noop_for_unregistered() {

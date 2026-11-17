@@ -404,19 +404,23 @@ for _i in "${!ENTRY_DESTS[@]}"; do
     fi
     if [ -z "$_common_dir" ]; then
         echo "Error: cannot resolve the repository that owns ${_dest}; nothing was removed."
-        echo "It is not a git checkout's own top folder, so this script cannot tell what removing it would lose. Inspect it first: if it, or a folder in it, is a git repository of its own, check git status there for uncommitted work and git log --branches --not --remotes for commits that are on no remote, and keep or push what you need."
+        echo "It is not a git checkout's own top folder, so this script cannot tell what removing it would lose."
+        # The check-first text is the one every removal hint uses
+        # (CHECK_BEFORE_REMOVING, _project_registry.sh); paths are quoted
+        # as the shell must read them.
+        _qdest="$(printf '%q' "$_dest")"
         if [ "$_dest" = "$WORKTREE_DIR" ]; then
             # The worktree is this one entry: once it is gone there is
             # nothing left for this command to find, so git's record of it
             # is dropped by hand.
             _origin="${ENTRY_ORIGINS[$_i]:-}"
             if [ -n "$_origin" ] && [ "$_origin" != "$WORKTREE_DIR" ]; then
-                echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then drop git's record of the worktree in the repository it was made from: git -C $_origin worktree prune."
+                echo "Only $CHECK_BEFORE_REMOVING, delete it by hand (rm -r $_qdest), then drop git's record of the worktree in the repository it was made from: git -C $(printf '%q' "$_origin") worktree prune."
             else
-                echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then drop git's record of the worktree in the repository it was made from: git -C <that repository> worktree prune."
+                echo "Only $CHECK_BEFORE_REMOVING, delete it by hand (rm -r $_qdest), then drop git's record of the worktree in the repository it was made from: git -C <that repository> worktree prune."
             fi
         else
-            echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
+            echo "Only $CHECK_BEFORE_REMOVING, delete it by hand (rm -r $_qdest), then run this command again: an entry already gone is skipped."
         fi
         exit 1
     fi

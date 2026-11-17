@@ -1603,9 +1603,12 @@ _stale_relation_noun() {
     fi
 }
 
-# What to check before removing a folder that may hold a repository: its
-# uncommitted work and commits on no remote.
-_STALE_CHECK_FIRST="after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes)"
+# What to check before removing a checkout, worktree or folder that may hold
+# a repository: every hint that says remove or delete one uses this text
+# (the retired-shape report here, worktree_remove.sh), so none forgets
+# ignored files, stashes or commits no branch holds (a detached HEAD's).
+# It reads as a clause: "..., <this>, remove it".
+CHECK_BEFORE_REMOVING="after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
 
 # The line for one retired folder, <ws>/project or an entry under
 # <ws>/projects/ (<label> is how the line names it), or nothing. The case
@@ -1613,35 +1616,38 @@ _STALE_CHECK_FIRST="after checking any repository in it for uncommitted work (gi
 # _STALE_UNREGISTERED=1 when it names a folder that is not registered (an
 # old-order reader of the shared config file may have been it).
 _stale_folder_line() {
-    local root="$1" full="$2" x="$3" label="$4" rel target tabs
+    local root="$1" full="$2" x="$3" label="$4" rel target tabs qx
     # The path that names it is, holds or lies in a registered root: the
     # registry reads it (or reads through it), so it is silent.
     _stale_root_relation "$full" "$x" name >/dev/null && return 0
+    # The path as the shell must read it in the printed command (a space in
+    # the workspace path would otherwise split it).
+    qx="$(printf '%q' "$x")"
     if [ -L "$x" ]; then
         target="$(readlink "$x")"
         if [ ! -e "$x" ]; then
-            echo "$label is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $x)"
+            echo "$label is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $qx)"
             return 0
         fi
         if ! tabs="$(cd "$x" 2>/dev/null && pwd -P)"; then
-            echo "$label is a link to $target, which is not a folder; nothing reads the link any more: remove it (rm $x)"
+            echo "$label is a link to $target, which is not a folder; nothing reads the link any more: remove it (rm $qx)"
             return 0
         fi
         if rel="$(_stale_root_relation "$full" "$x" target)"; then
             case "${rel%%$'\t'*}" in
-                self) echo "$label is a link to $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
-                inside) echo "$label is a link to $tabs, inside $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
-                holds) echo "$label is a link to $tabs, which holds $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
+                self) echo "$label is a link to $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
+                inside) echo "$label is a link to $tabs, inside $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
+                holds) echo "$label is a link to $tabs, which holds $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
             esac
             return 0
         fi
         _STALE_UNREGISTERED=1
-        echo "$label is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $x)"
+        echo "$label is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $qx)"
         return 0
     fi
     [ -d "$x" ] || return 0
     _STALE_UNREGISTERED=1
-    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or, $_STALE_CHECK_FIRST, remove it"
+    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or, $CHECK_BEFORE_REMOVING, remove it"
 }
 
 # The variables retired config file <file> sets (the read set's non-empty
@@ -1672,7 +1678,7 @@ _STALE_WORKTREE_SCAN_DEPTH=6
 # Usage: registry_stale_report "$main_root"
 registry_stale_report() {
     local root="$1" full name type path fields d dphys f n lines shared any
-    local g applied rootdir plines setnames insts why
+    local g applied rootdir plines setnames insts why where
     if ! full="$(registry_entries_full "$root" 2>/dev/null)"; then
         echo ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again"
         return 0
@@ -1695,7 +1701,15 @@ registry_stale_report() {
             # root's worktrees= folder is the registry's: skipped.
             _stale_root_relation "$full" "$g" name >/dev/null && continue
             _STALE_UNREGISTERED=1
-            echo "${d#"$root/"}/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path> (it refuses one with uncommitted changes and keeps its branch), then recreate it under its project's root; a plain clone there is not a worktree: $_STALE_CHECK_FIRST, move or delete it"
+            # git worktree remove deletes ignored files without asking and
+            # leaves a detached HEAD's commits on no branch, so the check
+            # comes first for a worktree as for a plain clone.
+            if [ "$d" = "$root/.workspace-worktrees" ]; then
+                where="recreate it as a workspace worktree with .agent/scripts/worktree_create.sh --type workspace"
+            else
+                where="recreate it under its project's registered root with .agent/scripts/worktree_create.sh --type project"
+            fi
+            echo "${d#"$root/"}/ holds worktrees that are no longer found: for each, $CHECK_BEFORE_REMOVING, remove it (a worktree with git -C <its repository> worktree remove <path>; a plain clone, which is not a worktree, by moving or deleting it), then $where"
             break
         done < <(find "$dphys" -mindepth 1 -maxdepth "$_STALE_WORKTREE_SCAN_DEPTH" \
             \( -name .git -prune \) -o \( -type d -exec test -e '{}/.git' \; -prune -print \) 2>/dev/null)
