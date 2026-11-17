@@ -45,8 +45,10 @@ their own against the specification.
 - A manifest can extend another one. A group with its own robot can start from a published
   manifest and add its own packages, without forking that manifest and without cloning the
   system first.
-- The published manifest can point at the released repos while a developer points some or all
-  of them at forks, without editing the published manifest.
+- The published manifest can point at the released repos while a machine fetches them from
+  somewhere else: a developer's forks, or a private server for machines in the field. The
+  published manifest is not edited for either.
+- A development machine can hold more than one distro of the same system side by side.
 - Some repos can be optional. For example, marking a private repo optional allows the same
   manifest to be used to set up a public version of a project.
 - A manifest is a file, and it can live anywhere: in one of the system's repos, in a repo of
@@ -67,10 +69,10 @@ and nothing stops someone from feeding the resolved list to a different tool.
 
 `vcs` on its own gets part of the way. vcs2l is adding an `extends` key (on its main branch,
 not in release 1.1.7) that lets a `.repos` file build on other local files and replace entries
-in them, the later file winning. A manifest's `extends` follows the same rule. A `.repos` file
-is still one list for one variant: it has no roles, no per-distro versions, no optional repos
-and no layers. A system with three roles and two distros needs six of them kept in step by
-hand.
+in them, the later file winning. A manifest's `extends` also lets the later file win, and
+merges the keys of an entry where vcs2l replaces it. A `.repos` file is still one list for
+one variant: it has no roles, no per-distro versions, no optional repos and no layers. A
+system with three roles and two distros needs six of them kept in step by hand.
 
 We looked at tools that do compose manifests before writing this one (survey of 2026-09):
 

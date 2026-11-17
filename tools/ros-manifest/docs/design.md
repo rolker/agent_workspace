@@ -55,7 +55,7 @@ The system directory is not a repo. Nothing in `.repos-manifest/` is ever commit
 ```yaml
 manifest: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
 local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
-role: robot
+role: developer
 groups: [ben-hardware]
 distro: jazzy
 fetch_from:
@@ -75,8 +75,8 @@ remotes:
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 
-`role`, `groups` and `distro` are facts about the machine, which is why they are recorded here and not
-in the manifest.
+`role`, `groups` and `distro` are facts about the machine, which is why they are recorded
+here and not in the manifest.
 
 ### More than one distro
 
@@ -230,6 +230,9 @@ Sync does not discard work. A repo with uncommitted changes, or on a branch othe
 one the manifest names, is left as it is and reported. A repo that is no longer in the
 manifest is left on disk and reported; `sync` does not delete it.
 
+Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
+submodules.
+
 An optional repo that cannot be fetched is skipped and reported. Any other repo that cannot
 be fetched is an error. A skipped repo is listed every time, by `sync` and by `status`, so
 that a repo missing because the network was down is not mistaken for one the machine has no
@@ -333,9 +336,9 @@ With `fallback: false`, every repo is cloned from the other place, and a repo th
 there is an error. A field machine never reaches for the public host without being told to.
 
 With `fallback: true`, a repo is cloned from the other place if it exists there and has the
-version the manifest names, where it names one, and from the published URL otherwise. Creating a fork changes
-what the next `sync` fetches. That is intended: a collaborator who decides to work on a repo
-forks it, syncs, and is on their fork.
+version the manifest names, where it names one, and from the published URL otherwise.
+Creating a fork changes what the next `sync` fetches. That is intended: a collaborator who
+decides to work on a repo forks it, syncs, and is on their fork.
 
 The repo is cloned with the place it came from as `origin`. When that is not the published
 URL, and `fallback` is true, the published repo is added as a remote named `upstream`.
@@ -469,10 +472,10 @@ fetch_from:
   fallback: false
 ```
 
-The robot role leaves `simulation` and `ui` off, so those layers are empty and are not
-built. The one hardware group brings in the drivers for this platform and no other. Every
-repo, and the manifest itself, comes from the private server. Fixes made on the machine are
-committed on the manifest's branches and pushed to the server, and `sync` keeps them.
+The robot role leaves `simulation` and `ui` off. A layer that holds only such repos is empty
+and is not built. The one hardware group brings in the drivers for this platform and no other.
+Every repo, and the manifest itself, comes from the private server. Fixes made on the machine
+are committed on the manifest's branches and pushed to the server, and `sync` keeps them.
 
 Without roles, groups and `fetch_from`, this machine needs its own copy of the manifest:
 the same repos at the same versions with every URL rewritten and half the entries deleted,
@@ -523,6 +526,9 @@ extend one at a URL and because the manifest keys are merged.
   script that sets up the machine.
 - Running a distro the host OS does not support, in a container or otherwise. `distro` is
   recorded, and the commands assume the environment they run in can build it.
+- Leaving out some packages of a repo. Groups and roles select whole repos. A person can
+  pass `colcon` its own options for skipping packages through `build`.
+- Content that is not in a git repo, such as models or data downloaded at build time.
 
 ## What is built
 
@@ -530,6 +536,11 @@ A prototype has `resolve` and `validate` for an earlier shape of the format, whe
 nested under their layer and the version key is `ref`. It also has three things this design
 drops: a `packages:` section with package dependencies, roles defined by starting packages,
 and a cache of fetched parent manifests that is kept between runs.
+
+Two things in the prototype differ from this design in smaller ways. It marks whole layers
+as optional, where the design marks repos. And when it fetches a parent manifest from a git
+repo it never lets git or ssh ask for a password, where the design lets them ask at a
+terminal.
 
 `init`, `sync`, `build`, `status`, the system directory, fetching from another place and
 extra remotes are not built.

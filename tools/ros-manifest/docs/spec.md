@@ -281,8 +281,8 @@ These three forms are the ones every tool is expected to read:
   names it.
 - An `http` or `https` URL of the file.
 - A file in a git repo, given as a mapping with the repo's `url`, a `version` (a branch or
-  tag) and the `path` of the file in the repo. Any URL git can clone works, so a repo on a
-  private server reached over ssh is named this way.
+  tag; the repo's default branch if left out) and the `path` of the file in the repo. Any URL
+  git can clone works, so a repo on a private server reached over ssh is named this way.
 
 ```yaml
 extends:
@@ -331,8 +331,9 @@ already read is an error.
 
 vcs2l has the same "later wins" rule for `extends` in `.repos` files (on its main branch at
 the time of writing, for local files only). It differs in one way: vcs2l replaces a repo
-entry as a whole, where a manifest merges its keys. A later entry that gives `type`, `url`
-and `version` behaves the same in both.
+entry as a whole, where a manifest merges its keys. For plain `.repos` entries, which have
+only `type`, `url` and `version`, the result is the same when the later entry gives all
+three.
 
 Pointing a repo at a fork is done with `extends`: a developer's manifest extends the
 published one and gives the repo a different `url`.
@@ -380,6 +381,8 @@ document.
 - Package dependencies. They stay in each package's `package.xml` and with `rosdep`.
 - System packages, udev rules and other machine setup.
 - Build arguments. They are given to the build tool.
+- Which packages of a repo are built. Groups and roles select whole repos.
+- Content that is not in a repo, such as models or data downloaded at build time.
 - The exact commits a machine has checked out. A tool can record them as a manifest that
   extends the one in use and gives each repo a commit as its `version`.
 
