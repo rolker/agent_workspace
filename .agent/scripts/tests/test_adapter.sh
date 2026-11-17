@@ -632,6 +632,30 @@ test_install_refuses_with_retired_install_command() {
     assert_eq "install=none: exit 0" "0" "$rc"
 }
 
+test_install_refuses_when_retired_file_unreadable() {
+    echo "TEST: install with no install setting refuses when a retired file cannot be sourced: unknown is never 'nothing to install' (review M2)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsinstall)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    printf 'INSTALL_CMD="%s"\nfalse\n' "$stub" > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "shared file that cannot be sourced, no install key: exit 1" "1" "$rc"
+    assert_contains "the NOTE says the file cannot be sourced" ".agent/project_config.sh cannot be sourced, so what is left in it for 'demo' is unknown" "$out"
+    assert_contains "the refusal says it cannot be told" "ERROR: project 'demo' has no install setting, and whether .agent/project_config.sh holds an install command that is no longer run cannot be told (above)" "$out"
+    assert_not_contains "never 'nothing to install'" "nothing to install" "$out"
+    assert_not_contains "the retired command does not run" "STUB_settingsinstall_RAN_IN" "$out"
+    rm -f "$sb/.agent/project_config.sh"
+    printf 'exit 3\n' > "$sb/.agent/projects.d/demo.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "a <name>.sh that cannot be sourced: exit 1 too" "1" "$rc"
+    assert_contains "names the .sh" "whether .agent/projects.d/demo.sh holds an install command that is no longer run cannot be told" "$out"
+    set_demo_setting "$sb" "install=none"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "with install=none the settings file decides: exit 0" "0" "$rc"
+}
+
 test_project_type_env_not_inherited() {
     echo "TEST: exported PROJECT_TYPE in the environment is ignored (the registry names the type)"
     local sb out
@@ -1137,6 +1161,7 @@ test_build_exit_code_propagation
 test_build_aborts_on_failing_config
 test_retired_settings_note
 test_install_refuses_with_retired_install_command
+test_install_refuses_when_retired_file_unreadable
 test_no_new_env_vars_leaked
 test_test_runs_in_project_root
 test_install_noop_when_unset

@@ -330,11 +330,15 @@ fi
 # is no longer read. When it still sets something the settings file lacks,
 # every verb says so on stderr, naming each setting and the command that
 # moves it; `install` with no install setting refuses instead of reporting
-# "nothing to install" for a command that used to run (plan review N2).
+# "nothing to install" for a command that used to run (plan review N2),
+# and refuses too when what the file holds cannot be told (it cannot be
+# sourced, or the registry or the settings file has errors): unknown is
+# never read as "nothing".
 if [ -n "$ACTIVE_PROJECT_NAME" ]; then
     _STALE_FILE="$(registry_stale_config_for "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"
     if [ -n "$_STALE_FILE" ]; then
-        _STALE_LINES="$(registry_stale_settings_lines "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_STALE_FILE")" || true
+        _STALE_RC=0
+        _STALE_LINES="$(registry_stale_settings_lines "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_STALE_FILE")" || _STALE_RC=$?
         _STALE_REL=".agent/${_STALE_FILE#"$WORKSPACE_ROOT/.agent/"}"
         if [ -n "$_STALE_LINES" ]; then
             echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and it still sets:" >&2
@@ -342,9 +346,15 @@ if [ -n "$ACTIVE_PROJECT_NAME" ]; then
         elif [[ "$_STALE_FILE" == *.sh ]] && [ "$_STALE_FILE" != "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
             echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4) and holds nothing left to move: delete it" >&2
         fi
-        if [ "$VERB" = install ] && [ -z "$ACTIVE_PROJECT_INSTALL" ] && grep -q " sets INSTALL_CMD=" <<< "$_STALE_LINES"; then
-            echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and the install command in $_STALE_REL is no longer run: set it with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
-            exit 1
+        if [ "$VERB" = install ] && [ -z "$ACTIVE_PROJECT_INSTALL" ]; then
+            if [ "$_STALE_RC" -ne 0 ]; then
+                echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and whether $_STALE_REL holds an install command that is no longer run cannot be told (above): read it, set the command with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
+                exit 1
+            fi
+            if grep -q " sets INSTALL_CMD=" <<< "$_STALE_LINES"; then
+                echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and the install command in $_STALE_REL is no longer run: set it with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
+                exit 1
+            fi
         fi
     fi
 fi
