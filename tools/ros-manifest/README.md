@@ -36,7 +36,7 @@ This repo holds the specification of the manifest format and a set of tools that
 it. The tools are one way to use a manifest. Anyone can pick the ones they want, or write
 their own against the specification.
 
-- A manifest lists the repos of a system once. A role (robot, operator, developer) and a ROS
+- A manifest lists the repos of a system once. A role (robot, operator, developer) and a
   distro select which of them a machine gets, and at which branch or tag.
 - A manifest groups its repos into ordered layers. The suggested layout, and the one the tools
   here use, makes each layer its own colcon workspace built on top of the ones before it. A
@@ -55,8 +55,8 @@ their own against the specification.
   and update the repos, and build the layers in order. They can be run by hand, from an
   install script, in CI, or by a coding agent.
 
-The tools do not replace `vcs` or `colcon`; they call them. Package dependencies stay with
-`rosdep`.
+The tools do not replace `vcs` or `colcon`; they call them. For ROS 2 projects, package
+dependencies stay with `rosdep`.
 
 ## Why another tool
 

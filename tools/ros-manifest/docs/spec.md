@@ -176,9 +176,9 @@ robot role on two hardware platforms is one role and two groups, not two roles.
 groups:
   simulation:
     default: exclude
-  hw-ben:
+  ben-hardware:
     default: exclude
-  hw-echoboat:
+  echoboat-hardware:
     default: exclude
 
 roles:
@@ -187,7 +187,7 @@ roles:
     add: [simulation]
 ```
 
-A machine resolves this for the role `robot` with the extra group `hw-ben`.
+A machine resolves this for the role `robot` with the extra group `ben-hardware`.
 
 Open: roles have not had a real design pass. The example above is the smallest thing that
 separates a robot from a development machine. Whether a role should also be able to name

@@ -47,7 +47,7 @@ The system directory is not a repo. Nothing in `.repos-manifest/` is ever commit
 manifest: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
 local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
 role: robot
-groups: [hw-ben]
+groups: [ben-hardware]
 distro: jazzy
 prefer_owner: rolker
 ```
@@ -99,7 +99,7 @@ After `init`, the other commands take no arguments in the common case. A person 
 machine types:
 
 ```
-repos-manifest init <manifest> --role robot --with hw-ben --distro jazzy
+repos-manifest init <manifest> --role robot --with ben-hardware --distro jazzy
 repos-manifest build
 source setup.bash
 ```
