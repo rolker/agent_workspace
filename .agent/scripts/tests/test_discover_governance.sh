@@ -233,6 +233,20 @@ else
 fi
 assert_row "(P2) the out-of-tree registered root is reported by its absolute path" "$out" "$far/docs/design.md" architecture project
 
+echo "TEST: a registry with errors is never read as 'no project': workspace rows, then an error and exit 1 (review round 2)"
+echo "broken single_project" >> "$sb/.agent/projects.local"
+rc=0
+out="$(run_discover "$sb" 2>"$TMP_ROOT/err.txt")" || rc=$?
+err="$(cat "$TMP_ROOT/err.txt")"
+[[ $rc -eq 1 ]] && pass "(E1) exit 1" || fail "(E1) rc=$rc"
+[[ "$err" == *"the project registry $sb/.agent/projects.local has errors (above), so no registered project root was scanned"* ]] \
+    && pass "(E2) says no root was scanned" || fail "(E2) stderr: $err"
+if printf '%s\n' "$out" | grep -qF "$far/docs/design.md"; then
+    fail "(E3) a root was scanned from a registry with errors"
+else
+    pass "(E3) no project row from a registry with errors"
+fi
+
 echo ""
 echo "test_discover_governance:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

@@ -131,8 +131,14 @@ scan_scope "$ROOT_DIR" "workspace"
 # checkout's registry (issue #265 part 4: a project/ checkout in the
 # workspace is not read). A root inside the workspace tree is reported by
 # its path relative to the workspace, one elsewhere by its absolute path.
+# A registry with errors is never read as "no project": the workspace scope
+# above is still printed, then the script says no root was scanned and
+# exits 1, so an inventory missing the projects is never taken as whole.
 REGISTRY_ROOT="$(registry_main_checkout "$ROOT_DIR")"
-_entries="$(registry_entries "$REGISTRY_ROOT" 2>/dev/null)" || true
+if ! _entries="$(registry_entries "$REGISTRY_ROOT")"; then
+    echo "ERROR: the project registry $(registry_file "$REGISTRY_ROOT") has errors (above), so no registered project root was scanned: fix it, then run this again" >&2
+    exit 1
+fi
 while IFS=$'\t' read -r _name _type _path; do
     [[ -n "$_name" ]] || continue
     [[ "$_type" == "$REGISTRY_PARENT_TYPE" ]] && continue
