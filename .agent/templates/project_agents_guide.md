@@ -39,9 +39,10 @@ Prioritized list for agents new to this repo:
 ## Build & Test
 
 ```bash
-# Use the project's build/test commands (configured in .agent/project_config.sh)
-make build
-make test
+# Use the project's build/test commands (its workspace settings file,
+# set with .agent/scripts/project_setting.sh set <name> build=<command>)
+make build PROJECT=<name>
+make test PROJECT=<name>
 ```
 
 Known build issues or special requirements:

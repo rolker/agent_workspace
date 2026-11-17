@@ -280,30 +280,49 @@ test_legacy_unaffected_by_registry() {
 # ---- Per-project command config tests ----
 
 test_build_uses_projects_d_config() {
-    echo "TEST: build --project uses .agent/projects.d/<name>.sh in the project root"
+    echo "TEST: build --project runs the settings file's build in the project root; a legacy <name>.sh and the shared config are not read"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" alphabuild)"
     make_registered_project "$sb" alpha >/dev/null
     mkdir -p "$sb/.agent/projects.d"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/projects.d/alpha.sh"
-    # Workspace config would run something else — must not be used.
+    printf 'build=%s\n' "$stub" > "$sb/.agent/projects.d/alpha"
+    # The retired files would run something else: never read.
+    echo 'BUILD_CMD="false"' > "$sb/.agent/projects.d/alpha.sh"
     echo 'BUILD_CMD="false"' > "$sb/.agent/project_config.sh"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || true
-    assert_contains "per-project stub ran in project root" \
+    assert_contains "settings-file stub ran in project root" \
         "STUB_alphabuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
 }
 
 test_build_falls_back_to_workspace_config() {
-    echo "TEST: build --project falls back to project_config.sh without projects.d file"
-    local sb out stub
+    echo "TEST: build --project with no build setting does not fall back to project_config.sh (issue #265 part 4)"
+    local sb out stub rc=0
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" sharedbuild)"
     make_registered_project "$sb" alpha >/dev/null
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || true
-    assert_contains "shared stub ran in project root" \
-        "STUB_sharedbuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_not_contains "the shared stub does not run" "STUB_sharedbuild_RAN_IN" "$out"
+    assert_contains "says there is no build command" "project 'alpha' has no build command" "$out"
+}
+
+test_project_command_source_file_only() {
+    echo "TEST: project_command_source reports the settings file or missing, never a retired config (issue #265 part 4)"
+    local sb out rc
+    sb="$(make_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    mkdir -p "$sb/.agent/projects.d"
+    printf 'build=make all\ntest=none\n' > "$sb/.agent/projects.d/alpha"
+    echo 'INSTALL_CMD="legacy-install"' > "$sb/.agent/projects.d/alpha.sh"
+    echo 'INSTALL_CMD="shared-install"' > "$sb/.agent/project_config.sh"
+    assert_eq "a command from the file" "$(printf 'file\tmake all')" "$(reg "$sb" project_command_source "$sb" alpha build)"
+    assert_eq "'none' from the file" "$(printf 'file\tnone')" "$(reg "$sb" project_command_source "$sb" alpha test)"
+    assert_eq "unset in the file: missing, whatever the retired files say" "$(printf 'missing\t')" "$(reg "$sb" project_command_source "$sb" alpha install)"
+    rc=0; out="$(reg "$sb" project_command_source "$sb" alpha bootstrap_url 2>&1)" || rc=$?
+    assert_eq "not a command setting: rc 2" "2" "$rc"
+    assert_contains "not a command setting: says so" "is not a command setting" "$out"
 }
 
 # ---- registry_repo_slugs (issue #295) ----
@@ -1813,6 +1832,7 @@ test_unregistered_under_projects_fails
 test_legacy_unaffected_by_registry
 test_build_uses_projects_d_config
 test_build_falls_back_to_workspace_config
+test_project_command_source_file_only
 test_sync_project_root
 test_validate_registry_only
 test_validate_missing_checkout

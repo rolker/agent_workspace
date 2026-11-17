@@ -348,10 +348,10 @@ Status: `decided`
   with its project, and `project_setting.sh`, which reads the main checkout's settings files too and
   refuses to write them from a worktree (#332).
 - Registration is `register_project.sh <path>`, run from the main checkout (#332). It writes the
-  registry line, always with an absolute path, and the settings file (commands from `--set`, else the
-  legacy `.sh`, else `--detect`, which proposes only a single correct command), then runs the
-  read-only gate `registration_verify.sh` (each command the type requires is the project's own or
-  `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
+  registry line, always with an absolute path, and the settings file (commands from `--set`, else
+  `--detect`, which proposes only a single correct command; a legacy `.sh` is not read), then runs the
+  read-only gate `registration_verify.sh` (each command the type requires is set in the settings
+  file, a command or `none`; a missing one is refused), the type's build and test,
   and only then, when the user tier is installed from this checkout, the read-only
   `registration_verify.sh --user-tier`; the user-tier installer runs only with `--install-user-tier`,
   and nothing is enabled per root (the plugin is at user scope, ADR-0020). A failure removes the line
@@ -373,9 +373,8 @@ Status: `decided`
   `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
   settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
-  project has none"; anything that needs a shell is a script the key points at. A command set in the
-  file runs without sourcing the legacy or shared config below, so nothing they export (an SDK path,
-  `PATH`) reaches it: environment setup belongs in the script the key points at. The grammar and keys
+  project has none"; anything that needs a shell is a script the key points at, and environment setup
+  (an SDK path, `PATH`) belongs in that script too. The grammar and keys
   are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
   malformed file stops every adapter verb and fails `make validate`. The writer locks a
   `.lock.<basename>` file beside the file, or beside the target of a linked one, and never removes it,
@@ -383,12 +382,11 @@ Status: `decided`
   project's type never reads is refused the same way: each type lists such keys in
   `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
   owns; `single_project`: `bootstrap_url`, `source`, `source_ref` and `source_path`), so no setting
-  is stored and silently ignored. Per
-  setting, the adapters read the file; for a setting it leaves unset, the legacy
-  `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
-  when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
-  whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
-  unset. The adapters say on stderr when a registered project falls through to the shared file.
+  is stored and silently ignored. The settings file is a project's only source of commands and
+  URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
+  read by no adapter. A `ros2_colcon` project's distro comes from `distro=` on its registry line or
+  its manifest, and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
+  environment, the one value an adapter reads there.
 - Behaviour that differs per project shape sits behind a 13-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12 and by
   ADR-0019 to 13). The 13th, `repo_pin <repo> [--layer <l>]`, prints the ref the project pins a

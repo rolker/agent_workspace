@@ -23,7 +23,7 @@ PASS=0
 # that sandbox -- which is what a real `make build` does too.
 run_in_ws() {  # <sandbox> <command> [args...]
     local sb="$1"; shift
-    (cd "$sb" && "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && "$@")
 }
 FAIL=0
 
@@ -185,7 +185,6 @@ make_colcon_project() {
     write_repos_file "$mdir/repos/l2.repos" fakefox pkg_c
     write_repos_file "$mdir/repos/l3.repos" fakefox pkg_priv
     echo "p11 ros2_colcon projects/p11" >> "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     make_underlay "$sb"
     echo "$proj"
 }
@@ -195,7 +194,7 @@ make_colcon_project() {
 run_adapter() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/bin:$PATH" \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" \
         COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 "$@")
 }
@@ -282,13 +281,13 @@ make_committed_pkg_repo() {
 run_worktree_create() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch "$@")
 }
 
 run_worktree_remove() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" "$@")
 }
 
 test_worktree_create_package_success() {
@@ -615,7 +614,7 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
 run_worktree_create_strict() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
 }
 
 # Give a package repo a reachable bare origin holding its main.
@@ -784,7 +783,7 @@ test_worktree_list_json_reports_package_worktree() {
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
     wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
-    out="$(cd "$sb" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "issue 444 reported" '"issue":444' "$out"
     assert_contains "project p11 reported as repo" '"repo":"p11"' "$out"
@@ -796,7 +795,7 @@ test_worktree_list_json_reports_package_worktree() {
 run_worktree_enter_print_path() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --print-path "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --print-path "$@")
 }
 
 test_worktree_enter_disambiguates_by_qualified_issue() {
@@ -883,7 +882,7 @@ test_worktree_create_issue_lookup_uses_qualified_repo() {
     stub_issue_lookup_recorder "$sb"
     log="$sb/issue_lookup.log"
     : > "$log"
-    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
         "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue rolker/ros2_network_monitor#27 \
         --type project --project p11 --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -919,20 +918,22 @@ test_distro_from_bootstrap_yaml() {
 }
 
 test_distro_from_project_config() {
-    echo "TEST: distro falls back to ROS_DISTRO in the per-project config"
-    local sb out proj
+    echo "TEST: a ROS_DISTRO in a retired projects.d/<name>.sh or the shared project_config.sh is not read (issue #265 part 4)"
+    local sb out rc=0 proj
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_colcon_project "$sb")"
-    # Remove the manifest declaration; declare via config instead.
+    # The manifest declares no distro; only the retired files do.
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
-    {
-        echo "ROS_ROOT_DIR=\"$sb/rosroot\""
-        echo 'ROS_DISTRO="fakefox"'
-    } > "$sb/.agent/projects.d/p11.sh"
-    out="$(run_adapter "$sb" env)" || true
-    assert_contains "underlay from config distro" "rosroot/fakefox/setup.bash" "$out"
+    echo 'ROS_DISTRO="fakefox"' > "$sb/.agent/projects.d/p11.sh"
+    echo 'ROS_DISTRO="fakefox"' > "$sb/.agent/project_config.sh"
+    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "cannot resolve the distro" "cannot resolve the ROS distro" "$out"
+    assert_contains "names the registry line" "distro=<name> on the project's line" "$out"
+    assert_not_contains "never offers the retired files" "ROS_DISTRO=<name>" "$out"
+    assert_not_contains "no underlay from a retired file" "rosroot/fakefox/setup.bash" "$out"
 }
 
 
@@ -971,7 +972,6 @@ test_distro_unresolvable_fails() {
     proj="$(make_colcon_project "$sb")"
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains how to declare" "cannot resolve the ROS distro" "$out"
@@ -1029,28 +1029,28 @@ test_traversal_layer_name_fails() {
 }
 
 test_broken_config_fails() {
-    echo "TEST: a failing per-project config is a hard error, not a silent fallback"
+    echo "TEST: ROS_ROOT_DIR comes from the environment (default /opt/ros); a retired config file is never sourced (issue #265 part 4)"
     local sb out rc=0 proj
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_colcon_project "$sb")"
-    # Config declares the override, then fails — the override must not be
-    # silently dropped in favor of /opt/ros.
+    # A retired config that would fail if sourced, and would point
+    # ROS_ROOT_DIR elsewhere: neither happens.
     {
-        echo "ROS_ROOT_DIR=\"$sb/rosroot\""
+        echo "ROS_ROOT_DIR=\"$sb/elsewhere\""
         echo "false"
     } > "$sb/.agent/projects.d/p11.sh"
+    cp "$sb/.agent/projects.d/p11.sh" "$sb/.agent/project_config.sh"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
-    assert_eq "exits nonzero (_rc_ros_root path)" "1" "$rc"
-    assert_contains "names the config" "failed to source $sb/.agent/projects.d/p11.sh" "$out"
-
-    # Same failure via the distro-resolution path (no distro in manifest).
-    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
-        > "$proj/configs/manifest/bootstrap.yaml"
+    assert_eq "exit 0: the config is not sourced" "0" "$rc"
+    assert_contains "the underlay from the environment's ROS_ROOT_DIR" "$sb/rosroot/fakefox/setup.bash" "$out"
+    assert_not_contains "no 'failed to source'" "failed to source" "$out"
+    # Unset: the default /opt/ros (a fakefox underlay there never exists).
     rc=0
-    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
-    assert_eq "exits nonzero (_rc_distro path)" "1" "$rc"
-    assert_contains "still names the config" "failed to source" "$out"
+    out="$(cd "$sb" && unset ROS_ROOT_DIR && PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 env 2>&1)" || rc=$?
+    assert_eq "unset: exits nonzero" "1" "$rc"
+    assert_contains "unset: names the default underlay" "/opt/ros/fakefox/setup.bash" "$out"
+    assert_contains "unset: says how to point it elsewhere" "set ROS_ROOT_DIR in the environment" "$out"
 }
 
 # ---- env verb ----
@@ -1099,7 +1099,7 @@ test_setup_optional_layer_failure_tolerated() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l3" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l3" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "setup still exits 0" "0" "$rc"
     assert_contains "warns about the optional layer" "optional layer 'l3'" "$out"
@@ -1111,7 +1111,7 @@ test_setup_required_layer_failure_aborts() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l2" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l2" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the failing layer" "vcs import failed for layer 'l2'" "$out"
@@ -1131,7 +1131,7 @@ test_setup_requires_vcs() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -s "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    out="$(cd "$sb" && PATH="$sb/isolatedbin" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/isolatedbin" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing tool" "'vcs' (vcstool) not found" "$out"
@@ -1168,19 +1168,18 @@ make_fresh_project() {
     local sb="$1"
     mkdir -p "$sb/projects/p11"
     echo "p11 ros2_colcon projects/p11" >> "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     make_underlay "$sb"
     echo "$sb/projects/p11"
 }
 
 test_setup_bootstraps_manifest_pattern_b() {
-    echo "TEST: setup on a fresh hosting dir bootstraps a Pattern B manifest from the config URL"
+    echo "TEST: setup on a fresh hosting dir bootstraps a Pattern B manifest from the settings file's bootstrap_url"
     local sb out rc=0 proj url
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" l1)"
-    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
+    printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/p11"
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "reports Pattern B" "Pattern B: layer=l1" "$out"
@@ -1216,14 +1215,14 @@ test_setup_bootstraps_pattern_a_from_url_file() {
 }
 
 test_setup_bootstrap_env_url_wins() {
-    echo "TEST: BOOTSTRAP_URL in the environment overrides the config and file"
+    echo "TEST: BOOTSTRAP_URL in the environment overrides the settings file and the url file"
     local sb out rc=0 proj url
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" l1)"
-    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    printf 'bootstrap_url=file:///nonexistent/config.yaml\n' > "$sb/.agent/projects.d/p11"
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "fetched the env URL" "Fetching bootstrap config from $url" "$out"
@@ -1231,42 +1230,30 @@ test_setup_bootstrap_env_url_wins() {
 }
 
 test_setup_bootstrap_shared_url_is_reported() {
-    echo "TEST: a bootstrap URL from the shared project_config.sh is reported on stderr; one from the settings file or the legacy .sh is not (#332)"
-    local sb out rc url note
-    note="NOTE: project 'p11' has no bootstrap URL of its own; using MANIFEST_BOOTSTRAP_URL from the shared .agent/project_config.sh"
+    echo "TEST: a MANIFEST_BOOTSTRAP_URL in the shared project_config.sh or a legacy .sh is not read; the settings file's is (issue #265 part 4)"
+    local sb out rc url
 
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
-    rm -f "$sb/.agent/projects.d/p11.sh"
-    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="%s"\n' "$sb/rosroot" "$url" > "$sb/.agent/project_config.sh"
+    printf 'MANIFEST_BOOTSTRAP_URL="%s"\n' "$url" > "$sb/.agent/project_config.sh"
+    printf 'MANIFEST_BOOTSTRAP_URL="%s"\n' "$url" > "$sb/.agent/projects.d/p11.sh"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
-    assert_eq "shared URL: exit 0" "0" "$rc"
-    assert_contains "shared URL: fetched" "Fetching bootstrap config from $url" "$out"
-    assert_contains "shared URL: the fall-through is reported" "$note" "$out"
-    assert_contains "shared URL: the note names the setting" "project_setting.sh set p11 bootstrap_url=<url>" "$out"
+    assert_eq "retired files only: exit 1" "1" "$rc"
+    assert_contains "retired files only: no bootstrap URL" "no bootstrap URL to fetch one" "$out"
+    assert_not_contains "retired files only: not fetched" "Fetching bootstrap config" "$out"
+    assert_contains "retired files only: the settings command is offered" "project_setting.sh set p11 bootstrap_url=<url>" "$out"
 
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
-    rm -f "$sb/.agent/projects.d/p11.sh"
-    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="file:///nonexistent/shared.yaml"\n' "$sb/rosroot" > "$sb/.agent/project_config.sh"
+    printf 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/shared.yaml"\n' > "$sb/.agent/project_config.sh"
     printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/p11"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "settings-file URL: exit 0" "0" "$rc"
     assert_contains "settings-file URL: fetched" "Fetching bootstrap config from $url" "$out"
-    assert_not_contains "settings-file URL: no note" "NOTE:" "$out"
-
-    sb="$(make_sandbox)"
-    make_toolchain_stubs "$sb"
-    make_fresh_project "$sb" >/dev/null
-    url="$(make_manifest_remote "$sb" l1)"
-    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
-    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
-    assert_eq "legacy URL: exit 0" "0" "$rc"
-    assert_not_contains "legacy URL: no note" "NOTE:" "$out"
 }
 
 test_setup_fresh_dir_without_url_fails() {
@@ -1278,7 +1265,8 @@ test_setup_fresh_dir_without_url_fails() {
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing URL" "no bootstrap URL" "$out"
-    assert_contains "lists MANIFEST_BOOTSTRAP_URL" "MANIFEST_BOOTSTRAP_URL" "$out"
+    assert_contains "names the settings command" "project_setting.sh set p11 bootstrap_url=<url>" "$out"
+    assert_not_contains "never offers a retired config file" "MANIFEST_BOOTSTRAP_URL" "$out"
 }
 
 test_setup_bootstrap_rejects_unsafe_fields() {
@@ -1290,7 +1278,7 @@ test_setup_bootstrap_rejects_unsafe_fields() {
     url="$(make_manifest_remote "$sb" l1)"
     printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: ../../etc\n' "$sb" \
         > "$sb/remote/bootstrap.yaml"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "traversal config_path exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
@@ -1298,7 +1286,7 @@ test_setup_bootstrap_rejects_unsafe_fields() {
     printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nlayer: ../x\n' "$sb" \
         > "$sb/remote/bootstrap.yaml"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "bad layer exits nonzero" "1" "$rc"
     assert_contains "names layer" "invalid 'layer'" "$out"
@@ -1312,7 +1300,7 @@ test_setup_bootstrap_missing_fields_fails() {
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
     printf 'branch: fakefox\n' > "$sb/remote/bootstrap.yaml"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the fields" "must define 'git_url' and 'branch'" "$out"
@@ -1325,7 +1313,7 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" "" config..d)"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "config..d exits 0" "0" "$rc"
     assert_eq "symlink targets config..d" \
@@ -1335,7 +1323,7 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
         > "$sb/remote/bootstrap.yaml"
     rm -rf "$proj/configs"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "nested .. component exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
@@ -1353,7 +1341,7 @@ test_setup_bootstrap_reuse_requires_matching_origin() {
     mkdir -p "$clone_dir"
     git -C "$clone_dir" init --quiet
     git -C "$clone_dir" remote add origin "file:///elsewhere/other_manifest.git"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "mismatched origin exits nonzero" "1" "$rc"
     assert_contains "names both repos" "is a checkout of file:///elsewhere/other_manifest.git, not file://$sb/remote/manifest_repo" "$out"
@@ -1361,7 +1349,7 @@ test_setup_bootstrap_reuse_requires_matching_origin() {
     # A non-git directory at the clone path is refused too.
     rm -rf "$clone_dir" && mkdir -p "$clone_dir"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "non-git dir exits nonzero" "1" "$rc"
     assert_contains "says it is not a checkout" "not a git checkout" "$out"
@@ -1378,7 +1366,7 @@ test_setup_bootstrap_reuse_warns_on_branch_mismatch() {
     mkdir -p "$(dirname "$clone_dir")"
     git clone -q -b fakefox "file://$sb/remote/manifest_repo" "$clone_dir"
     git -C "$clone_dir" checkout -q -b feature/work
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
         run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "warns with both branches" "on 'feature/work', bootstrap pins 'fakefox'" "$out"
@@ -1392,7 +1380,7 @@ test_setup_existing_manifest_skips_bootstrap() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    printf 'bootstrap_url=file:///nonexistent/config.yaml\n' > "$sb/.agent/projects.d/p11"
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_not_contains "no fetch attempted" "Fetching bootstrap" "$out"
@@ -2488,7 +2476,6 @@ make_mr_sandbox() {  # <role-or-empty> <settings lines...>
     make_mr_resolver "$sb"
     [ -n "$role" ] && fields=" role=$role"
     echo "p11 ros2_colcon projects/p11$fields distro=fakefox" > "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     [ $# -gt 0 ] && printf '%s\n' "$@" > "$sb/.agent/projects.d/p11"
     echo "$sb"
 }
@@ -2503,7 +2490,7 @@ mr_settings() {  # <sb> <settings lines...>
 run_mr() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 "$@")
 }
 
@@ -3175,7 +3162,7 @@ test_mr_fetch_bounded() {
     rc=0
     (
         set -m
-        cd "$sb" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
+        cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
             "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1 &
         jpid=$!
         for i in $(seq 1 100); do [ -e "$sb/hang.ready" ] && break; sleep 0.1; done
@@ -3235,7 +3222,7 @@ test_mr_fetch_interrupted() {
     _mr_held_sync() {
         rm -f "$sb/ready" "$sb/go" "$sb/fetchdone"
         touch "$sb/hold"
-        (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
             exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
         apid=$!
         for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
@@ -3507,7 +3494,7 @@ EOF
     assert_eq "failed resolve: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
     assert_eq "failed resolve: link unchanged" "$before" "$(readlink "$gen")"
     # Interrupted (TERM) while the resolver runs.
-    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" MR_WAIT=1 \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" MR_WAIT=1 \
         exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
     apid=$!
     for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
@@ -3622,7 +3609,7 @@ test_mr_source_lock() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
     assert_eq "no flock: sync exit 0" "0" "$rc"
     assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
@@ -3651,19 +3638,19 @@ test_mr_pin_fd_not_inherited() {
         "[ -e /proc/self/fd/8 ] && echo \"git \$*\" >> \"$sb/fd8.log\"" \
         "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
     chmod +x "$sb/fdbin/"*
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
     git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" init --quiet
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
     assert_eq "sync: exit 0" "0" "$rc"
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
         "$sb/.agent/scripts/adapter" --project p11 build >/dev/null 2>&1) || rc=$?
     assert_eq "build: exit 0" "0" "$rc"
     # repo_pin asks origin through _adapter_bounded_git.
     git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" remote add origin "file://$sb/nonexistent.git"
-    (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" \
         "$sb/.agent/scripts/adapter" --project p11 repo_pin pkg_a >/dev/null 2>&1) || true
     assert_contains "repo_pin asked origin" "ls-remote origin" "$(cat "$sb/ran.log")"
     assert_contains "vcs ran" "vcs" "$(cat "$sb/ran.log")"
@@ -3740,7 +3727,7 @@ test_mr_swap_failures_and_unguarded_leftovers() {
     for i in 1 2 3; do
         prev="$(readlink "$gen")"
         write_mr_manifest "$sb/m/manifest.yaml" "mark_unlocked_$i"
-        rc=0; (cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
             VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
         assert_eq "no flock, sync $i: exit 0" "0" "$rc"
         assert_eq "no flock, sync $i: the replaced directory kept" "yes" "$([ -f "$cfg/$prev/layers.txt" ] && echo yes || echo no)"
@@ -3767,7 +3754,7 @@ test_mr_swap_interrupt_and_sweep() {
         'exit $rc' > "$sb/mvbin/mv"
     chmod +x "$sb/mvbin/mv"
     write_mr_manifest "$sb/m/manifest.yaml" mark_two
-    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
     assert_eq "TERM after the swap: exit 143" "143" "$rc"
     live="$(readlink "$gen")"
     assert_eq "TERM after the swap: the link's target kept" "yes" "$([ -d "$cfg/$live" ] && echo yes || echo no)"
@@ -3784,7 +3771,7 @@ test_mr_swap_interrupt_and_sweep() {
         'esac' \
         "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
     write_mr_manifest "$sb/m/manifest.yaml" mark_three
-    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
     assert_eq "BSD mv: sync exit 0" "0" "$rc"
     assert_contains "BSD mv: mv -fh used" "BSD_MV_H" "$(cat "$sb/mv.log" 2>/dev/null)"
     assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
@@ -3796,7 +3783,7 @@ test_mr_swap_interrupt_and_sweep() {
         "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
     before="$(readlink "$gen")"
     write_mr_manifest "$sb/m/manifest.yaml" mark_four
-    rc=0; out="$(cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
     assert_eq "mv -T fails: exit 1" "1" "$rc"
     assert_contains "mv -T fails: said" "cannot rename the new link over $gen (mv -T failed, above); nothing changed" "$out"
     assert_eq "mv -T fails: the live link unchanged" "$before" "$(readlink "$gen")"
@@ -3850,7 +3837,7 @@ test_mr_reader_pinned_to_one_result() {
         "exec \"$sb/bin/vcs\" \"\$@\"" > "$sb/waitbin/vcs"
     chmod +x "$sb/waitbin/vcs"
     touch "$sb/vhold"
-    (cd "$sb" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >"$sb/a.out" 2>&1) & pa=$!
     for i in $(seq 1 100); do [ -e "$sb/vready" ] && break; sleep 0.1; done
     assert_eq "setup A: held in its first import" "yes" "$([ -e "$sb/vready" ] && echo yes || echo no)"
@@ -3903,7 +3890,7 @@ test_mr_lock_fd_not_inherited() {
         "flock -n \"$lock\" true && echo NOT_HELD >> \"$sb/held.log\"" \
         "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
     chmod +x "$sb/.venv/bin/ros-manifest"
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
     assert_contains "the git wrapper saw the fetch" "fetch --quiet --depth 1 --no-tags" "$(cat "$sb/git.log" 2>/dev/null)"
@@ -3924,7 +3911,7 @@ test_mr_preflight_before_any_fetch() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    rc=0; out="$(cd "$sb" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "no vcs: exit 1" "1" "$rc"
     assert_contains "no vcs: named" "'vcs' (vcstool) not found" "$out"
     assert_not_contains "no vcs: the source was not contacted" "source: fetching" "$out"
@@ -3960,10 +3947,12 @@ test_mr_one_source_only() {
     assert_contains "BOOTSTRAP_URL: named" "BOOTSTRAP_URL=https://example.invalid/b.yaml in the environment" "$out"
     assert_contains "names the way back" "unset p11 source source_ref source_path" "$out"
 
+    # A MANIFEST_BOOTSTRAP_URL in a retired config file is not a source
+    # (issue #265 part 4): it is not read, so it is not a second source.
     echo 'MANIFEST_BOOTSTRAP_URL="https://example.invalid/legacy.yaml"' >> "$sb/.agent/projects.d/p11.sh"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
-    assert_eq "legacy MANIFEST_BOOTSTRAP_URL: exit 1" "1" "$rc"
-    assert_contains "legacy MANIFEST_BOOTSTRAP_URL: names the file" "MANIFEST_BOOTSTRAP_URL=https://example.invalid/legacy.yaml in $sb/.agent/projects.d/p11.sh (the legacy per-project config): remove that line" "$out"
+    assert_eq "retired MANIFEST_BOOTSTRAP_URL: not a second source, exit 0" "0" "$rc"
+    assert_not_contains "retired MANIFEST_BOOTSTRAP_URL: not named" "legacy.yaml" "$out"
     mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
 
     # A good setup first, so validate reaches the single-source check.

@@ -4,7 +4,9 @@
 # writer and project_setting.sh, the records combinations and the refusal
 # of a records repository that is a workspace, the provisional defaults
 # (asserted through project_records_default, never as literals), the
-# dispatcher and adapters reading the keys before the legacy files, and
+# dispatcher and adapters reading the keys and nothing else (issue #265
+# part 4 retired the legacy projects.d/<name>.sh and the shared
+# project_config.sh), and
 # validate/dashboard reporting a malformed file.
 #
 # Every fixture is synthetic, built in a sandbox workspace under $TMPDIR
@@ -1312,7 +1314,7 @@ test_build_test_install_from_file() {
     touch "$dir/a.txt" "$dir/b.txt"
     printf 'build=%s --fast *.txt\ntest=%s t\ninstall=%s i\n' "$stub" "$stub" "$stub" | write_pfile "$sb" alpha
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build extra 2>&1)"
-    assert_contains "file key wins over legacy and shared, runs in the root, extra args appended, no globbing" \
+    assert_contains "the file key runs (the retired files are not read), in the root, extra args appended, no globbing" \
         "STUB_filecmd_RAN_IN:$real args:--fast *.txt extra" "$out"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha test 2>&1)"
     assert_contains "test from the file" "STUB_filecmd_RAN_IN:$real args:t" "$out"
@@ -1369,23 +1371,22 @@ test_none_values() {
 }
 
 test_shared_fallback_is_loud() {
-    echo "TEST: a registered project falling through to the shared config gets a note; a legacy file does not"
-    local sb dir stub out
+    echo "TEST: a command only in the retired shared config or legacy <name>.sh is not run (issue #265 part 4)"
+    local sb dir stub out rc
     sb="$(make_sandbox)"
     dir="$(make_project "$sb" alpha)"
     stub="$(make_stub "$sb" sharedcmd)"
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
-    assert_contains "shared command still runs" "STUB_sharedcmd_RAN_IN" "$out"
-    assert_contains "note on stderr" "project 'alpha' has no build command of its own; using the shared .agent/project_config.sh" "$out"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>/dev/null)"
-    assert_not_contains "the note is on stderr, not stdout" "has no build command of its own" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)" || rc=$?
+    assert_eq "shared config only: exit 1" "1" "$rc"
+    assert_not_contains "shared config only: its command does not run" "STUB_sharedcmd_RAN_IN" "$out"
+    assert_contains "shared config only: no build command" "project 'alpha' has no build command" "$out"
     mkdir -p "$sb/.agent/projects.d"
     make_stub "$sb" legacycmd >/dev/null
     echo "BUILD_CMD=\"$sb/bin/legacycmd\"" > "$sb/.agent/projects.d/alpha.sh"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
-    assert_contains "legacy file used" "STUB_legacycmd_RAN_IN" "$out"
-    assert_not_contains "no note for the legacy file" "has no build command of its own" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)" || rc=$?
+    assert_eq "legacy .sh: exit 1" "1" "$rc"
+    assert_not_contains "legacy .sh: its command does not run" "STUB_legacycmd_RAN_IN" "$out"
     [ -n "$dir" ]
 }
 
@@ -1621,22 +1622,20 @@ test_env_inherited_commands_ignored() {
     sb="$(make_sandbox)"
     dir="$(make_project "$sb" alpha)"
     make_stub "$sb" envcmd >/dev/null
-    make_stub "$sb" sharedcmd >/dev/null
-    echo "BUILD_CMD=\"$sb/bin/sharedcmd\"" > "$sb/.agent/project_config.sh"
-    out="$(cd "$sb" && BUILD_CMD="$sb/bin/envcmd" "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
-    assert_contains "single_project: the shared config's BUILD_CMD runs" "STUB_sharedcmd_RAN_IN" "$out"
-    assert_not_contains "single_project: the environment's BUILD_CMD does not" "STUB_envcmd_RAN_IN" "$out"
+    out="$(cd "$sb" && BUILD_CMD="$sb/bin/envcmd" "$sb/.agent/scripts/adapter" --project alpha build 2>&1)" || true
+    assert_contains "single_project: no build command" "project 'alpha' has no build command" "$out"
+    assert_not_contains "single_project: the environment's BUILD_CMD does not run" "STUB_envcmd_RAN_IN" "$out"
 
     rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
     mkdir -p "$rc_dir"
     echo "rc ros2_colcon $rc_dir" >> "$sb/.agent/projects.local"
     out="$(cd "$sb" && INSTALL_CMD="$sb/bin/envcmd" "$sb/.agent/scripts/adapter" --project rc install 2>&1)"
-    assert_contains "ros2_colcon: no install configured" "INSTALL_CMD not set — nothing to install" "$out"
+    assert_contains "ros2_colcon: no install configured" "install not set for project 'rc' — nothing to install" "$out"
     assert_not_contains "ros2_colcon: the environment's INSTALL_CMD does not run" "STUB_envcmd_RAN_IN" "$out"
 }
 
 test_settings_command_gets_no_config_environment() {
-    echo "TEST: a settings-file command runs without sourcing the legacy or shared config, so their exports do not reach it (as the headers say)"
+    echo "TEST: a settings-file command runs without sourcing the retired legacy or shared config, so their exports do not reach it (as the headers say)"
     local sb out
     sb="$(make_sandbox)"
     make_project "$sb" alpha >/dev/null
@@ -1647,12 +1646,8 @@ echo "SHOWENV SDK_ROOT=[${SDK_ROOT:-}]"
 EOF
     chmod +x "$sb/bin/showenv"
     printf 'export SDK_ROOT=/opt/sdk\nBUILD_CMD="%s"\n' "$sb/bin/showenv" > "$sb/.agent/project_config.sh"
-    out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
-    assert_contains "shared config: its export reaches its own command" "SHOWENV SDK_ROOT=[/opt/sdk]" "$out"
     mkdir -p "$sb/.agent/projects.d"
     printf 'export SDK_ROOT=/opt/legacy-sdk\nBUILD_CMD="%s"\n' "$sb/bin/showenv" > "$sb/.agent/projects.d/alpha.sh"
-    out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
-    assert_contains "legacy .sh: its export reaches its own command" "SHOWENV SDK_ROOT=[/opt/legacy-sdk]" "$out"
     printf 'build=%s\n' "$sb/bin/showenv" | write_pfile "$sb" alpha
     out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
     assert_contains "settings file: the command runs" "SHOWENV SDK_ROOT=[]" "$out"
@@ -1660,22 +1655,23 @@ EOF
 }
 
 test_bootstrap_url_precedence() {
-    echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
+    echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url; a legacy MANIFEST_BOOTSTRAP_URL is not read (issue #265 part 4)"
     local sb out
     sb="$(make_sandbox)"
     mkdir -p "$sb/.agent/projects.d" "$sb/host"
     echo 'MANIFEST_BOOTSTRAP_URL="https://legacy.example/b.yaml"' > "$sb/.agent/projects.d/p.sh"
+    echo 'MANIFEST_BOOTSTRAP_URL="https://shared.example/b.yaml"' > "$sb/.agent/project_config.sh"
     run_url() {
         bash -c '
             WORKSPACE_ROOT="$1"; ACTIVE_PROJECT_NAME=p; ACTIVE_PROJECT_ROOT="$1/host"
-            ACTIVE_PROJECT_CONFIG="$1/.agent/projects.d/p.sh"; ACTIVE_PROJECT_BOOTSTRAP_URL="$2"
+            ACTIVE_PROJECT_BOOTSTRAP_URL="$2"
             source "$1/.agent/project_types/ros2_colcon/adapter.sh"
             _rc_bootstrap_url' _ "$sb" "$1"
     }
     out="$(run_url "https://file.example/b.yaml")"
-    assert_eq "settings-file key beats the legacy variable" "https://file.example/b.yaml" "$out"
+    assert_eq "the settings-file key" "https://file.example/b.yaml" "$out"
     out="$(run_url "")"
-    assert_eq "legacy variable when the key is absent" "https://legacy.example/b.yaml" "$out"
+    assert_eq "no key: the retired files give nothing" "" "$out"
     out="$(BOOTSTRAP_URL="https://env.example/b.yaml" run_url "https://file.example/b.yaml")"
     assert_eq "environment override first" "https://env.example/b.yaml" "$out"
 }

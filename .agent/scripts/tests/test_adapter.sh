@@ -98,6 +98,13 @@ make_sandbox() {
     echo "$sb"
 }
 
+# Append a key=value line to demo's settings file .agent/projects.d/demo,
+# the only place its commands come from (issue #265 part 4).
+set_demo_setting() {  # <sandbox> <key=value>
+    mkdir -p "$1/.agent/projects.d"
+    printf '%s\n' "$2" >> "$1/.agent/projects.d/demo"
+}
+
 # Set demo's registered type (the type comes from the registry line).
 set_demo_type() {  # <sandbox> <type>
     echo "demo $2 $1/demo" > "$1/.agent/projects.local"
@@ -485,85 +492,87 @@ test_build_requires_config() {
 }
 
 test_build_requires_build_cmd() {
-    echo "TEST: build with a shared config but no BUILD_CMD fails with guidance"
+    echo "TEST: build with a test command but no build command fails with guidance"
     local sb out rc=0
     sb="$(make_sandbox)"
-    echo 'TEST_CMD="true"' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "test=true"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing command" "project 'demo' has no build command" "$out"
 }
 
 test_build_runs_in_project_root() {
-    echo "TEST: build runs BUILD_CMD in the project directory"
+    echo "TEST: build runs the build setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" fakebuild)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build --flag1)" || true
     assert_contains "stub ran in project dir" "STUB_fakebuild_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
     assert_contains "args forwarded" "args:--flag1" "$out"
 }
 
 test_test_runs_in_project_root() {
-    echo "TEST: test runs TEST_CMD in the project directory"
+    echo "TEST: test runs the test setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" faketest)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo "TEST_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "test=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" test)" || true
     assert_contains "stub ran in project dir" "STUB_faketest_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
 }
 
 test_install_noop_when_unset() {
-    echo "TEST: install no-ops when INSTALL_CMD is empty or unset"
+    echo "TEST: install no-ops when the settings file has no install key"
     local sb out rc=0
     sb="$(make_sandbox)"
-    echo 'INSTALL_CMD=""' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=true"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
-    assert_eq "exit 0 with empty INSTALL_CMD" "0" "$rc"
+    assert_eq "exit 0 with no install key" "0" "$rc"
     assert_contains "explains the no-op" "nothing to install" "$out"
 
     rc=0
-    rm "$sb/.agent/project_config.sh"
+    rm "$sb/.agent/projects.d/demo"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
-    assert_eq "exit 0 with no config at all" "0" "$rc"
+    assert_eq "exit 0 with no settings file at all" "0" "$rc"
 }
 
 test_install_runs_when_set() {
-    echo "TEST: install runs INSTALL_CMD in the project directory"
+    echo "TEST: install runs the install setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" fakeinstall)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo "INSTALL_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "install=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || true
     assert_contains "stub ran in project dir" "STUB_fakeinstall_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
 }
 
 test_build_exit_code_propagation() {
-    echo "TEST: build propagates BUILD_CMD's exit code"
+    echo "TEST: build propagates the build command's exit code"
     local sb stub rc=0
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" failbuild 7)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=$stub"
     run_in_ws "$sb" "$sb/.agent/scripts/adapter" build >/dev/null 2>&1 || rc=$?
     assert_eq "exit code 7 propagated" "7" "$rc"
 }
 
 test_build_aborts_on_failing_config() {
-    echo "TEST: a failing command inside project_config.sh aborts the build"
+    echo "TEST: a retired project_config.sh is never sourced: a failing command in it does not stop the build (issue #265 part 4)"
     local sb out stub rc=0
     sb="$(make_sandbox)"
-    stub="$(make_stub "$sb" neverbuild)"
+    stub="$(make_stub "$sb" settingsbuild)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    printf 'BUILD_CMD="%s"\nfalse\n' "$stub" > "$sb/.agent/project_config.sh"
+    printf 'echo SHARED_CONFIG_SOURCED\nfalse\n' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
-    assert_eq "exits nonzero" "1" "$rc"
-    assert_not_contains "BUILD_CMD was never run" "STUB_neverbuild_RAN_IN" "$out"
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "the settings command ran" "STUB_settingsbuild_RAN_IN" "$out"
+    assert_not_contains "the shared config was not sourced" "SHARED_CONFIG_SOURCED" "$out"
 }
 
 test_project_type_env_not_inherited() {
@@ -575,11 +584,11 @@ test_project_type_env_not_inherited() {
 }
 
 test_no_new_env_vars_leaked() {
-    echo "TEST: WORKSPACE_ROOT/ADAPTER_TYPE_DIR are not exported into BUILD_CMD's env"
+    echo "TEST: WORKSPACE_ROOT/ADAPTER_TYPE_DIR are not exported into the build command's env"
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo 'BUILD_CMD="env"' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=env"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build)" || true
     assert_not_contains "WORKSPACE_ROOT absent" "WORKSPACE_ROOT=" "$out"
     assert_not_contains "ADAPTER_TYPE_DIR absent" "ADAPTER_TYPE_DIR=" "$out"
@@ -982,7 +991,7 @@ test_build_shim_chain() {
     chmod +x "$sb/.agent/scripts/build.sh"
     stub="$(make_stub "$sb" shimbuild)"
     make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/build.sh")" || true
     assert_contains "stub reached via shim in project dir" \
         "STUB_shimbuild_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"

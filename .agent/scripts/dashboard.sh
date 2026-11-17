@@ -53,8 +53,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Worktree detection ---
-# dashboard.sh is a workspace-only script (it reads .agent/project_config.sh,
-# the registry, etc. relative to the workspace checkout), so the only
+# dashboard.sh is a workspace-only script (it reads the registry and the
+# settings files relative to the workspace checkout), so the only
 # question here is whether THIS COPY of the workspace repo is itself a
 # worktree of the workspace repo — never a project worktree: post-#265,
 # project worktrees live under their own root, never inside the workspace
@@ -205,7 +205,9 @@ if [ "$REGISTRY_OK" -eq 1 ]; then
     for _pf in "${MAIN_ROOT:-$ROOT_DIR}"/.agent/projects.d/*; do
         [ -f "$_pf" ] || continue
         _pfname="$(basename "$_pf")"
-        [[ "$_pfname" == *.sh ]] && _pfname="${_pfname%.sh}"
+        # A <name>.sh is a retired command config (issue #265 part 4), not a
+        # settings file: the stale-shape report names it.
+        [[ "$_pfname" == *.sh ]] && continue
         # Fixed-string whole-line match: a name may contain '.', and a
         # file name may start with '-'.
         if ! grep -qxF -- "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then

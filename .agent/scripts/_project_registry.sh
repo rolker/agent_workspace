@@ -51,7 +51,9 @@
 # - an unknown key, a duplicate key, an empty value or a line with no '='
 #   is an error naming the file, the line and the known keys. A malformed
 #   file stops the adapter dispatcher and `validate`; it never resolves.
-# - keys (everything else stays in the legacy projects.d/<name>.sh):
+# - keys (the only per-project settings; the old projects.d/<name>.sh and
+#   the shared .agent/project_config.sh are no longer read, issue #265
+#   part 4):
 #     build, test, install  a command, or 'none' (a recorded "this project
 #                           has none"). The value is split on blanks into
 #                           argv and run without a shell, from the project
@@ -107,12 +109,12 @@
 # - a records repository must not be a workspace: project_records_check
 #   refuses tracking=repo when the records clone is the workspace or a copy
 #   of it (remote URL, local-path remote, or the workspace marker files).
-# - precedence for build/test/install/bootstrap_url: this file, key by key;
-#   for a key it leaves unset, the legacy .agent/projects.d/<name>.sh
-#   variable when that file exists (it is then the whole legacy layer, as
-#   before #332), otherwise the shared .agent/project_config.sh (the
-#   dispatcher and the adapters). project_command_source says which of the
-#   three a command comes from, without running it.
+# - build/test/install/bootstrap_url come from this file alone (issue #265
+#   part 4 retired the legacy .agent/projects.d/<name>.sh and the shared
+#   .agent/project_config.sh layers). project_command_source says whether
+#   the file sets a command, without running it. The retired files are
+#   still read, never for a value, only by the stale-shape report
+#   (registry_stale_report), which names what is left in them to move.
 #
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_project_registry.sh"
@@ -1292,20 +1294,12 @@ project_file_get() {
 
 # ------------------------------------- where a command comes from (#332) ---
 
-# The legacy and shared config variable for command setting <key>.
-_project_command_var() {
-    case "$1" in
-        build) echo BUILD_CMD ;;
-        test) echo TEST_CMD ;;
-        install) echo INSTALL_CMD ;;
-        *) return 1 ;;
-    esac
-}
-
-# Value of shell variable <var> after sourcing config file <file> in a
-# subshell, the way the adapters read it (the variable is cleared first, so
-# only the file sets it). Prints the value; return 1 when the file cannot
-# be sourced.
+# Value of shell variable <var> after sourcing a retired config file <file>
+# (a projects.d/<name>.sh or the shared .agent/project_config.sh) in a
+# subshell, the way the adapters used to read it (the variable is cleared
+# first, so only the file sets it). Prints the value; return 1 when the file
+# cannot be sourced. Kept for the stale-shape report alone (issue #265 part
+# 4, plan review N3): no adapter reads these files for a value any more.
 _project_config_value() {
     local file="$1" var="$2"
     (
@@ -1317,59 +1311,37 @@ _project_config_value() {
 }
 
 # Where project <name>'s command setting <key> (build, test or install)
-# comes from, in the adapters' order (the dispatcher and single_project's
-# _single_project_resolve_cmd): its settings file ('none' included); else,
-# when the legacy .agent/projects.d/<name>.sh exists, that file, which is
-# then the whole legacy layer; else the shared .agent/project_config.sh.
-# Prints "<source>\t<value>", <source> one of file, legacy, shared or
-# missing (value empty). Return 2 when the settings file is invalid or a
-# config cannot be sourced (the reason on stderr).
+# comes from: its settings file ('none' included), the one source since
+# issue #265 part 4. Prints "file\t<value>", or "missing\t" when the file
+# does not set it. Return 2 when the settings file is invalid or <key> is
+# not a command setting (the reason on stderr).
 # Usage: src=$(project_command_source "$root" "$name" test)
 project_command_source() {
-    local root="$1" name="$2" key="$3" var entries v cfg
-    var="$(_project_command_var "$key")" || {
-        echo "ERROR: project_command_source: '$key' is not a command setting (build, test, install)" >&2
-        return 2
-    }
+    local root="$1" name="$2" key="$3" entries v
+    case "$key" in
+        build|test|install) : ;;
+        *)
+            echo "ERROR: project_command_source: '$key' is not a command setting (build, test, install)" >&2
+            return 2
+            ;;
+    esac
     entries="$(project_file_entries "$root" "$name")" || return 2
     if v="$(_project_file_value_of "$entries" "$key")"; then
         printf 'file\t%s\n' "$v"
         return 0
     fi
-    cfg="$root/.agent/projects.d/$name.sh"
-    if [ -f "$cfg" ]; then
-        v="$(_project_config_value "$cfg" "$var")" || {
-            echo "ERROR: cannot source the legacy config $cfg" >&2
-            return 2
-        }
-        if [ -n "$(_project_file_trim "$v")" ]; then
-            printf 'legacy\t%s\n' "$v"
-        else
-            printf 'missing\t\n'
-        fi
-        return 0
-    fi
-    cfg="$root/.agent/project_config.sh"
-    if [ -f "$cfg" ]; then
-        v="$(_project_config_value "$cfg" "$var")" || {
-            echo "ERROR: cannot source the shared config $cfg" >&2
-            return 2
-        }
-        if [ -n "$(_project_file_trim "$v")" ]; then
-            printf 'shared\t%s\n' "$v"
-            return 0
-        fi
-    fi
     printf 'missing\t\n'
 }
 
-# The variables the adapters read from a legacy or shared config file.
+# The variables the adapters used to read from a retired config file
+# (stale-shape report only).
 _PROJECT_CONFIG_READ_VARS=" PROJECT_TYPE BUILD_CMD TEST_CMD INSTALL_CMD MANIFEST_BOOTSTRAP_URL ROS_DISTRO ROS_ROOT_DIR "
 
-# The variables config file <file> sets, changes or exports beyond the ones
-# the adapters read (_PROJECT_CONFIG_READ_VARS), one name per line, sorted.
-# A command in the settings file runs without sourcing the config, so such
-# a variable (an SDK path, PATH) no longer reaches it. The file is sourced
+# The variables retired config file <file> sets, changes or exports beyond
+# the ones the adapters used to read (_PROJECT_CONFIG_READ_VARS), one name
+# per line, sorted (stale-shape report only, plan review S8). A command in
+# the settings file runs without sourcing the config, so such a variable
+# (an SDK path, PATH) does not reach it. The file is sourced
 # in a clean bash (env -i, keeping HOME and PATH), and every variable is
 # compared before and after. Returns non-zero when the file cannot be
 # sourced (call it as a condition: under set -e a failure would stop the
@@ -1404,7 +1376,7 @@ project_config_extra_vars() {
 #   required_commands  'none', or the command settings (build test install)
 #                      a project of the type must have of its own, or
 #                      declare 'none'; registration_verify.sh refuses one
-#                      that falls through to the shared config or is missing
+#                      the settings file does not set
 #   setup              'never' (the checkout is the user's), or
 #                      'when-missing' (register_project.sh runs `adapter
 #                      setup` when the hosting directory does not exist)
