@@ -467,7 +467,8 @@ that has fallen behind is brought up to date by a person or by the project's wor
 ## Three machines, one manifest
 
 These walk through the settings above for one system. The published manifest lists every
-repo of the system, with a `simulation` and a `ui` group, one hardware group per platform, and a private repo marked optional.
+repo of the system, with a `simulation` and a `ui` group, one hardware group per platform,
+and a private repo marked optional.
 
 ### A development machine
 
