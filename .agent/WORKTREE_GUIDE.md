@@ -308,7 +308,7 @@ make merge-pr PR=57 REPO=acme/sonar_msgs
 ```
 
 - `--repo owner/repo` (or the equivalent qualified `--pr owner/repo#N`) skips
-  the workspace/`project/` auto-detection entirely and queries only that repo.
+  the workspace/project auto-detection entirely and queries only that repo.
 - The worktree is found by scanning every `.worktree-repos` manifest for an
   entry whose repo and branch match the merged PR — never by parsing the
   worktree's directory name. If the same repo and branch are worktreed under

@@ -252,7 +252,7 @@ out=$(run_hook "$PROOT")
 # The plugin is enabled once, at user scope, so a root outside the
 # workspace checkout, and a git repository nested in one, get the plugin's
 # namespaced names; a root inside the workspace checkout's own git tree
-# (the p11-* shape) loads the bare skills by walk-up and also lists the
+# (a root registered inside the workspace tree) loads the bare skills by walk-up and also lists the
 # plugin's copy (accepted by the owner, 2026-11-12), and is told so.
 out=$(run_hook "$PROOT")
 [[ "$out" == *"namespaced /agent-workspace:<skill>"* && "$out" == *"invoke"*"the agent-workspace: form"* ]] \
