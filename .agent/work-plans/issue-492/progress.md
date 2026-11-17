@@ -109,3 +109,20 @@ Read: the `## Plan Review` at `724a2a54` (verdict ready, no findings) and the pl
 - `bash .agent/scripts/tests/test_agents_md_budget.sh`: "Results: 7 passed, 0 failed".
 - `bash .agent/scripts/tests/test_design_anchors.sh`: "test_design_anchors: 47 passed, 0 failed".
 - Not run: `test_skill_paths.sh` (named in the plan's verify step; no skill or knowledge text changed, and the handoff named only the two suites above) and the full pre-commit pass (host runs it before the push). Every commit used `SKIP=validate-script-tests`; the other hooks ran and passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 14:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-492 at `e64508cf`
+**Base**: main
+**Depth**: Standard (reason: governance files, AGENTS.md and four ADRs; one pass, cross-model skipped per handoff: owner-approved ten-line text change)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Checked: the four ADR notes match the issue body character for character (scripted diff of extracted text, identical); both AGENTS.md phrases match the approved text; `grep -i product AGENTS.md` finds nothing; AGENTS.md is 200 lines; each note is its own paragraph under `## Status` and the ADR diffs are additions only, so no decision text changed; every retired shape a note points "below" to is present in that ADR (0002 line 28, 0003 lines 34-35, 0011 lines 18 and 55, 0018 lines 263 and 306). Truth against main (0ce68856, PR 491 merged): the `worktrees/project/<name>` fallback is refused (`_project_registry.sh` registry_worktree_dir, `_worktree_helpers.sh`); `.agent/project_config.sh` and projects.d/<name>.sh are no longer read for values, only by the stale-shape report; the adapter takes the type from the registry entry; `session_root.sh` dropped the `project/` step. Files changed are only the five planned ones plus the issue's work-plan files. Static analysis: no linter profile for Markdown; host's pre-commit pass over the changed files was clean.
+
+### Findings
+- [ ] No issues found. LGTM.
