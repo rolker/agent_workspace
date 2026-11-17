@@ -95,3 +95,17 @@ The plan quotes the approved wording exactly, each note is true of the code on m
 **Decision**: proceed
 
 Read: the `## Plan Review` at `724a2a54` (verdict ready, no findings) and the plan at `4ea8d481`. The owner's approval, 2026-11-17, to "Q1 — are T1 and T2 right as worded? Q2 — should I open a small issue to track this follow-up?" with both texts shown in full: "yes to both". The merge decision stays his.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 13:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-492 at `35f60ac6`
+
+- `53a8c6e9` AGENTS.md: line 10 "the managed product, any folder" → "what is being built: any folder"; line 29 table row "The product being built (its registered folder)" → "The project's own files (its registered folder)". Still 200 lines.
+- `35f60ac6` One dated note, its own paragraph, at the end of the `## Status` section of ADR-0002, ADR-0003, ADR-0011 and ADR-0018, text exactly as in the issue body and plan. No decision text edited.
+- No other file changed.
+- `grep -n -i product AGENTS.md`: no matches (exit 1).
+- `bash .agent/scripts/tests/test_agents_md_budget.sh`: "Results: 7 passed, 0 failed".
+- `bash .agent/scripts/tests/test_design_anchors.sh`: "test_design_anchors: 47 passed, 0 failed".
+- Not run: `test_skill_paths.sh` (named in the plan's verify step; no skill or knowledge text changed, and the handoff named only the two suites above) and the full pre-commit pass (host runs it before the push). Every commit used `SKIP=validate-script-tests`; the other hooks ran and passed.
