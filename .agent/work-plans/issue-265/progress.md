@@ -892,3 +892,27 @@ Mechanism decisions (each listed for veto):
 Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `e6fccafd`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 102 passed, 0 failed; test_discover_governance.sh 32 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_registry.sh 427 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 124 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. No `test_dashboard*.sh` exists; the dashboard's Active Worktrees section is tested inside test_project_registry.sh. Suites that reach `lib/workspace.py` only through Python imports are left to the host's full pass, as is the pre-commit pass.
 
 Not verified: the submodule exclusion in configure_git_identity; the adversarial rows against the round-2 code (the counts above are from before those rows were added); the whole dashboard output beyond the Active Worktrees section.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 12:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 3 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `14f2f24c`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 narrow check, by the owner's choice, of the diff `b0381e6f..e6fccafd`; the whole-branch tier stays Deep)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 4 | **Ship**: recommended — round 4: 2 mechanical must-fix (prev 4), not rising; fix and ship rather than another full round
+
+Round 3's boxes: 10 of 11 are closed as claimed at `e6fccafd`. The retired-file parser box stays open, deferred by the owner to issue 295, and is not a finding. The `worktrees=` refusal agrees in the shell and Python parsers on 16 values; it refuses only the workspace root, `worktrees/workspace` and folders that hold or lie in them. M4's prune hint is true for both its branches. The dashboard keeps `[retired]` lines under their own header. Under that one job, the specialist found no registered root, instance, parent, `worktrees=` folder, root reached through a symlink or root registered by a relative path that the report calls unregistered. What these fixes opened is the advice text below.
+
+Reviewers: a fresh Claude adversarial specialist, given one job (find destructive advice and registered things reported as unregistered), with sandbox reproductions; Gemini (agy) ran (approve, 2 suggestions); Codex failed (usage limit, "try again at 2:26 PM"); Copilot CLI is not a reviewer here (#344). The skill's convergence-check words ("no cross-model reviewers") were not in the handoff, so cross-model was dispatched.
+
+### Findings
+- [ ] (must-fix) The retired-worktree line says `git worktree remove` "refuses one with uncommitted changes and keeps its branch". That is false for a detached-HEAD worktree, whose commits become dangling, and for gitignored files, which are deleted without a refusal (reproduced). Its "recreate it under its project's root" is also wrong for a `.workspace-worktrees/` workspace worktree (Gemini). The check-first text used by P5, the W2 plain clone and the worktree_remove refusal misses stashes and detached commits (reproduced: both checks empty, stash and commit lost). Name `git stash list`, `git log --all --not --remotes` and `git status --ignored`, and apply the check to worktrees too — `.agent/scripts/_project_registry.sh:1608`, `:1698`; `.agent/scripts/worktree_remove.sh:407`
+- [ ] (must-fix) The comment still says a `.git` file is not a repository, but the code now configures a `--separate-git-dir` checkout whose `.git` is a file — `.agent/scripts/configure_git_identity.sh:147-149`
+- [ ] (suggestion, follow-up) The `rm $x` and `rm -r $_dest` advice prints paths unquoted; it is harmful only for a workspace path with a space — `.agent/scripts/_project_registry.sh:1623-1639`, `.agent/scripts/worktree_remove.sh:414-419`
+- [ ] (suggestion, follow-up) The submodule exclusion in configure_git_identity has no test (the fixer said so) — `.agent/scripts/configure_git_identity.sh:172-180`
+- [ ] (suggestion, follow-up; pre-existing) `resolve_worktree` passes a parent root name from `derive_project_name` straight to `wt_project_base` and does not map it to its instance, as enter and remove now do (Gemini) — `.agent/scripts/dispatch_phase.sh:301-305`
