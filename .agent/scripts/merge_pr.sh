@@ -58,7 +58,7 @@
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
-#      - Workspace/project (legacy, single-repo) PR: cd to root first; fails
+#      - Workspace/project (single-repo) PR: cd to root first; fails
 #        safely if uncommitted changes.
 #      - Package-repo PR (ADR-0012): delete the merged branch locally and on
 #        origin in its own repo only, and `pull --ff-only` that repo's main
@@ -66,14 +66,14 @@
 #        manifest for an open PR on its branch; if any is open, keep the
 #        worktree and print which package PRs still block cleanup, otherwise
 #        remove the worktree.
-#   5. Delete local and remote branches (legacy path only — step 4 already
+#   5. Delete local and remote branches (single-repo path only — step 4 already
 #      did this for a package-repo PR, in its own repo). The remote branch
 #      is deleted the same way on both paths (delete_remote_branch): an
 #      already-gone branch counts as deleted, any other failure is printed
 #      with git's stderr and marks the cleanup incomplete; a PR from a fork
 #      (isCrossRepository) deletes nothing on origin and removes no local
 #      worktree or branch of the same name
-#   6. Pull main to sync (workspace and project repos; legacy path only),
+#   6. Pull main to sync (workspace and project repos; single-repo path only),
 #      then delete the local branch (`branch -d`, after the sync so a
 #      merged branch with no upstream reads as merged into HEAD)
 #
@@ -224,19 +224,26 @@ fi
 # docs/decisions/0016-session-roots-and-the-user-tier.md.
 registry_require_root "$ROOT_DIR" || exit 1
 
+# --project must name a registered project, whatever --type says (issue
+# #265 part 4; plan review S6): an unregistered name is refused here, once,
+# instead of being compared raw against manifest headers and matching
+# nothing in silence. _PROJECT_SEL is the resolved instance (a parent root
+# becomes its default/only instance), the form manifest headers record.
+_PROJECT_SEL=""
+if [[ -n "$PROJECT_ARG" ]]; then
+    _PROJECT_SEL="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_ARG")" || exit 1
+fi
+
 # --- Helper: find a worktree for a given branch ---
-# Issue #173: previous logic globbed `worktrees/project/issue-project-<N>`,
-# which never matched the actual multi-project layout
-# (`worktrees/project/<repo>/issue-<repo>-<N>`). Asking git for the
-# authoritative location side-steps that whole class of path-encoding bug
-# AND naturally covers legacy `.workspace-worktrees/` paths — anything git
-# tracks as a worktree shows up here regardless of where it lives on disk.
+# Issue #173: asking git for the authoritative location of a branch's
+# worktree side-steps every path-encoding bug: anything git tracks as a
+# worktree shows up here regardless of where it lives on disk.
 # Note: this awk parser assumes worktree paths do not contain newlines.
 # git's own docs flag that pathological case and recommend `--porcelain -z`
 # with NUL-aware parsing for true robustness. We don't bother — newlines in
 # worktree paths would break a lot more than this script.
 #
-# This path covers legacy/single-repo project worktrees and workspace
+# This path covers single-repo project worktrees and workspace
 # worktrees. ADR-0012 package worktrees (multi-repo, `.worktree-repos`
 # manifest) are resolved separately below by scanning manifests, since
 # they are not a single `git worktree add` against $repo.
@@ -293,8 +300,8 @@ delete_remote_branch() {  # <checkout> <branch> <label>
 
 # --- Discover the workspace and (optional) project remotes ---
 # Workspace remote always exists (we just resolved ROOT_DIR via git).
-# Project remote is only resolved when project/ is configured. Empty
-# project remote with project/ present is a misconfiguration — surface
+# Project remote is only resolved when a registered project resolves. An
+# empty project remote for a resolved project is a misconfiguration — surface
 # it now rather than letting it manifest as a silent "PR not found"
 # (issue #173 root cause).
 #
@@ -305,24 +312,32 @@ WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
 PJ_REMOTE=""
 PJ_REPO_ROOT=""
 # The project's checkout root (#265): an explicit --project name, the
-# legacy project/ symlink, or the single registered non-parent project —
-# same precedence worktree_create.sh applies. Silent when nothing
-# resolves (no project configured at all — unchanged pre-#265 behaviour);
+# registered root the cwd is in, or the single registered non-parent
+# project — same precedence worktree_create.sh applies (issue #265 part 4
+# retired the project/ symlink step). Silent when nothing resolves and
+# --type project was not given: the PR is then looked up in the workspace
+# alone; a malformed registry stops the script whatever --type is;
 # --repo/a qualified --pr skips this whole block, same as before.
+# PJ_REPO_ROOT is the one project root every later lookup uses (#379): the
+# Step 1 roadmap worktree lookup, the review gate's timeline lookup, the
+# main-tree guards in front of the gate's ancestry check and its Step 1.5
+# record commit, and the cleanup. It is set whenever WORKTREE_TYPE ends up
+# `project`: an explicit --type project exits below when it is not, and an
+# auto-detected project PR needs PJ_REMOTE, read from it.
 if [[ -z "$REPO_ARG" ]]; then
     _pj_root_err="$(mktemp)"
-    if PJ_REPO_ROOT="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_ARG" 2>"$_pj_root_err")"; then
-        :
-    else
+    _pj_root_rc=0
+    PJ_REPO_ROOT="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_ARG" 2>"$_pj_root_err")" || _pj_root_rc=$?
+    if [[ $_pj_root_rc -ne 0 ]]; then
         PJ_REPO_ROOT=""
-        if [[ "$WORKTREE_TYPE" == "project" ]]; then
-            # --type project was explicit, so a project root is required —
-            # falling through with PJ_REPO_ROOT empty would let later code
-            # default to $ROOT_DIR/project (PJ_ROOT_EFFECTIVE, below)
-            # regardless of why resolution failed (ambiguous registration,
-            # no --project given, or nothing configured at all), silently
-            # operating on the wrong (or a nonexistent) checkout instead of
-            # failing fast.
+        if [[ $_pj_root_rc -eq 2 ]] || [[ "$WORKTREE_TYPE" == "project" ]]; then
+            # A malformed registry (rc 2) stops the merge whatever --type
+            # is: looking the PR up in the workspace alone could match a
+            # workspace PR of a project PR's number (issue #173). With
+            # --type project a project root is required: fail fast with
+            # the reason (ambiguous registration, no --project given, or
+            # nothing registered at all) instead of running on with no
+            # project checkout.
             cat "$_pj_root_err" >&2
             rm -f "$_pj_root_err"
             unset _pj_root_err
@@ -330,7 +345,7 @@ if [[ -z "$REPO_ARG" ]]; then
         fi
     fi
     rm -f "$_pj_root_err"
-    unset _pj_root_err
+    unset _pj_root_err _pj_root_rc
 fi
 if [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
     PJ_REMOTE=$(git -C "$PJ_REPO_ROOT" remote get-url origin 2>/dev/null || echo "")
@@ -341,13 +356,6 @@ if [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
         exit 1
     fi
 fi
-# The one project root every later lookup uses (#379): the Step 1 roadmap
-# worktree lookup, the review gate's timeline lookup, and the main-tree
-# guards in front of the gate's ancestry check and its Step 1.5 record
-# commit. One variable, so these can never disagree about where a project
-# PR's worktree lives; the legacy project/ fallback covers runs where
-# nothing resolved (no project configured, or --repo given).
-PJ_ROOT_EFFECTIVE="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
 
 # --- Resolve which repo owns the PR (collision-safe) ---
 # PR numbers are repo-local: workspace #84 ≠ project #84. Trying repos
@@ -427,10 +435,10 @@ if [[ -n "$REPO_ARG" ]]; then
         # and refuse a --type that contradicts it: a wrong --type would send
         # cleanup at the wrong checkout (e.g. --repo <workspace> --type
         # project would remove a project worktree after merging a workspace
-        # PR). Anything that is neither the workspace nor the legacy
-        # project/ remote is a package repo (REPO_KIND=package): it is only
+        # PR). Anything that is neither the workspace nor the resolved
+        # project's remote is a package repo (REPO_KIND=package): it is only
         # ever cleaned up through a matching .worktree-repos manifest, never
-        # through the legacy single-repo path.
+        # through the single-repo path.
         if [[ -n "$WS_REMOTE" ]] && [[ "$(extract_gh_slug "$WS_REMOTE")" == "$REPO_ARG" ]]; then
             REPO_KIND="workspace"
         elif [[ -n "$PJ_REMOTE" ]] && [[ "$(extract_gh_slug "$PJ_REMOTE")" == "$REPO_ARG" ]]; then
@@ -444,7 +452,7 @@ if [[ -n "$REPO_ARG" ]]; then
             exit 2
         fi
         if [[ "$REPO_KIND" == "package" ]]; then
-            WORKTREE_TYPE=""   # never the legacy single-repo cleanup path
+            WORKTREE_TYPE=""   # never the single-repo cleanup path
         else
             WORKTREE_TYPE="$REPO_KIND"
         fi
@@ -573,11 +581,11 @@ echo "========================================"
 # --- Manifest-driven worktree lookup (ADR-0012 package worktrees) ---
 # Scan every `.worktree-repos` manifest for an entry whose owning repo
 # matches PR_REPO_SLUG and whose recorded branch matches PR_BRANCH:
-# under every registered non-parent root's worktree dir (#265), and under
-# the legacy fallback worktrees/project/*/*/ for still-unregistered
-# projects. Directory names are never parsed for this shape — only the
-# manifest's entries (and header) are read. A miss here (no manifest
-# matches, e.g. a legacy single-repo project PR or a workspace PR) falls
+# under every registered non-parent root's worktree dir (#265; the
+# worktrees/project/<name>/ fallback was retired in part 4). Directory
+# names are never parsed for this shape — only the manifest's entries (and
+# header) are read. A miss here (no manifest matches, e.g. a single-repo
+# project PR or a workspace PR) falls
 # back to find_worktree_for_branch below, unchanged from before #252 PR 2.
 PKG_WT_DIR=""
 PKG_WT_PROJECT=""
@@ -600,7 +608,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
         for _m in "$_reg_dir"/*/.worktree-repos; do
             [[ -f "$_m" ]] && _PKG_MANIFESTS+=("$_m")
         done
-    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
     unset _reg_name _reg_dir _m
     for _manifest in "${_PKG_MANIFESTS[@]:-}"; do
         [[ -f "$_manifest" ]] || continue
@@ -633,8 +641,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             # parent such as demo to demo-rolling before writing it), so the
             # selector is resolved the same way before comparing; the raw
             # --project value stays for user-facing messages.
-            if [[ -n "$PROJECT_ARG" ]]; then
-                _PROJECT_SEL="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_ARG" 2>/dev/null || echo "$PROJECT_ARG")"
+            if [[ -n "$_PROJECT_SEL" ]]; then
                 if [[ "$_hdr_project" != "$_PROJECT_SEL" ]]; then
                     continue
                 fi
@@ -725,7 +732,7 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
         # conventions here. For project worktrees, list against the project
         # repo since project worktrees are tracked there.
         _WT_REPO="$ROOT_DIR"
-        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="$PJ_ROOT_EFFECTIVE"
+        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="$PJ_REPO_ROOT"
         _WT_ROOT=$(find_worktree_for_branch "$_WT_REPO" "$PR_BRANCH")
 
         if [[ -z "$_WT_ROOT" ]]; then
@@ -860,7 +867,7 @@ if [[ -n "$PKG_WT_DIR" ]]; then
     fi
 else
     _gate_wt_repo="$ROOT_DIR"
-    [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_ROOT_EFFECTIVE"
+    [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_REPO_ROOT"
     _gate_wt=$(find_worktree_for_branch "$_gate_wt_repo" "$PR_BRANCH" || true)
 fi
 # The owning checkout must be its repository's top folder (resolved). A
@@ -996,7 +1003,7 @@ if [[ "$_GATE_PKG_ROLE" != "sibling" && -n "$_gate_wt" && -z "$_GATE_OWN_PROBLEM
     _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
     if [[ -n "$_ci_wt_top" ]]; then
         _ci_is_main=false
-        for _mt in "$ROOT_DIR" "$ROOT_DIR/project" "$PJ_ROOT_EFFECTIVE"; do
+        for _mt in "$ROOT_DIR" "$PJ_REPO_ROOT"; do
             if [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$_ci_wt_top" && pwd -P)" ]]; then
                 _ci_is_main=true
             fi
@@ -1309,7 +1316,7 @@ _gate_record() {  # <entry type> <one-line why>
         # AGENTS.md forbids feature commits there (round-3 review). The
         # record goes on the PR.
         if [[ -n "$wt_top" ]]; then
-            for _mt in "$ROOT_DIR" "$ROOT_DIR/project" "$PJ_ROOT_EFFECTIVE"; do
+            for _mt in "$ROOT_DIR" "$PJ_REPO_ROOT"; do
                 [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$wt_top" && pwd -P)" ]] && { wt_top=""; why_comment="the PR branch is checked out in the main tree, which never takes feature commits"; break; }
             done
         fi
@@ -2370,15 +2377,15 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     unset _entries
 elif [[ "${REPO_KIND:-}" == "package" ]]; then
     # --- Step 4 (package repo, no matching package worktree) ---
-    # An explicit --repo that is neither the workspace nor project/ and has
+    # An explicit --repo that is neither the workspace nor the project and has
     # no .worktree-repos entry on this branch: nothing local belongs to this
-    # PR, so there is nothing to remove. Never fall through to the legacy
+    # PR, so there is nothing to remove. Never fall through to the single-repo
     # path — worktree_remove.sh --issue N --type project would match some
     # OTHER repo's issue-N worktree.
     echo "  No local package worktree has $PR_REPO_SLUG on branch '$PR_BRANCH' — nothing local to clean up."
     echo "  (Remote branch left as-is; delete it on GitHub if the merge did not.)"
 else
-    # --- Step 4 (workspace / legacy single-repo project PR) ---
+    # --- Step 4 (workspace / single-repo project PR) ---
     # From the workspace root before anything else: worktree removal must
     # not run from inside the worktree, and Step 6's `git pull` syncs the
     # current directory, which must be the workspace root on every branch
@@ -2397,7 +2404,7 @@ else
         # #374). worktree_remove.sh refuses a main checkout and, without
         # --force, a worktree with uncommitted changes.
         _SK_REPO="$ROOT_DIR"
-        [[ "$WORKTREE_TYPE" == "project" ]] && _SK_REPO="$PJ_ROOT_EFFECTIVE"
+        [[ "$WORKTREE_TYPE" == "project" ]] && _SK_REPO="$PJ_REPO_ROOT"
         _SK_WT=$(find_worktree_for_branch "$_SK_REPO" "$PR_BRANCH" || true)
         # Its git dir, empty when git cannot read it: only a readable git
         # dir equal to the common dir is a main checkout (two empty outputs
@@ -2445,8 +2452,8 @@ else
 
     # --- Step 5: Delete branches (remote now, local after the sync) ---
     echo "  Cleaning up branches..."
-    # The project's checkout root (#265): PJ_REPO_ROOT (registered or
-    # legacy project/, resolved above) when this is a project PR, else the
+    # The project's checkout root (#265): PJ_REPO_ROOT (the registered root
+    # resolved above) when this is a project PR, else the
     # workspace root.
     if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]]; then
         BRANCH_REPO="$PJ_REPO_ROOT"

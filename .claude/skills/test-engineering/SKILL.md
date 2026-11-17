@@ -177,19 +177,19 @@ Read the appropriate template from `$WS_ROOT/.agent/templates/testing/` and adap
 
 ```bash
 # Python
-cd project/<component> && python -m pytest test/ -v
+cd <project root>/<component> && python -m pytest test/ -v
 
 # JavaScript/TypeScript
-cd project/<component> && npm test
+cd <project root>/<component> && npm test
 
 # Rust
-cd project/<component> && cargo test -- --nocapture
+cd <project root>/<component> && cargo test -- --nocapture
 
 # Go
-cd project/<component> && go test ./... -v
+cd <project root>/<component> && go test ./... -v
 
 # C++ with make
-cd project/<component> && make test
+cd <project root>/<component> && make test
 
 # C++ with cmake
 cd build && ctest --verbose

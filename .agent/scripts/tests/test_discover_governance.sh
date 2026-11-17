@@ -4,7 +4,9 @@
 # The script derives ROOT_DIR from its own location (two levels above
 # .agent/scripts/), so each fixture copies it into <sandbox>/.agent/scripts/
 # and lays governance files out under <sandbox>/ (workspace scope) and
-# <sandbox>/project/ (project scope). No environment override is used.
+# <sandbox>/demo/, a root registered in the sandbox's registry (project
+# scope; issue #265 part 4: only registered roots are read). No
+# environment override is used.
 #
 # The fixtures run on case-sensitive (Linux) and case-insensitive (macOS
 # default) filesystems alike: the suite probes which one TMPDIR is and
@@ -63,6 +65,8 @@ make_sandbox() {
     mkdir -p "$sb/.agent/scripts"
     cp "$DISCOVER" "$sb/.agent/scripts/discover_governance.sh"
     cp "$(dirname "$DISCOVER")/_real_case_path.sh" "$sb/.agent/scripts/_real_case_path.sh"
+    cp "$(dirname "$DISCOVER")/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
+    echo "demo single_project $sb/demo" > "$sb/.agent/projects.local"
     echo "$sb"
 }
 
@@ -84,29 +88,29 @@ assert_row_count "(A4) exactly one principles row" "$out" principles workspace 1
 
 echo "TEST: project scope, old root/uppercase spelling"
 sb="$(make_sandbox)"
-mkdir -p "$sb/project"
-echo "# Architecture" > "$sb/project/ARCHITECTURE.md"
-echo "# Principles" > "$sb/project/PRINCIPLES.md"
+mkdir -p "$sb/demo"
+echo "# Architecture" > "$sb/demo/ARCHITECTURE.md"
+echo "# Principles" > "$sb/demo/PRINCIPLES.md"
 out="$(run_discover "$sb")"
-assert_row "(B1) project/ARCHITECTURE.md found, project scope" "$out" project/ARCHITECTURE.md architecture project
-assert_row "(B2) project/PRINCIPLES.md found, project scope" "$out" project/PRINCIPLES.md principles project
+assert_row "(B1) demo/ARCHITECTURE.md found, project scope" "$out" demo/ARCHITECTURE.md architecture project
+assert_row "(B2) demo/PRINCIPLES.md found, project scope" "$out" demo/PRINCIPLES.md principles project
 assert_row_count "(B3) no workspace-scope architecture row from an empty workspace" "$out" architecture workspace 0
 
 echo "TEST: project scope, old docs/PRINCIPLES.md spelling"
 sb="$(make_sandbox)"
-mkdir -p "$sb/project/docs"
-echo "# Principles" > "$sb/project/docs/PRINCIPLES.md"
+mkdir -p "$sb/demo/docs"
+echo "# Principles" > "$sb/demo/docs/PRINCIPLES.md"
 out="$(run_discover "$sb")"
-assert_row "(B4) project/docs/PRINCIPLES.md still found" "$out" project/docs/PRINCIPLES.md principles project
+assert_row "(B4) demo/docs/PRINCIPLES.md still found" "$out" demo/docs/PRINCIPLES.md principles project
 
 echo "TEST: project scope, new lowercase docs/ spelling"
 sb="$(make_sandbox)"
-mkdir -p "$sb/project/docs"
-echo "# Design" > "$sb/project/docs/design.md"
-echo "# Principles" > "$sb/project/docs/principles.md"
+mkdir -p "$sb/demo/docs"
+echo "# Design" > "$sb/demo/docs/design.md"
+echo "# Principles" > "$sb/demo/docs/principles.md"
 out="$(run_discover "$sb")"
-assert_row "(C1) project/docs/design.md found, project scope" "$out" project/docs/design.md architecture project
-assert_row "(C2) project/docs/principles.md found, project scope" "$out" project/docs/principles.md principles project
+assert_row "(C1) demo/docs/design.md found, project scope" "$out" demo/docs/design.md architecture project
+assert_row "(C2) demo/docs/principles.md found, project scope" "$out" demo/docs/principles.md principles project
 
 echo "TEST: one file reachable under both docs/ spellings is reported once, under its stored name"
 # On a case-insensitive filesystem the one stored docs/PRINCIPLES.md already
@@ -124,11 +128,11 @@ echo "TEST: a stored lowercase docs/principles.md is reported as docs/principles
 # On a case-insensitive filesystem the docs/PRINCIPLES.md probe (checked
 # first) also opens this file; the report must still use the stored name.
 sb="$(make_sandbox)"
-mkdir -p "$sb/project/docs"
-echo "# Principles" > "$sb/project/docs/principles.md"
+mkdir -p "$sb/demo/docs"
+echo "# Principles" > "$sb/demo/docs/principles.md"
 out="$(run_discover "$sb")"
 assert_row_count "(D3) one principles row" "$out" principles project 1
-assert_row "(D4) the row names the stored spelling project/docs/principles.md" "$out" project/docs/principles.md principles project
+assert_row "(D4) the row names the stored spelling demo/docs/principles.md" "$out" demo/docs/principles.md principles project
 
 echo "TEST: --json emits the new-spelling rows too"
 sb="$(make_sandbox)"
@@ -147,9 +151,9 @@ echo "TEST: without _real_case_path.sh the report still runs, with a warning"
 # using the candidate spellings.
 sb="$(make_sandbox)"
 rm "$sb/.agent/scripts/_real_case_path.sh"
-mkdir -p "$sb/docs" "$sb/project"
+mkdir -p "$sb/docs" "$sb/demo"
 echo "# Design" > "$sb/docs/design.md"
-echo "# Architecture" > "$sb/project/ARCHITECTURE.md"
+echo "# Architecture" > "$sb/demo/ARCHITECTURE.md"
 rc=0
 out="$(run_discover "$sb" 2>"$TMP_ROOT/nohelper.err")" || rc=$?
 err="$(cat "$TMP_ROOT/nohelper.err")"
@@ -164,7 +168,7 @@ else
     fail "(F2) helper missing: stderr was: $err"
 fi
 assert_row "(F3) helper missing: docs/design.md still reported" "$out" docs/design.md architecture workspace
-assert_row "(F4) helper missing: project/ARCHITECTURE.md still reported" "$out" project/ARCHITECTURE.md architecture project
+assert_row "(F4) helper missing: demo/ARCHITECTURE.md still reported" "$out" demo/ARCHITECTURE.md architecture project
 
 echo "TEST: a present-but-broken _real_case_path.sh is reported as unloadable, not missing"
 # The load error itself stays visible on stderr, the warning says "could not
@@ -212,6 +216,52 @@ else
     fail "(H2) helper empty: stderr was: $err"
 fi
 assert_row "(H3) helper empty: docs/design.md still reported" "$out" docs/design.md architecture workspace
+
+echo "TEST: a project/ checkout is not read; a registered root outside the workspace is (issue #265 part 4)"
+sb="$(make_sandbox)"
+far="$(mktemp -d "$TMP_ROOT/far.XXXXXX")"
+mkdir -p "$sb/project/docs" "$far/docs"
+git -C "$sb/project" init -q 2>/dev/null
+echo "# Design" > "$sb/project/docs/design.md"
+echo "# Design" > "$far/docs/design.md"
+echo "far single_project $far" >> "$sb/.agent/projects.local"
+out="$(run_discover "$sb")"
+if printf '%s\n' "$out" | grep -q '^project/'; then
+    fail "(P1) the project/ checkout was read: $out"
+else
+    pass "(P1) the project/ checkout is not read"
+fi
+assert_row "(P2) the out-of-tree registered root is reported by its absolute path" "$out" "$far/docs/design.md" architecture project
+
+echo "TEST: from a linked worktree, a root registered inside the main checkout is reported by its absolute path (review round 3)"
+sbm="$(make_sandbox)"
+mkdir -p "$sbm/projects/inner/docs"
+echo "# Design" > "$sbm/projects/inner/docs/design.md"
+echo "inner single_project $sbm/projects/inner" > "$sbm/.agent/projects.local"
+printf 'projects/\n.agent/projects.local\n' > "$sbm/.gitignore"
+git -C "$sbm" init -q 2>/dev/null
+git -C "$sbm" add -A >/dev/null 2>&1
+git -C "$sbm" -c user.name=t -c user.email=t@example.invalid commit -q -m seed 2>/dev/null
+git -C "$sbm" worktree add -q "$sbm-linked" -b side 2>/dev/null
+out="$(run_discover "$sbm-linked" 2>/dev/null)" || true
+assert_row "(L1) from a linked worktree: the main checkout's projects/inner by its absolute path" "$out" "$sbm/projects/inner/docs/design.md" architecture project
+out="$(run_discover "$sbm" 2>/dev/null)" || true
+assert_row "(L2) from the main checkout: the same root by its relative path" "$out" "projects/inner/docs/design.md" architecture project
+git -C "$sbm" worktree remove --force "$sbm-linked" >/dev/null 2>&1
+
+echo "TEST: a registry with errors is never read as 'no project': workspace rows, then an error and exit 1 (review round 2)"
+echo "broken single_project" >> "$sb/.agent/projects.local"
+rc=0
+out="$(run_discover "$sb" 2>"$TMP_ROOT/err.txt")" || rc=$?
+err="$(cat "$TMP_ROOT/err.txt")"
+[[ $rc -eq 1 ]] && pass "(E1) exit 1" || fail "(E1) rc=$rc"
+[[ "$err" == *"the project registry $sb/.agent/projects.local has errors (above), so no registered project root was scanned"* ]] \
+    && pass "(E2) says no root was scanned" || fail "(E2) stderr: $err"
+if printf '%s\n' "$out" | grep -qF "$far/docs/design.md"; then
+    fail "(E3) a root was scanned from a registry with errors"
+else
+    pass "(E3) no project row from a registry with errors"
+fi
 
 echo ""
 echo "test_discover_governance:${PASS} passed, ${FAIL} failed"

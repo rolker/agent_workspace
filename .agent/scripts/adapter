@@ -36,21 +36,26 @@
 # resolved in this order:
 #   1. --project <name>: explicit selection from .agent/projects.local
 #   2. --from <dir> (default: caller's cwd) inside a registered hosting dir
-#   3. Legacy: PROJECT_TYPE from .agent/project_config.sh, root project/
+#      or in that root's worktrees= folder, wherever it lies
+#      (registry_resolve_session_dir)
+# Nothing else names a project (issue #265 part 4 retired the project/
+# symlink step and its PROJECT_TYPE read): with neither, every verb except
+# `sync` refuses with registry_no_project_message, and `sync` syncs the
+# workspace alone (see _WORKSPACE_ONLY_SYNC_TYPE below).
 # `--project` and `--from` are extracted from argv wherever they appear, so
 # shims can forward them after the verb (no contract verb takes flags with
 # these names). The resolved project is exposed to the sourced adapter as
-# shell variables (not exported): ACTIVE_PROJECT_NAME (empty for legacy),
-# ACTIVE_PROJECT_ROOT, ACTIVE_PROJECT_FILE (the per-project settings file
+# shell variables (not exported): ACTIVE_PROJECT_NAME (empty only for the
+# workspace-only sync), ACTIVE_PROJECT_ROOT, ACTIVE_PROJECT_FILE (the per-project settings file
 # .agent/projects.d/<name>, issue #332; grammar in _project_registry.sh),
 # ACTIVE_PROJECT_BUILD / _TEST / _INSTALL / _BOOTSTRAP_URL / _SOURCE /
-# _SOURCE_REF / _SOURCE_PATH (its keys; empty when unset), and ACTIVE_PROJECT_CONFIG (the legacy per-project config
-# .agent/projects.d/<name>.sh). Per setting, adapters read the settings-file
-# variable first; for one it leaves unset, the legacy file's variable when
-# that file exists (it is then the whole legacy layer, as before #332),
-# otherwise the shared .agent/project_config.sh; and they say so on stderr
-# when a registered project falls through to the shared file. A malformed
-# settings file stops every verb.
+# _SOURCE_REF / _SOURCE_PATH (its keys; empty when unset). The settings file
+# is a project's only source of commands and URLs: issue #265 part 4
+# retired the legacy .agent/projects.d/<name>.sh and the shared
+# .agent/project_config.sh, which no verb reads. A malformed settings file
+# stops every verb. ROS_ROOT_DIR is the one value an adapter takes from the
+# process environment (ros2_colcon's distro underlay root, default
+# /opt/ros; only tests and non-standard installs set it).
 #
 # Contract requirements for .agent/project_types/<type>/adapter.sh:
 #   - Silent at source time: nothing written to stdout while being sourced
@@ -58,12 +63,8 @@
 #     output would corrupt them). Enforced by validate_adapter.sh.
 #   - No top-level `exit`: the file defines functions only.
 #
-# .agent/project_config.sh must be side-effect-free (plain variable
-# assignments): it is sourced once here for PROJECT_TYPE resolution and
-# again by verbs that need command variables.
-#
-# This file is sourceable: sourcing defines REQUIRED_VERBS and
-# _resolve_project_type without dispatching (used by validate_adapter.sh).
+# This file is sourceable: sourcing defines REQUIRED_VERBS without
+# dispatching (used by validate_adapter.sh).
 
 set -euo pipefail
 
@@ -73,29 +74,14 @@ REQUIRED_VERBS=(setup sync validate build test install env project_root repos sc
 _ADAPTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(dirname "$(dirname "$_ADAPTER_SCRIPT_DIR")")"
 
-# Print the legacy project type. Reads PROJECT_TYPE from
-# .agent/project_config.sh; defaults to single_project so pre-adapter
-# configs (BUILD_CMD/TEST_CMD only) keep working unchanged.
-# Registry-resolved projects take their type from .agent/projects.local
-# instead (see the dispatch section below).
-_resolve_project_type() {
-    local config="$WORKSPACE_ROOT/.agent/project_config.sh"
-    local project_type="single_project"
-    if [ -f "$config" ]; then
-        local configured
-        configured="$(
-            # Subshell so config vars don't leak into the dispatcher.
-            # Clear any inherited PROJECT_TYPE first: only the config file
-            # may select the type, not the caller's environment.
-            PROJECT_TYPE=
-            # shellcheck source=/dev/null
-            source "$config" >/dev/null 2>&1 || true
-            echo "${PROJECT_TYPE:-}"
-        )"
-        [ -n "$configured" ] && project_type="$configured"
-    fi
-    echo "$project_type"
-}
+# The one type the dispatcher names (issue #265 part 4): `sync` with no
+# project resolved syncs the workspace alone, and the code that does that
+# (single_project/sync.py with no --project-root) lives in this type. Used
+# only for that verb in that case; every other verb with no project refuses.
+# ADR-0011 lets the dispatcher pick a default type (its "default:
+# single_project"); the workspace adapter type that issue #295's later pull
+# request adds replaces this constant as the home of the workspace sync.
+_WORKSPACE_ONLY_SYNC_TYPE="single_project"
 
 # Sourced (not executed): stop here so callers get the definitions above.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -178,11 +164,13 @@ done
 # while a legitimate `adapter --from <workspace-or-root> build` run from
 # somewhere else was refused for a cwd it was never going to use. See
 # docs/decisions/0016-session-roots-and-the-user-tier.md.
-# A --from that does not exist is not a root to guard on: the discovery
-# below already falls back to the workspace root for it, so the guard does
-# the same rather than refusing on a directory nobody will read.
-_GUARD_DIR="$PWD"
-[ -n "$FROM_DIR" ] && [ -d "$FROM_DIR" ] && _GUARD_DIR="$FROM_DIR"
+# A --from that is not a directory is refused: it names no project, and
+# since issue #265 part 4 there is no project/ fallback to resolve to.
+if [ -n "$FROM_DIR" ] && [ ! -d "$FROM_DIR" ]; then
+    echo "ERROR: --from '$FROM_DIR' is not a directory" >&2
+    exit 1
+fi
+_GUARD_DIR="${FROM_DIR:-$PWD}"
 registry_require_root "$WORKSPACE_ROOT" "$_GUARD_DIR" || exit 1
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
@@ -209,9 +197,7 @@ fi
 # WORKSPACE_ROOT/ADAPTER_TYPE_DIR below), hence the SC2034 disables.
 ACTIVE_PROJECT_NAME=""
 # shellcheck disable=SC2034
-ACTIVE_PROJECT_ROOT="$WORKSPACE_ROOT/project"
-# shellcheck disable=SC2034
-ACTIVE_PROJECT_CONFIG=""
+ACTIVE_PROJECT_ROOT=""
 PROJECT_TYPE_NAME=""
 
 if [ -n "$PROJECT_ARG" ]; then
@@ -226,7 +212,9 @@ if [ -n "$PROJECT_ARG" ]; then
                 echo "Registered projects:" >&2
                 sed 's/^/  /' <<< "$_NAMES" >&2
             else
-                echo "  (no projects registered — see .agent/projects.local.example)" >&2
+                # Split-token idiom (issue #295 hub guard): a message is
+                # not a read of the registration script.
+                echo "  (no projects registered — register one: .agent/scripts/register_project"".sh <path>)" >&2
             fi
         fi
         exit 1
@@ -236,9 +224,11 @@ if [ -n "$PROJECT_ARG" ]; then
     # shellcheck disable=SC2034
     ACTIVE_PROJECT_ROOT="$(cut -f2 <<< "$_ENTRY")"
 else
-    # Discovery: resolve from the caller's directory (or --from <dir>).
+    # Discovery: resolve from the caller's directory (or --from <dir>): its
+    # registered root, counting that root's worktrees= folder wherever it
+    # lies, as session_root.sh and the worktree scripts do.
     _FROM="${FROM_DIR:-$PWD}"
-    if _ENTRY="$(registry_resolve_from_dir "$WORKSPACE_ROOT" "$_FROM")"; then
+    if _ENTRY="$(registry_resolve_session_dir "$WORKSPACE_ROOT" "$_FROM")"; then
         ACTIVE_PROJECT_NAME="$(cut -f1 <<< "$_ENTRY")"
         PROJECT_TYPE_NAME="$(cut -f2 <<< "$_ENTRY")"
         # shellcheck disable=SC2034
@@ -246,17 +236,16 @@ else
     else
         _RC=$?
         [ "$_RC" -eq 2 ] && exit 1  # malformed registry — never guess
-        # Inside the hosting dir but not registered → fail loud rather than
-        # silently operating on the legacy project.
-        _WSROOT_P="$(cd "$WORKSPACE_ROOT" && pwd -P)"
-        _FROM_P="$(cd "$_FROM" 2>/dev/null && pwd -P || true)"
-        if [ -n "$_FROM_P" ] && [[ "$_FROM_P" == "$_WSROOT_P/projects/"* ]]; then
-            echo "ERROR: $_FROM_P is under projects/ but no registered project owns it." >&2
-            echo "Register it in $(registry_file "$WORKSPACE_ROOT") (see .agent/projects.local.example)." >&2
+        # No registered root here (issue #265 part 4: no project/ fallback).
+        # `sync` syncs the workspace alone; every other verb refuses, naming
+        # the directory, the registered projects and the way out.
+        if [ "$VERB" = "sync" ]; then
+            PROJECT_TYPE_NAME="$_WORKSPACE_ONLY_SYNC_TYPE"
+        else
+            _FROM_P="$(cd "$_FROM" 2>/dev/null && pwd -P || echo "$_FROM")"
+            echo "ERROR: $(registry_no_project_message "$WORKSPACE_ROOT" "$_FROM_P")" >&2
             exit 1
         fi
-        # Legacy: project/ symlink + workspace-level config.
-        PROJECT_TYPE_NAME="$(_resolve_project_type)"
     fi
 fi
 
@@ -280,8 +269,6 @@ ACTIVE_PROJECT_ROLE=""
 # shellcheck disable=SC2034
 ACTIVE_PROJECT_DISTRO=""
 if [ -n "$ACTIVE_PROJECT_NAME" ]; then
-    # shellcheck disable=SC2034
-    ACTIVE_PROJECT_CONFIG="$WORKSPACE_ROOT/.agent/projects.d/${ACTIVE_PROJECT_NAME}.sh"
     # Registry trailing fields (#265); adapters read these as shell variables.
     # shellcheck disable=SC2034
     ACTIVE_PROJECT_ROLE="$(registry_field "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" role 2>/dev/null || true)"
@@ -294,12 +281,9 @@ fi
 # settings that are refused (a records repository that is a workspace),
 # stop every verb: never resolve silently. Records settings that are valid
 # but not yet honoured (#393) are reported by project_setting.sh check, not
-# here. Adapters read the command and URL keys as these variables; for a
-# key the file leaves unset they fall back to the legacy
-# ACTIVE_PROJECT_CONFIG variable when that file exists (it is then the
-# whole legacy layer, as before #332), otherwise to the shared
-# .agent/project_config.sh. Empty means "not set in the file"; the
-# value 'none' is a recorded "this project has none".
+# here. Adapters read the command and URL keys as these variables, and
+# from nowhere else (issue #265 part 4). Empty means "not set in the
+# file"; the value 'none' is a recorded "this project has none".
 ACTIVE_PROJECT_FILE=""
 # shellcheck disable=SC2034
 ACTIVE_PROJECT_BUILD=""
@@ -344,6 +328,54 @@ if [ -n "$ACTIVE_PROJECT_NAME" ]; then
     ACTIVE_PROJECT_SOURCE_PATH="$(_project_file_value_of "$_PF_ENTRIES" source_path || true)"
 fi
 
+# --- Retired settings files are not silent (issue #265 part 4) ---
+# A .agent/projects.d/<name>.sh, or the shared .agent/project_config.sh
+# for a project without one (the old resolution order, plan review N3),
+# is no longer read. When it still sets something the settings file lacks,
+# the verbs a person runs (setup, sync, validate, build, test, install) say
+# so on stderr, naming each setting and the command that moves it;
+# `install` with no install setting refuses instead of reporting "nothing
+# to install" for a command that used to run (plan review N2), and refuses
+# too when what the file holds cannot be told (it cannot be sourced, or the
+# registry or the settings file has errors): unknown is never read as
+# "nothing". Telling what the file holds means sourcing (running) it in a
+# subshell, so the machine-read verbs (env, project_root, repos,
+# scope_for_pr, worktree_repos, worktree_env, repo_pin), which scripts call
+# often and which read no command setting, skip the check; make validate
+# and the dashboard still report the file (registry_stale_report).
+case "$VERB" in
+    setup|sync|validate|build|test|install) _STALE_CHECK=1 ;;
+    *) _STALE_CHECK=0 ;;
+esac
+if [ -n "$ACTIVE_PROJECT_NAME" ] && [ "$_STALE_CHECK" -eq 1 ]; then
+    _STALE_FILE="$(registry_stale_config_for "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"
+    if [ -n "$_STALE_FILE" ]; then
+        _STALE_RC=0
+        _STALE_LINES="$(registry_stale_settings_lines "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_STALE_FILE")" || _STALE_RC=$?
+        _STALE_REL=".agent/${_STALE_FILE#"$WORKSPACE_ROOT/.agent/"}"
+        if [ -n "$_STALE_LINES" ]; then
+            if [ "$_STALE_RC" -eq 0 ]; then
+                echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and it still sets:" >&2
+            else
+                echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and what it still sets cannot be told:" >&2
+            fi
+            printf '%s\n' "$_STALE_LINES" | sed 's/^/  /' >&2
+        elif [[ "$_STALE_FILE" == *.sh ]] && [ "$_STALE_FILE" != "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
+            echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4) and holds nothing left to move: delete it" >&2
+        fi
+        if [ "$VERB" = install ] && [ -z "$ACTIVE_PROJECT_INSTALL" ]; then
+            if [ "$_STALE_RC" -ne 0 ]; then
+                echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and whether $_STALE_REL holds an install command that is no longer run cannot be told (above): read it, set the command with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
+                exit 1
+            fi
+            if grep -q " sets INSTALL_CMD=" <<< "$_STALE_LINES"; then
+                echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and the install command in $_STALE_REL is no longer run: set it with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 # Run a command value from the project file: split on blanks into argv and
 # exec it without a shell and without globbing (the parser has already
 # refused quotes and shell operators). Extra arguments are appended. The
@@ -356,19 +388,6 @@ active_project_exec() {
     read -r -a _argv <<< "$1"
     shift
     exec -- "${_argv[@]}" "$@"
-}
-
-# The note printed when a registered project's command comes from the
-# shared .agent/project_config.sh rather than its own settings: that
-# fallback used to be silent (issue #332).
-# Usage: active_project_fallback_note build|test|install|bootstrap_url
-active_project_fallback_note() {
-    [ -n "${ACTIVE_PROJECT_NAME:-}" ] || return 0
-    if [ "$1" = "bootstrap_url" ]; then
-        echo "NOTE: project '$ACTIVE_PROJECT_NAME' has no bootstrap URL of its own; using MANIFEST_BOOTSTRAP_URL from the shared .agent/project_config.sh (set it with: .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME bootstrap_url=<url>)" >&2
-        return 0
-    fi
-    echo "NOTE: project '$ACTIVE_PROJECT_NAME' has no $1 command of its own; using the shared .agent/project_config.sh (set it with: .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME $1=<command>, or $1=none)" >&2
 }
 
 ADAPTER_TYPE_DIR="$WORKSPACE_ROOT/.agent/project_types/$PROJECT_TYPE_NAME"

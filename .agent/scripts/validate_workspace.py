@@ -40,6 +40,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
 from workspace import (
     get_main_checkout_root,
+    get_main_checkout_status,
     get_workspace_root,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
@@ -136,6 +137,41 @@ def delegate_shape_check(workspace_root, name):
     return [f"project '{name}': {line}" for line in lines]
 
 
+def stale_shape_warnings(main_root):
+    """
+    The retired shapes still on disk in the main checkout <main_root>
+    (issue #265 part 4): a project/ link or directory, worktrees under the
+    retired locations, an unregistered directory under projects/, a
+    projects.d/<name>.sh, the shared .agent/project_config.sh, each with what
+    to do. One rule, in _project_registry.sh (registry_stale_report), which
+    the dashboard and the adapter use too. Warnings only: never a failure.
+    """
+    helper = SCRIPT_DIR / "_project_registry.sh"
+    try:
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1" && registry_stale_report "$2"',
+                "_",
+                str(helper),
+                str(main_root),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return [f"the retired-shape check could not run: {exc}"]
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip().splitlines()
+        return [
+            "the retired-shape check failed"
+            + (f": {detail[-1]}" if detail else f" (exit {result.returncode})")
+        ]
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
 def validate_workspace(verbose=False):
     """Validate workspace configuration. Returns True if valid."""
     workspace_root = Path(get_workspace_root())
@@ -151,18 +187,23 @@ def validate_workspace(verbose=False):
         issues.append(f"projects.local: {err}")
 
     # Whether any project is registered is read from the main checkout's
-    # registry, found through git's common dir as make setup, make sync and
-    # the dashboard find it (issue #295): a worktree has no registry of its
-    # own (projects.local is gitignored), so reading its copy would say "no
-    # project registered" on a machine that has some. The checks below still
-    # run on this checkout's entries.
+    # registry, found by get_main_checkout_root (lib/workspace.py; the shell
+    # mirror is registry_main_checkout) as make setup, make sync and the
+    # dashboard find it (issue #295): a worktree has no registry of its own
+    # (projects.local is gitignored), so reading its copy would say "no
+    # project registered" on a machine that has some. When the lookup fell
+    # back from a linked worktree whose main checkout git does not name, the
+    # line says no registry was found from here instead (issue #265 part 4,
+    # PR 454's F2). The checks below still run on this checkout's entries.
     if verbose:
-        main_root = get_main_checkout_root()
+        main_root, fell_back = get_main_checkout_status()
         if Path(main_root) == workspace_root:
             main_entries, main_errors = registry_entries, registry_errors
         else:
             main_entries, main_errors = read_projects_registry(main_root)
-        if not main_entries and not main_errors:
+        if not main_entries and not main_errors and fell_back:
+            print("  no registry found from this linked worktree; run it from the main checkout")
+        elif not main_entries and not main_errors:
             print(f"  no project registered (register one with {REGISTER_PROJECT_POINTER})")
 
     # Validate registry entries: known project type, valid checkout
@@ -290,16 +331,24 @@ def validate_workspace(verbose=False):
     print("Workspace Validation Results")
     print("=" * 60)
 
+    valid = not issues
     if issues:
         print("❌ Workspace validation FAILED")
         for msg in issues:
             print(f"   {msg}")
-        print("=" * 60)
-        return False
-
-    print("✅ Workspace validation PASSED!")
+    else:
+        print("✅ Workspace validation PASSED!")
     print("=" * 60)
-    return True
+
+    # Retired shapes (issue #265 part 4): reported after the results, as
+    # warnings that never change the exit status.
+    warnings = stale_shape_warnings(get_main_checkout_root())
+    if warnings:
+        print("⚠️  Retired shapes still on disk (nothing reads them any more; warnings only):")
+        for msg in warnings:
+            print(f"   ⚠️  {msg}")
+        print("=" * 60)
+    return valid
 
 
 def main():

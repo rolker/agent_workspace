@@ -135,7 +135,7 @@ source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "<you>+codex@<do
 
 **Benefits**:
 - ✅ Persists across all shell sessions
-- ✅ Automatically configures all repositories in `project/`
+- ✅ Automatically configures every repository under each registered project root
 - ✅ No need to re-run for each session
 
 **Trade-offs**:
@@ -161,7 +161,7 @@ Are you running in a container or isolated environment?
 
 **Scope**: Identity must apply to:
 - The workspace repository (`agent_workspace`)
-- The project repository (`project/`) (Note: Ephemeral method applies to all git commands in the session)
+- The registered project repositories (Note: Ephemeral method applies to all git commands in the session)
 
 ## Strategic Options
 
@@ -295,5 +295,5 @@ The user has configured the repository to require 0 reviews for merging.
 - [x] **Create Configuration Script**: `.agent/scripts/configure_git_identity.sh` to apply identity across all repos (persistent method).
 - [x] **Create Ephemeral Script**: `.agent/scripts/set_git_identity_env.sh` for host-based agents in shared workspaces.
 - [x] **Update Documentation**: Document both ephemeral and persistent approaches with decision tree.
-- [x] **Clarify Scope**: Identity applies to workspace repo AND the project repo in `project/`.
+- [x] **Clarify Scope**: Identity applies to workspace repo AND the registered project repositories.
 - [x] **Enforce Content Signatures**: Agents must sign GitHub comments/PRs (see framework instruction files).

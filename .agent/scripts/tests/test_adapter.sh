@@ -3,8 +3,11 @@
 # the single_project adapter (.agent/project_types/single_project/).
 #
 # Tests run against a sandbox workspace (mktemp) with the real dispatcher,
-# validator, and single_project type copied in, so PROJECT_TYPE resolution
-# and per-verb behavior are exercised without touching the real workspace.
+# validator, and single_project type copied in, so type resolution from the
+# registry and per-verb behavior are exercised without touching the real
+# workspace. Each sandbox registers one project, demo, at <sandbox>/demo;
+# run_in_ws runs from inside it (cwd discovery), run_in_root from the
+# sandbox workspace root, where no project resolves (issue #265 part 4).
 # Verb tests assert delegation observably (right implementation invoked,
 # right cwd) — not just exit codes.
 #
@@ -22,7 +25,11 @@ PASS=0
 # its own workspace checkout nor under a registered project root. These
 # fixtures drive a SANDBOX workspace, so every invocation runs from inside
 # that sandbox -- which is what a real `make build` does too.
-run_in_ws() {  # <sandbox> <command> [args...]
+run_in_ws() {  # <sandbox> <command> [args...]: from inside the registered demo root
+    local sb="$1"; shift
+    (cd "$sb/demo" && "$@")
+}
+run_in_root() {  # <sandbox> <command> [args...]: from the sandbox workspace root
     local sb="$1"; shift
     (cd "$sb" && "$@")
 }
@@ -86,7 +93,21 @@ make_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
     cp "$REAL_ROOT/.agent/scripts/validate_adapter.sh" "$sb/.agent/scripts/validate_adapter.sh"
     cp -r "$REAL_ROOT/.agent/project_types/single_project" "$sb/.agent/project_types/"
+    mkdir -p "$sb/demo"
+    echo "demo single_project $sb/demo" > "$sb/.agent/projects.local"
     echo "$sb"
+}
+
+# Append a key=value line to demo's settings file .agent/projects.d/demo,
+# the only place its commands come from (issue #265 part 4).
+set_demo_setting() {  # <sandbox> <key=value>
+    mkdir -p "$1/.agent/projects.d"
+    printf '%s\n' "$2" >> "$1/.agent/projects.d/demo"
+}
+
+# Set demo's registered type (the type comes from the registry line).
+set_demo_type() {  # <sandbox> <type>
+    echo "demo $2 $1/demo" > "$1/.agent/projects.local"
 }
 
 # Add a git repo at $1 with origin URL $2.
@@ -115,15 +136,16 @@ EOF
 # ---- Dispatcher tests ----
 
 test_default_project_type() {
-    echo "TEST: PROJECT_TYPE defaults to single_project without config"
+    echo "TEST: a cwd under the registered root resolves it; its registry type is dispatched"
     local sb out
     sb="$(make_sandbox)"
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "project_root resolves via default type" "$sb/project" "$out"
+    mkdir -p "$sb/demo/src/deep"
+    out="$(cd "$sb/demo/src/deep" && "$sb/.agent/scripts/adapter" project_root)" || true
+    assert_eq "project_root is the registered root" "$sb/demo" "$out"
 }
 
 test_config_project_type_resolution() {
-    echo "TEST: PROJECT_TYPE from project_config.sh selects the type dir"
+    echo "TEST: the registry line's type selects the type dir"
     local sb out
     sb="$(make_sandbox)"
     mkdir -p "$sb/.agent/project_types/fake_type"
@@ -139,16 +161,16 @@ adapter_project_root() { echo "FAKE_TYPE_ROOT"; }
 adapter_repos() { :; }
 adapter_scope_for_pr() { :; }
 EOF
-    echo 'PROJECT_TYPE=fake_type' > "$sb/.agent/project_config.sh"
+    set_demo_type "$sb" fake_type
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
     assert_eq "fake_type adapter dispatched" "FAKE_TYPE_ROOT" "$out"
 }
 
 test_missing_adapter_dir() {
-    echo "TEST: unknown PROJECT_TYPE fails with a clear error"
+    echo "TEST: a registered type with no adapter fails with a clear error"
     local sb out rc=0
     sb="$(make_sandbox)"
-    echo 'PROJECT_TYPE=no_such_type' > "$sb/.agent/project_config.sh"
+    set_demo_type "$sb" no_such_type
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing type" "no adapter for project type 'no_such_type'" "$out"
@@ -160,7 +182,7 @@ test_missing_verb_function() {
     sb="$(make_sandbox)"
     mkdir -p "$sb/.agent/project_types/partial_type"
     echo 'adapter_env() { :; }' > "$sb/.agent/project_types/partial_type/adapter.sh"
-    echo 'PROJECT_TYPE=partial_type' > "$sb/.agent/project_config.sh"
+    set_demo_type "$sb" partial_type
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names type and verb" "'partial_type' does not implement verb 'build'" "$out"
@@ -186,11 +208,125 @@ test_no_args_usage() {
 }
 
 test_from_flag_accepted() {
-    echo "TEST: --from <dir> is accepted (reserved for step 2)"
-    local sb out
+    echo "TEST: --from <dir> resolves like the cwd; a --from that is not a directory is refused"
+    local sb out rc=0
     sb="$(make_sandbox)"
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" --from /nonexistent project_root)" || true
-    assert_eq "still resolves from workspace root" "$sb/project" "$out"
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" --from "$sb/demo" project_root)" || true
+    assert_eq "--from the registered root resolves it" "$sb/demo" "$out"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" --from /nonexistent project_root 2>&1)" || rc=$?
+    assert_eq "a missing --from: exit 1" "1" "$rc"
+    assert_contains "a missing --from: named" "--from '/nonexistent' is not a directory" "$out"
+}
+
+test_outside_worktrees_dir_resolves() {
+    echo "TEST: a worktree in a root's worktrees= folder outside its hosting dir resolves that root (issue #265 part 4)"
+    local sb out rc=0 stub wt
+    sb="$(make_sandbox)"
+    # worktrees= lies under the sandbox workspace root, not under demo/.
+    echo "demo single_project $sb/demo worktrees=$sb/wt/demo" > "$sb/.agent/projects.local"
+    wt="$sb/wt/demo/feature-issue-7"
+    mkdir -p "$wt/sub"
+    out="$(cd "$wt/sub" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "project_root from the worktree: exit 0" "0" "$rc"
+    assert_eq "project_root from the worktree names demo's root" "$sb/demo" "$out"
+    rc=0
+    out="$(cd "$wt" && "$sb/.agent/scripts/adapter" env 2>&1)" || rc=$?
+    assert_eq "env from the worktree: exit 0" "0" "$rc"
+    stub="$(make_stub "$sb" wtbuild)"
+    set_demo_setting "$sb" "build=$stub"
+    rc=0
+    out="$(cd "$wt" && "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    assert_eq "build from the worktree: exit 0" "0" "$rc"
+    assert_contains "build from the worktree runs demo's command" "STUB_wtbuild_RAN_IN" "$out"
+    cp "$REAL_ROOT/.agent/scripts/sync_project.py" "$sb/.agent/scripts/sync_project.py"
+    cat > "$sb/.agent/project_types/single_project/sync.py" <<'EOF'
+import sys
+print("SYNC_IMPL_CALLED args:" + " ".join(sys.argv[1:]))
+EOF
+    out="$(cd "$wt" && python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || true
+    assert_contains "sync from the worktree syncs demo, not the workspace alone" \
+        "SYNC_IMPL_CALLED args:--project-root $sb/demo --dry-run" "$out"
+}
+
+# The first machine's shape, with synthetic names (issue #265 part 4): three
+# non-parent projects registered, a project/ symlink to a git checkout in the
+# workspace with a shared config whose build command would prove it ran, and
+# a cwd in no registered root. Echoes the sandbox.
+make_no_project_sandbox() {
+    local sb stub
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/docs" "$sb/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$sb/.agent/scripts/lib/"
+    git -C "$sb" init --quiet -b main
+    for n in alpha beta gamma; do make_git_repo "$sb/roots/$n" "file:///nonexistent/$n.git"; done
+    printf 'alpha single_project %s\nbeta single_project %s\ngamma single_project %s\n' \
+        "$sb/roots/alpha" "$sb/roots/beta" "$sb/roots/gamma" > "$sb/.agent/projects.local"
+    rmdir "$sb/demo"
+    make_git_repo "$sb/legacy_checkout" "file:///nonexistent/legacy.git"
+    ln -s "$sb/legacy_checkout" "$sb/project"
+    stub="$(make_stub "$sb" legacybuild)"
+    printf 'BUILD_CMD="%s"\nTEST_CMD="%s"\nINSTALL_CMD="%s"\n' "$stub" "$stub" "$stub" > "$sb/.agent/project_config.sh"
+    echo "$sb"
+}
+
+test_no_project_refuses() {
+    echo "TEST: with no project here, build/test/install refuse and list the registered names; project/ is not used (issue #265 part 4)"
+    local sb out rc dir verb
+    sb="$(make_no_project_sandbox)"
+    for dir in "$sb" "$sb/docs"; do
+        for verb in build test install project_root; do
+            rc=0
+            out="$(cd "$dir" && "$sb/.agent/scripts/adapter" "$verb" 2>&1)" || rc=$?
+            assert_eq "$verb from ${dir#"$sb"}/: exit 1" "1" "$rc"
+            assert_contains "$verb from ${dir#"$sb"}/: names the cwd, the registered names and the way out" \
+                "ERROR: no registered project here (cwd $(cd "$dir" && pwd -P)). Registered: alpha, beta, gamma. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+            assert_not_contains "$verb from ${dir#"$sb"}/: the project/ checkout is not used" "STUB_legacybuild_RAN_IN" "$out"
+        done
+    done
+    : > "$sb/.agent/projects.local"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    assert_eq "nothing registered, project/ present: exit 1" "1" "$rc"
+    assert_contains "nothing registered: says so and names the registration script" \
+        "no registered project here (cwd $(cd "$sb" && pwd -P)), and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_not_contains "nothing registered: the project/ checkout is not used" "STUB_legacybuild_RAN_IN" "$out"
+}
+
+test_no_project_sync_is_workspace_only() {
+    echo "TEST: sync with no project here syncs the workspace alone and says no project was synced"
+    local sb out rc=0
+    sb="$(make_no_project_sandbox)"
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" sync --dry-run 2>&1)" || rc=$?
+    assert_eq "three registered: exit 0" "0" "$rc"
+    assert_contains "the workspace is synced" "Checking agent_workspace (workspace)" "$out"
+    assert_contains "no project synced; the registered names listed" \
+        "No project was synced (none selected; registered: alpha, beta, gamma; pass PROJECT=<name>)" "$out"
+    assert_not_contains "the project/ checkout is not synced" "legacy_checkout" "$out"
+    : > "$sb/.agent/projects.local"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" sync --dry-run 2>&1)" || rc=$?
+    assert_eq "nothing registered: exit 0" "0" "$rc"
+    assert_contains "nothing registered: the pointer" \
+        "No project was synced (none registered; register one: .agent/scripts/register_project.sh <path>)" "$out"
+}
+
+test_project_flag_unknown_and_cwd_root() {
+    echo "TEST: --project <unknown> names the registered projects; a cwd under a registered root resolves it"
+    local sb out rc=0
+    sb="$(make_no_project_sandbox)"
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" --project nosuch build 2>&1)" || rc=$?
+    assert_eq "unknown: exit 1" "1" "$rc"
+    assert_contains "unknown: named" "project 'nosuch' is not registered" "$out"
+    assert_contains "unknown: lists the registered" "  beta" "$out"
+    mkdir -p "$sb/roots/beta/sub"
+    out="$(cd "$sb/roots/beta/sub" && "$sb/.agent/scripts/adapter" project_root)" || true
+    assert_eq "cwd under beta resolves beta" "$sb/roots/beta" "$out"
+    : > "$sb/.agent/projects.local"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" --project nosuch build 2>&1)" || rc=$?
+    assert_contains "unknown, nothing registered: points at the registration script" \
+        "(no projects registered — register one: .agent/scripts/register_project.sh <path>)" "$out"
+    assert_not_contains "unknown, nothing registered: no example-file pointer" "projects.local.example" "$out"
 }
 
 # ---- Validator tests ----
@@ -376,110 +512,218 @@ test_env_emits_nothing() {
 }
 
 test_build_requires_config() {
-    echo "TEST: build without project_config.sh fails with guidance"
+    echo "TEST: build with no build command anywhere fails with guidance"
     local sb out rc=0
     sb="$(make_sandbox)"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "guidance message" "No project_config.sh found" "$out"
+    assert_contains "guidance message" "project 'demo' has no build command" "$out"
+    assert_contains "names the setting command" "project_setting.sh set demo build=<command>" "$out"
 }
 
 test_build_requires_build_cmd() {
-    echo "TEST: build with config but no BUILD_CMD fails with guidance"
+    echo "TEST: build with a test command but no build command fails with guidance"
     local sb out rc=0
     sb="$(make_sandbox)"
-    echo 'TEST_CMD="true"' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "test=true"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "names the missing var" "BUILD_CMD is not set" "$out"
+    assert_contains "names the missing command" "project 'demo' has no build command" "$out"
 }
 
 test_build_runs_in_project_root() {
-    echo "TEST: build runs BUILD_CMD in the project directory"
+    echo "TEST: build runs the build setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" fakebuild)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build --flag1)" || true
-    assert_contains "stub ran in project dir" "STUB_fakebuild_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
+    assert_contains "stub ran in project dir" "STUB_fakebuild_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
     assert_contains "args forwarded" "args:--flag1" "$out"
 }
 
 test_test_runs_in_project_root() {
-    echo "TEST: test runs TEST_CMD in the project directory"
+    echo "TEST: test runs the test setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" faketest)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo "TEST_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "test=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" test)" || true
-    assert_contains "stub ran in project dir" "STUB_faketest_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
+    assert_contains "stub ran in project dir" "STUB_faketest_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
 }
 
 test_install_noop_when_unset() {
-    echo "TEST: install no-ops when INSTALL_CMD is empty or unset"
+    echo "TEST: install no-ops when the settings file has no install key"
     local sb out rc=0
     sb="$(make_sandbox)"
-    echo 'INSTALL_CMD=""' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=true"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
-    assert_eq "exit 0 with empty INSTALL_CMD" "0" "$rc"
+    assert_eq "exit 0 with no install key" "0" "$rc"
     assert_contains "explains the no-op" "nothing to install" "$out"
 
     rc=0
-    rm "$sb/.agent/project_config.sh"
+    rm "$sb/.agent/projects.d/demo"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
-    assert_eq "exit 0 with no config at all" "0" "$rc"
+    assert_eq "exit 0 with no settings file at all" "0" "$rc"
 }
 
 test_install_runs_when_set() {
-    echo "TEST: install runs INSTALL_CMD in the project directory"
+    echo "TEST: install runs the install setting in the project directory"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" fakeinstall)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo "INSTALL_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "install=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || true
-    assert_contains "stub ran in project dir" "STUB_fakeinstall_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
+    assert_contains "stub ran in project dir" "STUB_fakeinstall_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
 }
 
 test_build_exit_code_propagation() {
-    echo "TEST: build propagates BUILD_CMD's exit code"
+    echo "TEST: build propagates the build command's exit code"
     local sb stub rc=0
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" failbuild 7)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=$stub"
     run_in_ws "$sb" "$sb/.agent/scripts/adapter" build >/dev/null 2>&1 || rc=$?
     assert_eq "exit code 7 propagated" "7" "$rc"
 }
 
 test_build_aborts_on_failing_config() {
-    echo "TEST: a failing command inside project_config.sh aborts the build"
+    echo "TEST: a retired project_config.sh is never sourced: a failing command in it does not stop the build (issue #265 part 4)"
     local sb out stub rc=0
     sb="$(make_sandbox)"
-    stub="$(make_stub "$sb" neverbuild)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    printf 'BUILD_CMD="%s"\nfalse\n' "$stub" > "$sb/.agent/project_config.sh"
+    stub="$(make_stub "$sb" settingsbuild)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    printf 'echo SHARED_CONFIG_SOURCED\nfalse\n' > "$sb/.agent/project_config.sh"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
-    assert_eq "exits nonzero" "1" "$rc"
-    assert_not_contains "BUILD_CMD was never run" "STUB_neverbuild_RAN_IN" "$out"
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "the settings command ran" "STUB_settingsbuild_RAN_IN" "$out"
+    assert_not_contains "the shared config was not sourced" "SHARED_CONFIG_SOURCED" "$out"
+}
+
+test_retired_settings_note() {
+    echo "TEST: a retired <name>.sh or shared project_config.sh that still sets something prints a NOTE naming each setting (issue #265 part 4)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsbuild)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=$stub"
+    printf 'BUILD_CMD="make"\nTEST_CMD="make test"\n' > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    assert_eq "shared: the build still runs (exit 0)" "0" "$rc"
+    assert_contains "shared: the NOTE names the file" "NOTE: project 'demo': .agent/project_config.sh is no longer read (issue #265 part 4), and it still sets:" "$out"
+    assert_contains "shared: the missing key with its command" "sets TEST_CMD=\"make test\", which .agent/projects.d/demo lacks and nothing reads any more: .agent/scripts/project_setting.sh set demo test=<command> (or test=none)" "$out"
+    assert_not_contains "shared: a key the settings file has is not named" "sets BUILD_CMD" "$out"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>/dev/null)" || true
+    assert_not_contains "the NOTE is on stderr only" "NOTE:" "$out"
+
+    printf 'BUILD_CMD="make"\n' > "$sb/.agent/projects.d/demo.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_contains "a <name>.sh with nothing left: the NOTE says delete it" "NOTE: project 'demo': .agent/projects.d/demo.sh is no longer read (issue #265 part 4) and holds nothing left to move: delete it" "$out"
+    assert_not_contains "a <name>.sh replaces the shared file for its project (N3)" "project_config.sh" "$out"
+    printf 'INSTALL_CMD="make install"\n' >> "$sb/.agent/projects.d/demo.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_contains "a <name>.sh with a missing key: named" ".agent/projects.d/demo.sh sets INSTALL_CMD=\"make install\", which .agent/projects.d/demo lacks" "$out"
+
+    rm -f "$sb/.agent/projects.d/demo.sh" "$sb/.agent/project_config.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_not_contains "no retired file: no NOTE" "NOTE:" "$out"
+}
+
+test_retired_settings_not_run_for_machine_verbs() {
+    echo "TEST: the machine-read verbs never source a retired file; the verbs a person runs still say what it holds (review suggestion)"
+    local sb out verb marker
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    set_demo_setting "$sb" "test=true"
+    marker="$sb/sourced.log"
+    printf 'echo sourced >> "%s"\nINSTALL_CMD="make install"\n' "$marker" > "$sb/.agent/project_config.sh"
+    for verb in project_root env repos; do
+        rm -f "$marker"
+        out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" "$verb" 2>&1)" || true
+        assert_eq "$verb: the retired file is not run" "no" "$([ -e "$marker" ] && echo yes || echo no)"
+        assert_not_contains "$verb: no NOTE" "NOTE:" "$out"
+    done
+    for verb in build test; do
+        rm -f "$marker"
+        out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" "$verb" 2>&1)" || true
+        assert_contains "$verb: the NOTE names the retired setting" "sets INSTALL_CMD=\"make install\"" "$out"
+    done
+}
+
+test_install_refuses_with_retired_install_command() {
+    echo "TEST: install with no install setting refuses while a retired file still sets INSTALL_CMD (plan review N2)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsinstall)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    printf 'INSTALL_CMD="%s"\n' "$stub" > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "shared INSTALL_CMD, no install key: exit 1" "1" "$rc"
+    assert_contains "says so and names the command" "ERROR: project 'demo' has no install setting, and the install command in .agent/project_config.sh is no longer run: set it with .agent/scripts/project_setting.sh set demo install=<command> (or install=none)" "$out"
+    assert_not_contains "never 'nothing to install'" "nothing to install" "$out"
+    assert_not_contains "the retired command does not run" "STUB_settingsinstall_RAN_IN" "$out"
+    rm -f "$sb/.agent/project_config.sh"
+    printf 'INSTALL_CMD="%s"\n' "$stub" > "$sb/.agent/projects.d/demo.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "legacy .sh INSTALL_CMD: exit 1 too" "1" "$rc"
+    assert_contains "names the .sh" "the install command in .agent/projects.d/demo.sh is no longer run" "$out"
+    set_demo_setting "$sb" "install=$stub"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "with install set: exit 0" "0" "$rc"
+    assert_contains "with install set: the settings command runs" "STUB_settingsinstall_RAN_IN" "$out"
+    set_demo_setting "$sb" "test=true"
+    printf 'build=true\ninstall=none\n' > "$sb/.agent/projects.d/demo"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "install=none: exit 0" "0" "$rc"
+}
+
+test_install_refuses_when_retired_file_unreadable() {
+    echo "TEST: install with no install setting refuses when a retired file cannot be sourced: unknown is never 'nothing to install' (review M2)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsinstall)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    printf 'INSTALL_CMD="%s"\nfalse\n' "$stub" > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "shared file that cannot be sourced, no install key: exit 1" "1" "$rc"
+    assert_contains "the NOTE says the file cannot be sourced" ".agent/project_config.sh cannot be sourced, so what is left in it for 'demo' is unknown" "$out"
+    assert_contains "the NOTE heading says what it sets cannot be told (review round 2)" "NOTE: project 'demo': .agent/project_config.sh is no longer read (issue #265 part 4), and what it still sets cannot be told:" "$out"
+    assert_not_contains "never 'and it still sets:' above a cannot-be-told line" "and it still sets:" "$out"
+    assert_contains "the refusal says it cannot be told" "ERROR: project 'demo' has no install setting, and whether .agent/project_config.sh holds an install command that is no longer run cannot be told (above)" "$out"
+    assert_not_contains "never 'nothing to install'" "nothing to install" "$out"
+    assert_not_contains "the retired command does not run" "STUB_settingsinstall_RAN_IN" "$out"
+    rm -f "$sb/.agent/project_config.sh"
+    printf 'exit 3\n' > "$sb/.agent/projects.d/demo.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "a <name>.sh that cannot be sourced: exit 1 too" "1" "$rc"
+    assert_contains "names the .sh" "whether .agent/projects.d/demo.sh holds an install command that is no longer run cannot be told" "$out"
+    set_demo_setting "$sb" "install=none"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "with install=none the settings file decides: exit 0" "0" "$rc"
 }
 
 test_project_type_env_not_inherited() {
-    echo "TEST: exported PROJECT_TYPE in the environment is ignored"
+    echo "TEST: exported PROJECT_TYPE in the environment is ignored (the registry names the type)"
     local sb out
     sb="$(make_sandbox)"
     out="$(PROJECT_TYPE=ghost_type run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "config-less default wins over env" "$sb/project" "$out"
+    assert_eq "the registry type wins over env" "$sb/demo" "$out"
 }
 
 test_no_new_env_vars_leaked() {
-    echo "TEST: WORKSPACE_ROOT/ADAPTER_TYPE_DIR are not exported into BUILD_CMD's env"
+    echo "TEST: WORKSPACE_ROOT/ADAPTER_TYPE_DIR are not exported into the build command's env"
     local sb out
     sb="$(make_sandbox)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo 'BUILD_CMD="env"' > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=env"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build)" || true
     assert_not_contains "WORKSPACE_ROOT absent" "WORKSPACE_ROOT=" "$out"
     assert_not_contains "ADAPTER_TYPE_DIR absent" "ADAPTER_TYPE_DIR=" "$out"
@@ -489,9 +733,9 @@ test_repos_format() {
     echo "TEST: repos prints name:path for the configured project"
     local sb out
     sb="$(make_sandbox)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos)" || true
-    assert_eq "one name:path line" "project:$sb/project" "$out"
+    assert_eq "one name:path line" "demo:$sb/demo" "$out"
 }
 
 test_repos_resolves_symlink_name() {
@@ -499,18 +743,23 @@ test_repos_resolves_symlink_name() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/real_project_checkout" "git@github.com:owner/repo.git"
-    ln -s "$sb/real_project_checkout" "$sb/project"
+    rmdir "$sb/demo"
+    ln -s "$sb/real_project_checkout" "$sb/demo"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos)" || true
     assert_eq "resolved name, unresolved path" \
-        "real_project_checkout:$sb/project" "$out"
+        "real_project_checkout:$sb/demo" "$out"
 }
 
 test_repos_unconfigured() {
-    echo "TEST: repos fails when project/ is not configured"
+    echo "TEST: repos fails when the project is not checked out, and from the workspace with no project selected"
     local sb out rc=0
     sb="$(make_sandbox)"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
-    assert_eq "exits nonzero" "1" "$rc"
+    assert_eq "not checked out: exits nonzero" "1" "$rc"
+    assert_contains "not checked out: says where" "project 'demo' is not checked out at $sb/demo" "$out"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
+    assert_eq "no project selected: exits nonzero" "1" "$rc"
     assert_contains "points at register_project.sh" "register one: .agent/scripts/register_project.sh <path>" "$out"
     assert_not_contains "no make setup pointer" "make setup" "$out"
 }
@@ -570,27 +819,27 @@ test_worktree_repos_single_entry() {
     echo "TEST: single_project worktree_repos prints one entry, rel path '.'"
     local sb out
     sb="$(make_sandbox)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue 42)" || true
     assert_eq "project dir, ., default branch" \
-        "$sb/project	.	feature/issue-42" "$out"
+        "$sb/demo	.	feature/issue-42" "$out"
 }
 
 test_worktree_repos_accepts_qualified_issue() {
     echo "TEST: single_project worktree_repos accepts a qualified owner/repo#N issue"
     local sb out
     sb="$(make_sandbox)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue owner/repo#42)" || true
     assert_eq "trailing number extracted for the branch" \
-        "$sb/project	.	feature/issue-42" "$out"
+        "$sb/demo	.	feature/issue-42" "$out"
 }
 
 test_worktree_repos_rejects_layer_flags() {
     echo "TEST: single_project worktree_repos rejects --layer/--package-repos"
     local sb out rc=0
     sb="$(make_sandbox)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue 42 --layer platforms 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains no layers to worktree" "does not support --layer" "$out"
@@ -612,12 +861,12 @@ test_worktree_repos_requires_issue() {
 make_pin_project() {  # <sb>
     local sb="$1"
     git init --quiet --bare -b trunk "$sb/origin.git"
-    mkdir -p "$sb/project"
-    git -C "$sb/project" init --quiet -b trunk
-    git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-    git -C "$sb/project" remote add origin "$sb/origin.git"
-    git -C "$sb/project" push --quiet origin trunk
-    git -C "$sb/project" fetch --quiet origin
+    mkdir -p "$sb/demo"
+    git -C "$sb/demo" init --quiet -b trunk
+    git -C "$sb/demo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    git -C "$sb/demo" remote add origin "$sb/origin.git"
+    git -C "$sb/demo" push --quiet origin trunk
+    git -C "$sb/demo" fetch --quiet origin
 }
 
 test_repo_pin_from_origin_head() {
@@ -625,12 +874,12 @@ test_repo_pin_from_origin_head() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_pin_project "$sb"
-    git -C "$sb/project" branch --quiet stable
-    git -C "$sb/project" push --quiet origin stable
-    git -C "$sb/project" fetch --quiet origin
+    git -C "$sb/demo" branch --quiet stable
+    git -C "$sb/demo" push --quiet origin stable
+    git -C "$sb/demo" fetch --quiet origin
     # Recorded locally as stable: the local record answers, not the remote.
-    git -C "$sb/project" remote set-head origin stable >/dev/null
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    git -C "$sb/demo" remote set-head origin stable >/dev/null
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "origin/HEAD's branch, kind branch" "stable	branch" "$out"
 }
@@ -640,8 +889,8 @@ test_repo_pin_asks_origin_without_origin_head() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_pin_project "$sb"
-    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    git -C "$sb/demo" remote set-head origin --delete >/dev/null 2>&1 || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "origin's HEAD, kind branch" "trunk	branch" "$out"
 }
@@ -651,9 +900,9 @@ test_repo_pin_undetermined_fails() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_pin_project "$sb"
-    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
-    git -C "$sb/project" remote set-url origin "$sb/no-such-origin.git"
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    git -C "$sb/demo" remote set-head origin --delete >/dev/null 2>&1 || true
+    git -C "$sb/demo" remote set-url origin "$sb/no-such-origin.git"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "says why" "cannot determine the default branch" "$out"
     assert_contains "origin unreachable: says origin could not be asked" \
@@ -661,10 +910,10 @@ test_repo_pin_undetermined_fails() {
     assert_not_contains "origin unreachable: not 'did not name its HEAD'" "did not name its HEAD" "$out"
     assert_not_contains "no guessed main" "main	branch" "$out"
     # Origin answers but its HEAD names no branch it has: that wording.
-    git -C "$sb/project" remote set-url origin "$sb/origin.git"
+    git -C "$sb/demo" remote set-url origin "$sb/origin.git"
     git --git-dir="$sb/origin.git" symbolic-ref HEAD refs/heads/nothere
     rc=0
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo 2>&1)" || rc=$?
     assert_eq "origin names no HEAD: exits 1" "1" "$rc"
     assert_contains "origin names no HEAD: says so" "origin did not name its HEAD" "$out"
 }
@@ -678,7 +927,7 @@ test_repo_pin_hanging_origin_is_bounded() {
     local sb out rc=0 shim pidfile started elapsed reached=no
     sb="$(make_sandbox)"
     make_pin_project "$sb"
-    git -C "$sb/project" remote set-head origin --delete >/dev/null 2>&1 || true
+    git -C "$sb/demo" remote set-head origin --delete >/dev/null 2>&1 || true
     # An ssh origin whose "ssh" blocks, as a passphrase or host-key prompt
     # or a stalled host would. Only WT_FETCH_TIMEOUT can end it; the
     # ceiling below is far above the 2s limit and far below the block.
@@ -686,10 +935,10 @@ test_repo_pin_hanging_origin_is_bounded() {
     pidfile="$sb/hang-ssh.pid"
     printf '#!/usr/bin/env bash\necho $$ > "%s"\nexec sleep 300\n' "$pidfile" > "$shim"
     chmod +x "$shim"
-    git -C "$sb/project" remote set-url origin "ssh://git@example.invalid/project.git"
+    git -C "$sb/demo" remote set-url origin "ssh://git@example.invalid/project.git"
     started=$SECONDS
     out="$(GIT_SSH_COMMAND="$shim" WT_FETCH_TIMEOUT=2 \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo 2>&1)" || rc=$?
     elapsed=$((SECONDS - started))
     if [ -s "$pidfile" ]; then
         reached=yes
@@ -709,7 +958,7 @@ test_repo_pin_other_name_fails() {
     make_pin_project "$sb"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin other_repo 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "names the known repo" "no repository 'other_repo' in this project (known: project)" "$out"
+    assert_contains "names the known repo" "no repository 'other_repo' in this project (known: demo)" "$out"
 }
 
 test_repo_pin_rejects_layer_and_requires_name() {
@@ -717,7 +966,7 @@ test_repo_pin_rejects_layer_and_requires_name() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_pin_project "$sb"
-    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin project --layer l1 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repo_pin demo --layer l1 2>&1)" || rc=$?
     assert_eq "--layer exits nonzero" "1" "$rc"
     assert_contains "no layers" "does not support --layer" "$out"
     rc=0
@@ -791,61 +1040,45 @@ test_setup_aborts_failed_rebase() {
     echo "TEST: setup aborts an in-progress rebase after a failed pull"
     local sb out rc=0
     sb="$(make_sandbox)"
-    make_conflicted_clone "$sb" "$sb/project"
+    make_conflicted_clone "$sb" "$sb/demo"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "setup still exits 0" "0" "$rc"
     assert_contains "reports the pull failure" "Pull failed" "$out"
-    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/project")"
+    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/demo")"
 }
 
-test_setup_replaces_broken_symlink() {
-    echo "TEST: setup removes a broken symlink at project/ before symlinking"
+test_setup_requires_project_root() {
+    echo "TEST: setup.sh without --project-root refuses; it never makes a project/ (issue #265 part 4)"
     local sb out rc=0
     sb="$(make_sandbox)"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    ln -s "$sb/nonexistent_target" "$sb/project"
-    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
-    assert_eq "exit 0" "0" "$rc"
-    assert_contains "symlink created" "Symlinked: project" "$out"
-    assert_eq "project/ now points at the checkout" \
-        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
+    out="$(echo "$sb/real_checkout" | run_in_root "$sb" "$sb/.agent/project_types/single_project/setup.sh" 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "says what setup is for" "setup brings up a registered project" "$out"
+    assert_contains "names the registration script" "Register one first: .agent/scripts/register_project.sh <path>" "$out"
+    assert_eq "no project/ made" "no" "$([ -e "$sb/project" ] || [ -L "$sb/project" ] && echo yes || echo no)"
 }
 
-test_setup_replaces_valid_symlink_to_nonrepo() {
-    echo "TEST: setup removes a valid symlink to a non-repo dir before symlinking"
+test_setup_refuses_non_checkout() {
+    echo "TEST: setup of a registered root that is not a git checkout refuses; nothing is cloned, linked or deleted"
     local sb out rc=0
     sb="$(make_sandbox)"
-    mkdir "$sb/not_a_repo"
-    ln -s "$sb/not_a_repo" "$sb/project"
+    echo "precious" > "$sb/demo/data.txt"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
     out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
-    assert_eq "exit 0" "0" "$rc"
-    assert_eq "project/ now points at the checkout" \
-        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
-}
-
-test_setup_removes_empty_placeholder_dir() {
-    echo "TEST: setup still removes an empty placeholder directory (regression)"
-    local sb out rc=0
-    sb="$(make_sandbox)"
-    mkdir "$sb/project"
-    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
-    assert_eq "exit 0" "0" "$rc"
-    assert_eq "project/ now points at the checkout" \
-        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
-}
-
-test_setup_preserves_nonempty_dir() {
-    echo "TEST: setup does NOT delete a non-empty project/ directory"
-    local sb out rc=0
-    sb="$(make_sandbox)"
-    mkdir "$sb/project"
-    echo "precious" > "$sb/project/data.txt"
-    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
-    assert_eq "setup fails" "1" "$rc"
-    assert_eq "existing file untouched" "precious" "$(< "$sb/project/data.txt")"
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names the root" "$sb/demo is not a git checkout; nothing was changed." "$out"
+    assert_contains "says why, true to today's code" "a single_project needs a git repository today (adapter validate checks it). If its line in .agent/projects.local names the wrong folder, fix the line." "$out"
+    assert_not_contains "never tells a registered folder to clone (git is meant to be optional; review suggestion)" "Clone" "$out"
+    assert_eq "existing file untouched" "precious" "$(< "$sb/demo/data.txt")"
+    assert_eq "no symlink made" "no" "$([ -L "$sb/demo" ] && echo yes || echo no)"
+    rm -r "$sb/demo"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/project_types/single_project/setup.sh" --project-root "$sb/demo" 2>&1)" || rc=$?
+    assert_eq "a registered root that does not exist: exit 1" "1" "$rc"
+    assert_contains "says it does not exist" "$sb/demo does not exist; nothing was changed." "$out"
+    assert_not_contains "a missing root: no 'Clone' either" "Clone" "$out"
+    assert_eq "nothing created" "no" "$([ -e "$sb/demo" ] && echo yes || echo no)"
 }
 
 test_sync_aborts_failed_rebase() {
@@ -854,11 +1087,11 @@ test_sync_aborts_failed_rebase() {
     sb="$(make_sandbox)"
     mkdir -p "$sb/.agent/scripts/lib"
     cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$sb/.agent/scripts/lib/"
-    make_conflicted_clone "$sb" "$sb/project"
-    out="$(python3 "$sb/.agent/project_types/single_project/sync.py" 2>&1)" || rc=$?
+    make_conflicted_clone "$sb" "$sb/demo"
+    out="$(python3 "$sb/.agent/project_types/single_project/sync.py" --project-root "$sb/demo" 2>&1)" || rc=$?
     assert_eq "sync exits 0" "0" "$rc"
     assert_contains "reports the pull failure" "Update failed" "$out"
-    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/project")"
+    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/demo")"
 }
 
 # ---- Delegation / shim-chain tests ----
@@ -873,7 +1106,8 @@ echo "SETUP_IMPL_CALLED args:$*"
 EOF
     chmod +x "$sb/.agent/project_types/single_project/setup.sh"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup --answer 42)" || true
-    assert_contains "implementation invoked with args" "SETUP_IMPL_CALLED args:--answer 42" "$out"
+    assert_contains "implementation invoked with the root and the args" \
+        "SETUP_IMPL_CALLED args:--project-root $sb/demo --answer 42" "$out"
 }
 
 test_sync_shim_chain() {
@@ -887,7 +1121,9 @@ import sys
 print("SYNC_IMPL_CALLED args:" + " ".join(sys.argv[1:]))
 EOF
     out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run)" || true
-    assert_contains "full chain reached the implementation" "SYNC_IMPL_CALLED args:--dry-run" "$out"
+    assert_contains "full chain reached the implementation" "SYNC_IMPL_CALLED args:--project-root $sb/demo --dry-run" "$out"
+    out="$(run_in_root "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run)" || true
+    assert_contains "with no project here, the workspace-only sync" "SYNC_IMPL_CALLED args:--dry-run" "$out"
 }
 
 test_build_shim_chain() {
@@ -897,11 +1133,11 @@ test_build_shim_chain() {
     cp "$REAL_ROOT/.agent/scripts/build.sh" "$sb/.agent/scripts/build.sh"
     chmod +x "$sb/.agent/scripts/build.sh"
     stub="$(make_stub "$sb" shimbuild)"
-    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=$stub"
     out="$(run_in_ws "$sb" "$sb/.agent/scripts/build.sh")" || true
     assert_contains "stub reached via shim in project dir" \
-        "STUB_shimbuild_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
+        "STUB_shimbuild_RAN_IN:$(cd "$sb/demo" && pwd -P)" "$out"
 }
 
 test_sync_real_implementation_runs() {
@@ -925,6 +1161,8 @@ make_sync_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/sync_project.py" "$sb/.agent/scripts/sync_project.py"
     chmod +x "$sb/.agent/scripts/sync_project.py"
     git -C "$sb" init --quiet -b main
+    rm -f "$sb/.agent/projects.local"
+    rmdir "$sb/demo"
     echo "$sb"
 }
 
@@ -932,7 +1170,7 @@ test_sync_nothing_registered() {
     echo "TEST: sync with no project/ and no registry syncs the workspace and says no project was synced"
     local sb out rc=0
     sb="$(make_sync_sandbox)"
-    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    out="$(run_in_root "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
     assert_eq "exits 0" "0" "$rc"
     assert_contains "workspace synced" "Checking agent_workspace (workspace)" "$out"
     assert_contains "no project synced, pointer named" \
@@ -947,7 +1185,7 @@ test_sync_registered_none_selected() {
     sb="$(make_sync_sandbox)"
     make_git_repo "$sb/elsewhere/demo" "file:///nonexistent/demo.git"
     echo "demo single_project $sb/elsewhere/demo" > "$sb/.agent/projects.local"
-    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
+    out="$(run_in_root "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || rc=$?
     assert_eq "exits 0" "0" "$rc"
     assert_contains "names the registered project" \
         "No project was synced (none selected; registered: demo; pass PROJECT=<name>)" "$out"
@@ -965,6 +1203,10 @@ test_missing_verb_function
 test_unknown_verb
 test_no_args_usage
 test_from_flag_accepted
+test_outside_worktrees_dir_resolves
+test_no_project_refuses
+test_no_project_sync_is_workspace_only
+test_project_flag_unknown_and_cwd_root
 test_project_type_env_not_inherited
 test_validator_passes_complete_adapters
 test_validator_flags_missing_verbs
@@ -980,6 +1222,10 @@ test_build_requires_build_cmd
 test_build_runs_in_project_root
 test_build_exit_code_propagation
 test_build_aborts_on_failing_config
+test_retired_settings_note
+test_retired_settings_not_run_for_machine_verbs
+test_install_refuses_with_retired_install_command
+test_install_refuses_when_retired_file_unreadable
 test_no_new_env_vars_leaked
 test_test_runs_in_project_root
 test_install_noop_when_unset
@@ -1005,10 +1251,8 @@ test_repo_pin_other_name_fails
 test_repo_pin_rejects_layer_and_requires_name
 test_validator_flags_missing_repo_pin
 test_setup_aborts_failed_rebase
-test_setup_replaces_broken_symlink
-test_setup_replaces_valid_symlink_to_nonrepo
-test_setup_removes_empty_placeholder_dir
-test_setup_preserves_nonempty_dir
+test_setup_requires_project_root
+test_setup_refuses_non_checkout
 test_sync_aborts_failed_rebase
 test_setup_delegates
 test_sync_shim_chain

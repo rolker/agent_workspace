@@ -23,13 +23,20 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
 from workspace import (
-    get_main_checkout_root,
+    get_main_checkout_status,
     get_workspace_root,
-    get_project_path,
-    is_project_configured,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
 )
+
+
+def is_git_checkout(path):
+    """True when <path> exists and is a git checkout (a .git at the path
+    itself, or at its symlink target)."""
+    path = Path(path)
+    if not path.exists():
+        return False
+    return (path / ".git").exists() or (path.resolve() / ".git").exists()
 
 
 def run_git_cmd(repo_path, cmd_args, dry_run=False):
@@ -163,36 +170,40 @@ def main():
     )
     parser.add_argument(
         "--project-root",
-        help="Project checkout to sync (registry-hosted project, issue #227); "
-        "default: the legacy project/ directory.",
+        help="Project checkout to sync (a registered project, issue #227); "
+        "without it the workspace alone is synced.",
     )
     args = parser.parse_args()
 
     root_dir = Path(get_workspace_root())
-    project_dir = Path(args.project_root) if args.project_root else get_project_path()
+    project_dir = Path(args.project_root) if args.project_root else None
 
     # Sync workspace repo
     if sync_repo(root_dir, "agent_workspace (workspace)", args.dry_run):
         sync_gitbug(root_dir, args.dry_run)
 
     # Sync project repo
-    if is_project_configured(project_dir):
+    if project_dir is not None and is_git_checkout(project_dir):
         if sync_repo(project_dir, f"project ({project_dir.resolve().name})", args.dry_run):
             sync_gitbug(project_dir, args.dry_run)
-    elif args.project_root:
+    elif project_dir is not None:
         print("Checking project...")
         print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:
         # No project resolved: the workspace alone was synced (issue #295).
         # Say why, and how to get a project synced. The registry read is the
-        # main checkout's, found through git's common dir as make setup,
-        # make validate and the dashboard find it: a worktree has no
-        # registry of its own (projects.local is gitignored). A registry
+        # main checkout's, found by get_main_checkout_root (lib/workspace.py)
+        # as make setup, make validate and the dashboard find it (their shell
+        # mirror is registry_main_checkout): a worktree has no registry of
+        # its own (projects.local is gitignored). When that lookup fell back
+        # from a linked worktree whose main checkout git does not name, "none
+        # registered" would be a guess, so it says no registry was found
+        # from here instead (issue #265 part 4, PR 454's F2). A registry
         # whose lines fail to parse is not an empty one: say so rather than
         # "none registered" (only a worktree reaches here with one; from the
         # main checkout the adapter refuses a malformed registry first).
         print("Checking project...")
-        main_root = get_main_checkout_root()
+        main_root, fell_back = get_main_checkout_status()
         entries, errors = read_projects_registry(main_root)
         names = [e["name"] for e in entries]
         if names:
@@ -207,7 +218,12 @@ def main():
             )
             if not names:
                 print("  No project was synced (no well-formed registry line).")
-        if not names and not errors:
+        if not names and not errors and fell_back:
+            print(
+                "  No project was synced (no registry found from this linked worktree; "
+                "run it from the main checkout)"
+            )
+        elif not names and not errors:
             print(
                 "  No project was synced (none registered; register one: "
                 f"{REGISTER_PROJECT_POINTER})"

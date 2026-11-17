@@ -7,20 +7,21 @@
 # project name to a hosting directory and a project type, plus optional
 # trailing key=value fields:
 #
-#   # <name>  <project_type>  [<path>]  [key=value ...]
+#   # <name>  <project_type>  <path>  [key=value ...]
 #   boat_sim            single_project  /home/me/src/boat_sim
 #   shore_tools         project         /home/me/shore_tools   default_instance=shore_tools-rolling
 #   shore_tools-jazzy   ros2_colcon     /home/me/shore_tools/jazzy    parent=shore_tools distro=jazzy
 #   shore_tools-rolling ros2_colcon     /home/me/shore_tools/rolling  parent=shore_tools distro=rolling
 #
-# - name: [A-Za-z0-9][A-Za-z0-9._-]* — also the default hosting dir name
-#   (projects/<name>/) and the worktree repo key
+# - name: [A-Za-z0-9][A-Za-z0-9._-]* — also the worktree repo key
 # - project_type: must have an adapter at .agent/project_types/<type>/,
 #   except the pseudo-type "project": a parent root that groups instances
 #   (session and memory unit, no adapter of its own)
-# - path: optional hosting dir; relative paths resolve against the
-#   workspace root; default projects/<name>. Paths must not contain spaces
-#   or '=' (a third token containing '=' is read as a field).
+# - path: the hosting dir, required (issue #265 part 4 retired the
+#   projects/<name> default); relative paths resolve against the
+#   workspace root. Paths must not contain spaces or '=' (a third token
+#   containing '=' is read as a field, so such an entry has no path and is
+#   a parse error).
 # - trailing fields (values must not contain spaces):
 #     parent=<name>            this entry is an instance of parent root <name>
 #                              (<name> must be a "project"-type entry)
@@ -50,7 +51,9 @@
 # - an unknown key, a duplicate key, an empty value or a line with no '='
 #   is an error naming the file, the line and the known keys. A malformed
 #   file stops the adapter dispatcher and `validate`; it never resolves.
-# - keys (everything else stays in the legacy projects.d/<name>.sh):
+# - keys (the only per-project settings; the old projects.d/<name>.sh and
+#   the shared .agent/project_config.sh are no longer read, issue #265
+#   part 4):
 #     build, test, install  a command, or 'none' (a recorded "this project
 #                           has none"). The value is split on blanks into
 #                           argv and run without a shell, from the project
@@ -106,12 +109,12 @@
 # - a records repository must not be a workspace: project_records_check
 #   refuses tracking=repo when the records clone is the workspace or a copy
 #   of it (remote URL, local-path remote, or the workspace marker files).
-# - precedence for build/test/install/bootstrap_url: this file, key by key;
-#   for a key it leaves unset, the legacy .agent/projects.d/<name>.sh
-#   variable when that file exists (it is then the whole legacy layer, as
-#   before #332), otherwise the shared .agent/project_config.sh (the
-#   dispatcher and the adapters). project_command_source says which of the
-#   three a command comes from, without running it.
+# - build/test/install/bootstrap_url come from this file alone (issue #265
+#   part 4 retired the legacy .agent/projects.d/<name>.sh and the shared
+#   .agent/project_config.sh layers). project_command_source says whether
+#   the file sets a command, without running it. The retired files are
+#   still read, never for a value, only by the stale-shape report
+#   (registry_stale_report), which names what is left in them to move.
 #
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_project_registry.sh"
@@ -243,7 +246,11 @@ registry_entries_full() {
             fields="${fields:+$fields }$key=$value"
         done
         [ "$bad" -eq 1 ] && { rc=2; continue; }
-        [ -z "$path" ] && path="projects/$name"
+        if [ -z "$path" ]; then
+            echo "ERROR: ${file}:${lineno}: '$name' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project"".sh <path>)" >&2
+            rc=2
+            continue
+        fi
         case "$path" in
             /*) : ;;
             *) path="$root/$path" ;;
@@ -253,6 +260,15 @@ registry_entries_full() {
         wt="$(_registry_field_of "$fields" worktrees)" || wt=""
         if [ -n "$wt" ] && ! _registry_path_under "$wt" "$path" && ! _registry_path_under "$wt" "$root"; then
             echo "ERROR: ${file}:${lineno}: worktrees '$wt' for '$name' must lie under $path or under the workspace root $root" >&2
+            rc=2
+            continue
+        fi
+        # A worktrees= that is or holds the workspace root, or is, holds or
+        # lies in the workspace's own worktrees/workspace, would make a
+        # workspace worktree (or the workspace itself) count as that
+        # project's, or a project worktree as a workspace one.
+        if [ -n "$wt" ] && { _registry_path_under "$root" "$wt" || _registry_path_under "$root/worktrees/workspace" "$wt" || _registry_path_under "$wt" "$root/worktrees/workspace"; }; then
+            echo "ERROR: ${file}:${lineno}: worktrees '$wt' for '$name' is or holds the workspace root, or is, holds or lies in its worktrees/workspace; a project's worktrees go in a folder of their own" >&2
             rc=2
             continue
         fi
@@ -478,19 +494,52 @@ registry_default_instance() {
     return 1
 }
 
+# The sentence a script prints when nothing names a project: the cwd is
+# under no registered root and no --project was given (issue #265 part 4:
+# the project/ symlink and the projects/ default no longer stand in). It
+# lists the registered names, so the caller can say which to pass. Printed
+# on stdout without an "ERROR:" prefix; callers add their own and send it
+# to stderr. A registry parse error still prints the sentence (the parse
+# diagnostics go to stderr) and returns 2; otherwise returns 0. The
+# registration script is named with the split-token idiom so the test
+# selector does not read this message as a use of that script (the hub
+# guard in test_script_tests_hook_scope.sh).
+# Usage: echo "ERROR: $(registry_no_project_message "$root" "$PWD")" >&2
+registry_no_project_message() {
+    local root="$1" cwd="${2:-$PWD}" names rc=0 list
+    names="$(registry_names "$root")" || rc=$?
+    list="$(printf '%s' "$names" | tr '\n' ' ' | sed -e 's/ *$//' -e 's/ /, /g')"
+    if [ -z "$list" ]; then
+        echo "no registered project here (cwd $cwd), and none is registered. Register one: .agent/scripts/register_project"".sh <path>"
+    else
+        echo "no registered project here (cwd $cwd). Registered: $list. Pass --project <name> or register one: .agent/scripts/register_project"".sh <path>"
+    fi
+    return $rc
+}
+
+# The refusal for a name that is not registered (issue #265 part 4: an
+# unregistered name no longer falls back to the retired
+# worktrees/project/<name> location). On stderr.
+_registry_not_registered() {
+    local root="$1" name="$2" names list
+    names="$(registry_names "$root" 2>/dev/null)" || true
+    list="$(printf '%s' "$names" | tr '\n' ' ' | sed -e 's/ *$//' -e 's/ /, /g')"
+    echo "ERROR: project '$name' is not registered (registered: ${list:-none}); register it: .agent/scripts/register_project"".sh <path>" >&2
+}
+
 # Resolve a --project argument the way every worktree script must (#265):
 # a registered parent root becomes its default/only instance (or an error
-# listing the instances); any other name — registered or not — is printed
-# back unchanged so legacy callers keep working. Return 1 on an ambiguous
-# parent, 2 on registry parse errors.
+# listing the instances); any other registered name is printed back. An
+# unregistered name is refused (issue #265 part 4). Return 1 on an
+# unregistered name or an ambiguous parent, 2 on registry parse errors.
 # Usage: name=$(registry_resolve_project_arg "$root" "$arg") || exit 1
 registry_resolve_project_arg() {
     local root="$1" arg="$2" entry rc=0
     entry="$(registry_lookup "$root" "$arg")" || rc=$?
     [ "$rc" -eq 2 ] && return 2
     if [ "$rc" -eq 1 ]; then
-        echo "$arg"
-        return 0
+        _registry_not_registered "$root" "$arg"
+        return 1
     fi
     if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
         registry_default_instance "$root" "$arg"
@@ -500,12 +549,10 @@ registry_resolve_project_arg() {
 }
 
 # Print the directory a root's worktrees live in: its worktrees= field,
-# else <hosting_dir>/worktrees. Transition rule (#265, until the legacy
-# project/ shape is removed): a name that is not registered maps to the
-# pre-#265 location <root>/worktrees/project/<name>, so unregistered
-# legacy projects keep working mid-rollout. The name is validated like a
-# registry name (no '/', no '..') so the fallback can never leave the
-# workspace. Return 1 on an invalid name, 2 on parse errors.
+# else <hosting_dir>/worktrees. A name that is not registered is refused
+# (issue #265 part 4 retired the <root>/worktrees/project/<name>
+# fallback). Return 1 on an invalid or unregistered name, 2 on parse
+# errors.
 # Usage: dir=$(registry_worktree_dir "$root" "$name")
 registry_worktree_dir() {
     local root="$1" name="$2" entries ename etype epath efields override
@@ -526,8 +573,8 @@ registry_worktree_dir() {
             return 0
         fi
     done <<< "$entries"
-    echo "$root/worktrees/project/$name"
-    return 0
+    _registry_not_registered "$root" "$name"
+    return 1
 }
 
 # Resolve the project owning a directory: the registry entry whose hosting
@@ -561,7 +608,7 @@ registry_resolve_from_dir() {
 # Resolve the root a SESSION in <dir> belongs to (ADR-0018 decision 6):
 # registry_resolve_from_dir, else the entry whose worktrees= directory
 # contains <dir> -- that directory may lie outside the hosting dir (under
-# the workspace's worktrees/project/, say), and a session in one of its
+# the workspace root, say), and a session in one of its
 # worktrees is still that root's. Longest worktrees= match wins.
 # Prints "<name>\t<type>\t<abs_path>" (the hosting dir, as registered).
 # Return 1 if no entry owns <dir>, 2 on registry parse errors.
@@ -596,17 +643,18 @@ registry_resolve_session_dir() {
 # #265 PR 3), for scripts whose --type is optional when the cwd already
 # says which checkout you are in.
 # Prints "<type>\t<project>": "project\t<name>" when <dir> is under a
-# registered project root (longest-prefix match, so an instance beats its
-# parent), or "workspace\t" when it is inside the workspace checkout.
+# registered project root or in its worktrees= directory
+# (registry_resolve_session_dir: longest-prefix match, so an instance beats
+# its parent), or "workspace\t" when it is inside the workspace checkout.
 # Registered roots are checked FIRST: a project registered inside the
-# workspace tree is still a project.
+# workspace tree, or a worktrees= directory there, is still a project's.
 # Return 1 when the directory implies neither, 2 on registry parse errors.
 # Callers must let an explicit --type/--project win over this.
 # Usage: derived=$(registry_derive_type_from_dir "$root" "$PWD")
 registry_derive_type_from_dir() {
     local root="$1" dir="${2:-$PWD}" abs wsabs entry rc=0
     abs="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
-    entry="$(registry_resolve_from_dir "$root" "$abs")" || rc=$?
+    entry="$(registry_resolve_session_dir "$root" "$abs")" || rc=$?
     [ "$rc" -eq 2 ] && return 2
     if [ "$rc" -eq 0 ] && [ -n "$entry" ]; then
         printf 'project\t%s\n' "${entry%%$'\t'*}"
@@ -657,11 +705,29 @@ registry_require_root() {
 #     `git worktree list --porcelain` names, which is the main checkout,
 #     when that is a directory that is the top level of a checkout sharing
 #     this common dir; else print <root>.
-# Any git failure prints <root>. Always returns 0.
+# Any git failure prints <root>. Always returns 0. A linked worktree whose
+# main checkout git does not name (a linked worktree of a checkout made with
+# `git clone --separate-git-dir`, whose first `worktree list` entry is the
+# git dir, not a checkout) falls back to <root>; registry_main_checkout_fallback
+# says when that happened, so a "none registered" message can say instead
+# that no registry was found from this linked worktree (issue #265 part 4,
+# PR 454's F2).
 # Usage: main="$(registry_main_checkout "$root")"
 registry_main_checkout() {
+    _registry_main_checkout_status "$1" | cut -f1
+}
+
+# Succeeds when registry_main_checkout fell back to <root> from a linked
+# worktree whose main checkout could not be found (see above).
+# Usage: if registry_main_checkout_fallback "$root"; then ...
+registry_main_checkout_fallback() {
+    [ "$(_registry_main_checkout_status "$1" | cut -f2)" = 1 ]
+}
+
+# "<main checkout>\t<1 when it fell back from a linked worktree, else 0>".
+_registry_main_checkout_status() {
     local root="$1" abs top gitdir common main mtop mcommon
-    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\n' "$root"; return 0; }
+    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\t0\n' "$root"; return 0; }
     top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" &&
         top="$(cd "$top" 2>/dev/null && pwd -P)" &&
         [ "$top" = "$abs" ] &&
@@ -669,9 +735,9 @@ registry_main_checkout() {
         gitdir="$(cd "$gitdir" 2>/dev/null && pwd -P)" &&
         common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
         common="$(cd "$common" 2>/dev/null && pwd -P)" ||
-        { printf '%s\n' "$root"; return 0; }
+        { printf '%s\t0\n' "$root"; return 0; }
     if [ "$gitdir" = "$common" ]; then
-        printf '%s\n' "$root"
+        printf '%s\t0\n' "$root"
         return 0
     fi
     main="$(git -C "$abs" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')" || main=""
@@ -683,8 +749,8 @@ registry_main_checkout() {
         mcommon="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
         mcommon="$(cd "$mcommon" 2>/dev/null && pwd -P)" &&
         [ "$mcommon" = "$common" ] ||
-        { printf '%s\n' "$root"; return 0; }
-    printf '%s\n' "$main"
+        { printf '%s\t1\n' "$root"; return 0; }
+    printf '%s\t0\n' "$main"
 }
 
 # Print the GitHub slug (owner/repo) of the `origin` remote of every
@@ -1256,20 +1322,12 @@ project_file_get() {
 
 # ------------------------------------- where a command comes from (#332) ---
 
-# The legacy and shared config variable for command setting <key>.
-_project_command_var() {
-    case "$1" in
-        build) echo BUILD_CMD ;;
-        test) echo TEST_CMD ;;
-        install) echo INSTALL_CMD ;;
-        *) return 1 ;;
-    esac
-}
-
-# Value of shell variable <var> after sourcing config file <file> in a
-# subshell, the way the adapters read it (the variable is cleared first, so
-# only the file sets it). Prints the value; return 1 when the file cannot
-# be sourced.
+# Value of shell variable <var> after sourcing a retired config file <file>
+# (a projects.d/<name>.sh or the shared .agent/project_config.sh) in a
+# subshell, the way the adapters used to read it (the variable is cleared
+# first, so only the file sets it). Prints the value; return 1 when the file
+# cannot be sourced. Kept for the stale-shape report alone (issue #265 part
+# 4, plan review N3): no adapter reads these files for a value any more.
 _project_config_value() {
     local file="$1" var="$2"
     (
@@ -1281,59 +1339,37 @@ _project_config_value() {
 }
 
 # Where project <name>'s command setting <key> (build, test or install)
-# comes from, in the adapters' order (the dispatcher and single_project's
-# _single_project_resolve_cmd): its settings file ('none' included); else,
-# when the legacy .agent/projects.d/<name>.sh exists, that file, which is
-# then the whole legacy layer; else the shared .agent/project_config.sh.
-# Prints "<source>\t<value>", <source> one of file, legacy, shared or
-# missing (value empty). Return 2 when the settings file is invalid or a
-# config cannot be sourced (the reason on stderr).
+# comes from: its settings file ('none' included), the one source since
+# issue #265 part 4. Prints "file\t<value>", or "missing\t" when the file
+# does not set it. Return 2 when the settings file is invalid or <key> is
+# not a command setting (the reason on stderr).
 # Usage: src=$(project_command_source "$root" "$name" test)
 project_command_source() {
-    local root="$1" name="$2" key="$3" var entries v cfg
-    var="$(_project_command_var "$key")" || {
-        echo "ERROR: project_command_source: '$key' is not a command setting (build, test, install)" >&2
-        return 2
-    }
+    local root="$1" name="$2" key="$3" entries v
+    case "$key" in
+        build|test|install) : ;;
+        *)
+            echo "ERROR: project_command_source: '$key' is not a command setting (build, test, install)" >&2
+            return 2
+            ;;
+    esac
     entries="$(project_file_entries "$root" "$name")" || return 2
     if v="$(_project_file_value_of "$entries" "$key")"; then
         printf 'file\t%s\n' "$v"
         return 0
     fi
-    cfg="$root/.agent/projects.d/$name.sh"
-    if [ -f "$cfg" ]; then
-        v="$(_project_config_value "$cfg" "$var")" || {
-            echo "ERROR: cannot source the legacy config $cfg" >&2
-            return 2
-        }
-        if [ -n "$(_project_file_trim "$v")" ]; then
-            printf 'legacy\t%s\n' "$v"
-        else
-            printf 'missing\t\n'
-        fi
-        return 0
-    fi
-    cfg="$root/.agent/project_config.sh"
-    if [ -f "$cfg" ]; then
-        v="$(_project_config_value "$cfg" "$var")" || {
-            echo "ERROR: cannot source the shared config $cfg" >&2
-            return 2
-        }
-        if [ -n "$(_project_file_trim "$v")" ]; then
-            printf 'shared\t%s\n' "$v"
-            return 0
-        fi
-    fi
     printf 'missing\t\n'
 }
 
-# The variables the adapters read from a legacy or shared config file.
+# The variables the adapters used to read from a retired config file
+# (stale-shape report only).
 _PROJECT_CONFIG_READ_VARS=" PROJECT_TYPE BUILD_CMD TEST_CMD INSTALL_CMD MANIFEST_BOOTSTRAP_URL ROS_DISTRO ROS_ROOT_DIR "
 
-# The variables config file <file> sets, changes or exports beyond the ones
-# the adapters read (_PROJECT_CONFIG_READ_VARS), one name per line, sorted.
-# A command in the settings file runs without sourcing the config, so such
-# a variable (an SDK path, PATH) no longer reaches it. The file is sourced
+# The variables retired config file <file> sets, changes or exports beyond
+# the ones the adapters used to read (_PROJECT_CONFIG_READ_VARS), one name
+# per line, sorted (stale-shape report only, plan review S8). A command in
+# the settings file runs without sourcing the config, so such a variable
+# (an SDK path, PATH) does not reach it. The file is sourced
 # in a clean bash (env -i, keeping HOME and PATH), and every variable is
 # compared before and after. Returns non-zero when the file cannot be
 # sourced (call it as a condition: under set -e a failure would stop the
@@ -1359,6 +1395,414 @@ project_config_extra_vars() {
     return "${PIPESTATUS[0]}"
 }
 
+# ------------------------------------------ retired shapes (#265 part 4) ---
+# Nothing reads <ws>/project, <ws>/projects/<unregistered>, the worktree
+# fallbacks, a projects.d/<name>.sh or the shared .agent/project_config.sh
+# any more. Retirement is not silent: these helpers name what is still on
+# disk and what to do with it. Warnings only, never a failure: a machine
+# may keep the files until its owner moves the settings.
+
+# The values retired config file <file> sets (non-empty after sourcing it
+# in a clean subshell, every read variable cleared first), one
+# "<VAR>\t<value>" line per variable, in _PROJECT_CONFIG_READ_VARS order.
+# Return 1 when the file cannot be sourced.
+_stale_config_values() {
+    local file="$1"
+    (
+        # shellcheck disable=SC2086  # the list is words by design
+        for __v in $_PROJECT_CONFIG_READ_VARS; do eval "$__v="; done
+        # shellcheck source=/dev/null
+        source "$file" >/dev/null 2>&1 || exit 1
+        for __v in $_PROJECT_CONFIG_READ_VARS; do
+            [ -n "${!__v:-}" ] && printf '%s\t%s\n' "$__v" "${!__v}"
+        done
+        exit 0
+    )
+}
+
+# The settings key a retired command variable maps to, or nothing.
+_stale_var_key() {
+    case "$1" in
+        BUILD_CMD) echo build ;;
+        TEST_CMD) echo test ;;
+        INSTALL_CMD) echo install ;;
+        MANIFEST_BOOTSTRAP_URL) echo bootstrap_url ;;
+    esac
+}
+
+# The retired config file that applied to registered project <name> under
+# the old resolution order (plan review N3): its .agent/projects.d/<name>.sh
+# when that exists (it was then the whole legacy layer), else the shared
+# .agent/project_config.sh when that exists; prints the path, or nothing.
+registry_stale_config_for() {
+    local root="$1" name="$2"
+    if [ -f "$root/.agent/projects.d/$name.sh" ]; then
+        echo "$root/.agent/projects.d/$name.sh"
+    elif [ -f "$root/.agent/project_config.sh" ]; then
+        echo "$root/.agent/project_config.sh"
+    fi
+    return 0
+}
+
+# Does project type <type> read what retired variable <var> used to set?
+# ROS_DISTRO became the registry line's distro=, which the dispatcher hands
+# a type's adapter as ACTIVE_PROJECT_DISTRO; ROS_ROOT_DIR is read from the
+# environment by name. The answer is the type's own adapter.sh naming that
+# variable, so no script here names a type (ADR-0011). An empty or unknown
+# type answers yes: advice is never dropped for want of a type.
+# Usage: _stale_type_reads "$root" "$type" ROS_DISTRO
+_stale_type_reads() {
+    local root="$1" type="$2" var="$3" word f
+    case "$var" in
+        ROS_DISTRO) word=ACTIVE_PROJECT_DISTRO ;;
+        ROS_ROOT_DIR) word=ROS_ROOT_DIR ;;
+        *) return 1 ;;
+    esac
+    [ -n "$type" ] || return 0
+    f="$root/.agent/project_types/$type/adapter.sh"
+    [ -f "$f" ] || return 0
+    grep -qw -- "$word" "$f"
+}
+
+# One line per setting a retired config file holds for registered project
+# <name> that its settings file lacks, each with its remedy (plan review
+# N3): build/test/install/bootstrap_url by project_setting.sh set (skipped
+# for a key the project's type never reads, its unused_settings); ROS_DISTRO
+# by distro= on the registry line, by hand (project_setting.sh has no such
+# key), only while the line has none; ROS_ROOT_DIR from the environment;
+# each ROS_* line only for a type that reads it (_stale_type_reads);
+# variables beyond the read set (plan review S8) belong in the script a key
+# points at. <file> defaults to registry_stale_config_for's; with
+# <shared_only>=1 the ROS_ROOT_DIR and extra-variable lines are left out
+# (the whole report says those once for the shared file). Prints nothing
+# when nothing is left to move. Return 1 when what is left cannot be told
+# (a line says why): the file cannot be sourced, the registry has errors,
+# or the project's settings file is invalid. Never read as "nothing left":
+# the adapter's install refuses on it, the report shows the line.
+# Usage: registry_stale_settings_lines "$root" "$name" [<file>] [<shared_only>]
+registry_stale_settings_lines() {
+    local root="$1" name="$2" file="${3:-}" shared_only="${4:-0}"
+    local rel vals var val key type entry entries extra distro rc=0
+    [ -n "$file" ] || file="$(registry_stale_config_for "$root" "$name")"
+    [ -n "$file" ] || return 0
+    rel=".agent/${file#"$root/.agent/"}"
+    if ! vals="$(_stale_config_values "$file")"; then
+        echo "$rel cannot be sourced, so what is left in it for '$name' is unknown: read it by hand, move what it sets with .agent/scripts/project_setting.sh set $name <key>=<value>, then delete it"
+        return 1
+    fi
+    entry="$(registry_lookup "$root" "$name" 2>/dev/null)" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "$rel: .agent/projects.local has errors, so what is left in $rel for '$name' cannot be told: fix the registry (make validate names each bad line), then look again"
+        return 1
+    fi
+    type="$(cut -f1 <<< "$entry")"
+    if ! entries="$(project_file_entries "$root" "$name" 2>/dev/null)"; then
+        echo "$rel: the settings file of '$name', .agent/projects.d/$name, is invalid, so what is left in $rel to move cannot be told: fix it (.agent/scripts/project_setting.sh check $name), then look again"
+        return 1
+    fi
+    while IFS=$'\t' read -r var val; do
+        [ -n "$var" ] || continue
+        key="$(_stale_var_key "$var")"
+        if [ -n "$key" ]; then
+            _project_file_value_of "$entries" "$key" >/dev/null && continue
+            _project_type_unused_setting "$root" "$type" "$key" >/dev/null 2>&1 && continue
+            if [ "$key" = bootstrap_url ]; then
+                echo "$rel sets $var=\"$val\", which .agent/projects.d/$name lacks and nothing reads any more: .agent/scripts/project_setting.sh set $name bootstrap_url=<url>"
+            else
+                echo "$rel sets $var=\"$val\", which .agent/projects.d/$name lacks and nothing reads any more: .agent/scripts/project_setting.sh set $name $key=<command> (or $key=none)"
+            fi
+            continue
+        fi
+        _stale_type_reads "$root" "$type" "$var" || continue
+        case "$var" in
+            ROS_DISTRO)
+                distro="$(registry_field "$root" "$name" distro 2>/dev/null)" || distro=""
+                [ -n "$distro" ] && continue
+                echo "$rel sets ROS_DISTRO=\"$val\", which nothing reads any more: if $name's manifest declares no distro, add distro=$val to its line in .agent/projects.local by hand"
+                ;;
+            ROS_ROOT_DIR)
+                [ "$shared_only" = 1 ] && continue
+                echo "$rel sets ROS_ROOT_DIR=\"$val\", which is no longer read from a file: export ROS_ROOT_DIR=$val in the environment that runs the adapter"
+                ;;
+        esac
+    done <<< "$vals"
+    if [ "$shared_only" != 1 ]; then
+        if extra="$(project_config_extra_vars "$file")" && [ -n "$extra" ]; then
+            echo "$rel sets or exports $(printf '%s' "$extra" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'), which no command gets any more: move that environment into the script $name's settings keys point at"
+        fi
+    fi
+    return 0
+}
+
+# <path> as the filesystem names it, without following <path> itself when
+# it is a link: its parent resolved physically, then its own name. Falls
+# back to the lexical form when the parent does not exist.
+_registry_phys_nofollow() {
+    local p d
+    p="$(_registry_normpath "$1")"
+    d="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || { echo "$p"; return 0; }
+    echo "${d%/}/$(basename "$p")"
+}
+
+# How folder <x> stands to the registered roots in <full> (the
+# registry_entries_full lines). <mode> 'name' compares the path that names
+# <x> (lexical, and with its parents resolved but <x> itself not followed);
+# 'target' compares what <x> resolves to (physical). Each root, and each
+# root's worktrees= folder (live worktrees: as much the project's as its
+# root), is compared in the same forms (lexical, parents resolved,
+# physical). Prints "<relation>\t<root name>\t<what>" for the first match:
+# relation 'self' (the same folder), 'inside' (<x> lies in it) or 'holds'
+# (it lies in <x>), 'self' first; <what> is 'root' or 'worktrees' (the
+# root's worktrees= folder). Returns 1 when <x> stands in no relation to
+# any of them.
+# Usage: rel=$(_stale_root_relation "$full" "$x" name)
+_stale_root_relation() {
+    local full="$1" x="$2" mode="$3" name type path fields f r p what wt best="" bestname="" bestwhat=""
+    local -a xs=() rs=()
+    if [ "$mode" = name ]; then
+        xs=("$(_registry_normpath "$x")" "$(_registry_phys_nofollow "$x")")
+    else
+        f="$(cd "$x" 2>/dev/null && pwd -P)" || return 1
+        xs=("$f")
+    fi
+    while IFS=$'\t' read -r name type path fields; do
+        [ -n "$name" ] || continue
+        wt="$(_registry_field_of "$fields" worktrees)" || wt=""
+        for what in root worktrees; do
+            if [ "$what" = root ]; then p="$path"; else p="$wt"; fi
+            [ -n "$p" ] || continue
+            rs=("$(_registry_normpath "$p")" "$(_registry_phys_nofollow "$p")")
+            f="$(cd "$p" 2>/dev/null && pwd -P)" && rs+=("$f")
+            for f in "${xs[@]}"; do
+                for r in "${rs[@]}"; do
+                    if [ "$f" = "$r" ]; then
+                        printf 'self\t%s\t%s\n' "$name" "$what"
+                        return 0
+                    elif [[ "$f" == "$r/"* ]]; then
+                        [ -z "$best" ] && { best=inside; bestname="$name"; bestwhat="$what"; }
+                    elif [[ "$r" == "$f/"* ]]; then
+                        [ -z "$best" ] && { best=holds; bestname="$name"; bestwhat="$what"; }
+                    fi
+                done
+            done
+        done
+    done <<< "$full"
+    [ -n "$best" ] || return 1
+    printf '%s\t%s\t%s\n' "$best" "$bestname" "$bestwhat"
+}
+
+# How a _stale_root_relation answer names what it matched: "registered
+# project '<n>'" or "the worktrees= folder of registered project '<n>'".
+_stale_relation_noun() {
+    local rel="$1" name what
+    IFS=$'\t' read -r _ name what <<< "$rel"
+    if [ "$what" = worktrees ]; then
+        echo "the worktrees= folder of registered project '$name'"
+    else
+        echo "registered project '$name'"
+    fi
+}
+
+# What to check before removing a checkout, worktree or folder that may hold
+# a repository: every hint that says remove or delete one uses this text
+# (the retired-shape report here, worktree_remove.sh), so none forgets
+# ignored files, stashes or commits no branch holds (a detached HEAD's).
+# It reads as a clause: "..., <this>, remove it".
+CHECK_BEFORE_REMOVING="after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
+
+# The line for one retired folder, <ws>/project or an entry under
+# <ws>/projects/ (<label> is how the line names it), or nothing. The case
+# table is in the header of tests/test_validate_workspace_stale.sh. Sets
+# _STALE_UNREGISTERED=1 when it names a folder that is not registered (an
+# old-order reader of the shared config file may have been it).
+_stale_folder_line() {
+    local root="$1" full="$2" x="$3" label="$4" rel target tabs qx
+    # The path that names it is, holds or lies in a registered root: the
+    # registry reads it (or reads through it), so it is silent.
+    _stale_root_relation "$full" "$x" name >/dev/null && return 0
+    # The path as the shell must read it in the printed command (a space in
+    # the workspace path would otherwise split it).
+    qx="$(printf '%q' "$x")"
+    if [ -L "$x" ]; then
+        target="$(readlink "$x")"
+        if [ ! -e "$x" ]; then
+            echo "$label is a link to $target, which does not exist; nothing reads the link any more: remove it (rm $qx)"
+            return 0
+        fi
+        if ! tabs="$(cd "$x" 2>/dev/null && pwd -P)"; then
+            echo "$label is a link to $target, which is not a folder; nothing reads the link any more: remove it (rm $qx)"
+            return 0
+        fi
+        if rel="$(_stale_root_relation "$full" "$x" target)"; then
+            case "${rel%%$'\t'*}" in
+                self) echo "$label is a link to $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
+                inside) echo "$label is a link to $tabs, inside $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
+                holds) echo "$label is a link to $tabs, which holds $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $qx)" ;;
+            esac
+            return 0
+        fi
+        _STALE_UNREGISTERED=1
+        echo "$label is a link to $target, which is not registered; nothing reads the link any more: register $tabs with .agent/scripts/register_project"".sh <path> if it is a project, and remove the link (rm $qx)"
+        return 0
+    fi
+    [ -d "$x" ] || return 0
+    _STALE_UNREGISTERED=1
+    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or, $CHECK_BEFORE_REMOVING, remove it"
+}
+
+# The variables retired config file <file> sets (the read set's non-empty
+# ones, then the extra ones), comma separated. Return 1 when it cannot be
+# sourced.
+_stale_set_names() {
+    local file="$1" vals extra
+    vals="$(_stale_config_values "$file")" || return 1
+    extra="$(project_config_extra_vars "$file")" || return 1
+    { [ -n "$vals" ] && cut -f1 <<< "$vals"; [ -n "$extra" ] && printf '%s\n' "$extra"; } | paste -sd, - | sed 's/,/, /g'
+}
+
+# The deepest a checkout sits under a retired worktree location in the
+# layouts that used it (worktrees/project/<name>/<worktree>/<ws>/src/<repo>
+# is 5); the scan goes no deeper.
+_STALE_WORKTREE_SCAN_DEPTH=6
+
+# The whole stale-shape report for the workspace whose registry is at
+# <root> (the main checkout): one warning per line, nothing when the
+# machine holds no retired shape. A root registered inside the workspace
+# tree (projects/<name>, or <ws>/project itself) is silent: ADR-0016
+# decision 1 allows it. A registry with errors gives one line saying so and
+# nothing else: what is registered decides every other line, and a
+# registry read as empty would advise removing registered checkouts. The
+# case table every check follows is the header of
+# tests/test_validate_workspace_stale.sh.
+# Always returns 0 (a report, never a failure).
+# Usage: registry_stale_report "$main_root"
+registry_stale_report() {
+    local root="$1" full name type path fields d dphys f n lines shared any
+    local g applied rootdir plines setnames insts why where
+    if ! full="$(registry_entries_full "$root" 2>/dev/null)"; then
+        echo ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again"
+        return 0
+    fi
+    _STALE_UNREGISTERED=0
+    # <ws>/project.
+    if [ -L "$root/project" ] || [ -e "$root/project" ]; then
+        _stale_folder_line "$root" "$full" "$root/project" project
+    fi
+    # The retired worktree locations: a checkout (a folder holding .git) left
+    # under them that no registered root or worktrees= directory holds. The
+    # walk stops at each checkout (never descending into it) and at
+    # _STALE_WORKTREE_SCAN_DEPTH. Empty folders left after the worktrees were
+    # removed are not named.
+    for d in "$root/worktrees/project" "$root/.workspace-worktrees"; do
+        [ -d "$d" ] || continue
+        dphys="$(cd "$d" && pwd -P)" || continue
+        while IFS= read -r g; do
+            # A checkout that is, lies in or holds a registered root or a
+            # root's worktrees= folder is the registry's: skipped.
+            _stale_root_relation "$full" "$g" name >/dev/null && continue
+            _STALE_UNREGISTERED=1
+            # git worktree remove deletes ignored files without asking and
+            # leaves a detached HEAD's commits on no branch, so the check
+            # comes first for a worktree as for a plain clone.
+            if [ "$d" = "$root/.workspace-worktrees" ]; then
+                where="recreate it as a workspace worktree with .agent/scripts/worktree_create.sh --type workspace"
+            else
+                where="recreate it under its project's registered root with .agent/scripts/worktree_create.sh --type project"
+            fi
+            echo "${d#"$root/"}/ holds worktrees that are no longer found: for each, $CHECK_BEFORE_REMOVING, remove it (a worktree with git -C <its repository> worktree remove <path>; a plain clone, which is not a worktree, by moving or deleting it), then $where"
+            break
+        done < <(find "$dphys" -mindepth 1 -maxdepth "$_STALE_WORKTREE_SCAN_DEPTH" \
+            \( -name .git -prune \) -o \( -type d -exec test -e '{}/.git' \; -prune -print \) 2>/dev/null)
+    done
+    # <ws>/projects/<entry>: a folder, a link, a link to nothing.
+    if [ -d "$root/projects" ]; then
+        for d in "$root/projects"/*; do
+            [ -L "$d" ] || [ -d "$d" ] || continue
+            _stale_folder_line "$root" "$full" "$d" "projects/$(basename "$d")"
+        done
+    fi
+    # projects.d/<name>.sh, each read as the old layer of its project.
+    for f in "$root/.agent/projects.d"/*.sh; do
+        [ -f "$f" ] || continue
+        n="$(basename "$f" .sh)"
+        if ! type="$(registry_lookup "$root" "$n" 2>/dev/null | cut -f1)" || [ -z "$type" ]; then
+            if ! setnames="$(_stale_set_names "$f")"; then
+                echo ".agent/projects.d/$n.sh belongs to no registered project and cannot be sourced: read it by hand; if '$n' is a project not registered yet, register it first (.agent/scripts/register_project"".sh <path>) and this report names what to move; otherwise delete it"
+            elif [ -n "$setnames" ]; then
+                echo ".agent/projects.d/$n.sh belongs to no registered project and still sets $setnames: if '$n' is a project not registered yet, register it first (.agent/scripts/register_project"".sh <path>) and this report names what to move; otherwise delete it"
+            else
+                echo ".agent/projects.d/$n.sh belongs to no registered project and sets nothing; nothing reads it any more: delete it"
+            fi
+            continue
+        fi
+        if [ "$type" = "$REGISTRY_PARENT_TYPE" ]; then
+            insts="$(registry_instances "$root" "$n" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+            if ! setnames="$(_stale_set_names "$f")"; then
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own (its instances have theirs: ${insts:-none registered}), and cannot be sourced: read it by hand, move what an instance needs with .agent/scripts/project_setting.sh set <instance> <key>=<value> (a distro goes on the instance's line in .agent/projects.local), then delete it"
+            elif [ -n "$setnames" ]; then
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own (its instances have theirs: ${insts:-none registered}), and still sets $setnames: move what an instance needs with .agent/scripts/project_setting.sh set <instance> <key>=<value> (a distro goes on the instance's line in .agent/projects.local), then delete it"
+            else
+                echo ".agent/projects.d/$n.sh belongs to parent root '$n', which has no settings of its own, and sets nothing; nothing reads it any more: delete it"
+            fi
+            continue
+        fi
+        lines="$(registry_stale_settings_lines "$root" "$n" "$f")" || true
+        if [ -n "$lines" ]; then
+            printf '%s\n' "$lines"
+        else
+            echo ".agent/projects.d/$n.sh is no longer read and holds nothing left to move: delete it"
+        fi
+    done
+    # The shared file: per registered project it applied to (no .sh of its
+    # own), per key; its ROS_ROOT_DIR and extra-variable lines once, and
+    # only when a project it applied to would have read them. While it
+    # still sets something and applied to no registered project, or an
+    # unregistered folder named above may have read it, it is never called
+    # safe to delete.
+    shared="$root/.agent/project_config.sh"
+    if [ -f "$shared" ]; then
+        any=0
+        applied=0
+        rootdir=0
+        if lines="$(_stale_config_values "$shared")" && setnames="$(_stale_set_names "$shared")"; then
+            while IFS=$'\t' read -r name type path fields; do
+                [ -n "$name" ] || continue
+                [ "$type" = "$REGISTRY_PARENT_TYPE" ] && continue
+                [ -f "$root/.agent/projects.d/$name.sh" ] && continue
+                applied=1
+                _stale_type_reads "$root" "$type" ROS_ROOT_DIR && rootdir=1
+                plines="$(registry_stale_settings_lines "$root" "$name" "$shared" 1)" || true
+                [ -n "$plines" ] && { printf '%s\n' "$plines"; any=1; }
+            done <<< "$full"
+            local var val
+            while IFS=$'\t' read -r var val; do
+                if [ "$var" = ROS_ROOT_DIR ] && [ "$rootdir" -eq 1 ]; then
+                    echo ".agent/project_config.sh sets ROS_ROOT_DIR=\"$val\", which is no longer read from a file: export ROS_ROOT_DIR=$val in the environment that runs the adapter"
+                    any=1
+                fi
+            done <<< "$lines"
+            if [ "$applied" -eq 1 ] && lines="$(project_config_extra_vars "$shared")" && [ -n "$lines" ]; then
+                echo ".agent/project_config.sh sets or exports $(printf '%s' "$lines" | tr '\n' ' ' | sed 's/ $//; s/ /, /g'), which no command gets any more: move that environment into the scripts the projects' settings keys point at"
+                any=1
+            fi
+            if [ -n "$setnames" ] && { [ "$applied" -eq 0 ] || [ "$_STALE_UNREGISTERED" -eq 1 ]; }; then
+                if [ "$applied" -eq 0 ]; then
+                    why="it applies to no registered project (none is registered, or each has its own .agent/projects.d/<name>.sh)"
+                else
+                    why="an unregistered folder or retired worktree named above may have used it"
+                fi
+                echo ".agent/project_config.sh still sets $setnames, and $why: register that project first (.agent/scripts/register_project"".sh <path>) and this report names what to move; delete the file only when no project needs it"
+                any=1
+            fi
+        else
+            echo ".agent/project_config.sh cannot be sourced, so what is left in it is unknown: read it by hand, move what it sets with .agent/scripts/project_setting.sh set <name> <key>=<value>, then delete it"
+            any=1
+        fi
+        [ "$any" -eq 0 ] && echo ".agent/project_config.sh is no longer read and holds nothing left to move: delete it"
+    fi
+    return 0
+}
+
 # ------------------------------ per-type registration facts (#332, PR 2) ---
 # .agent/project_types/<type>/registration.conf: what register_project.sh
 # does for a project of that type, as data, so no script branches on a type
@@ -1368,7 +1812,7 @@ project_config_extra_vars() {
 #   required_commands  'none', or the command settings (build test install)
 #                      a project of the type must have of its own, or
 #                      declare 'none'; registration_verify.sh refuses one
-#                      that falls through to the shared config or is missing
+#                      the settings file does not set
 #   setup              'never' (the checkout is the user's), or
 #                      'when-missing' (register_project.sh runs `adapter
 #                      setup` when the hosting directory does not exist)

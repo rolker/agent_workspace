@@ -376,3 +376,730 @@ test_resolve_work_plans_dir 21/21 — all green.
 **Mode**: report-only
 **Scope**: workspace
 **Conditions**: latest Local Review entry is at `6737065`, not the PR head `1b5ff2d` (stale review)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Records the owner's merges of the earlier parts, made before this timeline kept merge answers: pull requests 266 (part 1, merged 2026-09-16), 273 (part 2, merged 2026-09-17) and 326 (part 3, delivered under issue 317, merged 2026-09-23), all shown as merged on GitHub. The host asked on 2026-11-16: "May I record on the timeline that you merged parts 1 to 3 of issue 265, so the drive can move on to planning part 4? (yes / no)". The owner answered: "yes".
+
+His direction for part 4, given the same day when he started this drive: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan dates from 2026-09-16 and was last reviewed before parts 2 and 3; part 3 was delivered under issue 317, and onboarding, the plugin and the session-root rule changed the ground since, so run-issue step 13 allows only revise)
+**After**: plan
+**Decision**: revise
+
+The plan is rewritten for part 4 only (retire `project/` and `projects/` and the worktree fallback, and register the project11 instances, as the roadmap's deferral line words it), then reviewed, before any implementation. The owner's direction of 2026-11-16 goes into the plan-task and review-plan handoffs: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-16 12:41 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `a0460f10`
+
+Revision 3, part 4 only: retire the `project/` symlink, the `projects/<name>` default and the `worktrees/project/` fallback so the registry is the only link. One pull request: registry and worktree scripts, dispatcher and project-reading scripts, a stale-shape warning in validate, skills and docs, tests. No directory on disk is removed; registering the project11 instances is out of scope (second-machine agent).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-16 12:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #265 — Step 5: hosted projects under projects/ with project-rooted sessions and per-project CLAUDE.md
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `a0460f10`
+**Branch**: `feature/issue-265`
+
+Revision 3, part 4 only (retire `project/`, the `projects/<name>` default and the `worktrees/project/` fallback). Judged against the source on this branch (main at 319f437a plus the plan), the issue and its comments, the issue 295 plan and timeline, and this machine's `.agent/projects.local`, `.agent/projects.d/` and `.agent/project_config.sh` (read only, nothing changed).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Concern | The issue 295 plan (2026-11-12, owner-directed fold of 2026-09-18) already plans this pull request as "B and C", which "Closes #265" and also removes the `.sh` and shared-config reading; revision 3 never cites it and drops C on a wrong ground (finding 1). About 60 files; split point after step 3 is the wrong cut (S1). |
+| Issue alignment | Needs work | Serves line, as checked: "Goals 'Light touch on projects' and 'Flexibility' (README Workspace goals); design sections `docs/design.md#sessions-and-roots` with `docs/design.md#registry-and-adapters` and `docs/design.md#worktrees`." Correct and sufficient. Not covered: the two suggestions the owner ordered carried into this plan when pull request 454 merged (finding 6); the 2026-11-13 issue comment's `AGENTS.md:19-20` and the `gather-project-knowledge` question (finding 5, Q5); whether this closes #265 (finding 8). |
+| File targeting | Needs work | Missed sites listed in finding 5 (both type adapters' `$WORKSPACE_ROOT/project` default, `registry_resolve_project_arg`, three knowledge/skill pages, two design register rows, the design `sync` row). |
+| Consequences | Concern | "Removing the code paths changes no resolution" is false on this machine (finding 2); the adapter's no-project refusal breaks `make sync` and `test_fresh_clone_no_project.sh` (finding 3); the `projects/` warning fires falsely on two registered roots (finding 4). |
+| Principle alignment | Needs work | "Test what breaks": one planned test exercises the existing guard, not the new code, and several changed scripts have no named refusal test (finding 7). "Keep one current design": design sections named, but the ADR register rows and the `sync` row are missing (finding 5). Prior art: does not name the issue 295 plan's B and C section, the nearest prior art (finding 1). |
+| ADR compliance | Needs work | ADR-0016 decision 1 says "a project registered inside the workspace tree is still a project"; the step 4 warning treats such a root as a retired shape (finding 4). ADR-0017: met only if findings 5 and S1 are followed. ADR-0002/0011 left unedited and raised for the owner: correct per the new-ADR rule (Q4). ADR-0003: plan text is clean; tests touched still use a `p11` shape name (S3). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Scope] must-fix, needs a re-plan (and owner question Q1).** `.agent/work-plans/issue-295/plan.md` lines 5 and 80-107 plan "Pull request B and C (one pull request), closing issue 265": the `project/` and `projects/` fallbacks (B) and the `.sh`/shared-config reading (C, "item 4 of #265's plan"), with a per-key stale-file report and five owner-machine steps. That follows the owner's 2026-09-18 comment on #265 ("PR 4 (retire hosting): remove the workspace/project special cases at the same time as the `project/` / `projects/` fallbacks"); the collapse itself was later moved to #295's later pull requests, C was not. Revision 3 does not cite that plan and keeps the `.sh` layer because "#332 keeps it on purpose", but #332's own text calls it "the legacy projects.d/<name>.sh" (`_project_registry.sh` header lines 53 and 109-114) and design.md line 1015 calls it the legacy layer. On this machine the layer is load-bearing: `projects.d/p11-jazzy.sh` sets `ROS_DISTRO` and `MANIFEST_BOOTSTRAP_URL`, and the shared `.agent/project_config.sh` gives the single-repository project its `INSTALL_CMD` (its settings file holds only `build` and `test`). Re-plan: either include C (and the 295 plan's machine step 1 ordering, so the install command is not lost silently) or record the split explicitly, update the 295 plan's "closing issue 265" text, and put the scope change to the owner. Revision 3 also drops, without saying so, the 295 plan's grep acceptance (step 11), which this revision would benefit from (finding 5).
+
+2. **[Consequences] must-fix, bounded instruction.** The claim "Every project here is registered with an absolute path, so removing the code paths changes no resolution" is false for every call that names no project. On this machine `~/agent_workspace/project` is a symlink to a git checkout and three non-parent projects are registered. Today `wt_resolve_project_repo_root` step 2 (`_worktree_helpers.sh:191`), `session_root.sh:204`, `worktree_create.sh:515`, and the adapter's legacy step 3 (`adapter:258`, used by `make build`, `make test`, `make install`, `make sync` from the workspace root with no `PROJECT=`) all resolve to that checkout. After the change each refuses ("multiple projects registered") and `make sync` from the workspace root syncs only the workspace. Loud, so acceptable, but the implement pass must state this in the plan's place in the PR description and in the design change-log row, and test "a `project/` checkout present, three registered, no name: refuses naming `--project`".
+
+3. **[Consequences] must-fix, bounded instruction.** Step 3's dispatcher refusal ("with no `--project` and a cwd in no registered root, exit with a message") applies to `sync` too: `make sync` reaches `adapter sync` (`sync_project.py`), and with nothing resolved it takes the legacy branch today. That breaks `test_fresh_clone_no_project.sh` assertions (d) and (f) (lines 147-240), which the plan says "stays", and the design.md Now bullet (line 300: "`make sync` succeed[s]"). Carry the 295 plan's exception: `sync` with no project syncs the workspace alone and prints the existing "No project was synced" line; every other verb refuses. Name which code path runs that workspace-only sync once `_resolve_project_type` and the `project/` default are gone, and keep the fresh-clone suite green unchanged.
+
+4. **[ADR compliance] must-fix, bounded instruction.** Step 4 warns "when a registered path lies under the workspace's `projects/`" that "the shape is no longer read". ADR-0016 decision 1 allows a project registered inside the workspace tree (and `test_user_tier_install.sh`, `skill_prefix.sh` use one). On this machine `p11-jazzy` and `p11-rolling` are registered at `~/agent_workspace/projects/…`, so the warning fires on every `make validate` with a false message. Warn instead on what the retired default would have read: a directory under `<ws>/projects/` that no registry entry owns; keep the `<ws>/project` and `<ws>/worktrees/project/` legs. Test the registered-in-tree case as silent.
+
+5. **[File targeting] must-fix, bounded instruction.** Sites the plan misses, from `grep` on this branch: `.agent/project_types/ros2_colcon/adapter.sh:73` and `.agent/project_types/single_project/adapter.sh:220` (`${ACTIVE_PROJECT_ROOT:-$WORKSPACE_ROOT/project}`) and the single_project header line 3; `_project_registry.sh` `registry_resolve_project_arg` (lines 481-500: an unregistered name "is printed back unchanged so legacy callers keep working"; it should refuse with the `register_project.sh` remedy) and the `registry_worktree_dir` comment (502-508); `_worktree_helpers.sh` `wt_ensure_exclusion` comment ("the transition fallback") and `wt_count_project_worktrees`; `lib/workspace.py` helpers `get_project_path`, `is_project_configured`, `get_project_remote_url` (delete once `sync.py` stops importing them, not only line 248); `register_project.sh:26` header; `.claude/skills/review-code/SKILL.md:251` and `.agent/knowledge/review_static_analysis.md:24` (`project/**` path classes); `.agent/knowledge/documentation_verification.md:82`; `docs/design.md` ADR register rows for 0002 (line 920) and 0011 (line 929), which describe the fallback as present, and the Table 2 `sync` row (466); `AGENTS.md` lines 19-20 and 28 as well as 10-11 (the 2026-11-13 issue comment names 19-20). Add the 295 plan's grep acceptance, run and quoted in the Implementation entry: `grep -rn "project/\|worktrees/project\|wt_legacy_project\|wt_transition\|wt_project_base_glob\|projects/<name>" .claude .agent docs Makefile AGENTS.md`, excluding `.agent/work-plans/`, `docs/decisions/` and digests, every remaining hit a record or listed as deliberate.
+
+6. **[Issue alignment] must-fix, bounded instruction.** When pull request 454 (#295 part A) merged on 2026-11-12 the owner chose "merge now, carried into the next pull request's plan (the legacy fallbacks go)" for two suggestions (issue 295 progress, Integrated Review and Checkpoint): F1, four comments (`single_project/sync.py:188`, `validate_workspace.py:154`, `dashboard.sh:156`, `test_fresh_clone_no_project.sh:187`) describe the old common-dir rule, and `Makefile:41` `WS_ROOT` keeps it; F2, a linked worktree of a `--separate-git-dir` checkout reports "none registered" with a registry present (add the case to `test_main_checkout_helpers`, consider "no registry found here"). Revision 3 carries neither. Add both, or record why not for the owner.
+
+7. **[Principle alignment] must-fix, bounded instruction.** Step 6's "`adapter` with no project and a cwd outside every root errors" exercises the existing `registry_require_root` guard (`adapter` lines 168-185), not the new code. The new refusal needs a cwd inside the workspace and in no registered root (the workspace root and a plain subdirectory), with a `project/` symlink to a git checkout in the sandbox, asserting it is not used. Name a refusal test, with the message naming `register_project.sh` or `--project`, for each script whose branch goes: `worktree_list.sh`, `merge_pr.sh` (no name, several registered; the main-tree guard without `$ROOT_DIR/project`), `dispatch_phase.sh`, `sitrep_root.sh`, `session_root.sh`, `gh_create_pr.sh`/`gh_create_issue.sh` (an unregistered `project/` checkout's slug is refused), `single_project/setup.sh` and `sync.py` (`--project-root` required, except the workspace-only sync of finding 3), `configure_git_identity.sh`, `discover_governance.sh`, `pr_status.sh`, `worktree_remove.sh` (empty owner). Synthetic sandboxes only, as planned.
+
+8. **[Issue alignment] must-fix, owner question Q3 then bounded.** The plan does not say whether the pull request closes #265. The roadmap deferral row (line 86) is checked by `gh-issue 265 open`, and the step 5 row (line 181) makes the project11 port-to-rolling the acceptance for step 5. If registering the project11 instances moves to an agent on the second machine, it needs a tracking issue for the roadmap row's check, and closing #265 without that acceptance is the owner's call.
+
+### Suggestions
+
+- **S1 [Scope]** The split point "after step 3" puts the docs (ADR-0017) and the `review-plan` skill fix in the second pull request while the first deletes `wt_legacy_worktree_dirs`, which `review-plan/SKILL.md` step 1 calls. If a split is wanted, split by shape, each half with its tests, skills and design text: (i) the worktree fallback and the `projects/<name>` default (registry, worktree scripts, `review-plan`, `start-task`, WORKTREE_GUIDE, design Worktrees); (ii) the `project/` readers (adapter, `gh_create_*`, `merge_pr`, `session_root`, setup/sync, Sessions and roots, Registry and adapters). One pull request of about 60 files, like the 295 plan's estimate of 55, is also defensible.
+- **S2 [Consequences]** In `worktree_remove.sh`, resolve every entry's owner before removing any, so an empty owner refuses before half an aggregate worktree is gone.
+- **S3 [ADR compliance]** While rewriting fixtures, rename the `p11` shape names (`test_merge_pr.sh` `worktrees/project/p11/…`, `test_session_root.sh:182`, `test_skill_prefix.sh:38-70`) to neutral ones.
+- **S4 [Consequences]** Open branches overlap: issue 465 changes `dispatch_phase.sh`, `test_dispatch_phase.sh` and `script_reference.md`; issue 477 (open pull request 479) changes `docs/roadmap.md`. Add an overlap line and sequence (rebase after whichever merges first).
+- **S5 [Issue alignment]** `gather-project-knowledge`: the 2026-11-13 comment asks whether it is still wanted. Reword it for registered roots here, and leave the keep-or-retire question to the owner (Q5) rather than deciding it by rewording.
+
+### For the owner (goal, scope, outward or hard to undo)
+
+- **Q1** The plan for this pull request written on 2026-11-12 also stopped reading the old per-project `.sh` files and the shared `project_config.sh`. This revision keeps reading them. Should this pull request remove them too (then this machine's install command for the single-repository project and the two project11 instances' distro and bootstrap URL move into their settings files first), or leave that for later?
+- **Q2** "We can retire the old project folders now": does that mean also deleting the `project` symlink and the two project11 clones under `~/agent_workspace/projects/` on this machine after the merge (on 2026-11-12 you said they "can go"), or only stopping the code from reading them and leaving the folders?
+- **Q3** Should this pull request close issue 265 even though the project11 acceptance (the port-to-rolling cycle) and registering the instances happen elsewhere? If yes, which issue tracks the registering?
+- **Q4** `AGENTS.md` is Ask First. May the pull request change lines 10-11, 19-23 and 28 so a project is "any folder registered with the workspace (`register_project.sh`), wherever it lives; git and a hosting service are optional", the repo-ownership paragraph says a workspace session works in the workspace checkout and a project session in the project's own folder, and the table row says "its registered folder" instead of `project/`? (Your 2026-11-12 decision that a project is any registered folder replaces the wording you did not approve then; the implement pass shows the exact text in a separate last commit, held for your yes.) Separately: add a status line to ADR-0002 and ADR-0011, which still describe the old shapes?
+- **Q5** Is the `gather-project-knowledge` skill still wanted, or should it be retired?
+
+### Summary
+
+The retirement is the right next step and the inventory is mostly right, but the plan was written without the issue 295 plan that already planned this pull request, so it silently narrows the agreed scope, drops two owner-ordered carry-overs and a grep acceptance, and makes a false "no resolution changes" claim for this machine. Three mechanism defects (the `sync` refusal breaking the fresh-clone suite, the false warning on registered in-tree roots, a test that hits the old guard) and the missed sites are bounded. Re-plan the scope after Q1 to Q3; the rest can ride the implement handoff.
+
+### Recommended Actions
+
+- [ ] Re-plan scope against `.agent/work-plans/issue-295/plan.md` B and C (finding 1), after the owner answers Q1 to Q3
+- [ ] Correct the "no resolution changes" claim and test the no-name refusal with a `project/` checkout present (finding 2)
+- [ ] Keep `sync` with no project as a workspace-only sync; fresh-clone suite unchanged and green (finding 3)
+- [ ] Warn on an unregistered directory under `<ws>/projects/`, never on a registered in-tree root (finding 4)
+- [ ] Add the missed sites and the grep acceptance (finding 5)
+- [ ] Carry F1 and F2 from pull request 454 (finding 6)
+- [ ] Name a refusal test per changed script; fix the adapter test's cwd (finding 7)
+- [ ] Say whether the pull request closes #265 and where registering is tracked (finding 8)
+- [ ] Draft the AGENTS.md text for Q4 as a held last commit
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-16 12:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work and its finding 1 needs a re-plan; second host revise in a row at this checkpoint, so the next plan answer is the owner's)
+**After**: plan
+**Decision**: revise
+
+The host's first handoff did not point plan-task at the recorded design: `.agent/work-plans/issue-295/plan.md`, section "Pull request B and C (one pull request): the legacy fallbacks and the `.sh` reading go", written 2026-11-12 by the owner's direction ("done together with the fourth pull request of issue 265"), "Planned as one pull request, closing issue 265". The review's owner questions Q1 and Q3 are answered by that record and are not asked again: this pull request also stops reading the old per-project `.sh` files and the shared `project_config.sh`, and it closes issue 265. Q2 (deleting the `project` symlink and the clones under `projects/` on this machine) is the record's "machine steps", run after the merge and only on the owner's yes at that time. Q4 (AGENTS.md) is the record's held last commit, shown to the owner at the merge checkpoint. Q5 (whether gather-project-knowledge is still wanted) is parked in the inbox; the skill is only reworded where it names an old shape.
+
+The re-plan carries the review's findings 2 to 7 and suggestions S1 to S5 as binding instructions. The owner's direction of 2026-11-16 stands: "265, pickerel does not have any projects yet so it has nothing to retire. We can retire the old project folders now. I did test the workspace at home as well with various project types, all outside the workspace dir structure so we are ready for this step."
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-16 12:55 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `bb27a842`
+
+Revision 4, part 4 as one pull request (`Closes #265`, `Part of #295`), rebuilt from the issue 295 plan's B and C section re-verified against the tree: the `project/`, `projects/` and worktree fallbacks go, and so does the reading of per-project `.sh` files and the shared `project_config.sh`; eight commits by shape (the last is the held AGENTS.md text); stale-shape report, named refusal tests, the 454 carry-overs, after-merge machine steps kept separate. Nothing is deleted on any machine.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-16 13:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #265 — Step 5: hosted projects under projects/ with project-rooted sessions and per-project CLAUDE.md
+**Plan**: `.agent/work-plans/issue-265/plan.md` at `bb27a842`
+**Branch**: `feature/issue-265`
+
+Second review, of revision 4. Judged against the source on this branch (main `d06cce95` plus the plan), the issue 295 plan's B and C section, the first review and the host Checkpoint, and this machine's main checkout (`.agent/projects.local`, `.agent/projects.d/`, `.agent/project_config.sh`, `project`, `projects/`; read only, nothing changed). Verdict ready means: no finding needs a re-plan; the six must-fix items below are bounded instructions the implement handoff carries.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request rebuilt from the 295 plan's B and C, `Closes #265`, `Part of #295`; about 55 files. The stated split point is not yet coherent (N4), fixed by moving three items between commits. |
+| Issue alignment | Good | Serves line, as checked: "Goals 'Light touch on projects' and 'Flexibility' (README Workspace goals); design sections `docs/design.md#sessions-and-roots`, `docs/design.md#registry-and-adapters` and `docs/design.md#worktrees`." Correct. First-review findings 1 to 8 and S1 to S5 are all answered (table below). |
+| File targeting | Good | Every reader of the old shapes found by grep on this branch is in the work list (`adapter`, both types, the worktree scripts, `merge_pr`, `gh_create_*`, `pr_status`, `discover_governance`, `configure_git_identity`, `session_root`, `dashboard`, `setup.sh`, `lib/workspace.py`, the two skills). One swallowed error the C1 contract change makes silent: `merge_pr.sh:637` (S6). |
+| Consequences | Needs work | Removing the `.gitignore` lines makes the main checkout dirty on this machine and stops `make sync` syncing the workspace (N1). `make install` for the single-repository project goes silent at the moment of use, and the planned notices do not cover it (N2). The shared-file per-key report would give false advice for the two ROS instances (N3). |
+| Principle alignment | Good | "Fail loudly": met once N2 and N3 are carried. "Test what breaks": named refusal tests per script, with a `project/` symlink present. "Keep one current design": sections, register rows, Table 2 rows and a change-log row named. |
+| ADR compliance | Good | ADR-0011: the `sync` constant is acceptable as written (point 3 below). ADR-0016 decision 1 respected by the warning; N1 is the one place the plan works against it. ADR-0003: synthetic fixtures, names only in the after-merge record. No ADR edited (Q-ADR stays the owner's). |
+| ROS conventions | N/A | Workspace plan. |
+
+### First review, item by item (checked in the plan text and against the tree)
+
+| Item | Closed? | Evidence |
+|---|---|---|
+| 1 scope | Closed | Restarted from the 295 plan's B and C; `.sh` and shared-config reading in (C4); `Closes #265`. |
+| 2 machine consequence | Closed | Context paragraph names each no-name call site (verified: `_worktree_helpers.sh:191`, `session_root.sh:204`, `worktree_create.sh:515`, `adapter:212`/258, `merge_pr.sh:999`/1312, `gh_create_*` 144/172, `pr_status.sh:40`, `discover_governance.sh:127`); adapter test from inside the workspace with a `project/` symlink and three registered. |
+| 3 `sync` | Closed | Constant to `single_project`; `sync.py` with no `--project-root` is the workspace-only branch (verified `sync.py` 167-210); fresh-clone (d), (f) unchanged. N1 affects whether that sync actually syncs on this machine. |
+| 4 warning | Closed | Only an unowned directory under `projects/`; registered in-tree roots silent and tested. |
+| 5 missed sites | Closed | All sites listed; grep check in C7, plus an exact symbol grep. |
+| 6 F1, F2 | Closed | C6. |
+| 7 tests | Closed | Test plan table, one row per script. |
+| 8 closing | Closed | `Closes #265` (Checkpoint). Registering is "no tracking issue" in the plan, but the Direction row for #433 covers the Rolling instance on the second machine (S7). |
+| S1 split by shape | Partly | Split by shape adopted, but the C1/C2/C3 contents do not yet match it (N4). |
+| S2 remove resolves owners first | Closed | C2. |
+| S3 neutral fixture names | Closed | Test plan. |
+| S4 overlaps | Closed | Overlap table matches `git diff --stat main...` for 465, 477 (PR 479 open) and 429 (empty). |
+| S5 skill reworded only | Closed | Q5 parked. |
+
+### Findings
+
+- **N1 [Consequences] must-fix, bounded: keep the five `.gitignore` lines.** On this machine, removing them makes the main checkout show `?? project`, `?? projects/` and `?? .agent/project_config.sh` (`git check-ignore` today attributes them to `.gitignore` lines 5, 10 and 48). `make sync` reaches `single_project/sync.py`, whose `sync_repo` skips any repository where `git status --porcelain` is non-empty (`sync.py:50-74`, untracked files count), so `make sync` prints "Skipping: Uncommitted changes detected." for the workspace, then "No project was synced", then "Sync complete": nothing is synced, the very exception C3 keeps. `dashboard.sh:250` and 318 report "uncommitted changes" too. This lasts until machine steps 6 and 7 run, and for ever if the owner keeps the clones (step 5 is "if the clones go"), and on any machine with a root registered under `<ws>/projects/`, which ADR-0016 decision 1 allows and the plan's own C5 rule keeps silent. `merge_pr.sh`'s `git pull --ff-only` (2470) is not affected. Instruction: C7 keeps the lines, with the comment reworded to say these are retired shapes, still ignored so a machine that keeps them stays clean, and that the stale-shape report names them. Drop the Decisions bullet and the `.gitignore` part of the C7 grep expectation accordingly. (Listed for the owner's veto: it reverses one line of the 295 plan, a mechanism choice.)
+
+- **N2 [Consequences] must-fix, bounded: make the lost install command loud at `make install`, not only in `make validate`.** After C4, `make install PROJECT=gz4d`-shaped calls (settings file without `install`, shared file setting `INSTALL_CMD`) print "INSTALL_CMD not set — nothing to install (this is fine for most projects)." and exit 0 (`single_project/adapter.sh:204-207`; `ros2_colcon/adapter.sh:1636-1638` says the same). C5's adapter NOTE fires only for a `<name>.sh`, not for the shared file, and `make validate`/`dashboard` run only on demand (no hook or session start runs them). Instruction: (a) the adapter's stderr NOTE also fires when `.agent/project_config.sh` exists and, by N3's rule, applies to the active project, naming each key it sets that the settings file lacks and the exact `project_setting.sh set` command; (b) `install` with no `install` key in that case exits non-zero with that text instead of "nothing to install" (the stale file is detected, not read for a value). Test both in `test_adapter.sh`. And see Q-PRE: machine steps 1 to 3 change nothing under today's code (the settings file and the registry `distro=` win over both old files; the bootstrap single-source check runs only on the manifest route, `ros2_colcon/adapter.sh:715`, and both instances are on the bootstrap route), so they can run before the merge and close the window entirely.
+
+- **N3 [Consequences] must-fix, bounded: the per-key report must follow today's resolution order.** Today the shared `.agent/project_config.sh` is read only for a project with no `.agent/projects.d/<name>.sh` (`project_command_source`, `_single_project_resolve_cmd`, `_rc_config_file`, ros2 `adapter_install`). C5 as written reports "per registered project and key", excluding only `build`/`test` for ros2_colcon. On this machine both ROS instances have a `<name>.sh`, so the shared file never applied to them, yet the report would say "`.agent/project_config.sh` sets INSTALL_CMD, which `.agent/projects.d/p11-jazzy` lacks: `project_setting.sh set p11-jazzy install=<command>`", and following it would give a ROS instance the other project's `cmake --install` line. Instruction: the shared file is reported only for projects without a `<name>.sh`; a `<name>.sh` gets its own per-key lines, each with the right remedy: `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD`/`MANIFEST_BOOTSTRAP_URL` via `project_setting.sh set` (key names `build test install bootstrap_url`), `ROS_DISTRO` via `distro=<v>` on the registry line by hand and only when neither the registry nor the manifest declares one (`project_setting.sh` has no `distro` key: `_PROJECT_FILE_KEYS`, `_project_registry.sh:727`), `ROS_ROOT_DIR` via the environment. The plan's generic text "move its settings with `project_setting.sh set`" is wrong for `ROS_DISTRO`, the one load-bearing value in `p11-jazzy.sh`. Add a test: a `<name>.sh` beside a shared file with `INSTALL_CMD` reports nothing from the shared file for that project. Keep a reader for the old files for this report (C4 deletes `_project_config_value` "if nothing else uses it"; C5 then needs it or a Python equivalent; say which).
+
+- **N4 [Scope] must-fix, bounded: move three items so each commit, and the stated split, leaves the suites green.** (a) C1 changes `registry_worktree_dir` to refuse an unknown name, but `wt_project_base` (`_worktree_helpers.sh:76`), `wt_legacy_worktree_dirs` (133) and `wt_transition_project_base` (149) rely on its `<ws>/worktrees/project/<name>` fallback until C2 deletes them; `test_project_registry.sh` 1183 ("legacy fallback") and 1409 ("an unregistered project (legacy project/ symlink only) still worktrees under `<ws>/worktrees/project/<repo>/`") fail at C1. Move that refusal to C2. (b) C1's `registry_resolve_project_arg` refusal breaks the legacy `--project <unregistered>` paths of `worktree_enter.sh:200` and `worktree_remove.sh:204` before C2 removes them; move it to C2. (c) C2 removes the unregistered worktree key (`worktree_create.sh` 561, 771-776), but the `project/` branch that feeds it (`worktree_create.sh:515-516`), `wt_resolve_project_repo_root` step 2 (`_worktree_helpers.sh:191`) and `worktree_enter.sh:346-347` stay until C3, so between C2 and C3 (and in the first pull request of a split) a `project/` checkout leads into a removed path. Move those three into C2, so C2 is "the worktree scripts are registry-only" and C3 is the remaining `project/` readers. With that, C1+C2 versus C3 to C7 is a coherent cut.
+
+- **N5 [Principle alignment, Verify before claiming] must-fix, bounded: the held AGENTS.md text says `make build`, `make test` with no project.** After C3, `make build` and `make test` from the workspace with no `PROJECT=` refuse (the plan's own fresh-clone (g)), so the new Build & Test sentence "then `make build`, `make test` ..." is false as written; it should read `make build PROJECT=<name>`, `make test PROJECT=<name>`. Also "Set a registered project's build and test commands" is true only for types that use them: for `ros2_colcon`, colcon owns build and test (`registration.conf`, `unused_settings`); a clause saying so, or "a single-repository project's", keeps it true. The other three edits are true of the code after the change: the 200-line budget holds (199 + 1; `check_agents_md_budget.sh` LIMIT=200, "at most"); "git and a hosting service are optional" matches the 2026-11-12 decision and `test_register_project.sh:354` ("no remote: supported"); the repo-ownership paragraph is true, with the edge that a root registered inside the workspace tree is a separate folder nested in it.
+
+- **N6 [Consequences] must-fix, bounded: stale step reference in the machine steps.** "88 repositories under the two ROS clones were checked clean ...; re-check before step 3" carries the 295 plan's numbering: step 3 is now the bootstrap URLs; the deletion is step 6. Instruction: "re-check before step 6". Also step 2 (distro) is pointless if step 5 removes the entries, like step 3; say so.
+
+### Suggestions
+
+- **S6 [File targeting]** `merge_pr.sh:637` `registry_resolve_project_arg ... 2>/dev/null || echo "$PROJECT_ARG"` swallows the refusal C1/C2 introduces. The resolution block at 312-333 exits on an unresolvable `--project` only when `--type project` is explicit; otherwise an unregistered name reaches 637 and is compared raw, matching nothing, silently. Make it refuse there (or validate `--project` up front whatever the type), test it, and add the `registry_resolve_project_arg .* || echo` pattern to the C7 exact grep.
+- **S7 [Issue alignment]** The plan says registering the project11 instances has "no tracking issue"; the Direction row "The Rolling instance builds on the second machine ... (#433)" tracks it (#433 open). Cite #433 in the Consequences row and in row 181's tail instead of "by its own agent".
+- **S8 [Consequences]** Keep `project_config_extra_vars` for the stale report: a `.sh` or shared file that exports a variable beyond the read set (a PATH or SDK variable) should be named when its commands are moved, as `register_project.sh`'s `EXTRA_WARN` does today. None of this machine's files do, so this is for other machines.
+- **S9 [Consequences]** Roadmap: `update_roadmap.sh` (called by `merge_pr.sh:742` at merge) marks rows 181 and 202 `done` itself (issue column `#265`), so C7's hand edit is consistent and becomes a no-op then. Deleting row 86 is safe for `sitrep_checks.sh` (a table with fewer rows; the suites that read a roadmap use synthetic ones). Run `sitrep_checks.sh` on the edited roadmap once and quote the deferral lines in the Implementation entry.
+
+### Points the host asked about
+
+- **2, silent cases after C4 on a machine with only the old files.** Build and test of the single-repository project: unaffected (settings file has both). Install: silent today as planned (N2). `ROS_DISTRO` of the jazzy instance: loud ("cannot resolve the ROS distro"), but the NOTE's remedy text is wrong (N3). Bootstrap URLs: needed only when `configs/manifest` is missing; both clones have one; the failure is loud and names `project_setting.sh`. `ROS_ROOT_DIR`: neither file sets it here. Order: steps 1 to 3 are harmless under today's code, so the safe order is steps 1 to 3 before the merge (Q-PRE), then merge, then 4 to 8; with N2 the window is loud even if they run after.
+- **3, the `sync` constant against ADR-0011.** Acceptable as written. ADR-0011's own dispatcher rule (lines 52-54) says the dispatcher resolves the type "(default: `single_project`)"; the "never branch on project type" rule (57-59) binds workflow scripts and skills, not the dispatcher. The constant keeps that default without the config read. Moving `sync_repo`/`sync_gitbug` to `lib/` now would be redone by the 295 plan's later pull request, which adds a `workspace` adapter type whose `sync` is the natural home; the constant's comment should name that pull request as its replacement. No owner decision on the ADR is needed beyond Q-ADR.
+- **4, `.gitignore`.** N1. No script requires a clean main checkout to run, but `make sync` skips a dirty one and the dashboard flags it. `git clean` is denied to agents (`.claude/settings.json` deny list).
+- **5, AGENTS.md.** N5.
+- **6, roadmap.** S9 and S7: consistent at merge; parsing unaffected.
+- **7, size and order.** About 55 files, eight commits, implementable; N4 fixes the order.
+
+### For the owner (goal, scope, outward or hard to undo)
+
+- **Q-PRE** Moving three settings on your first machine before the merge instead of after it: the single-repository project's install command into its settings file, `distro=jazzy` on the jazzy instance's registry line, and the two bootstrap URLs into the instances' settings files. Under today's code these change nothing (the new values win over the old files and are the same values); done before the merge, `make install` for that project never goes silent. May the host do them at the merge checkpoint, before merging? (Changes: the order of the machine steps only; undo is deleting three settings.)
+- **Q-ADR, Q-AGENTS, Q-ROADMAP, Q5** stand as the plan words them; Q-AGENTS should be shown with N5's correction.
+
+### Summary
+
+Revision 4 closes every first-review finding and is ready to implement. Six bounded must-fix instructions ride the implement handoff: keep the `.gitignore` lines (N1), make the lost install loud at `make install` (N2), report the shared file only where it applied today, with the right remedy per key (N3), move three items between commits so each commit and the split point stay green (N4), correct the held AGENTS.md Build & Test sentence (N5), and fix a stale step number (N6). None needs a re-plan; Q-PRE is the one new owner question.
+
+### Recommended Actions
+
+- [ ] Keep the five `.gitignore` lines, comment reworded (N1)
+- [ ] Adapter NOTE for the shared file and a non-zero `install` when a stale file sets `INSTALL_CMD` the settings file lacks; tests (N2)
+- [ ] Per-key report follows today's resolution order; per-key remedies for `<name>.sh`, `ROS_DISTRO` via the registry line; test (N3)
+- [ ] Move `registry_worktree_dir` and `registry_resolve_project_arg` refusals, and the worktree scripts' `project/` branches, into C2 (N4)
+- [ ] AGENTS.md Build & Test: `PROJECT=<name>`, type clause (N5)
+- [ ] "re-check before step 6" (N6)
+- [ ] Ask Q-PRE at the merge checkpoint
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 08:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Asked on 2026-11-17: "Q2 — start implementing the folder retirement? (issue 265 part 4: retire `project/`, `projects/` and the worktree fallback.)" with the note that plan revision 4 was reviewed "ready" with six must-fix points and four suggestions going into the implement handoff, and that the AGENTS.md wording commit, moving three settings on this machine, and the after-merge disk deletions stay held for his word at the merge checkpoint. His answer, verbatim: "q1 yes, q2, yes, q3 3a".
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 10:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-265 at `a80f3dc2`
+
+Plan revision 4 implemented as C1 to C8 (C2 in two commits, per S4), plus one plan-text commit. 76 files, +2562 / -2023 against `ce62ee3e`. Nothing on this machine was touched: no change to the main checkout's registry, settings files, `project_config.sh`, `project` or `projects/`. No push.
+
+Commits:
+- `b8fd9673` plan: N1 (keep the `.gitignore` lines), N5 (AGENTS.md Build & Test text), N6 ("re-check before step 6"; step 2 pointless if step 5 removes the entries), S7 (#433).
+- `0b6eb259` C1: a pathless registry entry is a parse error (shell and Python, same text); `registry_no_project_message`.
+- `c3019e08` C2a: `dispatch_phase.sh` `resolve_worktree` searches registered worktree dirs only.
+- `52d9ee12` C2b: the five legacy worktree helpers and their callers go; `registry_worktree_dir` and `registry_resolve_project_arg` refuse an unregistered name (moved here by N4, with `worktree_create.sh`'s `project/` branch, `wt_resolve_project_repo_root` step 2 and `worktree_enter.sh`'s `project/.git` read); `worktree_remove.sh` resolves every owner first (S2); `merge_pr.sh` refuses an unregistered `--project` up front (S6).
+- `b89e0a01` C3: nothing reads `project/`; the dispatcher refuses with no project except `sync` (`_WORKSPACE_ONLY_SYNC_TYPE`); `setup.sh` requires `--project-root`; `PJ_ROOT_EFFECTIVE` goes; gh_create, pr_status, discover_governance, configure_git_identity and dashboard read the registry; Makefile walk-up cases go.
+- `b68e1e17` C4: the legacy `.sh` and shared config are read by no adapter; `ROS_ROOT_DIR` from the environment; `project_command_source` is file or missing.
+- `184dc4c8` C5: `registry_stale_report` in validate (after the results) and dashboard (warnings); adapter NOTE for a `.sh` or the shared file by the old order (N3); `install` refuses while a retired file sets `INSTALL_CMD` the settings lack (N2).
+- `0fb34faf` C6: F1 (comments; `make setup` reads the registry through `registry_main_checkout`; `WS_ROOT` comment) and F2 (fallback reported by both helpers; "no registry found from this linked worktree; run it from the main checkout").
+- `b67d0268` C7: `.gitignore` kept with reworded comments (N1); design.md register rows 0002 and 0011 and a change-log row with the machine paragraph; roadmap edits (proposed, owner's veto); S3 renames in `test_skill_prefix.sh` and `test_session_start_layer.sh`.
+- `a80f3dc2` C8, held for the owner (Ask First), the last code commit (this entry's commit follows it and touches only this file).
+
+AGENTS.md (C8), before and after, as committed:
+
+- Lines 10-11 before: "- **Project**: the managed product in `project/` — what's actually being built. / Product features, deployment, and user-facing behavior are project scope." After: "- **Project**: the managed product, any folder registered with the workspace / (`register_project.sh`), wherever it lives; git and a hosting service are / optional. Features, deployment and user-facing behavior are project scope."
+- Repo ownership before: "The working directory contains files from both repos (workspace infrastructure is layered onto the project checkout). Don't assume which GitHub repo you're in based on directory contents — ..." After: "A workspace session works in the workspace checkout and a project session in the project's own registered folder; the two are separate folders. Don't assume which repo you're in based on directory contents — ..."
+- Table row before: "The product being built (`project/`)". After: "The product being built (its registered folder)".
+- Build & Test before: "Configure the project's build and test commands in `.agent/project_config.sh` (gitignored); then `make build`, `make test`, `make lint` (pre-commit on all files) and `make validate` (workspace config). See ..." After (N5): "Set a single-repository project's build and test commands with `project_setting.sh set <name> build=<command>` (a `ros2_colcon` project's come from colcon); then `make build PROJECT=<name>`, `make test PROJECT=<name>`, `make lint` (pre-commit on all files) and `make validate`. See ..." AGENTS.md is 200 lines; `check_agents_md_budget.sh` passes.
+
+Mechanism decisions the plan did not settle (each listed for veto):
+- With no `--project`, `worktree_create.sh` and `wt_resolve_project_repo_root` (so `merge_pr.sh` and `worktree_remove.sh --path`) use the registered root the cwd is in before the single-registered fallback, so the refusal's "here (cwd ...)" is true. Undo: drop one block in each.
+- `registry_worktree_dir` and `registry_resolve_project_arg` refuse with "project 'X' is not registered (registered: ...); register it: ...".
+- `adapter --from <dir>` that is not a directory is refused (it used to fall back, to the legacy root).
+- `single_project/setup.sh` keeps only the "already a checkout: pull" case; a registered root that is not a git checkout is refused (no clone, no symlink).
+- `worktree_remove.sh` takes an entry's owner only when the entry is its checkout's own top folder (git would otherwise walk up to the enclosing root and remove the wrong worktree; found by the S2 test).
+- `configure_git_identity.sh` reads the registry of the current directory's main checkout (its "workspace" is the cwd), never the script's own checkout, so its tests never reach a real registry; repositories are every `.git` under each non-parent root, its `worktrees/` skipped.
+- `discover_governance.sh` scans non-parent roots with scope `project`; a root outside the workspace is reported by its absolute path.
+- N3's reader is the shell `_project_config_value` / `_stale_config_values` with `_PROJECT_CONFIG_READ_VARS` and `project_config_extra_vars` kept; `validate_workspace.py` calls `registry_stale_report` through bash, so there is one rule.
+- `ROS_DISTRO` is reported only while the registry line has no `distro=`, worded "if its manifest declares no distro": the report does not read a manifest, which would be ros2_colcon knowledge in a generic helper (ADR-0011).
+- A `.sh` with nothing left gets "delete it" from the report and the adapter NOTE; the shared file gets the NOTE only when it still sets something for the active project.
+- The dashboard's orphan check skips a `<name>.sh` (the report names it).
+- `make setup` also says "no registry found from this linked worktree" on the F2 fallback.
+- `test_fresh_clone_no_project.sh` (h) uses the existing (e) registration (`build=none`) rather than registering again with `build=true`.
+- C2 was amended in place before C3's commit was rebuilt on it (no push): the first C2 left one hub-guard assertion failing (`test_merge_pr.sh` named the registration script whole); the amended C2 passes `test_script_tests_hook_scope.sh` (333 passed, 0 failed) and `test_merge_pr.sh`, and C3's tree is unchanged.
+
+Grep checks (C7). Exact symbol grep: only `_PROJECT_CONFIG_READ_VARS` and `project_config_extra_vars` in `_project_registry.sh`, kept on purpose (N3, S8); `registry_resolve_project_arg .* || echo` has no hit. Broad grep: 539 hits, read: outside tests they are retirement comments naming what went, the stale-report code and messages, the records combination `project/project`, `projects.d/<name>` and `project/issue/layer` prose; in tests, fixtures that build a `project/`, `worktrees/project/` or unowned `projects/` on purpose to show it is ignored or reported, and roots registered under `projects/` (ADR-0016 decision 1); in records, the design change log, register rows, Table rows, and roadmap history (row 185, and the Backlog row "Local integration branches" naming `worktrees/project/<repo>/integration/`, owner's record text, not edited). `make generate-skills` not run: no `.PHONY` target changed.
+
+S9: `sitrep_checks.sh --root .` on the edited roadmap: `lines 1/4 deferrals 4/7`; the deferral rows are #323 (false), #415 (true), #428 (true), #431 (true), audit trials #429 (true), #338/#295 (false), #398 (false); the #265 row is gone and the table parses.
+
+Suites run (each with `bash .agent/scripts/tests/<suite>` from the worktree, final head unless said): test_adapter.sh 219 passed, 0 failed; test_project_registry.sh 390 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed (at `0fb34faf`; it exports HEAD); test_validate_workspace_stale.sh (new) 34 passed, 0 failed; test_pr_status.sh (new) 3 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_dispatch_phase.sh 234 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed; test_session_root.sh 71 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_register_session_root.sh 66 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_gh_create_pr.sh PASS 113, FAIL 0; test_gh_create_issue.sh PASS 71, FAIL 0; test_discover_governance.sh 27 passed, 0 failed; test_commit_identity.sh 95 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_sync_gitbug.sh 10 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_user_tier_install.sh 276 passed, 0 failed; test_records_write_gate.sh 68 passed, 0 failed; test_checkpoint_269.sh 43 passed, 0 failed; test_triage_reviews_integration.sh 69 passed, 0 failed; test_review_code_convergence.sh 38 passed, 0 failed; test_plan_correlation.sh 18 passed, 0 failed; test_issue_review_entry.sh 6 passed, 0 failed; test_run_script_tests.sh 170 passed, 0 failed; test_script_tests_hook_scope.sh 342 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_skill_prefix.sh 25 passed, 0 failed; test_session_start_layer.sh 52 passed, 0 failed; test_design_anchors.sh 47 passed, 0 failed; test_agents_md_budget.sh 7 passed, 0 failed. Changed scripts with no suite of their own: `bootstrap.sh`, `registration_verify.sh` (reached through test_register_project.sh). The full pre-commit pass and every other suite are left to the host.
+
+Not done, and why: ADR-0002 and ADR-0011 still describe the retired shapes (Q-ADR, the owner's); `test_ros2_colcon.sh` keeps its `p11` fixture name (not in S3's list); the after-merge machine steps and Q-PRE wait for the owner at the merge checkpoint.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 10:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `6bc841b1`
+**Base**: origin/main
+**Depth**: Deep (reason: 77 files, +3429/-2403; enforcement and governance files: AGENTS.md, Makefile, .gitignore, registry and adapter dispatcher)
+**Must-fix**: 3 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Specialists: static (shellcheck --severity=warning on 49 changed shell files: clean; flake8 on 3 Python files: only pre-existing E402/E203), governance, plan drift, two Claude adversarial sub-reviews (registry/adapters; worktree/merge scripts), Gemini (agy) ran: 6 findings; Codex ran: 3 findings; Copilot CLI not a reviewer here (#344). Must-fix 1 and 2 were reproduced in throwaway sandboxes.
+
+ADRs: besides 0002 and 0011, ADR-0018 (decision 6 text, lines 261 and 304: "the legacy unregistered `project/` is hosted by the workspace") and ADR-0003 line 33 (reusability test "configuring a new `project/` directory") are now contradicted; for the owner's Q-ADR.
+
+### Findings
+- [x] (must-fix) registry_stale_report reads a malformed registry as empty (`|| entries=""`, and `! registry_lookup` treats rc 2 as unregistered): with one bad line (now including any pathless entry) it tells the user to remove registered `projects/<name>` checkouts and delete `.sh` files that still hold settings (reproduced) — `.agent/scripts/_project_registry.sh:1503`, `:1550`
+- [x] (must-fix) `adapter install` exits 0 "nothing to install" when the retired file cannot be sourced (state unknown), defeating plan review N2; refuse install with no install setting in that case too (reproduced; Codex and Gemini) — `.agent/scripts/adapter:345`
+- [x] (must-fix) held AGENTS.md text says "git and a hosting service are optional", but registration refuses a folder in no git repository (design.md 384-386 calls it a named gap; register_session_root.sh 54-56); say git is not yet optional, or "a hosting service is optional" — `AGENTS.md:11-12`
+- [x] (suggestion) retired files are sourced (executed) twice on every adapter verb for the stale NOTE, though "nothing reads them"; limit to install/validate or parse without executing (Codex) — `.agent/scripts/adapter:334-350`
+- [x] (suggestion) project link advice: a registry line naming `<ws>/project` itself as a symlink is told "remove it" (breaks the entry); a dangling link is told "register it" — `.agent/scripts/_project_registry.sh:1505-1520`
+- [x] (suggestion) worktrees/project check looks at depth 1, so the warning stays after the advised removals leave `<name>/` dirs; a `worktrees=` override under there is reported as unfound (Gemini) — `.agent/scripts/_project_registry.sh:1522`
+- [x] (suggestion) ROS_DISTRO lines are given for non-ros2 types, and the shared-file ROS_DISTRO line is unconditional, so "delete it" is never reached (Gemini) — `.agent/scripts/_project_registry.sh:1577`
+- [x] (suggestion) cwd step uses registry_resolve_from_dir (hosting dir only), not registry_resolve_session_dir, so from a worktree under a `worktrees=` override it says "no registered project here"; worktree_enter/remove do no cwd step at all — `.agent/scripts/_worktree_helpers.sh:124`, `.agent/scripts/worktree_create.sh:521`
+- [x] (suggestion) parse errors read as absence: configure_git_identity `|| true` ends "No registered project repositories found" (and `find` lost `-type d`); dispatch_phase resolve_worktree reports rc 2 as not found — `.agent/scripts/configure_git_identity.sh:151`, `.agent/scripts/dispatch_phase.sh` resolve_worktree
+- [x] (suggestion) refusal remedy "remove the worktree by hand or with --path" cannot work: --path refuses the same non-top-folder entry — `.agent/scripts/worktree_remove.sh:398`
+- [x] (suggestion) single_project setup tells a registered non-git folder to "Clone the project there", against the owner's 2026-11-12 decision that git is optional — `.agent/project_types/single_project/setup.sh:47-50`
+- [x] (suggestion) design.md cites `adapter` line 85 for `_WORKSPACE_ONLY_SYNC_TYPE` (it is 82); Table 1's registry_derive_type_from_dir range is stale (Gemini) — `docs/design.md:318`, `:419`, `:474`
+- [x] (suggestion) 17 new fixture lines use the `p11` name (project-derived; S3's neutral-name rule) — `.agent/scripts/tests/test_ros2_colcon.sh`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 10:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-265 at `2681aea4`
+**Addressed**: Local Review (Pre-Push) at `6bc841b1` (2026-11-17 10:24 -05:00)
+**Commits**: `53931f16`, `6e8603b4`, `078634fa`, `557fffe5`, `56295a6e`, `115046e1`, `19547d22`, `1e3be5e4`, `9e5e1f17`, `892d86e2`, `2681aea4` (box checks)
+
+Fix round 1: all 3 must-fix and all 10 suggestions fixed, none deferred. Each behaviour fix has a test that was run against the pre-fix script and failed there (stale report 23 failures, adapter install 5, adapter machine verbs 6, worktree cwd step 9, configure_git_identity 2, dispatch_phase 2; the worktree_remove and setup.sh text tests assert the old text is gone). Nothing in the main checkout was touched; no push.
+
+### Actions
+- [x] M1, a registry with errors read as empty by the stale report — `.agent/scripts/_project_registry.sh` (`53931f16`). registry_stale_report now prints one line (".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again") and nothing else; registry_stale_settings_lines returns 1 with a line when the registry has errors or the project's settings file is invalid, never "lacks". Tests in `test_validate_workspace_stale.sh` (a pathless entry and an unknown field: one line, no remove/delete/register advice; an invalid settings file: no "lacks", no "delete it").
+- [x] M2, `adapter install` exits 0 when the retired file cannot be sourced — `.agent/scripts/adapter` (`6e8603b4`). With no install setting, install refuses when what the retired file holds cannot be told (cannot be sourced, registry or settings errors). Test `test_install_refuses_when_retired_file_unreadable` (shared file and `<name>.sh`; `install=none` still exits 0).
+- [x] M3, AGENTS.md said git is optional — `AGENTS.md` (`557fffe5`, touches only AGENTS.md, on top of the held `a80f3dc2`; no history rewritten; 200 lines, budget hook passed). Against main, the Terminology bullet: before "- **Project**: the managed product in `project/` — what's actually being built. / Product features, deployment, and user-facing behavior are project scope." After "- **Project**: the managed product, any folder registered with the workspace (`register_project.sh`), / wherever it lives. A hosting service is optional; git is meant to be, but registration still needs it. / Features, deployment and user-facing behavior are project scope." The Repo ownership, table row and Build & Test text are unchanged from `a80f3dc2` (quoted in the Implementation entry above).
+- [x] S, retired files run on every adapter verb — `.agent/scripts/adapter` (`078634fa`). The check runs for setup, sync, validate, build, test, install only. Test `test_retired_settings_not_run_for_machine_verbs` (project_root, env, repos do not run the file; build, test still give the NOTE).
+- [x] S, project link advice — `.agent/scripts/_project_registry.sh` (`53931f16`). A registry line naming `<ws>/project` (a link) is silent; a dangling link gets "remove it", never "register"; a link to an unregistered folder names the target to register and says to remove the link. Tests in `test_validate_workspace_stale.sh`.
+- [x] S, worktrees/project depth and worktrees= override — `.agent/scripts/_project_registry.sh` (`53931f16`). A checkout (a `.git` file or directory) at any depth under the retired locations, outside every registered root and `worktrees=` dir. Tests: a real worktree two levels down is named, silent after the advised `git worktree remove` leaves `alpha/`; a registered `worktrees=` dir under `worktrees/project/` is not named, an unregistered worktree beside it is.
+- [x] S, ROS_* lines for non-ROS types — `.agent/scripts/_project_registry.sh` (`53931f16`). ROS_DISTRO and ROS_ROOT_DIR lines only for a type that reads them; the shared file's ROS_DISTRO is now per project it applied to, ROS_ROOT_DIR once when one applied project reads it, so "delete it" is reachable. Tests in `test_validate_workspace_stale.sh`.
+- [x] S, cwd step ignores worktrees= dirs; enter/remove had none — `.agent/scripts/_worktree_helpers.sh`, `.agent/scripts/worktree_create.sh`, `.agent/scripts/worktree_enter.sh`, `.agent/scripts/worktree_remove.sh` (`56295a6e`). registry_resolve_session_dir in create and wt_resolve_project_repo_root; enter and remove (with `--type project`, no `--project`) take the cwd's root before the single-candidate step. Test `test_worktree_scripts_cwd_in_worktrees_override` in `test_project_registry.sh`.
+- [x] S, parse errors read as absence — `.agent/scripts/configure_git_identity.sh`, `.agent/scripts/dispatch_phase.sh` (`19547d22`). configure_git_identity refuses on registry errors with nothing written, and `find` regains `-type d`; resolve_worktree returns 2 with "the project registry ... has errors" (dispatch and `base` exit 2). Tests in `test_commit_identity.sh` and `test_dispatch_phase.sh`.
+- [x] S, worktree_remove remedy named --path — `.agent/scripts/worktree_remove.sh` (`115046e1`). Says to inspect, delete the entry by hand and run again (an entry already gone is skipped); the test follows that advice to a clean removal.
+- [x] S, single_project setup said "Clone the project there" — `.agent/project_types/single_project/setup.sh` (`1e3be5e4`). Not a git checkout: "nothing was changed", setup updates with git and a single_project needs a git repository today (adapter validate checks it), fix the line if it names the wrong folder; a missing root: "does not exist; nothing was changed", put the project there or fix the line. No non-git registration added. Tests in `test_adapter.sh` (no "Clone").
+- [x] S, design.md line citations — `docs/design.md` (`9e5e1f17`). `adapter` line 82 (two places); Table 1 ranges for `registry_derive_type_from_dir` (644-659) and the worktree_create, enter/remove and dispatch_phase rows this branch shifted, re-read at this commit; the Discovery and Retirement paragraphs say what this round changed.
+- [x] S, `p11` fixture name — `.agent/scripts/tests/test_ros2_colcon.sh` (`892d86e2`). The whole file renamed to `tiered` (165 occurrences, all the word p11; mechanical); suite stays at 1014 passed.
+
+Mechanism decisions (each listed for veto):
+- The stale-report fixes (M1 and three suggestions) are one commit: they rewrite the same two functions and could not be split without a hand-staged patch.
+- A registry with errors: the report gives one line and nothing else, the worktree-location check included (what is registered decides it too).
+- "Does a type read ROS_DISTRO / ROS_ROOT_DIR" is answered by the type's own `adapter.sh` naming `ACTIVE_PROJECT_DISTRO` / `ROS_ROOT_DIR` (`_stale_type_reads`): no script names a type (ADR-0011); an empty or unknown type answers yes, so advice is never dropped. Undo: report both for every type again.
+- The adapter's retired-file check runs for the verbs a person runs (setup sync validate build test install), not only install and validate as the review offered: build and test are where a lost command shows, setup and sync where a lost bootstrap URL shows. The two sourcings (values in a subshell; extra variables in a clean `env -i` shell) stay as they are on those verbs.
+- install refuses on "cannot be told" for every cause registry_stale_settings_lines returns 1 for (unsourceable file, registry errors, invalid settings file); an invalid settings file already stops the adapter earlier.
+- configure_git_identity refuses on a registry with errors (exit 1, nothing written), matching its existing "nothing written when any repository's email cannot be derived".
+- worktree_enter and worktree_remove's cwd step runs only with `--type project` and no `--project`; `registry_derive_type_from_dir` (the `--type`-omitted derivation) is unchanged and still matches hosting dirs only, so a cwd under a `worktrees=` override that lies inside the workspace derives `workspace`. Not in the finding; left as is, for the next review to judge.
+- AGENTS.md wording: "A hosting service is optional; git is meant to be, but registration still needs it." Reflowed the bullet to three lines to stay at 200.
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `892d86e2`, all scripts final): test_adapter.sh 240 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 97 passed, 0 failed; test_discover_governance.sh 27 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_issue_review_entry.sh 6 passed, 0 failed; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_plan_correlation.sh 18 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_project_registry.sh 404 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_records_write_gate.sh 68 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_review_code_convergence.sh 38 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_triage_reviews_integration.sh 69 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_user_tier_install.sh 276 passed, 0 failed; test_validate_workspace_stale.sh 64 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. `single_project/setup.sh` is not under `.agent/scripts/`; test_adapter.sh covers it. The full pre-commit pass and every other suite are left to the host.
+
+Not done, and why: ADR-0002, ADR-0003 (line 33), ADR-0011 and ADR-0018 (lines 261, 304) still describe the retired shapes (the owner's Q-ADR; no ADR or CLAUDE.md edited). The AGENTS.md commits `a80f3dc2` and `557fffe5` wait for the owner at the merge checkpoint.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 10:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `adec411d`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff, 78 files; enforcement and governance files: AGENTS.md, Makefile, .gitignore, registry, adapter dispatcher)
+**Must-fix**: 3 | **Suggestions**: 8
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted (all three are mechanical file:line fixes)
+
+Round 1's 13 boxes: checked against the code at `892d86e2`; all 13 are closed as claimed (M1 one line on registry errors; M2 install refuses when the file cannot be told; M3 AGENTS.md wording). The two held AGENTS.md commits (`a80f3dc2`, `557fffe5`) are now true of the code: registration needs git (design.md 384-386), `make build PROJECT=<name>`, ros2_colcon's commands from colcon. The new findings below are cases the round-1 rewrite and the round-1 review both missed, plus what the fixes opened.
+
+`--type` omitted from a cwd in a `worktrees=` dir under the workspace (the fixer's open question): `registry_derive_type_from_dir` is unchanged from origin/main, so not introduced here; the round-1 fix made the explicit-`--type` path count `worktrees=` dirs, leaving this one inconsistent. Effect: `worktree_create.sh` prints "Note: derived --type workspace" and makes a workspace worktree, the wrong repository; enter and remove refuse; `capture.sh` mislabels. Reach is narrow (an override under the workspace, `--type` left out). Suggestion, with a one-line fix and a test that this pull request can carry.
+
+Specialists: governance, plan drift, a fresh Claude adversarial sub-review of the fix diff (ran 3 suites: test_validate_workspace_stale 64, test_commit_identity 97, test_dispatch_phase 236, all passing), Gemini (agy) ran: 6 findings; Codex ran: 3 findings; Copilot CLI not a reviewer here (#344). Static analysis not re-run on the fix diff.
+
+### Findings
+- [x] (must-fix) the shared `.agent/project_config.sh` gets "holds nothing left to move: delete it" when it applied to no registered project (none registered yet, or the unregistered `project/` still uses it), even when it sets BUILD_CMD/INSTALL_CMD; say what it sets and to register and move first (Gemini) — `.agent/scripts/_project_registry.sh:1679`
+- [x] (must-fix) the `project/` check matches registered roots by equality only: a root registered under `<ws>/project/` gets "remove it", and a link to a subfolder of a registered root gets "register <sub>"; use the descendant test the `projects/` check uses (Codex, Gemini, Claude) — `.agent/scripts/_project_registry.sh:1557-1584`
+- [x] (must-fix) `-not -path "*/worktrees/*"` now runs on absolute paths, so a root whose path has a `worktrees` component (e.g. `/srv/worktrees/product`) has every repository skipped, silently; exclude that root's own worktree dir instead (Codex, Gemini) — `.agent/scripts/configure_git_identity.sh:165`
+- [x] (suggestion) `registry_derive_type_from_dir` ignores `worktrees=` dirs, so `--type` omitted under such a dir in the workspace derives `workspace` (pre-existing; try registry_resolve_session_dir first; add an omitted-`--type` test) — `.agent/scripts/_project_registry.sh:644`, `.agent/scripts/worktree_create.sh:376`
+- [x] (suggestion) the retired-worktree scan prunes only at `.git`, so it walks every checkout's whole tree on each validate and dashboard run; prune at the checkout — `.agent/scripts/_project_registry.sh:1611`
+- [x] (suggestion) a `projects.d/<parent>.sh` for a parent root gets `project_setting.sh set <parent>` and `distro=` remedies, both invalid for a parent (Gemini) — `.agent/scripts/_project_registry.sh:1632-1644`
+- [x] (suggestion) `discover_governance.sh` reads a registry with errors as empty (`|| true`), new in this branch; same class as the round-1 fix for configure_git_identity and dispatch_phase (Gemini) — `.agent/scripts/discover_governance.sh:135`
+- [x] (suggestion) `worktree_list.sh` still lists `.workspace-worktrees/` worktrees, now as type `main`; WORKTREE_GUIDE says no script lists them and that validate warns about `project/worktrees/`, which the report does not check (Codex, Gemini) — `.agent/scripts/worktree_list.sh:171`, `.agent/WORKTREE_GUIDE.md:106-110`
+- [x] (suggestion) the `rm -r` advice can destroy unpushed history when the entry is a plain clone; say to check `git status` and unpushed commits first — `.agent/scripts/worktree_remove.sh:404`
+- [x] (suggestion) the NOTE heading "and it still sets:" sits above a "cannot be told" line — `.agent/scripts/adapter:353`
+- [x] (suggestion) `'$name''s` prints as `'demo''s` — `.agent/scripts/_project_registry.sh:1490`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 11:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 1 of 3)
+
+**Branch**: feature/issue-265 at `8627540a`
+**Addressed**: Local Review (Pre-Push) at `adec411d` (2026-11-17 10:56 -05:00)
+**Commits**: `069fb9d3`, `defb4bf7`, `b2def554`, `4a8a658c`, `2cb6803b`, `6337f21b`, `48bbf29d`, `698eaa23`, `8627540a` (box checks)
+
+Fix round 2: all 3 must-fix and all 8 suggestions fixed, none deferred. AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed; no push.
+
+Case table first (host instruction): the retired-shape report's full case table is the header comment of `.agent/scripts/tests/test_validate_workspace_stale.sh`, rows R (registry with errors), P1-P12 (`project` and each `projects/` entry, one rule), W1-W6 (retired worktree locations), S1-S11 (`projects.d/<name>.sh`), C1-C7 (shared file). Every row has a test whose label carries its id; the fixes were written to the table, not finding by finding.
+
+Pre-fix failure counts (each new test run against the script before its fix): stale report 27 of 98 (3 of them older tests whose expected text changed: the `project` folder line, S6, S9); configure_git_identity 2; derive 6; discover_governance 3; worktree_list 3; worktree_remove 3; adapter NOTE heading 2. Three table rows already held before the fix and pass on both: P4, W2 at depth 5, W4.
+
+### Actions
+- [x] M1, the shared file told "delete it" while it still sets commands — `.agent/scripts/_project_registry.sh` (`069fb9d3`). While it sets something and applies to no registered project (none registered, every project has its own `.sh`, only parent roots: C4) or an unregistered folder the report names may have read it (C3), it says what it sets and to register first; "delete it" only for C2 and C5. The same rule for a `.sh` of no registered project (S9 to S11).
+- [x] M2, the `project/` check matched by equality only — `.agent/scripts/_project_registry.sh` (`069fb9d3`). `project` and each `projects/` entry follow one rule (`_stale_root_relation`, `_stale_folder_line`): silent when the path that names it is, holds or lies in a registered root (lexical and parents-resolved forms, so a root registered through a `project` link is silent: P2 to P4); a link to, into or holding a registered root, to a file or to nothing is to be removed (P6 to P8, P10, P11); an unregistered folder or link target is to be registered or removed (P5, P9). Behaviour change: a `projects/` link to a registered root registered by its real path was silent and is now "remove it".
+- [x] M3, configure_git_identity skipped a root under a `worktrees` folder — `.agent/scripts/configure_git_identity.sh` (`defb4bf7`). The root's own worktree dir (`registry_worktree_dir`) is skipped by its path; a `worktrees` folder elsewhere is configured. Tests: a root at `<sb>/srv/worktrees/product`, with and without `worktrees=`.
+- [x] S, `--type` omitted under a `worktrees=` dir derives workspace — `.agent/scripts/_project_registry.sh` (`b2def554`). `registry_derive_type_from_dir` tries `registry_resolve_session_dir`. Tests in `test_project_registry.sh`: derive, `worktree_create.sh` and `worktree_enter.sh` with `--type` omitted from the override dir.
+- [x] S, the retired-worktree scan walked whole checkouts — `.agent/scripts/_project_registry.sh` (`069fb9d3`). The walk stops at each checkout (a folder holding `.git`) and at depth 6 (`_STALE_WORKTREE_SCAN_DEPTH`; the deepest old layout is 5). Measured: one checkout of 228,630 entries under `worktrees/project/` on ext4 with a warm cache, three runs each: old `find` 28 to 31 ms, visiting every entry; new 3 to 4 ms, visiting 1 entry. Cold-cache time not measured. The W6 test checks the depth bound (a checkout at depth 7 is silent); pruning at a checkout shows only in timing.
+- [x] S, a parent root's `.sh` got `project_setting.sh set <parent>` and `distro=` remedies — `.agent/scripts/_project_registry.sh` (`069fb9d3`). It now names the instances and says to move what an instance needs (S7), or to delete it when it sets nothing (S8).
+- [x] S, discover_governance read a registry with errors as empty — `.agent/scripts/discover_governance.sh` (`4a8a658c`). It prints the workspace rows, then says no registered root was scanned and exits 1.
+- [x] S, worktree_list showed `.workspace-worktrees/` worktrees as `main`; the guide was wrong — `.agent/scripts/worktree_list.sh`, `.agent/WORKTREE_GUIDE.md` (`2cb6803b`). Type `retired`, text `[retired]`, counted in no total or dirty count. The guide says what is listed and what validate warns about: `project` itself while unregistered, which covers `project/worktrees/`.
+- [x] S, the `rm -r` advice could lose unpushed history — `.agent/scripts/worktree_remove.sh` (`6337f21b`). The refusal says to check `git status` and `git log --branches --not --remotes` in any repository in the entry first, and to delete only when nothing is needed.
+- [x] S, NOTE heading "and it still sets:" over a "cannot be told" line — `.agent/scripts/adapter` (`48bbf29d`). The heading says "what it still sets cannot be told" when that is the answer.
+- [x] S, `'$name''s` — `.agent/scripts/_project_registry.sh` (`069fb9d3`). Now "the settings file of 'alpha', .agent/projects.d/alpha, is invalid".
+- design.md (`698eaa23`): the Retirement paragraph states the one folder rule, the scan bound, the parent and register-first rules and points at the case table; Discovery adds the `--type` derivation; Table 1's derive range is 645-660.
+
+Mechanism decisions (each listed for veto):
+- The stale-report fixes (M1, M2 and three suggestions) are one commit: they rewrite the same functions to one case table.
+- A path that lies inside a registered root (P4) is silent, the same as the `projects/` check's existing rule.
+- A `projects/` link to a registered root is now "remove it", as for `project`. It was silent, and nothing reads the link.
+- A link to a file is "remove it" (P11); hidden entries under `projects/` are not checked, as before.
+- The shared file's "register first" line names the reason (applies to none, or an unregistered folder named above); C3 fires on an unregistered `project` or `projects/` entry, since either may have used the shared file under the old order.
+- discover_governance on registry errors: workspace rows printed, exit 1 (a refusal, not an empty project section).
+- worktree_list: type `retired` rather than hiding the worktree (git still has it); sitrep keeps only `workspace`/`main`, so it drops it.
+- The depth bound is 6.
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `698eaa23`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 100 passed, 0 failed; test_discover_governance.sh 30 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_project_registry.sh 417 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 98 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. The full pre-commit pass and every other suite are left to the host.
+
+Not done, and why: ADR-0002, ADR-0003, ADR-0011 and ADR-0018 wait for the owner (Q-ADR); the held AGENTS.md commits `a80f3dc2` and `557fffe5` wait for the merge checkpoint. Not verified: the scan's cold-cache time; the dashboard's display of the new lines (it prints whatever the report says; its suite is not one this rule selects).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 11:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `04f5b886`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff; enforcement and governance files). Full round, not a convergence check: the handoff did not name one.
+**Must-fix**: 4 | **Suggestions**: 7
+**Round**: 3 | **Ship**: continue — round 3: 4 must-fix is high (rising from 3); another independent read warranted
+
+Round 2's 11 boxes: closed as claimed at `698eaa23`, except that the `-type d` added for round 1 now skips a root whose `.git` is a file (M3 below). AGENTS.md was not touched this round, and its text stays true.
+
+Case table (header of test_validate_workspace_stale.sh): one row is missing, and its outcome is destructive. A registered project's `worktrees=` folder under `projects/` or at `project` is treated as an unregistered folder (M1). No listed row states wrong advice. The claim that every row has a test whose label carries its id is false: R, P1, P2, W1, W3, W5, S1-S4 and C1 are covered only by older tests without the id, and C7 has no id-labelled assertion. P3, P4, P8 and P11 are tested for `project` only.
+
+`registry_derive_type_from_dir` now goes through `registry_resolve_session_dir`. Only its four callers changed behaviour (worktree_create, worktree_enter, worktree_remove with `--type` omitted, and capture.sh): a cwd in a `worktrees=` folder now derives that project, as intended. The other callers of `registry_resolve_session_dir` did not change, because that function did not change. One new case is wrong: with `worktrees=.` or `worktrees=worktrees`, which the parser accepts, a workspace worktree derives a project (S1).
+
+Blocking: M1 blocks publishing (it is the same class of destructive gap found in rounds 1 and 2). M2 and M3 were opened by the fix rounds and are one-line fixes; carry them with M1. M4 could ship as a follow-up, since the next command fails loudly and nothing is lost, but it is one line of text. Suggestions can be follow-ups. After one fix pass, a narrow round-4 convergence check is enough.
+
+Specialists: governance, plan drift, a fresh Claude adversarial sub-review (test_validate_workspace_stale 98 passed; sandbox reproductions of M1, M2, S1, S2, S3), Gemini (agy) ran: 3 findings; Codex ran: 2 findings; Copilot CLI is not a reviewer here (#344). I reproduced M1 in my own sandbox. Static analysis was not re-run.
+
+### Findings
+- [x] (must-fix) A registered `worktrees=` folder under `projects/` or at `<ws>/project` is told "not registered ...: register it ..., or remove it". Removing it deletes live worktrees, and it also feeds C3. Count each root's `worktrees=` folder in `_stale_root_relation` and add a case-table row and a test (reproduced; Claude sub-review) — `.agent/scripts/_project_registry.sh:1547-1612`
+- [x] (must-fix) The dashboard filter drops the new `[retired]` header line but keeps its indented Path/Branch/Status lines, so they read as part of the previous worktree. WORKTREE_GUIDE also says no script counts these worktrees, but dashboard WT_COUNT does (Gemini; reproduced by the Claude sub-review) — `.agent/scripts/dashboard.sh:388`, `.agent/WORKTREE_GUIDE.md:108`
+- [x] (must-fix) `-type d` silently skips a registered root whose `.git` is a file (a `--separate-git-dir` checkout), so its identity is never configured. Include the root itself when it is a checkout's top folder, or tell a linked worktree apart by git-dir versus common-dir (Codex) — `.agent/scripts/configure_git_identity.sh:173`
+- [x] (must-fix) The remedy "rm -r, then run this command again: an entry already gone is skipped" is false for a single-repository worktree, where the entry is the worktree itself: the rerun finds no worktree. Say to run `git worktree prune` instead (Gemini) — `.agent/scripts/worktree_remove.sh:404`
+- [x] (suggestion) The parser accepts `worktrees=.` and `worktrees=worktrees`, and then a workspace worktree or `<ws>/.agent` derives `project <name>`. Refuse a `worktrees=` that holds `<ws>/worktrees/workspace` or the workspace root (Claude sub-review, reproduced) — `.agent/scripts/_project_registry.sh` registry parser, derive at :645
+- [x] (suggestion) C3 counts only P5 and P9 folders. An unregistered retired checkout (W2) leaves the shared file told "delete it" (Claude sub-review, reproduced) — `.agent/scripts/_project_registry.sh:1752`
+- [x] (suggestion) A retired checkout that holds a registered root gets "remove each with git worktree remove"; the W skip lacks the "holds" relation — `.agent/scripts/_project_registry.sh:1667-1679`
+- [x] (suggestion) P5's "or remove it" for an unregistered checkout should say to check for unpushed or uncommitted work first, as worktree_remove now does — `.agent/scripts/_project_registry.sh:1611`
+- [x] (suggestion) The case-table header claims id-labelled tests for every row (false for 11 rows; C7 has no id-labelled assertion); P3, P4, P8 and P11 are tested for `project` only; W2 says depth 1 to 5 while depth 6 is reported — `.agent/scripts/tests/test_validate_workspace_stale.sh:13-66`
+- [ ] (suggestion) validate and the dashboard still execute retired config files, orphan `.sh` files included, to read them. Consider reading the assignments without executing (Codex, repeated from round 1) — `.agent/scripts/_project_registry.sh:1406`
+- [x] (suggestion) discover_governance prints absolute paths for in-tree roots when run from a linked worktree, against its comment (Gemini); gather-project-knowledge does not say that exit 1 means an incomplete inventory — `.agent/scripts/discover_governance.sh:130-140`, `.claude/skills/gather-project-knowledge/SKILL.md:40`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 11:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Asked on 2026-11-17 after round 3 of the pre-push review (4 must-fix, 7 suggestions): "Q1 — what next? R1 (my recommendation): one more fix pass, then a narrow check. It fixes F1 to F4 and every suggestion except the 'retired config files are executed' one. That one I would note on the parent issue (295, the registry-only work) for its next pull request, because it means writing a parser, not a one-line fix. R2: publish as is. R3: stop here." His answer, verbatim: "Q1 - R1".
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 11:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 2 of 3)
+
+**Branch**: feature/issue-265 at `4a91c95d`
+**Addressed**: Local Review (Pre-Push) at `04f5b886` (2026-11-17 11:27 -05:00)
+**Commits**: `c757b5ed`, `b646fcbd`, `195dc5d0`, `35e6d3f7`, `bfa26df5`, `c49df66a`, `e6fccafd`, `4a91c95d` (box checks)
+
+Fix round 3, scope set by the owner at the Checkpoint ("Q1 - R1"): the four must-fix and every suggestion except the retired-config-file parser. That suggestion's box is left open: deferred by the owner 2026-11-17 to issue 295's next pull request (the host posts the note there). AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed (one read: this machine's registry has no `worktrees=` field, so the new parser rule refuses nothing here); no push.
+
+Pre-fix failure counts (new tests run against the code before each fix): stale report 23 of 119 against the round-2 registry code (`04f5b886`; 9 of them are wording the fix changed: link lines now say "remove the link", P5 and W2 add check-first text, C3's reason). The 5 adversarial-pass assertions added afterwards (P15, P16, W8, C8) passed on the round-3 code and were not re-run against the old code. Parser refusal 3; dashboard 2; configure_git_identity 1; worktree_remove 2. The discover_governance L1/L2 tests pin existing behaviour and pass before and after.
+
+### Actions
+- [x] M1, a root's `worktrees=` folder under `projects/` or at `<ws>/project` told "register it, or remove it" and feeding C3 — `.agent/scripts/_project_registry.sh` (`b646fcbd`). `_stale_root_relation` compares each root's `worktrees=` folder in the same forms as the root ("a registered folder"). Rows P13 (silent, never C3) and P14 (a link to it: remove the link); tests at `<ws>/project`, under `projects/`, holding one, and a link to one.
+- [x] M2, the dashboard dropped the `[retired]` header but kept its lines; WT_COUNT counted it — `.agent/scripts/dashboard.sh`, `.agent/WORKTREE_GUIDE.md` (`195dc5d0`). The filter keeps `[retired]`; WT_COUNT leaves `.workspace-worktrees/` out and a separate count only decides that the list is shown; the guide names the dashboard. Test in `test_project_registry.sh` runs `dashboard.sh --quick` in the sandbox and checks the retired Path line follows its own header.
+- [x] M3, `-type d` skipped a root whose `.git` is a file — `.agent/scripts/configure_git_identity.sh` (`35e6d3f7`). A `.git` file counts when git's dir is the common dir and no superproject holds it (a `--separate-git-dir` clone); a linked worktree does not. Test: a `--separate-git-dir` root is configured, a linked worktree inside it is not.
+- [x] M4, "run this command again" false for a single-repository worktree — `.agent/scripts/worktree_remove.sh` (`bfa26df5`). When the refused entry is the worktree itself, the advice is `git -C <the repository it was made from> worktree prune` (from the manifest's origin); a package worktree's entry keeps the re-run advice. The test follows the advice until git no longer lists the worktree.
+- [x] S, `worktrees=.` / `worktrees=worktrees` accepted — `.agent/scripts/_project_registry.sh`, `.agent/scripts/lib/workspace.py` (`c757b5ed`). Both parsers refuse a `worktrees=` that is or holds the workspace root, or is, holds or lies in `worktrees/workspace`, with the same text (parity test extended); row U.
+- [x] S, an unregistered retired worktree left the shared file "delete it" — `.agent/scripts/_project_registry.sh` (`b646fcbd`). W2 sets the C3 condition; test.
+- [x] S, a retired checkout holding a registered root was told to be removed — `.agent/scripts/_project_registry.sh` (`b646fcbd`). The W check uses `_stale_root_relation` (self, inside, holds; roots and `worktrees=` folders); rows W7, W8; tests.
+- [x] S, P5's "or remove it" without a check — `.agent/scripts/_project_registry.sh` (`b646fcbd`). P5, and a plain clone in a retired location (W2), say to check any repository in it for uncommitted work (`git status`) and commits on no remote (`git log --branches --not --remotes`) first.
+- [x] S, the case table's claims — `.agent/scripts/tests/test_validate_workspace_stale.sh` (`b646fcbd`). Every row id now has an id-labelled assertion: older tests relabelled; C7 added; the `projects/` forms of P3, P4, P8 and P11 added; W2 says depth 1 to 6 with a depth-6 test. New rows U, P13 to P16, W7, W8 and C8. Checked by a loop over every id against the PASS labels (none missing).
+- [ ] S, retired config files executed to be read — not changed: deferred by the owner 2026-11-17 to issue 295's next pull request (writing a parser).
+- [x] S, discover_governance's absolute paths from a linked worktree; the skill silent on exit 1 — `.agent/scripts/discover_governance.sh`, `.claude/skills/gather-project-knowledge/SKILL.md` (`c49df66a`). The output stands: relative to a linked worktree, the main checkout's `projects/<name>` would name a folder that is not there. The comment now says so, and tests L1/L2 pin both cases. The skill says exit 1 means an incomplete inventory and to stop.
+- design.md (`e6fccafd`): the Retirement paragraph (registered folder, check-first, the C3 condition), the Worktrees paragraph (the `worktrees=` refusal), Table 1's derive range 654-669.
+
+Adversarial pass over the table (every line that says remove or delete: what a wrong one would lose, and the row for the wrong case). The paragraph is also in the test file's header.
+- P5 (folder): it loses the folder and any repository in it. Wrong when the folder is or holds a registered folder, or lies in one: rows P2 to P4, P13, and new P15 (a root registered through a link elsewhere). The line now says to check first.
+- P6 to P8, P10, P11, P14 (links): they lose the link only. Wrong when a registry line names a root through the link: row P3, and new P16 (a dangling link a line names a root through).
+- W2 (worktrees): `git worktree remove` refuses a worktree with changes and keeps its branch. Wrong when the checkout is a registered folder, or lies in or holds one: rows W3, W4, W7, and new W8 (registered through a link). A plain clone gets the check-first text.
+- S4, S8, S10 (a `.sh`): they lose a file whose values no reader takes. A value the settings file already has never ran (the settings file wins). A function or a command with no variable effect is not detected. The wrong cases are rows S5 and S6 (cannot be told); a parent's or an unregistered `.sh` that sets something is never "delete it" alone (S7, S9).
+- C2, C5 (the shared file): wrong when a project not registered may have used it (C3, C4), when it cannot be sourced (C6), or when an applied project's settings file is invalid (new C8).
+- Result: the four new rows (P15, P16, W8, C8) all already held on the round-3 code. The pass found no further wrong advice. Its one gap, a `.sh` whose only effect is a function or command, is named in the header and not handled.
+
+Mechanism decisions (each listed for veto):
+- One commit for the report (M1 and four suggestions).
+- The `worktrees=` refusal also covers a folder inside `worktrees/workspace` (the review named only "holds"): there a project worktree would count as a workspace one.
+- The dashboard still lists a retired worktree, as `[retired]`, and counts it in no total.
+- A `.git`-file repository counts unless it is a linked worktree or a submodule. The submodule exclusion is not tested.
+- discover_governance: the comment is fixed, not the output.
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `e6fccafd`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 102 passed, 0 failed; test_discover_governance.sh 32 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_registry.sh 427 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 124 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. No `test_dashboard*.sh` exists; the dashboard's Active Worktrees section is tested inside test_project_registry.sh. Suites that reach `lib/workspace.py` only through Python imports are left to the host's full pass, as is the pre-commit pass.
+
+Not verified: the submodule exclusion in configure_git_identity; the adversarial rows against the round-2 code (the counts above are from before those rows were added); the whole dashboard output beyond the Active Worktrees section.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 12:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a480df7e9e5ee2f14, resume 3 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265 at `14f2f24c`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 narrow check, by the owner's choice, of the diff `b0381e6f..e6fccafd`; the whole-branch tier stays Deep)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 4 | **Ship**: recommended — round 4: 2 mechanical must-fix (prev 4), not rising; fix and ship rather than another full round
+
+Round 3's boxes: 10 of 11 are closed as claimed at `e6fccafd`. The retired-file parser box stays open, deferred by the owner to issue 295, and is not a finding. The `worktrees=` refusal agrees in the shell and Python parsers on 16 values; it refuses only the workspace root, `worktrees/workspace` and folders that hold or lie in them. M4's prune hint is true for both its branches. The dashboard keeps `[retired]` lines under their own header. Under that one job, the specialist found no registered root, instance, parent, `worktrees=` folder, root reached through a symlink or root registered by a relative path that the report calls unregistered. What these fixes opened is the advice text below.
+
+Reviewers: a fresh Claude adversarial specialist, given one job (find destructive advice and registered things reported as unregistered), with sandbox reproductions; Gemini (agy) ran (approve, 2 suggestions); Codex failed (usage limit, "try again at 2:26 PM"); Copilot CLI is not a reviewer here (#344). The skill's convergence-check words ("no cross-model reviewers") were not in the handoff, so cross-model was dispatched.
+
+### Findings
+- [x] (must-fix) The retired-worktree line says `git worktree remove` "refuses one with uncommitted changes and keeps its branch". That is false for a detached-HEAD worktree, whose commits become dangling, and for gitignored files, which are deleted without a refusal (reproduced). Its "recreate it under its project's root" is also wrong for a `.workspace-worktrees/` workspace worktree (Gemini). The check-first text used by P5, the W2 plain clone and the worktree_remove refusal misses stashes and detached commits (reproduced: both checks empty, stash and commit lost). Name `git stash list`, `git log --all --not --remotes` and `git status --ignored`, and apply the check to worktrees too — `.agent/scripts/_project_registry.sh:1608`, `:1698`; `.agent/scripts/worktree_remove.sh:407`
+- [x] (must-fix) The comment still says a `.git` file is not a repository, but the code now configures a `--separate-git-dir` checkout whose `.git` is a file — `.agent/scripts/configure_git_identity.sh:147-149`
+- [x] (suggestion, follow-up) The `rm $x` and `rm -r $_dest` advice prints paths unquoted; it is harmful only for a workspace path with a space — `.agent/scripts/_project_registry.sh:1623-1639`, `.agent/scripts/worktree_remove.sh:414-419`
+- [x] (suggestion, follow-up) The submodule exclusion in configure_git_identity has no test (the fixer said so) — `.agent/scripts/configure_git_identity.sh:172-180`
+- [ ] (suggestion, follow-up; pre-existing) `resolve_worktree` passes a parent root name from `derive_project_name` straight to `wt_project_base` and does not map it to its instance, as enter and remove now do (Gemini) — `.agent/scripts/dispatch_phase.sh:301-305`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 12:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the two must-fix of the round 4 narrow check are text only: advice wording and one code comment; the review's own ship signal is "fix them and ship, no further full round"; first host `address` at `rounds` on this pull request, the earlier one was the owner's)
+**After**: rounds
+**Decision**: address
+
+Read: the round 4 `## Local Review (Pre-Push)` entry at `a3714229` (2 must-fix, 3 suggestions, verdict changes-requested, ship signal recommended). M1 is removal advice that can still lose work (detached-HEAD commits, gitignored files, stashes not covered by the check-first text; wrong "recreate it under its project's root" for a `.workspace-worktrees/` worktree). M2 is a comment in `configure_git_identity.sh` made false by the round 3 fix. The owner's answer at the previous rounds checkpoint was "one more fix pass, then a narrow check"; he said afterwards he is overloaded with other agents and wants only this job kept moving. A mechanism decision, listed for his veto in the next hand-back: fix M1, M2 and suggestions 1 and 2 in one small pass, then a diff-only confirmation of that pass before publishing; suggestion 3 (pre-existing, `dispatch_phase.sh` parent-root mapping) goes on issue 295 as a follow-up note.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 3 of 3)
+
+**Branch**: feature/issue-265 at `14e41a1f`
+**Addressed**: Local Review (Pre-Push) at `14f2f24c` (2026-11-17 12:06 -05:00)
+**Commits**: `6327c07b`, `a8ad1535`, `14e41a1f` (box checks)
+
+Fix round 4, scope set by the host's Checkpoint: M1, M2 and suggestions 1 and 2; suggestion 3 left open (follow-up noted on issue 295 by the host); round 3's suggestion 6 stays open as before. AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed; no push.
+
+The one check-first text, `CHECK_BEFORE_REMOVING` in `_project_registry.sh`, used by P5, the retired-worktree line (worktrees and plain clones) and all three `worktree_remove.sh` refusal hints, word for word:
+"after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
+
+### Actions
+- [x] M1, removal advice that could still lose work — `.agent/scripts/_project_registry.sh`, `.agent/scripts/worktree_remove.sh` (`6327c07b`). One shared text (above). The retired-worktree line drops "refuses one with uncommitted changes and keeps its branch", puts the check before removing a worktree too, and says where to recreate: "under its project's registered root with .agent/scripts/worktree_create.sh --type project" for `worktrees/project/`, "as a workspace worktree with .agent/scripts/worktree_create.sh --type workspace" for `.workspace-worktrees/`. Pinned word for word in `test_validate_workspace_stale.sh` (P5 for `project` and `projects/`, W2 for both locations, plus "keeps its branch" never printed) and in the worktree_remove test (both branches). The table header's P5 and W2 outcomes and its adversarial paragraph are updated; design.md's Retirement paragraph names the shared check.
+- [x] M2, configure_git_identity's comment — `.agent/scripts/configure_git_identity.sh` (`a8ad1535`). It now says a repository is a `.git` directory, or a `.git` file whose git dir is its common dir (`--separate-git-dir`); a linked worktree or submodule is not; the root's worktree dir is skipped by its path.
+- [x] S1, unquoted paths in printed commands — `.agent/scripts/_project_registry.sh`, `.agent/scripts/worktree_remove.sh` (`6327c07b`). `rm`, `rm -r` and `git -C` paths are printed with `printf %q`. Tests run the printed command as printed on paths with a space: a dangling `projects/my link` (removed), the package entry `pkg b` (removed, then the removal goes through), and `git -C <origins/pkg c> worktree prune` (git no longer lists the worktree).
+- [x] S2, no submodule test — `.agent/scripts/tests/test_commit_identity.sh` (`a8ad1535`). A registered superproject with a submodule: the superproject is configured, the submodule (`.git` file) is not.
+- [ ] S3, `resolve_worktree` and a parent root name — not changed: follow-up noted on issue 295 by the host.
+
+Pre-fix failure counts (the new tests against the scripts at `14e41a1f`'s parent): `test_validate_workspace_stale.sh` 7 (P5 ×2, W2 ×2 and "keeps its branch", P10 quoting ×2); `test_project_registry.sh` 1 failure, then the suite stopped at the next step (the advice it follows was not printed). The submodule test passes on the old code (the round-3 exclusion worked; it had no test).
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `a8ad1535`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 105 passed, 0 failed; test_discover_governance.sh 32 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_registry.sh 425 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 126 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. The full pre-commit pass is left to the host.
+
+Not verified: that `git log --all --not --remotes` lists a detached HEAD's commits in every git version (checked against git's documented `--all`, not reproduced here); the `%q` output for paths with characters other than a space (only a space is tested).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 12:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the owner's steer, quoted below; the round 4 review's ship signal was "fix them and ship, no further full round"; the full pre-commit pass, script suites included, passed 19 of 19 hooks at `7ea88ecd`)
+**After**: rounds
+**Decision**: publish
+
+The round 4 fix pass (`6327c07b`, `a8ad1535`) closed both must-fix and suggestions 1 and 2; its diff is 8 files, +145/-52, advice text, one comment, quoting and tests. The owner, 2026-11-17, during that pass: "This workspace is used in very few places, maybe just one other instance of mine that still has the old layout, so it's fine if the project(s) retirements is not fool-proof." So no fifth pre-push round on the retirement advice: the pull request is published and the post-push review reads the head. Open boxes carried: round 3 suggestion 6 (retired config files executed in order to read them) and round 4 suggestion 3 (`dispatch_phase.sh` parent-root mapping, pre-existing), both noted on issue 295. Still held for the owner at the merge checkpoint: the two AGENTS.md commits (`a80f3dc2`, `557fffe5`), moving three settings on his first machine before the merge, the after-merge disk deletions, and the four ADRs that now describe retired shapes (0002, 0003, 0011, 0018).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-17 12:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #491 at `3c114551`
+**Depth**: Deep (reason: whole-PR tier stays Deep; scope set by the host's handoff: the round 4 fix diff `a3714229..7ea88ecd` plus one cold pass over the live-path code; no cross-model reviewers, per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Round 4's claimed boxes are closed. One text, `CHECK_BEFORE_REMOVING`, is now used by P5, the W2 line and all three `worktree_remove.sh` refusal hints. The variable is in scope there because `worktree_remove.sh` sources `_project_registry.sh` at line 118. A sandbox run on git 2.43 found that `git log --all --not --remotes` lists a detached worktree HEAD's commit and the stash commit, and that `git stash list` shows the stash. `.workspace-worktrees/` now gets "as a workspace worktree", and `worktrees/project/` gets "under its project's registered root". The configure_git_identity comment matches the code: a `.git` file counts as a repository only when its git dir equals its common dir and no superproject holds it. The submodule test pins that. `%q` quoting is applied to every printed `rm`, `rm -r` and `git -C` path. No retirement-advice findings.
+
+Cold pass, done by a fresh Claude specialist and by this reviewer. Coverage: the registry parsers, `adapter`, `session_root.sh`, `_worktree_helpers.sh`, `worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`, `merge_pr.sh` and `dispatch_phase.sh`. The shell and Python parsers gave identical entries and error lines for one registry. That registry held relative, `..`, symlinked, tab-separated, commented and spaced paths; `worktrees=` values both relative and absolute, including ones equal to the workspace root and to `worktrees/`; a parent with `default_instance`; a duplicate name; and an `x.SH` name. A grep finds no remaining caller of the removed helpers (`get_project_path`, `is_project_configured`, `get_project_remote_url`, `wt_legacy_*`, `wt_transition_project_base`, `wt_project_base_glob`, `PJ_ROOT_EFFECTIVE`).
+
+### Findings
+- [x] (must-fix) adapter discovery ignores a root's `worktrees=` folder when it lies outside the hosting dir. Discovery uses `registry_resolve_from_dir`, not `registry_resolve_session_dir`. Effect, reproduced in a sandbox: in a correctly registered project's own worktree at such a folder, `adapter project_root` / `env` refuse with "no registered project here ... Registered: p1", so `make build` and `make test` refuse too. `adapter sync` there syncs the workspace alone and exits 0. `session_root.sh`, `worktree_create/enter/remove.sh` and `wt_resolve_project_repo_root` all accept that worktree. Fix: call `registry_resolve_session_dir` there, update the adapter header's step 2 and design.md's list of callers, and add a test. Live path. Narrow: a default `<root>/worktrees` is under the hosting dir and resolves, and the owner's registry has no `worktrees=` line. — `.agent/scripts/adapter:227`
+- [x] (suggestion) `merge_pr.sh` discards a registry parse error (rc 2) from `wt_resolve_project_repo_root` when `--type` is not given. `registry_require_root` returns early for a cwd in the workspace without parsing. The PR is then looked up in the workspace alone, so with a malformed registry a project PR number can match an open workspace PR of the same number (the issue 173 hazard). It is the same as main on a machine with no `project/`. Live path, pre-existing in kind. — `.agent/scripts/merge_pr.sh:326-345`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #491 at `c7a50a0e`
+**Addressed**: Local Review at `3c114551` (2026-11-17 12:21 -05:00)
+**Commits**: `b840ff25`, `c7a50a0e`
+
+### Actions
+- [x] (must-fix) adapter discovery now calls `registry_resolve_session_dir`, so a worktree in a root's `worktrees=` folder outside its hosting dir resolves that root; header step 2 and design.md's list of callers updated, design.md's two `adapter` line citations moved 82 → 84; new `test_outside_worktrees_dir_resolves` (project_root, env, build and sync from such a worktree; sync passes `--project-root <root>`, not the workspace-only sync): 6 failures on the pre-fix code, 0 after — `.agent/scripts/adapter:229`
+- [x] (suggestion) `merge_pr.sh` stops on a registry parse error (rc 2) whatever `--type` is, printing the registry's own error; rc 1 handling unchanged, so a well-formed registry behaves as before; new `test_malformed_registry_stops_merge` (no `--type`, `--type workspace`, `--type project`): 6 failures on the pre-fix code (no `--type` and `--type workspace` merged with exit 0), 0 after — `.agent/scripts/merge_pr.sh:327-347`
+
+### Suites run (each on its own, worktree copy)
+- test_adapter.sh: `=== Results: 248 passed, 0 failed ===`
+- Suites naming `adapter` (run after the adapter change): test_fresh_clone_no_project.sh `26 passed, 0 failed`; test_precommit_hook_path.sh `19 passed, 0 failed`; test_register_project.sh `201 passed, 0 failed`; test_project_file.sh `701 passed, 0 failed`; test_project_integration_audit.sh `279 passed, 0 failed`; test_session_start_layer.sh `52 passed, 0 failed`; test_sitrep_root.sh `56 passed, 0 failed`; test_validate_workspace_stale.sh `126 passed, 0 failed`; test_ros2_colcon.sh `1014 passed, 0 failed, 0 skipped`; test_sitrep_checks.sh `211 passed, 0 failed`; test_worktree_create.sh `PASS: 80` (exit 0); test_design_anchors.sh `47 passed, 0 failed`
+- Suites naming `merge_pr.sh` (run after the merge_pr change): test_merge_pr.sh `170 passed, 0 failed`; test_merge_pr_gate.sh `201 passed, 0 failed`; test_merge_pr_root_resolution.sh `6 passed, 0 failed`; test_merge_pr_skill.sh `132 passed, 0 failed`; test_checkpoint_269.sh `43 passed, 0 failed`; test_dispatch_phase.sh `236 passed, 0 failed`; test_project_registry.sh `425 passed, 0 failed`; test_user_tier_guard.sh `64 passed, 0 failed`; test_package_issue_loop.sh `220 passed, 0 failed`; test_records_write_gate.sh `68 passed, 0 failed`; test_skill_paths.sh `163 passed, 0 failed`
+- Commits made with `SKIP=validate-script-tests`; the full pre-commit pass and every-suite run are left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-17 12:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae39d32d53ef4336b, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #491 at `71ddd4a8`
+**Depth**: Deep (reason: whole-PR tier stays Deep; scope set by the host: the fix diff `ad63787d..71ddd4a8` only, no cross-model reviewers, per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Both earlier findings are closed in the code, and each fix is pinned by a test. The new tests pass at this head: `test_adapter.sh` gave 248 passed, 0 failed, and `test_merge_pr.sh` gave 170 passed, 0 failed (both run by this reviewer).
+- **Adapter fix (`b840ff25`).** Discovery now calls `registry_resolve_session_dir`. The cwd can match an outside `worktrees=` folder only when it lies in one, and the parser refuses a `worktrees=` that is or holds the workspace root or `worktrees/workspace`. So the workspace-only `sync` is unchanged for a cwd in the workspace.
+- **Adapter test.** `test_outside_worktrees_dir_resolves` checks `project_root`, `env` and `build` from such a worktree. It also checks `sync`, end to end through the `sync_project.py` shim, which execs `adapter sync`, and pins `--project-root <root>`.
+- **merge_pr.sh fix (`c7a50a0e`).** Only rc 2 is newly fatal. `wt_resolve_project_repo_root` returns 2 only for a registry parse error: from `registry_resolve_session_dir`, `registry_resolve_project_arg`, `registry_lookup` or `registry_entries`. rc 1 handling is unchanged, and `--repo` still skips the block.
+- **merge_pr.sh test.** The test covers all three `--type` forms and asserts that no `gh` call was made.
+- **`adapter` line 84 citation.** Line 84 is `_WORKSPACE_ONLY_SYNC_TYPE`, as design.md now cites.
+
+The build-in-hosting-dir point is not a defect of this pull request. On main, `_single_project_exec_cmd` already cds to `adapter_project_root`, which is the registry hosting dir. It did so for every selection: `--project`, discovery from a default `<root>/worktrees/<wt>` worktree, and now an outside `worktrees=` worktree. Running a build from a worktree builds the hosting checkout everywhere. If the owner wants worktree builds, that is a separate issue.
+
+### Findings
+- [x] (must-fix, mechanical) design.md's `merge_pr.sh` line citations are now 4 lines off. `c7a50a0e` added 4 lines at 316-347, and the fix refreshed the `adapter` citations but not these. The Table 1 `merge_pr.sh` row cites "313-354, 731, 866, 1002 and 1315, 2451-2480", which should now be 313-358, 735, 870, 1006 and 1319, 2455-2484 (731 now lands on a comment, not the `_WT_REPO` line). The mechanism-1 sentence cites "841-988, 1273-1452", which should now be 845-992, 1277-1456. Earlier rounds of this repository treated stale design.md citations as must-fix (the issue 478 review). — `docs/design.md:490`, `docs/design.md:684`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a3e1b61b2a87b2d3d, resume 1 of 3)
+
+**PR**: #491 at `c3f21d83`
+**Addressed**: Local Review at `71ddd4a8` (2026-11-17 12:47 -05:00)
+**Commits**: `c3f21d83`
+
+### Actions
+- [x] (must-fix, mechanical) design.md's `merge_pr.sh` line citations refreshed. Each was checked at the head by what its sentence says, not shifted by 4. Several were already loose before `c7a50a0e`, so some new numbers differ from the review's +4 values — `docs/design.md:490,595-612,684`
+
+### Citations checked (merge_pr.sh at `c3f21d83`)
+- Table 1 row: 313-354 → 313-358 (PJ_REPO_ROOT block, through the origin check's `fi`); 731 → 735 (Step 1 `_WT_REPO=PJ_REPO_ROOT`); 866 → 870 (gate's `_gate_wt_repo=PJ_REPO_ROOT`); 1002 → 1006 and 1315 → 1319 (main-tree guards); 2451-2480 → 2455-2485 (branch deletion in `BRANCH_REPO` through the project pull's `fi`)
+- Records bullet: `PKG_OWN_REL` 645-668 → 649-672; gate's worktree 841-865 → 848-872; owning-checkout rule 866-933 → 873-940; committed read 934-988 → 941-982 (the owning branch only); sibling 1024-1031 → 1031-1038 and 1437-1438 → 1443-1444; PJ_REPO_ROOT 313-354 → 313-358; 731 → 735 and 866 → 870; 1002 → 1006 and 1315 → 1319; report-only 1604 → 1611 (`elif` enforcing on workspace PRs only) and 1621 → 1628 (the report-only note for project PRs)
+- Mechanism 1: 841-988 → 848-995 (gate lookup, from its worktree resolution to the end of the timeline read); 1273-1452 → 1280-1459 (`_gate_record`, which writes the `Merge` entry)
+- `adapter` line 84 (two citations, design.md 318 and 439): checked, unchanged (`_WORKSPACE_ONLY_SYNC_TYPE=`)
+- `.agent/knowledge/` and `.agent/WORKTREE_GUIDE.md`: no `merge_pr.sh` or `adapter` line citations (the grep's hits are PR numbers, verb counts and the fork's `ros2_colcon/adapter.sh` in an inspiration digest); nothing changed
+
+### Suites run
+- test_design_anchors.sh: `test_design_anchors: 47 passed, 0 failed`
+- No script changed. The commit used `SKIP=validate-script-tests`; the full pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-17 12:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae39d32d53ef4336b, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #491 at `cb8521ad`
+**Depth**: Deep (reason: whole-PR tier stays Deep; scope set by the host: the citation fix `cd815303..cb8521ad` only, no cross-model reviewers, per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+The previous must-fix is closed. Every `merge_pr.sh` citation that `c3f21d83` changed was spot-checked against `merge_pr.sh` at `cb8521ad`. Where a number differs from the plain +4 shift, the line it now names holds what design.md says it does. Checked:
+- **Table 1 row:** 313-358 is the `PJ_REPO_ROOT` block. 735 and 870 are the two `PJ_REPO_ROOT` lookups, and 1006 and 1319 are the two main-tree guards. 2455-2485 is the branch cleanup and the project sync.
+- **Records bullet:** `PKG_OWN_REL` is read and normalised at 671-675, inside 649-672. The gate's worktree is at 848-872, the owning-checkout checks at 873-940, and the committed read at 941-982. Report-only enforcement: 1611 restricts enforcement to workspace PRs, and 1628 is the project report-only note.
+- **Mechanism 1:** 848-995 is the gate's lookup, and 1280-1459 is `_gate_record` from its `{` to its `}`.
+
+### Findings
+- [ ] (suggestion) The Records bullet's sibling record citation is one line early. "1443-1444" covers the skill PR's `why_comment` (1443) and the sibling `elif` (1444); the sibling's `why_comment` is 1445, so the range should be 1444-1445. The old 1437-1438 was already off before this branch. The range does include the sibling branch's condition. — `docs/design.md:604`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-17 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #491 at `caedc429`
+**Sources**: 2 (Local Review @ `cb8521ad` (covers `caedc429` via bookkeeping), CI rollup); hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments; no Copilot review requested)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The local timeline is the only review source. `review_progress.sh sources` returned one open local finding at the head, no candidates, and two stale pre-push entries whose open boxes are the deferrals below. CI at `caedc429` (two runs, one per push): Validate Documentation passed in both, ros-manifest tests passed in one; Lint (pre-commit) and Validate Adapter Contract still pending in both. The host re-checks CI before the merge checkpoint.
+
+### Findings
+- [x] (suggestion, Local Review @ `cb8521ad`; checked at the head) The Records bullet's sibling record citation is one line early: merge_pr.sh 1443 is the skill PR's `why_comment`, 1444 the sibling `elif`, 1445 its `why_comment`; cite 1444-1445. Pre-existing offset (1437-1438 before this branch) — `docs/design.md:604` (deferred: owner's merge answer 2026-11-17 ('Agree to all'): one-line citation, pre-existing offset, noted on issue 295)
+
+### Deferred (not action items here; each noted on issue 295)
+- Round 3 suggestion 6 (Local Review (Pre-Push) @ `04f5b886`): validate and the dashboard source retired config files (orphan `.sh` included) to read them, in a clean subshell (`_stale_config_values`, `.agent/scripts/_project_registry.sh:1409`). Deferred by the owner 2026-11-17 at the rounds checkpoint ("Q1 - R1") to issue 295's next pull request: the fix is a parser, not a line. Issue 295 comment of 2026-11-17 16:34Z.
+- Round 4 suggestion 3 (Local Review (Pre-Push) @ `14f2f24c`, pre-existing): `resolve_worktree` passes a parent root name from `derive_project_name` to `wt_project_base` without mapping it to its instance (`.agent/scripts/dispatch_phase.sh:302-304`). Deferred by the host's round 4 checkpoint to issue 295. Issue 295 comment of 2026-11-17 17:16Z.
+
+### False positives
+None.
+
+Held for the owner at the merge checkpoint, not findings: the AGENTS.md-only commits `a80f3dc2` and `557fffe5`; the machine steps before and after the merge; ADR-0002, ADR-0003, ADR-0011 and ADR-0018 still describing the retired shapes. Owner standard for the retirement advice, 2026-11-17: "it's fine if the project(s) retirements is not fool-proof".
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 13:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Asked on 2026-11-17 with CI green and the pull request mergeable: "Q1 — merge pull request 491? My recommendation is yes, with the one-line citation deferred to the parent issue (295)." "Q2 — the AGENTS.md wording: keep, reword or drop?" (the four changes W1 to W4 shown in full; recommendation keep). "Q3 — GeoZui4D's install command on this machine: keep it or drop it?" (recommendation keep: copy it into the project's settings file before the merge). "Q4 — the two project11 clones under `projects/` on this machine (`p11-jazzy`, `p11-rolling`): remove them or keep them?" (recommendation remove: after the merge unregister both, re-check that all their repositories are clean and pushed, then delete `projects/`, the `project` link and the three old config files). "Q5 — add a one-line status note to the four decision records that still describe the retired shapes?" (a small separate pull request after the merge, exact lines shown first; recommendation yes). His answer, verbatim: "Agree to all, but for q2, are we mixing product and project? That should be consitent."
+
+Host reading of the Q2 remark (for his veto): "product" appears twice in AGENTS.md (the Project bullet and the ownership table row), both carried over from the text on main, so this pull request does not add the mix. The consistent wording goes into the follow-up pull request with the ADR notes (Q5), its exact text shown to him first; the merge is not held for it.

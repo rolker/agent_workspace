@@ -160,7 +160,9 @@ printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\ndistro: fake
 printf 'repositories:\n  pkg_a:\n    type: git\n    url: file:///x/pkg_a.git\n    version: main\n  pkg_b:\n    type: git\n    url: file:///x/pkg_b.git\n    version: main\n' > "$M/repos/l1.repos"
 echo 'export SOURCED_LAYERS="base"' > "$SANDBOX/rosroot/fakefox/setup.bash"
 echo "demo ros2_colcon $H" >> "$WS/.agent/projects.local"
-echo "ROS_ROOT_DIR=\"$SANDBOX/rosroot\"" > "$WS/.agent/projects.d/demo.sh"
+# The underlay root comes from the environment (issue #265 part 4: no
+# config file sets it), for every script this suite runs.
+export ROS_ROOT_DIR="$SANDBOX/rosroot"
 for r in pkg_a pkg_b; do
     git init -q --bare "$REM/owner/$r.git"
     seed="$SANDBOX/seed_$r"

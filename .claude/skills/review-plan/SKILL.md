@@ -90,11 +90,10 @@ the repository this phase runs in, which for a dispatched phase is the
 handoff's `worktree=` (for an issue of a package repository, the owning
 checkout inside the package worktree; issue 429). If the file doesn't exist,
 check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
-first, then every project worktree location — not just the legacy
-`worktrees/project/*/issue-*-<N>/` glob, since a registered project's
-worktrees live under its own root as of issue #265. Enumerate every root's
-worktree dir with the shared helper, the same way the worktree scripts do,
-rather than re-deriving the glob:
+first, then every registered project's worktree dir (a project's worktrees
+live under its own root, issue #265). Enumerate every root's worktree dir
+with the shared helper, the same way the worktree scripts do, rather than
+deriving a glob:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -107,20 +106,18 @@ WS_ROOT="$(git rev-parse --show-toplevel)"
 # … then the workspace worktree (a workspace-repo issue's plan lives here) …
 plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
 if [ -f "$plan" ]; then echo "$plan"; else
-    # … then every project worktree location: registered roots and the
-    # legacy / transition worktrees/project/<name>/ dirs.
+    # … then every registered project's worktree dir.
     while IFS=$'\t' read -r _name wtdir; do
         plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
         [ -f $plan ] && { echo "$plan"; break; }
-    done < <(wt_registry_worktree_dirs "$WS_ROOT"; wt_legacy_worktree_dirs "$WS_ROOT")
+    done < <(wt_registry_worktree_dirs "$WS_ROOT")
 fi
 fi
 ```
 
 `wt_registry_worktree_dirs` covers every registered non-parent root's
-worktree dir (in-tree or out-of-tree); `wt_legacy_worktree_dirs` covers the
-pre-#265 `worktrees/project/<name>/` fallback for unregistered projects. If
-no match is found in any of these locations, stop and inform the user.
+worktree dir (in-tree or out-of-tree). If no match is found in any of these
+locations, stop and inform the user.
 
 ### 2. Read the issue and any review-issue comments
 

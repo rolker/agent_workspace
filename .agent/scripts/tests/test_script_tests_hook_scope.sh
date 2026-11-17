@@ -260,6 +260,9 @@ declare -A ROOT_READERS=(
     # test_user_tier_install.sh below).
     [test_user_tier_guard.sh]="manifest:.agent/user_tier_scripts.txt .agent/ .claude/"
     [test_user_tier_install.sh]=".agent/ .claude/"
+    # Copies the registry helper, the validator, the dispatcher, the lib and
+    # both project types into its sandbox workspace (issue #265 part 4).
+    [test_validate_workspace_stale.sh]=".agent/scripts .agent/project_types"
     # Copies the real worktree scripts and the single_project type into its
     # sandbox workspace.
     [test_worktree_create.sh]=".agent/scripts .agent/project_types"

@@ -1108,7 +1108,7 @@ git -C "$WT9" checkout -q feature/issue-9
 rm -rf "$WT9/.agent/work-plans"
 
 echo ""
-echo "TEST: resolve_worktree -- --type project (registry lookup, then the deprecated project/worktrees fallback)"
+echo "TEST: resolve_worktree -- --type project (registry lookup; the retired fallbacks are not searched)"
 # (a) registry lookup: one registered project, resolved via registry_worktree_dir
 # (default <path>/worktrees, no worktrees= override).
 SBP1="$(mktemp -d -p "$SANDBOX")"
@@ -1132,9 +1132,10 @@ conv=$(printf '%s\n' "$out" | grep '^conventions=')
     && pass "handoff: --type project implement conventions= carries no workspace hook rule" \
     || fail "handoff project implement must not carry the hook rule (rc=$rc out=$out)"
 
-# (b) the deprecated project/worktrees fallback (wt_legacy_project_base): no
-# registry entry at all, worktree living inside a project/ checkout's own
-# worktrees/ dir (the pre-#265 shape).
+# (b) the retired locations (issue #265 part 4): no registry entry, a
+# worktree inside a project/ checkout's own worktrees/ dir (pre-#25) and
+# one under <ws>/worktrees/project/<n>/ (the transition fallback): neither
+# is found.
 SBP2="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP2" init -q -b main
 git -C "$SBP2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
@@ -1142,10 +1143,28 @@ mkdir -p "$SBP2/.agent/scripts"
 for f in dispatch_phase.sh progress_read.py pr_start.py _worktree_helpers.sh _project_registry.sh _resolve_default_branch.sh _resolve_work_plans_dir.sh; do
     cp "$SCRIPT_DIR/../$f" "$SBP2/.agent/scripts/"
 done
-mkdir -p "$SBP2/project/worktrees/issue-9"
+mkdir -p "$SBP2/project/worktrees/issue-9" "$SBP2/worktrees/project/legacy/issue-legacy-9"
 out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
-[[ "$rc" -eq 0 && "$out" == *"worktree=$SBP2/project/worktrees/issue-9"* ]] \
-    && pass "resolve_worktree --type project: no registry entry -- falls back to the deprecated project/worktrees/ shape" || fail "resolve_worktree project legacy fallback (rc=$rc out=$out)"
+[[ "$rc" -ne 0 && "$out" == *"no project worktree found for issue #9"* && "$out" != *"worktree=$SBP2/project"* && "$out" != *"worktree=$SBP2/worktrees/project"* ]] \
+    && pass "resolve_worktree --type project: no registry entry -- the retired project/worktrees/ and worktrees/project/<n>/ shapes are not found" || fail "resolve_worktree project retired shapes (rc=$rc out=$out)"
+# An unregistered --project finds nothing either: registry_worktree_dir
+# refuses the name instead of mapping it to worktrees/project/<name>/.
+out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project --project legacy 2>&1); rc=$?
+[[ "$rc" -ne 0 && "$out" == *"no project worktree found for issue #9"* && "$out" != *"worktree=$SBP2/worktrees/project"* ]] \
+    && pass "resolve_worktree --type project --project <unregistered>: not found" || fail "resolve_worktree unregistered --project (rc=$rc out=$out)"
+
+# (c) a registry with errors is a refusal naming it, never "not found"
+# (review suggestion): the one registered project's worktree exists.
+cp "$SBP1/.agent/projects.local" "$SANDBOX/projects.local.p1"
+printf 'broken single_project\n' >> "$SBP1/.agent/projects.local"
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"the project registry $SBP1/.agent/projects.local has errors, so issue 9's project worktree cannot be looked up"* \
+    && "$out" != *"no project worktree found"* ]] \
+    && pass "resolve_worktree --type project: a registry with errors is refused (exit 2), not 'not found'" || fail "resolve_worktree malformed registry (rc=$rc out=$out)"
+out=$(cd "$SBP1" && bash .agent/scripts/dispatch_phase.sh base --issue 9 --type project 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"has errors"* ]] \
+    && pass "base --type project: a registry with errors is refused (exit 2)" || fail "base malformed registry (rc=$rc out=$out)"
+cp "$SANDBOX/projects.local.p1" "$SBP1/.agent/projects.local"
 
 echo ""
 echo "TEST: base -- an issue with no package base prints nothing, exit 0 (issue 429)"

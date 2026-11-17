@@ -432,7 +432,7 @@ fi
 # from anywhere else: the records gate judges the gate's timeline by its own
 # worktree, not by the directory the merge was started in (issue 429 round 2).
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
-pkgwt="$sb/worktrees/project/demo/issue-demo-owner-pkg_a-901"
+pkgwt="$sb/demo/worktrees/issue-demo-owner-pkg_a-901"
 mkdir -p "$pkgwt/l1_ws/src"
 git init --quiet -b feature/issue-901 "$pkgwt/l1_ws/src/pkg_a"
 git -C "$pkgwt/l1_ws/src/pkg_a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
@@ -604,7 +604,15 @@ make_pkg_container() {
             git -C "$sb/origins_$proj/$r" push --quiet -u origin main
         fi
     done
-    cont="$sb/worktrees/project/$proj/issue-$proj-owner-pkg_a-901"
+    # Only a registered project's worktree dir is searched (issue #265
+    # part 4): register <project> at $sb/<project>, a root inside the
+    # sandbox workspace (ADR-0016 decision 1), so the container stays nested
+    # inside the workspace checkout.
+    if ! grep -q "^$proj " "$sb/.agent/projects.local" 2>/dev/null; then
+        mkdir -p "$sb/$proj"
+        echo "$proj ros2_colcon $sb/$proj" >> "$sb/.agent/projects.local"
+    fi
+    cont="$sb/$proj/worktrees/issue-$proj-owner-pkg_a-901"
     mkdir -p "$cont/l1_ws/src"
     git -C "$sb/origins_$proj/pkg_a" worktree add --quiet -B feature/issue-901 "$cont/l1_ws/src/pkg_a" main >/dev/null 2>&1
     git -C "$sb/origins_$proj/pkg_b" worktree add --quiet -B feature/pkg_b-issue-901 "$cont/l1_ws/src/pkg_b" main >/dev/null 2>&1
@@ -1681,13 +1689,13 @@ fi
 # ============================== enforce (the default), project scope =====
 echo "TEST: a project PR stays report-only under the enforce default"
 sb="$(make_sandbox "" "")"
-# a legacy project/ checkout with its own remote and a PR fixture there
+# a registered project checkout (projects/proj) with its own remote and a PR fixture there
 mkdir -p "$sb/fake_remotes/github.com/owner"
 git init --bare --quiet "$sb/fake_remotes/github.com/owner/proj.git"; git -C "$sb/fake_remotes/github.com/owner/proj.git" symbolic-ref HEAD refs/heads/main
-git -C "$sb" init --quiet -b main project >/dev/null 2>&1 || { mkdir -p "$sb/project"; git -C "$sb/project" init --quiet -b main; }
-git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-git -C "$sb/project" remote add origin "$sb/fake_remotes/github.com/owner/proj.git"
-git -C "$sb/project" push --quiet -u origin main
+mkdir -p "$sb/projects/proj"; git -C "$sb/projects/proj" init --quiet -b main; echo "proj single_project $sb/projects/proj" >> "$sb/.agent/projects.local"
+git -C "$sb/projects/proj" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+git -C "$sb/projects/proj" remote add origin "$sb/fake_remotes/github.com/owner/proj.git"
+git -C "$sb/projects/proj" push --quiet -u origin main
 printf '{"state":"OPEN","headRefName":"feature/issue-9","title":"Proj PR","headRefOid":"%s","comments":[]}\n' "$HEAD_SHA" \
     > "$sb/gh_fixtures/pr_view_$(printf '%s' "$sb/fake_remotes/github.com/owner/proj.git" | tr '/' '_')_9.json"
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
@@ -1701,9 +1709,9 @@ else
 fi
 
 # ============================== project registered outside project/ (#379) =====
-# The case above cannot catch a gate that looks in the wrong place: it builds
-# a legacy $sb/project checkout, so the registry-aware root and the hard-coded
-# $ROOT_DIR/project are the same directory, and its PR has no timeline at all.
+# The case above has no timeline at all, so it cannot catch a gate that
+# looks in the wrong place (before #379 the gate read a hard-coded
+# $ROOT_DIR/project, retired with the project/ shape in #265 part 4).
 # Here nothing exists at $sb/project; the one project is registered at
 # $sb/projects/proj_x, and the PR's timeline lives in that repo's worktree.
 # Before #379 the gate looked in $sb/project, found no worktree and reported
@@ -1725,7 +1733,7 @@ make_registered_sandbox() {  # <with_summary|""> <worktree|main>
         # project's main checkout
         wt="$pj"; git -C "$pj" checkout --quiet -b feature/issue-9
     else
-        wt="$sb/worktrees/project/issue-proj_x-9"
+        wt="$pj/worktrees/issue-proj_x-9"
         mkdir -p "$(dirname "$wt")"
         git -C "$pj" worktree add --quiet "$wt" -b feature/issue-9 >/dev/null 2>&1
     fi
@@ -1745,7 +1753,7 @@ run_merge_registered() {  # <sb>
         GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
         "$1/.agent/scripts/merge_pr.sh" --pr 9 --type project --no-wait --no-roadmap-update)
 }
-registered_progress() { cat "$1/worktrees/project/issue-proj_x-9/.agent/work-plans/issue-9/progress.md" 2>/dev/null; }
+registered_progress() { cat "$1/projects/proj_x/worktrees/issue-proj_x-9/.agent/work-plans/issue-9/progress.md" 2>/dev/null; }
 
 echo "TEST: a project registered outside project/ — the gate finds the PR's timeline in that repo's worktree (#379)"
 sb="$(make_registered_sandbox with_summary worktree)"
@@ -1764,7 +1772,7 @@ sb="$(make_registered_sandbox "" worktree)"
 out="$(run_merge_registered "$sb" 2>&1)" || true
 pushed="$(git -C "$sb/fake_remotes/github.com/owner/proj_x.git" show feature/issue-9:.agent/work-plans/issue-9/progress.md 2>/dev/null)"
 if [[ "$out" == *"would have refused"*"no \"## Decision summary\" heading"* ]] && [[ "$out" != *"no progress.md"* ]] \
-    && [[ "$out" == *"entry recorded in $sb/worktrees/project/issue-proj_x-9/"*"and pushed"* ]] \
+    && [[ "$out" == *"entry recorded in $sb/projects/proj_x/worktrees/issue-proj_x-9/"*"and pushed"* ]] \
     && registered_progress "$sb" | grep -q '^## Merge (report-only)$' \
     && grep -q '^## Merge (report-only)$' <<< "$pushed" \
     && merged_called "$sb" \

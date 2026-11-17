@@ -22,29 +22,28 @@
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
 # non-interactively. The bootstrap URL (a remote bootstrap.yaml) resolves
-# from BOOTSTRAP_URL in the environment, MANIFEST_BOOTSTRAP_URL in the
-# per-project config, or configs/project_bootstrap.url in the hosting dir;
-# a registered project's bootstrap_url setting (.agent/projects.d/<name>,
-# issue #332) comes before MANIFEST_BOOTSTRAP_URL (see _rc_bootstrap_url).
+# from BOOTSTRAP_URL in the environment, the project's bootstrap_url
+# setting (.agent/projects.d/<name>, issue #332), or
+# configs/project_bootstrap.url in the hosting dir (see _rc_bootstrap_url).
 # bootstrap.yaml fields: git_url, branch (required); layer (Pattern B —
 # clone into layers/main/<layer>_ws/src/<repo>; absent = Pattern A —
 # configs/manifest_repo/<repo>); config_path (default "config").
 #
-# Changed from main (issue #332): an INSTALL_CMD inherited from the
-# caller's environment is no longer honoured; adapter_install clears it
-# before sourcing the legacy or shared config, so only a config file (or
-# install= in the settings file) sets it. An install= command runs
-# without sourcing the legacy or shared config, so nothing they export (an
-# SDK path, PATH) reaches it: environment setup belongs in the script the
-# key points at.
+# The settings file is the project's only source of commands and URLs:
+# issue #265 part 4 retired the legacy .agent/projects.d/<name>.sh and the
+# shared .agent/project_config.sh, which nothing here reads. An install=
+# command runs without a shell, so nothing a config file exported (an SDK
+# path, PATH) reaches it: environment setup belongs in the script the key
+# points at.
 #
 # Distro handling (new capability — the ros2 scripts hardcoded jazzy):
-#   1. `distro:` field in configs/manifest/bootstrap.yaml
-#   2. ROS_DISTRO in the per-project config (.agent/projects.d/<name>.sh,
-#      falling back to .agent/project_config.sh)
+#   1. distro=<name> on the project's registry line
+#   2. `distro:` field in configs/manifest/bootstrap.yaml (the two must
+#      agree when both are set)
 #   3. otherwise: error. No silent default.
-# ROS_ROOT_DIR (per-project config; default /opt/ros) locates the distro
-# underlay — override it for tests or non-standard installs.
+# ROS_ROOT_DIR in the process environment (default /opt/ros) locates the
+# distro underlay: the one value this adapter reads from the environment,
+# set only by tests and non-standard installs.
 #
 # Environment discipline ported from ros2 build.sh (their ADR-0016): scrub
 # inherited COLCON/AMENT/CMAKE prefix paths, source ONLY the distro base
@@ -59,18 +58,14 @@
 
 # --- Config / manifest helpers -------------------------------------------
 
-# Per-project command config: the projects.d override when it exists, else
-# the shared project_config.sh (same resolution as single_project).
-_rc_config_file() {
-    if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
-        echo "$ACTIVE_PROJECT_CONFIG"
-    else
-        echo "$WORKSPACE_ROOT/.agent/project_config.sh"
-    fi
-}
-
 _rc_root() {
-    echo "${ACTIVE_PROJECT_ROOT:-$WORKSPACE_ROOT/project}"
+    # The registry hosting dir the dispatcher resolved; no default (issue
+    # #265 part 4 retired project/).
+    if [ -z "${ACTIVE_PROJECT_ROOT:-}" ]; then
+        echo "ERROR: no project selected (select one: --project <name>)" >&2
+        return 1
+    fi
+    echo "$ACTIVE_PROJECT_ROOT"
 }
 
 # The manifest directory every verb reads: configs/manifest on the
@@ -245,7 +240,7 @@ _rc_layer_dir() {
 # not consulted (and not compared) once the registry or manifest resolved
 # the distro. Errors loudly.
 _rc_distro() {
-    local mdir distro="" config manifest_distro=""
+    local mdir distro="" manifest_distro=""
     # The manifest route (issue #436) takes the registry's distro= only: the
     # generated directory has no bootstrap.yaml, and resolving needs the
     # distro before any other config (one source).
@@ -277,28 +272,10 @@ _rc_distro() {
         distro="$manifest_distro"
     fi
     if [ -z "$distro" ]; then
-        config="$(_rc_config_file)"
-        if [ -f "$config" ]; then
-            # Suppress the config's stdout only (env output must stay
-            # eval-safe); a failing config is a hard error, never an empty
-            # value — matching single_project's config-failure semantics.
-            if ! distro="$(
-                ROS_DISTRO=
-                # shellcheck source=/dev/null
-                source "$config" >/dev/null || exit 1
-                echo "${ROS_DISTRO:-}"
-            )"; then
-                echo "ERROR: failed to source $config" >&2
-                return 1
-            fi
-        fi
-    fi
-    if [ -z "$distro" ]; then
         echo "ERROR: cannot resolve the ROS distro for this project." >&2
         echo "Declare it in one of:" >&2
         echo "  .agent/projects.local            distro=<name> on the project's line" >&2
         echo "  $mdir/bootstrap.yaml            distro: <name>" >&2
-        echo "  $(_rc_config_file)   ROS_DISTRO=<name>" >&2
         return 1
     fi
     if ! [[ "$distro" =~ ^[a-z0-9_]+$ ]]; then
@@ -308,25 +285,12 @@ _rc_distro() {
     echo "$distro"
 }
 
-# Root under which distro underlays live (default /opt/ros). Overridable via
-# ROS_ROOT_DIR in the per-project config for tests / non-standard installs.
+# Root under which distro underlays live: ROS_ROOT_DIR from the process
+# environment, default /opt/ros (issue #265 part 4: it has no settings key,
+# and the config file that used to set it is no longer read). Only tests
+# and non-standard installs set it.
 _rc_ros_root() {
-    local config root=""
-    config="$(_rc_config_file)"
-    if [ -f "$config" ]; then
-        # A failing config must not silently discard the user's override
-        # and fall back to /opt/ros (wrong ROS install, no warning).
-        if ! root="$(
-            ROS_ROOT_DIR=
-            # shellcheck source=/dev/null
-            source "$config" >/dev/null || exit 1
-            echo "${ROS_ROOT_DIR:-}"
-        )"; then
-            echo "ERROR: failed to source $config" >&2
-            return 1
-        fi
-    fi
-    echo "${root:-/opt/ros}"
+    echo "${ROS_ROOT_DIR:-/opt/ros}"
 }
 
 # Path to the distro's setup.bash; errors if missing.
@@ -337,7 +301,7 @@ _rc_underlay() {
     underlay="$ros_root/$distro/setup.bash"
     if [ ! -f "$underlay" ]; then
         echo "ERROR: ROS underlay not found: $underlay" >&2
-        echo "Install ROS 2 '$distro' (or set ROS_ROOT_DIR in $(_rc_config_file))." >&2
+        echo "Install ROS 2 '$distro' (or set ROS_ROOT_DIR in the environment to the directory that holds it)." >&2
         return 1
     fi
     echo "$underlay"
@@ -410,45 +374,17 @@ _rc_repos_entries() {
     ' "$repos_file"
 }
 
-# Read one scalar from the per-project config (sourced in a subshell, stdout
-# suppressed so eval'd `env` output stays clean). A failing config is a
-# hard error — same semantics as _rc_distro / _rc_ros_root.
-_rc_config_var() {
-    local var="$1" config value
-    config="$(_rc_config_file)"
-    [ -f "$config" ] || { echo ""; return 0; }
-    if ! value="$(
-        eval "$var="
-        # shellcheck source=/dev/null
-        source "$config" >/dev/null || exit 1
-        eval "echo \"\${$var:-}\""
-    )"; then
-        echo "ERROR: failed to source $config" >&2
-        return 1
-    fi
-    echo "$value"
-}
-
 # Resolve the bootstrap URL (remote bootstrap.yaml). Priority: BOOTSTRAP_URL
 # env (a per-invocation override), bootstrap_url in the per-project
 # settings file .agent/projects.d/<name> (the dispatcher's
-# ACTIVE_PROJECT_BOOTSTRAP_URL, issue #332), MANIFEST_BOOTSTRAP_URL in the
-# legacy per-project config (projects.d/<name>.sh, else the shared
-# project_config.sh), then the hosting dir's configs/project_bootstrap.url.
-# A URL taken from the shared project_config.sh is reported on stderr for a
-# registered project, as single_project reports a shared command.
+# ACTIVE_PROJECT_BOOTSTRAP_URL, issue #332), then the hosting dir's
+# configs/project_bootstrap.url. MANIFEST_BOOTSTRAP_URL in a retired config
+# file is not read (issue #265 part 4).
 # Never prompts — the adapter runs under make and in CI.
 _rc_bootstrap_url() {
     local url="" url_file
     url="$(printf '%s' "${BOOTSTRAP_URL:-}" | tr -d '[:space:]')"
     [ -z "$url" ] && url="${ACTIVE_PROJECT_BOOTSTRAP_URL:-}"
-    if [ -z "$url" ]; then
-        url="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
-        url="$(printf '%s' "$url" | tr -d '[:space:]')"
-        if [ -n "$url" ] && [ "$(_rc_config_file)" = "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
-            active_project_fallback_note bootstrap_url
-        fi
-    fi
     if [ -z "$url" ]; then
         url_file="$(_rc_root)/configs/project_bootstrap.url"
         [ -f "$url_file" ] && url="$(tr -d '[:space:]' < "$url_file")"
@@ -486,7 +422,6 @@ _rc_bootstrap_manifest() {
         if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
             echo "  .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME bootstrap_url=<url>" >&2
         fi
-        echo "  MANIFEST_BOOTSTRAP_URL=<url> in $(_rc_config_file) (legacy)" >&2
         echo "  $root/configs/project_bootstrap.url" >&2
         if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
             echo "Or use a manifest in the new format (issue #436): .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME source=<git URL or absolute path> [source_ref=<branch|tag|commit>] [source_path=<file in the repo>], with role= and distro= on its registry line" >&2
@@ -711,24 +646,14 @@ _rc_file_stamp() {
 
 # One source only, never a silent choice: on the manifest route every other
 # bootstrap source that resolves is a hard error naming it and how to
-# remove it. The four are those of _rc_bootstrap_url.
+# remove it. The three are those of _rc_bootstrap_url.
 _rc_check_single_source() {
-    local name v cfg url_file
+    local name v url_file
     local -a lines=()
     name="$(_rc_name)"
     v="$(printf '%s' "${BOOTSTRAP_URL:-}" | tr -d '[:space:]')"
     [ -n "$v" ] && lines+=("BOOTSTRAP_URL=$v in the environment: unset it when running the adapter for this project")
     [ -n "${ACTIVE_PROJECT_BOOTSTRAP_URL:-}" ] && lines+=("bootstrap_url=${ACTIVE_PROJECT_BOOTSTRAP_URL} in ${ACTIVE_PROJECT_FILE:-the settings file}: remove it with: .agent/scripts/project_setting.sh unset $name bootstrap_url")
-    cfg="$(_rc_config_file)"
-    v="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
-    v="$(printf '%s' "$v" | tr -d '[:space:]')"
-    if [ -n "$v" ]; then
-        if [ "$cfg" = "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
-            lines+=("MANIFEST_BOOTSTRAP_URL=$v in $cfg (the shared config, read by every project without a legacy file of its own): remove that line")
-        else
-            lines+=("MANIFEST_BOOTSTRAP_URL=$v in $cfg (the legacy per-project config): remove that line")
-        fi
-    fi
     url_file="$(_rc_root)/configs/project_bootstrap.url"
     [ -f "$url_file" ] && lines+=("the file $url_file (in the project's root; it may be tracked in the project's own repository): remove it")
     [ "${#lines[@]}" -eq 0 ] && return 0
@@ -1608,42 +1533,20 @@ adapter_validate() {
 
 adapter_install() {
     # colcon installs during build; a separate deploy step is optional and
-    # config-driven, matching single_project's install semantics (issue
-    # #332): install= in the per-project settings file, then INSTALL_CMD in
-    # the legacy projects.d/<name>.sh when it exists, else in the shared
-    # project_config.sh (reported on stderr for a registered project).
-    local from="" shared
-    shared="$WORKSPACE_ROOT/.agent/project_config.sh"
-    if [ -n "${ACTIVE_PROJECT_INSTALL:-}" ]; then
-        if [ "$ACTIVE_PROJECT_INSTALL" = "none" ]; then
-            echo "install=none: project '$ACTIVE_PROJECT_NAME' records that it has no install step — nothing to install (colcon installs during build)."
-            return 0
-        fi
-        echo "Running: $ACTIVE_PROJECT_INSTALL $*"
-        echo ""
-        cd "$(_rc_root)" || return 1
-        active_project_exec "$ACTIVE_PROJECT_INSTALL" "$@"
-    fi
-    INSTALL_CMD=""
-    if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
-        # shellcheck source=/dev/null
-        source "$ACTIVE_PROJECT_CONFIG"
-        from="legacy"
-    elif [ -f "$shared" ]; then
-        # shellcheck source=/dev/null
-        source "$shared"
-        [ -n "${INSTALL_CMD:-}" ] && from="shared"
-    fi
-    if [ -z "${INSTALL_CMD:-}" ]; then
-        echo "INSTALL_CMD not set — nothing to install (colcon installs during build)."
+    # comes from install= in the project's settings file alone (issue #332;
+    # the legacy and shared config files are not read, issue #265 part 4).
+    if [ -z "${ACTIVE_PROJECT_INSTALL:-}" ]; then
+        echo "install not set for project '${ACTIVE_PROJECT_NAME:-}' — nothing to install (colcon installs during build)."
         return 0
     fi
-    [ "$from" = "shared" ] && active_project_fallback_note install
-    echo "Running: $INSTALL_CMD $*"
+    if [ "$ACTIVE_PROJECT_INSTALL" = "none" ]; then
+        echo "install=none: project '$ACTIVE_PROJECT_NAME' records that it has no install step — nothing to install (colcon installs during build)."
+        return 0
+    fi
+    echo "Running: $ACTIVE_PROJECT_INSTALL $*"
     echo ""
     cd "$(_rc_root)" || return 1
-    # shellcheck disable=SC2086
-    exec $INSTALL_CMD "$@"
+    active_project_exec "$ACTIVE_PROJECT_INSTALL" "$@"
 }
 
 adapter_repos() {

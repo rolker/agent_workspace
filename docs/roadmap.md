@@ -46,8 +46,8 @@ earlier to make sure the work we put it to design the workspace is fully
 implemented." The follow-ups he asked not to lose are the "Follow-up" rows
 of the deferral table: small tooling fixes (#323), the fixes
 from the first GeoZui4D onboarding run (#415), the loop defects seen on the
-GeoZui4D drives (#428), retiring `project/` and `projects/` (#265, part 4)
-and the orchestrator skill's first updates from the dogfooding log (#431).
+GeoZui4D drives (#428) and the orchestrator skill's first updates from the
+dogfooding log (#431).
 Also under this path: audit trials, the instruction-file trim, the backlog
 sweep, the orchestrator trial, and his "overall work managers", whose
 design waits on the orchestrator design session deferral (#398).
@@ -91,7 +91,6 @@ problems, and keeps the steps that do.
 | Follow-up: small tooling fixes (#323) | `gh-issue 323 open` |
 | Follow-up: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
 | Follow-up: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
-| Follow-up: retire `project/` and `projects/` and the worktree fallback, and register the project11 instances (#265, part 4) | `gh-issue 265 open` |
 | Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
 | Audit trials (escape-rate count, review-round rule) | `gh-issue 429 closed` |
 | Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
@@ -186,7 +185,7 @@ this table tracks the seven migration steps.
 | 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--project` wiring (was `--repo`, #255) (PR #232) |
 | 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 4 | Manifest support | #267 | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone; design section: [Registry and adapters](design.md#registry-and-adapters) |
-| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | in progress | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: project11 port-to-rolling under `~/project11-ng` before cutover; design section: [Sessions and roots](design.md#sessions-and-roots) |
+| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | done | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: project11 port-to-rolling under `~/project11-ng` before cutover; design section: [Sessions and roots](design.md#sessions-and-roots). Part 4 (retire) merged; registering the project11 instances on the second machine is tracked by #433 (the acceptance sentence above is the owner's and is not tracked here) |
 | 6 | Port `ros2_colcon` adapter | #235, #237, #248, #252 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 adapter core done (#235, PR #236). Phase 2 real-project smoke done (#237, PR #238): `setup` bootstraps a fresh hosting dir; `p11-jazzy` built end to end. Phase 4 isolation smoke done (#248): `p11-rolling` registered beside `p11-jazzy` from the project's `rolling` manifest branch (uma#384); setup/validate/env/discovery isolate per instance, no adapter changes needed; no Rolling build until the project is ported. Phase 3 (layer/package worktrees) complete as of PR 2 of #252: PR 1 landed the `worktree_repos`/`worktree_env` adapter verbs (ADR-0012), `.worktree-repos` manifest, manifest-driven `worktree_create`/`enter`/`remove`/`list`/`dashboard`, hermetic tests, no-symlink structural guarantee, and the real `p11-jazzy` smoke test; PR 2 adds `merge_pr.sh` repo-qualified PR resolution (`--repo`/qualified `owner/repo#N`), manifest-driven package-worktree lookup, and the sibling-PR cleanup rule. #252 closed; next up: steps 4 + 7 and retiring `ros2_agent_workspace`; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
@@ -207,7 +206,7 @@ ROS-only fixes.
 | Order | Item | Issue | Status | Notes |
 |-------|------|-------|--------|-------|
 | 1 | Package worktrees, PR 2 (`merge_pr.sh`) | #252 | done | PR 1 (#254) and PR 2 (#264) merged |
-| 2 | Hosted projects anywhere (step 5, design B) | #265 | in progress | See step 5 above. project11 test instances register under `~/project11-ng/<distro>` (renamed to `~/project11` at cutover; auto-memory deliberately left behind); design section: [Sessions and roots](design.md#sessions-and-roots) |
+| 2 | Hosted projects anywhere (step 5, design B) | #265 | done | See step 5 above. project11 test instances register under `~/project11-ng/<distro>` (renamed to `~/project11` at cutover; auto-memory deliberately left behind); design section: [Sessions and roots](design.md#sessions-and-roots) |
 | 3 | Manifest support (step 4) | #267 | planned | Re-scoped: a general ROS 2 manifest resolver (temporary home in this repo, built for extraction) that the ros2_colcon adapter calls; dual prototype (own resolver vs west) decides the tool; vcs2l replaces vcstool for fetching. #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 4 | Parity audit of the fork | #253 | planned | Feature by feature against the fork's tree, including its `.agent/knowledge`, work plans and work artifacts, not just scripts. Closed-since-fork issues are accounted for here, as features. Record: [Fork parity](fork_parity.md) |
 | 5 | Triage and transfer the fork's open issues | #260 | planned | Four buckets: transfer, close as covered, move to a project11 product repo, close as obsolete. Sonnet classifies, owner adjudicates proposals |

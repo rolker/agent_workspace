@@ -15,9 +15,8 @@
 #
 #   project   - For changes to a project repo
 #               Created in: <registered root>/worktrees/issue-<slug>-<N>/
-#               (or, for an unregistered project — legacy project/ symlink
-#               only — the transition fallback
-#               worktrees/project/<repo>/issue-<slug>-<N>/, #265)
+#               (or its worktrees= override); only a registered project
+#               has worktrees (#265 part 4)
 #               Git worktree of the project repo
 #               Draft PRs target the project repo (-R <project-remote>)
 #
@@ -180,8 +179,8 @@ show_usage() {
     echo "  --skill <name>        Skill name (alternative to --issue; allowed: ${ALLOWED_SKILLS[*]})"
     echo "  --type <type>         Worktree type: 'workspace' or 'project' (required)"
     echo "  --project <name>      Registered project name from .agent/projects.local (alias: --repo)"
-    echo "                        (--type project only; default: legacy project/, or the"
-    echo "                        single registered project when project/ is absent)"
+    echo "                        (--type project only; default: the registered root the"
+    echo "                        current directory is in, else the single registered project)"
     echo "  --repo-slug <slug>    Repository slug for naming (auto-detected if not provided)"
     echo "  --layer <name>        Layer to worktree (ros2_colcon package worktrees; requires"
     echo "                        --package-repos and a qualified --issue owner/repo#N)"
@@ -480,8 +479,8 @@ if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" != "project" ]; then
 fi
 
 # For project type, resolve the project checkout: an explicit --project name
-# from the registry, the legacy project/ symlink, or — when project/ is
-# absent — the single registered project (issue #227).
+# from the registry, the registered root the cwd is in, or the single
+# registered project (issue #227; #265 part 4 retired project/).
 PROJECT_NAME=""
 if [ "$WORKTREE_TYPE" == "project" ]; then
     PROJECT_DIR=""
@@ -497,7 +496,7 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
                     echo "Registered projects:"
                     sed 's/^/  /' <<< "$_NAMES"
                 else
-                    echo "  (no projects registered — see .agent/projects.local.example)"
+                    echo "  (no projects registered — register one: .agent/scripts/register_project"".sh <path>)"
                 fi
             fi
             exit 1
@@ -512,32 +511,34 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
             echo "Using instance '$PROJECT_NAME' of '$PROJECT_REPO' ($PROJECT_DIR)"
         fi
-    elif [ -d "$ROOT_DIR/project" ] && git -C "$ROOT_DIR/project" rev-parse --git-dir &>/dev/null; then
-        PROJECT_DIR="$ROOT_DIR/project"
     else
-        # No legacy project/ — fall back to the registry (parent roots are
-        # not candidates: their instances are, #265).
-        _ENTRIES="$(registry_entries "$ROOT_DIR")" || exit 1
-        [ -n "$_ENTRIES" ] && _ENTRIES="$(awk -F'\t' -v p="$REGISTRY_PARENT_TYPE" '$2 != p' <<< "$_ENTRIES")"
+        # No --project: the registered root the cwd is in (its hosting dir,
+        # or its worktrees= dir wherever that lies: registry_resolve_session_dir),
+        # else the single registered project (parent roots are not
+        # candidates: their instances are, #265). Issue #265 part 4 retired
+        # the project/ symlink step: a project/ checkout is never used.
+        _ENTRIES=""
+        _RC=0
+        _CWD_ENTRY="$(registry_resolve_session_dir "$ROOT_DIR" "$PWD")" || _RC=$?
+        [ "$_RC" -eq 2 ] && exit 1
+        if [ "$_RC" -eq 0 ]; then
+            # A cwd in a parent root selects its default/only instance.
+            _CWD_NAME="$(registry_resolve_project_arg "$ROOT_DIR" "$(cut -f1 <<< "$_CWD_ENTRY")")" || exit 1
+            _ENTRIES="$(printf '%s\t' "$_CWD_NAME"; registry_lookup "$ROOT_DIR" "$_CWD_NAME")" || exit 1
+        else
+            _ENTRIES="$(registry_entries "$ROOT_DIR")" || exit 1
+            [ -n "$_ENTRIES" ] && _ENTRIES="$(awk -F'\t' -v p="$REGISTRY_PARENT_TYPE" '$2 != p' <<< "$_ENTRIES")"
+        fi
         _COUNT=0
         [ -n "$_ENTRIES" ] && _COUNT="$(wc -l <<< "$_ENTRIES")"
         if [ "$_COUNT" -eq 1 ]; then
             PROJECT_NAME="$(cut -f1 <<< "$_ENTRIES")"
             PROJECT_DIR="$(cut -f3 <<< "$_ENTRIES")"
             echo "Using registered project '$PROJECT_NAME' ($PROJECT_DIR)"
-        elif [ "$_COUNT" -gt 1 ]; then
-            echo "Error: Multiple projects registered. Use --project to specify:"
-            cut -f1 <<< "$_ENTRIES" | sed 's/^/  --project /'
-            exit 1
         else
-            echo "Error: project/ is not configured and no project is registered in $ROOT_DIR/.agent/projects.local."
-            # The script's path is split in two on purpose (issue #295):
-            # the test selector (suites_for_files.sh) reads every path token
-            # in this file as a read of that file, and this script is
-            # reached by many suites, so naming it whole would make them all
-            # run whenever it changes (the hub guard in
-            # test_script_tests_hook_scope.sh). A message is not a read.
-            echo "Register one: .agent/scripts/register_project"".sh <path>"
+            # registry_no_project_message names the registration script with
+            # the split-token idiom (issue #295 hub guard).
+            echo "Error: $(registry_no_project_message "$ROOT_DIR" "$PWD")"
             exit 1
         fi
     fi
@@ -558,7 +559,7 @@ if [ -z "$REPO_SLUG" ]; then
 
     if [ -n "$PROJECT_NAME" ]; then
         # Registry-selected project: the registry name is the worktree repo
-        # key (worktrees/project/<name>/ — matches enter/remove --project), so
+        # key (<root>/worktrees/ — matches enter/remove --project), so
         # it must be used raw. Its charset is validated by the registry
         # parser and is a subset of what wt_project_base accepts; sanitizing
         # '.'/'-' to '_' here would break enter/remove --project <name> lookup.
@@ -764,17 +765,9 @@ else
 fi
 
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    if [ -n "$PROJECT_NAME" ]; then
-        # Registry-selected project: its own root's worktree dir.
-        WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$PROJECT_NAME")/${DIR_PREFIX}"
-    else
-        # Legacy project/ checkout: always the transition location. Going
-        # through the registry here would let a registered project that
-        # happens to share this checkout's repo-slug name capture the
-        # worktree under ITS root while git operations target project/
-        # (#273 round-2 review).
-        WORKTREE_DIR="$(wt_project_base_glob "$ROOT_DIR")/${REPO_SLUG}/${DIR_PREFIX}"
-    fi
+    # Always a registered project (issue #265 part 4): its own root's
+    # worktree dir.
+    WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$PROJECT_NAME")/${DIR_PREFIX}" || exit 1
 else
     WORKTREE_DIR="$(wt_workspace_base "$ROOT_DIR")/${DIR_PREFIX}"
 fi
@@ -815,8 +808,8 @@ echo ""
 
 # For a registered project, ensure its root excludes worktrees/ from its
 # own git status (and, for ros2_colcon roots, from colcon) before the
-# first worktree lands there. Idempotent; a no-op for legacy/unregistered
-# projects (#265).
+# first worktree lands there. Idempotent (#265). PROJECT_NAME is always
+# set for a project worktree since #265 part 4.
 if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$PROJECT_NAME" ]; then
     wt_ensure_exclusion "$ROOT_DIR" "$PROJECT_NAME"
 fi

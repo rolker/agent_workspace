@@ -17,9 +17,9 @@
 #     fail); a records combination other than the default is flagged "not
 #     yet honoured" (#393), a warning
 #   - every command the type requires (registration.conf required_commands)
-#     is the project's own: its settings file (a command or 'none'), or its
-#     legacy .agent/projects.d/<name>.sh. One that falls through to the
-#     shared .agent/project_config.sh, or none at all, fails
+#     is set in its settings file (a command or 'none'); one the file does
+#     not set fails (the legacy projects.d/<name>.sh and the shared
+#     .agent/project_config.sh are not read, issue #265 part 4)
 #   - `adapter --project <name> validate`, scoped to this project
 #   - a project root that is a git repository with no remote is a warning
 #     (a project without GitHub is supported)
@@ -149,10 +149,6 @@ else
         case "$_FROM" in
             file)
                 ok "$KEY: $_VAL (settings file)" ;;
-            legacy)
-                ok "$KEY: $_VAL (legacy $MAIN_ROOT/.agent/projects.d/$NAME.sh, read until #265 PR 4 retires it)" ;;
-            shared)
-                fail "$KEY falls through to the shared .agent/project_config.sh ('$_VAL'), which is not this project's own: set it with .agent/scripts/project_setting.sh set $NAME $KEY=<command> (a script path when it needs a shell), or $KEY=none" ;;
             *)
                 fail "no $KEY command: set it with .agent/scripts/project_setting.sh set $NAME $KEY=<command> (a script path when it needs a shell), or $KEY=none to record that the project has none" ;;
         esac

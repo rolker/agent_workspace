@@ -168,13 +168,18 @@ print_worktree() {
     local repo=""
     local skill=""
 
-    if [[ "$path" == *"/worktrees/workspace/"* ]] || [[ "$path" == *"/.workspace-worktrees/"* ]]; then
+    if [[ "$path" == *"/worktrees/workspace/"* ]]; then
         type="workspace"
         extract_issue_repo "$(basename "$path")"
         issue="$WT_ISSUE"
         repo="$WT_REPO"
         skill="$WT_SKILL"
         ((WORKSPACE_COUNT++)) || true
+    elif [[ "$path" == *"/.workspace-worktrees/"* ]]; then
+        # A workspace worktree in the retired pre-#25 location (issue #265
+        # part 4): git still has it, so it is shown, as `retired` (never
+        # `main`), and counted in no total. make validate names the location.
+        type="retired"
     fi
 
     # Check if clean or dirty and count changed files
@@ -190,8 +195,9 @@ print_worktree() {
         fi
     fi
 
-    # Track dirty count (exclude main — summary.total excludes main too)
-    if [ "$status" = "dirty" ] && [ "$type" != "main" ]; then
+    # Track dirty count (exclude main and retired — summary.total excludes
+    # them too)
+    if [ "$status" = "dirty" ] && [ "$type" != "main" ] && [ "$type" != "retired" ]; then
         ((DIRTY_COUNT++)) || true
     fi
 
@@ -201,7 +207,12 @@ print_worktree() {
 
     # Format text output
     if [ "$JSON_OUTPUT" = false ]; then
-        if [ "$type" == "main" ]; then
+        if [ "$type" == "retired" ]; then
+            echo "[retired] .workspace-worktrees/ is no longer used: remove it with git worktree remove, then recreate it with worktree_create.sh"
+            echo "   Path:   $path"
+            echo "   Branch: $display_branch"
+            echo "   Status: $status"
+        elif [ "$type" == "main" ]; then
             echo "[main] Main Workspace"
             echo "   Path:   $path"
             echo "   Branch: $display_branch"
@@ -251,11 +262,10 @@ if [ -n "$CURRENT_PATH" ]; then
     print_worktree "$CURRENT_PATH" "$CURRENT_BRANCH" "$CURRENT_HEAD"
 fi
 
-# Discover project worktrees by scanning worktrees/project/*/ (new) and project/worktrees/ (legacy)
+# Discover the project worktrees in one registered root's worktree dir
 _scan_project_worktrees() {
     local search_dir="$1"
-    local is_legacy="$2"
-    local known_repo="${3:-}"
+    local known_repo="${2:-}"
 
     [ -d "$search_dir" ] || return 0
 
@@ -325,9 +335,6 @@ _scan_project_worktrees() {
 
         # Format text output
         if [ "$JSON_OUTPUT" = false ]; then
-            if [ "$is_legacy" = true ]; then
-                echo "[project] ⚠️  LEGACY LOCATION"
-            fi
             if [ -n "$local_skill" ]; then
                 echo "[project] Skill: $local_skill - Repository: $local_repo"
             else
@@ -348,27 +355,20 @@ _scan_project_worktrees() {
 }
 
 # Registered roots: <root>/worktrees/ (or its worktrees= override), one
-# per registered non-parent project (#265) — plus the transition fallback
-# for still-unregistered projects, <ws>/worktrees/project/<name>/.
-# A malformed registry is reported, not silently shown as "no project
-# worktrees" (same fail-closed rule dashboard.sh applies).
+# per registered non-parent project (#265). Issue #265 part 4 retired the
+# worktrees/project/<name>/ fallback and the project/worktrees/ shape:
+# nothing there is listed. A malformed registry is reported, not silently
+# shown as "no project worktrees" (same fail-closed rule dashboard.sh
+# applies).
 if registry_entries "$ROOT_DIR" >/dev/null 2>&1 || [ $? -ne 2 ]; then
     while IFS=$'\t' read -r _reg_name _reg_dir; do
         [ -z "$_reg_dir" ] && continue
-        _scan_project_worktrees "$_reg_dir" false "$_reg_name"
-    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+        _scan_project_worktrees "$_reg_dir" "$_reg_name"
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
     unset _reg_name _reg_dir
 else
     echo "⚠️  Project registry (.agent/projects.local) is malformed; project worktrees are NOT listed until it is fixed." >&2
     REGISTRY_MALFORMED=true
-fi
-
-# Legacy location: project/worktrees/ (pre-#25 shape). Same gate: with a
-# malformed registry no project worktree is listed at all, so the summary
-# and the detail section never contradict each other.
-if [ "$REGISTRY_MALFORMED" != true ]; then
-    LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
-    _scan_project_worktrees "$LEGACY_PROJECT_BASE" true
 fi
 
 # --- Output ---
@@ -422,4 +422,4 @@ fi
 echo ""
 echo "Locations:"
 echo "  Workspace: worktrees/workspace/"
-echo "  Project:   <registered root>/worktrees/ (or worktrees/project/<name>/ if unregistered)"
+echo "  Project:   <registered root>/worktrees/ (or its worktrees= override)"

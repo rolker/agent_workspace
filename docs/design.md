@@ -117,9 +117,10 @@ by each run and stay on the machine; the roadmap holds no status column. The res
 `false`, `partial`, `unknown`, `unchecked`) are a trial.
 
 `.agent/scripts/discover_governance.sh` lists the governance files it finds in the workspace root and in
-the legacy `project/` checkout, under six types: `principles`, `architecture`, `agents-config`,
-`agent-guide`, `adr` and `workspace-context`. It does not scan registered projects and does not know
-the seven roles (checked in the script's `scan_scope`).
+every registered (non-parent) project root, read from the main checkout's registry (#265 part 4; it
+read the legacy `project/` checkout before), under six types: `principles`, `architecture`,
+`agents-config`, `agent-guide`, `adr` and `workspace-context`. It does not know the seven roles
+(checked in the script's `scan_scope`).
 
 **Target**
 
@@ -301,19 +302,62 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   validate`, `make setup` (no prompt), `make dashboard` and `make sync` succeed and point at
   `register_project.sh`, and the repo-safety check of `gh_create_pr.sh` and `gh_create_issue.sh`
   accepts every registered root's repository (`registry_repo_slugs` in `_project_registry.sh`), so a
-  project session needs no `project/` symlink (`test_fresh_clone_no_project.sh`).
+  project session needs no `project/` symlink (`test_fresh_clone_no_project.sh`). Whether a project
+  is registered is read from the main checkout's registry, found by `registry_main_checkout`
+  (`_project_registry.sh`) and its Python mirror `get_main_checkout_root` (`lib/workspace.py`), never
+  by the Makefile's `WS_ROOT`, which only places the venv and stamps. From a linked worktree of a
+  checkout made with `git clone --separate-git-dir`, git names no main checkout; both helpers then
+  fall back to the worktree and say so, and the messages say no registry was found from this linked
+  worktree instead of "none registered" (#265 part 4, PR 454's F1 and F2).
+- Discovery is registry-only (#265 part 4): the registry is the only link from a session to a project.
+  A call that names no project and runs in no registered root refuses with one sentence
+  (`registry_no_project_message` in `_project_registry.sh`) that names the directory, lists the
+  registered projects and says to pass `--project <name>` or register one: the adapter dispatcher,
+  `worktree_create.sh`, `session_root.sh`, `wt_resolve_project_repo_root` (`merge_pr.sh` with `--type
+  project`). `sync` is the one exception: with no project it syncs the workspace alone (the
+  dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 84). The registered root a cwd is in counts
+  its `worktrees=` directory wherever that lies (`registry_resolve_session_dir`), for
+  the adapter dispatcher, `worktree_create.sh`, `wt_resolve_project_repo_root`, with `--type project` and no `--project`
+  `worktree_enter.sh` and `worktree_remove.sh`, and the `--type` derivation when it is omitted
+  (`registry_derive_type_from_dir`). A `project/` checkout or symlink in the
+  workspace is read by no script, and nor are `worktrees/project/<name>/`, `.workspace-worktrees/` and
+  `project/worktrees/`.
+- Retirement is not silent: `registry_stale_report` (`_project_registry.sh`) names each retired shape
+  still on disk in the main checkout, with what to do. A registered folder is a registered root or a
+  root's `worktrees=` folder. `project` and each entry of `projects/` follow one rule: silent when
+  the path that names it is, holds or lies in a registered folder (ADR-0016 decision 1); a link to,
+  into or holding one, to a file or to nothing is to be removed (the link only); an unregistered
+  folder or link target is to be registered, or removed after the check every removal hint shares
+  (`CHECK_BEFORE_REMOVING`, `worktree_remove.sh` too: `git status --ignored`, `git stash list`,
+  `git log --all --not --remotes`). A checkout under the retired worktree locations (the walk stops
+  at each checkout and at depth 6) that is not, does not lie in and does not hold a registered folder
+  is named, with the same check before it is removed, then recreated under its project's root or, from
+  `.workspace-worktrees/`, as a workspace worktree. A `projects.d/<name>.sh` and the shared
+  `.agent/project_config.sh` are reported per setting the project's settings file lacks, under the old
+  order (the shared file only for a project with no `.sh` of its own; `ROS_DISTRO` and `ROS_ROOT_DIR`
+  only for a type whose adapter reads them); a parent root's `.sh` is told to move what an instance
+  needs; neither a `.sh` of no registered project nor the shared file is called safe to delete while it
+  sets something no registered project took, or while an unregistered folder or retired worktree
+  the report names may have read it (it says to register first). A registry with errors
+  gives one line saying so and no other advice, and a project whose settings file is invalid gets a
+  line saying what is left cannot be told. The case table is the header of
+  `test_validate_workspace_stale.sh`. `make validate` prints it after its results and `make
+  dashboard` as warnings; neither changes an exit status. The adapter prints the active project's lines
+  as a NOTE on stderr for the verbs a person runs (`setup`, `sync`, `validate`, `build`, `test`,
+  `install`; reading a retired file means running it, so the machine-read verbs skip it), and `install`
+  with no install setting refuses while a retired file still sets `INSTALL_CMD` or what it holds
+  cannot be told (`test_validate_workspace_stale.sh`, `test_adapter.sh`). The `.gitignore` keeps
+  ignoring the retired paths, so a machine that keeps them stays clean.
 
 **Target (decided, not built)**
 
 Status: `decided, not built`
 
-- Discovery becomes registry-only: PR 4 of #265 removes the legacy `project/` step. The dispatcher
-  still has it as step 3 of its resolution order (`adapter` header; ADR-0016, "ADR-0011's discovery
-  order will be superseded").
 - The workspace tree hosts no project, and the workspace writes nothing into a project checkout beyond
-  `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry's default
-  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header);
-  `register_project.sh` always writes an absolute path, so nothing it registers relies on it.
+  `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry has no
+  default hosting directory any more: an entry without a path is a parse error in both parsers
+  (`_project_registry.sh`, `lib/workspace.py`; #265 part 4), so nothing places a project under the
+  workspace unless its line names such a path.
 - A project's memory attaches to its own root, not to the workspace (ADR-0016 decision 4). No workspace
   script implements or checks this.
 
@@ -340,10 +384,10 @@ Status: `decided`
   with its project, and `project_setting.sh`, which reads the main checkout's settings files too and
   refuses to write them from a worktree (#332).
 - Registration is `register_project.sh <path>`, run from the main checkout (#332). It writes the
-  registry line, always with an absolute path, and the settings file (commands from `--set`, else the
-  legacy `.sh`, else `--detect`, which proposes only a single correct command), then runs the
-  read-only gate `registration_verify.sh` (each command the type requires is the project's own or
-  `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
+  registry line, always with an absolute path, and the settings file (commands from `--set`, else
+  `--detect`, which proposes only a single correct command; a legacy `.sh` is not read), then runs the
+  read-only gate `registration_verify.sh` (each command the type requires is set in the settings
+  file, a command or `none`; a missing one is refused), the type's build and test,
   and only then, when the user tier is installed from this checkout, the read-only
   `registration_verify.sh --user-tier`; the user-tier installer runs only with `--install-user-tier`,
   and nothing is enabled per root (the plugin is at user scope, ADR-0020). A failure removes the line
@@ -365,9 +409,8 @@ Status: `decided`
   `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
   settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
-  project has none"; anything that needs a shell is a script the key points at. A command set in the
-  file runs without sourcing the legacy or shared config below, so nothing they export (an SDK path,
-  `PATH`) reaches it: environment setup belongs in the script the key points at. The grammar and keys
+  project has none"; anything that needs a shell is a script the key points at, and environment setup
+  (an SDK path, `PATH`) belongs in that script too. The grammar and keys
   are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
   malformed file stops every adapter verb and fails `make validate`. The writer locks a
   `.lock.<basename>` file beside the file, or beside the target of a linked one, and never removes it,
@@ -375,12 +418,11 @@ Status: `decided`
   project's type never reads is refused the same way: each type lists such keys in
   `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
   owns; `single_project`: `bootstrap_url`, `source`, `source_ref` and `source_path`), so no setting
-  is stored and silently ignored. Per
-  setting, the adapters read the file; for a setting it leaves unset, the legacy
-  `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
-  when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
-  whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
-  unset. The adapters say on stderr when a registered project falls through to the shared file.
+  is stored and silently ignored. The settings file is a project's only source of commands and
+  URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
+  read by no adapter. A `ros2_colcon` project's distro comes from `distro=` on its registry line or
+  its manifest, and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
+  environment, the one value an adapter reads there.
 - Behaviour that differs per project shape sits behind a 13-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12 and by
   ADR-0019 to 13). The 13th, `repo_pin <repo> [--layer <l>]`, prints the ref the project pins a
@@ -393,8 +435,9 @@ Status: `decided`
   registration runs `setup` for a missing hosting directory, and the verbs it runs, so
   `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
-  for the two type names finds only help text and docstrings, and the `single_project` default in
-  `_resolve_project_type` (`adapter:80`) (2026-10-09).
+  for the two type names finds only help text and docstrings, and the dispatcher's one named type,
+  `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 84: `sync` with no project resolved; ADR-0011 lets the
+  dispatcher name a default type), which issue #295's workspace adapter type replaces (2026-11-17).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest directory, `configs/manifest` or the generated
   `configs/manifest-resolved`, and its `adapter.sh` header holds the layers, the bootstrap URL order
@@ -424,9 +467,9 @@ Status: `decided`
   that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set source=...`
   runs `setup`); `source` does not choose the type, and onboarding an empty session folder from a
   source is #473's.
-- The active project is resolved in this order: `--project`, then the cwd inside a registered hosting
-  directory (longest match), then the legacy `project/` checkout (`adapter` header, "Multi-tenant
-  resolution").
+- The active project is resolved in this order: `--project`, then the cwd (or `--from`) inside a
+  registered hosting directory (longest match); nothing else (`adapter` header, "Multi-tenant
+  resolution"; the legacy `project/` step went in #265 part 4).
 - The project's own `remote.origin.url` is its URL, and the project stays usable without the
   workspace. ADR-0011 supersedes ADR-0003 and carries that project-agnostic doctrine forward.
 - GitHub is not a project dependency; the workspace uses it for now (owner, 2026-10-05).
@@ -442,13 +485,13 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
-| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 156-183 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 306-350, 460-509, 728, 863, 999 and 1312, 1604 and 1621, 2448-2503 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 283-332, 507, 649, 737, 769, 908 |
-| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug, the slug of the legacy `project/` checkout and, since #295, every registered root's slug (`registry_repo_slugs`); the `project/` branch goes with the legacy fallbacks (#265) | 131-184 |
-| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
-| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 370-386, 427-431, 600-605, 689-718, 768-773, 1294-1302 |
+| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 142-176, remove 155-185 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_REPO_ROOT` (the registered root; no `project/` fallback since #265 part 4), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 313-358, 735, 870, 1006 and 1319, 2455-2485 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 286-337, 512, 655, 743, 775, 914 |
+| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug and every registered root's slug (`registry_repo_slugs`, #295); the `project/` slug branch went in #265 part 4 | 131-176 |
+| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 171 |
+| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root or its `worktrees=` dir, else `workspace` when inside the workspace checkout | 654-669 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
@@ -462,8 +505,8 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 
 | Verb | For the workspace | Based on |
 |---|---|---|
-| `setup` | thin wrapper | The `git-bug` and `ros-manifest` stamps (`Makefile` line 100; the header lists `setup-dev`, `ros-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` clones a project, which the workspace does not need |
-| `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo with the project |
+| `setup` | thin wrapper | The `git-bug` and `ros-manifest` stamps (`Makefile` line 100; the header lists `setup-dev`, `ros-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` brings up a registered checkout (since #265 part 4 it clones and links nothing), which the workspace does not need |
+| `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo, alone when no project is resolved (the dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, #265 part 4) |
 | `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
 | `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
 | `test` | thin wrapper | `.agent/scripts/tests/run_script_tests.sh`, the `validate-script-tests` hook's entry (`.pre-commit-config.yaml`) |
@@ -487,8 +530,8 @@ A project is added in two steps (#332 D1), and both are built: registration, fro
 see Now), and onboarding at the project root (`onboard-project`, see
 [Sessions and roots](#sessions-and-roots)). Registering and unregistering on one machine are defined
 (Now). Proposed: one project on two machines, not defined yet. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
-(#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
-described under [Sessions and roots](#sessions-and-roots).
+(#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape was dropped with the registry-only change
+described under [Sessions and roots](#sessions-and-roots) (#265 part 4).
 
 ## Worktrees
 
@@ -507,8 +550,11 @@ Status: `decided`
   branch (issue 478).
 - A workspace worktree is a worktree of the workspace repository, under `worktrees/workspace/`. A
   project worktree is a worktree of the project's repository, under the registered root's own
-  `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir`. An unregistered
-  project falls back to `worktrees/project/<repo>/`, dropped with the legacy `project/` checkout.
+  `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir` (both registry
+  parsers refuse a `worktrees=` that is or holds the workspace root, or is, holds or lies in
+  `worktrees/workspace`, so a workspace worktree never counts as a project's). Only a registered
+  project has worktrees: an unregistered name is refused, and the `worktrees/project/<repo>/`,
+  `.workspace-worktrees/` and `project/worktrees/` locations are no longer searched (#265 part 4).
   Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
   marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
 - A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
@@ -546,24 +592,24 @@ Status: `decided`
   Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
   changes nothing for them. `merge_pr.sh`'s gate reads the owning repository's pull request
   (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
-  entry's path travels with the match (`PKG_OWN_REL`, lines 645-668) and becomes the gate's worktree
-  (lines 841-865). The gate reads that checkout's timeline only when the checkout is its repository's
+  entry's path travels with the match (`PKG_OWN_REL`, lines 649-672) and becomes the gate's worktree
+  (lines 848-872). The gate reads that checkout's timeline only when the checkout is its repository's
   top folder, has the pull request's branch checked out and its HEAD equals origin's copy of it (a
   bounded fetch); otherwise it gives the reason and the record goes on the pull request (lines
-  866-933). It then reads the committed `progress.md` at that commit, never the working copy, so
+  873-940). It then reads the committed `progress.md` at that commit, never the working copy, so
   nothing uncommitted in the checkout changes what it reads; none committed means no timeline (lines
-  934-988). The record is committed there only when the working copy's `progress.md` is the committed
+  941-982). The record is committed there only when the working copy's `progress.md` is the committed
   one (`_gate_rec_not_committed`), else it goes on the pull request. A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 1024-1031 and 1437-1438). Package pull requests stay
+  record goes on its own pull request (lines 1031-1038 and 1443-1444). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 350: the resolved project root, else the legacy
-  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 728 and
-  863), and the main-tree guards include it, so the project's main checkout never takes the record
-  commit (lines 999 and 1312). The gate is still report-only for project pull requests (lines 1604 and
-  1621). A skill worktree's pull request (issue 478) has no issue and so no timeline: the gate reads
+  registered root (`PJ_REPO_ROOT`, lines 313-358; no `project/` fallback since #265 part 4) is what
+  both the Step 1 roadmap worktree lookup and the gate use (lines 735 and 870), and the main-tree
+  guards include it, so the project's main checkout never takes the record commit (lines 1006 and
+  1319). The gate is still report-only for project pull requests (lines 1611 and
+  1628). A skill worktree's pull request (issue 478) has no issue and so no timeline: the gate reads
   none and its record goes on the pull request ([Merge gate](#merge-gate)).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
@@ -635,7 +681,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    555, 601, 603, 665, 940: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (841-988, 1273-1452: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (848-995, 1280-1459: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
@@ -917,7 +963,7 @@ no section of this file carries that ADR.
 | ADR | Decision | Standing | Section | Re-examined |
 |---|---|---|---|---|
 | [0001](decisions/0001-adopt-architecture-decision-records.md) | Record decisions as short dated ADRs in `docs/decisions/`; accepted ADRs are history, superseded and not edited. Its trigger is scoped by ADR-0017 | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0002](decisions/0002-worktree-isolation-over-branch-switching.md) | All feature work happens in git worktrees, not by switching branches; the worktree scripts take `--type workspace\|project` | superseded in practice: project worktrees live under the registered root's own `worktrees/` (or `worktrees=`), and `worktrees/project/<repo>/` is only the legacy fallback; `--type` is derived from the cwd when omitted | [Worktrees](#worktrees) | yes 2026-10-09 |
+| [0002](decisions/0002-worktree-isolation-over-branch-switching.md) | All feature work happens in git worktrees, not by switching branches; the worktree scripts take `--type workspace\|project` | superseded in practice: project worktrees live under the registered root's own `worktrees/` (or `worktrees=`); the `worktrees/project/<repo>/` fallback is gone (#265 part 4), so only a registered project has worktrees; `--type` is derived from the cwd when omitted | [Worktrees](#worktrees) | yes 2026-10-09 |
 | [0003](decisions/0003-workspace-infrastructure-is-project-agnostic.md) | The workspace stays project-agnostic for a single-repo project | superseded by ADR-0011, which carries the doctrine forward | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0004](decisions/0004-enforcement-hierarchy-for-agent-compliance.md) | A rule that matters is enforced at more than one layer; instruction files alone are not enough | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0005](decisions/0005-layered-enforcement-strategy.md) | CI is the enforcement layer, pre-commit hooks the local mirror, framework hooks the early feedback; new rules go CI-first | in force | [Rules](#rules) | yes 2026-10-27 |
@@ -926,7 +972,7 @@ no section of this file carries that ADR.
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 13 (ADR-0019) | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, and nothing else (the legacy `project/` and `project_config.sh` step went in #265 part 4); a project's commands come from its settings file alone; the verb count is not drift, its Status already says 13 (ADR-0019) | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
@@ -1062,6 +1108,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Registry and adapters | No kept clone (owner's decisions at the rounds checkpoints): a git `source` is fetched afresh by each `setup` and `sync` into a temporary directory removed afterwards, local manifest work uses the path form, and without `flock` the directory before the live one is kept; a URL `source` is `https://` or `file://` with no credentials and the fetch allows the https, ssh and file transports only. The rules live in the `ros2_colcon/adapter.sh` header | #436 | 1092 |
 | 2026-11-13 | Registry and adapters | The resolver's clone of an `extends` base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (owner's decision on pull request 480: in the resolver). One clause in the manifest-route bullet; the rules live in the `ros2_colcon/adapter.sh` header and the `tools/ros-manifest` README | #436 | 1094 |
 | 2026-11-15 | Merge gate, Rules, Worktrees, Registry and adapters | Skill pull requests go through `merge_pr.sh` (issue 478, owner's choice G1): report-only like a project pull request, condition (a) always unmet, the record on the pull request, the roadmap step a stated no-op, the worktree removed by its path (`worktree_remove.sh --path`, the one on the head branch); every pull request's remote branch is deleted by one rule (`delete_remote_branch`: already gone counts, any other failure is said and marks the cleanup incomplete), no more silent `|| true` on the workspace and project path; the Rules row, Table 1's `merge_pr.sh` and `worktree_remove.sh` rows, the Records bullet and mechanism 1 citations are refreshed. Merge gate grows by 15 lines to 73, past the 60-line prompt: the two new bullets state what crosses the scripts (gate treatment, cleanup rule) and the mechanics stay in the `merge_pr.sh` header and `delete_remote_branch`, so no detail moves. After the pre-push review rounds: `--path` names a package entry and the repository check, a pull request from a fork touches no branch or worktree, and every `merge_pr.sh` and `worktree_remove.sh` line citation (Table 1, the Records bullet, mechanism 1) is refreshed | #478 | 1118 |
+| 2026-11-17 | Sessions and roots, Registry and adapters, Worktrees, ADR register | The registry is the only link from a session to a project (#265 part 4): Discovery becomes registry-only moves from Target to Now; a call that names no project and runs in no registered root refuses with one sentence (`registry_no_project_message`), `sync` excepted (it syncs the workspace alone); the `worktrees/project/<name>/`, `.workspace-worktrees/` and `project/worktrees/` locations are not searched; a registry entry needs its path; a project's commands and URLs come from its settings file alone (the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are read by no adapter; `ROS_ROOT_DIR` comes from the environment); a retired-shape report names what is left on disk; the main-checkout lookup's separate-git-dir fallback is said (PR 454's F1, F2). What changes on a machine like the owner's first one: every call that named no project used to resolve to the `project` symlink (worktree creation, `session_root.sh`, the adapter for `make build`, `make test` and `make install`, `merge_pr.sh`, `gh_create_*`, `pr_status.sh`, `discover_governance.sh`, `configure_git_identity.sh`); each now refuses, naming the registered projects and `--project <name>`, except `make sync`, which syncs the workspace alone. `make install` for a project whose install command was in the shared `project_config.sh` refuses until it is moved to the settings file, and a `ros2_colcon` instance whose distro was only in its `.sh` stops with "cannot resolve the ROS distro"; `make validate` names both. ADR register rows 0002 and 0011 restated (no ADR edited) | #265 | 1143 |
 
 ## Glossary
 

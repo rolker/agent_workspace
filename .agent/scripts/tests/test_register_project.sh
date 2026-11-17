@@ -353,12 +353,12 @@ check "with build=./scripts/build.sh and test=none: registered, the script ran" 
     bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"STATUS=registered"* ]] && grep -q BUILD_SCRIPT_RAN:delta "$3"' _ "$rc" "$out" "$REG_LOG"
 check "no remote: a warning, not a failure" has "$out" "has no git remote: supported"
 
-echo "TEST: a command falling through to the shared project_config.sh is refused"
+echo "TEST: a command only in the retired shared project_config.sh does not count (issue #265 part 4)"
 printf 'BUILD_CMD="make"\nTEST_CMD="make test"\n' > "$WS/.agent/project_config.sh"
 PS="$(make_cmake_proj epsilon)"
 out="$(reg "$WS" "$PS")"; rc=$?
-check "refused, naming the shared fallback" \
-    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"build falls through to the shared .agent/project_config.sh"* ]]' _ "$rc" "$out"
+check "refused: no build command of its own" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"no build command: set it with .agent/scripts/project_setting.sh set epsilon build="* ]] && [[ "$2" != *"falls through"* ]]' _ "$rc" "$out"
 rm -f "$WS/.agent/project_config.sh"
 
 echo "TEST: an invalid --set value is refused before anything is written"
@@ -600,44 +600,22 @@ check "by path with the commands: registered" [ "$rc" -eq 0 -a "$(status_of "$ou
 check "its line is kept as it was" cmp -s "$WS/.agent/projects.local" "$SANDBOX/reg.before"
 check "it gets a settings file" [ "$(cat "$(pfile "$WS" mu)")" = $'build=./scripts/build.sh\ntest=none' ]
 
-echo "TEST: adoption copies a legacy .sh and names the environment it no longer passes"
+echo "TEST: adoption does not read a legacy .sh: its settings come from detection, nothing is copied (issue #265 part 4)"
 PN="$(make_proj nu)"
 printf 'nu single_project %s\n' "$PN" >> "$WS/.agent/projects.local"
 cat > "$WS/.agent/projects.d/nu.sh" <<'EOF'
 export PATH="/opt/sdk/bin:$PATH"
 export SDK_ROOT=/opt/sdk
-BUILD_CMD="make"
-TEST_CMD="make test"
+BUILD_CMD="./legacy_build.sh"
+TEST_CMD="ls Makefil?"
 EOF
 out="$(reg "$WS" nu)"; rc=$?
 check "registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
-check "the commands are copied into the settings file" [ "$(cat "$(pfile "$WS" nu)")" = $'build=make\ntest=make test' ]
-check "the warning names PATH and SDK_ROOT" has "$out" "sets or exports PATH, SDK_ROOT, which a command in the settings file no longer gets"
-check "the warning does not name the variables the adapters read" bash -c '[[ "$1" != *"BUILD_CMD,"* && "$1" != *", BUILD_CMD"* ]]' _ "$out"
+check "the settings file holds the detected commands, not the legacy ones" [ "$(cat "$(pfile "$WS" nu)")" = $'build=make\ntest=make test' ]
+check "nothing is said to be copied from the legacy file" bash -c '[[ "$1" != *"copied from"* && "$1" != *"is not copied"* ]]' _ "$out"
+check "the adapter's NOTE names what is left in the legacy file (its exports), not a copy" \
+    has "$out" ".agent/projects.d/nu.sh sets or exports PATH, SDK_ROOT, which no command gets any more"
 check "the legacy file is left alone" [ -f "$WS/.agent/projects.d/nu.sh" ]
-
-echo "TEST: a legacy command with a glob character is left in the legacy file, never copied"
-# The legacy command ran through the shell's word splitting, which expands
-# a glob: 'ls Makefil?' lists the Makefile. Copied into the settings file
-# it would run without a shell and look for a file named 'Makefil?'.
-PNG="$(make_proj nuglob)"
-printf 'nuglob single_project %s\n' "$PNG" >> "$WS/.agent/projects.local"
-printf 'BUILD_CMD="make"\nTEST_CMD="ls Makefil?"\n' > "$WS/.agent/projects.d/nuglob.sh"
-out="$(reg "$WS" nuglob)"; rc=$?
-check "registered: the test still runs from the legacy file, glob expanded" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
-check "the warning names TEST_CMD, the key and the glob" \
-    has "$out" "TEST_CMD in $WS/.agent/projects.d/nuglob.sh is not copied ('test' has a glob character"
-check "only the build is copied" [ "$(cat "$(pfile "$WS" nuglob)")" = "build=make" ]
-for gv in 'pytest tests/test_*.py' 'pytest tests/[ab]*.py'; do
-    PG2="$(make_proj nuglob2)"
-    printf 'BUILD_CMD="make"\nTEST_CMD="%s"\n' "$gv" > "$WS/.agent/projects.d/nuglob2.sh"
-    out="$(reg "$WS" "$PG2" --dry-run)"
-    check "'$gv': not copied, warned, and nothing detected in its place" \
-        bash -c '[[ "$1" == *"TEST_CMD in "*"is not copied ('"'"'test'"'"' has a glob character"* && "$1" != *"test=make test"* && "$1" != *"test=pytest"* ]]' _ "$out"
-    rm -f "$WS/.agent/projects.d/nuglob2.sh"
-done
-reg "$WS" --remove nuglob >/dev/null
-rm -f "$WS/.agent/projects.d/nuglob.sh"
 
 echo "TEST: adoption refuses to rewrite a registered line"
 out="$(reg "$WS" nu ros2_colcon)"; rc=$?

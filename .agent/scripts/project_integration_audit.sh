@@ -735,7 +735,7 @@ if [ -n "$SNAME" ] && [ "$SETTINGS_OK" -eq 1 ]; then
         src="$(project_command_source "$MAIN_ROOT" "$SNAME" "$k" 2>/dev/null)" || continue
         from="$(cut -f1 <<< "$src")"
         val="$(cut -f2- <<< "$src")"
-        case "$from" in file|legacy) [ -n "$val" ] && [ "$val" != "none" ] && OWN_CMDS+=("$val") ;; esac
+        case "$from" in file) [ -n "$val" ] && [ "$val" != "none" ] && OWN_CMDS+=("$val") ;; esac
     done
 fi
 OWN_DESC="the project's own: ${OWN_CMDS[*]:-none set}"

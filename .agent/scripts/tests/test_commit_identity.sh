@@ -336,24 +336,103 @@ out="$(run_in "$sb" -- bash -c 'source "$1" --agent gemini >/dev/null; echo "$AG
 [ "$out" = "dev+gemini-cli@example.org" ] && pass "after configure, the base is unchanged" || fail "after configure (got: $out)"
 
 echo "TEST: configure_git_identity.sh derives per repository it writes to"
+# The repositories of a registered root (issue #265 part 4: the registry of
+# the current directory, never a project/ directory). The root is a plain
+# directory holding two clones, as a ros2_colcon instance holds its repos.
 sb="$(mk_repo "dev@example.org")"
-git init --quiet "$sb/repo/project/own"
-git -C "$sb/repo/project/own" config user.email "other@example.net"
-git init --quiet "$sb/repo/project/plain"
+mkdir -p "$sb/repo/.agent"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/proj/own"
+git -C "$sb/proj/own" config user.email "other@example.net"
+git init --quiet "$sb/proj/plain"
+git init --quiet "$sb/repo/project/unread"
 run_in "$sb" -- bash "$CONFIGURE" --agent codex >/dev/null 2>&1
 ws="$(git -C "$sb/repo" config --local user.email)"
-own="$(git -C "$sb/repo/project/own" config --local user.email)"
-plain="$(git -C "$sb/repo/project/plain" config --local user.email)"
+own="$(git -C "$sb/proj/own" config --local user.email)"
+plain="$(git -C "$sb/proj/plain" config --local user.email)"
 [ "$ws|$own|$plain" = "dev+codex@example.org|other+codex@example.net|dev+codex@example.org" ] \
     && pass "a clone with its own email keeps its base; the others use the global one" \
     || fail "per-repo derivation (got: $ws|$own|$plain)"
+unread="$(git -C "$sb/repo/project/unread" config --local user.email || true)"
+[ -z "$unread" ] && pass "a project/ directory is not read" || fail "project/ was written (got: $unread)"
 sb="$(mk_repo "dev@example.org")"
-git init --quiet "$sb/repo/project/bad"
-git -C "$sb/repo/project/bad" config user.email "foo"
+mkdir -p "$sb/repo/.agent"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/proj/bad"
+git -C "$sb/proj/bad" config user.email "foo"
 out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
 ws="$(git -C "$sb/repo" config --local user.email)"
-[[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"project/bad"* ]] \
+[[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"proj/bad"* ]] \
     && pass "one underivable repository: nothing is written anywhere" || fail "partial write (rc=$rc, ws=$ws, got: $out)"
+
+echo "TEST: configure_git_identity.sh: a registry with errors writes nothing; a linked worktree is not a repository of its own (review suggestion)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/proj/own"
+printf 'demo ros2_colcon %s\nbroken single_project\n' "$sb/proj" > "$sb/repo/.agent/projects.local"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+ws="$(git -C "$sb/repo" config --local user.email || true)"
+own="$(git -C "$sb/proj/own" config --local user.email || true)"
+[[ $rc -ne 0 && -z "$ws" && -z "$own" && "$out" == *"has errors (above), so which repositories belong to the registered projects cannot be told"* \
+    && "$out" == *"Nothing was written."* && "$out" != *"No registered project repositories found"* ]] \
+    && pass "a registry with errors: refused, nothing written, never 'none found'" || fail "malformed registry (rc=$rc, ws=$ws, own=$own, got: $out)"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git -C "$sb/proj/own" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git -C "$sb/proj/own" worktree add --quiet "$sb/proj/linked" -b side 2>/dev/null
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+[[ $rc -eq 0 && "$out" == *"Configuring $sb/proj/own "* && "$out" != *"Configuring $sb/proj/linked "* ]] \
+    && pass "a linked worktree (a .git file) is not configured as a repository of its own" || fail "linked worktree (rc=$rc, got: $out)"
+
+echo "TEST: configure_git_identity.sh: a root whose .git is a file (--separate-git-dir) is configured; a linked worktree is not (review round 3, M3)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent" "$sb/gitdirs"
+git init --quiet --separate-git-dir "$sb/gitdirs/sep.git" "$sb/sep"
+echo "sep single_project $sb/sep" > "$sb/repo/.agent/projects.local"
+git -C "$sb/sep" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git -C "$sb/sep" worktree add --quiet "$sb/sep/inner-linked" -b side 2>/dev/null
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+sep="$(git -C "$sb/sep" config --local user.email || true)"
+[[ $rc -eq 0 && "$sep" == "dev+codex@example.org" ]] \
+    && pass "a --separate-git-dir root (.git is a file) is configured" || fail "separate-git-dir root (rc=$rc, sep=$sep, got: $out)"
+[[ "$out" != *"Configuring $sb/sep/inner-linked "* ]] \
+    && pass "a linked worktree inside it (a .git file, git dir is not the common dir) is not" || fail "linked worktree configured (got: $out)"
+
+echo "TEST: configure_git_identity.sh: a submodule (a .git file under a superproject) is not configured; its superproject is (review round 4)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/subsrc"
+git -C "$sb/subsrc" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git init --quiet "$sb/super"
+git -C "$sb/super" -c protocol.file.allow=always submodule --quiet add "$sb/subsrc" sub >/dev/null 2>&1
+echo "super single_project $sb/super" > "$sb/repo/.agent/projects.local"
+[[ -f "$sb/super/sub/.git" ]] && pass "fixture: the submodule's .git is a file" || fail "fixture: no submodule at $sb/super/sub"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+super="$(git -C "$sb/super" config --local user.email || true)"
+subcfg="$(git -C "$sb/super/sub" config --local user.email || true)"
+[[ $rc -eq 0 && "$super" == "dev+codex@example.org" ]] && pass "the superproject is configured" || fail "superproject (rc=$rc, super=$super, got: $out)"
+[[ "$out" != *"Configuring $sb/super/sub "* && -z "$subcfg" ]] \
+    && pass "the submodule is not configured" || fail "submodule configured (sub=$subcfg, got: $out)"
+
+echo "TEST: configure_git_identity.sh: a root whose own path has a 'worktrees' folder is configured; its own worktree dir is skipped (review round 2, M3)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/srv/worktrees/product/own"
+git init --quiet "$sb/srv/worktrees/product/worktrees/stray"
+echo "demo ros2_colcon $sb/srv/worktrees/product" > "$sb/repo/.agent/projects.local"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+own="$(git -C "$sb/srv/worktrees/product/own" config --local user.email || true)"
+stray="$(git -C "$sb/srv/worktrees/product/worktrees/stray" config --local user.email || true)"
+[[ $rc -eq 0 && "$own" == "dev+codex@example.org" ]] \
+    && pass "a repository of a root under a 'worktrees' folder is configured" || fail "root under worktrees/ skipped (rc=$rc, own=$own, got: $out)"
+[[ -z "$stray" ]] && pass "the root's own worktree dir (<root>/worktrees) is still skipped" || fail "worktree dir configured (got: $stray)"
+git init --quiet "$sb/srv/worktrees/product/sub/worktrees/kept"
+echo "demo ros2_colcon $sb/srv/worktrees/product worktrees=$sb/srv/worktrees/product/wt" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/srv/worktrees/product/wt/stray2"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+kept="$(git -C "$sb/srv/worktrees/product/sub/worktrees/kept" config --local user.email || true)"
+stray2="$(git -C "$sb/srv/worktrees/product/wt/stray2" config --local user.email || true)"
+[[ $rc -eq 0 && "$kept" == "dev+codex@example.org" && -z "$stray2" ]] \
+    && pass "with worktrees=: that dir is skipped, a 'worktrees' folder elsewhere in the root is not" || fail "worktrees= override (rc=$rc, kept=$kept, stray2=$stray2, got: $out)"
 
 echo "TEST: .agent/.identity reads back exactly in bash and in a POSIX sh"
 # A sandbox copy of the scripts, so the real checkout's .agent/.identity is never written.

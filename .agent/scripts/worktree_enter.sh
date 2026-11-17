@@ -182,14 +182,11 @@ fi
 
 # Resolve base directory for the specified type
 _resolve_base_dirs() {
-    local type="$1"
+    local type="$1" _cwd_entry=""
     NEW_BASE=""
-    LEGACY_BASE=""
-    TRANSITION_BASE=""
 
     if [ "$type" == "workspace" ]; then
         NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
-        LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
         # Project type: resolve repo-specific directory. Fail closed on a
         # malformed registry rather than entering on partial state.
@@ -203,17 +200,25 @@ _resolve_base_dirs() {
             if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
                 return 1 2>/dev/null || exit 1
             fi
+        elif _cwd_entry="$(registry_resolve_session_dir "$ROOT_DIR" "$PWD" 2>/dev/null)"; then
+            # The registered root the cwd is in (its hosting dir or its
+            # worktrees= dir), as worktree_create.sh picks it; a parent root
+            # resolves to its instance.
+            if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$(cut -f1 <<< "$_cwd_entry")")"; then
+                return 1 2>/dev/null || exit 1
+            fi
+            if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                return 1 2>/dev/null || exit 1
+            fi
         else
-            # Auto-detect: find the single project, or list every candidate
-            # for --project to disambiguate (#265). The enumeration lists a
-            # registered project's current dir AND its pre-registration
-            # transition dir under the same name, so distinct names decide.
+            # Auto-detect: find the single project with a worktree dir, or
+            # list every candidate for --project to disambiguate (#265).
             local -a candidates=()
             local cname cdir
             while IFS=$'\t' read -r cname cdir; do
                 [ -z "$cdir" ] && continue
                 candidates+=("$cname"$'\t'"$cdir")
-            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
             local -a names=()
             local c n
             for c in "${candidates[@]}"; do
@@ -233,12 +238,8 @@ _resolve_base_dirs() {
                 return 1
             fi
         fi
-        # Worktrees created before the project was registered still live at
-        # <ws>/worktrees/project/<name>/; keep finding them (#265 PR 2 review).
-        if [ -n "$PROJECT_REPO" ]; then
-            TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")" || return 1
-        fi
-        LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
+        # Issue #265 part 4: no transition (worktrees/project/<name>/) or
+        # legacy (project/worktrees/) location is searched any more.
     fi
 }
 
@@ -247,15 +248,9 @@ WORKTREE_DIR=""
 _resolve_base_dirs "$WORKTREE_TYPE" || { return 1 2>/dev/null || exit 1; }
 
 if [ -n "$SKILL_NAME" ]; then
-    # Skill mode: search new location, then legacy
+    # Skill mode: search the base dir
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_skill "$TRANSITION_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE). Remove and recreate to move it under the project root." >&2
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
         echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'" >&2
         echo "" >&2
@@ -264,17 +259,11 @@ if [ -n "$SKILL_NAME" ]; then
         return 1 2>/dev/null || exit 1
     fi
 else
-    # Issue mode: search new location, then legacy. A qualified ISSUE_REF
-    # (owner/repo#N) is matched against each candidate's .worktree-repos
-    # header exactly (ADR-0012) — never by the trailing number alone.
+    # Issue mode: search the base dir. A qualified ISSUE_REF (owner/repo#N)
+    # is matched against each candidate's .worktree-repos header exactly
+    # (ADR-0012) — never by the trailing number alone.
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_issue "$TRANSITION_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE). Remove and recreate to move it under the project root." >&2
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
         CURRENT_TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
         if [ -n "$CURRENT_TOPLEVEL" ] && [[ "$(basename "$CURRENT_TOPLEVEL")" == issue-*-"$ISSUE_NUM" ]]; then
@@ -285,24 +274,18 @@ else
                     fi
                     ;;
                 project)
-                    # A registered root's worktree dir rarely contains the
-                    # literal "worktrees/project" segment (only the legacy
-                    # fallback does), so also accept any toplevel that is
-                    # a registered root's worktree dir plus one path
-                    # component (#265).
-                    if [[ "$CURRENT_TOPLEVEL" == */worktrees/project/* ]]; then
-                        WORKTREE_DIR="$CURRENT_TOPLEVEL"
-                    else
-                        _ct_parent="$(dirname "$CURRENT_TOPLEVEL")"
-                        while IFS=$'\t' read -r _ct_name _ct_dir; do
-                            [ -z "$_ct_dir" ] && continue
-                            if [ "$_ct_dir" = "$_ct_parent" ]; then
-                                WORKTREE_DIR="$CURRENT_TOPLEVEL"
-                                break
-                            fi
-                        done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
-                        unset _ct_parent _ct_name _ct_dir
-                    fi
+                    # Accept a toplevel that is a registered root's
+                    # worktree dir plus one path component (#265; the
+                    # worktrees/project/ fallback was retired in part 4).
+                    _ct_parent="$(dirname "$CURRENT_TOPLEVEL")"
+                    while IFS=$'\t' read -r _ct_name _ct_dir; do
+                        [ -z "$_ct_dir" ] && continue
+                        if [ "$_ct_dir" = "$_ct_parent" ]; then
+                            WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                            break
+                        fi
+                    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+                    unset _ct_parent _ct_name _ct_dir
                     ;;
             esac
         fi
@@ -342,9 +325,18 @@ if [ -z "$SKILL_NAME" ] && [ "$SHELL_SNIPPET" != true ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_WS_SLUG" --root "$ROOT_DIR" || true
         _ISSUE_TITLE="$ISSUE_TITLE"
     fi
-    # If not found in workspace repo, try project repo
-    if [ -z "$_ISSUE_TITLE" ] && [ -d "$ROOT_DIR/project/.git" ]; then
-        _PJ_SLUG=$(extract_gh_slug "$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null)")
+    # If not found in workspace repo, try the project's repo: the
+    # registered root the worktree belongs to (#265 part 4: not project/).
+    _PJ_ROOT=""
+    if [ -z "$_ISSUE_TITLE" ] && [ "$WORKTREE_TYPE" = "project" ]; then
+        if [ -n "$PROJECT_REPO" ]; then
+            _PJ_ROOT="$(registry_lookup "$ROOT_DIR" "$PROJECT_REPO" 2>/dev/null | cut -f2)" || _PJ_ROOT=""
+        else
+            _PJ_ROOT="$(registry_resolve_session_dir "$ROOT_DIR" "$WORKTREE_DIR" 2>/dev/null | cut -f3)" || _PJ_ROOT=""
+        fi
+    fi
+    if [ -z "$_ISSUE_TITLE" ] && [ -n "$_PJ_ROOT" ] && git -C "$_PJ_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+        _PJ_SLUG=$(extract_gh_slug "$(git -C "$_PJ_ROOT" remote get-url origin 2>/dev/null)")
         if [ -n "$_PJ_SLUG" ] && [ "$_PJ_SLUG" != "$_WS_SLUG" ]; then
             issue_lookup "$ISSUE_NUM" --repo "$_PJ_SLUG" --root "$ROOT_DIR" || true
             _ISSUE_TITLE="$ISSUE_TITLE"

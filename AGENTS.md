@@ -7,8 +7,9 @@ setup (environment, identity, features), see your framework's adapter file:
 
 ## Terminology
 
-- **Project**: the managed product in `project/` — what's actually being built.
-  Product features, deployment, and user-facing behavior are project scope.
+- **Project**: the managed product, any folder registered with the workspace (`register_project.sh`),
+  wherever it lives. A hosting service is optional; git is meant to be, but registration still needs it.
+  Features, deployment and user-facing behavior are project scope.
 - **Workspace**: the agent infrastructure in this repo — skills, governance,
   scripts, worktrees, docs, and configuration.
 
@@ -16,16 +17,16 @@ When scope is ambiguous in conversation, default to **project** (the thing
 being built) unless the topic is clearly about agent tooling or workspace
 internals.
 
-**Repo ownership**: The working directory contains files from both repos
-(workspace infrastructure is layered onto the project checkout). Don't assume
-which GitHub repo you're in based on directory contents — use `gh repo view` or
-`git remote -v` to confirm. Issues and PRs must target the repo that owns the
-code being changed:
+**Repo ownership**: A workspace session works in the workspace checkout and a
+project session in the project's own registered folder; the two are separate
+folders. Don't assume which repo you're in based on directory contents — use
+`gh repo view` or `git remote -v` to confirm. Issues and PRs must target the
+repo that owns the code being changed:
 
 | Scope | Repo | What lives there |
 |-------|------|-----------------|
 | Workspace | `agent_workspace` | `AGENTS.md`, `.agent/`, skills, scripts, docs |
-| Project | project repo (e.g. `my_project`) | The product being built (`project/`) |
+| Project | project repo (e.g. `my_project`) | The product being built (its registered folder) |
 
 ## Boundaries
 
@@ -154,9 +155,9 @@ Use your actual runtime identity — never copy example model names from docs.
 
 ## Build & Test
 
-Configure the project's build and test commands in `.agent/project_config.sh` (gitignored);
-then `make build`, `make test`, `make lint` (pre-commit on all files) and `make validate`
-(workspace config). See [`.agent/knowledge/build_and_test.md`](.agent/knowledge/build_and_test.md).
+Set a single-repository project's build and test commands with `project_setting.sh set <name> build=<command>`
+(a `ros2_colcon` project's come from colcon); then `make build PROJECT=<name>`, `make test PROJECT=<name>`,
+`make lint` (pre-commit on all files) and `make validate`. See [`.agent/knowledge/build_and_test.md`](.agent/knowledge/build_and_test.md).
 
 ## Verify Before Claiming
 

@@ -29,6 +29,8 @@ fi
 # Load framework identity lookup table from shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_CONFIG="${SCRIPT_DIR}/framework_config.sh"
+# shellcheck source=_project_registry.sh
+source "${SCRIPT_DIR}/_project_registry.sh"
 
 if [ -f "${FRAMEWORK_CONFIG}" ]; then
     # shellcheck source=/dev/null
@@ -65,7 +67,7 @@ show_usage() {
     echo ""
     echo "This configures git identity in:"
     echo "  - The workspace repository (agent_workspace)"
-    echo "  - All repositories under project/"
+    echo "  - Every repository under each registered project root (.agent/projects.local)"
 }
 
 # Auto-detect framework from environment
@@ -141,13 +143,46 @@ else
 fi
 
 # The repositories written to: the workspace (the current directory) and
-# every repository under project/.
+# every repository under each registered (non-parent) project root, read
+# from the registry of the current directory's main checkout (issue #265
+# part 4: a project/ directory is not read). A repository is a folder
+# holding .git: a .git directory, or a .git file whose git dir is its common
+# dir (a --separate-git-dir checkout); a linked worktree or a submodule
+# (also a .git file) is not one, and a root's worktree dir is skipped by
+# its path. A registry with errors writes nothing: read
+# as empty, it would configure the workspace alone and say no project
+# repository was found.
 REPOS=(".")
-if [ -d "project" ]; then
-    while IFS= read -r git_dir; do
-        REPOS+=("$(dirname "$git_dir")")
-    done < <(find project -type d -name ".git" -not -path "*/worktrees/*")
+_REG_ROOT="$(registry_main_checkout "$PWD")"
+if ! _REG_ENTRIES="$(registry_entries "$_REG_ROOT")"; then
+    echo "Error: the project registry $(registry_file "$_REG_ROOT") has errors (above), so which repositories belong to the registered projects cannot be told; fix it, then run this again. Nothing was written." >&2
+    exit 1
 fi
+while IFS=$'\t' read -r _reg_name _reg_type _reg_path; do
+    [ -n "$_reg_name" ] || continue
+    [ "$_reg_type" = "$REGISTRY_PARENT_TYPE" ] && continue
+    [ -d "$_reg_path" ] || continue
+    # The root's own worktree dir (its worktrees= or <root>/worktrees) is
+    # skipped by that path, never by a "worktrees" folder name: the root's
+    # own absolute path may contain one.
+    _reg_wt="$(registry_worktree_dir "$_REG_ROOT" "$_reg_name" 2>/dev/null)" || _reg_wt=""
+    while IFS= read -r git_dir; do
+        _repo="$(dirname "$git_dir")"
+        if [ -n "$_reg_wt" ] && { [ "$_repo" = "$_reg_wt" ] || [[ "$_repo" == "$_reg_wt/"* ]]; }; then
+            continue
+        fi
+        # A .git file is a checkout of its own only when git's dir is the
+        # common dir (a --separate-git-dir clone) and no superproject holds
+        # it; a linked worktree or a submodule is not configured here.
+        if [ -f "$git_dir" ]; then
+            _gd="$(git -C "$_repo" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || continue
+            _cd="$(git -C "$_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
+            [ "$_gd" = "$_cd" ] || continue
+            [ -z "$(git -C "$_repo" rev-parse --show-superproject-working-tree 2>/dev/null)" ] || continue
+        fi
+        REPOS+=("$_repo")
+    done < <(find "$_reg_path/" -name ".git" \( -type d -o -type f \) -prune | sort)
+done <<< "$_REG_ENTRIES"
 
 # Derive each repository's address before writing any (manual mode uses the
 # given address everywhere).
@@ -172,29 +207,25 @@ git config user.name "$AGENT_NAME"
 git config user.email "${REPO_EMAILS[.]}"
 echo "  ✓ Workspace repository configured <${REPO_EMAILS[.]}>"
 
-# Configure all repositories in project/
-if [ -d "project" ]; then
-    REPO_COUNT=0
-    for repo_dir in "${REPOS[@]}"; do
-        [ "$repo_dir" = "." ] && continue
-        echo "Configuring $repo_dir <${REPO_EMAILS[$repo_dir]}>..."
+# Configure all repositories of the registered projects
+REPO_COUNT=0
+for repo_dir in "${REPOS[@]}"; do
+    [ "$repo_dir" = "." ] && continue
+    echo "Configuring $repo_dir <${REPO_EMAILS[$repo_dir]}>..."
 
-        # Capture failure but don't crash whole script immediately if one fails
-        if ! git -C "$repo_dir" config user.name "$AGENT_NAME" || \
-           ! git -C "$repo_dir" config user.email "${REPO_EMAILS[$repo_dir]}"; then
-            echo "  ✗ Failed to configure $repo_dir" >&2
-            continue
-        fi
-        ((REPO_COUNT++))
-    done
-
-    if [ $REPO_COUNT -gt 0 ]; then
-        echo "  ✓ Configured $REPO_COUNT repositories in project/"
-    else
-        echo "  ℹ No repositories found in project/ yet"
+    # Capture failure but don't crash whole script immediately if one fails
+    if ! git -C "$repo_dir" config user.name "$AGENT_NAME" || \
+       ! git -C "$repo_dir" config user.email "${REPO_EMAILS[$repo_dir]}"; then
+        echo "  ✗ Failed to configure $repo_dir" >&2
+        continue
     fi
+    ((REPO_COUNT++))
+done
+
+if [ $REPO_COUNT -gt 0 ]; then
+    echo "  ✓ Configured $REPO_COUNT repositories of the registered projects"
 else
-    echo "  ℹ No project/ directory found yet"
+    echo "  ℹ No registered project repositories found"
 fi
 
 echo ""

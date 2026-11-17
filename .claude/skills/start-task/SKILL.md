@@ -131,7 +131,7 @@ directory is no session's root). Do not `cd` elsewhere to get round it.
 If it passes with `--type project` and no `--project`, and it printed a
 non-empty `project=<name>`, append `--project <name>` to `$ARGUMENTS` in
 step 3, so `worktree_create.sh` resolves this session's project rather than
-its legacy `project/` or single-registered fallback.
+its single-registered fallback.
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
@@ -202,7 +202,7 @@ After changes to this skill, run these checks from a fresh main-tree session to 
 
 2. **Skill case** — `/start-task --skill research --type workspace`. Same flow with a skill-worktree path (`worktrees/workspace/skill-research-<TS>/`).
 
-3. **Project case** — `/start-task --issue <test-N> --type project` against a configured project repo. Expected: step 3's `elif` fires; new worktree created at `worktrees/project/<repo>/issue-<repo>-<test-N>/` for an unregistered project, or under the project's own root (`registry_worktree_dir`) when it's registered in `.agent/projects.local` (issue #265); `cd` succeeds. This is the case the previous `EnterWorktree`-based flow failed (the project worktree belongs to a separate git repo from the workspace, which `git worktree list` doesn't see); confirms uniform `cd` covers it.
+3. **Project case** — `/start-task --issue <test-N> --type project` against a configured project repo. Expected: step 3's `elif` fires; new worktree created under the project's own root (`registry_worktree_dir`; only a project registered in `.agent/projects.local` has worktrees, issue #265); `cd` succeeds. This is the case the previous `EnterWorktree`-based flow failed (the project worktree belongs to a separate git repo from the workspace, which `git worktree list` doesn't see); confirms uniform `cd` covers it.
 
 4. **Re-entry case** — exit the worktree from check 1 (`cd -` back to the workspace root), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `cd` puts the session back in the existing worktree.
 

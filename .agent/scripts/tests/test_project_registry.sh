@@ -112,22 +112,24 @@ make_registered_project() {
     local sb="$1" name="$2" path="${3:-}"
     local dir="${path:-$sb/projects/$name}"
     make_git_repo "$dir" "file:///nonexistent/${name}.git"
-    if [ -n "$path" ]; then
-        echo "$name single_project $path" >> "$sb/.agent/projects.local"
-    else
-        echo "$name single_project" >> "$sb/.agent/projects.local"
-    fi
+    # A registry entry always names its path (issue #265 part 4); the
+    # default here is a root registered inside the workspace tree, which
+    # ADR-0016 decision 1 allows.
+    echo "$name single_project ${path:-projects/$name}" >> "$sb/.agent/projects.local"
     echo "$dir"
 }
 
 # ---- Registry parsing tests ----
 
 test_registry_absent_is_legacy() {
-    echo "TEST: no registry → legacy project_root (from a cwd outside projects/)"
-    local sb out
+    echo "TEST: no registry → project_root refuses, a project/ checkout is not used (issue #265 part 4)"
+    local sb out rc=0
     sb="$(make_sandbox)"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "legacy root" "$sb/project" "$out"
+    make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_not_contains "never the project/ root" "$sb/project" "$out"
+    assert_contains "says none is registered" "no registered project here (cwd $(cd "$sb" && pwd -P)), and none is registered" "$out"
 }
 
 test_registry_malformed_line_fails() {
@@ -157,7 +159,7 @@ test_registry_comments_and_blanks() {
     {
         echo "# a comment"
         echo ""
-        echo "alpha single_project   # trailing comment"
+        echo "alpha single_project projects/alpha   # trailing comment"
     } > "$sb/.agent/projects.local"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha project_root)" || true
@@ -212,7 +214,7 @@ adapter_project_root() { echo "OTHER_TYPE_ROOT"; }
 adapter_repos() { :; }
 adapter_scope_for_pr() { :; }
 EOF
-    echo "beta other_type" > "$sb/.agent/projects.local"
+    echo "beta other_type projects/beta" > "$sb/.agent/projects.local"
     mkdir -p "$sb/projects/beta"
     # Workspace config says single_project; the registry entry must win.
     echo 'PROJECT_TYPE=single_project' > "$sb/.agent/project_config.sh"
@@ -260,45 +262,67 @@ test_unregistered_under_projects_fails() {
     mkdir -p "$sb/projects/orphan"
     out="$(cd "$sb/projects/orphan" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "explains the problem" "no registered project owns it" "$out"
+    assert_contains "explains the problem" "no registered project here (cwd $(cd "$sb/projects/orphan" && pwd -P)). Registered: alpha." "$out"
 }
 
 test_legacy_unaffected_by_registry() {
-    echo "TEST: registry present + cwd outside projects/ still resolves legacy"
-    local sb out
+    echo "TEST: registry present + cwd outside every root refuses, listing the registered names (issue #265 part 4)"
+    local sb out rc=0
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "legacy root wins outside projects/" "$sb/project" "$out"
+    make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "lists the registered project and --project" "Registered: alpha. Pass --project <name>" "$out"
+    assert_not_contains "never the project/ root" "$sb/project" "$out"
 }
 
 # ---- Per-project command config tests ----
 
 test_build_uses_projects_d_config() {
-    echo "TEST: build --project uses .agent/projects.d/<name>.sh in the project root"
+    echo "TEST: build --project runs the settings file's build in the project root; a legacy <name>.sh and the shared config are not read"
     local sb out stub
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" alphabuild)"
     make_registered_project "$sb" alpha >/dev/null
     mkdir -p "$sb/.agent/projects.d"
-    echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/projects.d/alpha.sh"
-    # Workspace config would run something else — must not be used.
+    printf 'build=%s\n' "$stub" > "$sb/.agent/projects.d/alpha"
+    # The retired files would run something else: never read.
+    echo 'BUILD_CMD="false"' > "$sb/.agent/projects.d/alpha.sh"
     echo 'BUILD_CMD="false"' > "$sb/.agent/project_config.sh"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || true
-    assert_contains "per-project stub ran in project root" \
+    assert_contains "settings-file stub ran in project root" \
         "STUB_alphabuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
 }
 
 test_build_falls_back_to_workspace_config() {
-    echo "TEST: build --project falls back to project_config.sh without projects.d file"
-    local sb out stub
+    echo "TEST: build --project with no build setting does not fall back to project_config.sh (issue #265 part 4)"
+    local sb out stub rc=0
     sb="$(make_sandbox)"
     stub="$(make_stub "$sb" sharedbuild)"
     make_registered_project "$sb" alpha >/dev/null
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || true
-    assert_contains "shared stub ran in project root" \
-        "STUB_sharedbuild_RAN_IN:$(cd "$sb/projects/alpha" && pwd -P)" "$out"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_not_contains "the shared stub does not run" "STUB_sharedbuild_RAN_IN" "$out"
+    assert_contains "says there is no build command" "project 'alpha' has no build command" "$out"
+}
+
+test_project_command_source_file_only() {
+    echo "TEST: project_command_source reports the settings file or missing, never a retired config (issue #265 part 4)"
+    local sb out rc
+    sb="$(make_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    mkdir -p "$sb/.agent/projects.d"
+    printf 'build=make all\ntest=none\n' > "$sb/.agent/projects.d/alpha"
+    echo 'INSTALL_CMD="legacy-install"' > "$sb/.agent/projects.d/alpha.sh"
+    echo 'INSTALL_CMD="shared-install"' > "$sb/.agent/project_config.sh"
+    assert_eq "a command from the file" "$(printf 'file\tmake all')" "$(reg "$sb" project_command_source "$sb" alpha build)"
+    assert_eq "'none' from the file" "$(printf 'file\tnone')" "$(reg "$sb" project_command_source "$sb" alpha test)"
+    assert_eq "unset in the file: missing, whatever the retired files say" "$(printf 'missing\t')" "$(reg "$sb" project_command_source "$sb" alpha install)"
+    rc=0; out="$(reg "$sb" project_command_source "$sb" alpha bootstrap_url 2>&1)" || rc=$?
+    assert_eq "not a command setting: rc 2" "2" "$rc"
+    assert_contains "not a command setting: says so" "is not a command setting" "$out"
 }
 
 # ---- registry_repo_slugs (issue #295) ----
@@ -313,10 +337,10 @@ test_registry_repo_slugs() {
     mkdir -p "$sb/projects/grp" "$sb/projects/nogit"
     make_git_repo "$sb/projects/grp/one" "https://github.com/owner/one.git"
     cat > "$sb/.agent/projects.local" <<EOF
-alpha single_project
-beta single_project
-gamma single_project
-nogit single_project
+alpha single_project projects/alpha
+beta single_project projects/beta
+gamma single_project projects/gamma
+nogit single_project projects/nogit
 grp project $sb/projects/grp
 grp-one single_project $sb/projects/grp/one parent=grp
 EOF
@@ -339,8 +363,8 @@ test_registry_repo_slugs_no_walk_up() {
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
     mkdir -p "$sb/projects/plain" "$sb/projects/plainsub/inner"
     cat > "$sb/.agent/projects.local" <<EOF
-alpha single_project
-plain single_project
+alpha single_project projects/alpha
+plain single_project projects/plain
 plainsub single_project $sb/projects/plainsub/inner
 EOF
     out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
@@ -357,7 +381,7 @@ test_registry_repo_slugs_absent_or_broken() {
     assert_eq "no registry: exit 0" "0" "$rc"
     assert_eq "no registry: nothing printed" "END" "$out"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
-    printf 'alpha single_project\nbad name with spaces=\n' > "$sb/.agent/projects.local"
+    printf 'alpha single_project projects/alpha\nbad name with spaces=\n' > "$sb/.agent/projects.local"
     rc=0
     out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
     assert_eq "parse error: exit 0 under set -e" "0" "$rc"
@@ -394,7 +418,7 @@ test_main_checkout_helpers() {
     # directory itself, never the enclosing repository.
     make_git_repo "$base/outer" "https://github.com/owner/outer.git"
     mkdir -p "$base/outer/.agent" "$base/outer/inner"
-    echo "x single_project" > "$base/outer/.agent/projects.local"
+    echo "x single_project inner" > "$base/outer/.agent/projects.local"
     expect="$base/outer/inner | $base/outer/inner"
     assert_eq "nested plain directory: itself" "$expect" "$(main_checkout_both "$base/outer/inner")"
 
@@ -416,6 +440,53 @@ test_main_checkout_helpers() {
     git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
     expect="$base/sepmain | $base/sepmain"
     assert_eq "separate-git-dir main checkout: itself" "$expect" "$(main_checkout_both "$base/sepmain")"
+
+    # A linked worktree of that checkout (PR 454's F2): git's first
+    # `worktree list` entry is the git dir, not a checkout, so neither helper
+    # can name the main checkout. Both fall back to the worktree itself, and
+    # both report that they fell back (the decision recorded in issue #265
+    # part 4), so a "none registered" message can say instead that no
+    # registry was found from this linked worktree.
+    git -C "$base/sepmain" worktree add --quiet -b sepwt "$base/sepwt" 2>/dev/null
+    expect="$base/sepwt | $base/sepwt"
+    assert_eq "separate-git-dir linked worktree: falls back to itself" "$expect" "$(main_checkout_both "$base/sepwt")"
+    assert_eq "separate-git-dir linked worktree: both helpers report the fallback" "1 | True" "$(main_checkout_fallback_both "$base/sepwt")"
+    assert_eq "a linked worktree whose main checkout is found: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/wt")"
+    assert_eq "a main checkout: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/main")"
+    assert_eq "a non-git directory: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/nogit")"
+}
+
+# Whether registry_main_checkout_fallback and get_main_checkout_status
+# report a fallback for <dir> (needs main_checkout_both's copies there).
+main_checkout_fallback_both() {
+    local dir="$1" sh_out py_out
+    sh_out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_main_checkout_fallback "$1" && echo 1 || echo 0' _ "$dir")"
+    py_out="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import workspace; print(workspace.get_main_checkout_status()[1])' "$dir/.agent/scripts/lib")"
+    printf '%s | %s\n' "$sh_out" "$py_out"
+}
+
+test_main_checkout_fallback_messages() {
+    echo "TEST: from a separate-git-dir linked worktree, validate and sync say no registry was found here, never 'none registered' (PR 454's F2)"
+    local base out
+    base="$(phys "$(mktemp -d -p "$SANDBOX")")"
+    make_git_repo "$base/main" "file:///nonexistent/ws.git"
+    mkdir -p "$base/main/.agent/scripts/lib" "$base/main/.agent/project_types"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$REAL_ROOT/.agent/scripts/validate_workspace.py" \
+        "$REAL_ROOT/.agent/scripts/adapter" "$base/main/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$base/main/.agent/scripts/lib/"
+    cp -r "$REAL_ROOT/.agent/project_types/single_project" "$base/main/.agent/project_types/"
+    git -C "$base/main" add -A
+    seed_commit "$base/main"
+    git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
+    git -C "$base/sepmain" worktree add --quiet -b sepwt "$base/sepwt" 2>/dev/null
+    out="$(cd "$base/sepwt" && python3 .agent/scripts/validate_workspace.py --verbose 2>&1)" || true
+    assert_contains "validate: no registry found from here" "no registry found from this linked worktree; run it from the main checkout" "$out"
+    assert_not_contains "validate: never 'no project registered'" "no project registered" "$out"
+    out="$(cd "$base/sepwt" && python3 .agent/project_types/single_project/sync.py --dry-run 2>&1)" || true
+    assert_contains "sync: no registry found from here" "No project was synced (no registry found from this linked worktree; run it from the main checkout)" "$out"
+    assert_not_contains "sync: never 'none registered'" "none registered" "$out"
+    out="$(cd "$base/sepmain" && python3 .agent/scripts/validate_workspace.py --verbose 2>&1)" || true
+    assert_contains "the separate-git-dir main checkout itself: 'no project registered'" "no project registered" "$out"
 }
 
 # ---- sync.py --project-root ----
@@ -458,7 +529,7 @@ test_validate_missing_checkout() {
     echo "TEST: validate flags a registered project without a checkout"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
-    echo "ghost single_project" > "$sb/.agent/projects.local"
+    echo "ghost single_project projects/ghost" > "$sb/.agent/projects.local"
     out="$(run_validate "$sb")" || rc=$?
     assert_eq "exit 1" "1" "$rc"
     assert_contains "names the project" "project 'ghost'" "$out"
@@ -469,7 +540,7 @@ test_validate_unknown_type() {
     local sb out rc=0
     sb="$(make_validate_sandbox)"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
-    echo "alpha no_such_type" > "$sb/.agent/projects.local"
+    echo "alpha no_such_type projects/alpha" > "$sb/.agent/projects.local"
     out="$(run_validate "$sb")" || rc=$?
     assert_eq "exit 1" "1" "$rc"
     assert_contains "names the type" "unknown project type 'no_such_type'" "$out"
@@ -487,7 +558,7 @@ test_validate_malformed_registry() {
 }
 
 test_validate_legacy_still_works() {
-    echo "TEST: validate on a legacy-only machine behaves as before"
+    echo "TEST: validate with an unregistered project/ checkout and no registry passes (project/ is not read)"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
@@ -526,15 +597,15 @@ test_validate_entry_path_missing_no_legacy() {
     echo "TEST: validate --verbose with no project/ still reports a registry line whose path is missing (issue #295)"
     local sb out rc=0 ghost
     sb="$(make_validate_sandbox)"
-    # A line with no path field (its default projects/<name> is absent) and
-    # a line naming a path that does not exist: both stay reported as before
-    # the project/ block went, and neither reads as "nothing registered".
+    # A line with no path field (a parse error since issue #265 part 4
+    # retired the projects/<name> default) and a line naming a path that does
+    # not exist: both are reported, and neither reads as "nothing registered".
     ghost="$sb/elsewhere/phantom"
     printf 'ghost single_project\nphantom single_project %s\n' "$ghost" > "$sb/.agent/projects.local"
     out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "the line without a path is reported at its default" \
-        "project 'ghost': hosting dir does not exist: $sb/projects/ghost" "$out"
+    assert_contains "the line without a path is a parse error naming the registration script" \
+        "'ghost' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
     assert_contains "the line with a missing path is reported at that path" \
         "project 'phantom': hosting dir does not exist: $ghost" "$out"
     assert_not_contains "not told that nothing is registered" "no project registered" "$out"
@@ -570,7 +641,7 @@ make_colcon_entry() {
             echo "    version: fakefox"
         done
     } > "$mdir/repos/l1.repos"
-    echo "$name ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "$name ros2_colcon projects/$name" >> "$sb/.agent/projects.local"
     echo "$proj"
 }
 
@@ -655,7 +726,7 @@ make_stub_type_entry() {
         done
         echo "adapter_validate() { $body; }"
     } > "$sb/.agent/project_types/stub_type/adapter.sh"
-    echo "$name stub_type" >> "$sb/.agent/projects.local"
+    echo "$name stub_type projects/$name" >> "$sb/.agent/projects.local"
 }
 
 test_validate_adapter_timeout() {
@@ -757,7 +828,7 @@ test_single_project_scoped_validate_ignores_broken_sibling() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
-    echo "ghost single_project" >> "$sb/.agent/projects.local"   # no checkout
+    echo "ghost single_project projects/ghost" >> "$sb/.agent/projects.local"   # no checkout
     make_colcon_entry "$sb" rc pkg_a >/dev/null                   # repo missing
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha validate 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -780,16 +851,17 @@ test_single_project_scoped_validate_nested_dir_fails() {
 }
 
 test_single_project_legacy_validate() {
-    echo "TEST: adapter validate (no --project) checks the legacy project/ only"
+    echo "TEST: adapter validate (no --project) from the workspace refuses; a project/ checkout is not validated (issue #265 part 4)"
     local sb out rc=0
     sb="$(make_sandbox)"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
-    assert_eq "missing project/ fails" "1" "$rc"
-    assert_contains "names project/" "checkout does not exist: $sb/project" "$out"
+    assert_eq "nothing registered: exit 1" "1" "$rc"
+    assert_contains "nothing registered: names the registration script" "and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
     make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
     rc=0
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
-    assert_eq "git project/ passes" "0" "$rc"
+    assert_eq "a git project/ does not make it pass" "1" "$rc"
+    assert_not_contains "project/ is not validated" "single_project checkout is a git repository" "$out"
 }
 
 # ---- worktree_create.sh --project wiring ----
@@ -993,9 +1065,7 @@ test_worktree_create_multiple_requires_repo() {
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 997 --type project 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "asks for --project" "Use --project to specify" "$out"
-    assert_contains "lists alpha" "--project alpha" "$out"
-    assert_contains "lists beta" "--project beta" "$out"
+    assert_contains "asks for --project and lists alpha and beta" "Registered: alpha, beta. Pass --project <name>" "$out"
 }
 
 
@@ -1060,9 +1130,50 @@ test_registry_fields_parse() {
     assert_eq "registry_field reads a field" "jazzy" "$(reg "$sb" registry_field "$sb" beta distro)"
     assert_eq "registry_field on a missing field returns 1" "1" \
         "$(reg "$sb" registry_field "$sb" alpha distro >/dev/null 2>&1; echo $?)"
-    assert_eq "fields without a path: path defaults" \
-        "$(printf 'gamma\tsingle_project\t%s/projects/gamma\trole=ops' "$sb")" \
-        "$(echo "gamma single_project role=ops" >> "$sb/.agent/projects.local"; reg "$sb" registry_entries_full "$sb" | grep '^gamma')"
+}
+
+test_registry_pathless_entry_fails() {
+    echo "TEST: an entry with no path is a parse error in both parsers (issue #265 part 4: no projects/<name> default)"
+    local sb out rc=0 line
+    sb="$(make_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    for line in "gamma single_project" "gamma single_project role=ops"; do
+        echo "$line" >> "$sb/.agent/projects.local"
+        rc=0; out="$(reg "$sb" registry_entries_full "$sb" 2>&1)" || rc=$?
+        assert_eq "shell: '$line' → rc 2" "2" "$rc"
+        assert_contains "shell: '$line' names the missing path and the registration script" \
+            "'gamma' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
+        assert_not_contains "shell: '$line' never defaults to projects/gamma" "$sb/projects/gamma" "$out"
+        assert_contains "shell: the healthy entry still prints" "$(printf 'alpha\tsingle_project\t%s/projects/alpha' "$sb")" "$out"
+        out="$(cd "$sb" && python3 -c 'import sys; sys.path.insert(0, ".agent/scripts/lib"); from workspace import read_projects_registry; e, err = read_projects_registry("."); print([x["name"] for x in e]); print("\n".join(err))' 2>&1)"
+        assert_contains "python: '$line' is an error with the same text" \
+            "'gamma' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
+        assert_contains "python: only the healthy entry parses" "['alpha']" "$out"
+        sed -i '/^gamma /d' "$sb/.agent/projects.local"
+    done
+}
+
+test_registry_no_project_message() {
+    echo "TEST: registry_no_project_message names the cwd, the registered names and the way out"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb/docs")" || rc=$?
+    assert_eq "none registered: rc 0" "0" "$rc"
+    assert_eq "none registered: the sentence" \
+        "no registered project here (cwd $sb/docs), and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    make_registered_project "$sb" alpha >/dev/null
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb")"
+    assert_eq "one registered: the sentence" \
+        "no registered project here (cwd $sb). Registered: alpha. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+    make_registered_project "$sb" beta >/dev/null
+    make_registered_project "$sb" gamma >/dev/null
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb")"
+    assert_eq "three registered: listed in registry order" \
+        "no registered project here (cwd $sb). Registered: alpha, beta, gamma. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+    echo "a..b single_project x" >> "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_no_project_message "$sb" "$sb" 2>/dev/null)" || rc=$?
+    assert_eq "parse error: rc 2" "2" "$rc"
+    assert_contains "parse error: the sentence still prints the parseable names" "Registered: alpha, beta, gamma." "$out"
 }
 
 test_registry_fields_rejected() {
@@ -1180,8 +1291,8 @@ test_registry_instances_and_default() {
 }
 
 test_registry_worktree_dir() {
-    echo "TEST: registry_worktree_dir: default, override, legacy fallback"
-    local sb
+    echo "TEST: registry_worktree_dir: default, override, unregistered name refused (issue #265 part 4)"
+    local sb out rc
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
     echo "beta single_project $sb/beta worktrees=$sb/beta/.wt" >> "$sb/.agent/projects.local"
@@ -1189,9 +1300,18 @@ test_registry_worktree_dir() {
     assert_eq "default under the hosting dir" "$sb/projects/alpha/worktrees" "$(reg "$sb" registry_worktree_dir "$sb" alpha)"
     assert_eq "absolute override under the entry's path" "$sb/beta/.wt" "$(reg "$sb" registry_worktree_dir "$sb" beta)"
     assert_eq "relative override resolves against the workspace" "$sb/wt/gamma" "$(reg "$sb" registry_worktree_dir "$sb" gamma)"
-    assert_eq "unregistered name → legacy location" "$sb/worktrees/project/legacy" "$(reg "$sb" registry_worktree_dir "$sb" legacy)"
-    assert_eq "legacy fallback rejects a traversal name" "1" "$(reg "$sb" registry_worktree_dir "$sb" "../../outside" >/dev/null 2>&1; echo $?)"
-    assert_eq "legacy fallback rejects a slash" "1" "$(reg "$sb" registry_worktree_dir "$sb" "a/b" >/dev/null 2>&1; echo $?)"
+    rc=0; out="$(reg "$sb" registry_worktree_dir "$sb" legacy 2>&1)" || rc=$?
+    assert_eq "unregistered name → rc 1" "1" "$rc"
+    assert_contains "unregistered name: refused with the registered names and the way out" \
+        "ERROR: project 'legacy' is not registered (registered: alpha, beta, gamma); register it: .agent/scripts/register_project.sh <path>" "$out"
+    assert_not_contains "unregistered name: never the retired location" "worktrees/project" "$out"
+    assert_eq "rejects a traversal name" "1" "$(reg "$sb" registry_worktree_dir "$sb" "../../outside" >/dev/null 2>&1; echo $?)"
+    assert_eq "rejects a slash" "1" "$(reg "$sb" registry_worktree_dir "$sb" "a/b" >/dev/null 2>&1; echo $?)"
+    rc=0; out="$(reg "$sb" registry_resolve_project_arg "$sb" legacy 2>&1)" || rc=$?
+    assert_eq "registry_resolve_project_arg: unregistered name → rc 1" "1" "$rc"
+    assert_contains "registry_resolve_project_arg: the same refusal, never the name printed back" \
+        "ERROR: project 'legacy' is not registered (registered: alpha, beta, gamma)" "$out"
+    assert_eq "registry_resolve_project_arg: a registered name prints back" "alpha" "$(reg "$sb" registry_resolve_project_arg "$sb" alpha)"
     # An override outside both the entry's path and the workspace would be
     # refused by registry_require_root, so the parser rejects it up front.
     echo "delta single_project $sb/delta worktrees=/tmp/elsewhere" > "$sb/.agent/projects.local"
@@ -1328,6 +1448,10 @@ test_validate_python_parser_matches_shell() {
     echo "tools.sh single_project $sb/tools" >> "$sb/.agent/projects.local"
     echo "kit.SH single_project $sb/kit" >> "$sb/.agent/projects.local"
     echo "box.sH single_project $sb/box" >> "$sb/.agent/projects.local"
+    echo "dot single_project $sb/dot worktrees=." >> "$sb/.agent/projects.local"
+    echo "ww single_project $sb/ww worktrees=worktrees" >> "$sb/.agent/projects.local"
+    echo "wsw single_project $sb/wsw worktrees=worktrees/workspace/x" >> "$sb/.agent/projects.local"
+    echo "okw single_project $sb/okw worktrees=worktrees/okw" >> "$sb/.agent/projects.local"
     # Shell: entries as name|type|path|fields, then errors without the file prefix.
     shell_out="$( { reg "$sb" registry_entries_full "$sb" 2>/dev/null | tr '\t' '|' || true; echo "--errors--"; reg "$sb" registry_entries_full "$sb" 2>&1 >/dev/null | sed -E 's/^ERROR: [^:]+:([0-9]+): /\1: /' || true; } )"
     # Python: the same shape from read_projects_registry.
@@ -1351,6 +1475,12 @@ for err in errors:
     assert_contains "the comparison kept the in-root '..' override" "w|single_project|$sb/w|worktrees=$sb/w/x" "$shell_out"
     assert_contains "the comparison covered a name ending in .sh" "invalid project name 'tools.sh': a name may not end in '.sh'" "$shell_out"
     assert_not_contains "neither parser keeps the .sh name" "tools.sh|" "$py_out"
+    # A worktrees= that is or holds the workspace root or worktrees/workspace
+    # is refused by both parsers (review round 3).
+    assert_contains "worktrees=. (the workspace root) is refused" "worktrees '$sb' for 'dot' is or holds the workspace root, or is, holds or lies in its worktrees/workspace" "$shell_out"
+    assert_contains "worktrees=worktrees (holds worktrees/workspace) is refused" "worktrees '$sb/worktrees' for 'ww' is or holds the workspace root" "$shell_out"
+    assert_contains "a folder inside worktrees/workspace is refused" "worktrees '$sb/worktrees/workspace/x' for 'wsw' is or holds the workspace root" "$shell_out"
+    assert_contains "a folder of its own under worktrees/ is kept" "okw|single_project|$sb/okw|worktrees=$sb/worktrees/okw" "$shell_out"
     assert_contains "the comparison covered an upper-case .SH" "invalid project name 'kit.SH': a name may not end in '.sh', in any letter case" "$shell_out"
     assert_contains "the comparison covered a mixed-case .sH, naming project 'box'" "legacy .agent/projects.d/<name>.sh of project 'box')" "$shell_out"
     assert_not_contains "neither parser keeps a mixed-case name" "kit.SH|" "$py_out"
@@ -1405,62 +1535,134 @@ test_worktree_create_parent_not_autoselected() {
     assert_contains "auto-selects the instance, not the parent" "Using registered project 'only'" "$out"
 }
 
-test_worktree_create_legacy_still_uses_old_location() {
-    echo "TEST: an unregistered project (legacy project/ symlink only) still worktrees under <ws>/worktrees/project/<repo>/"
+test_worktree_create_ignores_project_checkout() {
+    echo "TEST: worktree_create --type project with only a project/ checkout and nothing registered refuses (issue #265 part 4)"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_git_repo "$sb/project" "file:///nonexistent/legacyrepo.git"
     seed_commit "$sb/project"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 993 --type project 2>&1)" || rc=$?
-    assert_eq "exit 0" "0" "$rc"
-    assert_eq "worktree lands in the pre-#265 legacy location" \
-        "yes" "$([ -d "$sb/worktrees/project/legacyrepo/issue-legacyrepo-993" ] && echo yes || echo no)"
-    local _excl_count
-    _excl_count="$(grep -cxF 'worktrees/' "$sb/project/.git/info/exclude" 2>/dev/null)" || _excl_count=0
-    assert_eq "no 'worktrees/' line added for an unregistered project (already gitignored under worktrees/)" \
-        "0" "$_excl_count"
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names the cwd and the registration script" \
+        "no registered project here (cwd $sb), and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    assert_eq "nothing created under the retired location" \
+        "no" "$([ -e "$sb/worktrees/project" ] && echo yes || echo no)"
+    assert_eq "no branch made in the project/ checkout" \
+        "false" "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-993 && echo true || echo false)"
 }
 
-test_legacy_create_never_uses_a_registered_root_on_slug_collision() {
-    echo "TEST: a legacy project/ create stays at the transition location even when a REGISTERED project shares the repo-slug name (#273 round-2 review)"
+test_worktree_create_uses_registered_root_not_project_checkout() {
+    echo "TEST: with a project/ checkout and one registered project, worktree_create uses the registered root (issue #265 part 4)"
     local sb out rc=0 other
     sb="$(make_worktree_sandbox)"
     make_git_repo "$sb/project" "file:///nonexistent/myrepo.git"
     seed_commit "$sb/project"
-    # A different checkout, registered under the same name as project/'s slug.
     other="$(make_registered_project "$sb" myrepo)"
+    seed_commit "$other"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 995 --type project 2>&1)" || rc=$?
     assert_eq "exit 0 (out: ${out:0:160})" "0" "$rc"
-    assert_eq "worktree created under the transition location for the legacy checkout" \
-        "yes" "$([ -d "$sb/worktrees/project/myrepo/issue-myrepo-995" ] && echo yes || echo no)"
-    assert_eq "nothing created under the registered project's root" \
-        "no" "$([ -e "$other/worktrees" ] && echo yes || echo no)"
-    assert_eq "the worktree belongs to project/ (branch exists there), not the registered checkout" \
-        "true" "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-995 && echo true || echo false)"
+    assert_eq "worktree created under the registered project's root" \
+        "yes" "$([ -d "$other/worktrees/issue-myrepo-995" ] && echo yes || echo no)"
+    assert_eq "nothing created under the retired location" \
+        "no" "$([ -e "$sb/worktrees/project" ] && echo yes || echo no)"
+    assert_eq "the project/ checkout is not touched" \
+        "false" "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-995 && echo true || echo false)"
+}
+
+test_worktree_create_several_registered_needs_a_name() {
+    echo "TEST: worktree_create --type project with several registered and no --project refuses and lists them; from inside one root it uses that root"
+    local sb out rc=0 a
+    sb="$(make_worktree_sandbox)"
+    make_git_repo "$sb/project" "file:///nonexistent/legacyrepo.git"
+    seed_commit "$sb/project"
+    a="$(make_registered_project "$sb" alpha)"
+    seed_commit "$a"
+    make_registered_project "$sb" beta >/dev/null
+    make_registered_project "$sb" gamma >/dev/null
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 996 --type project 2>&1)" || rc=$?
+    assert_eq "from the workspace root: exit 1" "1" "$rc"
+    assert_contains "lists the registered names and --project" \
+        "no registered project here (cwd $sb). Registered: alpha, beta, gamma. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+    rc=0
+    out="$(cd "$a" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 996 --type project 2>&1)" || rc=$?
+    assert_eq "from inside alpha's root: exit 0 (out: ${out:0:160})" "0" "$rc"
+    assert_eq "the worktree is alpha's" "yes" "$([ -d "$a/worktrees/issue-alpha-996" ] && echo yes || echo no)"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 997 --type project --project nosuch 2>&1)" || rc=$?
+    assert_eq "--project <unregistered>: exit 1" "1" "$rc"
+    assert_contains "--project <unregistered>: names it" "project 'nosuch' is not registered" "$out"
+}
+
+test_worktree_scripts_cwd_in_worktrees_override() {
+    echo "TEST: create, enter, remove and wt_resolve_project_repo_root take the root a cwd is in, by its worktrees= dir too (review suggestion)"
+    local sb out rc=0 a wtd
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    a="$sb/roots/alpha"
+    make_git_repo "$a" "file:///nonexistent/alpha.git"
+    seed_commit "$a"
+    echo "alpha single_project $a worktrees=wt/alpha" >> "$sb/.agent/projects.local"
+    make_registered_project "$sb" beta >/dev/null
+    make_registered_project "$sb" gamma >/dev/null
+    mkdir -p "$sb/wt/alpha" "$sb/projects/beta/worktrees"
+    wtd="$(cd "$sb/wt/alpha" && pwd -P)"
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 501 --type project 2>&1)" || rc=$?
+    assert_eq "create from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_not_contains "create: never 'no registered project here'" "no registered project here" "$out"
+    assert_eq "create: the worktree is alpha's" "yes" "$([ -d "$wtd/issue-alpha-501" ] && echo yes || echo no)"
+    rc=0
+    out="$(cd "$wtd/issue-alpha-501" && wt "$sb" wt_resolve_project_repo_root "$sb" 2>&1)" || rc=$?
+    assert_eq "wt_resolve_project_repo_root from the worktree: exit 0" "0" "$rc"
+    assert_eq "wt_resolve_project_repo_root from the worktree: alpha's root" "$a" "$out"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 501 --type project --print-path 2>&1)" || rc=$?
+    assert_eq "enter from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "enter: alpha's worktree, not 'Multiple projects'" "$wtd/issue-alpha-501" "$out"
+    rc=0
+    out="$(cd "$a" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 501 --type project --print-path 2>&1)" || rc=$?
+    assert_eq "enter from alpha's hosting dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 501 --type project --force 2>&1)" || rc=$?
+    assert_eq "remove from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_eq "remove: the worktree is gone" "no" "$([ -d "$wtd/issue-alpha-501" ] && echo yes || echo no)"
+    # --type omitted: a cwd in alpha's worktrees= dir (inside the workspace
+    # tree) derives --type project --project alpha, not workspace (review
+    # round 2, suggestion 1).
+    rc=0
+    out="$(cd "$wtd" && wt "$sb" registry_derive_type_from_dir "$sb" "$wtd" 2>&1)" || rc=$?
+    assert_eq "derive from alpha's worktrees= dir: project alpha" "$(printf 'project\talpha')" "$out"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 502 2>&1)" || rc=$?
+    assert_eq "create with --type omitted from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "create: derived --type project --project alpha" "derived --type project --project alpha" "$out"
+    assert_eq "create: alpha's worktree, not a workspace one" "yes|no" \
+        "$([ -d "$wtd/issue-alpha-502" ] && echo yes || echo no)|$(ls -d "$sb"/worktrees/workspace/*502* >/dev/null 2>&1 && echo yes || echo no)"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 502 --print-path 2>&1)" || rc=$?
+    assert_eq "enter with --type omitted: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "enter with --type omitted: alpha's worktree" "$wtd/issue-alpha-502" "$out"
 }
 
 test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
-    echo "TEST: a malformed registry makes legacy enumeration and project removal refuse (rc 2 / error), never list or delete on partial state"
+    echo "TEST: a malformed registry makes project removal and listing refuse, never list or delete on partial state"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
-    make_git_repo "$sb/projects/foo" "file:///nonexistent/foo.git"
-    mkdir -p "$sb/worktrees/project/foo"
-    git -C "$sb/projects/foo" worktree add -q "$sb/worktrees/project/foo/issue-foo-43" -b feature/issue-43 >/dev/null 2>&1
+    make_registered_project "$sb" foo >/dev/null
+    mkdir -p "$sb/projects/foo/worktrees"
+    git -C "$sb/projects/foo" worktree add -q "$sb/projects/foo/worktrees/issue-foo-43" -b feature/issue-43 >/dev/null 2>&1
     echo "junk" >> "$sb/.agent/projects.local"
-    out="$(wt "$sb" wt_legacy_worktree_dirs "$sb" 2>/dev/null)" || rc=$?
-    assert_eq "wt_legacy_worktree_dirs returns 2" "2" "$rc"
-    assert_eq "and lists nothing" "" "$out"
-    rc=0
-    out="$(wt "$sb" wt_transition_project_base "$sb" foo 2>/dev/null)" || rc=$?
-    assert_eq "wt_transition_project_base returns 2" "2" "$rc"
-    rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 43 --type project --project foo --force 2>&1)" || rc=$?
     assert_eq "worktree_remove refuses (non-zero)" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"
     assert_eq "names the malformed registry" "1" "$(grep -c 'registry is malformed' <<< "$out")"
-    assert_eq "worktree untouched" "yes" "$([ -d "$sb/worktrees/project/foo/issue-foo-43" ] && echo yes || echo no)"
+    assert_eq "worktree untouched" "yes" "$([ -d "$sb/projects/foo/worktrees/issue-foo-43" ] && echo yes || echo no)"
     # worktree_list.sh: warns and says NOT LISTED instead of silently "0 project worktrees"
     cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
     rc=0
@@ -1535,38 +1737,124 @@ test_wt_ensure_exclusion_is_type_agnostic() {
         "1" "$(grep -cxF 'worktrees/' "$sb/projects/p11colcon/.git/info/exclude")"
 }
 
-test_transition_worktrees_survive_registration() {
-    echo "TEST: worktrees created before a project was registered stay discoverable after registration (enumeration, enter, remove)"
+test_retired_worktree_locations_not_found() {
+    echo "TEST: a worktree under a retired location (worktrees/project/<n>/, project/worktrees/) is not counted, listed, entered or removed (issue #265 part 4)"
     local sb out rc=0 twt
     sb="$(make_worktree_sandbox)"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
-    # The project's checkout exists first; a worktree is created at the
-    # pre-#265 transition path BEFORE the registry line is written.
-    make_git_repo "$sb/projects/later" "file:///nonexistent/later.git"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    make_registered_project "$sb" later >/dev/null
     twt="$sb/worktrees/project/later/issue-later-42"
     mkdir -p "$(dirname "$twt")"
     git -C "$sb/projects/later" worktree add -q "$twt" -b feature/issue-42 >/dev/null 2>&1
-    assert_eq "fixture: transition worktree exists" "yes" "$([ -d "$twt" ] && echo yes || echo no)"
-    # Now register it: its current worktree dir becomes <root>/worktrees.
-    echo "later single_project" >> "$sb/.agent/projects.local"
-    out="$(wt "$sb" wt_legacy_worktree_dirs "$sb")"
-    assert_eq "transition dir still enumerated after registration" \
-        "1" "$(grep -cF "later	$sb/worktrees/project/later" <<< "$out")"
-    assert_eq "wt_transition_project_base finds it" \
-        "$sb/worktrees/project/later" "$(wt "$sb" wt_transition_project_base "$sb" later)"
-    assert_eq "count includes the transition worktree" "1" "$(wt "$sb" wt_count_project_worktrees "$sb")"
-    # explicit --project remove finds and removes it
+    mkdir -p "$sb/project/worktrees/issue-later-42" "$sb/.workspace-worktrees/issue-workspace-42"
+    assert_eq "fixture: retired-location worktree exists" "yes" "$([ -d "$twt" ] && echo yes || echo no)"
+    assert_eq "not counted" "0" "$(wt "$sb" wt_count_project_worktrees "$sb")"
+    assert_eq "not enumerated" "" "$(wt "$sb" wt_registry_worktree_dirs "$sb")"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
+    assert_eq "not listed" "0" "$(grep -c '^\[project\]' <<< "$out")"
+    assert_not_contains "no retired location in the listing" "worktrees/project" "$out"
+    # A workspace worktree git still has under .workspace-worktrees/: shown
+    # as retired, never as main, and counted nowhere (review round 2).
+    git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m seed >/dev/null 2>&1 || true
+    git -C "$sb" worktree add -q "$sb/.workspace-worktrees/issue-workspace-43" -b feature/issue-43 >/dev/null 2>&1
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
+    assert_contains ".workspace-worktrees/ worktree: shown as retired" "[retired] .workspace-worktrees/ is no longer used" "$out"
+    assert_eq ".workspace-worktrees/ worktree: one [main] entry only (the main checkout)" "1" "$(grep -c '^\[main\]' <<< "$out")"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq ".workspace-worktrees/ worktree: JSON type retired" "retired" \
+        "$(jq -r --arg p "$sb/.workspace-worktrees/issue-workspace-43" '.worktrees[] | select(.path == $p) | .type' <<< "$out")"
+    assert_eq ".workspace-worktrees/ worktree: counted in no total" "0" "$(jq -r '.summary.total' <<< "$out")"
+    # The dashboard lists it under its own [retired] header, never with its
+    # Path/Branch/Status lines left under the previous entry (review round 3).
+    cp "$REAL_ROOT/.agent/scripts/dashboard.sh" "$sb/.agent/scripts/"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 | sed -n '/Active Worktrees/,/^---/p')" || true
+    assert_contains "dashboard: the [retired] header is shown" "[retired] .workspace-worktrees/ is no longer used" "$out"
+    assert_eq "dashboard: the retired Path line follows its own header" "[retired]" \
+        "$(grep -B1 -F "   Path:   $sb/.workspace-worktrees/issue-workspace-43" <<< "$out" | head -n1 | cut -c1-9)"
+    rm -f "$sb/.agent/scripts/dashboard.sh"
+    git -C "$sb" worktree remove --force "$sb/.workspace-worktrees/issue-workspace-43" >/dev/null 2>&1
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" bash -c 'source "$1/.agent/scripts/worktree_enter.sh" --issue 42 --type project --project later' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "enter --project later: not found (non-zero)" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"
+    assert_contains "enter says no worktree" "No project worktree found for issue #42" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 42 --type project --project later --force 2>&1)" || rc=$?
-    assert_eq "remove --project later exit 0 (out: ${out:0:200})" "0" "$rc"
-    assert_eq "remove reports the pre-registration location" "1" "$(grep -c 'pre-registration location' <<< "$out")"
-    assert_eq "transition worktree removed" "no" "$([ -d "$twt" ] && echo yes || echo no)"
-    # auto-detect (no --project) with one project that has only a transition dir
-    # must still resolve, not report "multiple projects"
-    git -C "$sb/projects/later" worktree add -q "$twt" -b feature/issue-42b >/dev/null 2>&1
+    assert_eq "remove --project later: exit 1" "1" "$rc"
+    assert_contains "remove says no worktree" "No project worktree found for issue #42" "$out"
+    assert_eq "the worktree is untouched" "yes" "$([ -d "$twt" ] && echo yes || echo no)"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 42 --type project --force 2>&1)" || rc=$?
-    assert_eq "remove without --project resolves the single project across both locations" "0" "$rc"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" bash -c 'source "$1/.agent/scripts/worktree_enter.sh" --issue 42 --type project --project nosuch' _ "$sb" 2>&1)" || rc=$?
+    assert_eq "enter --project <unregistered>: refused" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"
+    assert_contains "enter names the unregistered project" "project 'nosuch' is not registered" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 42 --type project --project nosuch --force 2>&1)" || rc=$?
+    assert_eq "remove --project <unregistered>: exit 1" "1" "$rc"
+    assert_contains "remove names the unregistered project" "project 'nosuch' is not registered" "$out"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq "list --json: no project worktree" "0" "$(jq -r '.summary.project' <<< "$out")"
+}
+
+test_worktree_remove_unresolvable_owner_removes_nothing() {
+    echo "TEST: worktree_remove resolves every entry's owner first; one it cannot resolve removes nothing (plan S2)"
+    local sb out rc=0 wt origin_a
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    make_registered_project "$sb" agg >/dev/null
+    origin_a="$sb/origins/pkg_a"
+    make_git_repo "$origin_a" "file:///nonexistent/pkg_a.git"
+    seed_commit "$origin_a"
+    wt="$sb/projects/agg/worktrees/issue-agg-owner-pkg_a-77"
+    mkdir -p "$wt/l1_ws/src"
+    git -C "$origin_a" worktree add -q "$wt/l1_ws/src/pkg_a" -b feature/issue-77 >/dev/null 2>&1
+    # The second entry exists but is not a git worktree: its owner cannot be
+    # resolved, and there is no project/ checkout to fall back on.
+    mkdir -p "$wt/l1_ws/src/pkg b"
+    {
+        printf '# project=agg issue=owner/pkg_a#77 layer=l1\n'
+        printf '%s\t%s\t%s\n' "$origin_a" "l1_ws/src/pkg_a" "feature/issue-77"
+        printf '%s\t%s\t%s\n' "$sb/origins/pkg b" "l1_ws/src/pkg b" "feature/issue-77"
+    } > "$wt/.worktree-repos"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names the entry whose owner is unknown" "cannot resolve the repository that owns $wt/l1_ws/src/pkg b; nothing was removed" "$out"
+    assert_eq "the first entry is still a worktree" "yes" "$([ -d "$wt/l1_ws/src/pkg_a" ] && git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
+    assert_eq "the aggregate dir is kept" "yes" "$([ -f "$wt/.worktree-repos" ] && echo yes || echo no)"
+    assert_not_contains "never advises --path, which refuses the same entry (review suggestion)" "--path" "$out"
+    # The one check-first text every removal hint uses, pinned word for word
+    # (review round 4), and the path quoted as the shell reads it.
+    local check="after checking each repository in it for uncommitted, untracked and ignored files (git status --ignored), stashes (git stash list) and commits on no remote, detached ones included (git log --all --not --remotes), and keeping or pushing what you need"
+    assert_contains "the check comes first, then rm -r with the path quoted, then running again" \
+        "Only $check, delete it by hand (rm -r $(printf '%q' "$wt/l1_ws/src/pkg b")), then run this command again: an entry already gone is skipped." "$out"
+    # Following the advice, as printed: the entry gone, the removal goes through.
+    local cmd
+    cmd="$(sed -n 's/.*delete it by hand (\(rm -r .*\)), then run this command again.*/\1/p' <<< "$out")"
+    eval "$cmd"
+    assert_eq "the printed rm -r, run as printed, removed the entry with a space in its path" "no" "$([ -e "$wt/l1_ws/src/pkg b" ] && echo yes || echo no)"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
+    assert_eq "after the advised deletion: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_eq "after the advised deletion: the first entry is no longer a worktree" "no" "$(git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
+
+    # A single-repository worktree whose one entry is the worktree itself:
+    # deleting it leaves nothing for a rerun to find, so the advice is
+    # git worktree prune in the repository it was made from (review round 3).
+    local swt="$sb/projects/agg/worktrees/issue-agg-78" origin_c="$sb/origins/pkg c"
+    make_git_repo "$origin_c" "file:///nonexistent/pkg_c.git"
+    seed_commit "$origin_c"
+    git -C "$origin_c" worktree add -q "$swt" -b feature/issue-78 >/dev/null 2>&1
+    printf '# project=agg issue=78\n%s\t.\tfeature/issue-78\n' "$origin_c" > "$swt/.worktree-repos"
+    rm -f "$swt/.git"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 78 --type project --project agg --force 2>&1)" || rc=$?
+    assert_eq "single-repository worktree, not a checkout: exit 1" "1" "$rc"
+    assert_contains "single entry: advises git worktree prune in its repository" "Only $check, delete it by hand (rm -r $swt), then drop git's record of the worktree in the repository it was made from: git -C $(printf '%q' "$origin_c") worktree prune." "$out"
+    assert_not_contains "single entry: never 'run this command again'" "run this command again" "$out"
+    rm -r "$swt"
+    cmd="$(sed -n "s/.*the repository it was made from: \(git -C .* worktree prune\)\.\$/\1/p" <<< "$out")"
+    eval "$cmd"
+    assert_eq "following the advice as printed (its repository's path has a space): git no longer lists the worktree" "no" "$(git -C "$origin_c" worktree list | grep -qF "$swt" && echo yes || echo no)"
 }
 
 test_wt_ensure_exclusion_noop_for_unregistered() {
@@ -1640,7 +1928,7 @@ test_merge_pr_finds_worktree_under_registered_root() {
 
 # Helper invocation SKILL.md's review-plan `--issue <N>` fallback
 # prescribes: enumerate every root's worktree dir via
-# wt_registry_worktree_dirs + wt_legacy_worktree_dirs, and glob each for
+# wt_registry_worktree_dirs, and glob each for
 # issue-*-<issue>/.agent/work-plans/issue-<issue>/plan.md. Defined at file
 # scope (not inline in the test) so `wt` — which runs its command in the
 # same sourced subshell rather than a fresh process — can call it directly.
@@ -1651,12 +1939,12 @@ _review_plan_find_plan() {
         for plan in "$wtdir"/issue-*-"$issue"/.agent/work-plans/issue-"$issue"/plan.md; do
             [ -f "$plan" ] && { found="$plan"; break 2; }
         done
-    done < <(wt_registry_worktree_dirs "$root_dir"; wt_legacy_worktree_dirs "$root_dir")
+    done < <(wt_registry_worktree_dirs "$root_dir")
     echo "$found"
 }
 
 # review-plan's SKILL.md `--issue <N>` fallback prescribes enumerating
-# wt_registry_worktree_dirs + wt_legacy_worktree_dirs and globbing each for
+# wt_registry_worktree_dirs and globbing each for
 # issue-*-<N>/.agent/work-plans/issue-<N>/plan.md (issue #273 round-1
 # review — the fallback used to only glob the legacy
 # worktrees/project/*/issue-*-<N>/ path, which can never see a project
@@ -1664,7 +1952,7 @@ _review_plan_find_plan() {
 # test exercises the helper invocation it prescribes (_review_plan_find_plan
 # above) rather than parsing the doc.
 test_review_plan_issue_fallback_finds_plan_under_registered_root() {
-    echo "TEST: review-plan's --issue <N> fallback (wt_registry_worktree_dirs + wt_legacy_worktree_dirs) finds a plan file under a registered out-of-tree root"
+    echo "TEST: review-plan's --issue <N> fallback (wt_registry_worktree_dirs) finds a plan file under a registered out-of-tree root"
     local sb outside rc=0 out
     sb="$(make_worktree_sandbox)"
     # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
@@ -1694,6 +1982,7 @@ test_registry_repo_slugs
 test_registry_repo_slugs_no_walk_up
 test_registry_repo_slugs_absent_or_broken
 test_main_checkout_helpers
+test_main_checkout_fallback_messages
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves
@@ -1707,6 +1996,7 @@ test_unregistered_under_projects_fails
 test_legacy_unaffected_by_registry
 test_build_uses_projects_d_config
 test_build_falls_back_to_workspace_config
+test_project_command_source_file_only
 test_sync_project_root
 test_validate_registry_only
 test_validate_missing_checkout
@@ -1736,6 +2026,8 @@ test_worktree_create_repo_alias
 test_worktree_create_single_repo_no_manifest_file
 test_worktree_create_multiple_requires_repo
 test_registry_fields_parse
+test_registry_pathless_entry_fails
+test_registry_no_project_message
 test_registry_fields_rejected
 test_registry_parent_rules
 test_registry_instances_and_default
@@ -1749,12 +2041,15 @@ test_validate_python_parser_matches_shell
 test_worktree_create_parent_default_instance
 test_worktree_parent_round_trip
 test_worktree_create_parent_not_autoselected
-test_worktree_create_legacy_still_uses_old_location
-test_legacy_create_never_uses_a_registered_root_on_slug_collision
+test_worktree_create_ignores_project_checkout
+test_worktree_create_uses_registered_root_not_project_checkout
+test_worktree_create_several_registered_needs_a_name
+test_worktree_scripts_cwd_in_worktrees_override
 test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove
 test_worktree_create_outoftree_root_exclusion
 test_wt_ensure_exclusion_is_type_agnostic
-test_transition_worktrees_survive_registration
+test_retired_worktree_locations_not_found
+test_worktree_remove_unresolvable_owner_removes_nothing
 test_wt_ensure_exclusion_noop_for_unregistered
 test_registry_worktree_enumeration_for_dashboard
 test_merge_pr_finds_worktree_under_registered_root

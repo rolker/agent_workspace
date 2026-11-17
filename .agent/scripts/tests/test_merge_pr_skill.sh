@@ -90,6 +90,14 @@ make_repo_with_origin() {
     git -C "$dir" push --quiet -u origin main
 }
 
+# The project repository of a project skill PR: a checkout at
+# $sb/projects/proj with an origin at $sb/projects/proj.premote.git,
+# registered (issue #265 part 4: only a registered project is read).
+make_registered_proj() {
+    make_repo_with_origin "$1/projects/proj" premote
+    echo "proj single_project $1/projects/proj" >> "$1/.agent/projects.local"
+}
+
 # A workspace sandbox ($sb is ROOT_DIR) with the real scripts and gh stub.
 make_sandbox() {
     local sb f
@@ -262,25 +270,25 @@ check "banner: merged, cleaned up, and synced" grep -q "merged, cleaned up, and 
 # ======================================================= project skill PR ===
 echo "TEST: a project-repo skill PR (onboard-project) is merged, its project worktree removed, the project synced"
 sb="$(make_sandbox)"
-make_repo_with_origin "$sb/project" premote
-pj_remote="$sb/project.premote.git"
+make_registered_proj "$sb"
+pj_remote="$sb/projects/proj.premote.git"
 pbr="skill/onboard-project-20261115-090000-1"
-pwt="$sb/worktrees/project/proj/skill-proj-onboard-project-20261115-090000-1"
-add_worktree "$sb/project" "$pwt" "$pbr" push
+pwt="$sb/projects/proj/worktrees/skill-proj-onboard-project-20261115-090000-1"
+add_worktree "$sb/projects/proj" "$pwt" "$pbr" push
 write_pr_fixture "$sb" "$pj_remote" "$pbr"
 rc=0; out="$(run_merge "$sb" --no-roadmap-update 2>&1)" || rc=$?
 check "exit 0" test "$rc" -eq 0
 check "banner names the skill" grep -q "Merging PR #$PR (skill onboard-project)" <<<"$out"
 check "record posted on the project PR" test "$(record_count "$sb" report-only)" -eq 1
 check "project worktree removed" test ! -e "$pwt"
-check "local branch deleted in the project repo" bash -c "! git -C '$sb/project' show-ref --verify --quiet 'refs/heads/$pbr'"
+check "local branch deleted in the project repo" bash -c "! git -C '$sb/projects/proj' show-ref --verify --quiet 'refs/heads/$pbr'"
 check "remote branch deleted in the project repo" bash -c "! git -C '$pj_remote' show-ref --verify --quiet 'refs/heads/$pbr'"
 check "project synced" grep -q "Project synced" <<<"$out"
 
 echo "TEST: a project checkout with no origin is refused early"
 sb="$(make_sandbox)"
-mkdir -p "$sb/project"; git -C "$sb/project" init --quiet -b main
-git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+mkdir -p "$sb/projects/proj"; git -C "$sb/projects/proj" init --quiet -b main; echo "proj single_project $sb/projects/proj" >> "$sb/.agent/projects.local"
+git -C "$sb/projects/proj" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
 rc=0; out="$(run_merge "$sb" --type project --no-roadmap-update 2>&1)" || rc=$?
 check "exit 1" test "$rc" -eq 1
 check "names the missing origin" grep -q "has no 'origin' remote configured" <<<"$out"
@@ -310,8 +318,8 @@ check "nothing merged" bash -c "! grep -q '^pr merge' '$sb/gh_calls.log' 2>/dev/
 
 echo "TEST: a skill branch in the other repository type, or from a fork, is not merged as a skill PR"
 sb="$(make_sandbox)"; remote="${sb}.remote.git"
-make_repo_with_origin "$sb/project" premote
-pj_remote="$sb/project.premote.git"
+make_registered_proj "$sb"
+pj_remote="$sb/projects/proj.premote.git"
 write_pr_fixture "$sb" "$remote" "skill/onboard-project-20261115-090000-1"
 rc=0; out="$(run_merge "$sb" --type workspace --no-roadmap-update 2>&1)" || rc=$?
 check "onboard-project on the workspace: exit 1" test "$rc" -eq 1
@@ -465,19 +473,19 @@ rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$pkg/sr
 check "package entry: exit 1" test "$rc" -eq 1
 check "package entry: says why" grep -q "is an entry of the package worktree" <<<"$out"
 check "package entry still there" test -d "$pkg/src/a"
-make_repo_with_origin "$sb/project" premote
-add_worktree "$sb/project" "$sb/worktrees/project/proj/skill-p" "skill/onboard-project-20261115-090000-1"
-rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/project/proj/skill-p" --type workspace 2>&1)" || rc=$?
+make_registered_proj "$sb"
+add_worktree "$sb/projects/proj" "$sb/projects/proj/worktrees/skill-p" "skill/onboard-project-20261115-090000-1"
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/projects/proj/worktrees/skill-p" --type workspace 2>&1)" || rc=$?
 check "project worktree as --type workspace: exit 1" test "$rc" -eq 1
 check "project worktree as --type workspace: says why" grep -q "is not a worktree of the workspace repository" <<<"$out"
-check "project worktree still there" test -d "$sb/worktrees/project/proj/skill-p"
+check "project worktree still there" test -d "$sb/projects/proj/worktrees/skill-p"
 add_worktree "$sb" "$sb/worktrees/workspace/skill-w" "$SKILL_BR"
 rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/workspace/skill-w" --type project 2>&1)" || rc=$?
 check "workspace worktree as --type project: exit 1" test "$rc" -eq 1
 check "workspace worktree as --type project: says why" grep -q "is not a worktree of the project repository" <<<"$out"
 check "workspace worktree still there" test -d "$sb/worktrees/workspace/skill-w"
-rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/worktrees/project/proj/skill-p" --type project 2>&1)" || rc=$?
-check "project worktree as --type project: removed" test "$rc" -eq 0 -a ! -e "$sb/worktrees/project/proj/skill-p"
+rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/worktree_remove.sh" --path "$sb/projects/proj/worktrees/skill-p" --type project 2>&1)" || rc=$?
+check "project worktree as --type project: removed" test "$rc" -eq 0 -a ! -e "$sb/projects/proj/worktrees/skill-p"
 
 echo ""
 echo "test_merge_pr_skill: $PASS passed, $FAIL failed"

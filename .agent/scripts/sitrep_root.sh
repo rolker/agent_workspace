@@ -77,10 +77,9 @@
 #       an entry is kept when
 #         (a) it is the root's own: for the workspace, an entry worktree_list
 #             types `workspace` or `main` (worktrees/workspace/, from
-#             wt_workspace_base, and the legacy .workspace-worktrees/); for a
-#             project root, a `project` entry under the worktree directory of
-#             the root or of one of its instances (registry_worktree_dir, or
-#             the transition location worktrees/project/<name>/), or
+#             wt_workspace_base); for a project root, a `project` entry
+#             under the worktree directory of the root or of one of its
+#             instances (registry_worktree_dir), or
 #         (b) one of this root's own Direction lines names it, read from the
 #             `line` rows of <file> (the rows the sit-rep's step 1 saved):
 #             an `adapter --project <name>` check keeps that project's
@@ -352,17 +351,15 @@ fi
 
 # --- --worktrees -------------------------------------------------------------
 # The worktree directories that are the root's own, part (a) for a project
-# root: the root's and each instance's registered directory, and the
-# transition location under the workspace.
+# root: the root's and each instance's registered directory (issue #265
+# part 4 retired the transition location under the workspace).
 OWN_DIRS=""
 if [[ "$TYPE" == project ]]; then
     names="$PROJECT"$'\n'"$(registry_instances "$WS_ROOT" "$PROJECT" 2>/dev/null)"
     while IFS= read -r n; do
         [[ -n "$n" ]] || continue
-        for d in "$(registry_worktree_dir "$WS_ROOT" "$n" 2>/dev/null)" \
-                 "$(wt_transition_project_base "$WS_ROOT" "$n" 2>/dev/null)"; do
-            [[ -n "$d" ]] && p="$(phys "$d")" && OWN_DIRS="$OWN_DIRS$p"$'\n'
-        done
+        d="$(registry_worktree_dir "$WS_ROOT" "$n" 2>/dev/null)" || d=""
+        [[ -n "$d" ]] && p="$(phys "$d")" && OWN_DIRS="$OWN_DIRS$p"$'\n'
     done <<< "$names"
 fi
 ROOT_GIT=""

@@ -35,7 +35,7 @@ g -C "$WSC" commit -q --allow-empty -m init
 SR="$WSC/.agent/scripts/session_root.sh"
 
 R="$SANDBOX/roots"
-mkdir -p "$WSC/projects/p11/sub" "$WSC/docs" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC/worktrees/project/wtroot"
+mkdir -p "$WSC/projects/inner/sub" "$WSC/docs" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC/wt/wtroot"
 mkdir -p "$R/gitroot/src/deeper" "$R/gitroot/worktrees/issue-gitroot-1" "$R/wtroot" \
     "$R/par/inst1/sub" "$R/par/inst2" "$R/other/sub" "$R/unreg" \
     "$R/foo" "$R/foobar" "$R/trail/sub" "$R/x" "$R/dots/sub" "$R/real/sub" \
@@ -47,14 +47,14 @@ mkdir -p "$R/gitroot/src/pkg" && g -C "$R/gitroot/src/pkg" init -q   # nested pa
 # root's worktree is a real git worktree of it, here in its worktrees= dir.
 for d in par trail dots real wtroot; do g -C "$R/$d" init -q; done
 g -C "$R/wtroot" commit -q --allow-empty -m init
-g -C "$R/wtroot" worktree add -q "$WSC/worktrees/project/wtroot/issue-wtroot-1" 2>/dev/null
+g -C "$R/wtroot" worktree add -q "$WSC/wt/wtroot/issue-wtroot-1" 2>/dev/null
 REGFILE="$WSC/.agent/projects.local"
 # The instances are listed before their parent, so only a longest match
 # (not the last or first match) resolves a directory inside one of them.
 cat > "$REGFILE" <<REG
-p11      single_project  $WSC/projects/p11
+inner    single_project  $WSC/projects/inner
 gitroot  single_project  $R/gitroot
-wtroot   single_project  $R/wtroot  worktrees=$WSC/worktrees/project/wtroot
+wtroot   single_project  $R/wtroot  worktrees=$WSC/wt/wtroot
 inst1    single_project  $R/par/inst1  parent=par
 inst2    single_project  $R/par/inst2  parent=par
 par      project         $R/par     default_instance=inst1
@@ -93,7 +93,7 @@ echo "== a directory's session root =="
 root "the workspace checkout" "$WSC" "$WSC" workspace ""
 root "a directory of the workspace checkout" "$WSC/docs" "$WSC" workspace ""
 root "a workspace worktree directory" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC" workspace ""
-root "a registered root inside the workspace tree is its own root" "$WSC/projects/p11/sub" "$WSC/projects/p11" project p11
+root "a registered root inside the workspace tree is its own root" "$WSC/projects/inner/sub" "$WSC/projects/inner" project inner
 root "a registered git root" "$R/gitroot" "$R/gitroot" project gitroot
 check "a package repo nested in a root is refused, naming the hosting dir to start at and the design rule" "$R/gitroot/src/pkg" refuse \
     "lies under the root $R/gitroot, but it is a git repository of its own ($R/gitroot/src/pkg), and a multi-repo project's root is its registered hosting directory, never a package repository nested in it -- start the session at $R/gitroot or a worktree of it" --
@@ -109,7 +109,7 @@ done
 root "a root in no git repository, at the root itself" "$R/other" "$R/other" project other
 root "a worktree under a root's own worktrees/" "$R/gitroot/worktrees/issue-gitroot-1" "$R/gitroot" project gitroot
 root "a worktree in a root's worktrees= directory inside the workspace tree: that root, not the workspace" \
-    "$WSC/worktrees/project/wtroot/issue-wtroot-1" "$R/wtroot" project wtroot
+    "$WSC/wt/wtroot/issue-wtroot-1" "$R/wtroot" project wtroot
 root "an instance inside its parent: the instance" "$R/par/inst1/sub" "$R/par/inst1" project inst1
 root "a parent root itself" "$R/par" "$R/par" project par
 root "a symlinked path resolves to the physical root" "$(ln -s "$R/gitroot" "$SANDBOX/gr-link" && echo "$SANDBOX/gr-link/src")" "$R/gitroot" project gitroot
@@ -125,7 +125,7 @@ root "a registry path with '..' in it" "$R/dots/sub" "$R/dots" project dots
 root "a registered root given as a symlink, entered by its real path" "$R/real/sub" "$R/real" project linked
 root "a registered root given as a symlink, entered through the link" "$SANDBOX/link-to-real/sub" "$R/real" project linked
 check "a symlinked root's own issue passes from its real path" "$R/real" ok "" -- --type project --project linked
-root "a worktree in the workspace's worktrees/project/<registered-name>/ belongs to the workspace" \
+root "a directory under the retired worktrees/project/<registered-name>/ belongs to the workspace" \
     "$WSC/worktrees/project/gitroot/issue-gitroot-2" "$WSC" workspace ""
 check "...so that registered project's issue is refused there, naming its root" \
     "$WSC/worktrees/project/gitroot/issue-gitroot-2" refuse "start a session in $R/gitroot" -- --type project --project gitroot
@@ -143,8 +143,8 @@ echo "== skill_prefix.sh answers everywhere; a workspace session is bare =="
 # session_root.sh refuses included, and a session whose root is the
 # workspace gets the bare names.
 SPX="$WSC/.agent/scripts/skill_prefix.sh"
-for d in "$WSC" "$WSC/docs" "$WSC/projects/p11/sub" "$R/gitroot" "$R/gitroot/src/deeper" "$R/gitroot/src/pkg" \
-         "$R/other" "$R/other/sub" "$R/par/inst1/sub" "$R/unreg" "$WSC/worktrees/project/wtroot/issue-wtroot-1" \
+for d in "$WSC" "$WSC/docs" "$WSC/projects/inner/sub" "$R/gitroot" "$R/gitroot/src/deeper" "$R/gitroot/src/pkg" \
+         "$R/other" "$R/other/sub" "$R/par/inst1/sub" "$R/unreg" "$WSC/wt/wtroot/issue-wtroot-1" \
          "$SANDBOX/link-to-real/sub"; do
     sr="$(bash "$SR" --dir "$d" 2>/dev/null)"
     sp="$(bash "$SPX" --dir "$d" 2>/dev/null)"; b=$?
@@ -179,7 +179,7 @@ check "workspace session, workspace issue" "$WSC/docs" ok "" -- --type workspace
 check "project session, its own project" "$R/gitroot" ok "" -- --type project --project gitroot
 check "nested package repo, even for the hosting root's project" "$R/gitroot/src/pkg" refuse \
     "start the session at $R/gitroot" -- --type project --project gitroot
-check "p11-shape root, its own project" "$WSC/projects/p11" ok "" -- --type project --project p11
+check "a root inside the workspace tree, its own project" "$WSC/projects/inner" ok "" -- --type project --project inner
 check "parent root, the parent's default instance" "$R/par" ok "" -- --type project --project par
 check "parent root, another instance it owns" "$R/par" ok "" -- --type project --project inst2
 
@@ -187,7 +187,7 @@ echo "== an issue of another root is refused, naming where to start =="
 check "workspace session, a project outside the tree" "$WSC" refuse \
     "start a session in $R/gitroot for this issue" -- --type project --project gitroot
 check "workspace session, a registered root inside the workspace tree" "$WSC/docs" refuse \
-    "start a session in $WSC/projects/p11" -- --type project --project p11
+    "start a session in $WSC/projects/inner" -- --type project --project inner
 check "project session, a workspace issue" "$R/gitroot/src/deeper" refuse \
     "start a session in $WSC for this issue" -- --type workspace
 check "project session, another project" "$R/gitroot" refuse \
@@ -198,8 +198,8 @@ check "the refusal names this session's root too" "$R/gitroot" refuse \
     "this session's root is $R/gitroot" -- --type workspace
 check "an unregistered --project is refused" "$WSC" refuse "project 'nope' is not registered" \
     -- --type project --project nope
-check "a workspace session: --type project with several registered and no legacy project/ asks for --project" "$WSC" refuse \
-    "pass --project <name>" -- --type project
+check "a workspace session: --type project with several registered asks for --project and lists them" "$WSC" refuse \
+    "names no project: no registered project here (cwd $WSC). Registered: inner, gitroot, wtroot, inst1, inst2, par, other, foo, trail, dots, linked. Pass --project <name> or register one: .agent/scripts/register_project"".sh <path>" -- --type project
 check "a project session: --type project alone means its own project" "$R/gitroot/src/deeper" ok "" -- --type project
 check "a parent-root session: --type project alone means the parent's default instance" "$R/par" ok "" -- --type project
 
@@ -213,12 +213,14 @@ check "the single registered project: a workspace session is refused" "$WSC" ref
     "start a session in $R/gitroot" -- --type project
 mkdir -p "$R/legacy-src" && g -C "$R/legacy-src" init -q
 ln -s "$R/legacy-src" "$WSC/project"
-check "a legacy project/ symlink is hosted by the workspace: workspace session passes" "$WSC" ok "" -- --type project
-check "a legacy project/: a registered project's session is refused for a workspace issue" "$R/gitroot" refuse \
+check "a project/ symlink is not read (issue #265 part 4): a workspace session still means the single registered project" "$WSC" refuse \
+    "start a session in $R/gitroot" -- --type project
+check "a project/ symlink: a registered project's session is refused for a workspace issue" "$R/gitroot" refuse \
     "start a session in $WSC for this issue" -- --type workspace
-check "a legacy project/: a registered project's session still means its own project" "$R/gitroot" ok "" -- --type project
-check "a legacy project/: a workspace session's other registered project is still refused" "$WSC" refuse \
-    "start a session in $R/gitroot" -- --type project --project gitroot
+check "a project/ symlink: a registered project's session still means its own project" "$R/gitroot" ok "" -- --type project
+: > "$REGFILE"
+check "a project/ symlink and nothing registered: --type project refuses naming the registration script" "$WSC" refuse \
+    "names no project: no registered project here (cwd $WSC), and none is registered. Register one: .agent/scripts/register_project"".sh <path>" -- --type project
 rm -f "$WSC/project"
 cp "$SANDBOX/reg.full" "$REGFILE"
 

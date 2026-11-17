@@ -35,7 +35,7 @@ g -C "$WSC" commit -q --allow-empty -m init
 SP="$WSC/.agent/scripts/skill_prefix.sh"
 
 # Fixtures, one per shape.
-mkdir -p "$WSC/projects/p11" "$WSC/docs/deep"            # p11 shape; a plain workspace subdir
+mkdir -p "$WSC/projects/inner" "$WSC/docs/deep"            # a root inside the tree; a plain workspace subdir
 g -C "$WSC" worktree add -q "$SANDBOX/ws-wt" 2>/dev/null   # a worktree of the workspace
 mkdir -p "$WSC/project" && g -C "$WSC/project" init -q     # a separate repo inside the workspace dir
 R="$SANDBOX/roots"
@@ -46,7 +46,7 @@ g -C "$R/gitroot" worktree add -q "$R/gitroot-wt" 2>/dev/null
 mkdir -p "$R/gitroot/src/pkg" && g -C "$R/gitroot/src/pkg" init -q   # nested package repo
 ln -s "$WSC" "$SANDBOX/ws-link"
 cat > "$WSC/.agent/projects.local" <<REG
-p11      single_project  $WSC/projects/p11
+inner    single_project  $WSC/projects/inner
 nested   single_project  $WSC/project
 gitroot  single_project  $R/gitroot
 plain    project         $R/plain
@@ -67,7 +67,7 @@ expect() {
 expect "the workspace checkout itself: bare" "$WSC" bare
 expect "a plain directory in the workspace checkout: bare" "$WSC/docs/deep" bare
 expect "a worktree of the workspace checkout: bare" "$SANDBOX/ws-wt" bare
-expect "a registered root inside the workspace tree with no .git (p11 shape): bare" "$WSC/projects/p11" bare
+expect "a registered root inside the workspace tree with no .git: bare" "$WSC/projects/inner" bare
 expect "the workspace reached through a symlinked path: bare" "$SANDBOX/ws-link/docs" bare
 expect "a registered git root: prefix" "$R/gitroot" prefix
 expect "a plain directory of a registered git root: prefix" "$R/gitroot/src/deeper" prefix
@@ -106,7 +106,7 @@ bash "$SP" --bogus >/dev/null 2>&1; rc=$?
 # The registry is not read: with none, the answers are the same.
 rm -f "$WSC/.agent/projects.local"
 expect "with no registry, the workspace is still bare" "$WSC" bare
-expect "with no registry, the in-tree directory is still bare" "$WSC/projects/p11" bare
+expect "with no registry, the in-tree directory is still bare" "$WSC/projects/inner" bare
 expect "with no registry, a former root is prefix" "$R/gitroot" prefix
 
 # A checkout in no git repository: its own tree is bare, anywhere else

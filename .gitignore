@@ -1,20 +1,24 @@
-# Project directory (managed externally — cloned or symlinked).
-# Both forms are needed: `project/` matches a real directory but NOT a
-# symlink; bare `project` covers the symlinked-checkout case.
+# Retired shapes (issue #265 part 4): nothing reads a project/ checkout or
+# symlink, a projects/ directory or .workspace-worktrees/ any more, and the
+# stale-shape report (make validate, make dashboard) names any still on
+# disk. They stay ignored so a machine that keeps one, or registers a root
+# under projects/ (ADR-0016 decision 1), keeps a clean main checkout (make
+# sync skips a dirty one). Both project forms are needed: `project/`
+# matches a real directory but NOT a symlink; bare `project` covers the
+# symlink.
 project/
 project
-
-# Multi-tenant project hosting (issue #227 — #172 step 2).
-# projects/ holds per-machine checkouts; the registry and per-project
-# command configs are per-machine too (see .agent/projects.local.example).
 projects/
+
+# The per-machine registry and per-project settings files
+# (see .agent/projects.local.example).
 .agent/projects.local
 .agent/projects.d/
 
 # Worktrees (workspace and project, see issue #25)
 worktrees/
 
-# Legacy worktree location (deprecated — remove after migration)
+# Retired worktree location (see the retired shapes above)
 .workspace-worktrees/
 
 # Make stamp files (setup state tracking — see ADR-0007)
@@ -44,7 +48,8 @@ worktrees/
 # Agent Identity (Runtime-generated, not template)
 .agent/.identity
 
-# Project config (per-developer, per-project — not committed)
+# Retired shared project config (issue #265 part 4): no longer read; the
+# stale-shape report names what is left in it. Still ignored, as above.
 .agent/project_config.sh
 
 # Machine-local settings: inbox and sit-rep run-record paths (issue #386;

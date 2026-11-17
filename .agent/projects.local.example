@@ -7,10 +7,10 @@
 #
 # One project per line, whitespace-separated:
 #
-#   <name>  <project_type>  [<path>]  [key=value ...]
+#   <name>  <project_type>  <path>  [key=value ...]
 #
 #   name          Project identity on this machine. Also the worktree repo
-#                 key and (for now) the default hosting dir projects/<name>.
+#                 key.
 #                 Allowed: [A-Za-z0-9._-], must start with a letter or
 #                 digit; '..' is not allowed.
 #   project_type  Adapter type; must exist at .agent/project_types/<type>/
@@ -19,9 +19,10 @@
 #                 directory that groups several instances of one project
 #                 (e.g. one per ROS distro). It has no adapter and need not
 #                 be a git repository; it is the session and memory unit.
-#   path          Optional hosting directory (absolute, or relative to the
-#                 workspace root; default projects/<name>). No spaces or
-#                 "=" (a third token containing "=" is read as a field).
+#   path          The hosting directory, required (absolute, or relative
+#                 to the workspace root). No spaces or "=" (a third token
+#                 containing "=" is read as a field, so that line has no
+#                 path and is an error).
 #   key=value     Optional trailing fields (no spaces in values):
 #                   parent=<name>            this line is an instance of
 #                                            parent root <name>
@@ -32,10 +33,8 @@
 #                   distro=<name>            passed to the adapter as
 #                                            ACTIVE_PROJECT_DISTRO; for
 #                                            ros2_colcon this is the ROS
-#                                            distro (overrides ROS_DISTRO in
-#                                            projects.d/<name>.sh; must agree
-#                                            with the manifest if that names
-#                                            one)
+#                                            distro (must agree with the
+#                                            manifest if that names one)
 #                   default_instance=<name>  parent lines only: the instance
 #                                            used when the parent is
 #                                            selected without --project
@@ -116,27 +115,17 @@
 # _project_registry.sh). Only (project, project) is honoured until the
 # records lookup lands (#393); project_setting.sh refuses to store another.
 #
-# Precedence for build/test/install/bootstrap_url: the settings file, key by
-# key; for a key it does not set, the LEGACY .agent/projects.d/<name>.sh (a
-# sourced shell file: BUILD_CMD, TEST_CMD, INSTALL_CMD,
-# MANIFEST_BOOTSTRAP_URL, and variables such as ROS_DISTRO and ROS_ROOT_DIR,
-# which stay there) when that file exists, otherwise the shared
-# .agent/project_config.sh. The legacy file, when present, is the whole
-# legacy layer, as before #332: the shared file is not consulted for a
-# variable it leaves unset (a legacy file with only BUILD_CMD gets no shared
-# TEST_CMD). A registered project that falls through to the shared file gets
-# a note on stderr. Changed with #332: BUILD_CMD, TEST_CMD and INSTALL_CMD
-# set in the environment are no longer honoured; only a config file sets
-# them. A command set in the settings file runs without sourcing the legacy
-# or shared config, so nothing they export (an SDK path, PATH) reaches it:
-# environment setup belongs in the script the key points at. A legacy
-# ros2_colcon config looks like:
-#
-#   # .agent/projects.d/shore_tools-jazzy.sh
-#   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
+# The settings file is a project's only source of commands and URLs (issue
+# #265 part 4): the legacy .agent/projects.d/<name>.sh and the shared
+# .agent/project_config.sh are read by no adapter; `make validate` names any
+# still on disk and what is left in them to move. A command runs without a
+# shell, so environment setup (an SDK path, PATH) belongs in the script the
+# key points at. ROS_ROOT_DIR (the ros2_colcon distro underlay root, default
+# /opt/ros) is the one value read from the process environment; only tests
+# and non-standard installs set it.
 #
 # A project name may not end in ".sh", in any letter case (its settings file
-# would collide with another project's legacy file; on a case-insensitive
+# would collide with another project's retired <name>.sh; on a case-insensitive
 # filesystem x.SH is x.sh).
 #
 # One instance per distro: a second distro of the same project is a second
@@ -150,7 +139,9 @@
 #   1. --project <name> (or: make build PROJECT=<name>)
 #   2. current directory inside a registered hosting dir (longest match, so
 #      a cwd inside an instance resolves to the instance, not its parent)
-#   3. legacy project/ symlink (unchanged behavior)
+#   Nothing else: with neither, every verb but sync refuses and lists the
+#   registered projects, and sync syncs the workspace alone (issue #265
+#   part 4 retired the project/ symlink step).
 #   A parent root selected by 1 or 2 resolves to its default_instance, else
 #   its only instance; several instances without a default is an error
 #   that lists them.

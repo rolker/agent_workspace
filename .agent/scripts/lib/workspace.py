@@ -2,8 +2,9 @@
 Workspace Management Library
 
 Provides common functions for discovering and managing repositories in the
-general-purpose Agent Workspace: the legacy single-repo model (project/)
-and the per-machine project registry (.agent/projects.local, issue #227).
+general-purpose Agent Workspace through the per-machine project registry
+(.agent/projects.local, issue #227). The registry is the only link to a
+project: issue #265 part 4 retired the project/ symlink and its helpers.
 """
 
 import os
@@ -61,16 +62,36 @@ def get_main_checkout_root():
       when that is a directory that is the top level of a checkout sharing
       this common dir; else the workspace root.
 
-    Any git failure gives the workspace root.
+    Any git failure gives the workspace root. A linked worktree whose main
+    checkout git does not name (a linked worktree of a checkout made with
+    `git clone --separate-git-dir`, whose first `worktree list` entry is the
+    git dir) falls back to the workspace root; get_main_checkout_status says
+    when that happened.
+    """
+    return get_main_checkout_status()[0]
+
+
+def get_main_checkout_status():
+    """
+    (main checkout, fell_back) where fell_back is True when the workspace
+    root is a linked worktree whose main checkout could not be found, so the
+    workspace root was returned instead (issue #265 part 4, PR 454's F2): a
+    "none registered" message then says no registry was found from this
+    linked worktree. Mirrors registry_main_checkout_fallback.
     """
     root = get_workspace_root()
     try:
         if not _is_own_toplevel(root):
-            return root
+            return root, False
         common = _git_common_dir(root)
         git_dir = _git_out(root, "rev-parse", "--path-format=absolute", "--git-dir")
         if _canonical(git_dir) == _canonical(common):
-            return root
+            return root, False
+    except (OSError, subprocess.CalledProcessError):
+        return root, False
+    # A linked worktree: from here on, anything short of a main checkout
+    # sharing this common dir is a fallback (as registry_main_checkout).
+    try:
         first = _git_out(root, "worktree", "list", "--porcelain").splitlines()
         main = first[0][len("worktree ") :] if first and first[0].startswith("worktree ") else ""
         if (
@@ -78,10 +99,10 @@ def get_main_checkout_root():
             and _is_own_toplevel(main)
             and _canonical(_git_common_dir(main)) == _canonical(common)
         ):
-            return main
+            return main, False
     except (OSError, subprocess.CalledProcessError):
         pass
-    return root
+    return root, True
 
 
 def _git_out(where, *args):
@@ -105,31 +126,6 @@ def _is_own_toplevel(path):
         return False
     top = _git_out(path, "rev-parse", "--show-toplevel")
     return bool(top) and _canonical(top) == _canonical(path)
-
-
-def get_project_path():
-    """
-    Return the Path to the project/ directory (may not exist yet).
-    """
-    return Path(get_workspace_root()) / "project"
-
-
-def is_project_configured(project=None):
-    """
-    Return True if the project checkout exists and is a valid git repo.
-
-    Defaults to the legacy project/ directory; pass a Path to check a
-    registry-hosted project instead.
-    """
-    if project is None:
-        project = get_project_path()
-    project = Path(project)
-    if not project.exists():
-        return False
-    if (project / ".git").exists():
-        return True
-    # project may be a symlink to a checkout
-    return (project.resolve() / ".git").exists()
 
 
 def _path_under(path, base):
@@ -245,7 +241,13 @@ def read_projects_registry(root=None):
             errors.append(bad)
             continue
         if not path:
-            path = f"projects/{name}"
+            # Issue #265 part 4: no projects/<name> default; same text as the
+            # shell parser.
+            errors.append(
+                f"{registry}:{lineno}: '{name}' has no path: a registry entry needs its "
+                f"hosting directory (register it with {REGISTER_PROJECT_POINTER})"
+            )
+            continue
         abs_path = Path(path)
         if not abs_path.is_absolute():
             abs_path = root / path
@@ -255,6 +257,20 @@ def read_projects_registry(root=None):
             errors.append(
                 f"{registry}:{lineno}: worktrees '{wt}' for '{name}' must lie under "
                 f"{abs_path} or under the workspace root {root}"
+            )
+            continue
+        # Same rule and text as the shell parser: a worktrees= that is or
+        # holds the workspace root, or is, holds or lies in its
+        # worktrees/workspace, would make a workspace worktree (or the
+        # workspace itself) count as the project's, or the reverse.
+        ws_worktrees = root / "worktrees" / "workspace"
+        if wt is not None and (
+            _path_under(root, wt) or _path_under(ws_worktrees, wt) or _path_under(wt, ws_worktrees)
+        ):
+            errors.append(
+                f"{registry}:{lineno}: worktrees '{wt}' for '{name}' is or holds the "
+                "workspace root, or is, holds or lies in its worktrees/workspace; a "
+                "project's worktrees go in a folder of their own"
             )
             continue
         parsed.append((lineno, {"name": name, "type": ptype, "path": abs_path, "fields": fields}))
@@ -318,26 +334,6 @@ def read_projects_registry(root=None):
                 continue
         entries.append(entry)
     return entries, errors
-
-
-def get_project_remote_url():
-    """
-    Return the remote URL of the project repo, or None if not configured.
-    """
-    project = get_project_path()
-    if not is_project_configured():
-        return None
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=str(project),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip() or None
-    except subprocess.CalledProcessError:
-        return None
 
 
 def extract_github_owner_repo(url):

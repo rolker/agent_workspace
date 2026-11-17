@@ -46,11 +46,11 @@
 # becomes its default or only instance). Without --project, in a project
 # session it is the session's own project -- callers then pass that name on
 # as --project, so worktree_create.sh agrees -- and in a workspace session
-# it follows worktree_create.sh's fallback: the legacy project/ checkout,
-# else the single registered project.
+# it follows worktree_create.sh's fallback: the single registered project;
+# with none or several it refuses, listing them (issue #265 part 4 retired
+# the project/ checkout this used to fall back on).
 # A parent root also owns its instances: an issue of an instance passes in
-# a session started at the parent root. An unregistered legacy project/
-# lives in the workspace tree, so its root is the workspace.
+# a session started at the parent root.
 #
 # Worktrees live under their root, so a session that keeps to this rule
 # stays under its root. Callers read this, and skill_prefix.sh, once,
@@ -201,17 +201,14 @@ elif [[ -n "$PROJECT" ]]; then
     entry="$(registry_lookup "$WS_ROOT" "$name")" || exit 1
     ISSUE_DIR="$(cut -f2 <<< "$entry")"
     ISSUE_WHAT="an issue of project '$name'"
-elif [[ -d "$WS_ROOT/project" ]] && git -C "$WS_ROOT/project" rev-parse --git-dir >/dev/null 2>&1; then
-    # Hosted by the workspace whatever project/ points at (it may be a
-    # symlink): its worktrees go under the workspace's worktrees/project/.
-    ISSUE_DIR="$WS_ROOT"
-    ISSUE_WHAT="an issue of the legacy project/ checkout"
 else
+    # The single registered project, as worktree_create.sh picks it (issue
+    # #265 part 4 retired the project/ step); none or several refuse.
     singles="$(awk -F'\t' -v p="$REGISTRY_PARENT_TYPE" 'NF && $2 != p' <<< "$ENTRIES")"
     count=0
     [[ -n "$singles" ]] && count="$(wc -l <<< "$singles")"
     if [[ "$count" -ne 1 ]]; then
-        echo "session_root: --type project names no project here (no legacy project/ and $count registered projects) -- pass --project <name>" >&2
+        echo "session_root: --type project names no project: $(registry_no_project_message "$WS_ROOT" "$(phys "$DIR" || echo "$DIR")")" >&2
         exit 1
     fi
     ISSUE_DIR="$(cut -f3 <<< "$singles")"

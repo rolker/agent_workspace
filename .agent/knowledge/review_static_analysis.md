@@ -21,7 +21,7 @@ infrastructure from project code:
 | File pattern | Location | Language |
 |---|---|---|
 | `*.py` | `.agent/scripts/`, `.agent/hooks/` | Python (workspace) |
-| `*.py` | `project/` or other | Python (project) |
+| `*.py` | under a registered project root, or other | Python (project) |
 | `*.cpp`, `*.hpp`, `*.h`, `*.cc`, `*.cxx` | any | C++ |
 | `*.sh` | any | Shell |
 | `*.yaml`, `*.yml` | any | YAML |

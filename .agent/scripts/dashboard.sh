@@ -53,22 +53,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Worktree detection ---
-# dashboard.sh is a workspace-only script (it reads .agent/project_config.sh,
-# the registry, etc. relative to the workspace checkout), so the only
+# dashboard.sh is a workspace-only script (it reads the registry and the
+# settings files relative to the workspace checkout), so the only
 # question here is whether THIS COPY of the workspace repo is itself a
 # worktree of the workspace repo — never a project worktree: post-#265,
 # project worktrees live under their own root, never inside the workspace
-# tree, so that case is dead (it could only ever fire for the pre-#265
-# `<ws>/worktrees/project/<repo>/` shape, which is now the *legacy
-# fallback* project worktree location, not a location dashboard.sh's own
-# script could be running from).
+# tree (issue #265 part 4 retired the worktrees/project/<repo>/ fallback
+# and the .workspace-worktrees/ shape).
 WORKTREE_INFO=""
 if [[ "$ROOT_DIR" == *"/worktrees/workspace/"* ]]; then
     WORKTREE_INFO="workspace worktree"
     MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
-elif [[ "$ROOT_DIR" == *"/.workspace-worktrees/"* ]]; then
-    WORKTREE_INFO="workspace worktree (legacy)"
-    MAIN_ROOT="$(dirname "$(dirname "$ROOT_DIR")")"
 else
     MAIN_ROOT="$ROOT_DIR"
 fi
@@ -141,8 +136,8 @@ else
     check_warn "git-bug not installed (optional: offline issue tracking — run: make skip-git-bug to suppress)"
 fi
 
-# Project directory (legacy shape) + registered projects (issue #227)
-PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
+# Registered projects (issue #227); the registry is the only link to a
+# project (issue #265 part 4 retired the project/ directory).
 REGISTRY_OK=1
 REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     REGISTRY_OK=0
@@ -153,22 +148,23 @@ REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     REGISTRY_ENTRIES=""
 }
 # Whether any project is registered, for the "No project is registered"
-# lines only: read from the main checkout found through git's common dir, as
-# make setup, make validate and make sync find it (issue #295), so the four
-# agree inside a worktree wherever it lives. Everything else here keeps
-# reading MAIN_ROOT's registry. A registry with parse errors is not "none".
+# lines only: read from the main checkout registry_main_checkout finds (the
+# Python mirror is get_main_checkout_root), as make setup, make validate and
+# make sync find it (issue #295), so the four agree inside a worktree
+# wherever it lives. Everything else here keeps reading MAIN_ROOT's
+# registry. A registry with parse errors is not "none". When that lookup
+# fell back from a linked worktree whose main checkout git does not name,
+# the lines say no registry was found from here instead (issue #265 part 4,
+# PR 454's F2).
 NONE_REGISTERED=0
+NO_REGISTRY_HERE=0
 if _MAIN_ENTRIES="$(registry_entries "$(registry_main_checkout "$ROOT_DIR")" 2>/dev/null)" &&
     [ -z "$_MAIN_ENTRIES" ]; then
     NONE_REGISTERED=1
+    registry_main_checkout_fallback "$ROOT_DIR" && NO_REGISTRY_HERE=1
 fi
-if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-    PROJECT_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
-    if [ -n "$PROJECT_REMOTE" ]; then
-        check_pass "project/ configured ($(basename "$PROJECT_REMOTE" .git))"
-    else
-        check_warn "project/ is a git repo but has no remote"
-    fi
+if [ -z "$REGISTRY_ENTRIES" ] && [ "$NO_REGISTRY_HERE" -eq 1 ]; then
+    check_warn "No registry found from this linked worktree; run it from the main checkout"
 elif [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
     check_warn "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
 fi
@@ -217,7 +213,9 @@ if [ "$REGISTRY_OK" -eq 1 ]; then
     for _pf in "${MAIN_ROOT:-$ROOT_DIR}"/.agent/projects.d/*; do
         [ -f "$_pf" ] || continue
         _pfname="$(basename "$_pf")"
-        [[ "$_pfname" == *.sh ]] && _pfname="${_pfname%.sh}"
+        # A <name>.sh is a retired command config (issue #265 part 4), not a
+        # settings file: the stale-shape report names it.
+        [[ "$_pfname" == *.sh ]] && continue
         # Fixed-string whole-line match: a name may contain '.', and a
         # file name may start with '-'.
         if ! grep -qxF -- "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then
@@ -225,6 +223,11 @@ if [ "$REGISTRY_OK" -eq 1 ]; then
         fi
     done
 fi
+# Retired shapes still on disk (issue #265 part 4): the same report make
+# validate prints, read from the main checkout, as warnings.
+while IFS= read -r _stale; do
+    [ -n "$_stale" ] && check_warn "retired shape: $_stale"
+done < <(registry_stale_report "$(registry_main_checkout "$ROOT_DIR")")
 
 # Configuration validation
 if [ -f "$SCRIPT_DIR/validate_workspace.py" ]; then
@@ -278,16 +281,6 @@ if [ "$SKIP_SYNC" = false ]; then
         echo "⚠️ (fetch failed)"
     fi
 
-    if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-        PROJECT_NAME=$(basename "$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo project)" .git)
-        echo -n "Syncing project ($PROJECT_NAME)... "
-        if git -C "$PROJECT_DIR" fetch --quiet 2>/dev/null; then
-            echo "✅"
-        else
-            echo "⚠️ (fetch failed)"
-        fi
-    fi
-
     if [ -n "${REGISTRY_ENTRIES:-}" ]; then
         while IFS=$'\t' read -r _name _type _path; do
             [ -z "$_name" ] && continue
@@ -329,37 +322,20 @@ else
 fi
 echo ""
 
-# Project repository
-echo "### Project Repository"
-if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-    PROJ_BRANCH=$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null || echo "detached HEAD")
-    PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "(no remote)")
-    if [ -n "$(git -C "$PROJECT_DIR" status --porcelain)" ]; then
-        echo "- **Status**: ⚠️ Modified"
-        echo "- **Branch**: $PROJ_BRANCH"
-        echo "- **Remote**: $PROJ_REMOTE"
-        echo ""
-        echo "**Modified Files:**"
-        echo '```'
-        git -C "$PROJECT_DIR" status --short
-        echo '```'
-    else
-        echo "- **Status**: ✅ Clean"
-        echo "- **Branch**: $PROJ_BRANCH"
-        echo "- **Remote**: $PROJ_REMOTE"
-    fi
-else
-    if [ -n "${REGISTRY_ENTRIES:-}" ]; then
-        echo "- **Status**: (legacy project/ not configured; registered projects below)"
+# Project repositories: the registered projects below; with none, why.
+if [ -z "${REGISTRY_ENTRIES:-}" ]; then
+    echo "### Project Repositories"
+    if [ "${NO_REGISTRY_HERE:-0}" -eq 1 ]; then
+        echo "- **Status**: ⚠️ No registry found from this linked worktree; run it from the main checkout"
     elif [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
         echo "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>"
     elif [ "${REGISTRY_OK:-1}" -eq 0 ]; then
         echo "- **Status**: ⚠️ projects.local has malformed entries (see the checks above)"
     else
-        echo "- **Status**: (legacy project/ not configured)"
+        echo "- **Status**: no project is registered in ${MAIN_ROOT:-$ROOT_DIR}/.agent/projects.local"
     fi
+    echo ""
 fi
-echo ""
 
 # Registered projects (issue #227)
 if [ -n "${REGISTRY_ENTRIES:-}" ]; then
@@ -403,17 +379,21 @@ echo ""
 
 WORKTREE_SCRIPT="$SCRIPT_DIR/worktree_list.sh"
 if [ -x "$WORKTREE_SCRIPT" ]; then
-    WT_COUNT=$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " | wc -l)
+    # Workspace worktrees, without the main checkout and without one in the
+    # retired .workspace-worktrees/ (issue #265 part 4: counted in no total;
+    # worktree_list.sh shows it as [retired], so it is listed below).
+    _WT_LINES="$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " || true)"
+    WT_COUNT=$(grep -vcF "/.workspace-worktrees/" <<< "$_WT_LINES" || true)
+    [ -n "$_WT_LINES" ] || WT_COUNT=0
+    RETIRED_WT_COUNT=$(grep -cF "/.workspace-worktrees/" <<< "$_WT_LINES" || true)
     # Also count project worktrees: every registered non-parent root's
-    # worktree dir, plus the legacy fallback (worktrees/project/<name>/)
-    # for still-unregistered projects (#265), plus the ancient pre-#25
-    # shape (project/worktrees/<worktree>).
+    # worktree dir (#265; the retired worktrees/project/<name>/ and
+    # project/worktrees/ shapes are not counted).
     PROJ_WT_COUNT="$(wt_count_project_worktrees "${MAIN_ROOT:-$ROOT_DIR}")"
-    if [ -d "$PROJECT_DIR/worktrees" ]; then
-        PROJ_WT_COUNT=$((PROJ_WT_COUNT + $(find "$PROJECT_DIR/worktrees" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)))
-    fi
-    if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ]; then
-        "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|  )" || true
+    if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ] || [ "$RETIRED_WT_COUNT" -gt 0 ]; then
+        # Each entry's header line and its indented lines; a header kind
+        # left out here would leave its lines under the previous entry.
+        "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|\[retired\]|  )" || true
         echo ""
     else
         echo "No active worktrees."
@@ -459,10 +439,6 @@ if [ "$SKIP_GITHUB" = false ]; then
         WS_REMOTE=$(cd "$ROOT_DIR" && git remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
         [ -n "$WS_REMOTE" ] && REPOS="$WS_REMOTE"
 
-        if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-            PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
-            [ -n "$PROJ_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$PROJ_REMOTE")
-        fi
         if [ -n "${REGISTRY_ENTRIES:-}" ]; then
             while IFS=$'\t' read -r _name _type _path; do
                 [ -z "$_name" ] && continue

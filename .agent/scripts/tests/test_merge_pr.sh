@@ -232,12 +232,20 @@ make_origin_repo() {
 # Build a package worktree by hand (no need to drive the ros2_colcon
 # adapter/worktree_create.sh for these tests): writes .worktree-repos and
 # a real `git worktree add` per entry. Entries: "origin_dir|rel|branch".
-# Usage: wt=$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-111" \
-#     p11 "owner/pkg_a#111" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-111" ...)
+# <project> is registered at $sb/<project> (a ros2_colcon root inside the
+# sandbox workspace, which ADR-0016 decision 1 allows) unless the registry
+# already names it: only a registered project's worktree dir is searched
+# (issue #265 part 4), so <wt_rel> is normally <project>/worktrees/<dir>.
+# Usage: wt=$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-111" \
+#     demo "owner/pkg_a#111" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-111" ...)
 make_package_worktree() {
     local sb="$1" wt_rel="$2" project="$3" issue="$4" layer="$5"
     shift 5
     local wt="$sb/$wt_rel"
+    if ! grep -q "^$project " "$sb/.agent/projects.local" 2>/dev/null; then
+        mkdir -p "$sb/$project"
+        echo "$project ros2_colcon $sb/$project" >> "$sb/.agent/projects.local"
+    fi
     mkdir -p "$wt"
     printf '# project=%s issue=%s layer=%s\n' "$project" "$issue" "$layer" > "$wt/.worktree-repos"
     local entry origin rel branch
@@ -266,8 +274,8 @@ test_qualified_pr_ref_resolves_package_worktree() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-111" \
-        p11 "owner/pkg_a#111" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-111" \
+        demo "owner/pkg_a#111" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-111" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-111")"
     # pkg_b is untouched: no PR (0 open), and — unlike the orphaned-branch
@@ -296,8 +304,8 @@ test_sibling_form_issue_number_extraction() {
     local sb out rc=0 origin_b wt
     sb="$(make_merge_sandbox)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_b-222" \
-        p11 "owner/pkg_b#222" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_b-222" \
+        demo "owner/pkg_b#222" l1 \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-222")"
     write_pr_view_fixture "$sb" "owner/pkg_b" 222 "feature/pkg_b-issue-222"
 
@@ -313,8 +321,8 @@ test_sibling_pr_open_keeps_worktree() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-333" \
-        p11 "owner/pkg_a#333" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-333" \
+        demo "owner/pkg_a#333" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-333" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-333")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 333 "feature/issue-333"
@@ -335,8 +343,8 @@ test_repo_flag_equivalent_to_qualified_ref() {
     local sb out rc=0 origin_a wt
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-444" \
-        p11 "owner/pkg_a#444" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-444" \
+        demo "owner/pkg_a#444" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-444")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 444 "feature/issue-444"
 
@@ -361,8 +369,8 @@ test_sibling_check_failure_fails_closed() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-555" \
-        p11 "owner/pkg_a#555" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-555" \
+        demo "owner/pkg_a#555" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-555" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-555")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 555 "feature/issue-555"
@@ -377,7 +385,7 @@ test_sibling_check_failure_fails_closed() {
     assert_contains "explains what happened" "COULD NOT CHECK" "$out"
     assert_contains "surfaces gh's own error" "rate limit exceeded" "$out"
     assert_contains "tells the user how to finish cleanup once confirmed" \
-        "worktree_remove.sh --issue owner/pkg_a#555 --type project --project p11" "$out"
+        "worktree_remove.sh --issue owner/pkg_a#555 --type project --project demo" "$out"
     assert_eq "worktree kept (fail closed, not fail open)" "true" "$([ -d "$wt" ] && echo true || echo false)"
     assert_eq "pkg_a's local branch NOT deleted (still checked out in the kept worktree)" "true" \
         "$(git -C "$origin_a" show-ref --verify --quiet refs/heads/feature/issue-555 && echo true || echo false)"
@@ -392,8 +400,8 @@ test_sibling_without_remote_fails_closed() {
     # Strip pkg_b's origin so its slug cannot be resolved: the PR check is
     # unverifiable, which must block cleanup exactly like a gh failure.
     git -C "$origin_b" remote remove origin
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-556" \
-        p11 "owner/pkg_a#556" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-556" \
+        demo "owner/pkg_a#556" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-556" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-556")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 556 "feature/issue-556"
@@ -411,8 +419,8 @@ test_own_repo_sync_failure_is_reported() {
     local sb out rc=0 origin_a wt tmp_clone
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-557" \
-        p11 "owner/pkg_a#557" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-557" \
+        demo "owner/pkg_a#557" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-557")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 557 "feature/issue-557"
     # Diverge: one commit on origin's main via a scratch clone, a different
@@ -447,8 +455,8 @@ _pull_rule_case() {  # <num> <setup: base|other|dirty|detached|nobase> ; sets OU
     local num="$1" setup="$2" sb wt scratch base=main
     sb="$(make_merge_sandbox)"
     OA="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-$num" \
-        p11 "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-$num" \
+        demo "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
     set_manifest_base "$wt" main
     scratch="$sb/scratch_clone"
     git clone --quiet "$(git -C "$OA" remote get-url origin)" "$scratch"
@@ -504,8 +512,8 @@ _upstream_case() {  # <num> <setup: tracks|other|none> ; sets OUT, RC, OA, P1, M
     local num="$1" setup="$2" sb wt scratch
     sb="$(make_merge_sandbox)"
     OA="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-$num" \
-        p11 "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-$num" \
+        demo "owner/pkg_a#$num" l1 "$OA|l1_ws/src/pkg_a|feature/issue-$num")"
     set_manifest_base "$wt" pinned
     scratch="$sb/scratch_clone"
     git clone --quiet "$(git -C "$OA" remote get-url origin)" "$scratch"
@@ -548,8 +556,8 @@ test_own_repo_failed_fetch_marks_cleanup_incomplete() {
     local sb wt out origin_a bare
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-583" \
-        p11 "owner/pkg_a#583" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-583")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-583" \
+        demo "owner/pkg_a#583" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-583")"
     set_manifest_base "$wt" main
     git -C "$origin_a" checkout --quiet -b other
     # origin stops answering; its URL (which names owner/pkg_a) is kept.
@@ -570,8 +578,8 @@ test_package_pr_base_cross_check() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-573" \
-        p11 "owner/pkg_a#573" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-573" \
+        demo "owner/pkg_a#573" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-573" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-573")"
     set_manifest_base "$wt" pinned
@@ -583,8 +591,8 @@ test_package_pr_base_cross_check() {
 
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-574" \
-        p11 "owner/pkg_a#574" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-574")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-574" \
+        demo "owner/pkg_a#574" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-574")"
     set_manifest_base "$wt" main
     write_pr_view_fixture "$sb" "owner/pkg_a" 574 "feature/issue-574" "Test PR" main
     out="$(run_merge_pr "$sb" --pr owner/pkg_a#574 --no-wait --no-roadmap-update 2>&1)"
@@ -592,8 +600,8 @@ test_package_pr_base_cross_check() {
 
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-575" \
-        p11 "owner/pkg_a#575" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-575")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-575" \
+        demo "owner/pkg_a#575" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-575")"
     set_manifest_base "$wt" pinned
     write_pr_view_fixture "$sb" "owner/pkg_a" 575 "feature/issue-575" "Test PR" ""
     out="$(run_merge_pr "$sb" --pr owner/pkg_a#575 --no-wait --no-roadmap-update 2>&1)"
@@ -603,8 +611,8 @@ test_package_pr_base_cross_check() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-576" \
-        p11 "owner/pkg_a#576" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-576" \
+        demo "owner/pkg_a#576" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-576" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-576")"
     set_manifest_base "$wt" pinned
@@ -616,8 +624,8 @@ test_package_pr_base_cross_check() {
 
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-577" \
-        p11 "owner/pkg_a#577" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-577" >/dev/null
+    make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-577" \
+        demo "owner/pkg_a#577" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-577" >/dev/null
     write_pr_view_fixture "$sb" "owner/pkg_a" 577 "feature/issue-577" "Test PR" other
     out="$(run_merge_pr "$sb" --pr owner/pkg_a#577 --no-wait --no-roadmap-update 2>&1)"
     assert_eq "no recorded base: silent" "false" "$(grep -q "recorded base" <<< "$out" && echo true || echo false)"
@@ -664,9 +672,9 @@ test_same_repo_under_two_instances_requires_project() {
     origin_a2="$sb/origins2/pkg_a"
     mkdir -p "$(dirname "$origin_a2")"
     git clone --quiet "$(git -C "$origin_a" remote get-url origin)" "$origin_a2"
-    wt1="$(make_package_worktree "$sb" "worktrees/project/inst1/issue-inst1-owner-pkg_a-560" \
+    wt1="$(make_package_worktree "$sb" "inst1/worktrees/issue-inst1-owner-pkg_a-560" \
         inst1 "owner/pkg_a#560" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-560")"
-    wt2="$(make_package_worktree "$sb" "worktrees/project/inst2/issue-inst2-owner-pkg_a-560" \
+    wt2="$(make_package_worktree "$sb" "inst2/worktrees/issue-inst2-owner-pkg_a-560" \
         inst2 "owner/pkg_a#560" l1 "$origin_a2|l1_ws/src/pkg_a|feature/issue-560")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 560 "feature/issue-560"
 
@@ -688,20 +696,20 @@ test_project_parent_alias_selects_instance_manifest() {
     echo "TEST: --project <parent> matches a manifest whose header names the resolved instance (#273 round-2 review)"
     local sb out rc=0 origin_a wt
     sb="$(make_merge_sandbox)"
-    # Registry: parent p11 with default instance p11-rolling. worktree_create
+    # Registry: parent grp with default instance grp-rolling. worktree_create
     # resolves the parent before writing the manifest header, so the header
-    # says p11-rolling; the user still types --project p11.
-    mkdir -p "$sb/p11root/rolling"
-    git -C "$sb/p11root/rolling" init --quiet
-    printf 'p11 project %s default_instance=p11-rolling\np11-rolling ros2_colcon %s parent=p11\n' \
-        "$sb/p11root" "$sb/p11root/rolling" >> "$sb/.agent/projects.local"
+    # says grp-rolling; the user still types --project grp.
+    mkdir -p "$sb/grproot/rolling"
+    git -C "$sb/grproot/rolling" init --quiet
+    printf 'grp project %s default_instance=grp-rolling\ngrp-rolling ros2_colcon %s parent=grp\n' \
+        "$sb/grproot" "$sb/grproot/rolling" >> "$sb/.agent/projects.local"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11-rolling/issue-p11-rolling-owner-pkg_a-562" \
-        p11-rolling "owner/pkg_a#562" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-562")"
+    wt="$(make_package_worktree "$sb" "grproot/rolling/worktrees/issue-grp-rolling-owner-pkg_a-562" \
+        grp-rolling "owner/pkg_a#562" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-562")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
 
-    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --project p11 --no-wait --no-roadmap-update 2>&1)" || rc=$?
-    assert_eq "exit 0 with --project p11 (parent alias)" "0" "$rc"
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --project grp --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 with --project grp (parent alias)" "0" "$rc"
     assert_eq "instance's package worktree removed" "false" "$([ -d "$wt" ] && echo true || echo false)"
     assert_eq "merged" "true" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
 }
@@ -711,8 +719,8 @@ test_remote_branch_already_gone_is_not_a_failure() {
     local sb out rc=0 origin_a wt
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-561" \
-        p11 "owner/pkg_a#561" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-561")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-561" \
+        demo "owner/pkg_a#561" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-561")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 561 "feature/issue-561"
     # make_package_worktree creates the branch locally only; it was never
     # pushed, so origin has no such ref — exactly the auto-deleted shape.
@@ -730,15 +738,15 @@ test_sweep_reports_unmerged_local_branch() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-562" \
-        p11 "owner/pkg_a#562" l1 \
+    make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-562" \
+        demo "owner/pkg_a#562" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-562" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-562" >/dev/null
     # pkg_b: an unmerged commit on its branch, never pushed (remote ref absent
     # → sweep tries branch -d → git refuses).
-    echo abandoned > "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b/abandoned.txt"
-    git -C "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b" add abandoned.txt
-    git -C "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b" -c user.name=t -c user.email=t@t commit --quiet -m abandoned
+    echo abandoned > "$sb/demo/worktrees/issue-demo-owner-pkg_a-562/l1_ws/src/pkg_b/abandoned.txt"
+    git -C "$sb/demo/worktrees/issue-demo-owner-pkg_a-562/l1_ws/src/pkg_b" add abandoned.txt
+    git -C "$sb/demo/worktrees/issue-demo-owner-pkg_a-562/l1_ws/src/pkg_b" -c user.name=t -c user.email=t@t commit --quiet -m abandoned
     write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
     write_pr_list_fixture "$sb" "owner/pkg_b" "feature/pkg_b-issue-562" 0 2>/dev/null || true
 
@@ -755,8 +763,8 @@ test_failed_worktree_removal_marks_cleanup_incomplete() {
     local sb out rc=0 origin_a wt
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-563" \
-        p11 "owner/pkg_a#563" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-563")"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-563" \
+        demo "owner/pkg_a#563" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-563")"
     write_pr_view_fixture "$sb" "owner/pkg_a" 563 "feature/issue-563"
     echo dirty > "$wt/l1_ws/src/pkg_a/uncommitted.txt"
 
@@ -774,8 +782,8 @@ test_kept_worktree_banner() {
     sb="$(make_merge_sandbox)"
     origin_a="$(make_origin_repo "$sb" pkg_a owner)"
     origin_b="$(make_origin_repo "$sb" pkg_b owner)"
-    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-564" \
-        p11 "owner/pkg_a#564" l1 \
+    make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-564" \
+        demo "owner/pkg_a#564" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-564" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-564" >/dev/null
     write_pr_view_fixture "$sb" "owner/pkg_a" 564 "feature/issue-564"
@@ -797,8 +805,8 @@ test_orphaned_local_branch_swept_on_final_merge() {
     # pushed here — ls-remote sees the same "no such ref" either way), but
     # its local branch survived because pkg_b's PR was still open at the
     # time. Now pkg_b's PR merges too.
-    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_b-666" \
-        p11 "owner/pkg_b#666" l1 \
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_b-666" \
+        demo "owner/pkg_b#666" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-666" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-666")"
     write_pr_view_fixture "$sb" "owner/pkg_b" 666 "feature/pkg_b-issue-666"
@@ -847,8 +855,8 @@ test_legacy_workspace_pr_regression() {
         "$(git -C "$sb" show-ref --verify --quiet refs/heads/feature/issue-999 && echo true || echo false)"
 }
 
-test_legacy_single_repo_project_pr_regression() {
-    echo "TEST: a legacy single-repo project/ PR (no manifest) is resolved and cleaned up exactly as before #252 PR 2"
+test_unregistered_project_checkout_not_used() {
+    echo "TEST: an unregistered project/ checkout is not read (issue #265 part 4): its PR is not found and nothing is removed"
     local sb out rc=0 wt bare curbr pj_remote
     sb="$(make_merge_sandbox)"
     mkdir -p "$sb/project"
@@ -872,10 +880,11 @@ test_legacy_single_repo_project_pr_regression() {
     write_pr_view_fixture "$sb" "$pj_remote" 77 "feature/issue-77"
 
     out="$(run_merge_pr "$sb" --pr 77 --no-wait --no-roadmap-update 2>&1)" || rc=$?
-    assert_eq "exit 0" "0" "$rc"
-    assert_contains "project type auto-detected" "Merging PR #77 (issue #77)" "$out"
-    assert_eq "project worktree removed" "false" "$([ -e "$wt" ] && echo true || echo false)"
-    assert_eq "feature branch deleted in the project repo" "false" \
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "the project/ checkout's repository is not asked" "not open in either workspace or project" "$out"
+    assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+    assert_eq "the worktree under the retired location is untouched" "true" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "feature branch kept in the project/ repo" "true" \
         "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-77 && echo true || echo false)"
 }
 
@@ -925,9 +934,51 @@ test_ambiguous_project_root_type_project_fails_fast() {
     out="$(run_merge_pr "$sb" --pr 88 --type project --no-wait --no-roadmap-update 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "surfaces wt_resolve_project_repo_root's ambiguity error" \
-        "multiple projects registered; pass --project" "$out"
+        "Registered: alpha, beta. Pass --project <name>" "$out"
     assert_eq "no gh calls made (fails before any PR lookup)" \
         "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+}
+
+test_unregistered_project_arg_refused() {
+    echo "TEST: --project naming no registered project is refused up front, whatever --type says (plan review S6)"
+    local sb out rc origin_a wt t
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-590" \
+        demo "owner/pkg_a#590" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-590")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 590 "feature/issue-590"
+    for t in "" "--type project"; do
+        rc=0
+        # shellcheck disable=SC2086  # $t is deliberately split into flag + value
+        out="$(run_merge_pr "$sb" --pr owner/pkg_a#590 --project nosuch $t --no-wait --no-roadmap-update 2>&1)" || rc=$?
+        assert_eq "exit 1 (${t:-no --type})" "1" "$rc"
+        assert_contains "names the unregistered project (${t:-no --type})" "project 'nosuch' is not registered (registered: demo)" "$out"
+        # Split token: this suite does not test the registration script (the
+        # hub guard in test_script_tests_hook_scope.sh).
+        assert_contains "names the registration script (${t:-no --type})" ".agent/scripts/register_project"".sh <path>" "$out"
+        assert_eq "nothing merged (${t:-no --type})" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+        assert_eq "worktree intact (${t:-no --type})" "true" "$([ -d "$wt" ] && echo true || echo false)"
+    done
+}
+
+test_malformed_registry_stops_merge() {
+    echo "TEST: a malformed registry stops the merge with its own error, whatever --type is; the PR is not looked up in the workspace alone (issue #265 part 4)"
+    local sb out rc ws_remote t
+    sb="$(make_merge_sandbox)"
+    ws_remote="$(git -C "$sb" remote get-url origin)"
+    # An open workspace PR with the number asked for: the issue #173 hazard
+    # is a project PR number matching it when only the workspace is asked.
+    write_pr_view_fixture "$sb" "$ws_remote" 999 "feature/issue-999"
+    echo 'bad!name single_project /nonexistent' > "$sb/.agent/projects.local"
+    for t in "" "--type workspace" "--type project"; do
+        rc=0
+        rm -f "$sb/gh_calls.log"
+        # shellcheck disable=SC2086  # $t is deliberately split into flag + value
+        out="$(run_merge_pr "$sb" --pr 999 $t --no-wait --no-roadmap-update --report-only 2>&1)" || rc=$?
+        assert_eq "exit 1 (${t:-no --type})" "1" "$rc"
+        assert_contains "the registry's own error (${t:-no --type})" "invalid project name 'bad!name'" "$out"
+        assert_eq "no PR lookup (${t:-no --type})" "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+    done
 }
 
 # ---- Run all tests ----
@@ -956,9 +1007,11 @@ test_failed_worktree_removal_marks_cleanup_incomplete
 test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
-test_legacy_single_repo_project_pr_regression
+test_unregistered_project_checkout_not_used
 test_registered_project_root_pr_regression
 test_ambiguous_project_root_type_project_fails_fast
+test_unregistered_project_arg_refused
+test_malformed_registry_stops_merge
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

@@ -69,12 +69,10 @@
 #
 # Registering, in order, so a failed registration leaves nothing behind:
 #   1. write the registry line (a temporary copy, re-parsed, then renamed)
-#      and the settings file. Its command keys come from --set, else the
-#      legacy .agent/projects.d/<name>.sh, else --detect's proposals. A
-#      legacy command with a glob character (* ? [) is not copied: the
-#      legacy file ran it through a shell, which expanded the glob, and the
-#      settings file runs it without one; it stays in the legacy file, with
-#      a warning naming the key.
+#      and the settings file. Its command keys come from --set, else
+#      --detect's proposals (issue #265 part 4: a legacy
+#      .agent/projects.d/<name>.sh is not read or copied; make validate's
+#      stale-shape report names what is left in it to move).
 #      Then, when the type's registration.conf says setup=when-missing and
 #      the hosting directory does not exist, `adapter setup`.
 #   2. the static gate, registration_verify.sh <name> (read-only).
@@ -115,12 +113,7 @@
 # refused: no silent rewrite; the one exception is adding a missing
 # default_instance to a parent root, which can only be set once its
 # instances are registered). A project with no settings file gets one
-# (the legacy .sh values copied, then detection); one with a file gets
-# only the --set keys. Adoption warns, naming each, when the config the
-# project used to read (its legacy .sh, else the shared project_config.sh)
-# sets or exports variables beyond the ones the adapters read: a command
-# in the settings file runs without sourcing it, so that environment no
-# longer reaches the command, and belongs in the script the key points at.
+# (from detection); one with a file gets only the --set keys.
 # An adopted project that fails a check, or whose run is interrupted, is
 # reported NOT READY and kept, never rolled back; the output says what the
 # run already changed (its line, its settings file). A second identical run changes nothing and says so.
@@ -528,7 +521,7 @@ if [ "$MODE" = "remove" ]; then
             fi
         fi
     fi
-    [ -f "$PROJECTS_D/$NAME.sh" ] && echo "note: the legacy $PROJECTS_D/$NAME.sh is left in place; remove it by hand when it is no longer wanted"
+    [ -f "$PROJECTS_D/$NAME.sh" ] && echo "NOTE: $PROJECTS_D/$NAME.sh is no longer read (issue #265 part 4) and is left in place: delete it"
     echo "left alone: the project at $PROJECT_ROOT, its records (in the project, or where its settings put them) and its memory"
     final "$_remove_status" "$_remove_next" "$_remove_rc"
 fi
@@ -704,7 +697,6 @@ fi
 
 # ------------------------------------------------- the settings to write ---
 SETTINGS="$(project_file_path "$ROOT" "$NAME")"
-LEGACY="$PROJECTS_D/$NAME.sh"
 SETTINGS_EXISTED=0
 { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; } && SETTINGS_EXISTED=1
 # A settings path that is there but is not a regular file (or a link to
@@ -725,35 +717,6 @@ if [ "$IS_PARENT" -eq 0 ]; then
         KV+=("$_kv"); KV_NOTES+=("${_kv%%=*}: from --set")
     done
     if [ "$SETTINGS_EXISTED" -eq 0 ]; then
-        # The legacy .sh values, for a key the type reads and --set leaves.
-        if [ -f "$LEGACY" ]; then
-            for _pair in build:BUILD_CMD test:TEST_CMD install:INSTALL_CMD bootstrap_url:MANIFEST_BOOTSTRAP_URL; do
-                _k="${_pair%%:*}"; _var="${_pair#*:}"
-                [[ "$SET_KEYS" == *" $_k "* ]] && continue
-                _project_type_unused_setting "$ROOT" "$TYPE" "$_k" >/dev/null && continue
-                if ! _val="$(_project_config_value "$LEGACY" "$_var")"; then
-                    echo "WARNING: cannot source the legacy $LEGACY; nothing copied from it" >&2
-                    break
-                fi
-                _val="$(_project_file_trim "$_val")"
-                [ -n "$_val" ] || continue
-                # The legacy file's command ran through a shell, which
-                # expanded a glob; the settings file's runs without one, so
-                # the pattern would reach the command literally.
-                if [[ "$_k" != bootstrap_url ]] && [[ "$_val" == *[\*\?\[]* ]]; then
-                    echo "WARNING: $_var in $LEGACY is not copied ('$_k' has a glob character, * ? or [: the legacy command ran through a shell, which expanded it, and a command in the settings file runs without one, so the pattern would be passed literally); the adapters keep reading it from the legacy file" >&2
-                    SET_KEYS="$SET_KEYS$_k "
-                    continue
-                fi
-                if _why="$(_project_file_value_error "$_k" "$_val")"; then
-                    KV+=("$_k=$_val"); KV_NOTES+=("$_k: copied from $_var in $LEGACY")
-                    SET_KEYS="$SET_KEYS$_k "
-                else
-                    echo "WARNING: $_var in $LEGACY is not copied ($_why); the adapters keep reading it from the legacy file" >&2
-                    SET_KEYS="$SET_KEYS$_k "
-                fi
-            done
-        fi
         # Detection, for a required command still without a value.
         if [ -n "$REQUIRED" ] && [ -d "$PROJECT_ROOT" ]; then
             # Read-only and cheap: once for the proposals, once for the notes.
@@ -809,24 +772,6 @@ if [ "${#KV[@]}" -gt 0 ]; then
         echo "ERROR: the settings for '$NAME' would be invalid:" >&2
         printf '%s\n' "${_err//$_tmpf/$SETTINGS}" | sed 's/^/  /' >&2
         final refused "fix the --set values" 1
-    fi
-fi
-
-# Adoption: the environment a command no longer gets.
-EXTRA_WARN=""
-if [ "$IS_PARENT" -eq 0 ]; then
-    _cfg=""
-    if [ -f "$LEGACY" ]; then _cfg="$LEGACY"
-    elif [ "$ADOPT" -eq 1 ] && [ -f "$ROOT/.agent/project_config.sh" ]; then _cfg="$ROOT/.agent/project_config.sh"
-    fi
-    if [ -n "$_cfg" ] && [ "${#KV[@]}" -gt 0 ]; then
-        if _extra="$(project_config_extra_vars "$_cfg")"; then
-            if [ -n "$_extra" ]; then
-                EXTRA_WARN="WARNING: $_cfg sets or exports $(tr '\n' ' ' <<< "$_extra" | sed 's/ $//; s/ /, /g'), which a command in the settings file no longer gets (it runs without sourcing that config): move that environment into the script the key points at"
-            fi
-        else
-            EXTRA_WARN="WARNING: cannot source $_cfg to check what environment it sets"
-        fi
     fi
 fi
 
@@ -886,7 +831,6 @@ if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$SETTINGS_EXISTED" -eq 1 ]; then echo "settings file kept as it is: $SETTINGS"
         else echo "no settings file (nothing to write)"; fi
     fi
-    [ -n "$EXTRA_WARN" ] && echo "$EXTRA_WARN"
     [ "$RUN_SETUP" -eq 1 ] && echo "would run: adapter --project $NAME setup ($PROJECT_ROOT does not exist)"
     echo "would run: registration_verify.sh $NAME"
     for _v in $RUN_VERBS; do echo "would run: adapter --project $NAME $_v"; done
@@ -1179,7 +1123,6 @@ elif [ "$IS_PARENT" -eq 0 ]; then
     if [ "$SETTINGS_EXISTED" -eq 1 ]; then echo "unchanged $SETTINGS"; else echo "no settings file (nothing to write)"; fi
 fi
 [ "$CHANGED" -eq 0 ] && echo "nothing changed: '$NAME' was registered with these settings already"
-[ -n "$EXTRA_WARN" ] && echo "$EXTRA_WARN"
 
 if [ "$RUN_SETUP" -eq 1 ]; then
     echo ""

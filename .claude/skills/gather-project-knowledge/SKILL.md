@@ -41,11 +41,14 @@ source .agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 This produces a JSON-lines inventory of all governance documents across the
-workspace and project repos.
+workspace and project repos. Exit 1 with "the project registry ... has errors"
+on stderr means the inventory is incomplete: only the workspace rows were
+printed and no registered project root was scanned. Stop and report the
+registry error; never build the summaries from that partial inventory.
 
 ### 2. Scan project repos and build the component inventory
 
-For every project repo under `project/`:
+For every registered project root (`.agent/projects.local`; each repository under it):
 
 - Glob for all source manifest files (e.g., `package.json`, `pyproject.toml`,
   `Cargo.toml`, `go.mod`, `pom.xml`, `*.cabal`) in the repo

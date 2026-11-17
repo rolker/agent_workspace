@@ -23,7 +23,7 @@ PASS=0
 # that sandbox -- which is what a real `make build` does too.
 run_in_ws() {  # <sandbox> <command> [args...]
     local sb="$1"; shift
-    (cd "$sb" && "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && "$@")
 }
 FAIL=0
 
@@ -169,12 +169,12 @@ write_repos_file() {
     } > "$file"
 }
 
-# Synthetic layered project "p11": layers l1, l2, l3 (l3 optional),
+# Synthetic layered project "tiered": layers l1, l2, l3 (l3 optional),
 # distro fakefox declared in bootstrap.yaml, registered in the registry,
 # ROS_ROOT_DIR pointed at the sandbox underlay.
 make_colcon_project() {
     local sb="$1"
-    local proj="$sb/projects/p11"
+    local proj="$sb/projects/tiered"
     local mdir="$proj/configs/manifest"
     mkdir -p "$mdir/repos"
     printf 'l1\nl2\nl3\n' > "$mdir/layers.txt"
@@ -184,8 +184,7 @@ make_colcon_project() {
     write_repos_file "$mdir/repos/l1.repos" fakefox pkg_a pkg_b
     write_repos_file "$mdir/repos/l2.repos" fakefox pkg_c
     write_repos_file "$mdir/repos/l3.repos" fakefox pkg_priv
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
+    echo "tiered ros2_colcon projects/tiered" >> "$sb/.agent/projects.local"
     make_underlay "$sb"
     echo "$proj"
 }
@@ -195,9 +194,9 @@ make_colcon_project() {
 run_adapter() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/bin:$PATH" \
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" \
         COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 "$@")
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered "$@")
 }
 
 # Create src/ checkouts matching the manifest (as if setup had run with
@@ -282,13 +281,13 @@ make_committed_pkg_repo() {
 run_worktree_create() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch "$@")
 }
 
 run_worktree_remove() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" "$@")
 }
 
 test_worktree_create_package_success() {
@@ -301,10 +300,10 @@ test_worktree_create_package_success() {
     make_committed_pkg_repo "$proj" l1 pkg_b
     mkdir -p "$proj/layers/main/l1_ws/install"
     touch "$proj/layers/main/l1_ws/install/local_setup.bash"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#111 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#111 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-111"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-111"
     assert_eq "aggregate dir created" "true" "$([ -d "$wt" ] && echo true || echo false)"
     assert_eq "named package is a real worktree (not a symlink)" \
         "false" "$([ -L "$wt/l1_ws/src/pkg_a" ] && echo true || echo false)"
@@ -340,7 +339,7 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
     # No --base: the base is the manifest's pin of pkg_a, fakefox, a branch
     # on origin (issue 429), never origin's default branch by omission.
     assert_eq "no --base: the header records the pin as base=" \
-        "# project=p11 issue=owner/pkg_a#111 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#111 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
     assert_contains "the banner names the base and where it came from" \
         "Base:       fakefox (from the project's pin of pkg_a;" "$out"
     assert_eq "the owning branch starts at origin's fakefox" \
@@ -349,9 +348,9 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
     assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
         "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"
     assert_contains "enter banner uses the qualified issue and --project" \
-        "worktree_enter.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
+        "worktree_enter.sh --issue owner/pkg_a#111 --type project --project tiered" "$out"
     assert_contains "remove banner uses the qualified issue and --project" \
-        "worktree_remove.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
+        "worktree_remove.sh --issue owner/pkg_a#111 --type project --project tiered" "$out"
     assert_not_contains "banner never prints the bare number for a package worktree" \
         "--issue 111 --type project" "$out"
 }
@@ -366,9 +365,9 @@ test_worktree_create_package_base_from_pin_or_refused() {
     git -C "$a" tag v9
     git -C "$a" push --quiet origin v9
     write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project tiered \
         --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-120"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-120"
     assert_eq "a tag pin, no --base: exits 1" "1" "$rc"
     assert_contains "the pin's own refusal" "pkg_a is pinned at v9 (tag); only a branch can be a base" "$out"
     assert_contains "creation says it needs a base and asks for --base" \
@@ -380,20 +379,20 @@ test_worktree_create_package_base_from_pin_or_refused() {
         "$(git -C "$proj/layers/main/l1_ws/src/pkg_b" show-ref --verify --quiet refs/heads/feature/pkg_a-issue-120 && echo true || echo false)"
     # The same with --base: the override is the base.
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#120 --type project --project tiered \
         --layer l1 --package-repos pkg_b,pkg_a --base main 2>&1)" || rc=$?
     assert_eq "with --base main: exit 0" "0" "$rc"
     assert_eq "with --base main: base=main recorded" \
-        "# project=p11 issue=owner/pkg_a#120 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#120 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
     assert_contains "the banner says the base came from --base" "Base:       main (from --base;" "$out"
     # A worktree with no owning entry (only a sibling) has no base to resolve.
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#121 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#121 --type project --project tiered \
         --layer l1 --package-repos pkg_b 2>&1)" || rc=$?
     assert_eq "siblings only: exit 0 with the tag pin (no owning branch to start)" "0" "$rc"
     assert_eq "siblings only: no base= in the header" \
-        "# project=p11 issue=owner/pkg_a#121 layer=l1" \
-        "$(head -n1 "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-121/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#121 layer=l1" \
+        "$(head -n1 "$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-121/.worktree-repos")"
 }
 
 test_worktree_create_package_existing_branch_needs_named_base() {
@@ -416,9 +415,9 @@ test_worktree_create_package_existing_branch_needs_named_base() {
     git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "own work"
     git -C "$a" checkout --quiet main
     local own130; own130="$(git -C "$a" rev-parse feature/issue-130)"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project tiered \
         --layer l1 --package-repos pkg_b,pkg_a 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-130"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-130"
     assert_eq "existing branch, no --base: exits 1" "1" "$rc"
     assert_contains "says why: it already existed, the pin is not taken, name the base" \
         "'feature/issue-130' already existed (locally or on origin), so this workspace cannot know which branch it started from, and does not take the pin (fakefox) for it." "$out"
@@ -431,39 +430,39 @@ test_worktree_create_package_existing_branch_needs_named_base() {
     assert_eq "the existing owning branch is kept as it was" "$own130" "$(git -C "$a" rev-parse feature/issue-130)"
     # ... with the --base it was started from: recorded.
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#130 --type project --project tiered \
         --layer l1 --package-repos pkg_b,pkg_a --base fakefox 2>&1)" || rc=$?
     assert_eq "with --base fakefox: exit 0" "0" "$rc"
     assert_eq "with --base fakefox: recorded" \
-        "# project=p11 issue=owner/pkg_a#130 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#130 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
 
     # Started from main, named main: recorded (where it started is the
     # owner's word; the check is that origin has it and history is shared).
     git -C "$a" branch feature/issue-131 main
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#131 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#131 --type project --project tiered \
         --layer l1 --package-repos pkg_a --base main 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-131"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-131"
     assert_eq "existing branch from main, --base main: exit 0" "0" "$rc"
     assert_eq "existing branch from main, --base main: recorded" \
-        "# project=p11 issue=owner/pkg_a#131 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#131 layer=l1 base=main" "$(head -n1 "$wt/.worktree-repos")"
     assert_eq "the branch is not moved" "$hosted_main" "$(git -C "$a" rev-parse feature/issue-131)"
 
     # A named base origin lacks: refused, rolled back.
     git -C "$a" branch feature/issue-133 main
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#133 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#133 --type project --project tiered \
         --layer l1 --package-repos pkg_a --base nosuch 2>&1)" || rc=$?
     assert_eq "existing branch, --base origin lacks: exits 1" "1" "$rc"
     assert_contains "says so" "'feature/issue-133' already existed, and --base nosuch cannot be its base: origin has no branch 'nosuch'." "$out"
-    assert_eq "no aggregate dir" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-133" ] && echo true || echo false)"
+    assert_eq "no aggregate dir" "false" "$([ -e "$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-133" ] && echo true || echo false)"
 
     # An orphan owning branch: no history in common with the named base.
     git -C "$a" checkout --quiet --orphan feature/issue-134
     git -C "$a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "orphan"
     git -C "$a" checkout --quiet main
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#134 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#134 --type project --project tiered \
         --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
     assert_eq "orphan existing branch: exits 1" "1" "$rc"
     assert_contains "says there is no history in common" "'feature/issue-134' has no commit in common with origin's 'fakefox'" "$out"
@@ -471,16 +470,16 @@ test_worktree_create_package_existing_branch_needs_named_base() {
     # A branch on origin only: checked out from origin, then the same rule.
     git -C "$a" push --quiet origin origin/fakefox:refs/heads/feature/issue-132
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "branch on origin only, no --base: exits 1" "1" "$rc"
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#132 --type project --project tiered \
         --layer l1 --package-repos pkg_a --base fakefox 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-132"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-132"
     assert_eq "branch on origin only, --base fakefox: exit 0" "0" "$rc"
     assert_eq "branch on origin only, --base fakefox: recorded" \
-        "# project=p11 issue=owner/pkg_a#132 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#132 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos")"
 }
 
 test_worktree_create_package_parent_issue_starts_from_parent() {
@@ -500,19 +499,19 @@ test_worktree_create_package_parent_issue_starts_from_parent() {
     git -C "$a" tag v9
     git -C "$a" push --quiet origin v9
     write_repos_file "$proj/configs/manifest/repos/l1.repos" v9 pkg_a pkg_b
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#12 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#12 --type project --project tiered \
         --layer l1 --package-repos pkg_a --parent-issue 10 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-12"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-12"
     assert_eq "exit 0 (the tag pin is not read)" "0" "$rc"
     assert_eq "the branch starts at the parent's tip" "$parent_tip" "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD)"
     assert_contains "the banner names the parent" "Parent:     #10 (feature/issue-10)" "$out"
     assert_contains "the banner names the parent's branch as the base" "Base:       feature/issue-10 (the parent's branch:" "$out"
     assert_not_contains "no pin-sourced base in the banner" "from the project's pin" "$out"
     assert_eq "base= records the parent's branch" \
-        "# project=p11 issue=owner/pkg_a#12 layer=l1 base=feature/issue-10" "$(head -n1 "$wt/.worktree-repos")"
+        "# project=tiered issue=owner/pkg_a#12 layer=l1 base=feature/issue-10" "$(head -n1 "$wt/.worktree-repos")"
     # --base with --parent-issue stays refused.
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#13 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#13 --type project --project tiered \
         --layer l1 --package-repos pkg_a --parent-issue 10 --base main 2>&1)" || rc=$?
     assert_eq "--base with --parent-issue: exits 1" "1" "$rc"
     assert_contains "says so" "--base cannot be used with --parent-issue" "$out"
@@ -524,7 +523,7 @@ test_worktree_create_package_refuses_branch_and_empty_base() {
     sb="$(make_worktree_sandbox)"
     proj="$(make_lookup_project "$sb")"
     a="$proj/layers/main/l1_ws/src/pkg_a"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project tiered \
         --layer l1 --package-repos pkg_a --branch foo 2>&1)" || rc=$?
     assert_eq "--branch with --layer: exits 1" "1" "$rc"
     assert_contains "says why" "--branch is not valid for a package worktree (--layer): the adapter names each repository's branch" "$out"
@@ -534,7 +533,7 @@ test_worktree_create_package_refuses_branch_and_empty_base() {
     local v
     for v in "" "-foo" "HEAD"; do
         rc=0
-        out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project p11 \
+        out="$(run_worktree_create "$sb" --issue owner/pkg_a#140 --type project --project tiered \
             --layer l1 --package-repos pkg_a --base "$v" 2>&1)" || rc=$?
         assert_eq "--base '$v': exits 1" "1" "$rc"
         if [ -z "$v" ]; then
@@ -543,7 +542,7 @@ test_worktree_create_package_refuses_branch_and_empty_base() {
             assert_contains "--base '$v': refused" "Error: --base '$v' is not a valid branch name" "$out"
         fi
     done
-    assert_eq "nothing made" "false" "$([ -e "$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-140" ] && echo true || echo false)"
+    assert_eq "nothing made" "false" "$([ -e "$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-140" ] && echo true || echo false)"
 }
 
 test_worktree_create_package_hook_preflight_checks_package_repos() {
@@ -566,7 +565,7 @@ test_worktree_create_package_hook_preflight_checks_package_repos() {
     printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
         "$sb/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
     chmod +x "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#112 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#112 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_not_contains "healthy package hook: no warning about the enclosing repo's broken hook" \
@@ -575,7 +574,7 @@ test_worktree_create_package_hook_preflight_checks_package_repos() {
     printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
         "$sb/gone/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
     rc=0
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#113 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#113 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0 (warning is advisory)" "0" "$rc"
     assert_contains "broken package hook: warning names the package repo" \
@@ -596,10 +595,10 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
     # at read time, both present-but-non-git here), so its `git worktree add`
     # must fail and trigger rollback of pkg_a.
     mkdir -p "$proj/layers/main/l1_ws/src/pkg_b"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#222 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#222 --type project --project tiered \
         --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-222"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-222"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "pkg_a's worktree removed from the origin repo" \
         "" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain \
@@ -615,7 +614,7 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
 run_worktree_create_strict() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
 }
 
 # Give a package repo a reachable bare origin holding its main.
@@ -653,9 +652,9 @@ test_worktree_create_lookup_unknown_first_repo() {
     a="$proj/layers/main/l1_ws/src/pkg_a"
     git -C "$a" remote set-url origin "file:///nonexistent/pkg_a.git"
     line="$(git -C "$a" fetch --quiet origin 2>&1 | head -n1)" || true
-    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#444 --type project --project p11 \
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#444 --type project --project tiered \
         --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-444"
     assert_eq "exits 1" "1" "$rc"
     assert_contains "the stop names the branch, the repo and the whole reason" \
         "$(lookup_stop_message "$a" feature/pkg_a-issue-444 "$line")" "$out"
@@ -674,9 +673,9 @@ test_worktree_create_lookup_unknown_second_repo() {
     give_bare_origin "$a" "$sb/pkg_a-origin.git"
     git -C "$b" remote set-url origin "file:///nonexistent/pkg_b.git"
     line="$(git -C "$b" fetch --quiet origin 2>&1 | head -n1)" || true
-    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#445 --type project --project p11 \
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#445 --type project --project tiered \
         --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-445"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-445"
     assert_eq "exits 1" "1" "$rc"
     assert_contains "the stop names pkg_b's branch and the whole reason" \
         "$(lookup_stop_message "$b" feature/pkg_a-issue-445 "$line")" "$out"
@@ -705,10 +704,10 @@ test_worktree_create_lookup_found_branch_fails_checkout() {
     git -C "$a" update-ref -d refs/remotes/origin/feature/pkg_a-issue-446
     printf '#!/bin/sh\nexit 1\n' > "$a/.git/hooks/post-checkout"
     chmod +x "$a/.git/hooks/post-checkout"
-    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#446 --type project --project p11 \
+    out="$(run_worktree_create_strict "$sb" --issue owner/pkg_a#446 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     rm -f "$a/.git/hooks/post-checkout"
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-446"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-446"
     assert_eq "exits 1" "1" "$rc"
     assert_contains "the failure names the repo, the destination and the branch" \
         "ERROR: could not create a worktree for $a at $wt/l1_ws/src/pkg_a (branch 'feature/pkg_a-issue-446')" "$out"
@@ -733,10 +732,10 @@ test_worktree_create_rollback_on_worktree_env_failure() {
     # worktree_env runs after every add has succeeded).
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
-    out="$(run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project tiered \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-333"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "package repo's worktree list shows only the main checkout" \
         "1" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
@@ -755,11 +754,11 @@ test_worktree_remove_multi_package_dirty_refuses_all() {
     proj="$(make_colcon_project "$sb")"
     make_committed_pkg_repo "$proj" l1 pkg_a
     make_committed_pkg_repo "$proj" l1 pkg_b
-    run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
+    run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project tiered \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-333"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
-    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 2>&1)" || rc=$?
+    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project tiered 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the dirty entry" "l1_ws/src/pkg_b" "$out"
     assert_eq "nothing removed: pkg_a worktree still present" \
@@ -767,7 +766,7 @@ test_worktree_remove_multi_package_dirty_refuses_all() {
     assert_eq "nothing removed: pkg_b worktree still present" \
         "true" "$([ -d "$wt/l1_ws/src/pkg_b" ] && echo true || echo false)"
     rc=0
-    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 --force 2>&1)" || rc=$?
+    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project tiered --force 2>&1)" || rc=$?
     assert_eq "--force removes it" "0" "$rc"
     assert_eq "aggregate dir gone" "false" "$([ -e "$wt" ] && echo true || echo false)"
 }
@@ -780,14 +779,14 @@ test_worktree_list_json_reports_package_worktree() {
     proj="$(make_colcon_project "$sb")"
     make_committed_pkg_repo "$proj" l1 pkg_a
     make_committed_pkg_repo "$proj" l1 pkg_b
-    run_worktree_create "$sb" --issue owner/pkg_a#444 --type project --project p11 \
+    run_worktree_create "$sb" --issue owner/pkg_a#444 --type project --project tiered \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-444"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
-    out="$(cd "$sb" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "issue 444 reported" '"issue":444' "$out"
-    assert_contains "project p11 reported as repo" '"repo":"p11"' "$out"
+    assert_contains "project tiered reported as repo" '"repo":"tiered"' "$out"
     assert_contains "owning branch reported" "feature/issue-444" "$out"
     assert_contains "sibling branch reported" "feature/pkg_a-issue-444" "$out"
     assert_contains "dirty status reported" '"status":"dirty"' "$out"
@@ -796,7 +795,7 @@ test_worktree_list_json_reports_package_worktree() {
 run_worktree_enter_print_path() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --print-path "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --print-path "$@")
 }
 
 test_worktree_enter_disambiguates_by_qualified_issue() {
@@ -807,29 +806,29 @@ test_worktree_enter_disambiguates_by_qualified_issue() {
     proj="$(make_colcon_project "$sb")"
     make_committed_pkg_repo "$proj" l1 pkg_a
     make_committed_pkg_repo "$proj" l2 pkg_c
-    run_worktree_create "$sb" --issue owner/pkg_a#555 --type project --project p11 \
+    run_worktree_create "$sb" --issue owner/pkg_a#555 --type project --project tiered \
         --layer l1 --package-repos pkg_a >/dev/null 2>&1
-    run_worktree_create "$sb" --issue owner/pkg_c#555 --type project --project p11 \
+    run_worktree_create "$sb" --issue owner/pkg_c#555 --type project --project tiered \
         --layer l2 --package-repos pkg_c >/dev/null 2>&1
-    wt_a="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-555"
-    wt_c="$sb/projects/p11/worktrees/issue-p11-owner-pkg_c-555"
+    wt_a="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-555"
+    wt_c="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_c-555"
     assert_eq "pkg_a worktree exists" "true" "$([ -d "$wt_a" ] && echo true || echo false)"
     assert_eq "pkg_c worktree exists" "true" "$([ -d "$wt_c" ] && echo true || echo false)"
 
-    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_a#555 --type project --project p11 2>&1)" || rc=$?
+    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_a#555 --type project --project tiered 2>&1)" || rc=$?
     assert_eq "qualified issue for pkg_a resolves to pkg_a's worktree" "0" "$rc"
     assert_eq "resolved path is pkg_a's" "$wt_a" "$out"
 
     rc=0
-    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_c#555 --type project --project p11 2>&1)" || rc=$?
+    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_c#555 --type project --project tiered 2>&1)" || rc=$?
     assert_eq "qualified issue for pkg_c resolves to pkg_c's worktree" "0" "$rc"
     assert_eq "resolved path is pkg_c's" "$wt_c" "$out"
 
     rc=0
-    out="$(run_worktree_enter_print_path "$sb" --issue 555 --type project --project p11 2>&1)" || rc=$?
+    out="$(run_worktree_enter_print_path "$sb" --issue 555 --type project --project tiered 2>&1)" || rc=$?
     assert_eq "bare number is ambiguous: exits nonzero" "1" "$rc"
-    assert_contains "names both candidates" "issue-p11-owner-pkg_a-555" "$out"
-    assert_contains "names both candidates (2)" "issue-p11-owner-pkg_c-555" "$out"
+    assert_contains "names both candidates" "issue-tiered-owner-pkg_a-555" "$out"
+    assert_contains "names both candidates (2)" "issue-tiered-owner-pkg_c-555" "$out"
     assert_contains "points at the qualified form, not --repo-slug" \
         "--repo-slug cannot" "$out"
     assert_contains "gives the qualified ref for pkg_a" "--issue owner/pkg_a#555" "$out"
@@ -883,9 +882,9 @@ test_worktree_create_issue_lookup_uses_qualified_repo() {
     stub_issue_lookup_recorder "$sb"
     log="$sb/issue_lookup.log"
     : > "$log"
-    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
         "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue rolker/ros2_network_monitor#27 \
-        --type project --project p11 --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+        --type project --project tiered --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "issue_lookup called with exactly the qualified repo" \
         "rolker/ros2_network_monitor" "$(< "$log")"
@@ -919,20 +918,22 @@ test_distro_from_bootstrap_yaml() {
 }
 
 test_distro_from_project_config() {
-    echo "TEST: distro falls back to ROS_DISTRO in the per-project config"
-    local sb out proj
+    echo "TEST: a ROS_DISTRO in a retired projects.d/<name>.sh or the shared project_config.sh is not read (issue #265 part 4)"
+    local sb out rc=0 proj
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_colcon_project "$sb")"
-    # Remove the manifest declaration; declare via config instead.
+    # The manifest declares no distro; only the retired files do.
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
-    {
-        echo "ROS_ROOT_DIR=\"$sb/rosroot\""
-        echo 'ROS_DISTRO="fakefox"'
-    } > "$sb/.agent/projects.d/p11.sh"
-    out="$(run_adapter "$sb" env)" || true
-    assert_contains "underlay from config distro" "rosroot/fakefox/setup.bash" "$out"
+    echo 'ROS_DISTRO="fakefox"' > "$sb/.agent/projects.d/tiered.sh"
+    echo 'ROS_DISTRO="fakefox"' > "$sb/.agent/project_config.sh"
+    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "cannot resolve the distro" "cannot resolve the ROS distro" "$out"
+    assert_contains "names the registry line" "distro=<name> on the project's line" "$out"
+    assert_not_contains "never offers the retired files" "ROS_DISTRO=<name>" "$out"
+    assert_not_contains "no underlay from a retired file" "rosroot/fakefox/setup.bash" "$out"
 }
 
 
@@ -946,7 +947,7 @@ test_distro_from_registry() {
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
     make_underlay "$sb" regfox
-    sed -i'' -e "s|^p11 ros2_colcon.*|p11 ros2_colcon $proj distro=regfox|" "$sb/.agent/projects.local"
+    sed -i'' -e "s|^tiered ros2_colcon.*|tiered ros2_colcon $proj distro=regfox|" "$sb/.agent/projects.local"
     out="$(run_adapter "$sb" env)" || true
     assert_contains "underlay from registry distro" "rosroot/regfox/setup.bash" "$out"
     # Registry and manifest agree: fine.
@@ -971,7 +972,6 @@ test_distro_unresolvable_fails() {
     proj="$(make_colcon_project "$sb")"
     printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
         > "$proj/configs/manifest/bootstrap.yaml"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains how to declare" "cannot resolve the ROS distro" "$out"
@@ -994,8 +994,8 @@ test_missing_manifest_fails() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
-    mkdir -p "$sb/projects/p11"
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
+    mkdir -p "$sb/projects/tiered"
+    echo "tiered ros2_colcon projects/tiered" >> "$sb/.agent/projects.local"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "points at the expected manifest" "configs/manifest" "$out"
@@ -1029,28 +1029,28 @@ test_traversal_layer_name_fails() {
 }
 
 test_broken_config_fails() {
-    echo "TEST: a failing per-project config is a hard error, not a silent fallback"
+    echo "TEST: ROS_ROOT_DIR comes from the environment (default /opt/ros); a retired config file is never sourced (issue #265 part 4)"
     local sb out rc=0 proj
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_colcon_project "$sb")"
-    # Config declares the override, then fails — the override must not be
-    # silently dropped in favor of /opt/ros.
+    # A retired config that would fail if sourced, and would point
+    # ROS_ROOT_DIR elsewhere: neither happens.
     {
-        echo "ROS_ROOT_DIR=\"$sb/rosroot\""
+        echo "ROS_ROOT_DIR=\"$sb/elsewhere\""
         echo "false"
-    } > "$sb/.agent/projects.d/p11.sh"
+    } > "$sb/.agent/projects.d/tiered.sh"
+    cp "$sb/.agent/projects.d/tiered.sh" "$sb/.agent/project_config.sh"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
-    assert_eq "exits nonzero (_rc_ros_root path)" "1" "$rc"
-    assert_contains "names the config" "failed to source $sb/.agent/projects.d/p11.sh" "$out"
-
-    # Same failure via the distro-resolution path (no distro in manifest).
-    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
-        > "$proj/configs/manifest/bootstrap.yaml"
+    assert_eq "exit 0: the config is not sourced" "0" "$rc"
+    assert_contains "the underlay from the environment's ROS_ROOT_DIR" "$sb/rosroot/fakefox/setup.bash" "$out"
+    assert_not_contains "no 'failed to source'" "failed to source" "$out"
+    # Unset: the default /opt/ros (a fakefox underlay there never exists).
     rc=0
-    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
-    assert_eq "exits nonzero (_rc_distro path)" "1" "$rc"
-    assert_contains "still names the config" "failed to source" "$out"
+    out="$(cd "$sb" && unset ROS_ROOT_DIR && PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project tiered env 2>&1)" || rc=$?
+    assert_eq "unset: exits nonzero" "1" "$rc"
+    assert_contains "unset: names the default underlay" "/opt/ros/fakefox/setup.bash" "$out"
+    assert_contains "unset: says how to point it elsewhere" "set ROS_ROOT_DIR in the environment" "$out"
 }
 
 # ---- env verb ----
@@ -1099,8 +1099,8 @@ test_setup_optional_layer_failure_tolerated() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l3" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l3" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "setup still exits 0" "0" "$rc"
     assert_contains "warns about the optional layer" "optional layer 'l3'" "$out"
 }
@@ -1111,8 +1111,8 @@ test_setup_required_layer_failure_aborts() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l2" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l2" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the failing layer" "vcs import failed for layer 'l2'" "$out"
 }
@@ -1131,8 +1131,8 @@ test_setup_requires_vcs() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -s "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    out="$(cd "$sb" && PATH="$sb/isolatedbin" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/isolatedbin" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing tool" "'vcs' (vcstool) not found" "$out"
 }
@@ -1163,24 +1163,23 @@ make_manifest_remote() {
     echo "file://$sb/remote/bootstrap.yaml"
 }
 
-# Fresh (empty) hosting dir registered as p11 with the sandbox underlay.
+# Fresh (empty) hosting dir registered as tiered with the sandbox underlay.
 make_fresh_project() {
     local sb="$1"
-    mkdir -p "$sb/projects/p11"
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
+    mkdir -p "$sb/projects/tiered"
+    echo "tiered ros2_colcon projects/tiered" >> "$sb/.agent/projects.local"
     make_underlay "$sb"
-    echo "$sb/projects/p11"
+    echo "$sb/projects/tiered"
 }
 
 test_setup_bootstraps_manifest_pattern_b() {
-    echo "TEST: setup on a fresh hosting dir bootstraps a Pattern B manifest from the config URL"
+    echo "TEST: setup on a fresh hosting dir bootstraps a Pattern B manifest from the settings file's bootstrap_url"
     local sb out rc=0 proj url
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" l1)"
-    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
+    printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "reports Pattern B" "Pattern B: layer=l1" "$out"
@@ -1216,57 +1215,45 @@ test_setup_bootstraps_pattern_a_from_url_file() {
 }
 
 test_setup_bootstrap_env_url_wins() {
-    echo "TEST: BOOTSTRAP_URL in the environment overrides the config and file"
+    echo "TEST: BOOTSTRAP_URL in the environment overrides the settings file and the url file"
     local sb out rc=0 proj url
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" l1)"
-    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    printf 'bootstrap_url=file:///nonexistent/config.yaml\n' > "$sb/.agent/projects.d/tiered"
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "fetched the env URL" "Fetching bootstrap config from $url" "$out"
     assert_eq "manifest present" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
 }
 
 test_setup_bootstrap_shared_url_is_reported() {
-    echo "TEST: a bootstrap URL from the shared project_config.sh is reported on stderr; one from the settings file or the legacy .sh is not (#332)"
-    local sb out rc url note
-    note="NOTE: project 'p11' has no bootstrap URL of its own; using MANIFEST_BOOTSTRAP_URL from the shared .agent/project_config.sh"
+    echo "TEST: a MANIFEST_BOOTSTRAP_URL in the shared project_config.sh or a legacy .sh is not read; the settings file's is (issue #265 part 4)"
+    local sb out rc url
 
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
-    rm -f "$sb/.agent/projects.d/p11.sh"
-    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="%s"\n' "$sb/rosroot" "$url" > "$sb/.agent/project_config.sh"
+    printf 'MANIFEST_BOOTSTRAP_URL="%s"\n' "$url" > "$sb/.agent/project_config.sh"
+    printf 'MANIFEST_BOOTSTRAP_URL="%s"\n' "$url" > "$sb/.agent/projects.d/tiered.sh"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
-    assert_eq "shared URL: exit 0" "0" "$rc"
-    assert_contains "shared URL: fetched" "Fetching bootstrap config from $url" "$out"
-    assert_contains "shared URL: the fall-through is reported" "$note" "$out"
-    assert_contains "shared URL: the note names the setting" "project_setting.sh set p11 bootstrap_url=<url>" "$out"
+    assert_eq "retired files only: exit 1" "1" "$rc"
+    assert_contains "retired files only: no bootstrap URL" "no bootstrap URL to fetch one" "$out"
+    assert_not_contains "retired files only: not fetched" "Fetching bootstrap config" "$out"
+    assert_contains "retired files only: the settings command is offered" "project_setting.sh set tiered bootstrap_url=<url>" "$out"
 
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
-    rm -f "$sb/.agent/projects.d/p11.sh"
-    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="file:///nonexistent/shared.yaml"\n' "$sb/rosroot" > "$sb/.agent/project_config.sh"
-    printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/p11"
+    printf 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/shared.yaml"\n' > "$sb/.agent/project_config.sh"
+    printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/tiered"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "settings-file URL: exit 0" "0" "$rc"
     assert_contains "settings-file URL: fetched" "Fetching bootstrap config from $url" "$out"
-    assert_not_contains "settings-file URL: no note" "NOTE:" "$out"
-
-    sb="$(make_sandbox)"
-    make_toolchain_stubs "$sb"
-    make_fresh_project "$sb" >/dev/null
-    url="$(make_manifest_remote "$sb" l1)"
-    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
-    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
-    assert_eq "legacy URL: exit 0" "0" "$rc"
-    assert_not_contains "legacy URL: no note" "NOTE:" "$out"
 }
 
 test_setup_fresh_dir_without_url_fails() {
@@ -1278,7 +1265,8 @@ test_setup_fresh_dir_without_url_fails() {
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing URL" "no bootstrap URL" "$out"
-    assert_contains "lists MANIFEST_BOOTSTRAP_URL" "MANIFEST_BOOTSTRAP_URL" "$out"
+    assert_contains "names the settings command" "project_setting.sh set tiered bootstrap_url=<url>" "$out"
+    assert_not_contains "never offers a retired config file" "MANIFEST_BOOTSTRAP_URL" "$out"
 }
 
 test_setup_bootstrap_rejects_unsafe_fields() {
@@ -1290,16 +1278,16 @@ test_setup_bootstrap_rejects_unsafe_fields() {
     url="$(make_manifest_remote "$sb" l1)"
     printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: ../../etc\n' "$sb" \
         > "$sb/remote/bootstrap.yaml"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "traversal config_path exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
     assert_eq "nothing cloned" "false" "$([ -e "$proj/configs/manifest_repo" ] && echo true || echo false)"
     printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nlayer: ../x\n' "$sb" \
         > "$sb/remote/bootstrap.yaml"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "bad layer exits nonzero" "1" "$rc"
     assert_contains "names layer" "invalid 'layer'" "$out"
 }
@@ -1312,8 +1300,8 @@ test_setup_bootstrap_missing_fields_fails() {
     make_fresh_project "$sb" >/dev/null
     url="$(make_manifest_remote "$sb" l1)"
     printf 'branch: fakefox\n' > "$sb/remote/bootstrap.yaml"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the fields" "must define 'git_url' and 'branch'" "$out"
 }
@@ -1325,8 +1313,8 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
     make_toolchain_stubs "$sb"
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" "" config..d)"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "config..d exits 0" "0" "$rc"
     assert_eq "symlink targets config..d" \
         "manifest_repo/manifest_repo/config..d" "$(readlink "$proj/configs/manifest")"
@@ -1335,8 +1323,8 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
         > "$sb/remote/bootstrap.yaml"
     rm -rf "$proj/configs"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "nested .. component exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
 }
@@ -1353,16 +1341,16 @@ test_setup_bootstrap_reuse_requires_matching_origin() {
     mkdir -p "$clone_dir"
     git -C "$clone_dir" init --quiet
     git -C "$clone_dir" remote add origin "file:///elsewhere/other_manifest.git"
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "mismatched origin exits nonzero" "1" "$rc"
     assert_contains "names both repos" "is a checkout of file:///elsewhere/other_manifest.git, not file://$sb/remote/manifest_repo" "$out"
     assert_eq "no symlink created" "false" "$([ -e "$proj/configs/manifest" ] && echo true || echo false)"
     # A non-git directory at the clone path is refused too.
     rm -rf "$clone_dir" && mkdir -p "$clone_dir"
     rc=0
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "non-git dir exits nonzero" "1" "$rc"
     assert_contains "says it is not a checkout" "not a git checkout" "$out"
 }
@@ -1378,8 +1366,8 @@ test_setup_bootstrap_reuse_warns_on_branch_mismatch() {
     mkdir -p "$(dirname "$clone_dir")"
     git clone -q -b fakefox "file://$sb/remote/manifest_repo" "$clone_dir"
     git -C "$clone_dir" checkout -q -b feature/work
-    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "warns with both branches" "on 'feature/work', bootstrap pins 'fakefox'" "$out"
     assert_eq "checkout left on its branch" "feature/work" "$(git -C "$clone_dir" branch --show-current)"
@@ -1392,7 +1380,7 @@ test_setup_existing_manifest_skips_bootstrap() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
-    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    printf 'bootstrap_url=file:///nonexistent/config.yaml\n' > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_not_contains "no fetch attempted" "Fetching bootstrap" "$out"
@@ -2477,7 +2465,7 @@ mr_push() {  # <sb> <name> [extra push refspecs...]
 }
 
 # A sandbox for the manifest route: toolchain stubs, underlay, resolver
-# wrapper, and p11 registered (not created: setup creates it) with
+# wrapper, and tiered registered (not created: setup creates it) with
 # role=<role> distro=fakefox and the given settings lines.
 make_mr_sandbox() {  # <role-or-empty> <settings lines...>
     local role="$1" sb fields=""
@@ -2487,27 +2475,26 @@ make_mr_sandbox() {  # <role-or-empty> <settings lines...>
     make_underlay "$sb"
     make_mr_resolver "$sb"
     [ -n "$role" ] && fields=" role=$role"
-    echo "p11 ros2_colcon projects/p11$fields distro=fakefox" > "$sb/.agent/projects.local"
-    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
-    [ $# -gt 0 ] && printf '%s\n' "$@" > "$sb/.agent/projects.d/p11"
+    echo "tiered ros2_colcon projects/tiered$fields distro=fakefox" > "$sb/.agent/projects.local"
+    [ $# -gt 0 ] && printf '%s\n' "$@" > "$sb/.agent/projects.d/tiered"
     echo "$sb"
 }
 
 mr_settings() {  # <sb> <settings lines...>
     local sb="$1"
     shift
-    printf '%s\n' "$@" > "$sb/.agent/projects.d/p11"
+    printf '%s\n' "$@" > "$sb/.agent/projects.d/tiered"
 }
 
-# The adapter on p11, with vcs creating a directory per imported repo.
+# The adapter on tiered, with vcs creating a directory per imported repo.
 run_mr() {
     local sb="$1"
     shift
-    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 "$@")
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered "$@")
 }
 
-mr_gen() { echo "$1/projects/p11/configs/manifest-resolved"; }
+mr_gen() { echo "$1/projects/tiered/configs/manifest-resolved"; }
 
 test_mr_wrapper_runs_this_checkouts_resolver() {
     echo "TEST: manifest route: the test resolver is this checkout's tools/ros-manifest/src"
@@ -2532,8 +2519,8 @@ test_mr_setup_from_path_source() {
     assert_contains "per-distro ref honoured (quoted number)" "version: '2.0'" "$(cat "$gen/repos/core.repos")"
     assert_not_contains "a repository absent for the distro is left out" "pkg_b" "$(cat "$gen/repos/core.repos")"
     assert_contains "the resolver got role, distro and the layout" "--role dev --distro fakefox --out" "$(cat "$sb/resolver.log")"
-    assert_contains "the cache is a sibling of the generated dir" "--layout manifest-dir --cache-dir $sb/projects/p11/configs/manifest-resolved.gen-" "$(cat "$sb/resolver.log")"
-    assert_eq "no cache left behind" "" "$(cd "$sb/projects/p11/configs" && ls -d -- *.cache 2>/dev/null || true)"
+    assert_contains "the cache is a sibling of the generated dir" "--layout manifest-dir --cache-dir $sb/projects/tiered/configs/manifest-resolved.gen-" "$(cat "$sb/resolver.log")"
+    assert_eq "no cache left behind" "" "$(cd "$sb/projects/tiered/configs" && ls -d -- *.cache 2>/dev/null || true)"
     assert_contains "core imported" "core_ws/src" "$(cat "$sb/vcs.log")"
     assert_contains "extra imported" "extra_ws/src" "$(cat "$sb/vcs.log")"
     assert_contains "says it edits no ignore file" "edits no ignore file" "$out"
@@ -2558,10 +2545,10 @@ test_mr_setup_from_path_source() {
     assert_eq "repo_pin reads the generated .repos" "2.0" "${out%%$'\t'*}"
     local d
     for d in pkg_a pkg_c; do
-        git -C "$sb/projects/p11/layers/main/$([ "$d" = pkg_c ] && echo extra || echo core)_ws/src/$d" init --quiet
+        git -C "$sb/projects/tiered/layers/main/$([ "$d" = pkg_c ] && echo extra || echo core)_ws/src/$d" init --quiet
     done
     out="$(run_mr "$sb" repos 2>&1)"
-    assert_contains "repos lists pkg_a" "pkg_a:$sb/projects/p11/layers/main/core_ws/src/pkg_a" "$out"
+    assert_contains "repos lists pkg_a" "pkg_a:$sb/projects/tiered/layers/main/core_ws/src/pkg_a" "$out"
     assert_contains "repos lists pkg_c" "pkg_c:" "$out"
     rc=0; out="$(run_mr "$sb" worktree_repos --issue owner/pkg_a#5 --layer core --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "worktree_repos: exit 0" "0" "$rc"
@@ -2680,7 +2667,7 @@ mr_sed() {
     sed "${@:1:$#-1}" "$f" > "$f.mr_sed" && mv -- "$f.mr_sed" "$f"
 }
 
-# A sandbox whose p11 was set up from a URL source at main (two commits,
+# A sandbox whose tiered was set up from a URL source at main (two commits,
 # so HEAD~1 exists). Prints the sandbox; the remote's URL is
 # file://<sb>/mremote/leaf.git.
 make_mr_url_project() {
@@ -2699,7 +2686,7 @@ make_mr_url_project() {
 # After a run: no fetched source, cache or new link left beside the
 # generated directories, and <count> generated directories (default 1).
 mr_no_temp() {  # <sb> <label> [count]
-    local cfg="$1/projects/p11/configs"
+    local cfg="$1/projects/tiered/configs"
     assert_eq "$2: no temporary fetch, cache or link left" "" \
         "$(cd "$cfg" 2>/dev/null && ls -d -- manifest-resolved.gen-*.src manifest-resolved.gen-*.cache manifest-resolved.gen-*.link 2>/dev/null || true)"
     assert_eq "$2: ${3:-1} generated dir(s)" "${3:-1}" \
@@ -2899,7 +2886,7 @@ test_mr_link_of_another_shape_refused() {
     local sb gen cfg live shape out rc
     sb="$(make_mr_url_project)"
     gen="$(mr_gen "$sb")"
-    cfg="$sb/projects/p11/configs"
+    cfg="$sb/projects/tiered/configs"
     live="$(readlink "$gen")"
     mkdir -p "$cfg/manifest-resolved.gen-Left01"
     for shape in "./$live" "$cfg/$live"; do
@@ -3175,8 +3162,8 @@ test_mr_fetch_bounded() {
     rc=0
     (
         set -m
-        cd "$sb" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
-            "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1 &
+        cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && WT_FETCH_TIMEOUT=30 PATH="$sb/hangbin:$sb/bin:$PATH" \
+            "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1 &
         jpid=$!
         for i in $(seq 1 100); do [ -e "$sb/hang.ready" ] && break; sleep 0.1; done
         started=$SECONDS
@@ -3210,7 +3197,7 @@ test_mr_fetch_interrupted() {
     sb="$(make_mr_url_project)"
     url="file://$sb/mremote/leaf.git"
     gen="$(mr_gen "$sb")"
-    cfg="$sb/projects/p11/configs"
+    cfg="$sb/projects/tiered/configs"
     before="$(readlink "$gen")"
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_three
     mr_push "$sb" leaf >/dev/null
@@ -3235,8 +3222,8 @@ test_mr_fetch_interrupted() {
     _mr_held_sync() {
         rm -f "$sb/ready" "$sb/go" "$sb/fetchdone"
         touch "$sb/hold"
-        (cd "$sb" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-            exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
+        (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/gitstub:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            exec "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) &
         apid=$!
         for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
     }
@@ -3288,13 +3275,13 @@ test_mr_stale_extends_base() {
     run_mr "$sb" sync >/dev/null 2>&1
     assert_contains "base branch moved: followed" "base_two" "$(cat "$gen/repos/core.repos")"
     assert_eq "no cache left in or beside the generated dir" "" \
-        "$(cd "$sb/projects/p11/configs" && { ls -d -- *.cache 2>/dev/null; ls -d -- manifest-resolved/*cache* 2>/dev/null; } || true)"
+        "$(cd "$sb/projects/tiered/configs" && { ls -d -- *.cache 2>/dev/null; ls -d -- manifest-resolved/*cache* 2>/dev/null; } || true)"
     write_mr_manifest "$sb/m/manifest.yaml" "" "$burl" "$bc"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "commit as extends.ref: exit 1" "1" "$rc"
     assert_contains "the resolver's clone error passed through" "failed to clone its extends base" "$out"
     assert_contains "the previous result kept" "base_two" "$(cat "$gen/repos/core.repos")"
-    assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "one generated dir left, no cache" "1" "$(cd "$sb/projects/tiered/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 }
 
 test_mr_role_and_distro_changes() {
@@ -3309,7 +3296,7 @@ test_mr_role_and_distro_changes() {
     mr_sed 's/role=dev/role=lite/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "role changed: validate exit 1" "1" "$rc"
-    assert_contains "role changed: names the registry line and sync" "is for role 'dev' but the registry line says role=lite (run: .agent/scripts/adapter --project p11 sync" "$out"
+    assert_contains "role changed: names the registry line and sync" "is for role 'dev' but the registry line says role=lite (run: .agent/scripts/adapter --project tiered sync" "$out"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "role changed: sync exit 0" "0" "$rc"
     assert_contains "role changed: the layers changed message" "existing package worktrees keep their old env.sh; recreate them" "$out"
@@ -3317,7 +3304,7 @@ test_mr_role_and_distro_changes() {
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "role lite: validate exit 0" "0" "$rc"
     assert_contains "role lite: pkg_c's checkout named" "layer 'extra': 'pkg_c' is checked out but not in the resolved manifest" "$out"
-    assert_eq "role lite: nothing removed" "yes" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src/pkg_c" ] && echo yes || echo no)"
+    assert_eq "role lite: nothing removed" "yes" "$([ -d "$sb/projects/tiered/layers/main/extra_ws/src/pkg_c" ] && echo yes || echo no)"
     mr_sed 's/distro=fakefox/distro=otherfox/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "distro changed: validate exit 1" "1" "$rc"
@@ -3337,11 +3324,11 @@ test_mr_sync_names_a_new_layer() {
     write_mr_manifest "$sb/m/manifest.yaml"
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
     run_mr "$sb" setup >/dev/null 2>&1
-    assert_eq "role lite: extra never set up" "no" "$([ -d "$sb/projects/p11/layers/main/extra_ws/src" ] && echo yes || echo no)"
+    assert_eq "role lite: extra never set up" "no" "$([ -d "$sb/projects/tiered/layers/main/extra_ws/src" ] && echo yes || echo no)"
     mr_sed 's/role=lite/role=dev/' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "role dev: sync exit 0" "0" "$rc"
-    assert_contains "role dev: the new layer's repository counted" "source: 1 repository in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project p11 setup" "$out"
+    assert_contains "role dev: the new layer's repository counted" "source: 1 repository in the resolved manifest not checked out yet; run: .agent/scripts/adapter --project tiered setup" "$out"
     run_mr "$sb" setup >/dev/null 2>&1
     out="$(run_mr "$sb" sync 2>&1)"
     assert_not_contains "after setup: no notice" "not checked out yet" "$out"
@@ -3371,10 +3358,10 @@ test_mr_validate_link_missing_and_path_changed() {
     sb="$(make_mr_sandbox dev)"
     write_mr_manifest "$sb/m/manifest.yaml"
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
-    mkdir -p "$sb/projects/p11"
+    mkdir -p "$sb/projects/tiered"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "no link: exit 1" "1" "$rc"
-    assert_contains "no link: run setup" "Run: .agent/scripts/adapter --project p11 setup" "$out"
+    assert_contains "no link: run setup" "Run: .agent/scripts/adapter --project tiered setup" "$out"
     run_mr "$sb" setup >/dev/null 2>&1
     echo "# edited" >> "$sb/m/manifest.yaml"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
@@ -3430,7 +3417,7 @@ test_mr_resolver_failures() {
     assert_contains "bad manifest: the resolver's error passed through" "ERROR:" "$out"
     assert_contains "bad manifest: says the previous is kept" "the previously resolved manifest, if any, is kept" "$out"
     assert_eq "bad manifest: link unchanged" "$before" "$(readlink "$gen")"
-    assert_eq "bad manifest: no stray generated dir" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "bad manifest: no stray generated dir" "1" "$(cd "$sb/projects/tiered/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 
     # A role and distro that select nothing.
     write_mr_manifest "$sb/m/manifest.yaml"
@@ -3507,8 +3494,8 @@ EOF
     assert_eq "failed resolve: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
     assert_eq "failed resolve: link unchanged" "$before" "$(readlink "$gen")"
     # Interrupted (TERM) while the resolver runs.
-    (cd "$sb" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" MR_WAIT=1 \
-        exec "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) &
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" MR_WAIT=1 \
+        exec "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) &
     apid=$!
     for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
     kill -TERM "$apid" 2>/dev/null || true
@@ -3518,7 +3505,7 @@ EOF
     assert_eq "interrupted: its directory removed" "no" "$([ -e "$(cat "$sb/resolve.out")" ] && echo yes || echo no)"
     assert_eq "interrupted: its cache removed" "no" "$([ -e "$(cat "$sb/resolve.out").cache" ] && echo yes || echo no)"
     assert_eq "interrupted: link unchanged" "$before" "$(readlink "$gen")"
-    assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "interrupted: one generated dir left" "1" "$(cd "$sb/projects/tiered/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
 }
 
 test_mr_source_lock() {
@@ -3534,15 +3521,15 @@ test_mr_source_lock() {
     mr_push "$sb" leaf >/dev/null
     mr_settings "$sb" "source=$url" "source_ref=main"
     # A first setup refused while another run holds the lock: no clone made.
-    mkdir -p "$sb/projects/p11/configs"
-    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+    mkdir -p "$sb/projects/tiered/configs"
+    ( exec 9>>"$sb/projects/tiered/configs/.lock.source"; flock -x 9; touch "$sb/held"
       while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
     hpid=$!
     for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
     rc=0; out="$(ROS2_COLCON_LOCK_WAIT=1 run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "held, first setup: exit 1" "1" "$rc"
-    assert_contains "held, first setup: says so" "another setup or sync of project 'p11' holds its lock $sb/projects/p11/configs/.lock.source (waited 1 s); nothing changed" "$out"
-    assert_eq "held, first setup: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
+    assert_contains "held, first setup: says so" "another setup or sync of project 'tiered' holds its lock $sb/projects/tiered/configs/.lock.source (waited 1 s); nothing changed" "$out"
+    assert_eq "held, first setup: nothing fetched" "no" "$(ls -d "$sb"/projects/tiered/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
     assert_eq "held, first setup: the resolver not run" "no" "$([ -e "$sb/resolver.log" ] && echo yes || echo no)"
     # A wait that is not a number is said to be one, not taken for a held lock.
     local badwait
@@ -3562,7 +3549,7 @@ test_mr_source_lock() {
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_two
     mr_push "$sb" leaf >/dev/null
     rm -f "$sb/held" "$sb/release"
-    ( exec 9>>"$sb/projects/p11/configs/.lock.source"; flock -x 9; touch "$sb/held"
+    ( exec 9>>"$sb/projects/tiered/configs/.lock.source"; flock -x 9; touch "$sb/held"
       while [ ! -e "$sb/release" ]; do sleep 0.1; done ) &
     hpid=$!
     for i in $(seq 1 100); do [ -e "$sb/held" ] && break; sleep 0.1; done
@@ -3613,7 +3600,7 @@ test_mr_source_lock() {
         "START ASK GO GOT START" "$(tr '\n' ' ' < "$sb/order.log" | sed 's/ $//')"
     assert_contains "two syncs: the second resolved" "source: resolved role 'dev'" "$(cat "$sb/s2.out")"
     assert_contains "two syncs: the new tip resolved" "mark_two" "$(cat "$gen/repos/core.repos")"
-    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/p11/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
+    assert_eq "two syncs: one generated dir left" "1" "$(cd "$sb/projects/tiered/configs" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
     rm -f "$sb/hold"
     # No flock on PATH: sync runs unlocked.
     mkdir -p "$sb/isolatedbin"
@@ -3622,8 +3609,8 @@ test_mr_source_lock() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered sync 2>&1)" || rc=$?
     assert_eq "no flock: sync exit 0" "0" "$rc"
     assert_contains "no flock: resolved" "source: resolved role 'dev'" "$out"
 }
@@ -3651,20 +3638,20 @@ test_mr_pin_fd_not_inherited() {
         "[ -e /proc/self/fd/8 ] && echo \"git \$*\" >> \"$sb/fd8.log\"" \
         "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
     chmod +x "$sb/fdbin/"*
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
-    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" init --quiet
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    git -C "$sb/projects/tiered/layers/main/core_ws/src/pkg_a" init --quiet
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) || rc=$?
     assert_eq "sync: exit 0" "0" "$rc"
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
-        "$sb/.agent/scripts/adapter" --project p11 build >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
+        "$sb/.agent/scripts/adapter" --project tiered build >/dev/null 2>&1) || rc=$?
     assert_eq "build: exit 0" "0" "$rc"
     # repo_pin asks origin through _adapter_bounded_git.
-    git -C "$sb/projects/p11/layers/main/core_ws/src/pkg_a" remote add origin "file://$sb/nonexistent.git"
-    (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" \
-        "$sb/.agent/scripts/adapter" --project p11 repo_pin pkg_a >/dev/null 2>&1) || true
+    git -C "$sb/projects/tiered/layers/main/core_ws/src/pkg_a" remote add origin "file://$sb/nonexistent.git"
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" \
+        "$sb/.agent/scripts/adapter" --project tiered repo_pin pkg_a >/dev/null 2>&1) || true
     assert_contains "repo_pin asked origin" "ls-remote origin" "$(cat "$sb/ran.log")"
     assert_contains "vcs ran" "vcs" "$(cat "$sb/ran.log")"
     assert_contains "colcon ran" "colcon" "$(cat "$sb/ran.log")"
@@ -3680,7 +3667,7 @@ test_mr_swap_failures_and_unguarded_leftovers() {
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
     run_mr "$sb" setup >/dev/null 2>&1
     gen="$(mr_gen "$sb")"
-    cfg="$sb/projects/p11/configs"
+    cfg="$sb/projects/tiered/configs"
     mkdir -p "$sb/stub"
     # The probe's scratch directory cannot be made: an error, nothing changed.
     realmktemp="$(command -v mktemp)"
@@ -3740,8 +3727,8 @@ test_mr_swap_failures_and_unguarded_leftovers() {
     for i in 1 2 3; do
         prev="$(readlink "$gen")"
         write_mr_manifest "$sb/m/manifest.yaml" "mark_unlocked_$i"
-        rc=0; (cd "$sb" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-            VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+        rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$sb/isolatedbin" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+            VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) || rc=$?
         assert_eq "no flock, sync $i: exit 0" "0" "$rc"
         assert_eq "no flock, sync $i: the replaced directory kept" "yes" "$([ -f "$cfg/$prev/layers.txt" ] && echo yes || echo no)"
         assert_eq "no flock, sync $i: at most two generated dirs" "2" "$(cd "$cfg" && ls -d -- manifest-resolved.gen-* | wc -l | tr -d ' ')"
@@ -3757,7 +3744,7 @@ test_mr_swap_interrupt_and_sweep() {
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
     run_mr "$sb" setup >/dev/null 2>&1
     gen="$(mr_gen "$sb")"
-    cfg="$sb/projects/p11/configs"
+    cfg="$sb/projects/tiered/configs"
     realmv="$(command -v mv)"
     mkdir -p "$sb/mvbin"
     # An mv that does the swap, then has its caller sent TERM.
@@ -3767,7 +3754,7 @@ test_mr_swap_interrupt_and_sweep() {
         'exit $rc' > "$sb/mvbin/mv"
     chmod +x "$sb/mvbin/mv"
     write_mr_manifest "$sb/m/manifest.yaml" mark_two
-    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) || rc=$?
     assert_eq "TERM after the swap: exit 143" "143" "$rc"
     live="$(readlink "$gen")"
     assert_eq "TERM after the swap: the link's target kept" "yes" "$([ -d "$cfg/$live" ] && echo yes || echo no)"
@@ -3784,7 +3771,7 @@ test_mr_swap_interrupt_and_sweep() {
         'esac' \
         "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
     write_mr_manifest "$sb/m/manifest.yaml" mark_three
-    rc=0; (cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project tiered sync >/dev/null 2>&1) || rc=$?
     assert_eq "BSD mv: sync exit 0" "0" "$rc"
     assert_contains "BSD mv: mv -fh used" "BSD_MV_H" "$(cat "$sb/mv.log" 2>/dev/null)"
     assert_eq "BSD mv: still a link" "yes" "$([ -L "$gen" ] && echo yes || echo no)"
@@ -3796,7 +3783,7 @@ test_mr_swap_interrupt_and_sweep() {
         "exec \"$realmv\" \"\$@\"" > "$sb/mvbin/mv"
     before="$(readlink "$gen")"
     write_mr_manifest "$sb/m/manifest.yaml" mark_four
-    rc=0; out="$(cd "$sb" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project p11 sync 2>&1)" || rc=$?
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/mvbin:$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project tiered sync 2>&1)" || rc=$?
     assert_eq "mv -T fails: exit 1" "1" "$rc"
     assert_contains "mv -T fails: said" "cannot rename the new link over $gen (mv -T failed, above); nothing changed" "$out"
     assert_eq "mv -T fails: the live link unchanged" "$before" "$(readlink "$gen")"
@@ -3839,7 +3826,7 @@ test_mr_reader_pinned_to_one_result() {
     write_mr_manifest "$sb/m/manifest.yaml"
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
     gen="$(mr_gen "$sb")"
-    cfg="$sb/projects/p11/configs"
+    cfg="$sb/projects/tiered/configs"
     # A vcs that holds the first import (layer core) until released.
     mkdir -p "$sb/waitbin"
     printf '%s\n' '#!/usr/bin/env bash' \
@@ -3850,8 +3837,8 @@ test_mr_reader_pinned_to_one_result() {
         "exec \"$sb/bin/vcs\" \"\$@\"" > "$sb/waitbin/vcs"
     chmod +x "$sb/waitbin/vcs"
     touch "$sb/vhold"
-    (cd "$sb" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >"$sb/a.out" 2>&1) & pa=$!
+    (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/waitbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered setup >"$sb/a.out" 2>&1) & pa=$!
     for i in $(seq 1 100); do [ -e "$sb/vready" ] && break; sleep 0.1; done
     assert_eq "setup A: held in its first import" "yes" "$([ -e "$sb/vready" ] && echo yes || echo no)"
     dir_a="$(readlink "$gen")"
@@ -3866,8 +3853,8 @@ test_mr_reader_pinned_to_one_result() {
     touch "$sb/vgo"
     rc=0; wait "$pa" || rc=$?
     assert_eq "setup A: exit 0" "0" "$rc"
-    assert_contains "setup A: layer extra imported from its own result (v1)" "version: v1" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
-    assert_not_contains "setup A: not from the newer result (v2)" "version: v2" "$(cat "$sb/projects/p11/layers/main/extra_ws/src/.vcs_input")"
+    assert_contains "setup A: layer extra imported from its own result (v1)" "version: v1" "$(cat "$sb/projects/tiered/layers/main/extra_ws/src/.vcs_input")"
+    assert_not_contains "setup A: not from the newer result (v2)" "version: v2" "$(cat "$sb/projects/tiered/layers/main/extra_ws/src/.vcs_input")"
     # Once A has ended, the next sync sweeps A's directory.
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "sync C: exit 0" "0" "$rc"
@@ -3888,7 +3875,7 @@ test_mr_lock_fd_not_inherited() {
     write_mr_manifest "$sb/mwork/leaf/manifest.yaml" mark_one
     mr_push "$sb" leaf >/dev/null
     mr_settings "$sb" "source=$url" "source_ref=main"
-    lock="$sb/projects/p11/configs/.lock.source"
+    lock="$sb/projects/tiered/configs/.lock.source"
     realgit="$(command -v git)"
     mkdir -p "$sb/fdbin"
     printf '%s\n' '#!/usr/bin/env bash' \
@@ -3903,8 +3890,8 @@ test_mr_lock_fd_not_inherited() {
         "flock -n \"$lock\" true && echo NOT_HELD >> \"$sb/held.log\"" \
         "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
     chmod +x "$sb/.venv/bin/ros-manifest"
-    rc=0; (cd "$sb" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project p11 setup >/dev/null 2>&1) || rc=$?
+    rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
     assert_contains "the git wrapper saw the fetch" "fetch --quiet --depth 1 --no-tags" "$(cat "$sb/git.log" 2>/dev/null)"
     assert_contains "the resolver ran" "RESOLVER_RAN:resolve" "$(cat "$sb/resolver.log" 2>/dev/null)"
@@ -3924,17 +3911,17 @@ test_mr_preflight_before_any_fetch() {
         command -v "$tool" >/dev/null 2>&1 \
             && ln -sf "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
-    rc=0; out="$(cd "$sb" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    rc=0; out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/isolatedbin" "$sb/.agent/scripts/adapter" --project tiered setup 2>&1)" || rc=$?
     assert_eq "no vcs: exit 1" "1" "$rc"
     assert_contains "no vcs: named" "'vcs' (vcstool) not found" "$out"
     assert_not_contains "no vcs: the source was not contacted" "source: fetching" "$out"
-    assert_eq "no vcs: nothing fetched" "no" "$(ls -d "$sb"/projects/p11/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
+    assert_eq "no vcs: nothing fetched" "no" "$(ls -d "$sb"/projects/tiered/configs/manifest-resolved.gen-* >/dev/null 2>&1 && echo yes || echo no)"
 
     mr_sed 's/ role=dev//' "$sb/.agent/projects.local"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "no role=: exit 1" "1" "$rc"
     assert_contains "no role=: names the field" "which needs role=<name> on its registry line" "$out"
-    assert_contains "no role=: edit and sync" "Edit the line for 'p11' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project p11 sync" "$out"
+    assert_contains "no role=: edit and sync" "Edit the line for 'tiered' in .agent/projects.local to add role=<name> (registration does not change an existing line), then run: .agent/scripts/adapter --project tiered sync" "$out"
     assert_not_contains "no role=: not contacted" "source: fetching" "$out"
 
     mr_sed 's/ distro=fakefox/ role=dev/' "$sb/.agent/projects.local"
@@ -3943,7 +3930,7 @@ test_mr_preflight_before_any_fetch() {
     assert_contains "no distro=: names the field" "which needs distro=<name> on its registry line" "$out"
     assert_not_contains "no distro=: not contacted" "source: fetching" "$out"
     # A legacy ROS_DISTRO is not accepted on this route.
-    echo "ROS_DISTRO=fakefox" >> "$sb/.agent/projects.d/p11.sh"
+    echo "ROS_DISTRO=fakefox" >> "$sb/.agent/projects.d/tiered.sh"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "legacy ROS_DISTRO does not stand in for distro=: exit 1" "1" "$rc"
 }
@@ -3958,28 +3945,31 @@ test_mr_one_source_only() {
     assert_eq "BOOTSTRAP_URL: exit 1" "1" "$rc"
     assert_contains "BOOTSTRAP_URL: one source only" "a project has one source only, never a silent choice" "$out"
     assert_contains "BOOTSTRAP_URL: named" "BOOTSTRAP_URL=https://example.invalid/b.yaml in the environment" "$out"
-    assert_contains "names the way back" "unset p11 source source_ref source_path" "$out"
+    assert_contains "names the way back" "unset tiered source source_ref source_path" "$out"
 
-    echo 'MANIFEST_BOOTSTRAP_URL="https://example.invalid/legacy.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    # A MANIFEST_BOOTSTRAP_URL in a retired config file is not a source
+    # (issue #265 part 4): it is not read, so it is not a second source.
+    echo 'MANIFEST_BOOTSTRAP_URL="https://example.invalid/legacy.yaml"' >> "$sb/.agent/projects.d/tiered.sh"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
-    assert_eq "legacy MANIFEST_BOOTSTRAP_URL: exit 1" "1" "$rc"
-    assert_contains "legacy MANIFEST_BOOTSTRAP_URL: names the file" "MANIFEST_BOOTSTRAP_URL=https://example.invalid/legacy.yaml in $sb/.agent/projects.d/p11.sh (the legacy per-project config): remove that line" "$out"
-    mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
+    assert_eq "retired MANIFEST_BOOTSTRAP_URL: not a second source, exit 0" "0" "$rc"
+    assert_not_contains "retired MANIFEST_BOOTSTRAP_URL: not a second source" "a project has one source only" "$out"
+    assert_contains "retired MANIFEST_BOOTSTRAP_URL: named in the NOTE as left to move" "NOTE: project 'tiered': .agent/projects.d/tiered.sh is no longer read" "$out"
+    mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/tiered.sh"
 
     # A good setup first, so validate reaches the single-source check.
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
     assert_eq "one source: setup exit 0" "0" "$rc"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "one source: validate exit 0" "0" "$rc"
-    echo "https://example.invalid/b.yaml" > "$sb/projects/p11/configs/project_bootstrap.url"
+    echo "https://example.invalid/b.yaml" > "$sb/projects/tiered/configs/project_bootstrap.url"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "project_bootstrap.url: exit 1" "1" "$rc"
-    assert_contains "project_bootstrap.url: names the file and its path" "the file $sb/projects/p11/configs/project_bootstrap.url (in the project's root; it may be tracked in the project's own repository): remove it" "$out"
+    assert_contains "project_bootstrap.url: names the file and its path" "the file $sb/projects/tiered/configs/project_bootstrap.url (in the project's root; it may be tracked in the project's own repository): remove it" "$out"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
     assert_eq "validate also refuses it: exit 1" "1" "$rc"
-    assert_contains "validate also refuses it: the single-source check" "❌ ERROR: project 'p11' sets source=$sb/m/manifest.yaml (the manifest route), and another bootstrap source was found" "$out"
-    assert_contains "validate also refuses it: names the file" "the file $sb/projects/p11/configs/project_bootstrap.url" "$out"
-    rm -f "$sb/projects/p11/configs/project_bootstrap.url"
+    assert_contains "validate also refuses it: the single-source check" "❌ ERROR: project 'tiered' sets source=$sb/m/manifest.yaml (the manifest route), and another bootstrap source was found" "$out"
+    assert_contains "validate also refuses it: names the file" "the file $sb/projects/tiered/configs/project_bootstrap.url" "$out"
+    rm -f "$sb/projects/tiered/configs/project_bootstrap.url"
 
     mr_settings "$sb" "source=$sb/m/manifest.yaml" "bootstrap_url=https://example.invalid/b.yaml"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
@@ -3988,8 +3978,8 @@ test_mr_one_source_only() {
 
     # A configs/manifest left from an earlier bootstrap is ignored.
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
-    mkdir -p "$sb/projects/p11/configs/manifest/repos"
-    printf 'old\n' > "$sb/projects/p11/configs/manifest/layers.txt"
+    mkdir -p "$sb/projects/tiered/configs/manifest/repos"
+    printf 'old\n' > "$sb/projects/tiered/configs/manifest/layers.txt"
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
     assert_eq "an old configs/manifest: setup exit 0" "0" "$rc"
     assert_not_contains "an old configs/manifest: its layer not imported" "old_ws" "$(cat "$sb/vcs.log")"
@@ -4003,7 +3993,7 @@ test_bootstrap_no_url_names_source() {
     make_fresh_project "$sb" >/dev/null
     out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "names source=" "project_setting.sh set p11 source=<git URL or absolute path>" "$out"
+    assert_contains "names source=" "project_setting.sh set tiered source=<git URL or absolute path>" "$out"
 }
 
 # ---- Run all tests ----
