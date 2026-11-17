@@ -982,3 +982,22 @@ Cold pass, done by a fresh Claude specialist and by this reviewer. Coverage: the
 ### Findings
 - [x] (must-fix) adapter discovery ignores a root's `worktrees=` folder when it lies outside the hosting dir. Discovery uses `registry_resolve_from_dir`, not `registry_resolve_session_dir`. Effect, reproduced in a sandbox: in a correctly registered project's own worktree at such a folder, `adapter project_root` / `env` refuse with "no registered project here ... Registered: p1", so `make build` and `make test` refuse too. `adapter sync` there syncs the workspace alone and exits 0. `session_root.sh`, `worktree_create/enter/remove.sh` and `wt_resolve_project_repo_root` all accept that worktree. Fix: call `registry_resolve_session_dir` there, update the adapter header's step 2 and design.md's list of callers, and add a test. Live path. Narrow: a default `<root>/worktrees` is under the hosting dir and resolves, and the owner's registry has no `worktrees=` line. — `.agent/scripts/adapter:227`
 - [x] (suggestion) `merge_pr.sh` discards a registry parse error (rc 2) from `wt_resolve_project_repo_root` when `--type` is not given. `registry_require_root` returns early for a cwd in the workspace without parsing. The PR is then looked up in the workspace alone, so with a malformed registry a project PR number can match an open workspace PR of the same number (the issue 173 hazard). It is the same as main on a machine with no `project/`. Live path, pre-existing in kind. — `.agent/scripts/merge_pr.sh:326-345`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 12:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #491 at `c7a50a0e`
+**Addressed**: Local Review at `3c114551` (2026-11-17 12:21 -05:00)
+**Commits**: `b840ff25`, `c7a50a0e`
+
+### Actions
+- [x] (must-fix) adapter discovery now calls `registry_resolve_session_dir`, so a worktree in a root's `worktrees=` folder outside its hosting dir resolves that root; header step 2 and design.md's list of callers updated, design.md's two `adapter` line citations moved 82 → 84; new `test_outside_worktrees_dir_resolves` (project_root, env, build and sync from such a worktree; sync passes `--project-root <root>`, not the workspace-only sync): 6 failures on the pre-fix code, 0 after — `.agent/scripts/adapter:229`
+- [x] (suggestion) `merge_pr.sh` stops on a registry parse error (rc 2) whatever `--type` is, printing the registry's own error; rc 1 handling unchanged, so a well-formed registry behaves as before; new `test_malformed_registry_stops_merge` (no `--type`, `--type workspace`, `--type project`): 6 failures on the pre-fix code (no `--type` and `--type workspace` merged with exit 0), 0 after — `.agent/scripts/merge_pr.sh:327-347`
+
+### Suites run (each on its own, worktree copy)
+- test_adapter.sh: `=== Results: 248 passed, 0 failed ===`
+- Suites naming `adapter` (run after the adapter change): test_fresh_clone_no_project.sh `26 passed, 0 failed`; test_precommit_hook_path.sh `19 passed, 0 failed`; test_register_project.sh `201 passed, 0 failed`; test_project_file.sh `701 passed, 0 failed`; test_project_integration_audit.sh `279 passed, 0 failed`; test_session_start_layer.sh `52 passed, 0 failed`; test_sitrep_root.sh `56 passed, 0 failed`; test_validate_workspace_stale.sh `126 passed, 0 failed`; test_ros2_colcon.sh `1014 passed, 0 failed, 0 skipped`; test_sitrep_checks.sh `211 passed, 0 failed`; test_worktree_create.sh `PASS: 80` (exit 0); test_design_anchors.sh `47 passed, 0 failed`
+- Suites naming `merge_pr.sh` (run after the merge_pr change): test_merge_pr.sh `170 passed, 0 failed`; test_merge_pr_gate.sh `201 passed, 0 failed`; test_merge_pr_root_resolution.sh `6 passed, 0 failed`; test_merge_pr_skill.sh `132 passed, 0 failed`; test_checkpoint_269.sh `43 passed, 0 failed`; test_dispatch_phase.sh `236 passed, 0 failed`; test_project_registry.sh `425 passed, 0 failed`; test_user_tier_guard.sh `64 passed, 0 failed`; test_package_issue_loop.sh `220 passed, 0 failed`; test_records_write_gate.sh `68 passed, 0 failed`; test_skill_paths.sh `163 passed, 0 failed`
+- Commits made with `SKIP=validate-script-tests`; the full pre-commit pass and every-suite run are left to the host.
