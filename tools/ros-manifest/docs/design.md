@@ -163,6 +163,10 @@ the system directory, and `local_manifest` says where. From then on the local co
 that counts: a developer can edit it, try it, and send the change through the repo's normal
 review.
 
+`init` sets `local_manifest` itself when the manifest is given in the git form and that
+repo is one the manifest lists: the local copy is the same file in that repo's clone.
+Otherwise it is given with `--local-manifest`, or left out.
+
 A manifest that is not in any of the system's repos needs no `local_manifest`. It stays where
 it is, on a disk or at a URL.
 
@@ -294,8 +298,9 @@ access to.
 ### build
 
 For each layer in order, run `colcon build` in the layer's directory with the layers before
-it sourced. Then write `setup.bash` in the system directory, which sources the last layer
-that was built.
+it sourced. Then write `setup.bash` in the system directory. It sources the setup file of
+the last layer, in the manifest's order, that has been built, whichever layers this run
+built.
 
 The first layer is built in the environment `build` is run in. The person sets that up
 first. For a ROS project that means sourcing the setup file of the ROS distro. `build` does
@@ -322,8 +327,7 @@ skipped as optional, is skipped.
 
 Shows the manifest in use, the role and the distro, and for each repo whether it matches the
 manifest: on the expected version, on a different one, with local changes, missing, skipped
-as optional, or present but no longer in the manifest. It also says whether each layer has
-been built since its repos last changed.
+as optional, or present but no longer in the manifest.
 
 ### freeze
 
@@ -501,6 +505,14 @@ machines.
 
 ### A field machine
 
+```
+repos-manifest init https://github.com/example/system.git --manifest-ref jazzy \
+    --manifest-path system.manifest.yaml --role robot --with echoboat-hardware \
+    --distro jazzy --fetch-from git@git.example.org:field/
+```
+
+The manifest is named by its published location. Because `--fetch-from` is given with no
+fallback, the manifest's repo is read from the private server like every other repo.
 Besides the manifest's location, `config.yaml` holds:
 
 ```yaml
