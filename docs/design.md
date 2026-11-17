@@ -323,17 +323,20 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   workspace is read by no script, and nor are `worktrees/project/<name>/`, `.workspace-worktrees/` and
   `project/worktrees/`.
 - Retirement is not silent: `registry_stale_report` (`_project_registry.sh`) names each retired shape
-  still on disk in the main checkout, with what to do. `project` and each entry of `projects/` follow
-  one rule: silent when the path that names it is, holds or lies in a registered root (ADR-0016
-  decision 1); a link to, into or holding a registered root, to a file or to nothing is to be removed;
-  an unregistered folder or link target is to be registered or removed. A checkout under the retired
-  worktree locations (the walk stops at each checkout and at depth 6) that no registered root or
-  `worktrees=` directory holds is named. A `projects.d/<name>.sh` and the shared
+  still on disk in the main checkout, with what to do. A registered folder is a registered root or a
+  root's `worktrees=` folder. `project` and each entry of `projects/` follow one rule: silent when
+  the path that names it is, holds or lies in a registered folder (ADR-0016 decision 1); a link to,
+  into or holding one, to a file or to nothing is to be removed (the link only); an unregistered
+  folder or link target is to be registered, or removed after checking any repository in it for
+  uncommitted work and commits on no remote. A checkout under the retired worktree locations (the
+  walk stops at each checkout and at depth 6) that is not, does not lie in and does not hold a
+  registered folder is named. A `projects.d/<name>.sh` and the shared
   `.agent/project_config.sh` are reported per setting the project's settings file lacks, under the old
   order (the shared file only for a project with no `.sh` of its own; `ROS_DISTRO` and `ROS_ROOT_DIR`
   only for a type whose adapter reads them); a parent root's `.sh` is told to move what an instance
   needs; neither a `.sh` of no registered project nor the shared file is called safe to delete while it
-  sets something no registered project took (it says to register first). A registry with errors
+  sets something no registered project took, or while an unregistered folder or retired worktree
+  the report names may have read it (it says to register first). A registry with errors
   gives one line saying so and no other advice, and a project whose settings file is invalid gets a
   line saying what is left cannot be told. The case table is the header of
   `test_validate_workspace_stale.sh`. `make validate` prints it after its results and `make
@@ -486,7 +489,7 @@ probe, not a description to keep current.
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 286-337, 512, 655, 743, 775, 914 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug and every registered root's slug (`registry_repo_slugs`, #295); the `project/` slug branch went in #265 part 4 | 131-176 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 171 |
-| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root or its `worktrees=` dir, else `workspace` when inside the workspace checkout | 645-660 |
+| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root or its `worktrees=` dir, else `workspace` when inside the workspace checkout | 654-669 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
@@ -545,7 +548,9 @@ Status: `decided`
   branch (issue 478).
 - A workspace worktree is a worktree of the workspace repository, under `worktrees/workspace/`. A
   project worktree is a worktree of the project's repository, under the registered root's own
-  `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir`. Only a registered
+  `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir` (both registry
+  parsers refuse a `worktrees=` that is or holds the workspace root, or is, holds or lies in
+  `worktrees/workspace`, so a workspace worktree never counts as a project's). Only a registered
   project has worktrees: an unregistered name is refused, and the `worktrees/project/<repo>/`,
   `.workspace-worktrees/` and `project/worktrees/` locations are no longer searched (#265 part 4).
   Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
