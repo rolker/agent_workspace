@@ -1067,3 +1067,27 @@ The previous must-fix is closed. Every `merge_pr.sh` citation that `c3f21d83` ch
 
 ### Findings
 - [ ] (suggestion) The Records bullet's sibling record citation is one line early. "1443-1444" covers the skill PR's `why_comment` (1443) and the sibling `elif` (1444); the sibling's `why_comment` is 1445, so the range should be 1444-1445. The old 1437-1438 was already off before this branch. The range does include the sibling branch's condition. — `docs/design.md:604`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-17 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #491 at `caedc429`
+**Sources**: 2 (Local Review @ `cb8521ad` (covers `caedc429` via bookkeeping), CI rollup); hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments; no Copilot review requested)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The local timeline is the only review source. `review_progress.sh sources` returned one open local finding at the head, no candidates, and two stale pre-push entries whose open boxes are the deferrals below. CI at `caedc429` (two runs, one per push): Validate Documentation passed in both, ros-manifest tests passed in one; Lint (pre-commit) and Validate Adapter Contract still pending in both. The host re-checks CI before the merge checkpoint.
+
+### Findings
+- [ ] (suggestion, Local Review @ `cb8521ad`; checked at the head) The Records bullet's sibling record citation is one line early: merge_pr.sh 1443 is the skill PR's `why_comment`, 1444 the sibling `elif`, 1445 its `why_comment`; cite 1444-1445. Pre-existing offset (1437-1438 before this branch) — `docs/design.md:604`
+
+### Deferred (not action items here; each noted on issue 295)
+- Round 3 suggestion 6 (Local Review (Pre-Push) @ `04f5b886`): validate and the dashboard source retired config files (orphan `.sh` included) to read them, in a clean subshell (`_stale_config_values`, `.agent/scripts/_project_registry.sh:1409`). Deferred by the owner 2026-11-17 at the rounds checkpoint ("Q1 - R1") to issue 295's next pull request: the fix is a parser, not a line. Issue 295 comment of 2026-11-17 16:34Z.
+- Round 4 suggestion 3 (Local Review (Pre-Push) @ `14f2f24c`, pre-existing): `resolve_worktree` passes a parent root name from `derive_project_name` to `wt_project_base` without mapping it to its instance (`.agent/scripts/dispatch_phase.sh:302-304`). Deferred by the host's round 4 checkpoint to issue 295. Issue 295 comment of 2026-11-17 17:16Z.
+
+### False positives
+None.
+
+Held for the owner at the merge checkpoint, not findings: the AGENTS.md-only commits `a80f3dc2` and `557fffe5`; the machine steps before and after the merge; ADR-0002, ADR-0003, ADR-0011 and ADR-0018 still describing the retired shapes. Owner standard for the retirement advice, 2026-11-17: "it's fine if the project(s) retirements is not fool-proof".
