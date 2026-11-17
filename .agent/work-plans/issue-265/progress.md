@@ -1001,3 +1001,26 @@ Cold pass, done by a fresh Claude specialist and by this reviewer. Coverage: the
 - Suites naming `adapter` (run after the adapter change): test_fresh_clone_no_project.sh `26 passed, 0 failed`; test_precommit_hook_path.sh `19 passed, 0 failed`; test_register_project.sh `201 passed, 0 failed`; test_project_file.sh `701 passed, 0 failed`; test_project_integration_audit.sh `279 passed, 0 failed`; test_session_start_layer.sh `52 passed, 0 failed`; test_sitrep_root.sh `56 passed, 0 failed`; test_validate_workspace_stale.sh `126 passed, 0 failed`; test_ros2_colcon.sh `1014 passed, 0 failed, 0 skipped`; test_sitrep_checks.sh `211 passed, 0 failed`; test_worktree_create.sh `PASS: 80` (exit 0); test_design_anchors.sh `47 passed, 0 failed`
 - Suites naming `merge_pr.sh` (run after the merge_pr change): test_merge_pr.sh `170 passed, 0 failed`; test_merge_pr_gate.sh `201 passed, 0 failed`; test_merge_pr_root_resolution.sh `6 passed, 0 failed`; test_merge_pr_skill.sh `132 passed, 0 failed`; test_checkpoint_269.sh `43 passed, 0 failed`; test_dispatch_phase.sh `236 passed, 0 failed`; test_project_registry.sh `425 passed, 0 failed`; test_user_tier_guard.sh `64 passed, 0 failed`; test_package_issue_loop.sh `220 passed, 0 failed`; test_records_write_gate.sh `68 passed, 0 failed`; test_skill_paths.sh `163 passed, 0 failed`
 - Commits made with `SKIP=validate-script-tests`; the full pre-commit pass and every-suite run are left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-17 12:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae39d32d53ef4336b, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #491 at `71ddd4a8`
+**Depth**: Deep (reason: whole-PR tier stays Deep; scope set by the host: the fix diff `ad63787d..71ddd4a8` only, no cross-model reviewers, per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Both earlier findings are closed in the code, and each fix is pinned by a test. The new tests pass at this head: `test_adapter.sh` gave 248 passed, 0 failed, and `test_merge_pr.sh` gave 170 passed, 0 failed (both run by this reviewer).
+- **Adapter fix (`b840ff25`).** Discovery now calls `registry_resolve_session_dir`. The cwd can match an outside `worktrees=` folder only when it lies in one, and the parser refuses a `worktrees=` that is or holds the workspace root or `worktrees/workspace`. So the workspace-only `sync` is unchanged for a cwd in the workspace.
+- **Adapter test.** `test_outside_worktrees_dir_resolves` checks `project_root`, `env` and `build` from such a worktree. It also checks `sync`, end to end through the `sync_project.py` shim, which execs `adapter sync`, and pins `--project-root <root>`.
+- **merge_pr.sh fix (`c7a50a0e`).** Only rc 2 is newly fatal. `wt_resolve_project_repo_root` returns 2 only for a registry parse error: from `registry_resolve_session_dir`, `registry_resolve_project_arg`, `registry_lookup` or `registry_entries`. rc 1 handling is unchanged, and `--repo` still skips the block.
+- **merge_pr.sh test.** The test covers all three `--type` forms and asserts that no `gh` call was made.
+- **`adapter` line 84 citation.** Line 84 is `_WORKSPACE_ONLY_SYNC_TYPE`, as design.md now cites.
+
+The build-in-hosting-dir point is not a defect of this pull request. On main, `_single_project_exec_cmd` already cds to `adapter_project_root`, which is the registry hosting dir. It did so for every selection: `--project`, discovery from a default `<root>/worktrees/<wt>` worktree, and now an outside `worktrees=` worktree. Running a build from a worktree builds the hosting checkout everywhere. If the owner wants worktree builds, that is a separate issue.
+
+### Findings
+- [ ] (must-fix, mechanical) design.md's `merge_pr.sh` line citations are now 4 lines off. `c7a50a0e` added 4 lines at 316-347, and the fix refreshed the `adapter` citations but not these. The Table 1 `merge_pr.sh` row cites "313-354, 731, 866, 1002 and 1315, 2451-2480", which should now be 313-358, 735, 870, 1006 and 1319, 2455-2484 (731 now lands on a comment, not the `_WT_REPO` line). The mechanism-1 sentence cites "841-988, 1273-1452", which should now be 845-992, 1277-1456. Earlier rounds of this repository treated stale design.md citations as must-fix (the issue 478 review). — `docs/design.md:490`, `docs/design.md:684`
