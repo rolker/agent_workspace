@@ -220,7 +220,9 @@ one the manifest names, is left as it is and reported. A repo that is no longer 
 manifest is left on disk and reported; `sync` does not delete it.
 
 An optional repo that cannot be fetched is skipped and reported. Any other repo that cannot
-be fetched is an error.
+be fetched is an error. A skipped repo is listed every time, by `sync` and by `status`, so
+that a repo missing because the network was down is not mistaken for one the machine has no
+access to.
 
 ### build
 
@@ -237,8 +239,8 @@ skipped as optional, is skipped.
 ### status
 
 Shows the manifest in use, the role and the distro, and for each repo whether it matches the
-manifest: on the expected version, on a different one, with local changes, missing, or
-present but no longer in the manifest. It also says whether each layer has been built since
+manifest: on the expected version, on a different one, with local changes, missing, skipped as
+optional, or present but no longer in the manifest. It also says whether each layer has been built since
 its repos last changed.
 
 `status --exact` writes the exact commit of every repo, by calling `vcs export --exact`. This
