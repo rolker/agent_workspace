@@ -487,7 +487,7 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 370-386, 427-431, 600-605, 689-718, 768-773, 1294-1302 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 142-176, remove 155-185 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_REPO_ROOT` (the registered root; no `project/` fallback since #265 part 4), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 313-354, 731, 866, 1002 and 1315, 2451-2480 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_REPO_ROOT` (the registered root; no `project/` fallback since #265 part 4), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 313-358, 735, 870, 1006 and 1319, 2455-2485 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 286-337, 512, 655, 743, 775, 914 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug and every registered root's slug (`registry_repo_slugs`, #295); the `project/` slug branch went in #265 part 4 | 131-176 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 171 |
@@ -592,24 +592,24 @@ Status: `decided`
   Workspace worktrees and single-repository project worktrees write no manifest, so the package rule
   changes nothing for them. `merge_pr.sh`'s gate reads the owning repository's pull request
   (`feature/issue-N`) in that checkout and commits and pushes its record there: the matched manifest
-  entry's path travels with the match (`PKG_OWN_REL`, lines 645-668) and becomes the gate's worktree
-  (lines 841-865). The gate reads that checkout's timeline only when the checkout is its repository's
+  entry's path travels with the match (`PKG_OWN_REL`, lines 649-672) and becomes the gate's worktree
+  (lines 848-872). The gate reads that checkout's timeline only when the checkout is its repository's
   top folder, has the pull request's branch checked out and its HEAD equals origin's copy of it (a
   bounded fetch); otherwise it gives the reason and the record goes on the pull request (lines
-  866-933). It then reads the committed `progress.md` at that commit, never the working copy, so
+  873-940). It then reads the committed `progress.md` at that commit, never the working copy, so
   nothing uncommitted in the checkout changes what it reads; none committed means no timeline (lines
-  934-988). The record is committed there only when the working copy's `progress.md` is the committed
+  941-982). The record is committed there only when the working copy's `progress.md` is the committed
   one (`_gate_rec_not_committed`), else it goes on the pull request. A sibling
   repository's pull request reads no timeline there; its reason names the owning checkout and its
-  record goes on its own pull request (lines 1024-1031 and 1437-1438). Package pull requests stay
+  record goes on its own pull request (lines 1031-1038 and 1443-1444). Package pull requests stay
   report-only. `progress_append.sh` lines 107-108 write
   `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
   pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
-  registered root (`PJ_REPO_ROOT`, lines 313-354; no `project/` fallback since #265 part 4) is what
-  both the Step 1 roadmap worktree lookup and the gate use (lines 731 and 866), and the main-tree
-  guards include it, so the project's main checkout never takes the record commit (lines 1002 and
-  1315). The gate is still report-only for project pull requests (lines 1604 and
-  1621). A skill worktree's pull request (issue 478) has no issue and so no timeline: the gate reads
+  registered root (`PJ_REPO_ROOT`, lines 313-358; no `project/` fallback since #265 part 4) is what
+  both the Step 1 roadmap worktree lookup and the gate use (lines 735 and 870), and the main-tree
+  guards include it, so the project's main checkout never takes the record commit (lines 1006 and
+  1319). The gate is still report-only for project pull requests (lines 1611 and
+  1628). A skill worktree's pull request (issue 478) has no issue and so no timeline: the gate reads
   none and its record goes on the pull request ([Merge gate](#merge-gate)).
 - **Base branch** (issue 429). The pull request of a package issue's owning repository targets the
   branch the project pins that repository at (`adapter repo_pin`, ADR-0019), never the forge's default
@@ -681,7 +681,7 @@ Three mechanisms would do it, each built by #393:
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    555, 601, 603, 665, 940: the round count, the exit contract, `--check-exit` and `next`, which is
-   what a resumed session reads), `merge_pr.sh` (841-988, 1273-1452: the gate's lookup and its `Merge`
+   what a resumed session reads), `merge_pr.sh` (848-995, 1280-1459: the gate's lookup and its `Merge`
    entry), `review_progress.sh` (140, 306, 350) and `progress_append.sh` (107). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path follow it.
