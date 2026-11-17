@@ -43,7 +43,7 @@ their own against the specification.
   here use, makes each layer its own colcon workspace built on top of the ones before it. A
   layer that rarely changes is built once, and a problem in one layer does not force a rebuild
   of the ones under it. The format does not require that layout.
-- A manifest can extend another one. A group with its own robot can start from a published
+- A manifest can build on another one. A group with its own robot can start from a published
   manifest and add its own packages, without forking that manifest and without cloning the
   system first.
 - The published manifest can point at the released repos while a machine fetches them from
@@ -70,8 +70,9 @@ and nothing stops someone from feeding the resolved list to a different tool.
 
 `vcs` on its own gets part of the way. vcs2l is adding an `extends` key (on its main branch,
 not in release 1.1.7) that lets a `.repos` file build on other local files and replace entries
-in them, the later file winning. A manifest's `extends` also lets the later file win, and
-merges the keys of an entry where vcs2l replaces it. A `.repos` file is still one list for
+in them, the later file winning. A manifest's `base` key does the same job. It is named differently because it differs: a
+parent can be at a URL or in a git repo, and the keys of an entry are merged where vcs2l
+replaces the entry. A `.repos` file is still one list for
 one variant: it has no roles, no per-distro versions, no optional repos and no layers. A
 system with three roles and two distros needs six of them kept in step by hand.
 

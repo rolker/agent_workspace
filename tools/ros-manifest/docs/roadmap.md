@@ -13,7 +13,7 @@ the tool's own directory.
 
 1. Project11, whose manifest is in one of its own repos, is set up on a clean machine: `init`
    with a role and a distro, `build`, source the setup file, and the system runs. A
-   collaborator does the same from their own manifest that extends the published one and
+   collaborator does the same from their own manifest that builds on the published one and
    adds a layer for their robot.
 2. Someone who wants to try project11 follows a short set of instructions and has it running
    in the simulator, with a role that includes it, such as the developer role. The
@@ -26,9 +26,9 @@ the tool's own directory.
 |---|---|
 | The format is written down | `file-exists docs/spec.md` |
 | The tool and its code carry the name repos-manifest | `file-exists src/repos_manifest/cli.py` |
-| The resolver reads the format in the spec: a superset of a `.repos` file, keys merged under `extends`, layers appended, groups named on the repo | |
+| The resolver reads the format in the spec: a superset of a `.repos` file, keys merged under `base`, layers appended, groups named on the repo | |
 | The resolver no longer has the package dependency section, roles defined by starting packages, or the cache of parents kept between runs | |
-| `extends` and the manifest itself can be given as a path, a URL, or a file in a git repo | |
+| `base` and the manifest itself can be given as a path, a URL, or a file in a git repo | |
 | `show` prints what a manifest comes to for a machine, with what is left out and why | |
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | |
 | `build` builds the layers in order and writes one setup file | |

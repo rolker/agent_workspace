@@ -174,8 +174,8 @@ place in the checkout.
 Only the checkout in the system directory counts as the local copy. A copy in another clone
 or another branch of the same repo is not looked at.
 
-The same rule applies to `extends`. Each parent is a location of one of the three kinds, and
-a relative path is taken from the manifest that names it. A local manifest that extends a
+The same rule applies to `base`. Each parent is a location of one of the three kinds, and
+a relative path is taken from the manifest that names it. A local manifest that builds on a
 parent next to it in the same repo reads the parent from the local disk too.
 
 ## Commands
@@ -213,7 +213,7 @@ way to look at a manifest before setting anything up.
 
 ### show
 
-A manifest can extend others, and what a machine gets depends on the role, the distro, the
+A manifest can build on others, and what a machine gets depends on the role, the distro, the
 extra groups and where repos are fetched from. `show` prints the result of all of that for
 a person to read, before anything is fetched:
 
@@ -221,7 +221,7 @@ a person to read, before anything is fetched:
 $ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
 
 manifest  project11.manifest.yaml
-extends   https://github.com/example/system.git  jazzy  system.manifest.yaml
+base      https://github.com/example/system.git  jazzy  system.manifest.yaml
 role      robot    groups on: echoboat-hardware    distro: jazzy
 
 underlay
@@ -249,7 +249,7 @@ scripts.
 
 ### resolve
 
-Reads the manifest and everything it extends, applies the role and the distro, and writes
+Reads the manifest and everything it builds on, applies the role and the distro, and writes
 into `.repos-manifest/resolved/`:
 
 - one `.repos` file per layer, with `type`, `url` and `version` for each repo;
@@ -324,7 +324,7 @@ been built since its repos last changed.
 ### freeze
 
 Writes a manifest that records the exact commit of every repo the machine has. It is one
-complete manifest with nothing to extend: everything the manifest in use and its parents say
+complete manifest that builds on no other: everything the manifest in use and its parents say
 is merged in, and each repo the machine has is given its commit as its `version`.
 
 It is a record of what a machine ran, and `init` and `sync` accept it like any manifest, so
@@ -384,7 +384,7 @@ the other place. Two repos in a manifest with the same name and different owners
 be fetched this way, and `resolve` says so.
 
 The rule applies to the repo that holds the manifest like any other repo. A repo entry that
-the machine's own manifest points somewhere with `extends` is used as written; `fetch_from`
+the machine's own manifest points somewhere with `base` is used as written; `fetch_from`
 only applies to URLs that come from the published manifest unchanged. `status` shows where
 each repo was fetched from.
 
@@ -522,7 +522,7 @@ kept in step with the published one by hand.
 The collaborator writes a manifest in their own repo:
 
 ```yaml
-extends:
+base:
   url: https://github.com/example/system.git
   version: jazzy
   path: system.manifest.yaml
@@ -568,8 +568,7 @@ layers work. Supporting other build tools is not planned.
 Nothing else depends on `colcon`. A project that builds another way uses the format,
 `resolve`, `sync` and `status`, and builds the layers itself in the order `resolve` gives.
 
-Resolving `extends` is done by the resolver and not left to `vcs`, because a manifest can
-extend one at a URL and because the manifest keys are merged.
+A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 
 ## Not covered
 

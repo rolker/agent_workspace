@@ -17,7 +17,7 @@ reads and adds keys that `vcs` ignores. Two things follow from that:
 - `vcs import` on a manifest that stands on its own still fetches its repos, each at its
   default version into one directory. It knows nothing of roles, distros or layers, so it
   also fetches repos that a role or a distro would leave out. It is not a way to use a
-  manifest that extends another: `vcs` does not read a manifest's `extends`, and skips an
+  manifest that builds on another: `vcs` does not read a manifest's `base`, and skips an
   entry that leaves out `type` or `url`.
 
 We checked that `vcs` ignores keys it does not know, at the top level and inside a repo
@@ -80,7 +80,7 @@ roles:
 |---|---|---|
 | `repositories` | yes | The repos of the system, by name. |
 | `format` | no | Version of this format. `1` if absent. |
-| `extends` | no | One or more other manifests this one builds on. |
+| `base` | no | One or more other manifests this one builds on. |
 | `distros` | no | The distros this manifest covers. |
 | `layers` | no | The ordered list of layers. |
 | `groups` | no | The names of the groups repos can belong to. |
@@ -112,7 +112,7 @@ Two things follow from the key being a path:
 
 - With layers, the path is inside the repo's layer. A key that starts with the name of its
   own layer repeats that name on disk.
-- `extends` matches repos by their whole key. A later manifest that changes a repo uses the
+- `base` matches repos by their whole key. A later manifest that changes a repo uses the
   key the earlier manifest gave it.
 
 | Key | Required | Meaning |
@@ -218,11 +218,11 @@ project can start this way, down to a single repo, and add layers when build tim
 them, without touching the repos it already has. A `layer:` that is not in the `layers:`
 list is an error.
 
-A manifest that extends another can give a layer to a repo the earlier one left without one,
+A manifest that builds on another can give a layer to a repo the earlier one left without one,
 like any other key:
 
 ```yaml
-extends: small_project.manifest.yaml
+base: small_project.manifest.yaml
 layers: [drivers, my_robot]
 repositories:
   sonar_driver:
@@ -262,12 +262,12 @@ role is given when resolving. If `roles:` is present, a role is given when resol
 
 Open: whether a role should also be able to name single repos, or pick layers.
 
-## Extends
+## Building on another manifest
 
-`extends:` names one or more other manifests, each by its location.
+`base:` names one or more other manifests that this one builds on, each by its location.
 
 ```yaml
-extends: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
+base: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
 ```
 
 ### Locations
@@ -287,7 +287,7 @@ These three forms are the ones every tool is expected to read:
   git can clone works, so a repo on a private server reached over ssh is named this way.
 
 ```yaml
-extends:
+base:
   url: git@git.example.org:field/unh_marine_autonomy.git
   version: jazzy
   path: project11.manifest.yaml
@@ -319,7 +319,7 @@ per-distro entries. To have the new version on every distro, the later entry als
 empty `distros:` block:
 
 ```yaml
-extends: released.manifest.yaml
+base: released.manifest.yaml
 repositories:
   autoware_core:
     version: main
@@ -329,20 +329,21 @@ repositories:
 An empty block also drops any `absent: true` the earlier entry had under a distro. A later
 entry that changes one distro gives the whole block, with the other distros repeated.
 
-A parent may itself extend other manifests. A chain that comes back to a manifest it has
+A parent may itself build on other manifests. A chain that comes back to a manifest it has
 already read is an error.
 
-vcs2l has the same "later wins" rule for `extends` in `.repos` files (on its main branch at
-the time of writing, for local files only). It differs in one way: vcs2l replaces a repo
-entry as a whole, where a manifest merges its keys. For plain `.repos` entries, which have
-only `type`, `url` and `version`, the result is the same when the later entry gives all
-three.
+vcs2l is adding an `extends` key to `.repos` files (on its main branch at the time of
+writing) that does part of this: a file builds on other local files, and a later entry
+replaces an earlier one as a whole. A manifest's key has a different name because it behaves
+differently. A parent can be at a URL or in a git repo, the keys of an entry are merged, and
+layers, groups and roles combine too. With a different name, `vcs` never mistakes one for
+the other.
 
-Pointing a repo at a fork is done with `extends`: a developer's manifest extends the
+Pointing a repo at a fork is done with `base`: a developer's manifest builds on the
 published one and gives the repo a different `url`.
 
 ```yaml
-extends: project11.manifest.yaml
+base: project11.manifest.yaml
 repositories:
   unh_marine_navigation:
     url: https://github.com/rolker/unh_marine_navigation.git
@@ -355,7 +356,7 @@ Adding a repo to a group of the published manifest works the same way as adding 
 layer: the new repo names the group.
 
 ```yaml
-extends: project11.manifest.yaml
+base: project11.manifest.yaml
 layers: [my_robot]
 repositories:
   my_robot_sim:
@@ -397,7 +398,7 @@ refuses a manifest that fails one:
 - The file has no invisible characters and none that change the direction of text. They can
   make a file read differently from what it does.
 
-A manifest that extends others is only as readable as the whole chain. A tool can show the
+A manifest that builds on others is only as readable as the whole chain. A tool can show the
 combined result for a machine; see `show` in the design document.
 
 ## Not in the format
@@ -413,5 +414,5 @@ combined result for a machine; see `show` in the design document.
 
 ## Open questions
 
-- Whether a manifest that extends another can remove a repo outright, as opposed to leaving
+- Whether a manifest that builds on another can remove a repo outright, as opposed to leaving
   it out through a group.
