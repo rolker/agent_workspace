@@ -83,6 +83,11 @@ We looked at tools that do compose manifests before writing this one (survey of 
   do not write `.repos` files.
 - **rosinstall_generator** works per distro, from the released ROS index. It answers what a
   released package needs, not which of a project's own repos a given machine should have.
+- **vcspull** (looked at 2026-11) syncs git, hg and svn repos from a YAML or JSON file, and is
+  not tied to ROS. Its file maps directories to repos, each with an optional revision and
+  extra remotes. It is aimed at keeping one person's checkouts the same across machines. Its
+  documentation describes no way for one file to build on another, no groups or roles, and
+  one revision per repo, and it does not write `.repos` files.
 
 ## What works today
 
