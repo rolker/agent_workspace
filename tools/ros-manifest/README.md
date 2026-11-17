@@ -70,11 +70,11 @@ and nothing stops someone from feeding the resolved list to a different tool.
 
 `vcs` on its own gets part of the way. vcs2l is adding an `extends` key (on its main branch,
 not in release 1.1.7) that lets a `.repos` file build on other local files and replace entries
-in them, the later file winning. A manifest's `base` key does the same job. It is named differently because it differs: a
-parent can be at a URL or in a git repo, and the keys of an entry are merged where vcs2l
-replaces the entry. A `.repos` file is still one list for
-one variant: it has no roles, no per-distro versions, no optional repos and no layers. A
-system with three roles and two distros needs six of them kept in step by hand.
+in them, the later file winning. A manifest's `base` key does the same job. It is named
+differently because it differs: a parent can be at a URL or in a git repo, and the keys of an
+entry are merged where vcs2l replaces the entry. A `.repos` file is still one list for one
+variant: it has no roles, no per-distro versions, no optional repos and no layers. A system
+with three roles and two distros needs six of them kept in step by hand.
 
 We looked at tools that do compose manifests before writing this one (survey of 2026-09):
 
