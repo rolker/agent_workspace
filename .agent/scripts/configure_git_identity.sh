@@ -160,9 +160,17 @@ while IFS=$'\t' read -r _reg_name _reg_type _reg_path; do
     [ -n "$_reg_name" ] || continue
     [ "$_reg_type" = "$REGISTRY_PARENT_TYPE" ] && continue
     [ -d "$_reg_path" ] || continue
+    # The root's own worktree dir (its worktrees= or <root>/worktrees) is
+    # skipped by that path, never by a "worktrees" folder name: the root's
+    # own absolute path may contain one.
+    _reg_wt="$(registry_worktree_dir "$_REG_ROOT" "$_reg_name" 2>/dev/null)" || _reg_wt=""
     while IFS= read -r git_dir; do
-        REPOS+=("$(dirname "$git_dir")")
-    done < <(find "$_reg_path/" -name ".git" -type d -prune -not -path "*/worktrees/*" | sort)
+        _repo="$(dirname "$git_dir")"
+        if [ -n "$_reg_wt" ] && { [ "$_repo" = "$_reg_wt" ] || [[ "$_repo" == "$_reg_wt/"* ]]; }; then
+            continue
+        fi
+        REPOS+=("$_repo")
+    done < <(find "$_reg_path/" -name ".git" -type d -prune | sort)
 done <<< "$_REG_ENTRIES"
 
 # Derive each repository's address before writing any (manual mode uses the

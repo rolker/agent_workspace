@@ -383,6 +383,27 @@ out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
 [[ $rc -eq 0 && "$out" == *"Configuring $sb/proj/own "* && "$out" != *"Configuring $sb/proj/linked "* ]] \
     && pass "a linked worktree (a .git file) is not configured as a repository of its own" || fail "linked worktree (rc=$rc, got: $out)"
 
+echo "TEST: configure_git_identity.sh: a root whose own path has a 'worktrees' folder is configured; its own worktree dir is skipped (review round 2, M3)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/srv/worktrees/product/own"
+git init --quiet "$sb/srv/worktrees/product/worktrees/stray"
+echo "demo ros2_colcon $sb/srv/worktrees/product" > "$sb/repo/.agent/projects.local"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+own="$(git -C "$sb/srv/worktrees/product/own" config --local user.email || true)"
+stray="$(git -C "$sb/srv/worktrees/product/worktrees/stray" config --local user.email || true)"
+[[ $rc -eq 0 && "$own" == "dev+codex@example.org" ]] \
+    && pass "a repository of a root under a 'worktrees' folder is configured" || fail "root under worktrees/ skipped (rc=$rc, own=$own, got: $out)"
+[[ -z "$stray" ]] && pass "the root's own worktree dir (<root>/worktrees) is still skipped" || fail "worktree dir configured (got: $stray)"
+git init --quiet "$sb/srv/worktrees/product/sub/worktrees/kept"
+echo "demo ros2_colcon $sb/srv/worktrees/product worktrees=$sb/srv/worktrees/product/wt" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/srv/worktrees/product/wt/stray2"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+kept="$(git -C "$sb/srv/worktrees/product/sub/worktrees/kept" config --local user.email || true)"
+stray2="$(git -C "$sb/srv/worktrees/product/wt/stray2" config --local user.email || true)"
+[[ $rc -eq 0 && "$kept" == "dev+codex@example.org" && -z "$stray2" ]] \
+    && pass "with worktrees=: that dir is skipped, a 'worktrees' folder elsewhere in the root is not" || fail "worktrees= override (rc=$rc, kept=$kept, stray2=$stray2, got: $out)"
+
 echo "TEST: .agent/.identity reads back exactly in bash and in a POSIX sh"
 # A sandbox copy of the scripts, so the real checkout's .agent/.identity is never written.
 sb="$(mk_repo "o'brien@x.ie")"
