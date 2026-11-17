@@ -67,7 +67,7 @@ remotes:
 | `local_manifest` | Optional. A path inside the system directory that is used instead, once that file exists. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
-| `distro` | The ROS distro of this system, if the manifest has distros. |
+| `distro` | The distro of this system, if the manifest has distros. |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 

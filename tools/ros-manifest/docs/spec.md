@@ -6,7 +6,7 @@ reads an earlier shape, and sections marked "Open" are not settled.
 ## What a manifest is
 
 A system manifest (from here on, a manifest) is a YAML file that describes the repos of a
-system and its variants. Given a role and a ROS distro, a manifest resolves to plain `.repos`
+system and its variants. Given a role and a distro, a manifest resolves to plain `.repos`
 files, one per layer, that `vcs import` can fetch.
 
 A manifest is a superset of a `.repos` file. It keeps the `repositories:` list that `vcs`
@@ -81,7 +81,7 @@ roles:
 | `repositories` | yes | The repos of the system, by name. |
 | `version` | no | Version of this format. `1` if absent. |
 | `extends` | no | One or more other manifests this one builds on. |
-| `distros` | no | The ROS distros this manifest covers. |
+| `distros` | no | The distros this manifest covers. |
 | `layers` | no | The ordered list of layers. |
 | `groups` | no | The groups repos can belong to, and whether each is on by default. |
 | `roles` | no | Named variants, each a choice of groups. |
