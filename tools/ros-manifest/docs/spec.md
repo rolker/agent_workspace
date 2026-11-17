@@ -117,7 +117,7 @@ Two things follow from the key being a path:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `type` | yes | As in a `.repos` file. The tools here support `git`. |
+| `type` | yes | As in a `.repos` file. The tools here are designed for `git`. |
 | `url` | yes | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
 | `absent` | no | `true` if the repo is not part of the system unless a distro says so. |
@@ -210,9 +210,9 @@ branch can list only `jazzy` while the copy on `rolling` lists them all.
 `layers:` is an ordered list of layer names. Each repo names its layer with `layer:`.
 Resolving writes one `.repos` file per layer, in that order.
 
-The suggested layout, and the one the tools here use, makes each layer its own colcon
-workspace built on top of the ones before it. The format only says that layers are ordered
-groups of repos; it does not say what a tool does with them.
+The suggested layout, and the one the tools here are designed around, makes each layer its own
+colcon workspace built on top of the ones before it. The format only says that layers are
+ordered groups of repos; it does not say what a tool does with them.
 
 Layers are optional. A repo that names no layer is in the unnamed first layer, which comes
 before every named one. A manifest with no `layers:` at all has only that layer. A small
