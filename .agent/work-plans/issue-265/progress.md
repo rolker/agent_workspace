@@ -1091,3 +1091,15 @@ The local timeline is the only review source. `review_progress.sh sources` retur
 None.
 
 Held for the owner at the merge checkpoint, not findings: the AGENTS.md-only commits `a80f3dc2` and `557fffe5`; the machine steps before and after the merge; ADR-0002, ADR-0003, ADR-0011 and ADR-0018 still describing the retired shapes. Owner standard for the retirement advice, 2026-11-17: "it's fine if the project(s) retirements is not fool-proof".
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 13:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Asked on 2026-11-17 with CI green and the pull request mergeable: "Q1 — merge pull request 491? My recommendation is yes, with the one-line citation deferred to the parent issue (295)." "Q2 — the AGENTS.md wording: keep, reword or drop?" (the four changes W1 to W4 shown in full; recommendation keep). "Q3 — GeoZui4D's install command on this machine: keep it or drop it?" (recommendation keep: copy it into the project's settings file before the merge). "Q4 — the two project11 clones under `projects/` on this machine (`p11-jazzy`, `p11-rolling`): remove them or keep them?" (recommendation remove: after the merge unregister both, re-check that all their repositories are clean and pushed, then delete `projects/`, the `project` link and the three old config files). "Q5 — add a one-line status note to the four decision records that still describe the retired shapes?" (a small separate pull request after the merge, exact lines shown first; recommendation yes). His answer, verbatim: "Agree to all, but for q2, are we mixing product and project? That should be consitent."
+
+Host reading of the Q2 remark (for his veto): "product" appears twice in AGENTS.md (the Project bullet and the ownership table row), both carried over from the text on main, so this pull request does not add the mix. The consistent wording goes into the follow-up pull request with the ADR notes (Q5), its exact text shown to him first; the merge is not held for it.
