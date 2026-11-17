@@ -291,6 +291,8 @@ if [[ -f "$ORCH" ]]; then
         'two host `revise` answers at `plan` in a row' \
         'two host `address` answers at `rounds` in a row' \
         "that checkpoint's next answer is the owner's"
+    has "$ORCH" "orchestrator: a second failed full pass in a row is the owner's (issue 465)" \
+        'or a full pass that fails when the previous full-pass result was a failure too (`run-issue` step 7; a failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result; a host `address` answer to a failed full pass does not count toward the two at `rounds`), that checkpoint'"'"'s next answer is the owner'"'"'s.'
     has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
         'gh issue comment 398 -R "$WS_REPO" --body-file' \
         '## What reached the owner, and why' '## Decisions made, and any vetoes' \
@@ -726,6 +728,77 @@ has "$RI" "run-issue steps 11 and 13: a landed merge ends the run; the next part
     '**A landed merge ends the run.** When `merge_pr.sh` reports the pull request merged, the run is `done`: the host reports the merge and does not call `next` again.' \
     'The next part of the issue, if any, starts with a fresh `/run-issue <N>` (step 13).' \
     'and the run that made the merge ends there (step 11): it never calls `next` again. The next part starts with a fresh `/run-issue <N>`'
+
+# --- The hook rule (issue #465, owner-decided 2026-11-13): dispatched
+# implement and fix passes skip the script-test hook on every commit and
+# run only their own suites; the host runs the full pass once, at the
+# publish checkpoint, and a failure goes back as a finding that
+# address-findings acts on; record-only commits wait for a code push, the
+# push before merge_pr.sh, or a parked drive. test_dispatch_phase.sh pins
+# the handoff text itself.
+AF="$SKILLS/address-findings/SKILL.md"
+has "$RI" "run-issue step 4: the hook rule skips the suites on every commit, runs only the pass's own suites, leaves the full pass to the host" \
+    '`SKIP=validate-script-tests` on every commit, its progress entry'"'"'s commit included' \
+    'It runs no full pre-commit pass.' \
+    'The full pass is the host'"'"'s, once per pull request, when the `publish` checkpoint is raised (step 7); a failed pass runs again once its fix is approved.'
+has "$RI" "run-issue step 7: the host's full pass runs before the publish dialog is shown, at rounds only once publish is chosen; a failure is answered address by the host, quoted, never fixed by the host" \
+    'When `next` prints `action=checkpoint:publish`, the host runs every hook once over the branch, with no SKIP, before the checkpoint dialog is shown: the host answers a failure itself, without asking the owner (below)' \
+    'At `checkpoint:rounds` the pass runs only once `publish` is the chosen answer, by the owner or by the host, and before that answer is recorded' \
+    '**It fails**: the host answers the checkpoint `address` and fixes nothing itself, without showing the dialog (a second failure in a row is the owner'"'"'s, below).' \
+    '**It fails again**: a second failure in a row goes to the owner.' \
+    '"In a row" is judged by the previous full-pass result, not by the checkpoints between' \
+    'The previous result was a failure when the newest such entry before this pass quotes a full-pass failure and its `**Decision**` is not `publish`.' \
+    'A failure followed by a `## Checkpoint` with `**Decision**: publish` is not the previous result: that decision is reached only after a pass that passed, or on the owner'"'"'s own say after a failure, and the push ended that run' \
+    'A `restart` does not reset it: the previous result is still the last pass'"'"'s.' \
+    'When this pass fails and the previous result was a failure too, the host does not answer' \
+    'His `## Checkpoint` entry (`**Decided-by**: owner`, his words in the body) quotes the failure as the host'"'"'s would, whatever he answers; on `address` the `address-findings` handoff quotes it too, so that skill'"'"'s step 2 finds it open.' \
+    'the host does not answer: it shows the checkpoint dialog with the failure quoted, and the answer is the owner'"'"'s.' \
+    'A host `address` answer to a failed full pass does not count toward `/orchestrator`'"'"'s limit of two host `address` answers at `rounds` in a row' \
+    '<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)' \
+    'The pass runs on the exact head that will be pushed' \
+    'a run that was cut off has not passed' \
+    'that skill'"'"'s step 2 takes it as its open finding until a fix pass'"'"'s `## Implementation` with `**Status**: complete` follows that checkpoint (a `partial` or `failed` one leaves it open, so a retry still fixes it).'
+has "$RI" "run-issue step 9: after publish CI on each push is the check, confirmed before the merge checkpoint" \
+    'After publish, CI on each push is the check on a fix pass'"'"'s commits' \
+    'confirmed before the merge checkpoint, never assumed'
+has "$RI" "run-issue step 10: record-only commits wait for a code push, the push before merge_pr.sh, or a parked drive" \
+    '**Record-only commits are not pushed after each phase**' \
+    '`git rev-list origin/<branch>..HEAD` prints nothing' \
+    'Never run `merge_pr.sh` with a record commit or an uncommitted `progress.md` edit outstanding' \
+    '**When a drive parks or the session ends**'
+has "$AF" "address-findings: a quoted host full-pass failure is an open finding; a dispatched pass skips the suites on every commit and runs only its own" \
+    'quotes a failure of the host'"'"'s full pre-commit pass' \
+    'set `SKIP=validate-script-tests` on every commit, the step 5 entry'"'"'s commit included' \
+    'runs no full pre-commit pass over the branch' \
+    '`**Addressed**: host full pass at <head sha> (Checkpoint <its When>)`'
+# Which suites a dispatched pass runs: the suites named after each changed
+# script and every suite that names its file, one grep. The dispatcher
+# text, run-issue step 4 and address-findings step 4 carry the same words;
+# test_dispatch_phase.sh pins the dispatcher's copy of this fragment.
+SUITE_RULE='its `test_<name>.sh` and any `test_<name>_*.sh` (`<name>` is the script'"'"'s file name without a leading `_` and without `.sh` or `.py`), and every suite that names the script'"'"'s file, which one grep lists: `grep -lwF <file name> <worktree>/.agent/scripts/tests/test_*.sh`'
+has "$RI" "run-issue step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
+has "$AF" "address-findings step 4: a pass runs the suites named after each changed script and every suite that names its file" "$SUITE_RULE"
+INDIRECT_RULE='A suite that reaches a script only through another script or an import is left to the host'"'"'s full pass.'
+has "$RI" "run-issue step 4: a suite reaching a script only indirectly is the host pass's" "$INDIRECT_RULE"
+has "$AF" "address-findings step 4: a suite reaching a script only indirectly is the host pass's" "$INDIRECT_RULE"
+# A fix pass's ## Implementation closes the quoted failure: the pass after
+# a changes-requested review of that fix (no new checkpoint) must not act
+# on it again (issue #465 pre-push review, must-fix).
+has "$AF" "address-findings: a host full-pass failure is open only while no complete ## Implementation follows the checkpoint that quotes it" \
+    'that failure is an open finding only while no `## Implementation` entry with `**Status**: complete` follows the checkpoint that quotes it.' \
+    'does not act on it again or name it in `**Addressed**`, even when its handoff still quotes it.' \
+    'A `partial` or `failed` `## Implementation` leaves it open, so a retry still fixes it.' \
+    '**`open` is empty and no host full-pass failure is open**'
+has "$WS_ROOT/.agent/knowledge/host_standing_rules.md" "host standing rules: the 2026-11-13 hook rule row with the owner's words" \
+    'The host runs the full pre-commit pass once per pull request, when the `publish` checkpoint is raised and before the push, with no SKIP' \
+    '"yes, do the third option on both machines" (owner, 2026-11-13, on the second machine); "yes, one local run before a pr" (owner, 2026-11-13)'
+for f in "$RI" "$AF"; do
+    if grep -qiE 'intermediate (atomic |fix )?commits' "$f"; then
+        fail "hook rule: $(basename "$(dirname "$f")") still scopes the SKIP to intermediate commits (issue #465)"
+    else
+        pass "hook rule: $(basename "$(dirname "$f")") no longer scopes the SKIP to intermediate commits"
+    fi
+done
 # The issue-state block itself, run against a stub gh: a failing gh stops
 # with a non-zero exit; CLOSED and OPEN are printed for the host to route.
 STATE_BLOCK="$(python3 - "$RI" <<'PYSTATE'

@@ -91,7 +91,17 @@
 #     `__import__("x")`, `importlib.import_module(...)` (see Residual risk).
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
-#     line). Documents are leaves.
+#     line). Documents are leaves, and so is a suite reached through
+#     another file: a script or suite that names a suite (a handoff text
+#     telling an agent which suite to run, a fixture list) does not run
+#     it, so the named suite joins the closure but its own references do
+#     not. Without this, one file naming a widely-read suite hands its
+#     reach to every suite that reads that file (issue #465: a dispatcher
+#     text naming two suites took register_project.sh's selection from 12
+#     suites to 36). The only code that runs a suite by name is the
+#     runner, for the required suite, which joins every run anyway (the
+#     runner finds the rest by glob; CI's workflow names three, but YAML
+#     is a leaf already).
 #   - Declarations, for what text cannot show (comment lines in a suite,
 #     read before the stripping):
 #       `# covers: <file>...`  exact files the suite reads; mapped like a
@@ -565,6 +575,8 @@ def main():
             refs_cache[rel] = index.refs(text, rel) if text is not None else set()
         return refs_cache[rel]
 
+    # A suite reached through another file is a leaf (see "Closure" above).
+    suite_rels = {os.path.normpath(os.path.join(tests_rel, s)) for s in suites}
     closure, covers, scans, always = {}, {}, {}, set()
     for s in suites:
         rel = os.path.normpath(os.path.join(tests_rel, s))
@@ -591,7 +603,7 @@ def main():
             if f in seen:
                 continue
             seen.add(f)
-            if code(f):
+            if code(f) and f not in suite_rels:
                 todo.extend(refs_of(f) - seen)
         seen.discard(rel)
         closure[s] = seen

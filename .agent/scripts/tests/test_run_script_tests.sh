@@ -671,6 +671,12 @@ PYEOF
     write_syn_suite "$A_S/tests" test_shrel.sh "$(printf '%s\ncat "$SCRIPT_DIR/../anchor.txt" >/dev/null\npython3 -c "%s .%s rel_y" 2>/dev/null || :' \
         'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' "$KW_FROM" "$KW_IMPORT")"
     printf 'anchor\n' > "$A_S/anchor.txt"
+    # A script that names a suite without running it (a handoff text), and
+    # a suite that reads that script: the named suite is a leaf, so
+    # test_namer.sh does not inherit test_relpkg.sh's reach (issue #465).
+    printf '#!/usr/bin/env bash\necho "run test_relpkg.sh when you change rel/"\n' > "$A_S/names_suite.sh"
+    write_syn_suite "$A_S/tests" test_namer.sh "$(printf '%s\nbash "$SCRIPT_DIR/../names_suite.sh" >/dev/null' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')"
     sgit -C "$AST" add -A && sgit -C "$AST" commit -q -m ast || fail "(l) ast: could not commit the fixture"
 fi
 # ast_sel <label> <file> <suite> <yes|no>: is <suite> selected for <file>?
@@ -703,6 +709,10 @@ ast_sel "ast: an absolute from-import of a package maps the module in it (libpkg
 ast_sel "ast: an absolute from-import of a package maps its init file (libpkg)" .agent/scripts/libpkg/__init__.py test_pyrun.sh yes
 ast_sel "ast: a plain import of a package maps its init file (libpkg2)" .agent/scripts/libpkg2/__init__.py test_pyrun.sh yes
 ast_sel "ast: a package import does not map the package's other modules (libpkg/other.py)" .agent/scripts/libpkg/other.py test_pyrun.sh no
+ast_sel "a suite reading a script selects for that script (names_suite.sh)" .agent/scripts/names_suite.sh test_namer.sh yes
+ast_sel "a suite a script names is a leaf: the reader of the script does not inherit its reach (rel/rel_a.py)" .agent/scripts/rel/rel_a.py test_namer.sh no
+ast_sel "the named suite itself stays in the reader's closure (a changed test_relpkg.sh selects test_namer.sh)" .agent/scripts/tests/test_relpkg.sh test_namer.sh yes
+ast_sel "the named suite still selects for its own reads (rel/rel_a.py selects test_relpkg.sh)" .agent/scripts/rel/rel_a.py test_relpkg.sh yes
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \
