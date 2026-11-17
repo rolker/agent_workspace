@@ -27,6 +27,7 @@ manifest that extends the published one and adds a layer for their robot.
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |
+| A system directory can hold more than one distro, each in its own directory | |
 | A real system is described by a published manifest and set up from it | |
 | The tool lives in its own repo and can be installed as a package | |
 

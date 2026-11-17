@@ -69,6 +69,46 @@ remotes:
 `role`, `groups` and `distro` are facts about the machine, which is why they are recorded here and not
 in the manifest.
 
+### More than one distro
+
+A development machine often carries two distros of the same system at once, for example the
+current release and the next one. The system directory can then have one directory per
+distro, each holding its own layers and its own setup file:
+
+```
+my_system/
+  .repos-manifest/
+    config.yaml
+    resolved/
+      jazzy/
+      rolling/
+  jazzy/
+    underlay/
+    core/
+    setup.bash
+  rolling/
+    underlay/
+    core/
+    setup.bash
+```
+
+`config.yaml` lists the distros in place of naming one:
+
+```yaml
+distros: [jazzy, rolling]
+```
+
+Everything else in `config.yaml` applies to each distro. `local_manifest` is then a path
+inside the distro's directory, so each distro uses the copy of the manifest in its own
+checkout once it exists. The copies may differ, as the copies on a project's distro branches
+may.
+
+A command run inside a distro's directory acts on that distro. Run at the top of the system
+directory it acts on every distro in turn, or on the ones named with `--distro`.
+
+The layout is chosen at `init`. A system directory set up for one distro has no distro
+directories, as in the first diagram.
+
 ## Where the manifest comes from
 
 A manifest is a file, so `manifest` points at a file: on a local disk or at a URL.
@@ -270,8 +310,6 @@ extend one at a URL and because the manifest keys are merged.
   script that sets up the machine.
 - Running a distro the host OS does not support, in a container or otherwise. `distro` is
   recorded, and the commands assume the environment they run in can build it.
-- Keeping more than one distro in one system directory. A machine with two distros has two
-  system directories.
 
 ## What is built
 
@@ -293,6 +331,8 @@ extra remotes are not built.
   changes needs testing.
 - With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
   for every repo on every sync costs a network call per repo.
+- With more than one distro, whether a distro needs its own settings, such as a different
+  `manifest` URL for its first sync or a different role.
 - Whether `build` should stop at the first layer that fails or carry on with layers that do
   not depend on it. The manifest does not say which layers depend on which, only their
   order, so stopping is the safe rule.
