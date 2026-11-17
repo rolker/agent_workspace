@@ -188,6 +188,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 | `sync` | Resolves, then fetches and updates the repos of each layer. |
 | `build` | Builds each layer in order. |
 | `status` | Shows what the system directory holds against what the manifest says. |
+| `freeze` | Writes a manifest with the exact commit of every repo the machine has. |
 | `validate` | Checks a manifest against the specification without resolving it for a machine. |
 
 After `init`, the other commands take no arguments in the common case. A person setting up a
@@ -320,36 +321,24 @@ manifest: on the expected version, on a different one, with local changes, missi
 as optional, or present but no longer in the manifest. It also says whether each layer has
 been built since its repos last changed.
 
-`status --exact` writes a manifest that records the exact commit of every repo. It reads
-each commit with `git` and writes them as a manifest that extends the one in use:
+### freeze
 
-```yaml
-extends:
-  url: https://github.com/example/system.git
-  version: jazzy
-  path: system.manifest.yaml
-repositories:
-  unh_marine_autonomy:
-    version: 3f2a9c1e5d0b47a8c6e1f9a2b3c4d5e6f7a8b9c0
-    distros: {}
-  marine_ais:
-    version: 9b04d7aa1c2e3f405162738495a6b7c8d9e0f1a2
-    distros: {}
-```
+Writes a manifest that records the exact commit of every repo the machine has. It is one
+complete manifest with nothing to extend: everything the manifest in use and its parents say
+is merged in, and each repo the machine has is given its commit as its `version`.
 
-It is an ordinary manifest, so `init` and `sync` accept it. It keeps the layers, groups and
-roles of the manifest it extends. It serves as a record of what a machine ran, as a way to
-get the same state on another machine, and as a release when it is committed and tagged.
+It is a record of what a machine ran, and `init` and `sync` accept it like any manifest, so
+the same state can be set up on another machine.
 
-When the manifest in use is a file on the local disk, the path would mean nothing on another
-machine. The written manifest then holds everything, with nothing to extend.
+It is kept simple, and has limits it states in its output:
 
-A commit can only be fetched elsewhere if it was pushed. `status --exact` names every repo
-that has uncommitted changes or commits that are not on its remote, and says that the record
-does not cover them.
-
-A machine set up from such a manifest has each repo at a commit with no local branch. See
-"Work done on a field machine".
+- Repos the machine does not have, because its role or distro leaves them out, keep the
+  versions the manifest named. A record that pins every repo is made on a machine that has
+  them all.
+- A commit that was never pushed cannot be fetched elsewhere. `freeze` names the repos with
+  uncommitted changes or unpushed commits.
+- A machine set up from the record has each repo at a commit with no local branch. See
+  "Work done on a field machine".
 
 ## Where repos are fetched from
 
@@ -570,7 +559,7 @@ Not every command needs all of these:
 | Command | Needs |
 |---|---|
 | `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo |
-| `init`, `sync`, `status` | `vcs` and `git` as well |
+| `init`, `sync`, `status`, `freeze` | `vcs` and `git` as well |
 | `build` | `colcon` as well |
 
 `colcon` is the one build tool `build` supports. It was chosen because it builds a directory
@@ -606,8 +595,8 @@ as optional, where the design marks repos. And when it fetches a parent manifest
 repo it never lets git or ssh ask for a password, where the design lets them ask at a
 terminal.
 
-`init`, `sync`, `build`, `status`, the system directory, fetching from another place and
-extra remotes are not built.
+`show`, `init`, `sync`, `build`, `status`, `freeze`, the system directory, fetching from
+another place and extra remotes are not built.
 
 ## Open questions
 

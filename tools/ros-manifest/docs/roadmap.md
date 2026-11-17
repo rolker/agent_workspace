@@ -33,7 +33,6 @@ the tool's own directory.
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | |
 | `build` builds the layers in order and writes one setup file | |
 | `status` shows what differs from the manifest | |
-| `status --exact` records exact commits as a manifest that `init` and `sync` accept | |
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |
@@ -42,6 +41,7 @@ the tool's own directory.
 | A short set of instructions gets someone project11 running in the simulator, including installing the tool | |
 | Project11's CI fetches and builds with the tools | |
 | Nav2 is built locally from a manifest written on the local disk | |
+| `freeze` records exact commits as a manifest that `init` and `sync` accept | |
 | The tool lives in its own repo and can be installed as a package | |
 
 | Deferral | Revisit check |

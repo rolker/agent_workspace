@@ -420,8 +420,8 @@ combined result for a machine; see `show` in the design document.
 - Build arguments. They are given to the build tool.
 - Which packages of a repo are built. Groups and roles select whole repos.
 - Content that is not in a repo, such as models or data downloaded at build time.
-- The exact commits a machine has checked out. A tool can record them as a manifest that
-  extends the one in use and gives each repo a commit as its `version`.
+- The exact commits a machine has checked out. A tool can record them as a manifest in which
+  each repo's `version` is a commit.
 
 ## Open questions
 
