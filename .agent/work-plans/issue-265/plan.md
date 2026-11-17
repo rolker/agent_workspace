@@ -308,11 +308,13 @@ test selector from treating a message as a read of that script
    (the helper reports it fell back from a linked worktree), by "no registry found
    from this linked worktree; run it from the main checkout". Same shell and Python
    helpers; both tested.
-7. **C7 Remaining docs, roadmap, ignore file, grep check.** `.gitignore`: remove
+7. **C7 Remaining docs, roadmap, ignore file, grep check.** `.gitignore` keeps
    `project/`, `project`, `projects/`, `.workspace-worktrees/` and
-   `.agent/project_config.sh` (an agent works in worktrees, which never contain the
-   untracked `project` or `projects/`, so nothing can stage them by accident; the
-   stale-shape report is what tells the owner they are still there). `docs/design.md`:
+   `.agent/project_config.sh` (plan review N1: removing them makes a machine that
+   keeps the old shapes, or registers a root under `projects/` as ADR-0016 decision
+   1 allows, show a dirty main checkout, and `make sync` skips a dirty checkout);
+   their comment says they are retired shapes, still ignored so such a machine stays
+   clean, and that the stale-shape report names them. `docs/design.md`:
    remaining Sessions and roots and Registry and adapters text, the ADR register
    rows 920 (0002) and 929 (0011) reworded to say the fallback and the legacy
    `project/` step are gone (a design-doc edit, not an ADR edit), the Table 1 and
@@ -322,12 +324,12 @@ test selector from treating a message as a read of that script
    listed for the owner's veto): delete the deferral row 86; drop
    "retiring `project/` and `projects/` (#265, part 4)" from the sentence at lines
    47-48; rows 181 and 202 status `in progress` becomes `done`, with row 181's tail
-   adding "Part 4 (retire) merged; registering the project11 instances is done on the
-   second machine by its own agent." (the acceptance sentence there, "project11
+   adding "Part 4 (retire) merged; registering the project11 instances on the second
+   machine is tracked by #433." (the acceptance sentence there, "project11
    port-to-rolling under `~/project11-ng` before cutover", is the owner's, so the
    edit leaves it and says it is not tracked here). **Grep check, run by the implement
    pass and quoted in its entry:**
-   `cd <worktree> && grep -rIn "project/\|project_config\|worktrees/project\|wt_legacy\|wt_transition\|wt_project_base_glob\|projects/<name>\|projects/" .claude .agent docs Makefile AGENTS.md .gitignore | grep -v "^.agent/work-plans/\|^docs/decisions/\|^docs/fork_parity\|research_digest\|^.agent/knowledge/\(research\|inspiration\)"`
+   `cd <worktree> && grep -rIn "project/\|project_config\|worktrees/project\|wt_legacy\|wt_transition\|wt_project_base_glob\|projects/<name>\|projects/" .claude .agent docs Makefile AGENTS.md | grep -v "^.agent/work-plans/\|^docs/decisions/\|^docs/fork_parity\|research_digest\|^.agent/knowledge/\(research\|inspiration\)"`
    Expected: not empty (the pattern also matches ordinary prose such as a path under
    a registered root), so it is read, not counted: every remaining hit is a record
    (design change log and register rows, roadmap history) or listed in the entry as
@@ -438,9 +440,9 @@ then `make build`, `make test`, `make lint` (pre-commit on all files) and `make 
 new:
 
 ```
-Set a registered project's build and test commands with `project_setting.sh set <name> build=<command>`
-(its settings file `.agent/projects.d/<name>` is gitignored); then `make build`, `make test`, `make lint`
-(pre-commit on all files) and `make validate`. See [`.agent/knowledge/build_and_test.md`](.agent/knowledge/build_and_test.md).
+Set a single-repository project's build and test commands with `project_setting.sh set <name> build=<command>`
+(a `ros2_colcon` project's come from colcon); then `make build PROJECT=<name>`, `make test PROJECT=<name>`,
+`make lint` (pre-commit on all files) and `make validate`. See [`.agent/knowledge/build_and_test.md`](.agent/knowledge/build_and_test.md).
 ```
 
 Verify at implement time: the budget check, `test_agents_md_budget.sh`, and that
@@ -485,7 +487,8 @@ revision 3 (and not in the 295 plan): the unregistered-name refusal in
 warning rule, the named refusal tests. Rejected: keeping the `.sh` layer "because
 #332 keeps it" (#332's own text calls it legacy and it is load-bearing on the first
 machine only because its settings were never moved, which the machine steps and the
-report fix); keeping `.gitignore` lines (see Decisions).
+report fix). Reversed by plan review N1: the 295 plan removed the `.gitignore` lines;
+they stay, reworded (C7).
 
 ## Serves
 
@@ -507,7 +510,7 @@ fallback sentence), ADR register rows 0002 and 0011 (design.md only), Table 2 ro
 
 | Principle | Consideration |
 |---|---|
-| Retirement is the point (standing rule) | Every old branch is removed here, none left as dead fallback; the `.gitignore`, grep check and stale report close the loop |
+| Retirement is the point (standing rule) | Every old branch is removed here, none left as dead fallback; the grep check and stale report close the loop (the `.gitignore` lines stay so a machine that keeps a retired shape stays clean, N1) |
 | Fail loudly, never silently | Unregistered names, no-project cwd and a missing `install` are refused or reported with the remedy; stale files produce a report, never silent ignore |
 | Project-agnostic (ADR-0003) | No project name in mechanism text, tests or this plan's mechanism sections; fixtures use synthetic names (S3) |
 | Never delete the owner's data | The pull request removes no directory or file on any machine; the machine steps wait for his yes |
@@ -537,17 +540,18 @@ fallback sentence), ADR register rows 0002 and 0011 (design.md only), Table 2 ro
 | the `.sh` and shared-config layers stop being read | the two type adapters, `register_project.sh`, `registration_verify.sh`, `project_integration_audit.sh`, `bootstrap.sh`, dashboard orphan loop, `projects.local.example`, `build_and_test.md`, `project_agents_guide.md`, tests, AGENTS.md line 157 | Yes, C4, C8 |
 | `ROS_ROOT_DIR` read from the environment | adapter header, `projects.local.example`, `test_ros2_colcon.sh` | Yes, C4 |
 | `sync` with no project stays a workspace-only sync | `test_fresh_clone_no_project.sh` (d), (f) unchanged; Sessions and roots Now bullet | Yes, C3 |
-| `.gitignore` lines removed | the stale-shape report; machine steps | Yes, C5, C7 |
+| `.gitignore` lines kept, comment reworded (N1) | the stale-shape report names the shapes they ignore | Yes, C5, C7 |
 | deleted helper names | `review-plan` skill, `script_reference.md`, design.md inventory | Yes, C2, C7 |
 | design picture | design.md and change log | Yes |
 | roadmap deferral row 86 and rows 181, 202, line 48 | 479's roadmap hunk | Yes, C7, overlap table |
 | skills that name `project/` | `make generate-skills` if a `/make_*` text changes | Check at C7 |
-| registering the project11 instances | second-machine agent, no tracking issue | No, out of scope (Checkpoint) |
+| registering the project11 instances | second-machine agent, tracked by #433 | No, out of scope (Checkpoint) |
 
 ## After-merge machine steps (NOT code; run by the host only after the owner says yes at that time)
 
 The pull request deletes and moves nothing. 88 repositories under the two ROS
-clones were checked clean and in sync on 2026-11-12; re-check before step 3.
+clones were checked clean and in sync on 2026-11-12; re-check before step 6 (the
+deletion).
 Facts read on 2026-11-16 (read only): registry `gz4d single_project /home/roland/src/gz4d`,
 `p11-jazzy` and `p11-rolling` `ros2_colcon` under `~/agent_workspace/projects/`;
 settings file `.agent/projects.d/gz4d` holds only `build` and `test`;
@@ -569,7 +573,8 @@ after the merge; the pull request's stale-file report names any still missing):
 2. The distro of the instance whose manifest declares none: add `distro=jazzy` to
    `p11-jazzy`'s line in `.agent/projects.local` by hand (`register_project.sh`
    refuses to change a registered line's fields). Without it `adapter --project
-   p11-jazzy ...` stops with "cannot resolve the ROS distro" (loud).
+   p11-jazzy ...` stops with "cannot resolve the ROS distro" (loud). Like step 3,
+   pointless if step 5 removes the entries.
 3. The bootstrap URLs: `project_setting.sh set p11-jazzy bootstrap_url=<URL from its
    .sh>` and the same for `p11-rolling`. Only needed if the clones are kept and could
    be re-bootstrapped; skipped if step 5 removes their entries.
@@ -599,9 +604,6 @@ Then, each on his yes, in order:
 - **A pathless registry entry is a parse error**, in the shell and Python parsers. Undo:
   restore one line each; no entry anywhere is pathless.
 - **Stale shapes warn, never fail `make validate`.** Undo: change a warn to a fail.
-- **`.gitignore`: the five lines are removed** (295 plan); agents work in worktrees, which
-  never contain the untracked symlink or clones, and the report tells the owner. Undo:
-  re-add five lines.
 - **`ROS_ROOT_DIR` comes from the environment** (295 plan, finding 9). Undo: a settings key.
 - **`make setup` reads the registry through `registry_main_checkout`; `WS_ROOT` keeps its
   rule** (F1). Undo: one line.
