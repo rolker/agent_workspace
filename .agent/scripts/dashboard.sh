@@ -148,16 +148,24 @@ REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     REGISTRY_ENTRIES=""
 }
 # Whether any project is registered, for the "No project is registered"
-# lines only: read from the main checkout found through git's common dir, as
-# make setup, make validate and make sync find it (issue #295), so the four
-# agree inside a worktree wherever it lives. Everything else here keeps
-# reading MAIN_ROOT's registry. A registry with parse errors is not "none".
+# lines only: read from the main checkout registry_main_checkout finds (the
+# Python mirror is get_main_checkout_root), as make setup, make validate and
+# make sync find it (issue #295), so the four agree inside a worktree
+# wherever it lives. Everything else here keeps reading MAIN_ROOT's
+# registry. A registry with parse errors is not "none". When that lookup
+# fell back from a linked worktree whose main checkout git does not name,
+# the lines say no registry was found from here instead (issue #265 part 4,
+# PR 454's F2).
 NONE_REGISTERED=0
+NO_REGISTRY_HERE=0
 if _MAIN_ENTRIES="$(registry_entries "$(registry_main_checkout "$ROOT_DIR")" 2>/dev/null)" &&
     [ -z "$_MAIN_ENTRIES" ]; then
     NONE_REGISTERED=1
+    registry_main_checkout_fallback "$ROOT_DIR" && NO_REGISTRY_HERE=1
 fi
-if [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
+if [ -z "$REGISTRY_ENTRIES" ] && [ "$NO_REGISTRY_HERE" -eq 1 ]; then
+    check_warn "No registry found from this linked worktree; run it from the main checkout"
+elif [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
     check_warn "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
 fi
 if [ -n "$REGISTRY_ENTRIES" ]; then
@@ -317,7 +325,9 @@ echo ""
 # Project repositories: the registered projects below; with none, why.
 if [ -z "${REGISTRY_ENTRIES:-}" ]; then
     echo "### Project Repositories"
-    if [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
+    if [ "${NO_REGISTRY_HERE:-0}" -eq 1 ]; then
+        echo "- **Status**: ⚠️ No registry found from this linked worktree; run it from the main checkout"
+    elif [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
         echo "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>"
     elif [ "${REGISTRY_OK:-1}" -eq 0 ]; then
         echo "- **Status**: ⚠️ projects.local has malformed entries (see the checks above)"

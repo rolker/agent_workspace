@@ -695,11 +695,29 @@ registry_require_root() {
 #     `git worktree list --porcelain` names, which is the main checkout,
 #     when that is a directory that is the top level of a checkout sharing
 #     this common dir; else print <root>.
-# Any git failure prints <root>. Always returns 0.
+# Any git failure prints <root>. Always returns 0. A linked worktree whose
+# main checkout git does not name (a linked worktree of a checkout made with
+# `git clone --separate-git-dir`, whose first `worktree list` entry is the
+# git dir, not a checkout) falls back to <root>; registry_main_checkout_fallback
+# says when that happened, so a "none registered" message can say instead
+# that no registry was found from this linked worktree (issue #265 part 4,
+# PR 454's F2).
 # Usage: main="$(registry_main_checkout "$root")"
 registry_main_checkout() {
+    _registry_main_checkout_status "$1" | cut -f1
+}
+
+# Succeeds when registry_main_checkout fell back to <root> from a linked
+# worktree whose main checkout could not be found (see above).
+# Usage: if registry_main_checkout_fallback "$root"; then ...
+registry_main_checkout_fallback() {
+    [ "$(_registry_main_checkout_status "$1" | cut -f2)" = 1 ]
+}
+
+# "<main checkout>\t<1 when it fell back from a linked worktree, else 0>".
+_registry_main_checkout_status() {
     local root="$1" abs top gitdir common main mtop mcommon
-    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\n' "$root"; return 0; }
+    abs="$(cd "$root" 2>/dev/null && pwd -P)" || { printf '%s\t0\n' "$root"; return 0; }
     top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" &&
         top="$(cd "$top" 2>/dev/null && pwd -P)" &&
         [ "$top" = "$abs" ] &&
@@ -707,9 +725,9 @@ registry_main_checkout() {
         gitdir="$(cd "$gitdir" 2>/dev/null && pwd -P)" &&
         common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
         common="$(cd "$common" 2>/dev/null && pwd -P)" ||
-        { printf '%s\n' "$root"; return 0; }
+        { printf '%s\t0\n' "$root"; return 0; }
     if [ "$gitdir" = "$common" ]; then
-        printf '%s\n' "$root"
+        printf '%s\t0\n' "$root"
         return 0
     fi
     main="$(git -C "$abs" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')" || main=""
@@ -721,8 +739,8 @@ registry_main_checkout() {
         mcommon="$(git -C "$main" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" &&
         mcommon="$(cd "$mcommon" 2>/dev/null && pwd -P)" &&
         [ "$mcommon" = "$common" ] ||
-        { printf '%s\n' "$root"; return 0; }
-    printf '%s\n' "$main"
+        { printf '%s\t1\n' "$root"; return 0; }
+    printf '%s\t0\n' "$main"
 }
 
 # Print the GitHub slug (owner/repo) of the `origin` remote of every

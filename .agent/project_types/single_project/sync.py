@@ -23,7 +23,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
 from workspace import (
-    get_main_checkout_root,
+    get_main_checkout_status,
     get_workspace_root,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
@@ -192,14 +192,18 @@ def main():
     else:
         # No project resolved: the workspace alone was synced (issue #295).
         # Say why, and how to get a project synced. The registry read is the
-        # main checkout's, found through git's common dir as make setup,
-        # make validate and the dashboard find it: a worktree has no
-        # registry of its own (projects.local is gitignored). A registry
+        # main checkout's, found by get_main_checkout_root (lib/workspace.py)
+        # as make setup, make validate and the dashboard find it (their shell
+        # mirror is registry_main_checkout): a worktree has no registry of
+        # its own (projects.local is gitignored). When that lookup fell back
+        # from a linked worktree whose main checkout git does not name, "none
+        # registered" would be a guess, so it says no registry was found
+        # from here instead (issue #265 part 4, PR 454's F2). A registry
         # whose lines fail to parse is not an empty one: say so rather than
         # "none registered" (only a worktree reaches here with one; from the
         # main checkout the adapter refuses a malformed registry first).
         print("Checking project...")
-        main_root = get_main_checkout_root()
+        main_root, fell_back = get_main_checkout_status()
         entries, errors = read_projects_registry(main_root)
         names = [e["name"] for e in entries]
         if names:
@@ -214,7 +218,12 @@ def main():
             )
             if not names:
                 print("  No project was synced (no well-formed registry line).")
-        if not names and not errors:
+        if not names and not errors and fell_back:
+            print(
+                "  No project was synced (no registry found from this linked worktree; "
+                "run it from the main checkout)"
+            )
+        elif not names and not errors:
             print(
                 "  No project was synced (none registered; register one: "
                 f"{REGISTER_PROJECT_POINTER})"

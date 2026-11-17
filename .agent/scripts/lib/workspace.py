@@ -62,16 +62,36 @@ def get_main_checkout_root():
       when that is a directory that is the top level of a checkout sharing
       this common dir; else the workspace root.
 
-    Any git failure gives the workspace root.
+    Any git failure gives the workspace root. A linked worktree whose main
+    checkout git does not name (a linked worktree of a checkout made with
+    `git clone --separate-git-dir`, whose first `worktree list` entry is the
+    git dir) falls back to the workspace root; get_main_checkout_status says
+    when that happened.
+    """
+    return get_main_checkout_status()[0]
+
+
+def get_main_checkout_status():
+    """
+    (main checkout, fell_back) where fell_back is True when the workspace
+    root is a linked worktree whose main checkout could not be found, so the
+    workspace root was returned instead (issue #265 part 4, PR 454's F2): a
+    "none registered" message then says no registry was found from this
+    linked worktree. Mirrors registry_main_checkout_fallback.
     """
     root = get_workspace_root()
     try:
         if not _is_own_toplevel(root):
-            return root
+            return root, False
         common = _git_common_dir(root)
         git_dir = _git_out(root, "rev-parse", "--path-format=absolute", "--git-dir")
         if _canonical(git_dir) == _canonical(common):
-            return root
+            return root, False
+    except (OSError, subprocess.CalledProcessError):
+        return root, False
+    # A linked worktree: from here on, anything short of a main checkout
+    # sharing this common dir is a fallback (as registry_main_checkout).
+    try:
         first = _git_out(root, "worktree", "list", "--porcelain").splitlines()
         main = first[0][len("worktree ") :] if first and first[0].startswith("worktree ") else ""
         if (
@@ -79,10 +99,10 @@ def get_main_checkout_root():
             and _is_own_toplevel(main)
             and _canonical(_git_common_dir(main)) == _canonical(common)
         ):
-            return main
+            return main, False
     except (OSError, subprocess.CalledProcessError):
         pass
-    return root
+    return root, True
 
 
 def _git_out(where, *args):

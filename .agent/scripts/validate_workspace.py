@@ -40,6 +40,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
 from workspace import (
     get_main_checkout_root,
+    get_main_checkout_status,
     get_workspace_root,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
@@ -186,18 +187,23 @@ def validate_workspace(verbose=False):
         issues.append(f"projects.local: {err}")
 
     # Whether any project is registered is read from the main checkout's
-    # registry, found through git's common dir as make setup, make sync and
-    # the dashboard find it (issue #295): a worktree has no registry of its
-    # own (projects.local is gitignored), so reading its copy would say "no
-    # project registered" on a machine that has some. The checks below still
-    # run on this checkout's entries.
+    # registry, found by get_main_checkout_root (lib/workspace.py; the shell
+    # mirror is registry_main_checkout) as make setup, make sync and the
+    # dashboard find it (issue #295): a worktree has no registry of its own
+    # (projects.local is gitignored), so reading its copy would say "no
+    # project registered" on a machine that has some. When the lookup fell
+    # back from a linked worktree whose main checkout git does not name, the
+    # line says no registry was found from here instead (issue #265 part 4,
+    # PR 454's F2). The checks below still run on this checkout's entries.
     if verbose:
-        main_root = get_main_checkout_root()
+        main_root, fell_back = get_main_checkout_status()
         if Path(main_root) == workspace_root:
             main_entries, main_errors = registry_entries, registry_errors
         else:
             main_entries, main_errors = read_projects_registry(main_root)
-        if not main_entries and not main_errors:
+        if not main_entries and not main_errors and fell_back:
+            print("  no registry found from this linked worktree; run it from the main checkout")
+        elif not main_entries and not main_errors:
             print(f"  no project registered (register one with {REGISTER_PROJECT_POINTER})")
 
     # Validate registry entries: known project type, valid checkout

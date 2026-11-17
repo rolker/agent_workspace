@@ -31,8 +31,13 @@ MAIN_ROOT := $(CURDIR)
 # (a branch that edits requirements.txt must not change dev-tool versions
 # for every other worktree via `make setup` there), and `make clean` clears
 # the shared stamps. (MAIN_ROOT itself still governs which script copies
-# run — issue #239.)
-WS_ROOT := $(patsubst %/.git,%,$(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))
+# run — issue #239.) WS_ROOT is the common dir minus /.git: it decides only
+# STAMP and VENV_DIR. It is not where the registry is found: a checkout
+# made with `git clone --separate-git-dir` has its common dir elsewhere, so
+# the registry is read through registry_main_checkout (_project_registry.sh;
+# the `setup` recipe below), as make validate, make sync and the dashboard
+# read it (issue #265 part 4, PR 454's F1).
+WS_ROOT :=$(patsubst %/.git,%,$(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))
 ifeq ($(WS_ROOT),)
   WS_ROOT := $(MAIN_ROOT)
 endif
@@ -93,8 +98,7 @@ help:
 
 setup: $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
 	@echo "✅ Setup complete."
-	@grep -Eqs '^[[:space:]]*[^#[:space:]]' $(WS_ROOT)/.agent/projects.local || \
-	    echo "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
+	@bash -c 'source "$$1/.agent/scripts/_project_registry.sh" || exit 0; grep -Eqs "^[[:space:]]*[^#[:space:]]" "$$(registry_main_checkout "$$1")/.agent/projects.local" && exit 0; if registry_main_checkout_fallback "$$1"; then echo "No registry found from this linked worktree; run it from the main checkout"; else echo "No project is registered. Register one: .agent/scripts/register_project.sh <path>"; fi' _ "$(MAIN_ROOT)"
 	@echo "Optional, enable the workspace in project sessions: .agent/scripts/user_tier_install.sh"
 
 # Multi-tenant hosting (issue #227): PROJECT=<name> selects a project from

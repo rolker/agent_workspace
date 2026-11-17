@@ -440,6 +440,53 @@ test_main_checkout_helpers() {
     git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
     expect="$base/sepmain | $base/sepmain"
     assert_eq "separate-git-dir main checkout: itself" "$expect" "$(main_checkout_both "$base/sepmain")"
+
+    # A linked worktree of that checkout (PR 454's F2): git's first
+    # `worktree list` entry is the git dir, not a checkout, so neither helper
+    # can name the main checkout. Both fall back to the worktree itself, and
+    # both report that they fell back (the decision recorded in issue #265
+    # part 4), so a "none registered" message can say instead that no
+    # registry was found from this linked worktree.
+    git -C "$base/sepmain" worktree add --quiet -b sepwt "$base/sepwt" 2>/dev/null
+    expect="$base/sepwt | $base/sepwt"
+    assert_eq "separate-git-dir linked worktree: falls back to itself" "$expect" "$(main_checkout_both "$base/sepwt")"
+    assert_eq "separate-git-dir linked worktree: both helpers report the fallback" "1 | True" "$(main_checkout_fallback_both "$base/sepwt")"
+    assert_eq "a linked worktree whose main checkout is found: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/wt")"
+    assert_eq "a main checkout: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/main")"
+    assert_eq "a non-git directory: no fallback" "0 | False" "$(main_checkout_fallback_both "$base/nogit")"
+}
+
+# Whether registry_main_checkout_fallback and get_main_checkout_status
+# report a fallback for <dir> (needs main_checkout_both's copies there).
+main_checkout_fallback_both() {
+    local dir="$1" sh_out py_out
+    sh_out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_main_checkout_fallback "$1" && echo 1 || echo 0' _ "$dir")"
+    py_out="$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import workspace; print(workspace.get_main_checkout_status()[1])' "$dir/.agent/scripts/lib")"
+    printf '%s | %s\n' "$sh_out" "$py_out"
+}
+
+test_main_checkout_fallback_messages() {
+    echo "TEST: from a separate-git-dir linked worktree, validate and sync say no registry was found here, never 'none registered' (PR 454's F2)"
+    local base out
+    base="$(phys "$(mktemp -d -p "$SANDBOX")")"
+    make_git_repo "$base/main" "file:///nonexistent/ws.git"
+    mkdir -p "$base/main/.agent/scripts/lib" "$base/main/.agent/project_types"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$REAL_ROOT/.agent/scripts/validate_workspace.py" \
+        "$REAL_ROOT/.agent/scripts/adapter" "$base/main/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$base/main/.agent/scripts/lib/"
+    cp -r "$REAL_ROOT/.agent/project_types/single_project" "$base/main/.agent/project_types/"
+    git -C "$base/main" add -A
+    seed_commit "$base/main"
+    git clone --quiet --separate-git-dir="$base/sep.git" "$base/main" "$base/sepmain" 2>/dev/null
+    git -C "$base/sepmain" worktree add --quiet -b sepwt "$base/sepwt" 2>/dev/null
+    out="$(cd "$base/sepwt" && python3 .agent/scripts/validate_workspace.py --verbose 2>&1)" || true
+    assert_contains "validate: no registry found from here" "no registry found from this linked worktree; run it from the main checkout" "$out"
+    assert_not_contains "validate: never 'no project registered'" "no project registered" "$out"
+    out="$(cd "$base/sepwt" && python3 .agent/project_types/single_project/sync.py --dry-run 2>&1)" || true
+    assert_contains "sync: no registry found from here" "No project was synced (no registry found from this linked worktree; run it from the main checkout)" "$out"
+    assert_not_contains "sync: never 'none registered'" "none registered" "$out"
+    out="$(cd "$base/sepmain" && python3 .agent/scripts/validate_workspace.py --verbose 2>&1)" || true
+    assert_contains "the separate-git-dir main checkout itself: 'no project registered'" "no project registered" "$out"
 }
 
 # ---- sync.py --project-root ----
@@ -1819,6 +1866,7 @@ test_registry_repo_slugs
 test_registry_repo_slugs_no_walk_up
 test_registry_repo_slugs_absent_or_broken
 test_main_checkout_helpers
+test_main_checkout_fallback_messages
 test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves

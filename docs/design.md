@@ -302,7 +302,13 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   validate`, `make setup` (no prompt), `make dashboard` and `make sync` succeed and point at
   `register_project.sh`, and the repo-safety check of `gh_create_pr.sh` and `gh_create_issue.sh`
   accepts every registered root's repository (`registry_repo_slugs` in `_project_registry.sh`), so a
-  project session needs no `project/` symlink (`test_fresh_clone_no_project.sh`).
+  project session needs no `project/` symlink (`test_fresh_clone_no_project.sh`). Whether a project
+  is registered is read from the main checkout's registry, found by `registry_main_checkout`
+  (`_project_registry.sh`) and its Python mirror `get_main_checkout_root` (`lib/workspace.py`), never
+  by the Makefile's `WS_ROOT`, which only places the venv and stamps. From a linked worktree of a
+  checkout made with `git clone --separate-git-dir`, git names no main checkout; both helpers then
+  fall back to the worktree and say so, and the messages say no registry was found from this linked
+  worktree instead of "none registered" (#265 part 4, PR 454's F1 and F2).
 - Discovery is registry-only (#265 part 4): the registry is the only link from a session to a project.
   A call that names no project and runs in no registered root refuses with one sentence
   (`registry_no_project_message` in `_project_registry.sh`) that names the directory, lists the

@@ -215,7 +215,8 @@ echo "=== A worktree of the copy, with the demo project registered in the main c
 
 # (f) The registry is gitignored, so a worktree has none of its own. Every
 # "is a project registered?" message reads the main checkout's registry,
-# found through git's common dir, so none of them says that no project is
+# found by get_main_checkout_root (lib/workspace.py) or its shell mirror
+# registry_main_checkout (_project_registry.sh), so none of them says that no project is
 # registered here. The worktree lives outside worktrees/workspace/, where
 # the dashboard's path-based main-checkout guess does not reach.
 WT="$SANDBOX/ws-wt"
