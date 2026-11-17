@@ -755,3 +755,47 @@ Specialists: governance, plan drift, a fresh Claude adversarial sub-review of th
 - [x] (suggestion) the `rm -r` advice can destroy unpushed history when the entry is a plain clone; say to check `git status` and unpushed commits first — `.agent/scripts/worktree_remove.sh:404`
 - [x] (suggestion) the NOTE heading "and it still sets:" sits above a "cannot be told" line — `.agent/scripts/adapter:353`
 - [x] (suggestion) `'$name''s` prints as `'demo''s` — `.agent/scripts/_project_registry.sh:1490`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 11:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 1 of 3)
+
+**Branch**: feature/issue-265 at `8627540a`
+**Addressed**: Local Review (Pre-Push) at `adec411d` (2026-11-17 10:56 -05:00)
+**Commits**: `069fb9d3`, `defb4bf7`, `b2def554`, `4a8a658c`, `2cb6803b`, `6337f21b`, `48bbf29d`, `698eaa23`, `8627540a` (box checks)
+
+Fix round 2: all 3 must-fix and all 8 suggestions fixed, none deferred. AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed; no push.
+
+Case table first (host instruction): the retired-shape report's full case table is the header comment of `.agent/scripts/tests/test_validate_workspace_stale.sh`, rows R (registry with errors), P1-P12 (`project` and each `projects/` entry, one rule), W1-W6 (retired worktree locations), S1-S11 (`projects.d/<name>.sh`), C1-C7 (shared file). Every row has a test whose label carries its id; the fixes were written to the table, not finding by finding.
+
+Pre-fix failure counts (each new test run against the script before its fix): stale report 27 of 98 (3 of them older tests whose expected text changed: the `project` folder line, S6, S9); configure_git_identity 2; derive 6; discover_governance 3; worktree_list 3; worktree_remove 3; adapter NOTE heading 2. Three table rows already held before the fix and pass on both: P4, W2 at depth 5, W4.
+
+### Actions
+- [x] M1, the shared file told "delete it" while it still sets commands — `.agent/scripts/_project_registry.sh` (`069fb9d3`). While it sets something and applies to no registered project (none registered, every project has its own `.sh`, only parent roots: C4) or an unregistered folder the report names may have read it (C3), it says what it sets and to register first; "delete it" only for C2 and C5. The same rule for a `.sh` of no registered project (S9 to S11).
+- [x] M2, the `project/` check matched by equality only — `.agent/scripts/_project_registry.sh` (`069fb9d3`). `project` and each `projects/` entry follow one rule (`_stale_root_relation`, `_stale_folder_line`): silent when the path that names it is, holds or lies in a registered root (lexical and parents-resolved forms, so a root registered through a `project` link is silent: P2 to P4); a link to, into or holding a registered root, to a file or to nothing is to be removed (P6 to P8, P10, P11); an unregistered folder or link target is to be registered or removed (P5, P9). Behaviour change: a `projects/` link to a registered root registered by its real path was silent and is now "remove it".
+- [x] M3, configure_git_identity skipped a root under a `worktrees` folder — `.agent/scripts/configure_git_identity.sh` (`defb4bf7`). The root's own worktree dir (`registry_worktree_dir`) is skipped by its path; a `worktrees` folder elsewhere is configured. Tests: a root at `<sb>/srv/worktrees/product`, with and without `worktrees=`.
+- [x] S, `--type` omitted under a `worktrees=` dir derives workspace — `.agent/scripts/_project_registry.sh` (`b2def554`). `registry_derive_type_from_dir` tries `registry_resolve_session_dir`. Tests in `test_project_registry.sh`: derive, `worktree_create.sh` and `worktree_enter.sh` with `--type` omitted from the override dir.
+- [x] S, the retired-worktree scan walked whole checkouts — `.agent/scripts/_project_registry.sh` (`069fb9d3`). The walk stops at each checkout (a folder holding `.git`) and at depth 6 (`_STALE_WORKTREE_SCAN_DEPTH`; the deepest old layout is 5). Measured: one checkout of 228,630 entries under `worktrees/project/` on ext4 with a warm cache, three runs each: old `find` 28 to 31 ms, visiting every entry; new 3 to 4 ms, visiting 1 entry. Cold-cache time not measured. The W6 test checks the depth bound (a checkout at depth 7 is silent); pruning at a checkout shows only in timing.
+- [x] S, a parent root's `.sh` got `project_setting.sh set <parent>` and `distro=` remedies — `.agent/scripts/_project_registry.sh` (`069fb9d3`). It now names the instances and says to move what an instance needs (S7), or to delete it when it sets nothing (S8).
+- [x] S, discover_governance read a registry with errors as empty — `.agent/scripts/discover_governance.sh` (`4a8a658c`). It prints the workspace rows, then says no registered root was scanned and exits 1.
+- [x] S, worktree_list showed `.workspace-worktrees/` worktrees as `main`; the guide was wrong — `.agent/scripts/worktree_list.sh`, `.agent/WORKTREE_GUIDE.md` (`2cb6803b`). Type `retired`, text `[retired]`, counted in no total or dirty count. The guide says what is listed and what validate warns about: `project` itself while unregistered, which covers `project/worktrees/`.
+- [x] S, the `rm -r` advice could lose unpushed history — `.agent/scripts/worktree_remove.sh` (`6337f21b`). The refusal says to check `git status` and `git log --branches --not --remotes` in any repository in the entry first, and to delete only when nothing is needed.
+- [x] S, NOTE heading "and it still sets:" over a "cannot be told" line — `.agent/scripts/adapter` (`48bbf29d`). The heading says "what it still sets cannot be told" when that is the answer.
+- [x] S, `'$name''s` — `.agent/scripts/_project_registry.sh` (`069fb9d3`). Now "the settings file of 'alpha', .agent/projects.d/alpha, is invalid".
+- design.md (`698eaa23`): the Retirement paragraph states the one folder rule, the scan bound, the parent and register-first rules and points at the case table; Discovery adds the `--type` derivation; Table 1's derive range is 645-660.
+
+Mechanism decisions (each listed for veto):
+- The stale-report fixes (M1, M2 and three suggestions) are one commit: they rewrite the same functions to one case table.
+- A path that lies inside a registered root (P4) is silent, the same as the `projects/` check's existing rule.
+- A `projects/` link to a registered root is now "remove it", as for `project`. It was silent, and nothing reads the link.
+- A link to a file is "remove it" (P11); hidden entries under `projects/` are not checked, as before.
+- The shared file's "register first" line names the reason (applies to none, or an unregistered folder named above); C3 fires on an unregistered `project` or `projects/` entry, since either may have used the shared file under the old order.
+- discover_governance on registry errors: workspace rows printed, exit 1 (a refusal, not an empty project section).
+- worktree_list: type `retired` rather than hiding the worktree (git still has it); sitrep keeps only `workspace`/`main`, so it drops it.
+- The depth bound is 6.
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `698eaa23`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 100 passed, 0 failed; test_discover_governance.sh 30 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_package_issue_loop.sh 220 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_integration_audit.sh 279 passed, 0 failed; test_project_registry.sh 417 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_register_project.sh 201 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 98 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. The full pre-commit pass and every other suite are left to the host.
+
+Not done, and why: ADR-0002, ADR-0003, ADR-0011 and ADR-0018 wait for the owner (Q-ADR); the held AGENTS.md commits `a80f3dc2` and `557fffe5` wait for the merge checkpoint. Not verified: the scan's cold-cache time; the dashboard's display of the new lines (it prints whatever the report says; its suite is not one this rule selects).
