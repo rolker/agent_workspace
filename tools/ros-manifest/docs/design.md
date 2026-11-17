@@ -260,14 +260,18 @@ Each file starts with a comment that says which manifest, role and distro it cam
 
 ### sync
 
-1. Resolve, using the manifest as it is on the machine now.
-2. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
+1. Update the clones that manifests are read from. That is the clone `local_manifest` points
+   into, and the clone of any parent manifest that is read from the system directory.
+2. Resolve.
+3. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
    the repos that are missing, and update the ones that are there.
-3. Look at the manifest again. If its content changed during step 2, because the repo that
-   holds it was updated, resolve and do step 2 once more.
 
-Step 3 happens at most once per sync. If the manifest changes again during the second pass,
-`sync` says so and stops; the next `sync` picks it up.
+Repos are only ever brought in line with the current manifest. On the first `sync` there is
+no clone yet, and the manifest is read from the location given to `init`. A manifest on a
+local disk or at a URL has no clone to update, and step 1 does nothing for it.
+
+Step 1 follows the same rule as every other update: a clone with local changes is left as
+it is. A developer who is editing the manifest in its checkout gets that edited manifest.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
