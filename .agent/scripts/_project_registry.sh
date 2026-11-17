@@ -634,17 +634,18 @@ registry_resolve_session_dir() {
 # #265 PR 3), for scripts whose --type is optional when the cwd already
 # says which checkout you are in.
 # Prints "<type>\t<project>": "project\t<name>" when <dir> is under a
-# registered project root (longest-prefix match, so an instance beats its
-# parent), or "workspace\t" when it is inside the workspace checkout.
+# registered project root or in its worktrees= directory
+# (registry_resolve_session_dir: longest-prefix match, so an instance beats
+# its parent), or "workspace\t" when it is inside the workspace checkout.
 # Registered roots are checked FIRST: a project registered inside the
-# workspace tree is still a project.
+# workspace tree, or a worktrees= directory there, is still a project's.
 # Return 1 when the directory implies neither, 2 on registry parse errors.
 # Callers must let an explicit --type/--project win over this.
 # Usage: derived=$(registry_derive_type_from_dir "$root" "$PWD")
 registry_derive_type_from_dir() {
     local root="$1" dir="${2:-$PWD}" abs wsabs entry rc=0
     abs="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
-    entry="$(registry_resolve_from_dir "$root" "$abs")" || rc=$?
+    entry="$(registry_resolve_session_dir "$root" "$abs")" || rc=$?
     [ "$rc" -eq 2 ] && return 2
     if [ "$rc" -eq 0 ] && [ -n "$entry" ]; then
         printf 'project\t%s\n' "${entry%%$'\t'*}"

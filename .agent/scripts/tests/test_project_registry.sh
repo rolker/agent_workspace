@@ -1621,6 +1621,23 @@ test_worktree_scripts_cwd_in_worktrees_override() {
     out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 501 --type project --force 2>&1)" || rc=$?
     assert_eq "remove from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
     assert_eq "remove: the worktree is gone" "no" "$([ -d "$wtd/issue-alpha-501" ] && echo yes || echo no)"
+    # --type omitted: a cwd in alpha's worktrees= dir (inside the workspace
+    # tree) derives --type project --project alpha, not workspace (review
+    # round 2, suggestion 1).
+    rc=0
+    out="$(cd "$wtd" && wt "$sb" registry_derive_type_from_dir "$sb" "$wtd" 2>&1)" || rc=$?
+    assert_eq "derive from alpha's worktrees= dir: project alpha" "$(printf 'project\talpha')" "$out"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 502 2>&1)" || rc=$?
+    assert_eq "create with --type omitted from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "create: derived --type project --project alpha" "derived --type project --project alpha" "$out"
+    assert_eq "create: alpha's worktree, not a workspace one" "yes|no" \
+        "$([ -d "$wtd/issue-alpha-502" ] && echo yes || echo no)|$(ls -d "$sb"/worktrees/workspace/*502* >/dev/null 2>&1 && echo yes || echo no)"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 502 --print-path 2>&1)" || rc=$?
+    assert_eq "enter with --type omitted: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "enter with --type omitted: alpha's worktree" "$wtd/issue-alpha-502" "$out"
 }
 
 test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
