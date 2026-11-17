@@ -136,3 +136,21 @@ Checked: the four ADR notes match the issue body character for character (script
 **Decision**: publish
 
 Read: the `## Local Review (Pre-Push)` entry (approved, round 1, no must-fix, no suggestions; the four ADR notes and both AGENTS.md phrases match the issue text exactly). The merge decision stays the owner's.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-17 14:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #493 at `c0afa836`
+**Sources**: 2 (Local Review (Pre-Push) @ `e64508cf` (covers `c0afa836` via bookkeeping: later commits touch only the issue-492 work-plan files), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (`fetch_pr_reviews.sh --pr 493`); no Copilot review requested. `review_progress.sh sources` at `c0afa836`: no open local findings, no dropped entries, no candidates. The pre-push review's only box is its "No issues found. LGTM." line, not a finding. Read the diff against main: AGENTS.md has two phrase changes and is 200 lines; each of the four ADRs gains one dated note paragraph under `## Status`, additions only. The wording is the owner's, approved word for word. CI at triage: 3 checks pass (Validate Documentation x2, ros-manifest tests x1), 5 still pending (Lint (pre-commit) x2, Validate Adapter Contract x2, ros-manifest tests x1); the host re-checks before the merge checkpoint.
+
+### Findings
+None.
+
+### False positives
+None.
