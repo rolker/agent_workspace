@@ -378,7 +378,8 @@ document.
 
 ## Not in the format
 
-- Package dependencies. They stay in each package's `package.xml` and with `rosdep`.
+- Package dependencies. For ROS projects they stay in each package's `package.xml` and with
+  `rosdep`.
 - System packages, udev rules and other machine setup.
 - Build arguments. They are given to the build tool.
 - Which packages of a repo are built. Groups and roles select whole repos.

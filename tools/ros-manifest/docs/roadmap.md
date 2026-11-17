@@ -16,8 +16,9 @@ the tool's own directory.
    collaborator does the same from their own manifest that extends the published one and
    adds a layer for their robot.
 2. Someone who wants to try project11 follows a short set of instructions and has it running
-   with the simulator role. The instructions include installing repos-manifest, in a
-   virtual environment if that is needed.
+   in the simulator, with a role that includes it, such as the developer role. The
+   instructions include installing repos-manifest, in a virtual environment if that is
+   needed.
 3. Project11's CI uses the tools to fetch and build what it tests.
 4. Nav2 is built locally by writing a manifest on the local disk and using it.
 
@@ -37,7 +38,7 @@ the tool's own directory.
 | `sync` adds the extra remotes a machine names to every clone | |
 | A system directory can hold more than one distro, each in its own directory | |
 | Project11 is described by a manifest in one of its repos and set up from it | |
-| A short set of instructions gets someone a running project11 with the simulator role, including installing the tool | |
+| A short set of instructions gets someone project11 running in the simulator, including installing the tool | |
 | Project11's CI fetches and builds with the tools | |
 | Nav2 is built locally from a manifest written on the local disk | |
 | The tool lives in its own repo and can be installed as a package | |

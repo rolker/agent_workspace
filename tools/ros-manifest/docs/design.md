@@ -245,8 +245,8 @@ it sourced. Then write `setup.bash` in the system directory, which sources the l
 that was built.
 
 The first layer is built in the environment `build` is run in. The person sets that up
-first, for example by sourcing the setup file of the ROS distro. `build` does not do it for
-them.
+first. For a ROS project that means sourcing the setup file of the ROS distro. `build` does
+not do it for them.
 
 Sourcing the one `setup.bash` is enough to use the system. The setup file `colcon` writes for
 a layer also sets up every environment that was sourced when the layer was built, so the
@@ -522,8 +522,8 @@ extend one at a URL and because the manifest keys are merged.
 
 ## Not covered
 
-- Package dependencies and system packages. `rosdep` covers these, run by the person or the
-  script that sets up the machine.
+- Package dependencies and system packages. For ROS projects `rosdep` covers these, run by
+  the person or the script that sets up the machine.
 - Running a distro the host OS does not support, in a container or otherwise. `distro` is
   recorded, and the commands assume the environment they run in can build it.
 - Leaving out some packages of a repo. Groups and roles select whole repos. A person can
