@@ -311,9 +311,10 @@ Status: `decided, not built`
   still has it as step 3 of its resolution order (`adapter` header; ADR-0016, "ADR-0011's discovery
   order will be superseded").
 - The workspace tree hosts no project, and the workspace writes nothing into a project checkout beyond
-  `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry's default
-  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header);
-  `register_project.sh` always writes an absolute path, so nothing it registers relies on it.
+  `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry has no
+  default hosting directory any more: an entry without a path is a parse error in both parsers
+  (`_project_registry.sh`, `lib/workspace.py`; #265 part 4), so nothing places a project under the
+  workspace unless its line names such a path.
 - A project's memory attaches to its own root, not to the workspace (ADR-0016 decision 4). No workspace
   script implements or checks this.
 

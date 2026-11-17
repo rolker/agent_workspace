@@ -7,20 +7,21 @@
 # project name to a hosting directory and a project type, plus optional
 # trailing key=value fields:
 #
-#   # <name>  <project_type>  [<path>]  [key=value ...]
+#   # <name>  <project_type>  <path>  [key=value ...]
 #   boat_sim            single_project  /home/me/src/boat_sim
 #   shore_tools         project         /home/me/shore_tools   default_instance=shore_tools-rolling
 #   shore_tools-jazzy   ros2_colcon     /home/me/shore_tools/jazzy    parent=shore_tools distro=jazzy
 #   shore_tools-rolling ros2_colcon     /home/me/shore_tools/rolling  parent=shore_tools distro=rolling
 #
-# - name: [A-Za-z0-9][A-Za-z0-9._-]* — also the default hosting dir name
-#   (projects/<name>/) and the worktree repo key
+# - name: [A-Za-z0-9][A-Za-z0-9._-]* — also the worktree repo key
 # - project_type: must have an adapter at .agent/project_types/<type>/,
 #   except the pseudo-type "project": a parent root that groups instances
 #   (session and memory unit, no adapter of its own)
-# - path: optional hosting dir; relative paths resolve against the
-#   workspace root; default projects/<name>. Paths must not contain spaces
-#   or '=' (a third token containing '=' is read as a field).
+# - path: the hosting dir, required (issue #265 part 4 retired the
+#   projects/<name> default); relative paths resolve against the
+#   workspace root. Paths must not contain spaces or '=' (a third token
+#   containing '=' is read as a field, so such an entry has no path and is
+#   a parse error).
 # - trailing fields (values must not contain spaces):
 #     parent=<name>            this entry is an instance of parent root <name>
 #                              (<name> must be a "project"-type entry)
@@ -243,7 +244,11 @@ registry_entries_full() {
             fields="${fields:+$fields }$key=$value"
         done
         [ "$bad" -eq 1 ] && { rc=2; continue; }
-        [ -z "$path" ] && path="projects/$name"
+        if [ -z "$path" ]; then
+            echo "ERROR: ${file}:${lineno}: '$name' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project"".sh <path>)" >&2
+            rc=2
+            continue
+        fi
         case "$path" in
             /*) : ;;
             *) path="$root/$path" ;;
@@ -476,6 +481,29 @@ registry_default_instance() {
     done <<< "$instances"
     echo "(or set default_instance=<name> on the '$name' line in $(registry_file "$root"))" >&2
     return 1
+}
+
+# The sentence a script prints when nothing names a project: the cwd is
+# under no registered root and no --project was given (issue #265 part 4:
+# the project/ symlink and the projects/ default no longer stand in). It
+# lists the registered names, so the caller can say which to pass. Printed
+# on stdout without an "ERROR:" prefix; callers add their own and send it
+# to stderr. A registry parse error still prints the sentence (the parse
+# diagnostics go to stderr) and returns 2; otherwise returns 0. The
+# registration script is named with the split-token idiom so the test
+# selector does not read this message as a use of that script (the hub
+# guard in test_script_tests_hook_scope.sh).
+# Usage: echo "ERROR: $(registry_no_project_message "$root" "$PWD")" >&2
+registry_no_project_message() {
+    local root="$1" cwd="${2:-$PWD}" names rc=0 list
+    names="$(registry_names "$root")" || rc=$?
+    list="$(printf '%s' "$names" | tr '\n' ' ' | sed -e 's/ *$//' -e 's/ /, /g')"
+    if [ -z "$list" ]; then
+        echo "no registered project here (cwd $cwd), and none is registered. Register one: .agent/scripts/register_project"".sh <path>"
+    else
+        echo "no registered project here (cwd $cwd). Registered: $list. Pass --project <name> or register one: .agent/scripts/register_project"".sh <path>"
+    fi
+    return $rc
 }
 
 # Resolve a --project argument the way every worktree script must (#265):

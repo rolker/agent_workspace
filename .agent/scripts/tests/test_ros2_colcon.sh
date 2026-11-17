@@ -184,7 +184,7 @@ make_colcon_project() {
     write_repos_file "$mdir/repos/l1.repos" fakefox pkg_a pkg_b
     write_repos_file "$mdir/repos/l2.repos" fakefox pkg_c
     write_repos_file "$mdir/repos/l3.repos" fakefox pkg_priv
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "p11 ros2_colcon projects/p11" >> "$sb/.agent/projects.local"
     echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     make_underlay "$sb"
     echo "$proj"
@@ -995,7 +995,7 @@ test_missing_manifest_fails() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     mkdir -p "$sb/projects/p11"
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "p11 ros2_colcon projects/p11" >> "$sb/.agent/projects.local"
     out="$(run_adapter "$sb" env 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "points at the expected manifest" "configs/manifest" "$out"
@@ -1167,7 +1167,7 @@ make_manifest_remote() {
 make_fresh_project() {
     local sb="$1"
     mkdir -p "$sb/projects/p11"
-    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "p11 ros2_colcon projects/p11" >> "$sb/.agent/projects.local"
     echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
     make_underlay "$sb"
     echo "$sb/projects/p11"

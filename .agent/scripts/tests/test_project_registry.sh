@@ -112,11 +112,10 @@ make_registered_project() {
     local sb="$1" name="$2" path="${3:-}"
     local dir="${path:-$sb/projects/$name}"
     make_git_repo "$dir" "file:///nonexistent/${name}.git"
-    if [ -n "$path" ]; then
-        echo "$name single_project $path" >> "$sb/.agent/projects.local"
-    else
-        echo "$name single_project" >> "$sb/.agent/projects.local"
-    fi
+    # A registry entry always names its path (issue #265 part 4); the
+    # default here is a root registered inside the workspace tree, which
+    # ADR-0016 decision 1 allows.
+    echo "$name single_project ${path:-projects/$name}" >> "$sb/.agent/projects.local"
     echo "$dir"
 }
 
@@ -157,7 +156,7 @@ test_registry_comments_and_blanks() {
     {
         echo "# a comment"
         echo ""
-        echo "alpha single_project   # trailing comment"
+        echo "alpha single_project projects/alpha   # trailing comment"
     } > "$sb/.agent/projects.local"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha project_root)" || true
@@ -212,7 +211,7 @@ adapter_project_root() { echo "OTHER_TYPE_ROOT"; }
 adapter_repos() { :; }
 adapter_scope_for_pr() { :; }
 EOF
-    echo "beta other_type" > "$sb/.agent/projects.local"
+    echo "beta other_type projects/beta" > "$sb/.agent/projects.local"
     mkdir -p "$sb/projects/beta"
     # Workspace config says single_project; the registry entry must win.
     echo 'PROJECT_TYPE=single_project' > "$sb/.agent/project_config.sh"
@@ -313,10 +312,10 @@ test_registry_repo_slugs() {
     mkdir -p "$sb/projects/grp" "$sb/projects/nogit"
     make_git_repo "$sb/projects/grp/one" "https://github.com/owner/one.git"
     cat > "$sb/.agent/projects.local" <<EOF
-alpha single_project
-beta single_project
-gamma single_project
-nogit single_project
+alpha single_project projects/alpha
+beta single_project projects/beta
+gamma single_project projects/gamma
+nogit single_project projects/nogit
 grp project $sb/projects/grp
 grp-one single_project $sb/projects/grp/one parent=grp
 EOF
@@ -339,8 +338,8 @@ test_registry_repo_slugs_no_walk_up() {
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
     mkdir -p "$sb/projects/plain" "$sb/projects/plainsub/inner"
     cat > "$sb/.agent/projects.local" <<EOF
-alpha single_project
-plain single_project
+alpha single_project projects/alpha
+plain single_project projects/plain
 plainsub single_project $sb/projects/plainsub/inner
 EOF
     out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"' _ "$sb")" || rc=$?
@@ -357,7 +356,7 @@ test_registry_repo_slugs_absent_or_broken() {
     assert_eq "no registry: exit 0" "0" "$rc"
     assert_eq "no registry: nothing printed" "END" "$out"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
-    printf 'alpha single_project\nbad name with spaces=\n' > "$sb/.agent/projects.local"
+    printf 'alpha single_project projects/alpha\nbad name with spaces=\n' > "$sb/.agent/projects.local"
     rc=0
     out="$(bash -c 'set -euo pipefail; source "$1/.agent/scripts/_project_registry.sh"; registry_repo_slugs "$1"; echo END' _ "$sb" 2>&1)" || rc=$?
     assert_eq "parse error: exit 0 under set -e" "0" "$rc"
@@ -394,7 +393,7 @@ test_main_checkout_helpers() {
     # directory itself, never the enclosing repository.
     make_git_repo "$base/outer" "https://github.com/owner/outer.git"
     mkdir -p "$base/outer/.agent" "$base/outer/inner"
-    echo "x single_project" > "$base/outer/.agent/projects.local"
+    echo "x single_project inner" > "$base/outer/.agent/projects.local"
     expect="$base/outer/inner | $base/outer/inner"
     assert_eq "nested plain directory: itself" "$expect" "$(main_checkout_both "$base/outer/inner")"
 
@@ -458,7 +457,7 @@ test_validate_missing_checkout() {
     echo "TEST: validate flags a registered project without a checkout"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
-    echo "ghost single_project" > "$sb/.agent/projects.local"
+    echo "ghost single_project projects/ghost" > "$sb/.agent/projects.local"
     out="$(run_validate "$sb")" || rc=$?
     assert_eq "exit 1" "1" "$rc"
     assert_contains "names the project" "project 'ghost'" "$out"
@@ -469,7 +468,7 @@ test_validate_unknown_type() {
     local sb out rc=0
     sb="$(make_validate_sandbox)"
     make_git_repo "$sb/projects/alpha" "git@github.com:owner/alpha.git"
-    echo "alpha no_such_type" > "$sb/.agent/projects.local"
+    echo "alpha no_such_type projects/alpha" > "$sb/.agent/projects.local"
     out="$(run_validate "$sb")" || rc=$?
     assert_eq "exit 1" "1" "$rc"
     assert_contains "names the type" "unknown project type 'no_such_type'" "$out"
@@ -526,15 +525,15 @@ test_validate_entry_path_missing_no_legacy() {
     echo "TEST: validate --verbose with no project/ still reports a registry line whose path is missing (issue #295)"
     local sb out rc=0 ghost
     sb="$(make_validate_sandbox)"
-    # A line with no path field (its default projects/<name> is absent) and
-    # a line naming a path that does not exist: both stay reported as before
-    # the project/ block went, and neither reads as "nothing registered".
+    # A line with no path field (a parse error since issue #265 part 4
+    # retired the projects/<name> default) and a line naming a path that does
+    # not exist: both are reported, and neither reads as "nothing registered".
     ghost="$sb/elsewhere/phantom"
     printf 'ghost single_project\nphantom single_project %s\n' "$ghost" > "$sb/.agent/projects.local"
     out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "the line without a path is reported at its default" \
-        "project 'ghost': hosting dir does not exist: $sb/projects/ghost" "$out"
+    assert_contains "the line without a path is a parse error naming the registration script" \
+        "'ghost' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
     assert_contains "the line with a missing path is reported at that path" \
         "project 'phantom': hosting dir does not exist: $ghost" "$out"
     assert_not_contains "not told that nothing is registered" "no project registered" "$out"
@@ -570,7 +569,7 @@ make_colcon_entry() {
             echo "    version: fakefox"
         done
     } > "$mdir/repos/l1.repos"
-    echo "$name ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "$name ros2_colcon projects/$name" >> "$sb/.agent/projects.local"
     echo "$proj"
 }
 
@@ -655,7 +654,7 @@ make_stub_type_entry() {
         done
         echo "adapter_validate() { $body; }"
     } > "$sb/.agent/project_types/stub_type/adapter.sh"
-    echo "$name stub_type" >> "$sb/.agent/projects.local"
+    echo "$name stub_type projects/$name" >> "$sb/.agent/projects.local"
 }
 
 test_validate_adapter_timeout() {
@@ -757,7 +756,7 @@ test_single_project_scoped_validate_ignores_broken_sibling() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
-    echo "ghost single_project" >> "$sb/.agent/projects.local"   # no checkout
+    echo "ghost single_project projects/ghost" >> "$sb/.agent/projects.local"   # no checkout
     make_colcon_entry "$sb" rc pkg_a >/dev/null                   # repo missing
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha validate 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -1060,9 +1059,50 @@ test_registry_fields_parse() {
     assert_eq "registry_field reads a field" "jazzy" "$(reg "$sb" registry_field "$sb" beta distro)"
     assert_eq "registry_field on a missing field returns 1" "1" \
         "$(reg "$sb" registry_field "$sb" alpha distro >/dev/null 2>&1; echo $?)"
-    assert_eq "fields without a path: path defaults" \
-        "$(printf 'gamma\tsingle_project\t%s/projects/gamma\trole=ops' "$sb")" \
-        "$(echo "gamma single_project role=ops" >> "$sb/.agent/projects.local"; reg "$sb" registry_entries_full "$sb" | grep '^gamma')"
+}
+
+test_registry_pathless_entry_fails() {
+    echo "TEST: an entry with no path is a parse error in both parsers (issue #265 part 4: no projects/<name> default)"
+    local sb out rc=0 line
+    sb="$(make_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    for line in "gamma single_project" "gamma single_project role=ops"; do
+        echo "$line" >> "$sb/.agent/projects.local"
+        rc=0; out="$(reg "$sb" registry_entries_full "$sb" 2>&1)" || rc=$?
+        assert_eq "shell: '$line' → rc 2" "2" "$rc"
+        assert_contains "shell: '$line' names the missing path and the registration script" \
+            "'gamma' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
+        assert_not_contains "shell: '$line' never defaults to projects/gamma" "$sb/projects/gamma" "$out"
+        assert_contains "shell: the healthy entry still prints" "$(printf 'alpha\tsingle_project\t%s/projects/alpha' "$sb")" "$out"
+        out="$(cd "$sb" && python3 -c 'import sys; sys.path.insert(0, ".agent/scripts/lib"); from workspace import read_projects_registry; e, err = read_projects_registry("."); print([x["name"] for x in e]); print("\n".join(err))' 2>&1)"
+        assert_contains "python: '$line' is an error with the same text" \
+            "'gamma' has no path: a registry entry needs its hosting directory (register it with .agent/scripts/register_project.sh <path>)" "$out"
+        assert_contains "python: only the healthy entry parses" "['alpha']" "$out"
+        sed -i '/^gamma /d' "$sb/.agent/projects.local"
+    done
+}
+
+test_registry_no_project_message() {
+    echo "TEST: registry_no_project_message names the cwd, the registered names and the way out"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb/docs")" || rc=$?
+    assert_eq "none registered: rc 0" "0" "$rc"
+    assert_eq "none registered: the sentence" \
+        "no registered project here (cwd $sb/docs), and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
+    make_registered_project "$sb" alpha >/dev/null
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb")"
+    assert_eq "one registered: the sentence" \
+        "no registered project here (cwd $sb). Registered: alpha. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+    make_registered_project "$sb" beta >/dev/null
+    make_registered_project "$sb" gamma >/dev/null
+    out="$(reg "$sb" registry_no_project_message "$sb" "$sb")"
+    assert_eq "three registered: listed in registry order" \
+        "no registered project here (cwd $sb). Registered: alpha, beta, gamma. Pass --project <name> or register one: .agent/scripts/register_project.sh <path>" "$out"
+    echo "a..b single_project x" >> "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_no_project_message "$sb" "$sb" 2>/dev/null)" || rc=$?
+    assert_eq "parse error: rc 2" "2" "$rc"
+    assert_contains "parse error: the sentence still prints the parseable names" "Registered: alpha, beta, gamma." "$out"
 }
 
 test_registry_fields_rejected() {
@@ -1548,7 +1588,7 @@ test_transition_worktrees_survive_registration() {
     git -C "$sb/projects/later" worktree add -q "$twt" -b feature/issue-42 >/dev/null 2>&1
     assert_eq "fixture: transition worktree exists" "yes" "$([ -d "$twt" ] && echo yes || echo no)"
     # Now register it: its current worktree dir becomes <root>/worktrees.
-    echo "later single_project" >> "$sb/.agent/projects.local"
+    echo "later single_project projects/later" >> "$sb/.agent/projects.local"
     out="$(wt "$sb" wt_legacy_worktree_dirs "$sb")"
     assert_eq "transition dir still enumerated after registration" \
         "1" "$(grep -cF "later	$sb/worktrees/project/later" <<< "$out")"
@@ -1736,6 +1776,8 @@ test_worktree_create_repo_alias
 test_worktree_create_single_repo_no_manifest_file
 test_worktree_create_multiple_requires_repo
 test_registry_fields_parse
+test_registry_pathless_entry_fails
+test_registry_no_project_message
 test_registry_fields_rejected
 test_registry_parent_rules
 test_registry_instances_and_default

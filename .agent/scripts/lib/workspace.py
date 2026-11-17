@@ -245,7 +245,13 @@ def read_projects_registry(root=None):
             errors.append(bad)
             continue
         if not path:
-            path = f"projects/{name}"
+            # Issue #265 part 4: no projects/<name> default; same text as the
+            # shell parser.
+            errors.append(
+                f"{registry}:{lineno}: '{name}' has no path: a registry entry needs its "
+                f"hosting directory (register it with {REGISTER_PROJECT_POINTER})"
+            )
+            continue
         abs_path = Path(path)
         if not abs_path.is_absolute():
             abs_path = root / path

@@ -7,10 +7,10 @@
 #
 # One project per line, whitespace-separated:
 #
-#   <name>  <project_type>  [<path>]  [key=value ...]
+#   <name>  <project_type>  <path>  [key=value ...]
 #
 #   name          Project identity on this machine. Also the worktree repo
-#                 key and (for now) the default hosting dir projects/<name>.
+#                 key.
 #                 Allowed: [A-Za-z0-9._-], must start with a letter or
 #                 digit; '..' is not allowed.
 #   project_type  Adapter type; must exist at .agent/project_types/<type>/
@@ -19,9 +19,10 @@
 #                 directory that groups several instances of one project
 #                 (e.g. one per ROS distro). It has no adapter and need not
 #                 be a git repository; it is the session and memory unit.
-#   path          Optional hosting directory (absolute, or relative to the
-#                 workspace root; default projects/<name>). No spaces or
-#                 "=" (a third token containing "=" is read as a field).
+#   path          The hosting directory, required (absolute, or relative
+#                 to the workspace root). No spaces or "=" (a third token
+#                 containing "=" is read as a field, so that line has no
+#                 path and is an error).
 #   key=value     Optional trailing fields (no spaces in values):
 #                   parent=<name>            this line is an instance of
 #                                            parent root <name>
