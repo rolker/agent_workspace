@@ -112,7 +112,8 @@ A command run inside a distro's directory acts on that distro. Run at the top of
 directory it acts on every distro in turn, or on the ones named with `--distro`.
 
 The layout is chosen at `init`. A system directory set up for one distro has no distro
-directories, as in the first diagram.
+directories, as in the first diagram. A manifest without layers gives each distro directory
+an ordinary colcon workspace.
 
 ## Where the manifest comes from
 
@@ -295,6 +296,16 @@ only applies to URLs that come from the published manifest unchanged. `status` s
 each repo was fetched from.
 
 A machine that should run exactly what is published leaves `fetch_from` unset.
+
+When the place a repo comes from changes for a repo that is already cloned, because a fork
+appeared or `fetch_from` was edited, `sync` changes the clone's remotes to match. It does
+not clone again, and the working files and local branches stay as they are.
+
+With `fallback: true`, the fork is where the repo is fetched from, so its branches have to
+be kept up to date by their owner. That suits a fork that carries a developer's own line of
+work. For a fork that exists only to send a change back, an extra remote is the better fit:
+the clone keeps following the published repo, and the change is pushed to the fork by name.
+See "Extra remotes".
 
 ## Extra remotes
 
