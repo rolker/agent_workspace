@@ -5,9 +5,9 @@ Where repos-manifest is going, in the order we expect to do it. The format is in
 
 ## Direction
 
-What must be true for the acceptance case, each line with a check that says whether it is
-true today, where one exists yet. This section holds no status and no dates. Paths in the checks are relative to
-the tool's own directory.
+What must be true for the acceptance case, each line with a check that says whether it is true
+today, where one exists yet. This section holds no status and no dates. Paths in the checks
+are relative to the tool's own directory.
 
 **Acceptance case.** Four things work with these tools alone:
 
