@@ -23,7 +23,8 @@ Distros describe major versions of the project, typically targeting different ve
 underlying framework it depends on.
 
 It was built for ROS 2 systems, but nothing in it requires ROS. `vcs` and `colcon` both work
-on other kinds of projects.
+on other kinds of projects. `colcon` is needed only by the `build` command; the format and
+the other tools do not depend on how a project is built.
 
 | Concept | What it is | What it is for |
 |---|---|---|

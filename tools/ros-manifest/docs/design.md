@@ -517,6 +517,22 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries.
 
+Not every command needs all of these:
+
+| Command | Needs |
+|---|---|
+| `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo |
+| `init`, `sync`, `status` | `vcs` and `git` as well |
+| `build` | `colcon` as well |
+
+`colcon` is the one build tool `build` supports. It was chosen because it builds a directory
+of packages in dependency order, handles plain CMake and Python packages as well as ROS
+ones, and writes setup files that chain one workspace onto another, which is what makes
+layers work. Supporting other build tools is not planned.
+
+Nothing else depends on `colcon`. A project that builds another way uses the format,
+`resolve`, `sync` and `status`, and builds the layers itself in the order `resolve` gives.
+
 Resolving `extends` is done by the resolver and not left to `vcs`, because a manifest can
 extend one at a URL and because the manifest keys are merged.
 
