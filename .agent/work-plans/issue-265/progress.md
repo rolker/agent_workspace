@@ -1048,3 +1048,22 @@ The build-in-hosting-dir point is not a defect of this pull request. On main, `_
 ### Suites run
 - test_design_anchors.sh: `test_design_anchors: 47 passed, 0 failed`
 - No script changed. The commit used `SKIP=validate-script-tests`; the full pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-17 12:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae39d32d53ef4336b, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #491 at `cb8521ad`
+**Depth**: Deep (reason: whole-PR tier stays Deep; scope set by the host: the citation fix `cd815303..cb8521ad` only, no cross-model reviewers, per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+The previous must-fix is closed. Every `merge_pr.sh` citation that `c3f21d83` changed was spot-checked against `merge_pr.sh` at `cb8521ad`. Where a number differs from the plain +4 shift, the line it now names holds what design.md says it does. Checked:
+- **Table 1 row:** 313-358 is the `PJ_REPO_ROOT` block. 735 and 870 are the two `PJ_REPO_ROOT` lookups, and 1006 and 1319 are the two main-tree guards. 2455-2485 is the branch cleanup and the project sync.
+- **Records bullet:** `PKG_OWN_REL` is read and normalised at 671-675, inside 649-672. The gate's worktree is at 848-872, the owning-checkout checks at 873-940, and the committed read at 941-982. Report-only enforcement: 1611 restricts enforcement to workspace PRs, and 1628 is the project report-only note.
+- **Mechanism 1:** 848-995 is the gate's lookup, and 1280-1459 is `_gate_record` from its `{` to its `}`.
+
+### Findings
+- [ ] (suggestion) The Records bullet's sibling record citation is one line early. "1443-1444" covers the skill PR's `why_comment` (1443) and the sibling `elif` (1444); the sibling's `why_comment` is 1445, so the range should be 1444-1445. The old 1437-1438 was already off before this branch. The range does include the sibling branch's condition. — `docs/design.md:604`
