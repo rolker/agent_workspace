@@ -397,6 +397,22 @@ sep="$(git -C "$sb/sep" config --local user.email || true)"
 [[ "$out" != *"Configuring $sb/sep/inner-linked "* ]] \
     && pass "a linked worktree inside it (a .git file, git dir is not the common dir) is not" || fail "linked worktree configured (got: $out)"
 
+echo "TEST: configure_git_identity.sh: a submodule (a .git file under a superproject) is not configured; its superproject is (review round 4)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/subsrc"
+git -C "$sb/subsrc" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git init --quiet "$sb/super"
+git -C "$sb/super" -c protocol.file.allow=always submodule --quiet add "$sb/subsrc" sub >/dev/null 2>&1
+echo "super single_project $sb/super" > "$sb/repo/.agent/projects.local"
+[[ -f "$sb/super/sub/.git" ]] && pass "fixture: the submodule's .git is a file" || fail "fixture: no submodule at $sb/super/sub"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+super="$(git -C "$sb/super" config --local user.email || true)"
+subcfg="$(git -C "$sb/super/sub" config --local user.email || true)"
+[[ $rc -eq 0 && "$super" == "dev+codex@example.org" ]] && pass "the superproject is configured" || fail "superproject (rc=$rc, super=$super, got: $out)"
+[[ "$out" != *"Configuring $sb/super/sub "* && -z "$subcfg" ]] \
+    && pass "the submodule is not configured" || fail "submodule configured (sub=$subcfg, got: $out)"
+
 echo "TEST: configure_git_identity.sh: a root whose own path has a 'worktrees' folder is configured; its own worktree dir is skipped (review round 2, M3)"
 sb="$(mk_repo "dev@example.org")"
 mkdir -p "$sb/repo/.agent"

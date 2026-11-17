@@ -145,9 +145,11 @@ fi
 # The repositories written to: the workspace (the current directory) and
 # every repository under each registered (non-parent) project root, read
 # from the registry of the current directory's main checkout (issue #265
-# part 4: a project/ directory is not read). A repository is a .git
-# directory: a linked worktree or submodule (a .git file) is not one, and a
-# root's worktrees are skipped. A registry with errors writes nothing: read
+# part 4: a project/ directory is not read). A repository is a folder
+# holding .git: a .git directory, or a .git file whose git dir is its common
+# dir (a --separate-git-dir checkout); a linked worktree or a submodule
+# (also a .git file) is not one, and a root's worktree dir is skipped by
+# its path. A registry with errors writes nothing: read
 # as empty, it would configure the workspace alone and say no project
 # repository was found.
 REPOS=(".")
