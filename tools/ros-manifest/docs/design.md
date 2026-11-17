@@ -49,7 +49,11 @@ local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
 role: robot
 groups: [ben-hardware]
 distro: jazzy
-prefer_owner: rolker
+fetch_from:
+  prefix: https://github.com/rolker/
+  fallback: true
+remotes:
+  field: git@git.example.org:field/
 ```
 
 | Key | Meaning |
@@ -59,7 +63,8 @@ prefer_owner: rolker
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `distro` | The ROS distro of this system, if the manifest has distros. |
-| `prefer_owner` | Optional. See "Preferred owner". |
+| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
+| `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 
 `role`, `groups` and `distro` are facts about the machine, which is why they are recorded here and not
 in the manifest.
@@ -165,38 +170,93 @@ its repos last changed.
 `status --exact` writes the exact commit of every repo, by calling `vcs export --exact`. This
 is the record of what a machine was running.
 
-## Preferred owner
+## Where repos are fetched from
 
 A published manifest points at the released repos, for example under
-`github.com/CCOMJHC`. A developer usually works in forks of some of them. Setting
-`prefer_owner` to the developer's account means: for each repo, use my fork if I have one,
-and the published repo otherwise.
+`github.com/CCOMJHC`. Two kinds of machine fetch from somewhere else without the manifest
+having to say so:
 
-For each repo, `resolve` builds the fork's URL by replacing the owner in the published URL
-and keeping the repo's name. It uses the fork if both are true:
+- A developer works in forks of some of the repos.
+- A field machine has no access to the public host. It clones from a private git server and
+  pushes its fixes back there.
 
-- the fork exists and can be read;
-- the fork has the version the manifest names.
+`fetch_from` in `config.yaml` covers both. It names a place by a URL prefix. For each repo,
+the tools build another URL from the prefix, the repo's name (the last part of its published
+URL) and `.git`.
 
-Otherwise it uses the published URL. When a fork is used, the published repo is added to the
-clone as a remote named `upstream`.
+```yaml
+# a field machine: everything comes from the private server
+fetch_from:
+  prefix: git@git.example.org:field/
+  fallback: false
+```
 
-Creating a fork changes what the next `sync` fetches. That is intended: a collaborator who
-decides to work on a repo forks it, syncs, and is on their fork. `status` shows which repos
-come from a fork.
+```yaml
+# a developer: my fork where I have one, the published repo otherwise
+fetch_from:
+  prefix: https://github.com/rolker/
+  fallback: true
+```
 
-The setting applies to the repo that holds the manifest like any other repo.
+With `fallback: false`, every repo is cloned from the other place, and a repo that is missing
+there is an error. A field machine never reaches for the public host without being told to.
 
-A machine that should run exactly what is published leaves `prefer_owner` unset.
+With `fallback: true`, a repo is cloned from the other place if it exists there and has the
+version the manifest names, and from the published URL otherwise. Creating a fork changes
+what the next `sync` fetches. That is intended: a collaborator who decides to work on a repo
+forks it, syncs, and is on their fork.
 
-A repo entry that a developer's own manifest points somewhere with `extends` is used as
-written. The preferred owner only applies to URLs that come from the manifest unchanged.
+The repo is cloned with the place it came from as `origin`. When that is not the published
+URL, and `fallback` is true, the published repo is added as a remote named `upstream`.
+
+Because only the repo's name is kept, repos from different owners all land side by side at
+the other place. Two repos in a manifest with the same name and different owners cannot both
+be fetched this way, and `resolve` says so.
+
+The rule applies to the repo that holds the manifest like any other repo. A repo entry that
+the machine's own manifest points somewhere with `extends` is used as written; `fetch_from`
+only applies to URLs that come from the published manifest unchanged. `status` shows where
+each repo was fetched from.
+
+A machine that should run exactly what is published leaves `fetch_from` unset.
+
+## Extra remotes
+
+A development machine that deploys to field machines keeps its clones on the public host and
+also needs the private server on every clone: to push what is to be deployed, and to fetch
+the fixes field machines made.
+
+```yaml
+remotes:
+  field: git@git.example.org:field/
+```
+
+Each entry is a remote name and a URL prefix. `sync` adds the remote to every clone, with
+the URL built the same way as for `fetch_from`. It does not fetch from it or push to it.
+Pushing, and bringing field changes back for review, are done with `vcs`, with `git`, or by
+whatever workflow the project has.
+
+`sync` leaves alone any remote it did not add.
+
+## Work done on a field machine
+
+A field machine is where fixes are made under time pressure, directly on the branch the
+manifest names, and pushed to the private server. The tools have to fit that:
+
+- `sync` keeps local commits. On a repo that is on the manifest's branch, it fetches and
+  moves the branch forward only if that loses nothing. A branch that has gone a different
+  way from its remote is reported and left for a person.
+- `status` shows repos with commits that are not on the remote yet, so nothing made in the
+  field is forgotten there.
+- A manifest that names exact commits or tags leaves each repo without a local branch. That
+  is a good record of what ran, and a poor base for field fixes. A field machine that will be
+  worked on is set up from a manifest that names branches.
 
 ## What the tools rely on
 
 - `vcs`, from vcs2l, to fetch and update repos and to record exact commits.
 - `colcon`, to build a layer.
-- `git`, to check whether a fork exists.
+- `git`, to check whether a repo exists at another place and to add remotes.
 - Python with PyYAML.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries.
@@ -220,18 +280,19 @@ nested under their layer and the version key is `ref`. It also has three things 
 drops: a `packages:` section with package dependencies, roles defined by starting packages,
 and a cache of fetched parent manifests that is kept between runs.
 
-`init`, `sync`, `build`, `status`, the system directory and the preferred owner are not
-built.
+`init`, `sync`, `build`, `status`, the system directory, fetching from another place and
+extra remotes are not built.
 
 ## Open questions
 
-- How a URL names a manifest in a private repo. A plain https URL does not carry ssh
-  credentials. One answer is a form that names a git repo, a version and a path in it.
+- How a URL names a manifest in a private repo. A field machine reads its manifest from the
+  private server, so this is needed. A plain https URL does not carry ssh credentials. One
+  answer is a form that names a git repo, a version and a path in it.
 - How `sync` updates a repo that is already cloned without touching local work, using `vcs`.
   `vcs import` and `vcs pull` each do part of it, and what they do to a repo with local
   changes needs testing.
-- How often to ask whether a fork exists. Asking for every repo on every sync costs a
-  network call per repo.
+- With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
+  for every repo on every sync costs a network call per repo.
 - Whether `build` should stop at the first layer that fails or carry on with layers that do
   not depend on it. The manifest does not say which layers depend on which, only their
   order, so stopping is the safe rule.

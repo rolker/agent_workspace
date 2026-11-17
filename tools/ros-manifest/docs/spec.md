@@ -276,8 +276,5 @@ document.
 
 ## Open questions
 
-- Preferred owner: a developer says "use my fork of any repo where I have one, and the
-  published repo otherwise". This is a fact about a developer or a machine more than about
-  the system, so it may belong in a tool setting and not in the manifest.
 - Whether a manifest that extends another can remove a repo outright, as opposed to leaving
   it out through a group.

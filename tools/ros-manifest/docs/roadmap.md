@@ -24,15 +24,16 @@ manifest that extends the published one and adds a layer for their robot.
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | |
 | `build` builds the layers in order and writes one setup file | |
 | `status` shows what differs from the manifest, and records exact commits | |
-| A preferred owner makes `sync` use a developer's forks where they exist | |
+| A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
+| A manifest can be read from a private git server | |
+| `sync` adds the extra remotes a machine names to every clone | |
 | A real system is described by a published manifest and set up from it | |
 | The tool lives in its own repo and can be installed as a package | |
 
 | Deferral | Revisit check |
 |---|---|
 | A `ros2 manifest` command as a thin wrapper around the same code | |
-| A per-user settings file, so a preferred owner is set once for all systems | |
-| A way to name a manifest in a private repo | |
+| A per-user settings file, so where to fetch from is set once for all systems | |
 | A default layer for a repo that names none | |
 | Running a distro the host OS does not support, in a container or otherwise | |
 | Roles that name single repos or pick layers | |
