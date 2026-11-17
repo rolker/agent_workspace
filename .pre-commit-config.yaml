@@ -82,12 +82,14 @@ repos:
       # a deleted in-scope path, a helper, the runner or this file runs them
       # all; a documentation file no suite reads does not, issue #419).
       # Dispatched workspace implement and address-findings passes
-      # (owner-decided 2026-10-20, issue #399) set SKIP=validate-script-tests
-      # on intermediate commits only, then run the main checkout's
-      # .venv/bin/pre-commit once, with no SKIP, before their progress entry,
-      # which runs the suites the branch's changed files reach:
-      #   .venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
-      # CI (`make lint`) runs it on all files as the backstop; that file list
+      # (owner-decided 2026-11-13, issue #465) set SKIP=validate-script-tests
+      # on every commit, their progress entry's included, and run only the
+      # suites that test what they changed. The host runs the main
+      # checkout's .venv/bin/pre-commit once per pull request, with no SKIP,
+      # at the publish checkpoint before the push (run-issue step 7), which
+      # runs the suites the branch's changed files reach:
+      #   .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD)
+      # CI (`make lint`) runs it on all files on every push; that file list
       # includes the runner, so CI runs every suite. require_serial keeps the
       # list in one process; how many suites run at once is the runner's
       # own job count (the entry ends in --files, so it passes no -j; issue

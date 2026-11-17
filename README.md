@@ -34,6 +34,8 @@ as we improve the workspace.
 
 - Agents take the time and resources a quality result needs, within practical
   limits: economical, but never at the cost of quality.
+- A safeguard has to earn its cost: one that finds no problems, or makes the
+  user wait for nothing, is lightened or removed.
 - Documentation, code and designs are concise and distilled, so a newcomer can
   grasp them without much effort.
 - Agents learn from what's already there: why existing code was written the way

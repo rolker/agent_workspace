@@ -149,12 +149,13 @@
 # test_script_tests_hook_scope.sh, which guards the regex against drift).
 # SKIP=validate-script-tests is the sanctioned escape for work-in-progress
 # commits (same SKIP= mechanism this repo's other local hooks already
-# support); a dispatched workspace implement or address-findings pass uses
-# it on its intermediate commits and runs the hooks once over the branch
-# before its progress entry (owner-decided 2026-10-20, issue #399), with
-# CI's all-files run as the backstop. Since issue #410 that branch run, and
-# each commit, runs only the suites the changed files reach (--files mode
-# above), not every suite.
+# support). A dispatched workspace implement or address-findings pass sets
+# it on every commit, its progress entry's included, and runs only the
+# suites that test what it changed; the host runs every hook once over the
+# branch, with no SKIP, at the publish checkpoint before the push, and CI
+# checks every push (owner-decided 2026-11-13, issue #465; run-issue step
+# 7). Since issue #410 that branch run, and each commit, runs only the
+# suites the changed files reach (--files mode above), not every suite.
 #
 # Git-hook environment sanitization (found while wiring this into
 # .pre-commit-config.yaml for the first time — none of these suites had
