@@ -43,3 +43,11 @@ issue: 492
 
 ### Actions
 - [x] No actions needed.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-17 13:54 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-492/plan.md` at `4ea8d481`
+
+Two phrase edits in AGENTS.md (200 lines kept, no reflow needed) in one commit, and one Status note per ADR 0002, 0003, 0011, 0018 in a second; no hook or test pins the changed phrases.
