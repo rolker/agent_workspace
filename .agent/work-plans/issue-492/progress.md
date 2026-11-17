@@ -85,3 +85,13 @@ The plan quotes the approved wording exactly, each note is true of the code on m
 ### Recommended Actions
 
 - [ ] None before implementation.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 13:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review is ready with no findings and says the plan matches the six owner-approved texts character for character; the owner approved that text, the AGENTS.md edit and the four ADR notes before the issue was opened, so nothing in the plan is new to him)
+**After**: plan
+**Decision**: proceed
+
+Read: the `## Plan Review` at `724a2a54` (verdict ready, no findings) and the plan at `4ea8d481`. The owner's approval, 2026-11-17, to "Q1 — are T1 and T2 right as worded? Q2 — should I open a small issue to track this follow-up?" with both texts shown in full: "yes to both". The merge decision stays his.
