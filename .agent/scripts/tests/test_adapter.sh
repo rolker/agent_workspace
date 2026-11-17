@@ -218,6 +218,36 @@ test_from_flag_accepted() {
     assert_contains "a missing --from: named" "--from '/nonexistent' is not a directory" "$out"
 }
 
+test_outside_worktrees_dir_resolves() {
+    echo "TEST: a worktree in a root's worktrees= folder outside its hosting dir resolves that root (issue #265 part 4)"
+    local sb out rc=0 stub wt
+    sb="$(make_sandbox)"
+    # worktrees= lies under the sandbox workspace root, not under demo/.
+    echo "demo single_project $sb/demo worktrees=$sb/wt/demo" > "$sb/.agent/projects.local"
+    wt="$sb/wt/demo/feature-issue-7"
+    mkdir -p "$wt/sub"
+    out="$(cd "$wt/sub" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "project_root from the worktree: exit 0" "0" "$rc"
+    assert_eq "project_root from the worktree names demo's root" "$sb/demo" "$out"
+    rc=0
+    out="$(cd "$wt" && "$sb/.agent/scripts/adapter" env 2>&1)" || rc=$?
+    assert_eq "env from the worktree: exit 0" "0" "$rc"
+    stub="$(make_stub "$sb" wtbuild)"
+    set_demo_setting "$sb" "build=$stub"
+    rc=0
+    out="$(cd "$wt" && "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    assert_eq "build from the worktree: exit 0" "0" "$rc"
+    assert_contains "build from the worktree runs demo's command" "STUB_wtbuild_RAN_IN" "$out"
+    cp "$REAL_ROOT/.agent/scripts/sync_project.py" "$sb/.agent/scripts/sync_project.py"
+    cat > "$sb/.agent/project_types/single_project/sync.py" <<'EOF'
+import sys
+print("SYNC_IMPL_CALLED args:" + " ".join(sys.argv[1:]))
+EOF
+    out="$(cd "$wt" && python3 "$sb/.agent/scripts/sync_project.py" --dry-run 2>&1)" || true
+    assert_contains "sync from the worktree syncs demo, not the workspace alone" \
+        "SYNC_IMPL_CALLED args:--project-root $sb/demo --dry-run" "$out"
+}
+
 # The first machine's shape, with synthetic names (issue #265 part 4): three
 # non-parent projects registered, a project/ symlink to a git checkout in the
 # workspace with a shared config whose build command would prove it ran, and
@@ -1173,6 +1203,7 @@ test_missing_verb_function
 test_unknown_verb
 test_no_args_usage
 test_from_flag_accepted
+test_outside_worktrees_dir_resolves
 test_no_project_refuses
 test_no_project_sync_is_workspace_only
 test_project_flag_unknown_and_cwd_root

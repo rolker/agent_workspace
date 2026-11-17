@@ -36,6 +36,8 @@
 # resolved in this order:
 #   1. --project <name>: explicit selection from .agent/projects.local
 #   2. --from <dir> (default: caller's cwd) inside a registered hosting dir
+#      or in that root's worktrees= folder, wherever it lies
+#      (registry_resolve_session_dir)
 # Nothing else names a project (issue #265 part 4 retired the project/
 # symlink step and its PROJECT_TYPE read): with neither, every verb except
 # `sync` refuses with registry_no_project_message, and `sync` syncs the
@@ -222,9 +224,11 @@ if [ -n "$PROJECT_ARG" ]; then
     # shellcheck disable=SC2034
     ACTIVE_PROJECT_ROOT="$(cut -f2 <<< "$_ENTRY")"
 else
-    # Discovery: resolve from the caller's directory (or --from <dir>).
+    # Discovery: resolve from the caller's directory (or --from <dir>): its
+    # registered root, counting that root's worktrees= folder wherever it
+    # lies, as session_root.sh and the worktree scripts do.
     _FROM="${FROM_DIR:-$PWD}"
-    if _ENTRY="$(registry_resolve_from_dir "$WORKSPACE_ROOT" "$_FROM")"; then
+    if _ENTRY="$(registry_resolve_session_dir "$WORKSPACE_ROOT" "$_FROM")"; then
         ACTIVE_PROJECT_NAME="$(cut -f1 <<< "$_ENTRY")"
         PROJECT_TYPE_NAME="$(cut -f2 <<< "$_ENTRY")"
         # shellcheck disable=SC2034

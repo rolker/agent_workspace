@@ -315,9 +315,9 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   registered projects and says to pass `--project <name>` or register one: the adapter dispatcher,
   `worktree_create.sh`, `session_root.sh`, `wt_resolve_project_repo_root` (`merge_pr.sh` with `--type
   project`). `sync` is the one exception: with no project it syncs the workspace alone (the
-  dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 82). The registered root a cwd is in counts
+  dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 84). The registered root a cwd is in counts
   its `worktrees=` directory wherever that lies (`registry_resolve_session_dir`), for
-  `worktree_create.sh`, `wt_resolve_project_repo_root`, with `--type project` and no `--project`
+  the adapter dispatcher, `worktree_create.sh`, `wt_resolve_project_repo_root`, with `--type project` and no `--project`
   `worktree_enter.sh` and `worktree_remove.sh`, and the `--type` derivation when it is omitted
   (`registry_derive_type_from_dir`). A `project/` checkout or symlink in the
   workspace is read by no script, and nor are `worktrees/project/<name>/`, `.workspace-worktrees/` and
@@ -436,7 +436,7 @@ Status: `decided`
   `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the dispatcher's one named type,
-  `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 82: `sync` with no project resolved; ADR-0011 lets the
+  `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 84: `sync` with no project resolved; ADR-0011 lets the
   dispatcher name a default type), which issue #295's workspace adapter type replaces (2026-11-17).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest directory, `configs/manifest` or the generated
