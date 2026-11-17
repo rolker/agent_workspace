@@ -282,7 +282,8 @@ These three forms are the ones every tool is expected to read:
 
 - A path on the local disk. A relative path is taken from the directory of the manifest that
   names it.
-- An `http` or `https` URL of the file.
+- An `http` or `https` URL of the file. Plain `http` gives no protection against the file
+  being changed on the way, so it is for networks the person trusts.
 - A file in a git repo, given as a mapping with the repo's `url`, a `version` (a branch or
   tag; the repo's default branch if left out) and the `path` of the file in the repo. Any URL
   git can clone works, so a repo on a private server reached over ssh is named this way.
@@ -378,6 +379,27 @@ resolving produces:
 
 How these are laid out on disk belongs to the tools, not to the format. See the design
 document.
+
+## Reading a manifest before using it
+
+A manifest names repos whose code is about to be built and run, so it deserves the same care
+as any code taken from somewhere else: read it before using it. A manifest is as trusted as
+the code it points at, and a tool does not try to protect a person from repos they chose.
+
+A tool does make sure that a manifest does what it appears to say, and that nothing happens
+outside the place the person chose before anything is built. It checks four things and
+refuses a manifest that fails one:
+
+- The file is loaded as data. Loading a manifest never runs code.
+- Everything lands inside the directory the system is set up in. A repo's key and a layer's
+  name are relative paths with no `..` in them.
+- A value handed to `git` cannot be read as one of its options. A `url` or a `version` does
+  not start with `-`.
+- The file has no invisible characters and none that change the direction of text. They can
+  make a file read differently from what it does.
+
+A manifest that extends others is only as readable as the whole chain. A tool can show the
+combined result for a machine; see `show` in the design document.
 
 ## Not in the format
 

@@ -180,6 +180,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 | Command | What it does |
 |---|---|
 | `init` | Records the manifest, role and distro in a new system directory, then syncs. |
+| `show` | Prints what a manifest comes to for a role and distro, without fetching or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
 | `sync` | Resolves, then fetches and updates the repos of each layer. |
 | `build` | Builds each layer in order. |
@@ -202,8 +203,45 @@ repos-manifest sync
 repos-manifest build
 ```
 
-`resolve` and `validate` also work outside a system directory, with the manifest, role and
-distro given as arguments. That is the form a CI job or another tool uses.
+`show`, `resolve` and `validate` also work outside a system directory, with the manifest,
+role and distro given as arguments. That is the form a CI job or another tool uses, and the
+way to look at a manifest before setting anything up.
+
+### show
+
+A manifest can extend others, and what a machine gets depends on the role, the distro, the
+extra groups and where repos are fetched from. `show` prints the result of all of that for
+a person to read, before anything is fetched:
+
+```
+$ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
+
+manifest  project11.manifest.yaml
+extends   https://github.com/example/system.git  jazzy  system.manifest.yaml
+role      robot    groups on: echoboat-hardware    distro: jazzy
+
+underlay
+  geographic_info       ros2    https://github.com/ros-geographic-info/geographic_info.git
+core
+  unh_marine_autonomy   jazzy   https://github.com/example/unh_marine_autonomy.git
+  site_config           jazzy   git@github.com:example/site_config.git    optional
+platforms
+  echoboat_bringup      jazzy   https://github.com/example/echoboat_bringup.git
+                                from project11.manifest.yaml
+
+left out
+  vrx                   group simulation is off
+  ben_bringup           group ben-hardware is off
+  new_planner           not on jazzy
+```
+
+For each repo it shows the layer, the version and the URL it will be fetched from. It says
+which manifest an entry came from when that is not the first in the chain, and it lists the
+repos that are left out with the reason. Inside a system directory it uses what `config.yaml`
+records, so it also shows the effect of `fetch_from`.
+
+`init` prints the same thing and asks before it fetches. `--yes` skips the question, for
+scripts.
 
 ### resolve
 
@@ -528,7 +566,7 @@ Not every command needs all of these:
 
 | Command | Needs |
 |---|---|
-| `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo |
+| `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo |
 | `init`, `sync`, `status` | `vcs` and `git` as well |
 | `build` | `colcon` as well |
 
