@@ -169,8 +169,17 @@ while IFS=$'\t' read -r _reg_name _reg_type _reg_path; do
         if [ -n "$_reg_wt" ] && { [ "$_repo" = "$_reg_wt" ] || [[ "$_repo" == "$_reg_wt/"* ]]; }; then
             continue
         fi
+        # A .git file is a checkout of its own only when git's dir is the
+        # common dir (a --separate-git-dir clone) and no superproject holds
+        # it; a linked worktree or a submodule is not configured here.
+        if [ -f "$git_dir" ]; then
+            _gd="$(git -C "$_repo" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || continue
+            _cd="$(git -C "$_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || continue
+            [ "$_gd" = "$_cd" ] || continue
+            [ -z "$(git -C "$_repo" rev-parse --show-superproject-working-tree 2>/dev/null)" ] || continue
+        fi
         REPOS+=("$_repo")
-    done < <(find "$_reg_path/" -name ".git" -type d -prune | sort)
+    done < <(find "$_reg_path/" -name ".git" \( -type d -o -type f \) -prune | sort)
 done <<< "$_REG_ENTRIES"
 
 # Derive each repository's address before writing any (manual mode uses the

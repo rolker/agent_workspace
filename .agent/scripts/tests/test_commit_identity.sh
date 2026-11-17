@@ -383,6 +383,20 @@ out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
 [[ $rc -eq 0 && "$out" == *"Configuring $sb/proj/own "* && "$out" != *"Configuring $sb/proj/linked "* ]] \
     && pass "a linked worktree (a .git file) is not configured as a repository of its own" || fail "linked worktree (rc=$rc, got: $out)"
 
+echo "TEST: configure_git_identity.sh: a root whose .git is a file (--separate-git-dir) is configured; a linked worktree is not (review round 3, M3)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent" "$sb/gitdirs"
+git init --quiet --separate-git-dir "$sb/gitdirs/sep.git" "$sb/sep"
+echo "sep single_project $sb/sep" > "$sb/repo/.agent/projects.local"
+git -C "$sb/sep" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git -C "$sb/sep" worktree add --quiet "$sb/sep/inner-linked" -b side 2>/dev/null
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+sep="$(git -C "$sb/sep" config --local user.email || true)"
+[[ $rc -eq 0 && "$sep" == "dev+codex@example.org" ]] \
+    && pass "a --separate-git-dir root (.git is a file) is configured" || fail "separate-git-dir root (rc=$rc, sep=$sep, got: $out)"
+[[ "$out" != *"Configuring $sb/sep/inner-linked "* ]] \
+    && pass "a linked worktree inside it (a .git file, git dir is not the common dir) is not" || fail "linked worktree configured (got: $out)"
+
 echo "TEST: configure_git_identity.sh: a root whose own path has a 'worktrees' folder is configured; its own worktree dir is skipped (review round 2, M3)"
 sb="$(mk_repo "dev@example.org")"
 mkdir -p "$sb/repo/.agent"
