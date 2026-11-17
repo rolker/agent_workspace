@@ -845,3 +845,50 @@ Specialists: governance, plan drift, a fresh Claude adversarial sub-review (test
 **Decision**: address
 
 Asked on 2026-11-17 after round 3 of the pre-push review (4 must-fix, 7 suggestions): "Q1 — what next? R1 (my recommendation): one more fix pass, then a narrow check. It fixes F1 to F4 and every suggestion except the 'retired config files are executed' one. That one I would note on the parent issue (295, the registry-only work) for its next pull request, because it means writing a parser, not a one-line fix. R2: publish as is. R3: stop here." His answer, verbatim: "Q1 - R1".
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-17 11:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a91c5b8a646abb22e, resume 2 of 3)
+
+**Branch**: feature/issue-265 at `4a91c95d`
+**Addressed**: Local Review (Pre-Push) at `04f5b886` (2026-11-17 11:27 -05:00)
+**Commits**: `c757b5ed`, `b646fcbd`, `195dc5d0`, `35e6d3f7`, `bfa26df5`, `c49df66a`, `e6fccafd`, `4a91c95d` (box checks)
+
+Fix round 3, scope set by the owner at the Checkpoint ("Q1 - R1"): the four must-fix and every suggestion except the retired-config-file parser. That suggestion's box is left open: deferred by the owner 2026-11-17 to issue 295's next pull request (the host posts the note there). AGENTS.md, ADRs and CLAUDE.md untouched; nothing in the main checkout changed (one read: this machine's registry has no `worktrees=` field, so the new parser rule refuses nothing here); no push.
+
+Pre-fix failure counts (new tests run against the code before each fix): stale report 23 of 119 against the round-2 registry code (`04f5b886`; 9 of them are wording the fix changed: link lines now say "remove the link", P5 and W2 add check-first text, C3's reason). The 5 adversarial-pass assertions added afterwards (P15, P16, W8, C8) passed on the round-3 code and were not re-run against the old code. Parser refusal 3; dashboard 2; configure_git_identity 1; worktree_remove 2. The discover_governance L1/L2 tests pin existing behaviour and pass before and after.
+
+### Actions
+- [x] M1, a root's `worktrees=` folder under `projects/` or at `<ws>/project` told "register it, or remove it" and feeding C3 — `.agent/scripts/_project_registry.sh` (`b646fcbd`). `_stale_root_relation` compares each root's `worktrees=` folder in the same forms as the root ("a registered folder"). Rows P13 (silent, never C3) and P14 (a link to it: remove the link); tests at `<ws>/project`, under `projects/`, holding one, and a link to one.
+- [x] M2, the dashboard dropped the `[retired]` header but kept its lines; WT_COUNT counted it — `.agent/scripts/dashboard.sh`, `.agent/WORKTREE_GUIDE.md` (`195dc5d0`). The filter keeps `[retired]`; WT_COUNT leaves `.workspace-worktrees/` out and a separate count only decides that the list is shown; the guide names the dashboard. Test in `test_project_registry.sh` runs `dashboard.sh --quick` in the sandbox and checks the retired Path line follows its own header.
+- [x] M3, `-type d` skipped a root whose `.git` is a file — `.agent/scripts/configure_git_identity.sh` (`35e6d3f7`). A `.git` file counts when git's dir is the common dir and no superproject holds it (a `--separate-git-dir` clone); a linked worktree does not. Test: a `--separate-git-dir` root is configured, a linked worktree inside it is not.
+- [x] M4, "run this command again" false for a single-repository worktree — `.agent/scripts/worktree_remove.sh` (`bfa26df5`). When the refused entry is the worktree itself, the advice is `git -C <the repository it was made from> worktree prune` (from the manifest's origin); a package worktree's entry keeps the re-run advice. The test follows the advice until git no longer lists the worktree.
+- [x] S, `worktrees=.` / `worktrees=worktrees` accepted — `.agent/scripts/_project_registry.sh`, `.agent/scripts/lib/workspace.py` (`c757b5ed`). Both parsers refuse a `worktrees=` that is or holds the workspace root, or is, holds or lies in `worktrees/workspace`, with the same text (parity test extended); row U.
+- [x] S, an unregistered retired worktree left the shared file "delete it" — `.agent/scripts/_project_registry.sh` (`b646fcbd`). W2 sets the C3 condition; test.
+- [x] S, a retired checkout holding a registered root was told to be removed — `.agent/scripts/_project_registry.sh` (`b646fcbd`). The W check uses `_stale_root_relation` (self, inside, holds; roots and `worktrees=` folders); rows W7, W8; tests.
+- [x] S, P5's "or remove it" without a check — `.agent/scripts/_project_registry.sh` (`b646fcbd`). P5, and a plain clone in a retired location (W2), say to check any repository in it for uncommitted work (`git status`) and commits on no remote (`git log --branches --not --remotes`) first.
+- [x] S, the case table's claims — `.agent/scripts/tests/test_validate_workspace_stale.sh` (`b646fcbd`). Every row id now has an id-labelled assertion: older tests relabelled; C7 added; the `projects/` forms of P3, P4, P8 and P11 added; W2 says depth 1 to 6 with a depth-6 test. New rows U, P13 to P16, W7, W8 and C8. Checked by a loop over every id against the PASS labels (none missing).
+- [ ] S, retired config files executed to be read — not changed: deferred by the owner 2026-11-17 to issue 295's next pull request (writing a parser).
+- [x] S, discover_governance's absolute paths from a linked worktree; the skill silent on exit 1 — `.agent/scripts/discover_governance.sh`, `.claude/skills/gather-project-knowledge/SKILL.md` (`c49df66a`). The output stands: relative to a linked worktree, the main checkout's `projects/<name>` would name a folder that is not there. The comment now says so, and tests L1/L2 pin both cases. The skill says exit 1 means an incomplete inventory and to stop.
+- design.md (`e6fccafd`): the Retirement paragraph (registered folder, check-first, the C3 condition), the Worktrees paragraph (the `worktrees=` refusal), Table 1's derive range 654-669.
+
+Adversarial pass over the table (every line that says remove or delete: what a wrong one would lose, and the row for the wrong case). The paragraph is also in the test file's header.
+- P5 (folder): it loses the folder and any repository in it. Wrong when the folder is or holds a registered folder, or lies in one: rows P2 to P4, P13, and new P15 (a root registered through a link elsewhere). The line now says to check first.
+- P6 to P8, P10, P11, P14 (links): they lose the link only. Wrong when a registry line names a root through the link: row P3, and new P16 (a dangling link a line names a root through).
+- W2 (worktrees): `git worktree remove` refuses a worktree with changes and keeps its branch. Wrong when the checkout is a registered folder, or lies in or holds one: rows W3, W4, W7, and new W8 (registered through a link). A plain clone gets the check-first text.
+- S4, S8, S10 (a `.sh`): they lose a file whose values no reader takes. A value the settings file already has never ran (the settings file wins). A function or a command with no variable effect is not detected. The wrong cases are rows S5 and S6 (cannot be told); a parent's or an unregistered `.sh` that sets something is never "delete it" alone (S7, S9).
+- C2, C5 (the shared file): wrong when a project not registered may have used it (C3, C4), when it cannot be sourced (C6), or when an applied project's settings file is invalid (new C8).
+- Result: the four new rows (P15, P16, W8, C8) all already held on the round-3 code. The pass found no further wrong advice. Its one gap, a `.sh` whose only effect is a function or command, is named in the header and not handled.
+
+Mechanism decisions (each listed for veto):
+- One commit for the report (M1 and four suggestions).
+- The `worktrees=` refusal also covers a folder inside `worktrees/workspace` (the review named only "holds"): there a project worktree would count as a workspace one.
+- The dashboard still lists a retired worktree, as `[retired]`, and counts it in no total.
+- A `.git`-file repository counts unless it is a linked worktree or a submodule. The submodule exclusion is not tested.
+- discover_governance: the comment is fixed, not the output.
+
+Suites run (each `bash .agent/scripts/tests/<suite>` from the worktree at `e6fccafd`): test_adapter.sh 242 passed, 0 failed; test_capture.sh 41 passed, 0 failed; test_commit_identity.sh 102 passed, 0 failed; test_discover_governance.sh 32 passed, 0 failed; test_dispatch_phase.sh 236 passed, 0 failed; test_fresh_clone_no_project.sh 26 passed, 0 failed; test_gh_create_issue.sh PASS 71, FAIL 0; test_gh_create_pr.sh PASS 113, FAIL 0; test_merge_pr_gate.sh 201 passed, 0 failed; test_merge_pr_root_resolution.sh 6 passed, 0 failed; test_merge_pr.sh 161 passed, 0 failed; test_merge_pr_skill.sh 132 passed, 0 failed; test_precommit_hook_path.sh 19 passed, 0 failed; test_project_file.sh 701 passed, 0 failed; test_project_registry.sh 427 passed, 0 failed; test_pr_status.sh 3 passed, 0 failed; test_ros2_colcon.sh 1014 passed, 0 failed, 0 skipped; test_session_start_layer.sh 52 passed, 0 failed; test_sitrep_checks.sh 211 passed, 0 failed; test_sitrep_root.sh 56 passed, 0 failed; test_skill_paths.sh 163 passed, 0 failed; test_user_tier_guard.sh 64 passed, 0 failed; test_validate_workspace_stale.sh 124 passed, 0 failed; test_worktree_create.sh PASS 80, FAIL 0; test_worktree_enter_stderr.sh 35 passed, 0 failed. No `test_dashboard*.sh` exists; the dashboard's Active Worktrees section is tested inside test_project_registry.sh. Suites that reach `lib/workspace.py` only through Python imports are left to the host's full pass, as is the pre-commit pass.
+
+Not verified: the submodule exclusion in configure_git_identity; the adversarial rows against the round-2 code (the counts above are from before those rows were added); the whole dashboard output beyond the Active Worktrees section.
