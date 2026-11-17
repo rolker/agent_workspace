@@ -379,13 +379,21 @@ echo ""
 
 WORKTREE_SCRIPT="$SCRIPT_DIR/worktree_list.sh"
 if [ -x "$WORKTREE_SCRIPT" ]; then
-    WT_COUNT=$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " | wc -l)
+    # Workspace worktrees, without the main checkout and without one in the
+    # retired .workspace-worktrees/ (issue #265 part 4: counted in no total;
+    # worktree_list.sh shows it as [retired], so it is listed below).
+    _WT_LINES="$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " || true)"
+    WT_COUNT=$(grep -vcF "/.workspace-worktrees/" <<< "$_WT_LINES" || true)
+    [ -n "$_WT_LINES" ] || WT_COUNT=0
+    RETIRED_WT_COUNT=$(grep -cF "/.workspace-worktrees/" <<< "$_WT_LINES" || true)
     # Also count project worktrees: every registered non-parent root's
     # worktree dir (#265; the retired worktrees/project/<name>/ and
     # project/worktrees/ shapes are not counted).
     PROJ_WT_COUNT="$(wt_count_project_worktrees "${MAIN_ROOT:-$ROOT_DIR}")"
-    if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ]; then
-        "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|  )" || true
+    if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ] || [ "$RETIRED_WT_COUNT" -gt 0 ]; then
+        # Each entry's header line and its indented lines; a header kind
+        # left out here would leave its lines under the previous entry.
+        "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|\[retired\]|  )" || true
         echo ""
     else
         echo "No active worktrees."

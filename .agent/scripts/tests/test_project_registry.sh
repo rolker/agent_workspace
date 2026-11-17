@@ -1765,6 +1765,14 @@ test_retired_worktree_locations_not_found() {
     assert_eq ".workspace-worktrees/ worktree: JSON type retired" "retired" \
         "$(jq -r --arg p "$sb/.workspace-worktrees/issue-workspace-43" '.worktrees[] | select(.path == $p) | .type' <<< "$out")"
     assert_eq ".workspace-worktrees/ worktree: counted in no total" "0" "$(jq -r '.summary.total' <<< "$out")"
+    # The dashboard lists it under its own [retired] header, never with its
+    # Path/Branch/Status lines left under the previous entry (review round 3).
+    cp "$REAL_ROOT/.agent/scripts/dashboard.sh" "$sb/.agent/scripts/"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 | sed -n '/Active Worktrees/,/^---/p')" || true
+    assert_contains "dashboard: the [retired] header is shown" "[retired] .workspace-worktrees/ is no longer used" "$out"
+    assert_eq "dashboard: the retired Path line follows its own header" "[retired]" \
+        "$(grep -B1 -F "   Path:   $sb/.workspace-worktrees/issue-workspace-43" <<< "$out" | head -n1 | cut -c1-9)"
+    rm -f "$sb/.agent/scripts/dashboard.sh"
     git -C "$sb" worktree remove --force "$sb/.workspace-worktrees/issue-workspace-43" >/dev/null 2>&1
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" bash -c 'source "$1/.agent/scripts/worktree_enter.sh" --issue 42 --type project --project later' _ "$sb" 2>&1)" || rc=$?
