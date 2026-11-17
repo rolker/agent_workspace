@@ -1153,6 +1153,19 @@ out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_ph
 [[ "$rc" -ne 0 && "$out" == *"no project worktree found for issue #9"* && "$out" != *"worktree=$SBP2/worktrees/project"* ]] \
     && pass "resolve_worktree --type project --project <unregistered>: not found" || fail "resolve_worktree unregistered --project (rc=$rc out=$out)"
 
+# (c) a registry with errors is a refusal naming it, never "not found"
+# (review suggestion): the one registered project's worktree exists.
+cp "$SBP1/.agent/projects.local" "$SANDBOX/projects.local.p1"
+printf 'broken single_project\n' >> "$SBP1/.agent/projects.local"
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"the project registry $SBP1/.agent/projects.local has errors, so issue 9's project worktree cannot be looked up"* \
+    && "$out" != *"no project worktree found"* ]] \
+    && pass "resolve_worktree --type project: a registry with errors is refused (exit 2), not 'not found'" || fail "resolve_worktree malformed registry (rc=$rc out=$out)"
+out=$(cd "$SBP1" && bash .agent/scripts/dispatch_phase.sh base --issue 9 --type project 2>&1); rc=$?
+[[ "$rc" -eq 2 && "$out" == *"has errors"* ]] \
+    && pass "base --type project: a registry with errors is refused (exit 2)" || fail "base malformed registry (rc=$rc out=$out)"
+cp "$SANDBOX/projects.local.p1" "$SBP1/.agent/projects.local"
+
 echo ""
 echo "TEST: base -- an issue with no package base prints nothing, exit 0 (issue 429)"
 # Decided by the worktree the ref resolves to: a workspace worktree, a

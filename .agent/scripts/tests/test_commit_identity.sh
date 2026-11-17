@@ -365,6 +365,24 @@ ws="$(git -C "$sb/repo" config --local user.email)"
 [[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"proj/bad"* ]] \
     && pass "one underivable repository: nothing is written anywhere" || fail "partial write (rc=$rc, ws=$ws, got: $out)"
 
+echo "TEST: configure_git_identity.sh: a registry with errors writes nothing; a linked worktree is not a repository of its own (review suggestion)"
+sb="$(mk_repo "dev@example.org")"
+mkdir -p "$sb/repo/.agent"
+git init --quiet "$sb/proj/own"
+printf 'demo ros2_colcon %s\nbroken single_project\n' "$sb/proj" > "$sb/repo/.agent/projects.local"
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+ws="$(git -C "$sb/repo" config --local user.email || true)"
+own="$(git -C "$sb/proj/own" config --local user.email || true)"
+[[ $rc -ne 0 && -z "$ws" && -z "$own" && "$out" == *"has errors (above), so which repositories belong to the registered projects cannot be told"* \
+    && "$out" == *"Nothing was written."* && "$out" != *"No registered project repositories found"* ]] \
+    && pass "a registry with errors: refused, nothing written, never 'none found'" || fail "malformed registry (rc=$rc, ws=$ws, own=$own, got: $out)"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git -C "$sb/proj/own" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m seed
+git -C "$sb/proj/own" worktree add --quiet "$sb/proj/linked" -b side 2>/dev/null
+out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
+[[ $rc -eq 0 && "$out" == *"Configuring $sb/proj/own "* && "$out" != *"Configuring $sb/proj/linked "* ]] \
+    && pass "a linked worktree (a .git file) is not configured as a repository of its own" || fail "linked worktree (rc=$rc, got: $out)"
+
 echo "TEST: .agent/.identity reads back exactly in bash and in a POSIX sh"
 # A sandbox copy of the scripts, so the real checkout's .agent/.identity is never written.
 sb="$(mk_repo "o'brien@x.ie")"

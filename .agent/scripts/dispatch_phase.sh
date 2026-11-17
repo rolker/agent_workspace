@@ -280,7 +280,9 @@ derive_project_name() {
 # explicitly via --project, or derived from $PWD by derive_project_name().
 # When neither yields a name, a project type resolves only when exactly one
 # registered project has a worktree dir. An unregistered name finds nothing
-# ("not found").
+# ("not found"). Prints the worktree; returns 1 when none was found, 2 when
+# a refusal was printed on stderr (a registry with errors, or ambiguous
+# package worktrees).
 resolve_worktree() {
     local issue="$1" type="$2" project="${3:-}"
     local new_base=""
@@ -288,6 +290,14 @@ resolve_worktree() {
     if [[ "$type" == "workspace" ]]; then
         new_base=$(wt_workspace_base "$ROOT_DIR")
     else
+        # A registry with errors is a refusal, never "not found": which
+        # project owns the cwd and where its worktrees live cannot be told.
+        local reg_rc=0
+        registry_entries "$ROOT_DIR" >/dev/null 2>&1 || reg_rc=$?
+        if [[ "$reg_rc" -eq 2 ]]; then
+            echo "error: the project registry $(registry_file "$ROOT_DIR") has errors, so issue $issue's project worktree cannot be looked up: fix it (make validate names each bad line), then run this again" >&2
+            return 2
+        fi
         local selected=""
         selected=$(derive_project_name "$project") || selected=""
         if [[ -n "$selected" ]]; then

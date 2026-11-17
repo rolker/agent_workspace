@@ -145,17 +145,24 @@ fi
 # The repositories written to: the workspace (the current directory) and
 # every repository under each registered (non-parent) project root, read
 # from the registry of the current directory's main checkout (issue #265
-# part 4: a project/ directory is not read). A root's worktrees are skipped.
+# part 4: a project/ directory is not read). A repository is a .git
+# directory: a linked worktree or submodule (a .git file) is not one, and a
+# root's worktrees are skipped. A registry with errors writes nothing: read
+# as empty, it would configure the workspace alone and say no project
+# repository was found.
 REPOS=(".")
 _REG_ROOT="$(registry_main_checkout "$PWD")"
-_REG_ENTRIES="$(registry_entries "$_REG_ROOT" 2>/dev/null)" || true
+if ! _REG_ENTRIES="$(registry_entries "$_REG_ROOT")"; then
+    echo "Error: the project registry $(registry_file "$_REG_ROOT") has errors (above), so which repositories belong to the registered projects cannot be told; fix it, then run this again. Nothing was written." >&2
+    exit 1
+fi
 while IFS=$'\t' read -r _reg_name _reg_type _reg_path; do
     [ -n "$_reg_name" ] || continue
     [ "$_reg_type" = "$REGISTRY_PARENT_TYPE" ] && continue
     [ -d "$_reg_path" ] || continue
     while IFS= read -r git_dir; do
         REPOS+=("$(dirname "$git_dir")")
-    done < <(find "$_reg_path/" -name ".git" -prune -not -path "*/worktrees/*" | sort)
+    done < <(find "$_reg_path/" -name ".git" -type d -prune -not -path "*/worktrees/*" | sort)
 done <<< "$_REG_ENTRIES"
 
 # Derive each repository's address before writing any (manual mode uses the
