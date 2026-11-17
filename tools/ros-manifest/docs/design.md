@@ -1,8 +1,8 @@
 # Design
 
 Status: draft. This is the design we are working towards. What exists today is listed under
-"What is built" at the end. Command and folder names follow the tool's name, which is a
-placeholder.
+"What is built" at the end. The prototype's command is still called `ros-manifest`, the
+tool's earlier name.
 
 The format of a manifest is in [spec.md](spec.md). This document is about the tools.
 
@@ -24,7 +24,7 @@ A system is set up in one directory. Each layer is a colcon workspace inside it.
 
 ```
 my_system/
-  .ros-manifest/
+  .repos-manifest/
     config.yaml      what init recorded
     resolved/        the .repos files from the last resolve, and the layer order
   underlay/
@@ -37,9 +37,9 @@ my_system/
 ```
 
 The commands find the system directory by walking up from the current directory until they
-find `.ros-manifest/`, so they can be run from anywhere inside it.
+find `.repos-manifest/`, so they can be run from anywhere inside it.
 
-The system directory is not a repo. Nothing in `.ros-manifest/` is ever committed.
+The system directory is not a repo. Nothing in `.repos-manifest/` is ever committed.
 
 ### config.yaml
 
@@ -97,16 +97,16 @@ After `init`, the other commands take no arguments in the common case. A person 
 machine types:
 
 ```
-ros-manifest init <manifest> --role robot --distro jazzy
-ros-manifest build
+repos-manifest init <manifest> --role robot --distro jazzy
+repos-manifest build
 source setup.bash
 ```
 
 and later, to update:
 
 ```
-ros-manifest sync
-ros-manifest build
+repos-manifest sync
+repos-manifest build
 ```
 
 `resolve` and `validate` also work outside a system directory, with the manifest, role and
@@ -115,7 +115,7 @@ distro given as arguments. That is the form a CI job or another tool uses.
 ### resolve
 
 Reads the manifest and everything it extends, applies the role and the distro, and writes
-into `.ros-manifest/resolved/`:
+into `.repos-manifest/resolved/`:
 
 - one `.repos` file per layer, with `type`, `url` and `version` for each repo;
 - the order of the layers;
