@@ -233,6 +233,22 @@ else
 fi
 assert_row "(P2) the out-of-tree registered root is reported by its absolute path" "$out" "$far/docs/design.md" architecture project
 
+echo "TEST: from a linked worktree, a root registered inside the main checkout is reported by its absolute path (review round 3)"
+sbm="$(make_sandbox)"
+mkdir -p "$sbm/projects/inner/docs"
+echo "# Design" > "$sbm/projects/inner/docs/design.md"
+echo "inner single_project $sbm/projects/inner" > "$sbm/.agent/projects.local"
+printf 'projects/\n.agent/projects.local\n' > "$sbm/.gitignore"
+git -C "$sbm" init -q 2>/dev/null
+git -C "$sbm" add -A >/dev/null 2>&1
+git -C "$sbm" -c user.name=t -c user.email=t@example.invalid commit -q -m seed 2>/dev/null
+git -C "$sbm" worktree add -q "$sbm-linked" -b side 2>/dev/null
+out="$(run_discover "$sbm-linked" 2>/dev/null)" || true
+assert_row "(L1) from a linked worktree: the main checkout's projects/inner by its absolute path" "$out" "$sbm/projects/inner/docs/design.md" architecture project
+out="$(run_discover "$sbm" 2>/dev/null)" || true
+assert_row "(L2) from the main checkout: the same root by its relative path" "$out" "projects/inner/docs/design.md" architecture project
+git -C "$sbm" worktree remove --force "$sbm-linked" >/dev/null 2>&1
+
 echo "TEST: a registry with errors is never read as 'no project': workspace rows, then an error and exit 1 (review round 2)"
 echo "broken single_project" >> "$sb/.agent/projects.local"
 rc=0

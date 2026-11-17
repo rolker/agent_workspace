@@ -129,8 +129,12 @@ scan_scope "$ROOT_DIR" "workspace"
 
 # Scan every registered (non-parent) project root, read from the main
 # checkout's registry (issue #265 part 4: a project/ checkout in the
-# workspace is not read). A root inside the workspace tree is reported by
-# its path relative to the workspace, one elsewhere by its absolute path.
+# workspace is not read). A path is reported relative to the checkout this
+# script runs from (ROOT_DIR) when it lies there, else by its absolute path.
+# From a linked worktree the registry is the main checkout's, so a root
+# registered inside the main checkout (projects/<name>) is reported by its
+# absolute path: relative to the worktree it would name a folder that is
+# not there.
 # A registry with errors is never read as "no project": the workspace scope
 # above is still printed, then the script says no root was scanned and
 # exits 1, so an inventory missing the projects is never taken as whole.
