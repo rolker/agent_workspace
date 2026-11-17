@@ -300,7 +300,7 @@ With `fallback: false`, every repo is cloned from the other place, and a repo th
 there is an error. A field machine never reaches for the public host without being told to.
 
 With `fallback: true`, a repo is cloned from the other place if it exists there and has the
-version the manifest names, and from the published URL otherwise. Creating a fork changes
+version the manifest names, where it names one, and from the published URL otherwise. Creating a fork changes
 what the next `sync` fetches. That is intended: a collaborator who decides to work on a repo
 forks it, syncs, and is on their fork.
 

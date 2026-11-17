@@ -99,7 +99,8 @@ manifest.
 |---|---|---|
 | `type` | yes | As in a `.repos` file. The tools here support `git`. |
 | `url` | yes | Where to fetch from. |
-| `version` | see below | The default branch, tag or commit. |
+| `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
+| `absent` | no | `true` if the repo is not part of the system unless a distro says so. |
 | `layer` | see Layers | The layer the repo belongs to. |
 | `groups` | no | The groups the repo belongs to. |
 | `distros` | no | Per-distro differences from the default. |
@@ -107,18 +108,27 @@ manifest.
 
 ### Versions and distros
 
-A repo's `version` is its default. Under `distros:`, each key is a distro name and its entry
-says what is different on that distro:
+A repo's `version` is its default: a branch, a tag or a commit. A repo with no `version`
+follows the default branch of its remote, as in a `.repos` file. That suits a repo whose one
+branch works for every distro. What a machine gets then depends on a setting at the remote,
+so a manifest for a deployed system names its versions.
+
+Under `distros:`, each key is a distro name and its entry says what is different on that
+distro:
 
 - `version: <name>`: use this branch, tag or commit on that distro.
 - `absent: true`: the repo is not part of the system on that distro.
 
-One rule decides whether a repo is part of the system on a distro: it is, when it has a
-version for that distro, either its own entry or the default, and is not marked absent
-there.
+`absent: true` on the repo itself turns the default around: the repo is part of the system
+only on the distros that have an entry for it.
 
 ```yaml
 repositories:
+  # on every distro, following the remote's default branch
+  marine_tools:
+    type: git
+    url: https://github.com/CCOMJHC/marine_tools.git
+
   # on every distro, with a different branch on rolling
   unh_marine_autonomy:
     type: git
@@ -137,10 +147,11 @@ repositories:
       rolling:
         absent: true
 
-  # on jazzy only: there is no default version
+  # on jazzy only
   BehaviorTree.CPP:
     type: git
     url: https://github.com/BehaviorTree/BehaviorTree.CPP.git
+    absent: true
     distros:
       jazzy:
         version: 7119df95a17086f55e3690cf8d7b7663b59319d0
@@ -148,14 +159,6 @@ repositories:
 
 The last form is for a dependency that has to be built from source on some distros and is
 installed as a package on the others.
-
-A repo must have a version on at least one distro. In a manifest without `distros:`, that
-means every repo has a `version`. `vcs` allows an entry with no version at all and then
-takes the remote's default branch; a manifest does not, so that what a machine gets never
-depends on what a remote's default branch happens to be.
-
-`validate` lists, for each distro, the repos that are not part of the system on it, so that
-a default version left out by mistake is seen.
 
 ### Optional repos
 
