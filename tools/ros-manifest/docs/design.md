@@ -36,6 +36,11 @@ my_system/
   setup.bash         sources the layers that are built
 ```
 
+A manifest without layers gives an ordinary colcon workspace: `src/`, `build/`, `install/`
+and `log/` directly in the system directory, with `.repos-manifest/` beside them. For a
+small project the tools then do little more than `vcs` and `colcon` do, and the project can
+add layers later.
+
 The commands find the system directory by walking up from the current directory until they
 find `.repos-manifest/`, so they can be run from anywhere inside it.
 
@@ -58,7 +63,7 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is: a path or a URL. |
+| `manifest` | Where the manifest is. See "Where the manifest comes from". |
 | `local_manifest` | Optional. A path inside the system directory that is used instead, once that file exists. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
@@ -111,7 +116,31 @@ directories, as in the first diagram.
 
 ## Where the manifest comes from
 
-A manifest is a file, so `manifest` points at a file: on a local disk or at a URL.
+A manifest is a file, so `manifest` points at a file. The tools read the three kinds of
+location the specification names:
+
+- a path on the local disk;
+- an `http` or `https` URL;
+- a file in a git repo, given by the repo's URL, a branch or tag, and the path in the repo.
+
+```
+repos-manifest init https://example.org/project11.manifest.yaml --role robot --distro jazzy
+repos-manifest init git@git.example.org:field/unh_marine_autonomy.git \
+    --manifest-version jazzy --manifest-path project11.manifest.yaml --role robot --distro jazzy
+```
+
+The git form is read by cloning the one commit and taking the file out of it, with `git` as
+it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
+read the manifest: ssh keys, an ssh agent, entries in `~/.ssh/config`, a credential helper.
+When a command is run at a terminal and git or ssh needs a password or passphrase, it asks.
+When there is no terminal, as in CI, it fails with a message and does not wait.
+
+The git form is also the one `fetch_from` can act on, because the tools know which repo the
+manifest is in. A field machine can be given the published location of the manifest and a
+`fetch_from` prefix, and reads the manifest from the private server.
+
+Other kinds of location, such as copying a file from a machine over ssh without git, are not
+supported. A person can copy the file by hand and give its path.
 
 Often the manifest lives in one of the repos it lists. Before the first sync that repo is not
 on the machine, so the manifest is read from its URL. After the first sync there is a copy in
@@ -122,12 +151,17 @@ review.
 A manifest that is not in any of the system's repos needs no `local_manifest`. It stays where
 it is, on a disk or at a URL.
 
+`manifest` and `local_manifest` can be changed after `init`, by editing `config.yaml`. A
+project that has no manifest yet can be set up from one written in a scratch directory. When
+the manifest is later added to one of the project's repos, `local_manifest` is set to its
+place in the checkout.
+
 Only the checkout in the system directory counts as the local copy. A copy in another clone
 or another branch of the same repo is not looked at.
 
-The same rule applies to `extends`. Each parent is a path or a URL, and a relative path is
-taken from the manifest that names it. A local manifest that extends a parent next to it in
-the same repo reads the parent from the local disk too.
+The same rule applies to `extends`. Each parent is a location of one of the three kinds, and
+a relative path is taken from the manifest that names it. A local manifest that extends a
+parent next to it in the same repo reads the parent from the local disk too.
 
 ## Commands
 
@@ -323,9 +357,8 @@ extra remotes are not built.
 
 ## Open questions
 
-- How a URL names a manifest in a private repo. A field machine reads its manifest from the
-  private server, so this is needed. A plain https URL does not carry ssh credentials. One
-  answer is a form that names a git repo, a version and a path in it.
+- What happens to a system directory when its manifest gains layers. The repos move from
+  `src/` to `<layer>/src/`. `sync` could move them, or say what to move.
 - How `sync` updates a repo that is already cloned without touching local work, using `vcs`.
   `vcs import` and `vcs pull` each do part of it, and what they do to a repo with local
   changes needs testing.

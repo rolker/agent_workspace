@@ -143,8 +143,10 @@ The suggested layout, and the one the tools here use, makes each layer its own c
 workspace built on top of the ones before it. The format only says that layers are ordered
 groups of repos; it does not say what a tool does with them.
 
-If `layers:` is absent, the manifest has one unnamed layer and no repo may have a `layer:`
-key. If `layers:` is present, every repo must name a layer from the list.
+Layers are optional. If `layers:` is absent, the manifest has one unnamed layer and no repo
+may have a `layer:` key. A small project can start this way, down to a single repo, and add
+layers when build times call for them. If `layers:` is present, every repo must name a layer
+from the list.
 
 Open: whether a repo with no `layer:` should go into a default layer instead of being an
 error. The error is the current rule because it can be relaxed later without breaking a
@@ -195,12 +197,35 @@ single repos, or pick layers, is undecided.
 
 ## Extends
 
-`extends:` names one or more other manifests, each by path or URL. A relative path is taken
-from the directory of the manifest that names it.
+`extends:` names one or more other manifests, each by its location.
 
 ```yaml
 extends: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
 ```
+
+### Locations
+
+A location says where a manifest file is. The format leaves this open: a location is either
+a string or a mapping, and a tool may accept any form it knows how to read. A tool that meets
+a location it cannot read says so and stops.
+
+These three forms are the ones every tool is expected to read:
+
+- A path on the local disk. A relative path is taken from the directory of the manifest that
+  names it.
+- An `http` or `https` URL of the file.
+- A file in a git repo, given as a mapping with the repo's `url`, a `version` (a branch or
+  tag) and the `path` of the file in the repo. Any URL git can clone works, so a repo on a
+  private server reached over ssh is named this way.
+
+```yaml
+extends:
+  url: git@git.example.org:field/unh_marine_autonomy.git
+  version: jazzy
+  path: project11.manifest.yaml
+```
+
+### How manifests combine
 
 The parents are read first, in the order given, then the manifest itself. Where the same
 name appears more than once, the later one wins:
