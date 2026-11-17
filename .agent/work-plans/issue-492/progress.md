@@ -51,3 +51,37 @@ issue: 492
 **Plan**: `.agent/work-plans/issue-492/plan.md` at `4ea8d481`
 
 Two phrase edits in AGENTS.md (200 lines kept, no reflow needed) in one commit, and one Status note per ADR 0002, 0003, 0011, 0018 in a second; no hook or test pins the changed phrases.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-17 13:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #492 — Follow-up to the folder retirement: say project, not product, in AGENTS.md, and note the retired shapes on four decision records
+**Plan**: `.agent/work-plans/issue-492/plan.md` at `4ea8d481`
+**Branch**: `feature/issue-492`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five files, two commits, six owner-approved texts. |
+| Issue alignment | Good | All six texts match the issue body character for character (two AGENTS.md phrases, four ADR notes). Acceptance checks (`grep -i product` empty, 200 lines, no other files) are in step 3. Serves, as checked: "Trust and information goals ("Trust, control and information"): rules and records that match the current system. Design section: `docs/design.md#documentation-layers`." Both exist (README.md `### Trust, control and information` under Workspace goals; `## Documentation layers` in docs/design.md). The issue review named `docs/design.md#the-design` instead; either fits a text-only change. |
+| File targeting | Good | AGENTS.md lines 10 and 29 are the only `product` hits on this branch (based on main after PR 491). Each ADR has `## Status` at line 3, above the retired text, so "named below" holds. |
+| Consequences | Good | AGENTS.md is 200 lines now; the new line 10 is shorter and lines 11-12 are unchanged, so the budget holds. `check_agents_md_budget.sh`, `check_design_anchors.sh` and `.agent/scripts/tests/test_skill_paths.sh` exist and are named in the verify step. |
+| Principle alignment | Good | Truth of each note against main: ADR-0002 line 26 names `worktrees/project/<repo>/`, and `_worktree_helpers.sh` (lines 47-50) says #265 part 4 retired that fallback; ADR-0003 line 33 names `project/`, and neither `project/` nor `projects/` exists; ADR-0011 lines 16 and 53 name `project/` and `.agent/project_config.sh`, and `_project_registry.sh` (lines 54-56) says that file is no longer read (it is detected only to tell the user to retire it, `registry_stale_config_for`); ADR-0018 lines 261 and 304 carry the "legacy unregistered `project/`" wording, and `session_root.sh` (lines 51, 206) says the `project/` step was retired. Docs-only change, so no test is planned; the plan says no design-picture change. |
+| ADR compliance | Good | ADR-0008 permits a dated note in an Accepted ADR's Status; decision text untouched. AGENTS.md and ADR edits are Ask First / owner decisions, covered by "yes to both" for this exact text. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+None.
+
+### Summary
+
+The plan quotes the approved wording exactly, each note is true of the code on main after PR 491, and the line budget holds. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] None before implementation.
