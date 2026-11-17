@@ -665,6 +665,8 @@ test_install_refuses_when_retired_file_unreadable() {
     rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
     assert_eq "shared file that cannot be sourced, no install key: exit 1" "1" "$rc"
     assert_contains "the NOTE says the file cannot be sourced" ".agent/project_config.sh cannot be sourced, so what is left in it for 'demo' is unknown" "$out"
+    assert_contains "the NOTE heading says what it sets cannot be told (review round 2)" "NOTE: project 'demo': .agent/project_config.sh is no longer read (issue #265 part 4), and what it still sets cannot be told:" "$out"
+    assert_not_contains "never 'and it still sets:' above a cannot-be-told line" "and it still sets:" "$out"
     assert_contains "the refusal says it cannot be told" "ERROR: project 'demo' has no install setting, and whether .agent/project_config.sh holds an install command that is no longer run cannot be told (above)" "$out"
     assert_not_contains "never 'nothing to install'" "nothing to install" "$out"
     assert_not_contains "the retired command does not run" "STUB_settingsinstall_RAN_IN" "$out"

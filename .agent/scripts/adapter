@@ -350,7 +350,11 @@ if [ -n "$ACTIVE_PROJECT_NAME" ] && [ "$_STALE_CHECK" -eq 1 ]; then
         _STALE_LINES="$(registry_stale_settings_lines "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_STALE_FILE")" || _STALE_RC=$?
         _STALE_REL=".agent/${_STALE_FILE#"$WORKSPACE_ROOT/.agent/"}"
         if [ -n "$_STALE_LINES" ]; then
-            echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and it still sets:" >&2
+            if [ "$_STALE_RC" -eq 0 ]; then
+                echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and it still sets:" >&2
+            else
+                echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and what it still sets cannot be told:" >&2
+            fi
             printf '%s\n' "$_STALE_LINES" | sed 's/^/  /' >&2
         elif [[ "$_STALE_FILE" == *.sh ]] && [ "$_STALE_FILE" != "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
             echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4) and holds nothing left to move: delete it" >&2
