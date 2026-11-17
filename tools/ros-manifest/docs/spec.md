@@ -293,6 +293,22 @@ does not need to for the build to be correct: the earlier manifest's repos canno
 repos it does not know about. A later manifest that needs a new repo low in the stack adds
 it to an existing layer.
 
+A repo's `distros:` block is one key, so it is kept or replaced as a whole. A later entry
+that gives a new `version` and no `distros:` changes the default and keeps the earlier
+per-distro entries. To have the new version on every distro, the later entry also gives an
+empty `distros:` block:
+
+```yaml
+extends: released.manifest.yaml
+repositories:
+  autoware_core:
+    version: main
+    distros: {}
+```
+
+An empty block also drops any `absent: true` the earlier entry had under a distro. A later
+entry that changes one distro gives the whole block, with the other distros repeated.
+
 A parent may itself extend other manifests. A chain that comes back to a manifest it has
 already read is an error.
 
