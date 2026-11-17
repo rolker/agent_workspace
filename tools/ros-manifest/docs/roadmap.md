@@ -23,7 +23,8 @@ manifest that extends the published one and adds a layer for their robot.
 | `extends` and the manifest itself can be given as a URL | |
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | |
 | `build` builds the layers in order and writes one setup file | |
-| `status` shows what differs from the manifest, and records exact commits | |
+| `status` shows what differs from the manifest | |
+| `status --exact` records exact commits as a manifest that `init` and `sync` accept | |
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |

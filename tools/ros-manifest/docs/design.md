@@ -265,8 +265,37 @@ manifest: on the expected version, on a different one, with local changes, missi
 as optional, or present but no longer in the manifest. It also says whether each layer has
 been built since its repos last changed.
 
-`status --exact` writes the exact commit of every repo, by calling `vcs export --exact`. This
-is the record of what a machine was running.
+`status --exact` writes a manifest that records the exact commit of every repo. It gets the
+commits by calling `vcs export --exact`, and writes them as a manifest that extends the one
+in use:
+
+```yaml
+extends:
+  url: https://github.com/example/system.git
+  version: jazzy
+  path: system.manifest.yaml
+repositories:
+  unh_marine_autonomy:
+    version: 3f2a9c1e5d0b47a8c6e1f9a2b3c4d5e6f7a8b9c0
+    distros: {}
+  marine_ais:
+    version: 9b04d7aa1c2e3f405162738495a6b7c8d9e0f1a2
+    distros: {}
+```
+
+It is an ordinary manifest, so `init` and `sync` accept it. It keeps the layers, groups and
+roles of the manifest it extends. It serves as a record of what a machine ran, as a way to
+get the same state on another machine, and as a release when it is committed and tagged.
+
+When the manifest in use is a file on the local disk, the path would mean nothing on another
+machine. The written manifest then holds everything, with nothing to extend.
+
+A commit can only be fetched elsewhere if it was pushed. `status --exact` names every repo
+that has uncommitted changes or commits that are not on its remote, and says that the record
+does not cover them.
+
+A machine set up from such a manifest has each repo at a commit with no local branch. See
+"Work done on a field machine".
 
 ## Where repos are fetched from
 

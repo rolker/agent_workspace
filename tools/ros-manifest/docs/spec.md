@@ -363,7 +363,8 @@ document.
 - Package dependencies. They stay in each package's `package.xml` and with `rosdep`.
 - System packages, udev rules and other machine setup.
 - Build arguments. They are given to the build tool.
-- The exact commits a machine has checked out. `vcs export --exact` records those.
+- The exact commits a machine has checked out. A tool can record them as a manifest that
+  extends the one in use and gives each repo a commit as its `version`.
 
 ## Open questions
 
