@@ -591,3 +591,13 @@ Revision 4 closes every first-review finding and is ready to implement. Six boun
 - [ ] AGENTS.md Build & Test: `PROJECT=<name>`, type clause (N5)
 - [ ] "re-check before step 6" (N6)
 - [ ] Ask Q-PRE at the merge checkpoint
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 08:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Asked on 2026-11-17: "Q2 — start implementing the folder retirement? (issue 265 part 4: retire `project/`, `projects/` and the worktree fallback.)" with the note that plan revision 4 was reviewed "ready" with six must-fix points and four suggestions going into the implement handoff, and that the AGENTS.md wording commit, moving three settings on this machine, and the after-merge disk deletions stay held for his word at the merge checkpoint. His answer, verbatim: "q1 yes, q2, yes, q3 3a".
