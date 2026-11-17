@@ -86,9 +86,11 @@ roles:
 | `groups` | no | The names of the groups repos can belong to. |
 | `roles` | no | Named variants, each a list of the groups it switches on. |
 
-A tool refuses a manifest whose `format` is higher than it knows. Everywhere else in a
-manifest, `version` means a branch, a tag or a commit, as in a `.repos` file. It warns about a
+A tool refuses a manifest whose `format` is higher than it knows. It warns about a
 top-level key it does not know and carries on.
+
+Everywhere in a manifest, `version` means a branch, a tag or a commit, as in a `.repos`
+file.
 
 ## Repos
 
