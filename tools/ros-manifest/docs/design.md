@@ -239,9 +239,9 @@ skipped as optional, is skipped.
 ### status
 
 Shows the manifest in use, the role and the distro, and for each repo whether it matches the
-manifest: on the expected version, on a different one, with local changes, missing, skipped as
-optional, or present but no longer in the manifest. It also says whether each layer has been built since
-its repos last changed.
+manifest: on the expected version, on a different one, with local changes, missing, skipped
+as optional, or present but no longer in the manifest. It also says whether each layer has
+been built since its repos last changed.
 
 `status --exact` writes the exact commit of every repo, by calling `vcs export --exact`. This
 is the record of what a machine was running.
@@ -327,6 +327,86 @@ manifest names, and pushed to the private server. The tools have to fit that:
 - A manifest that names exact commits or tags leaves each repo without a local branch. That
   is a good record of what ran, and a poor base for field fixes. A field machine that will be
   worked on is set up from a manifest that names branches.
+
+## Three machines, one manifest
+
+These walk through the settings above for one system. The published manifest lists every
+repo of the system, with a `simulation` and a `ui` group that are off by default, one
+hardware group per platform, and a private repo marked optional.
+
+### A development machine
+
+```
+repos-manifest init https://github.com/example/system.git --manifest-version rolling \
+    --manifest-path system.manifest.yaml --role developer --distro jazzy --distro rolling
+```
+
+Besides the manifest's location, `config.yaml` then holds:
+
+```yaml
+role: developer
+distros: [jazzy, rolling]
+fetch_from:
+  prefix: https://github.com/developer/
+  fallback: true
+remotes:
+  field: git@git.example.org:field/
+```
+
+The developer role switches on `simulation` and `ui`. Each distro has its own directory.
+Repos the developer has forked come from the fork, with the published repo as `upstream`;
+the rest come from the published URL. The private repo is fetched because this developer has
+access to it. Every clone has a `field` remote for deploying to and collecting from field
+machines.
+
+### A field machine
+
+Besides the manifest's location, `config.yaml` holds:
+
+```yaml
+role: robot
+groups: [echoboat-hardware]
+distro: jazzy
+fetch_from:
+  prefix: git@git.example.org:field/
+  fallback: false
+```
+
+The robot role leaves `simulation` and `ui` off, so those layers are empty and are not
+built. The one hardware group brings in the drivers for this platform and no other. Every
+repo, and the manifest itself, comes from the private server. Fixes made on the machine are
+committed on the manifest's branches and pushed to the server, and `sync` keeps them.
+
+Without roles, groups and `fetch_from`, this machine needs its own copy of the manifest:
+the same repos at the same versions with every URL rewritten and half the entries deleted,
+kept in step with the published one by hand.
+
+### A collaborator with their own robot
+
+The collaborator writes a manifest in their own repo:
+
+```yaml
+extends:
+  url: https://github.com/example/system.git
+  version: jazzy
+  path: system.manifest.yaml
+layers: [my_robot]
+groups:
+  my-robot-hardware:
+    default: exclude
+repositories:
+  my_robot_bringup:
+    type: git
+    url: https://github.com/collaborator/my_robot_bringup.git
+    version: jazzy
+    layer: my_robot
+    groups: [my-robot-hardware]
+```
+
+They do not clone the published system first, and they do not fork its manifest. Their
+development machine sets `fetch_from` to their own account with `fallback: true`, so the
+two repos of the published system they have forked to send changes come from their forks.
+Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 
 ## What the tools rely on
 
