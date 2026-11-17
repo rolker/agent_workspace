@@ -328,13 +328,22 @@ fi
 # A .agent/projects.d/<name>.sh, or the shared .agent/project_config.sh
 # for a project without one (the old resolution order, plan review N3),
 # is no longer read. When it still sets something the settings file lacks,
-# every verb says so on stderr, naming each setting and the command that
-# moves it; `install` with no install setting refuses instead of reporting
-# "nothing to install" for a command that used to run (plan review N2),
-# and refuses too when what the file holds cannot be told (it cannot be
-# sourced, or the registry or the settings file has errors): unknown is
-# never read as "nothing".
-if [ -n "$ACTIVE_PROJECT_NAME" ]; then
+# the verbs a person runs (setup, sync, validate, build, test, install) say
+# so on stderr, naming each setting and the command that moves it;
+# `install` with no install setting refuses instead of reporting "nothing
+# to install" for a command that used to run (plan review N2), and refuses
+# too when what the file holds cannot be told (it cannot be sourced, or the
+# registry or the settings file has errors): unknown is never read as
+# "nothing". Telling what the file holds means sourcing (running) it in a
+# subshell, so the machine-read verbs (env, project_root, repos,
+# scope_for_pr, worktree_repos, worktree_env, repo_pin), which scripts call
+# often and which read no command setting, skip the check; make validate
+# and the dashboard still report the file (registry_stale_report).
+case "$VERB" in
+    setup|sync|validate|build|test|install) _STALE_CHECK=1 ;;
+    *) _STALE_CHECK=0 ;;
+esac
+if [ -n "$ACTIVE_PROJECT_NAME" ] && [ "$_STALE_CHECK" -eq 1 ]; then
     _STALE_FILE="$(registry_stale_config_for "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"
     if [ -n "$_STALE_FILE" ]; then
         _STALE_RC=0

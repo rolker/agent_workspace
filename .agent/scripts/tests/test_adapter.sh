@@ -604,6 +604,28 @@ test_retired_settings_note() {
     assert_not_contains "no retired file: no NOTE" "NOTE:" "$out"
 }
 
+test_retired_settings_not_run_for_machine_verbs() {
+    echo "TEST: the machine-read verbs never source a retired file; the verbs a person runs still say what it holds (review suggestion)"
+    local sb out verb marker
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    set_demo_setting "$sb" "test=true"
+    marker="$sb/sourced.log"
+    printf 'echo sourced >> "%s"\nINSTALL_CMD="make install"\n' "$marker" > "$sb/.agent/project_config.sh"
+    for verb in project_root env repos; do
+        rm -f "$marker"
+        out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" "$verb" 2>&1)" || true
+        assert_eq "$verb: the retired file is not run" "no" "$([ -e "$marker" ] && echo yes || echo no)"
+        assert_not_contains "$verb: no NOTE" "NOTE:" "$out"
+    done
+    for verb in build test; do
+        rm -f "$marker"
+        out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" "$verb" 2>&1)" || true
+        assert_contains "$verb: the NOTE names the retired setting" "sets INSTALL_CMD=\"make install\"" "$out"
+    done
+}
+
 test_install_refuses_with_retired_install_command() {
     echo "TEST: install with no install setting refuses while a retired file still sets INSTALL_CMD (plan review N2)"
     local sb out stub rc
@@ -1160,6 +1182,7 @@ test_build_runs_in_project_root
 test_build_exit_code_propagation
 test_build_aborts_on_failing_config
 test_retired_settings_note
+test_retired_settings_not_run_for_machine_verbs
 test_install_refuses_with_retired_install_command
 test_install_refuses_when_retired_file_unreadable
 test_no_new_env_vars_leaked
