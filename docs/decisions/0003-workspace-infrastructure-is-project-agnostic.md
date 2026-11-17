@@ -6,6 +6,8 @@ Superseded by [ADR-0011](0011-project-type-adapter-contract.md), which
 replaces the single-repo assumption with a project-type adapter contract
 while carrying forward the workspace-vs-project separation doctrine.
 
+Note (2026-11-17): the `project/` directory in the reusability test is retired; a project is any registered folder (issue #265 part 4).
+
 ## Context
 
 This workspace was designed to work with any single-repo project, not a specific one.

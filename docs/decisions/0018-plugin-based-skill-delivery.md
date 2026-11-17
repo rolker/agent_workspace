@@ -30,6 +30,8 @@ prefixed skills. ADR-0016 was promoted by #423 (PR 424), and the owner
 promoted this ADR the same day (#425). As with ADR-0016, flipping this line
 was a status-line edit, not a substantive one, and ADR-0008 permits it.
 
+Note (2026-11-17): the 'legacy unregistered `project/`' exception in decision 6 no longer exists; the fallback was removed (issue #265 part 4).
+
 ## Context
 
 ADR-0016 decision 3 shipped workspace skills to project sessions as one
