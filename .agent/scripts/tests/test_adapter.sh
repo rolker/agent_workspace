@@ -1035,10 +1035,18 @@ test_setup_refuses_non_checkout() {
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
     out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "exit 1" "1" "$rc"
-    assert_contains "names the root" "$sb/demo is not a git checkout" "$out"
-    assert_contains "says what to do" "Clone the project there, or fix its line in .agent/projects.local" "$out"
+    assert_contains "names the root" "$sb/demo is not a git checkout; nothing was changed." "$out"
+    assert_contains "says why, true to today's code" "a single_project needs a git repository today (adapter validate checks it). If its line in .agent/projects.local names the wrong folder, fix the line." "$out"
+    assert_not_contains "never tells a registered folder to clone (git is meant to be optional; review suggestion)" "Clone" "$out"
     assert_eq "existing file untouched" "precious" "$(< "$sb/demo/data.txt")"
     assert_eq "no symlink made" "no" "$([ -L "$sb/demo" ] && echo yes || echo no)"
+    rm -r "$sb/demo"
+    rc=0
+    out="$(run_in_root "$sb" "$sb/.agent/project_types/single_project/setup.sh" --project-root "$sb/demo" 2>&1)" || rc=$?
+    assert_eq "a registered root that does not exist: exit 1" "1" "$rc"
+    assert_contains "says it does not exist" "$sb/demo does not exist; nothing was changed." "$out"
+    assert_not_contains "a missing root: no 'Clone' either" "Clone" "$out"
+    assert_eq "nothing created" "no" "$([ -e "$sb/demo" ] && echo yes || echo no)"
 }
 
 test_sync_aborts_failed_rebase() {

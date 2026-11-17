@@ -9,9 +9,12 @@
 # Logic:
 #   1. The root is a git repository → report its URL; on main or master
 #      with a clean tree, pull.
-#   2. Otherwise → refuse, saying to clone the project there or fix the
-#      registry. Nothing is cloned or symlinked: issue #265 part 4 retired
-#      the project/ symlink this script used to create.
+#   2. Otherwise → refuse, saying what is there and that nothing changed.
+#      Nothing is cloned or symlinked: issue #265 part 4 retired the
+#      project/ symlink this script used to create. Git is meant to be
+#      optional for a project (owner, 2026-11-12), but a single_project
+#      still needs one today (adapter validate checks it; docs/design.md
+#      names the gap), so the refusal says that rather than "clone".
 
 set -euo pipefail
 
@@ -45,9 +48,14 @@ is_git_repo() {
     [ -d "$dir" ] && git -C "$dir" rev-parse --git-dir &>/dev/null
 }
 
+if [ ! -d "$PROJECT_DIR" ]; then
+    echo "Error: $PROJECT_DIR does not exist; nothing was changed." >&2
+    echo "Setup does not create a single_project's folder: put the project there, or fix its line in .agent/projects.local." >&2
+    exit 1
+fi
 if ! is_git_repo "$PROJECT_DIR"; then
-    echo "Error: $PROJECT_DIR is not a git checkout." >&2
-    echo "Clone the project there, or fix its line in .agent/projects.local." >&2
+    echo "Error: $PROJECT_DIR is not a git checkout; nothing was changed." >&2
+    echo "Setup brings a single_project up to date with git (a pull on main or master), and a single_project needs a git repository today (adapter validate checks it). If its line in .agent/projects.local names the wrong folder, fix the line." >&2
     exit 1
 fi
 
