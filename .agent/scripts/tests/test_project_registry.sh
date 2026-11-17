@@ -1832,6 +1832,22 @@ test_worktree_remove_unresolvable_owner_removes_nothing() {
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
     assert_eq "after the advised deletion: exit 0 (out: ${out:0:200})" "0" "$rc"
     assert_eq "after the advised deletion: the first entry is no longer a worktree" "no" "$(git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
+
+    # A single-repository worktree whose one entry is the worktree itself:
+    # deleting it leaves nothing for a rerun to find, so the advice is
+    # git worktree prune in the repository it was made from (review round 3).
+    local swt="$sb/projects/agg/worktrees/issue-agg-78"
+    git -C "$origin_a" worktree add -q "$swt" -b feature/issue-78 >/dev/null 2>&1
+    printf '# project=agg issue=78\n%s\t.\tfeature/issue-78\n' "$origin_a" > "$swt/.worktree-repos"
+    rm -f "$swt/.git"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 78 --type project --project agg --force 2>&1)" || rc=$?
+    assert_eq "single-repository worktree, not a checkout: exit 1" "1" "$rc"
+    assert_contains "single entry: advises git worktree prune in its repository" "delete it by hand (rm -r $swt), then drop git's record of the worktree in the repository it was made from: git -C $origin_a worktree prune." "$out"
+    assert_not_contains "single entry: never 'run this command again'" "run this command again" "$out"
+    rm -r "$swt"
+    git -C "$origin_a" worktree prune
+    assert_eq "following the advice: git no longer lists the worktree" "no" "$(git -C "$origin_a" worktree list | grep -qF "$swt" && echo yes || echo no)"
 }
 
 test_wt_ensure_exclusion_noop_for_unregistered() {

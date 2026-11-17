@@ -369,6 +369,7 @@ fi
 # call the adapter, never check the project type.
 MANIFEST_ENTRIES="$(wt_read_manifest "$WORKTREE_DIR")"
 declare -a ENTRY_DESTS=()
+declare -a ENTRY_ORIGINS=()
 while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
     [ -z "$_m_rel" ] && continue
     if [ "$_m_rel" = "." ]; then
@@ -376,6 +377,7 @@ while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
     else
         ENTRY_DESTS+=("$WORKTREE_DIR/$_m_rel")
     fi
+    ENTRY_ORIGINS+=("$_m_origin")
 done <<< "$MANIFEST_ENTRIES"
 
 # --- Resolve every entry's owning repository before removing any ---
@@ -386,7 +388,8 @@ done <<< "$MANIFEST_ENTRIES"
 # aggregate worktree is never half removed. ENTRY_OWNERS stays index-aligned
 # with ENTRY_DESTS; an entry already gone has an empty owner.
 declare -a ENTRY_OWNERS=()
-for _dest in "${ENTRY_DESTS[@]}"; do
+for _i in "${!ENTRY_DESTS[@]}"; do
+    _dest="${ENTRY_DESTS[$_i]}"
     if [ ! -d "$_dest" ]; then
         ENTRY_OWNERS+=("")
         continue
@@ -401,7 +404,20 @@ for _dest in "${ENTRY_DESTS[@]}"; do
     fi
     if [ -z "$_common_dir" ]; then
         echo "Error: cannot resolve the repository that owns ${_dest}; nothing was removed."
-        echo "It is not a git checkout's own top folder, so this script cannot tell what removing it would lose. Inspect it first: if it, or a folder in it, is a git repository of its own, check git status there for uncommitted work and git log --branches --not --remotes for commits that are on no remote, and keep or push what you need. Only when nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
+        echo "It is not a git checkout's own top folder, so this script cannot tell what removing it would lose. Inspect it first: if it, or a folder in it, is a git repository of its own, check git status there for uncommitted work and git log --branches --not --remotes for commits that are on no remote, and keep or push what you need."
+        if [ "$_dest" = "$WORKTREE_DIR" ]; then
+            # The worktree is this one entry: once it is gone there is
+            # nothing left for this command to find, so git's record of it
+            # is dropped by hand.
+            _origin="${ENTRY_ORIGINS[$_i]:-}"
+            if [ -n "$_origin" ] && [ "$_origin" != "$WORKTREE_DIR" ]; then
+                echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then drop git's record of the worktree in the repository it was made from: git -C $_origin worktree prune."
+            else
+                echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then drop git's record of the worktree in the repository it was made from: git -C <that repository> worktree prune."
+            fi
+        else
+            echo "Only when nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
+        fi
         exit 1
     fi
     ENTRY_OWNERS+=("$(dirname "$_common_dir")")
