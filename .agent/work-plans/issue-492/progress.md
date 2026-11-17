@@ -154,3 +154,13 @@ None.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 14:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Asked on 2026-11-17 with CI green and the pull request mergeable: "Q1 — merge pull request 493? My recommendation is yes. Merging closes issue 492; undo is a revert commit." His answer, verbatim: "merge".
