@@ -67,14 +67,11 @@ repositories:
       rolling:
         absent: true
 
-groups:
-  simulation:
-    default: exclude
+groups: [simulation]
 
 roles:
-  robot: {}
-  developer:
-    add: [simulation]
+  robot: []
+  developer: [simulation]
 ```
 
 ## Top-level keys
@@ -86,8 +83,8 @@ roles:
 | `extends` | no | One or more other manifests this one builds on. |
 | `distros` | no | The distros this manifest covers. |
 | `layers` | no | The ordered list of layers. |
-| `groups` | no | The groups repos can belong to, and whether each is on by default. |
-| `roles` | no | Named variants, each a choice of groups. |
+| `groups` | no | The names of the groups repos can belong to. |
+| `roles` | no | Named variants, each a list of the groups it switches on. |
 
 A tool refuses a manifest whose `version` is higher than it knows. It warns about a
 top-level key it does not know and carries on.
@@ -234,46 +231,33 @@ under the existing repos, each of them is given a layer.
 
 ## Groups and roles
 
-A group is a named set of repos that can be switched on and off together. The top-level
-`groups:` section names each group and gives its default, `include` or `exclude`. A repo
-lists the groups it belongs to under its own `groups:` key, and each must be named in the
-top-level section. A repo may be in several groups. A repo in no group is always part of the
-system.
+A group is a named set of repos that is switched on or off together. Every group is off
+unless something switches it on. A repo in no group is always part of the system, so a
+group is only needed for repos that some machines should not have.
 
-A role is a named variant. It starts from the group defaults and changes them:
+The top-level `groups:` list names the groups. A repo lists the groups it belongs to under
+its own `groups:` key, and each must be in the top-level list, so that a misspelt name is
+caught. A repo may be in several groups, and is part of the system if any of them is on.
 
-- `add:` lists groups to switch on.
-- `subtract:` lists groups to switch off.
+A role is a named variant: a list of the groups it switches on.
 
-A repo that is in several groups is part of the system if any of its groups is switched on.
+```yaml
+groups: [simulation, ui, ben-hardware, echoboat-hardware]
 
-If `roles:` is absent, the manifest has one unnamed role in which every group has its
-default, and no role is given when resolving.
+roles:
+  robot: []
+  developer: [simulation, ui]
+```
 
 Resolving can also be given extra groups to switch on, on top of what the role selects. This
 keeps roles about how a machine is used and leaves things like its hardware to groups. A
-robot role on two hardware platforms is one role and two groups, not two roles.
+robot role on two hardware platforms is one role and two groups, not two roles. A machine
+resolves the manifest above for the role `robot` with the extra group `ben-hardware`.
 
-```yaml
-groups:
-  simulation:
-    default: exclude
-  ben-hardware:
-    default: exclude
-  echoboat-hardware:
-    default: exclude
+If `roles:` is absent, the manifest has one unnamed role that switches on no group, and no
+role is given when resolving. If `roles:` is present, a role is given when resolving.
 
-roles:
-  robot: {}
-  developer:
-    add: [simulation]
-```
-
-A machine resolves this for the role `robot` with the extra group `ben-hardware`.
-
-Open: roles have not had a real design pass. The example above is the smallest thing that
-separates a robot from a development machine. Whether a role should also be able to name
-single repos, or pick layers, is undecided.
+Open: whether a role should also be able to name single repos, or pick layers.
 
 ## Extends
 
@@ -315,7 +299,8 @@ name appears more than once, the later one wins:
   entry gives replaces the earlier value of that key as a whole; a key it does not give keeps
   the earlier value. An entry that gives only `url` changes where the repo is fetched from
   and nothing else.
-- A group or a role replaces the earlier one of the same name as a whole.
+- A role replaces the earlier one of the same name.
+- `groups:` adds to the earlier list.
 - `layers:` adds to the earlier list. A layer already in the list keeps its place, and new
   layers go on the end in the order given.
 - `distros:`, when present, replaces the earlier list.
