@@ -41,6 +41,10 @@ and `log/` directly in the system directory, with `.repos-manifest/` beside them
 small project the tools then do little more than `vcs` and `colcon` do, and the project can
 add layers later.
 
+A repo is cloned at the path its key in the manifest gives, under `src/`. A key may contain
+directories, so a repo can be several levels down. The tools find repos from the resolved
+files, not by looking through `src/`.
+
 The commands find the system directory by walking up from the current directory until they
 find `.repos-manifest/`, so they can be run from anywhere inside it.
 

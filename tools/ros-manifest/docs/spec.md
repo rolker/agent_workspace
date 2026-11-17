@@ -91,9 +91,26 @@ top-level key it does not know and carries on.
 
 ## Repos
 
-Each entry under `repositories:` is a repo. The key is the directory the repo is fetched
-into, as in a `.repos` file. It is usually just the repo's name, and it is unique in the
-manifest.
+Each entry under `repositories:` is a repo. The key is the path the repo is fetched into, as
+in a `.repos` file, and it is unique in the manifest. It may be the repo's name or a path
+with directories in it:
+
+```yaml
+repositories:
+  marine_ais:
+    type: git
+    url: https://github.com/CCOMJHC/marine_ais.git
+  drivers/sonar/imagenex_deltat:
+    type: git
+    url: https://github.com/CCOMJHC/imagenex_deltat.git
+```
+
+Two things follow from the key being a path:
+
+- With layers, the path is inside the repo's layer. A key that starts with the name of its
+  own layer repeats that name on disk.
+- `extends` matches repos by their whole key. A later manifest that changes a repo uses the
+  key the earlier manifest gave it.
 
 | Key | Required | Meaning |
 |---|---|---|
