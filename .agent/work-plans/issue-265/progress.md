@@ -835,3 +835,13 @@ Specialists: governance, plan drift, a fresh Claude adversarial sub-review (test
 - [ ] (suggestion) The case-table header claims id-labelled tests for every row (false for 11 rows; C7 has no id-labelled assertion); P3, P4, P8 and P11 are tested for `project` only; W2 says depth 1 to 5 while depth 6 is reported — `.agent/scripts/tests/test_validate_workspace_stale.sh:13-66`
 - [ ] (suggestion) validate and the dashboard still execute retired config files, orphan `.sh` files included, to read them. Consider reading the assignments without executing (Codex, repeated from round 1) — `.agent/scripts/_project_registry.sh:1406`
 - [ ] (suggestion) discover_governance prints absolute paths for in-tree roots when run from a linked worktree, against its comment (Gemini); gather-project-knowledge does not say that exit 1 means an incomplete inventory — `.agent/scripts/discover_governance.sh:130-140`, `.claude/skills/gather-project-knowledge/SKILL.md:40`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 11:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Asked on 2026-11-17 after round 3 of the pre-push review (4 must-fix, 7 suggestions): "Q1 — what next? R1 (my recommendation): one more fix pass, then a narrow check. It fixes F1 to F4 and every suggestion except the 'retired config files are executed' one. That one I would note on the parent issue (295, the registry-only work) for its next pull request, because it means writing a parser, not a one-line fix. R2: publish as is. R3: stop here." His answer, verbatim: "Q1 - R1".
