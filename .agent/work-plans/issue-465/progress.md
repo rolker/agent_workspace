@@ -432,3 +432,13 @@ The previous finding is closed: "reached only after a pass that passed, or on th
 
 ### Findings
 - [ ] (suggestion) Step 7's opening paragraph states the host-answers rule with no second-failure exception, and two of its statements are false on that path: "so only a branch that passed reaches the dialog" (a second failure in a row is shown in the dialog, failure quoted, per "It fails again") and "A failure there is recorded as the host's `address` instead" at `rounds` (a second failure there is the owner's answer). The "(below)" and "as below" pointers lead to the exception but do not make either clause true; say "a second failure in a row excepted" or similar, and update the pin at test_skill_paths.sh:746 if its text changes — `.claude/skills/run-issue/SKILL.md:752-759`
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-11-17 08:18 -05:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #490 at `895e46a`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review at the head has **Verdict**: changes-requested, not approved
