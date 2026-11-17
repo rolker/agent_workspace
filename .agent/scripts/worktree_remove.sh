@@ -401,7 +401,7 @@ for _dest in "${ENTRY_DESTS[@]}"; do
     fi
     if [ -z "$_common_dir" ]; then
         echo "Error: cannot resolve the repository that owns ${_dest}; nothing was removed."
-        echo "It is not a git worktree. Inspect it, then remove the worktree by hand or with --path."
+        echo "It is not a git checkout's own top folder. Inspect it; if nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
         exit 1
     fi
     ENTRY_OWNERS+=("$(dirname "$_common_dir")")

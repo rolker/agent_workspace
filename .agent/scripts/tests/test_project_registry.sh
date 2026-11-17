@@ -1774,6 +1774,14 @@ test_worktree_remove_unresolvable_owner_removes_nothing() {
     assert_contains "names the entry whose owner is unknown" "cannot resolve the repository that owns $wt/l1_ws/src/pkg_b; nothing was removed" "$out"
     assert_eq "the first entry is still a worktree" "yes" "$([ -d "$wt/l1_ws/src/pkg_a" ] && git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
     assert_eq "the aggregate dir is kept" "yes" "$([ -f "$wt/.worktree-repos" ] && echo yes || echo no)"
+    assert_not_contains "never advises --path, which refuses the same entry (review suggestion)" "--path" "$out"
+    assert_contains "advises deleting the entry by hand, then running again" "delete it by hand (rm -r $wt/l1_ws/src/pkg_b), then run this command again" "$out"
+    # Following the advice works: the entry gone, the removal goes through.
+    rm -r "$wt/l1_ws/src/pkg_b"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue owner/pkg_a#77 --type project --project agg --force 2>&1)" || rc=$?
+    assert_eq "after the advised deletion: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_eq "after the advised deletion: the first entry is no longer a worktree" "no" "$(git -C "$origin_a" worktree list | grep -qF "$wt/l1_ws/src/pkg_a" && echo yes || echo no)"
 }
 
 test_wt_ensure_exclusion_noop_for_unregistered() {
