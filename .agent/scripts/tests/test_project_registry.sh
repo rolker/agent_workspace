@@ -1744,6 +1744,18 @@ test_retired_worktree_locations_not_found() {
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
     assert_eq "not listed" "0" "$(grep -c '^\[project\]' <<< "$out")"
     assert_not_contains "no retired location in the listing" "worktrees/project" "$out"
+    # A workspace worktree git still has under .workspace-worktrees/: shown
+    # as retired, never as main, and counted nowhere (review round 2).
+    git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m seed >/dev/null 2>&1 || true
+    git -C "$sb" worktree add -q "$sb/.workspace-worktrees/issue-workspace-43" -b feature/issue-43 >/dev/null 2>&1
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
+    assert_contains ".workspace-worktrees/ worktree: shown as retired" "[retired] .workspace-worktrees/ is no longer used" "$out"
+    assert_eq ".workspace-worktrees/ worktree: one [main] entry only (the main checkout)" "1" "$(grep -c '^\[main\]' <<< "$out")"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq ".workspace-worktrees/ worktree: JSON type retired" "retired" \
+        "$(jq -r --arg p "$sb/.workspace-worktrees/issue-workspace-43" '.worktrees[] | select(.path == $p) | .type' <<< "$out")"
+    assert_eq ".workspace-worktrees/ worktree: counted in no total" "0" "$(jq -r '.summary.total' <<< "$out")"
+    git -C "$sb" worktree remove --force "$sb/.workspace-worktrees/issue-workspace-43" >/dev/null 2>&1
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" bash -c 'source "$1/.agent/scripts/worktree_enter.sh" --issue 42 --type project --project later' _ "$sb" 2>&1)" || rc=$?
     assert_eq "enter --project later: not found (non-zero)" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"

@@ -105,10 +105,15 @@ worktree's own colcon workspace(s).
 
 **Retired locations.** Issue #265 part 4 retired the transition fallback
 `worktrees/project/<name>/` and the pre-#25 `.workspace-worktrees/` and
-`project/worktrees/` shapes: no script finds, lists or counts a worktree
-there any more; `make validate` and `make dashboard` warn while one of those
-directories still holds something. Remove such a worktree with `git -C <its
-repository> worktree remove <path>` and recreate it under the project's root.
+`project/worktrees/` shapes: no script finds, enters, removes or counts a
+worktree there any more. `worktree_list.sh` still shows a workspace worktree
+git has under `.workspace-worktrees/`, as `[retired]` (never `main`), and
+counts it in no total. `make validate` and `make dashboard` warn while
+`worktrees/project/` or `.workspace-worktrees/` holds a checkout, and while
+`project` itself is not registered (which covers `project/worktrees/`; a
+registered `project` root's `worktrees/` is its own worktree dir). Remove
+such a worktree with `git -C <its repository> worktree remove <path>` and
+recreate it under the project's root.
 
 ## Worktree Types
 

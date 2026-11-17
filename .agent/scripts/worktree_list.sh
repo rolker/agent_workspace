@@ -175,6 +175,11 @@ print_worktree() {
         repo="$WT_REPO"
         skill="$WT_SKILL"
         ((WORKSPACE_COUNT++)) || true
+    elif [[ "$path" == *"/.workspace-worktrees/"* ]]; then
+        # A workspace worktree in the retired pre-#25 location (issue #265
+        # part 4): git still has it, so it is shown, as `retired` (never
+        # `main`), and counted in no total. make validate names the location.
+        type="retired"
     fi
 
     # Check if clean or dirty and count changed files
@@ -190,8 +195,9 @@ print_worktree() {
         fi
     fi
 
-    # Track dirty count (exclude main — summary.total excludes main too)
-    if [ "$status" = "dirty" ] && [ "$type" != "main" ]; then
+    # Track dirty count (exclude main and retired — summary.total excludes
+    # them too)
+    if [ "$status" = "dirty" ] && [ "$type" != "main" ] && [ "$type" != "retired" ]; then
         ((DIRTY_COUNT++)) || true
     fi
 
@@ -201,7 +207,12 @@ print_worktree() {
 
     # Format text output
     if [ "$JSON_OUTPUT" = false ]; then
-        if [ "$type" == "main" ]; then
+        if [ "$type" == "retired" ]; then
+            echo "[retired] .workspace-worktrees/ is no longer used: remove it with git worktree remove, then recreate it with worktree_create.sh"
+            echo "   Path:   $path"
+            echo "   Branch: $display_branch"
+            echo "   Status: $status"
+        elif [ "$type" == "main" ]; then
             echo "[main] Main Workspace"
             echo "   Path:   $path"
             echo "   Branch: $display_branch"
