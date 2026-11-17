@@ -575,6 +575,63 @@ test_build_aborts_on_failing_config() {
     assert_not_contains "the shared config was not sourced" "SHARED_CONFIG_SOURCED" "$out"
 }
 
+test_retired_settings_note() {
+    echo "TEST: a retired <name>.sh or shared project_config.sh that still sets something prints a NOTE naming each setting (issue #265 part 4)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsbuild)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=$stub"
+    printf 'BUILD_CMD="make"\nTEST_CMD="make test"\n' > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    assert_eq "shared: the build still runs (exit 0)" "0" "$rc"
+    assert_contains "shared: the NOTE names the file" "NOTE: project 'demo': .agent/project_config.sh is no longer read (issue #265 part 4), and it still sets:" "$out"
+    assert_contains "shared: the missing key with its command" "sets TEST_CMD=\"make test\", which .agent/projects.d/demo lacks and nothing reads any more: .agent/scripts/project_setting.sh set demo test=<command> (or test=none)" "$out"
+    assert_not_contains "shared: a key the settings file has is not named" "sets BUILD_CMD" "$out"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>/dev/null)" || true
+    assert_not_contains "the NOTE is on stderr only" "NOTE:" "$out"
+
+    printf 'BUILD_CMD="make"\n' > "$sb/.agent/projects.d/demo.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_contains "a <name>.sh with nothing left: the NOTE says delete it" "NOTE: project 'demo': .agent/projects.d/demo.sh is no longer read (issue #265 part 4) and holds nothing left to move: delete it" "$out"
+    assert_not_contains "a <name>.sh replaces the shared file for its project (N3)" "project_config.sh" "$out"
+    printf 'INSTALL_CMD="make install"\n' >> "$sb/.agent/projects.d/demo.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_contains "a <name>.sh with a missing key: named" ".agent/projects.d/demo.sh sets INSTALL_CMD=\"make install\", which .agent/projects.d/demo lacks" "$out"
+
+    rm -f "$sb/.agent/projects.d/demo.sh" "$sb/.agent/project_config.sh"
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || true
+    assert_not_contains "no retired file: no NOTE" "NOTE:" "$out"
+}
+
+test_install_refuses_with_retired_install_command() {
+    echo "TEST: install with no install setting refuses while a retired file still sets INSTALL_CMD (plan review N2)"
+    local sb out stub rc
+    sb="$(make_sandbox)"
+    stub="$(make_stub "$sb" settingsinstall)"
+    make_git_repo "$sb/demo" "git@github.com:owner/repo.git"
+    set_demo_setting "$sb" "build=true"
+    printf 'INSTALL_CMD="%s"\n' "$stub" > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "shared INSTALL_CMD, no install key: exit 1" "1" "$rc"
+    assert_contains "says so and names the command" "ERROR: project 'demo' has no install setting, and the install command in .agent/project_config.sh is no longer run: set it with .agent/scripts/project_setting.sh set demo install=<command> (or install=none)" "$out"
+    assert_not_contains "never 'nothing to install'" "nothing to install" "$out"
+    assert_not_contains "the retired command does not run" "STUB_settingsinstall_RAN_IN" "$out"
+    rm -f "$sb/.agent/project_config.sh"
+    printf 'INSTALL_CMD="%s"\n' "$stub" > "$sb/.agent/projects.d/demo.sh"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "legacy .sh INSTALL_CMD: exit 1 too" "1" "$rc"
+    assert_contains "names the .sh" "the install command in .agent/projects.d/demo.sh is no longer run" "$out"
+    set_demo_setting "$sb" "install=$stub"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "with install set: exit 0" "0" "$rc"
+    assert_contains "with install set: the settings command runs" "STUB_settingsinstall_RAN_IN" "$out"
+    set_demo_setting "$sb" "test=true"
+    printf 'build=true\ninstall=none\n' > "$sb/.agent/projects.d/demo"
+    rc=0; out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install 2>&1)" || rc=$?
+    assert_eq "install=none: exit 0" "0" "$rc"
+}
+
 test_project_type_env_not_inherited() {
     echo "TEST: exported PROJECT_TYPE in the environment is ignored (the registry names the type)"
     local sb out
@@ -1078,6 +1135,8 @@ test_build_requires_build_cmd
 test_build_runs_in_project_root
 test_build_exit_code_propagation
 test_build_aborts_on_failing_config
+test_retired_settings_note
+test_install_refuses_with_retired_install_command
 test_no_new_env_vars_leaked
 test_test_runs_in_project_root
 test_install_noop_when_unset

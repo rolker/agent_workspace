@@ -1525,6 +1525,21 @@ test_dashboard_no_project_pointer() {
     assert_contains "malformed registry: status says so" "- **Status**: ⚠️ projects.local has malformed entries" "$out"
 }
 
+test_dashboard_retired_shapes() {
+    echo "TEST: the dashboard shows the retired-shape report as warnings; a <name>.sh is not taken for a settings file (issue #265 part 4)"
+    local sb out rc
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    mkdir -p "$sb/projects/orphan" "$sb/.agent/projects.d"
+    printf 'build=make\ntest=make test\n' | write_pfile "$sb" alpha
+    printf 'INSTALL_CMD="make install"\n' > "$sb/.agent/projects.d/alpha.sh"
+    rc=0; out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "the unowned projects/ directory" "retired shape: projects/orphan is not registered" "$out"
+    assert_contains "the per-key line for the .sh" "retired shape: .agent/projects.d/alpha.sh sets INSTALL_CMD=\"make install\", which .agent/projects.d/alpha lacks" "$out"
+    assert_not_contains "the .sh is not an orphan settings file" "settings file .agent/projects.d/alpha.sh belongs to no registered project" "$out"
+}
+
 test_type_unused_settings_refused() {
     echo "TEST: a key the project's type never reads is refused by set, fails check and stops the adapter; ros2_colcon reads install"
     local sb rc_dir f out rc stub real
@@ -1940,6 +1955,7 @@ test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
 test_dashboard_no_project_pointer
+test_dashboard_retired_shapes
 test_parent_root_settings_file_is_flagged
 test_type_unused_settings_refused
 test_unused_settings_list_unreadable_or_crlf

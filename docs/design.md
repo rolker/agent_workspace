@@ -312,6 +312,16 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 85). A `project/` checkout or symlink in the
   workspace is read by no script, and nor are `worktrees/project/<name>/`, `.workspace-worktrees/` and
   `project/worktrees/`.
+- Retirement is not silent: `registry_stale_report` (`_project_registry.sh`) names each retired shape
+  still on disk in the main checkout, with what to do: a `project` link or directory, worktrees under
+  the retired locations, a directory under `projects/` that no registry entry owns (a root registered
+  there is silent, ADR-0016 decision 1), a `projects.d/<name>.sh` and the shared
+  `.agent/project_config.sh`, per setting the project's settings file lacks, under the old order (the
+  shared file only for a project with no `.sh` of its own). `make validate` prints it after its results
+  and `make dashboard` as warnings; neither changes an exit status. The adapter prints the active
+  project's lines as a NOTE on stderr, and `install` with no install setting refuses while a retired
+  file still sets `INSTALL_CMD` (`test_validate_workspace_stale.sh`, `test_adapter.sh`). The
+  `.gitignore` keeps ignoring the retired paths, so a machine that keeps them stays clean.
 
 **Target (decided, not built)**
 

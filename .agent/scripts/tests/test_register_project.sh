@@ -613,7 +613,8 @@ out="$(reg "$WS" nu)"; rc=$?
 check "registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
 check "the settings file holds the detected commands, not the legacy ones" [ "$(cat "$(pfile "$WS" nu)")" = $'build=make\ntest=make test' ]
 check "nothing is said to be copied from the legacy file" bash -c '[[ "$1" != *"copied from"* && "$1" != *"is not copied"* ]]' _ "$out"
-check "no environment warning about the legacy file" bash -c '[[ "$1" != *"sets or exports"* ]]' _ "$out"
+check "the adapter's NOTE names what is left in the legacy file (its exports), not a copy" \
+    has "$out" ".agent/projects.d/nu.sh sets or exports PATH, SDK_ROOT, which no command gets any more"
 check "the legacy file is left alone" [ -f "$WS/.agent/projects.d/nu.sh" ]
 
 echo "TEST: adoption refuses to rewrite a registered line"

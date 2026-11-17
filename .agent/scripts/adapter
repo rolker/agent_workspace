@@ -324,6 +324,31 @@ if [ -n "$ACTIVE_PROJECT_NAME" ]; then
     ACTIVE_PROJECT_SOURCE_PATH="$(_project_file_value_of "$_PF_ENTRIES" source_path || true)"
 fi
 
+# --- Retired settings files are not silent (issue #265 part 4) ---
+# A .agent/projects.d/<name>.sh, or the shared .agent/project_config.sh
+# for a project without one (the old resolution order, plan review N3),
+# is no longer read. When it still sets something the settings file lacks,
+# every verb says so on stderr, naming each setting and the command that
+# moves it; `install` with no install setting refuses instead of reporting
+# "nothing to install" for a command that used to run (plan review N2).
+if [ -n "$ACTIVE_PROJECT_NAME" ]; then
+    _STALE_FILE="$(registry_stale_config_for "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"
+    if [ -n "$_STALE_FILE" ]; then
+        _STALE_LINES="$(registry_stale_settings_lines "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_STALE_FILE")" || true
+        _STALE_REL=".agent/${_STALE_FILE#"$WORKSPACE_ROOT/.agent/"}"
+        if [ -n "$_STALE_LINES" ]; then
+            echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4), and it still sets:" >&2
+            printf '%s\n' "$_STALE_LINES" | sed 's/^/  /' >&2
+        elif [[ "$_STALE_FILE" == *.sh ]] && [ "$_STALE_FILE" != "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
+            echo "NOTE: project '$ACTIVE_PROJECT_NAME': $_STALE_REL is no longer read (issue #265 part 4) and holds nothing left to move: delete it" >&2
+        fi
+        if [ "$VERB" = install ] && [ -z "$ACTIVE_PROJECT_INSTALL" ] && grep -q " sets INSTALL_CMD=" <<< "$_STALE_LINES"; then
+            echo "ERROR: project '$ACTIVE_PROJECT_NAME' has no install setting, and the install command in $_STALE_REL is no longer run: set it with .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME install=<command> (or install=none), then run install again" >&2
+            exit 1
+        fi
+    fi
+fi
+
 # Run a command value from the project file: split on blanks into argv and
 # exec it without a shell and without globbing (the parser has already
 # refused quotes and shell operators). Extra arguments are appended. The

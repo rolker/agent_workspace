@@ -3952,7 +3952,8 @@ test_mr_one_source_only() {
     echo 'MANIFEST_BOOTSTRAP_URL="https://example.invalid/legacy.yaml"' >> "$sb/.agent/projects.d/p11.sh"
     rc=0; out="$(run_mr "$sb" setup 2>&1)" || rc=$?
     assert_eq "retired MANIFEST_BOOTSTRAP_URL: not a second source, exit 0" "0" "$rc"
-    assert_not_contains "retired MANIFEST_BOOTSTRAP_URL: not named" "legacy.yaml" "$out"
+    assert_not_contains "retired MANIFEST_BOOTSTRAP_URL: not a second source" "a project has one source only" "$out"
+    assert_contains "retired MANIFEST_BOOTSTRAP_URL: named in the NOTE as left to move" "NOTE: project 'p11': .agent/projects.d/p11.sh is no longer read" "$out"
     mr_sed '/MANIFEST_BOOTSTRAP_URL/d' "$sb/.agent/projects.d/p11.sh"
 
     # A good setup first, so validate reaches the single-source check.

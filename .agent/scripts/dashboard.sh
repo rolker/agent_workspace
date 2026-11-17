@@ -215,6 +215,11 @@ if [ "$REGISTRY_OK" -eq 1 ]; then
         fi
     done
 fi
+# Retired shapes still on disk (issue #265 part 4): the same report make
+# validate prints, read from the main checkout, as warnings.
+while IFS= read -r _stale; do
+    [ -n "$_stale" ] && check_warn "retired shape: $_stale"
+done < <(registry_stale_report "$(registry_main_checkout "$ROOT_DIR")")
 
 # Configuration validation
 if [ -f "$SCRIPT_DIR/validate_workspace.py" ]; then

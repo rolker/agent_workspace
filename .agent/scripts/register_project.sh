@@ -521,7 +521,7 @@ if [ "$MODE" = "remove" ]; then
             fi
         fi
     fi
-    [ -f "$PROJECTS_D/$NAME.sh" ] && echo "note: the legacy $PROJECTS_D/$NAME.sh is left in place; remove it by hand when it is no longer wanted"
+    [ -f "$PROJECTS_D/$NAME.sh" ] && echo "NOTE: $PROJECTS_D/$NAME.sh is no longer read (issue #265 part 4) and is left in place: delete it"
     echo "left alone: the project at $PROJECT_ROOT, its records (in the project, or where its settings put them) and its memory"
     final "$_remove_status" "$_remove_next" "$_remove_rc"
 fi

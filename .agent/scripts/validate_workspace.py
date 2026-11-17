@@ -136,6 +136,41 @@ def delegate_shape_check(workspace_root, name):
     return [f"project '{name}': {line}" for line in lines]
 
 
+def stale_shape_warnings(main_root):
+    """
+    The retired shapes still on disk in the main checkout <main_root>
+    (issue #265 part 4): a project/ link or directory, worktrees under the
+    retired locations, an unregistered directory under projects/, a
+    projects.d/<name>.sh, the shared .agent/project_config.sh, each with what
+    to do. One rule, in _project_registry.sh (registry_stale_report), which
+    the dashboard and the adapter use too. Warnings only: never a failure.
+    """
+    helper = SCRIPT_DIR / "_project_registry.sh"
+    try:
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1" && registry_stale_report "$2"',
+                "_",
+                str(helper),
+                str(main_root),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return [f"the retired-shape check could not run: {exc}"]
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip().splitlines()
+        return [
+            "the retired-shape check failed"
+            + (f": {detail[-1]}" if detail else f" (exit {result.returncode})")
+        ]
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
 def validate_workspace(verbose=False):
     """Validate workspace configuration. Returns True if valid."""
     workspace_root = Path(get_workspace_root())
@@ -290,16 +325,24 @@ def validate_workspace(verbose=False):
     print("Workspace Validation Results")
     print("=" * 60)
 
+    valid = not issues
     if issues:
         print("❌ Workspace validation FAILED")
         for msg in issues:
             print(f"   {msg}")
-        print("=" * 60)
-        return False
-
-    print("✅ Workspace validation PASSED!")
+    else:
+        print("✅ Workspace validation PASSED!")
     print("=" * 60)
-    return True
+
+    # Retired shapes (issue #265 part 4): reported after the results, as
+    # warnings that never change the exit status.
+    warnings = stale_shape_warnings(get_main_checkout_root())
+    if warnings:
+        print("⚠️  Retired shapes still on disk (nothing reads them any more; warnings only):")
+        for msg in warnings:
+            print(f"   ⚠️  {msg}")
+        print("=" * 60)
+    return valid
 
 
 def main():
