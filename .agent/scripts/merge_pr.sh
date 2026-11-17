@@ -316,7 +316,8 @@ PJ_REPO_ROOT=""
 # project — same precedence worktree_create.sh applies (issue #265 part 4
 # retired the project/ symlink step). Silent when nothing resolves and
 # --type project was not given: the PR is then looked up in the workspace
-# alone; --repo/a qualified --pr skips this whole block, same as before.
+# alone; a malformed registry stops the script whatever --type is;
+# --repo/a qualified --pr skips this whole block, same as before.
 # PJ_REPO_ROOT is the one project root every later lookup uses (#379): the
 # Step 1 roadmap worktree lookup, the review gate's timeline lookup, the
 # main-tree guards in front of the gate's ancestry check and its Step 1.5
@@ -325,15 +326,18 @@ PJ_REPO_ROOT=""
 # auto-detected project PR needs PJ_REMOTE, read from it.
 if [[ -z "$REPO_ARG" ]]; then
     _pj_root_err="$(mktemp)"
-    if PJ_REPO_ROOT="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_ARG" 2>"$_pj_root_err")"; then
-        :
-    else
+    _pj_root_rc=0
+    PJ_REPO_ROOT="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_ARG" 2>"$_pj_root_err")" || _pj_root_rc=$?
+    if [[ $_pj_root_rc -ne 0 ]]; then
         PJ_REPO_ROOT=""
-        if [[ "$WORKTREE_TYPE" == "project" ]]; then
-            # --type project was explicit, so a project root is required:
-            # fail fast with the reason (ambiguous registration, no
-            # --project given, or nothing registered at all) instead of
-            # running on with no project checkout.
+        if [[ $_pj_root_rc -eq 2 ]] || [[ "$WORKTREE_TYPE" == "project" ]]; then
+            # A malformed registry (rc 2) stops the merge whatever --type
+            # is: looking the PR up in the workspace alone could match a
+            # workspace PR of a project PR's number (issue #173). With
+            # --type project a project root is required: fail fast with
+            # the reason (ambiguous registration, no --project given, or
+            # nothing registered at all) instead of running on with no
+            # project checkout.
             cat "$_pj_root_err" >&2
             rm -f "$_pj_root_err"
             unset _pj_root_err
@@ -341,7 +345,7 @@ if [[ -z "$REPO_ARG" ]]; then
         fi
     fi
     rm -f "$_pj_root_err"
-    unset _pj_root_err
+    unset _pj_root_err _pj_root_rc
 fi
 if [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
     PJ_REMOTE=$(git -C "$PJ_REPO_ROOT" remote get-url origin 2>/dev/null || echo "")

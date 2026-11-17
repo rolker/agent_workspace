@@ -961,6 +961,26 @@ test_unregistered_project_arg_refused() {
     done
 }
 
+test_malformed_registry_stops_merge() {
+    echo "TEST: a malformed registry stops the merge with its own error, whatever --type is; the PR is not looked up in the workspace alone (issue #265 part 4)"
+    local sb out rc ws_remote t
+    sb="$(make_merge_sandbox)"
+    ws_remote="$(git -C "$sb" remote get-url origin)"
+    # An open workspace PR with the number asked for: the issue #173 hazard
+    # is a project PR number matching it when only the workspace is asked.
+    write_pr_view_fixture "$sb" "$ws_remote" 999 "feature/issue-999"
+    echo 'bad!name single_project /nonexistent' > "$sb/.agent/projects.local"
+    for t in "" "--type workspace" "--type project"; do
+        rc=0
+        rm -f "$sb/gh_calls.log"
+        # shellcheck disable=SC2086  # $t is deliberately split into flag + value
+        out="$(run_merge_pr "$sb" --pr 999 $t --no-wait --no-roadmap-update --report-only 2>&1)" || rc=$?
+        assert_eq "exit 1 (${t:-no --type})" "1" "$rc"
+        assert_contains "the registry's own error (${t:-no --type})" "invalid project name 'bad!name'" "$out"
+        assert_eq "no PR lookup (${t:-no --type})" "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+    done
+}
+
 # ---- Run all tests ----
 echo "=== merge_pr.sh package-worktree tests (#252 PR 2) ==="
 echo ""
@@ -991,6 +1011,7 @@ test_unregistered_project_checkout_not_used
 test_registered_project_root_pr_regression
 test_ambiguous_project_root_type_project_fails_fast
 test_unregistered_project_arg_refused
+test_malformed_registry_stops_merge
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
