@@ -272,27 +272,26 @@ derive_project_name() {
 
 # --------------------------------------------------------- worktree lookup ---
 # Locates issue <N>'s worktree exactly as worktree_enter.sh --type <type>
-# would (new location, then the pre-registration transition location for a
-# registered project, then the legacy location).
+# would: in the workspace's worktrees/workspace/, or in a registered
+# project's own worktree dir. Issue #265 part 4 retired the transition
+# (worktrees/project/<name>/) and legacy locations: nothing there is found.
 #
 # For `--type project`, <project> (optional) names the project: passed
 # explicitly via --project, or derived from $PWD by derive_project_name().
-# When neither yields a name, the historical path applies — a project type
-# resolves only when exactly one project is registered or a legacy project/
-# checkout exists.
+# When neither yields a name, a project type resolves only when exactly one
+# registered project has a worktree dir. An unregistered name finds nothing
+# ("not found").
 resolve_worktree() {
     local issue="$1" type="$2" project="${3:-}"
-    local new_base="" legacy_base="" transition_base=""
+    local new_base=""
 
     if [[ "$type" == "workspace" ]]; then
         new_base=$(wt_workspace_base "$ROOT_DIR")
-        legacy_base=$(wt_legacy_workspace_base "$ROOT_DIR")
     else
         local selected=""
         selected=$(derive_project_name "$project") || selected=""
         if [[ -n "$selected" ]]; then
-            new_base=$(wt_project_base "$ROOT_DIR" "$selected")
-            transition_base=$(wt_transition_project_base "$ROOT_DIR" "$selected" 2>/dev/null || true)
+            new_base=$(wt_project_base "$ROOT_DIR" "$selected" 2>/dev/null) || new_base=""
         else
             local -a names=()
             local cname cdir n
@@ -303,13 +302,11 @@ resolve_worktree() {
                     [[ "$existing" == "$cname" ]] && { n=1; break; }
                 done
                 [[ "$n" -eq 0 ]] && names+=("$cname")
-            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
             if [[ "${#names[@]}" -eq 1 ]]; then
                 new_base=$(wt_project_base "$ROOT_DIR" "${names[0]}")
-                transition_base=$(wt_transition_project_base "$ROOT_DIR" "${names[0]}" 2>/dev/null || true)
             fi
         fi
-        legacy_base=$(wt_legacy_project_base "$ROOT_DIR")
     fi
 
     # find_worktree_by_issue prints the path on success and nothing on
@@ -317,17 +314,15 @@ resolve_worktree() {
     # package worktrees for one bare number list their qualified refs), so
     # one capture of both streams tells them apart. That guidance is passed
     # through (return 2) rather than reported as "no worktree found".
-    local base out
-    for base in "$new_base" "$transition_base" "$legacy_base"; do
-        [[ -n "$base" ]] || continue
-        if out=$(find_worktree_by_issue "$base" "$issue" "" 2>&1); then
-            echo "$out"; return 0
-        fi
-        if [[ -n "$out" ]]; then
-            printf '%s\n' "$out" >&2
-            return 2
-        fi
-    done
+    local out
+    [[ -n "$new_base" ]] || return 1
+    if out=$(find_worktree_by_issue "$new_base" "$issue" "" 2>&1); then
+        echo "$out"; return 0
+    fi
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out" >&2
+        return 2
+    fi
     return 1
 }
 
