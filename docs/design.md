@@ -315,19 +315,28 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   registered projects and says to pass `--project <name>` or register one: the adapter dispatcher,
   `worktree_create.sh`, `session_root.sh`, `wt_resolve_project_repo_root` (`merge_pr.sh` with `--type
   project`). `sync` is the one exception: with no project it syncs the workspace alone (the
-  dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 85). A `project/` checkout or symlink in the
+  dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, `adapter` line 82). The registered root a cwd is in counts
+  its `worktrees=` directory wherever that lies (`registry_resolve_session_dir`), for
+  `worktree_create.sh`, `wt_resolve_project_repo_root` and, with `--type project` and no `--project`,
+  `worktree_enter.sh` and `worktree_remove.sh`. A `project/` checkout or symlink in the
   workspace is read by no script, and nor are `worktrees/project/<name>/`, `.workspace-worktrees/` and
   `project/worktrees/`.
 - Retirement is not silent: `registry_stale_report` (`_project_registry.sh`) names each retired shape
-  still on disk in the main checkout, with what to do: a `project` link or directory, worktrees under
-  the retired locations, a directory under `projects/` that no registry entry owns (a root registered
-  there is silent, ADR-0016 decision 1), a `projects.d/<name>.sh` and the shared
-  `.agent/project_config.sh`, per setting the project's settings file lacks, under the old order (the
-  shared file only for a project with no `.sh` of its own). `make validate` prints it after its results
-  and `make dashboard` as warnings; neither changes an exit status. The adapter prints the active
-  project's lines as a NOTE on stderr, and `install` with no install setting refuses while a retired
-  file still sets `INSTALL_CMD` (`test_validate_workspace_stale.sh`, `test_adapter.sh`). The
-  `.gitignore` keeps ignoring the retired paths, so a machine that keeps them stays clean.
+  still on disk in the main checkout, with what to do: a `project` link or directory (a root registered
+  at that path is silent; a dangling link is to be removed), a checkout at any depth under the retired
+  worktree locations that no registered root or `worktrees=` directory holds, a directory under
+  `projects/` that no registry entry owns (a root registered there is silent, ADR-0016 decision 1), a
+  `projects.d/<name>.sh` and the shared `.agent/project_config.sh`, per setting the project's settings
+  file lacks, under the old order (the shared file only for a project with no `.sh` of its own;
+  `ROS_DISTRO` and `ROS_ROOT_DIR` only for a type whose adapter reads them). A registry with errors
+  gives one line saying so and no other advice, and a project whose settings file is invalid gets a
+  line saying what is left cannot be told. `make validate` prints it after its results and `make
+  dashboard` as warnings; neither changes an exit status. The adapter prints the active project's lines
+  as a NOTE on stderr for the verbs a person runs (`setup`, `sync`, `validate`, `build`, `test`,
+  `install`; reading a retired file means running it, so the machine-read verbs skip it), and `install`
+  with no install setting refuses while a retired file still sets `INSTALL_CMD` or what it holds
+  cannot be told (`test_validate_workspace_stale.sh`, `test_adapter.sh`). The `.gitignore` keeps
+  ignoring the retired paths, so a machine that keeps them stays clean.
 
 **Target (decided, not built)**
 
@@ -416,7 +425,7 @@ Status: `decided`
   `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the dispatcher's one named type,
-  `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 85: `sync` with no project resolved; ADR-0011 lets the
+  `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 82: `sync` with no project resolved; ADR-0011 lets the
   dispatcher name a default type), which issue #295's workspace adapter type replaces (2026-11-17).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest directory, `configs/manifest` or the generated
@@ -465,13 +474,13 @@ probe, not a description to keep current.
 
 | Script | What differs | Lines |
 |---|---|---|
-| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 301-313, 351-357, 511-516, 600-613, 635-647, 1109-1115 |
-| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 156-183 |
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 370-386, 427-431, 600-605, 689-718, 768-773, 1294-1302 |
+| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 142-176, remove 155-185 |
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_REPO_ROOT` (the registered root; no `project/` fallback since #265 part 4), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 313-354, 731, 866, 1002 and 1315, 2451-2480 |
-| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 283-332, 507, 649, 737, 769, 908 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in every mode (`where` and, since issue 429, `base` too) | 222, 286-337, 512, 655, 743, 775, 914 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug and every registered root's slug (`registry_repo_slugs`, #295); the `project/` slug branch went in #265 part 4 | 131-176 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 171 |
-| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
+| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 644-659 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
