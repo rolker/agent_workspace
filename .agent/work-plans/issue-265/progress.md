@@ -916,3 +916,13 @@ Reviewers: a fresh Claude adversarial specialist, given one job (find destructiv
 - [ ] (suggestion, follow-up) The `rm $x` and `rm -r $_dest` advice prints paths unquoted; it is harmful only for a workspace path with a space — `.agent/scripts/_project_registry.sh:1623-1639`, `.agent/scripts/worktree_remove.sh:414-419`
 - [ ] (suggestion, follow-up) The submodule exclusion in configure_git_identity has no test (the fixer said so) — `.agent/scripts/configure_git_identity.sh:172-180`
 - [ ] (suggestion, follow-up; pre-existing) `resolve_worktree` passes a parent root name from `derive_project_name` straight to `wt_project_base` and does not map it to its instance, as enter and remove now do (Gemini) — `.agent/scripts/dispatch_phase.sh:301-305`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 12:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the two must-fix of the round 4 narrow check are text only: advice wording and one code comment; the review's own ship signal is "fix them and ship, no further full round"; first host `address` at `rounds` on this pull request, the earlier one was the owner's)
+**After**: rounds
+**Decision**: address
+
+Read: the round 4 `## Local Review (Pre-Push)` entry at `a3714229` (2 must-fix, 3 suggestions, verdict changes-requested, ship signal recommended). M1 is removal advice that can still lose work (detached-HEAD commits, gitignored files, stashes not covered by the check-first text; wrong "recreate it under its project's root" for a `.workspace-worktrees/` worktree). M2 is a comment in `configure_git_identity.sh` made false by the round 3 fix. The owner's answer at the previous rounds checkpoint was "one more fix pass, then a narrow check"; he said afterwards he is overloaded with other agents and wants only this job kept moving. A mechanism decision, listed for his veto in the next hand-back: fix M1, M2 and suggestions 1 and 2 in one small pass, then a diff-only confirmation of that pass before publishing; suggestion 3 (pre-existing, `dispatch_phase.sh` parent-root mapping) goes on issue 295 as a follow-up note.
