@@ -73,3 +73,23 @@ Specialists: Claude adversarial, Gemini (complete). Codex failed (usage limit). 
 - [x] (suggestion) freeze and build's setup.bash are undefined for a system directory with several distros — `tools/ros-manifest/docs/design.md:357`
 - [x] (suggestion) show "before anything is fetched" sits against the later paragraph on what it fetches — `tools/ros-manifest/docs/design.md:231`
 - [x] (suggestion) Roadmap prose says each line has a check; most do not yet — `tools/ros-manifest/docs/roadmap.md:8`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-17 14:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Verdict**: approved
+
+**Branch**: feature/issue-486 at `e996aec7`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check on the round 2 findings and the fix commit 6cd83b32)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Specialists: Claude adversarial, scoped to the round 2 findings and the fix diff. Cross-model skipped (round-3 convergence check). The reviewer read the tree at 72335551; its four wording suggestions were applied in the commit after it, which this entry's head includes and which no reviewer has read.
+
+### Findings
+- [x] (suggestion) The multi-distro tree does not show state.yaml or say it is kept per distro — `tools/ros-manifest/docs/design.md:93`
+- [x] (suggestion) A relative parent comes from an updated clone only when the naming manifest is the local copy — `tools/ros-manifest/docs/design.md:301`
+- [x] (suggestion) A repo with no record is never tracked again — `tools/ros-manifest/docs/design.md:306`
+- [x] (suggestion) "before any repo is cloned" is looser than the later paragraph — `tools/ros-manifest/docs/design.md:233`
