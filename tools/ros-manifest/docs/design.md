@@ -141,7 +141,7 @@ location the specification names:
 ```
 repos-manifest init https://example.org/project11.manifest.yaml --role robot --distro jazzy
 repos-manifest init git@git.example.org:field/unh_marine_autonomy.git \
-    --manifest-version jazzy --manifest-path project11.manifest.yaml --role robot --distro jazzy
+    --manifest-ref jazzy --manifest-path project11.manifest.yaml --role robot --distro jazzy
 ```
 
 The git form is read by making a shallow clone of the branch or tag and taking the file out
@@ -473,7 +473,7 @@ and a private repo marked optional.
 ### A development machine
 
 ```
-repos-manifest init https://github.com/example/system.git --manifest-version rolling \
+repos-manifest init https://github.com/example/system.git --manifest-ref rolling \
     --manifest-path system.manifest.yaml --role developer --distro jazzy --distro rolling
 ```
 

@@ -28,7 +28,7 @@ The suggested file name is `<name>.manifest.yaml`.
 ## Example
 
 ```yaml
-version: 1
+format: 1
 
 distros: [jazzy, rolling]
 
@@ -79,14 +79,15 @@ roles:
 | Key | Required | Meaning |
 |---|---|---|
 | `repositories` | yes | The repos of the system, by name. |
-| `version` | no | Version of this format. `1` if absent. |
+| `format` | no | Version of this format. `1` if absent. |
 | `extends` | no | One or more other manifests this one builds on. |
 | `distros` | no | The distros this manifest covers. |
 | `layers` | no | The ordered list of layers. |
 | `groups` | no | The names of the groups repos can belong to. |
 | `roles` | no | Named variants, each a list of the groups it switches on. |
 
-A tool refuses a manifest whose `version` is higher than it knows. It warns about a
+A tool refuses a manifest whose `format` is higher than it knows. Everywhere else in a
+manifest, `version` means a branch, a tag or a commit, as in a `.repos` file. It warns about a
 top-level key it does not know and carries on.
 
 ## Repos
