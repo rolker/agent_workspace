@@ -131,7 +131,11 @@ If the issue targets a project repo, also check:
   its section name under `$WS_ROOT/README.md#workspace-goals` (as the
   Serves lines in `docs/principles.md` do), and cite the design section by
   its anchor, as `docs/design.md#<section>` (the section list is in
-  `$WS_ROOT/docs/design.md#the-design`). For a project issue, use the
+  `$WS_ROOT/docs/design.md#the-design`). The README line
+  "A safeguard has to earn its cost" has no section name of its own: work
+  that serves it writes that phrase, word for word, in its Serves line,
+  beside any other goal's section name (the sit-rep marks such work by
+  that phrase). For a project issue, use the
   project's own goals and design document, or write "none"; a project is
   not asked to keep either. Flag an issue that serves no goal, or that
   breaks a stated rule (for a workspace issue, a principle or a row of

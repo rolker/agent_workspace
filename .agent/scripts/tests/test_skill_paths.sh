@@ -4,9 +4,9 @@
 # guards the skill set itself: the declared session_scope list, the
 # replacement of the old what-next skill by the sit-rep (#389), and the
 # orchestrator skill, the host's standing rules, the run-issue
-# checkpoint text they rely on, and the roadmap's two Paths paragraphs
-# (#321), and the onboard-project and audit-project rules the owner gave
-# (#332).
+# checkpoint text they rely on, and the workspace roadmap's three Paths
+# paragraphs (#321, #477) with Path 3's marker phrase, and the
+# onboard-project and audit-project rules the owner gave (#332).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -812,25 +812,41 @@ PYRULES
     fi
 fi
 
-# --- The roadmap's two paths (#321): both paragraphs sit in the Direction
-# section, as prose, with no table row between them (a Path column or
-# table there would change sitrep_checks.sh's grammar).
+# --- The workspace roadmap's three paths (#321, #477): the paragraphs sit
+# in the Direction section, as prose, with no table row between them (a
+# Path column or table there would change sitrep_checks.sh's grammar).
+# This reads the workspace's own roadmap only; a project's roadmap may
+# have any number of Paths paragraphs, or none.
 ROADMAP="$WS_ROOT/docs/roadmap.md"
 paths_out="$(awk '
     /^## / { sec = ($0 == "## Direction"); next }
     !sec { next }
     /^\*\*Path 1,/ { p1 = 1; inpaths = 1 }
-    /^\*\*Path 2,/ { p2 = 1; last = 1 }
+    /^\*\*Path 2,/ { p2 = 1 }
+    /^\*\*Path 3,/ { p3 = 1; last = 1 }
     inpaths && /^[[:space:]]*\|/ { print "table row between the Paths paragraphs: " $0 }
     last && /^[[:space:]]*$/ { inpaths = 0; last = 0 }
     END { if (!p1) print "no **Path 1, paragraph in ## Direction"
-          if (!p2) print "no **Path 2, paragraph in ## Direction" }
+          if (!p2) print "no **Path 2, paragraph in ## Direction"
+          if (!p3) print "no **Path 3, paragraph in ## Direction" }
 ' "$ROADMAP" 2>&1)"
 if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
-    pass "roadmap: Path 1 and Path 2 paragraphs in ## Direction, no table row between them"
+    pass "roadmap: Path 1, Path 2 and Path 3 paragraphs in ## Direction, no table row between them"
 else
     fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
 fi
+
+# --- Path 3's marker (#477): the sit-rep marks work Path 3 by the README
+# line's opening words in a Serves line, and review-issue tells reviews to
+# write them. Rewording any one of the three loses the match silently, so
+# each must still carry the phrase.
+for f in README.md .claude/skills/review-issue/SKILL.md .claude/skills/sitrep/SKILL.md; do
+    if grep -qiF 'A safeguard has to earn its cost' "$WS_ROOT/$f"; then
+        pass "Path 3 marker: $f carries \"A safeguard has to earn its cost\""
+    else
+        fail "Path 3 marker: $f no longer carries \"A safeguard has to earn its cost\" (the sit-rep's Path 3 match depends on it)"
+    fi
+done
 
 echo ""
 echo "test_skill_paths: $PASS passed, $FAIL failed"
