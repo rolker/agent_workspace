@@ -328,6 +328,38 @@ manifest names, and pushed to the private server. The tools have to fit that:
   is a good record of what ran, and a poor base for field fixes. A field machine that will be
   worked on is set up from a manifest that names branches.
 
+### A branch for field work (considered, not decided)
+
+Committing field fixes to the manifest's own branch is the quickest way to work, and it
+means that branch on the private server drifts from the published one. An alternative is to
+keep field fixes on a branch of their own, either one shared by all field machines or one per
+machine.
+
+One optional setting would support both:
+
+```yaml
+prefer_version: field
+```
+
+For each repo, `sync` would use that branch where it exists at the place the repo is fetched
+from, and the manifest's version otherwise. This is the same shape as `fetch_from` with a
+fallback. A shared branch and a per-machine branch differ only in the name a machine is
+given.
+
+- A repo nobody has fixed in the field has no such branch and stays on the manifest's
+  version.
+- The first fix in a repo is made by creating the branch and pushing it, by hand or by the
+  project's own workflow. Other machines move to it on their next `sync`.
+- When the fixes have been reviewed and merged into the published branch, the field branch
+  is deleted on the server. Machines whose copy of it holds nothing unmerged go back to the
+  manifest's version on their next `sync`.
+
+The manifest's branch on the private server then stays the same as the published one, and
+the field branch holds exactly what has not been reviewed yet.
+
+What the tools would not do is merge new published work into a field branch. A field branch
+that has fallen behind is brought up to date by a person or by the project's workflow.
+
 ## Three machines, one manifest
 
 These walk through the settings above for one system. The published manifest lists every

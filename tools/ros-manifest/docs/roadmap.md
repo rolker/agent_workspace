@@ -35,6 +35,7 @@ manifest that extends the published one and adds a layer for their robot.
 |---|---|
 | A `ros2 manifest` command as a thin wrapper around the same code | |
 | A per-user settings file, so where to fetch from is set once for all systems | |
+| A preferred branch for field work, used where it exists | |
 | A default layer for a repo that names none | |
 | Running a distro the host OS does not support, in a container or otherwise | |
 | Roles that name single repos or pick layers | |
