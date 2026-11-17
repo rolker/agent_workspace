@@ -14,8 +14,13 @@
 # test labels carry the row ids). "Registered" counts every registry line,
 # parent roots and their instances included.
 #
+# "A registered folder" below is a registered root or a root's worktrees=
+# folder (its live worktrees are as much the project's as its root).
+#
 # R  Any check, a registry with errors: the whole report is one line,
 #    ".agent/projects.local has errors ...", and nothing else.
+# U  worktrees= that is or holds the workspace root, or is, holds or lies in
+#    worktrees/workspace: refused by both parsers, so the report is R.
 #
 # P  <ws>/project, and each entry of <ws>/projects/ (labelled
 #    "projects/<entry>"), by one rule (_stale_folder_line):
@@ -23,23 +28,30 @@
 #    P2  the path that names it is a registered root ....... silent
 #    P3  a registered root lies under it (by that path) .... silent
 #    P4  it lies inside a registered root .................. silent
-#    P5  a folder, unregistered (nothing registered too) ... "<label> is not registered ...: register it ..., or remove it"
-#    P6  a link to a registered root ....................... "... a link to registered project '<n>' ...: remove it"
-#    P7  a link to a folder inside a registered root ....... "... a link to <t>, inside registered project '<n>' ...: remove it"
-#    P8  a link to a folder holding a registered root ...... "... which holds registered project '<n>' ...: remove it"
+#    P5  a folder, unregistered (nothing registered too) ... "<label> is not registered ...: register it ..., or, after checking any repository in it for uncommitted work ... and commits on no remote ..., remove it"
+#    P6  a link to a registered root ....................... "... a link to registered project '<n>' ...: remove the link"
+#    P7  a link to a folder inside a registered root ....... "... a link to <t>, inside registered project '<n>' ...: remove the link"
+#    P8  a link to a folder holding a registered root ...... "... which holds registered project '<n>' ...: remove the link"
 #    P9  a link to an unregistered folder .................. "... which is not registered ...: register <t> ... if it is a project, and remove the link"
 #    P10 a dangling link ................................... "... which does not exist ...: remove it" (never "register")
 #    P11 a link to a file .................................. "... which is not a folder ...: remove it"
 #    P12 a parent root and its instances ................... as any root (P2 to P4, P6 to P8)
+#    P13 it is, holds or lies in a root's worktrees= folder  silent (never "remove it": that deletes live worktrees)
+#    P14 a link to, into or holding a root's worktrees= folder .. "... the worktrees= folder of registered project '<n>' ...: remove the link"
+#    P15 a root is registered at it through a link elsewhere  silent
+#    P16 a dangling link a registry line names a root through  silent (never "remove it")
 #
 # W  worktrees/project/ and .workspace-worktrees/:
 #    W1  absent, empty, or only empty folders ............. silent
-#    W2  a checkout (a folder holding .git), depth 1 to 5,
-#        in no registered root or worktrees= dir ......... "<loc>/ holds worktrees that are no longer found ..."
-#    W3  a checkout in a registered worktrees= dir ........ silent
-#    W4  a checkout in a registered root .................. silent
+#    W2  a checkout (a folder holding .git), depth 1 to 6,
+#        not a registered folder, not in one, holding none  "<loc>/ holds worktrees that are no longer found: ... git worktree remove ... (it refuses one with uncommitted changes and keeps its branch) ...; a plain clone there ...: after checking ..., move or delete it"
+#    W3  a checkout in a registered worktrees= folder ...... silent
+#    W4  a checkout that is or lies in a registered root ... silent
 #    W5  nothing registered ............................... as W2
-#    W6  the walk never enters a checkout and stops at depth 6
+#    W6  the walk never enters a checkout and stops at depth 6 (depth 7 is not seen)
+#    W7  a checkout that holds a registered root ........... silent (never "remove": the root is inside it)
+#    W8  a checkout a root is registered at through a link .. silent
+#    W2 sets the C3 condition (an unregistered retired worktree may have read the shared file).
 #
 # S  .agent/projects.d/<name>.sh:
 #    S1  registered, a key its settings file lacks ........ per key, with project_setting.sh set
@@ -58,11 +70,21 @@
 #    registered non-parent project without a .sh of its own):
 #    C1  applies to some; a key one lacks ................. per project and key
 #    C2  applies to some; all moved; no unregistered folder named .. "delete it"
-#    C3  applies to some; an unregistered folder named (P5, P9); it sets something .. "still sets ..., and an unregistered folder named above may have used it ..." (never "delete it")
+#    C3  applies to some; an unregistered folder (P5, P9) or retired worktree (W2) named; it sets something .. "still sets ..., and an unregistered folder or retired worktree named above may have used it ..." (never "delete it")
 #    C4  applies to none (nothing registered, every project has a .sh, only parent roots); it sets something .. "still sets ..., and it applies to no registered project ..." (never "delete it")
 #    C5  applies to none; it sets nothing ................. "delete it"
 #    C6  cannot be sourced ................................ "cannot be sourced ..."
 #    C7  ROS_DISTRO per project whose type reads it; ROS_ROOT_DIR once when one does
+#    C8  applies to a project whose settings file is invalid  that project's "cannot be told" line (never "delete it")
+#
+# Every line that says remove or delete, and what a wrong one would lose
+# (each wrong case has a silent row above): P5 a folder and any repository
+# in it (P2-P4, P13, P15; the line says to check first); P6-P8, P10, P11,
+# P14 a link only (P3, P16: a line naming a root through it); W2 a worktree
+# (git refuses one with changes and keeps its branch; W3, W4, W7, W8; a plain
+# clone gets check-first); S4, S8, S10 a .sh holding nothing a reader takes
+# (S5, S6: cannot be told; a value the settings file already has never ran);
+# C2, C5 the shared file (C3, C4, C6, C8).
 #
 # Run: bash .agent/scripts/tests/test_validate_workspace_stale.sh
 
@@ -108,7 +130,7 @@ sb="$(make_ws)"
 git_repo "$sb/roots/alpha"
 echo "alpha single_project $sb/roots/alpha" > "$sb/.agent/projects.local"
 out="$(report "$sb")"
-[[ -z "$out" ]] && pass "no retired shape: empty report" || fail "unexpected report: $out"
+[[ -z "$out" ]] && pass "P1, W1: no retired shape: empty report" || fail "unexpected report: $out"
 out="$(validate "$sb")"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "validate exit 0" || fail "validate rc=$rc"
 hasnt "validate prints no retired-shape block" "Retired shapes" "$out"
@@ -119,16 +141,16 @@ git_repo "$sb/roots/alpha"
 echo "alpha single_project $sb/roots/alpha" > "$sb/.agent/projects.local"
 ln -s "$sb/roots/alpha" "$sb/project"
 out="$(report "$sb")"
-has "a link to a registered root: says so and how to remove it" \
-    "project is a link to registered project 'alpha'; nothing reads the link any more: remove it (rm $sb/project)" "$out"
+has "P6: a link to a registered root: says so and how to remove the link" \
+    "project is a link to registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/project)" "$out"
 rm "$sb/project"
 git_repo "$sb/project"
 out="$(report "$sb")"
-has "an unregistered checkout: register it or remove it" \
-    "project is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or remove it" "$out"
+has "P5: an unregistered checkout: register it, or check it and remove it" \
+    "project is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes), remove it" "$out"
 echo "proj single_project $sb/project" >> "$sb/.agent/projects.local"
 out="$(report "$sb")"
-hasnt "a root registered at <ws>/project itself is silent (never 'remove it')" "project" "$out"
+hasnt "P2: a root registered at <ws>/project itself is silent (never 'remove it')" "project" "$out"
 
 echo "TEST: project/ — a registered link, a dangling link, a link to an unregistered folder (review suggestion)"
 sb="$(make_ws)"
@@ -136,37 +158,38 @@ git_repo "$sb/roots/alpha"
 ln -s "$sb/roots/alpha" "$sb/project"
 echo "proj single_project $sb/project" > "$sb/.agent/projects.local"
 out="$(report "$sb")"
-hasnt "a registry line naming <ws>/project, a link: never 'remove it' (that breaks the entry)" "project is a link" "$out"
-[[ -z "$out" ]] && pass "a registered <ws>/project link: silent" || fail "unexpected: $out"
+hasnt "P2: a registry line naming <ws>/project, a link: never 'remove it' (that breaks the entry)" "project is a link" "$out"
+[[ -z "$out" ]] && pass "P2: a registered <ws>/project link: silent" || fail "unexpected: $out"
 : > "$sb/.agent/projects.local"
 rm "$sb/project"
 ln -s "$sb/roots/gone" "$sb/project"
 out="$(report "$sb")"
-has "a dangling link: remove it" "project is a link to $sb/roots/gone, which does not exist; nothing reads the link any more: remove it (rm $sb/project)" "$out"
-hasnt "a dangling link: never 'register it'" "register" "$out"
+has "P10: a dangling link: remove it" "project is a link to $sb/roots/gone, which does not exist; nothing reads the link any more: remove it (rm $sb/project)" "$out"
+hasnt "P10: a dangling link: never 'register it'" "register" "$out"
 rm "$sb/project"
 ln -s "$sb/roots/alpha" "$sb/project"
 out="$(report "$sb")"
-has "a link to an unregistered folder: register the target, remove the link" "project is a link to $sb/roots/alpha, which is not registered; nothing reads the link any more: register $(cd "$sb/roots/alpha" && pwd -P) with .agent/scripts/register_project.sh <path> if it is a project, and remove the link (rm $sb/project)" "$out"
+has "P9: a link to an unregistered folder: register the target, remove the link" "project is a link to $sb/roots/alpha, which is not registered; nothing reads the link any more: register $(cd "$sb/roots/alpha" && pwd -P) with .agent/scripts/register_project.sh <path> if it is a project, and remove the link (rm $sb/project)" "$out"
 
 echo "TEST: worktrees under the retired locations are named; empty ones are not"
 sb="$(make_ws)"
 mkdir -p "$sb/worktrees/project" "$sb/.workspace-worktrees"
 out="$(report "$sb")"
-[[ -z "$out" ]] && pass "empty retired directories: silent" || fail "unexpected: $out"
+[[ -z "$out" ]] && pass "W1: empty retired directories: silent" || fail "unexpected: $out"
 git_repo "$sb/origin"
 git -C "$sb/origin" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m seed
 mkdir -p "$sb/worktrees/project/alpha"
 git -C "$sb/origin" worktree add -q "$sb/worktrees/project/alpha/issue-alpha-1" -b wt1 2>/dev/null
 git -C "$sb/origin" worktree add -q "$sb/.workspace-worktrees/issue-workspace-2" -b wt2 2>/dev/null
 out="$(report "$sb")"
-has "worktrees/project/ named (a worktree two levels down)" "worktrees/project/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path>" "$out"
-has ".workspace-worktrees/ named" ".workspace-worktrees/ holds worktrees that are no longer found" "$out"
+has "W2, W5: worktrees/project/ named (a worktree two levels down, nothing registered)" "worktrees/project/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path> (it refuses one with uncommitted changes and keeps its branch)" "$out"
+has "W2: .workspace-worktrees/ named" ".workspace-worktrees/ holds worktrees that are no longer found" "$out"
+has "W2: a plain clone there gets the check-first advice" "a plain clone there is not a worktree: after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes), move or delete it" "$out"
 git -C "$sb/origin" worktree remove "$sb/worktrees/project/alpha/issue-alpha-1"
 git -C "$sb/origin" worktree remove "$sb/.workspace-worktrees/issue-workspace-2"
 out="$(report "$sb")"
 [[ -d "$sb/worktrees/project/alpha" ]] && pass "the advised removal leaves the <name>/ folder" || fail "fixture: alpha/ is gone"
-[[ -z "$out" ]] && pass "after the advised removals: silent (an empty <name>/ folder is not a worktree)" || fail "still reported after removal: $out"
+[[ -z "$out" ]] && pass "W1: after the advised removals: silent (an empty <name>/ folder is not a worktree)" || fail "still reported after removal: $out"
 
 echo "TEST: a worktrees= directory registered under worktrees/project/ is not reported"
 sb="$(make_ws)"
@@ -176,11 +199,11 @@ mkdir -p "$sb/worktrees/project/alpha-wt"
 echo "alpha single_project $sb/roots/alpha worktrees=worktrees/project/alpha-wt" > "$sb/.agent/projects.local"
 git -C "$sb/roots/alpha" worktree add -q "$sb/worktrees/project/alpha-wt/issue-alpha-3" -b wt3 2>/dev/null
 out="$(report "$sb")"
-hasnt "a registered worktrees= location is not a retired one" "worktrees/project/ holds" "$out"
+hasnt "W3: a registered worktrees= location is not a retired one" "worktrees/project/ holds" "$out"
 mkdir -p "$sb/worktrees/project/other"
 git -C "$sb/roots/alpha" worktree add -q "$sb/worktrees/project/other/issue-x-4" -b wt4 2>/dev/null
 out="$(report "$sb")"
-has "a worktree beside it that nothing registers is still named" "worktrees/project/ holds worktrees that are no longer found" "$out"
+has "W2: a worktree beside it that nothing registers is still named" "worktrees/project/ holds worktrees that are no longer found" "$out"
 
 echo "TEST: a registry with errors gives one line and no remove, delete or register advice (review M1)"
 sb="$(make_ws)"
@@ -189,15 +212,22 @@ printf 'inner single_project projects/inner\nbroken single_project\n' > "$sb/.ag
 printf 'BUILD_CMD="make"\nTEST_CMD="make test"\n' > "$sb/.agent/projects.d/inner.sh"
 ln -s "$sb/projects/inner" "$sb/project"
 out="$(report "$sb")"
-has "says the registry has errors" ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again" "$out"
-hasnt "a registered projects/<name> is not called unregistered" "projects/inner is not registered" "$out"
-hasnt "a registered project's .sh is not called ownerless" "belongs to no registered project" "$out"
-hasnt "no delete advice" "delete it" "$out"
-hasnt "no register-or-remove advice" "register it" "$out"
-[[ "$(wc -l <<< "$out")" -eq 1 ]] && pass "one line only" || fail "more than one line: $out"
+has "R: says the registry has errors" ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again" "$out"
+hasnt "R: a registered projects/<name> is not called unregistered" "projects/inner is not registered" "$out"
+hasnt "R: a registered project's .sh is not called ownerless" "belongs to no registered project" "$out"
+hasnt "R: no delete advice" "delete it" "$out"
+hasnt "R: no register-or-remove advice" "register it" "$out"
+[[ "$(wc -l <<< "$out")" -eq 1 ]] && pass "R: one line only" || fail "more than one line: $out"
 printf 'inner single_project projects/inner\nghost single_project /nonexistent/x bogus=1\n' > "$sb/.agent/projects.local"
 out="$(report "$sb")"
-has "an unknown field is an error too" ".agent/projects.local has errors" "$out"
+has "R: an unknown field is an error too" ".agent/projects.local has errors" "$out"
+printf 'inner single_project projects/inner worktrees=.\n' > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+has "U: worktrees=. (the workspace root) makes the registry an error: R" ".agent/projects.local has errors" "$out"
+[[ "$(wc -l <<< "$out")" -eq 1 ]] && pass "U: one line only" || fail "U: more than one line: $out"
+printf 'inner single_project projects/inner worktrees=worktrees\n' > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+has "U: worktrees=worktrees (holds worktrees/workspace) makes the registry an error: R" ".agent/projects.local has errors" "$out"
 
 echo "TEST: an invalid settings file: what is left cannot be told, never 'lacks' (review M1)"
 sb="$(make_ws)"
@@ -207,8 +237,8 @@ printf 'build=make\nnot a setting line\n' > "$sb/.agent/projects.d/alpha"
 printf 'BUILD_CMD="make"\n' > "$sb/.agent/projects.d/alpha.sh"
 out="$(report "$sb")"
 has "S6: says the settings file is invalid" "the settings file of 'alpha', .agent/projects.d/alpha, is invalid, so what is left in .agent/projects.d/alpha.sh to move cannot be told: fix it (.agent/scripts/project_setting.sh check alpha)" "$out"
-hasnt "never 'lacks'" "lacks" "$out"
-hasnt "never 'delete it'" "delete it" "$out"
+hasnt "S6: never 'lacks'" "lacks" "$out"
+hasnt "S6: never 'delete it'" "delete it" "$out"
 
 echo "TEST: projects/ — an unowned directory is named; a registered root and a parent of one are silent (ADR-0016 decision 1)"
 sb="$(make_ws)"
@@ -217,9 +247,9 @@ mkdir -p "$sb/projects/group/one" "$sb/projects/orphan"
 git -C "$sb/projects/group/one" init -q
 printf 'inner single_project projects/inner\ngroup-one single_project projects/group/one\n' > "$sb/.agent/projects.local"
 out="$(report "$sb")"
-has "the unowned directory" "projects/orphan is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or remove it" "$out"
-hasnt "a registered root under projects/ is silent" "projects/inner" "$out"
-hasnt "a directory holding a registered root is silent" "projects/group" "$out"
+has "P5 (projects/): the unowned directory" "projects/orphan is not registered; nothing reads it any more: register it with .agent/scripts/register_project.sh <path>, or, after checking any repository in it for uncommitted work" "$out"
+hasnt "P2 (projects/): a registered root under projects/ is silent" "projects/inner" "$out"
+hasnt "P3 (projects/): a directory holding a registered root is silent" "projects/group" "$out"
 out="$(validate "$sb")"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "validate: exit 0 with warnings" || fail "validate rc=$rc out=${out:0:400}"
 has "validate prints the warning after the results" "Retired shapes still on disk" "$out"
@@ -244,22 +274,22 @@ ROS_ROOT_DIR="/srv/ros"
 MANIFEST_BOOTSTRAP_URL="https://example.invalid/b.yaml"
 EOF
 out="$(report "$sb")"
-hasnt "a key the settings file has is not reported" "sets BUILD_CMD=\"make\", which" "$out"
-has "TEST_CMD: project_setting.sh set" ".agent/projects.d/alpha.sh sets TEST_CMD=\"make test\", which .agent/projects.d/alpha lacks and nothing reads any more: .agent/scripts/project_setting.sh set alpha test=<command> (or test=none)" "$out"
-has "INSTALL_CMD: project_setting.sh set" ".agent/projects.d/alpha.sh sets INSTALL_CMD=\"make install\", which .agent/projects.d/alpha lacks" "$out"
-has "an exported variable: move it into the script (S8)" ".agent/projects.d/alpha.sh sets or exports SDK_ROOT, which no command gets any more" "$out"
-hasnt "ros2_colcon: BUILD_CMD is a key the type never reads, not reported" "inst.sh sets BUILD_CMD" "$out"
-has "ROS_DISTRO: distro= on the registry line, by hand" ".agent/projects.d/inst.sh sets ROS_DISTRO=\"fakefox\", which nothing reads any more: if inst's manifest declares no distro, add distro=fakefox to its line in .agent/projects.local by hand" "$out"
-hasnt "ROS_DISTRO: never project_setting.sh" "set inst distro" "$out"
-has "ROS_ROOT_DIR: the environment" ".agent/projects.d/inst.sh sets ROS_ROOT_DIR=\"/srv/ros\", which is no longer read from a file: export ROS_ROOT_DIR=/srv/ros in the environment that runs the adapter" "$out"
-has "MANIFEST_BOOTSTRAP_URL: bootstrap_url" ".agent/projects.d/inst.sh sets MANIFEST_BOOTSTRAP_URL=\"https://example.invalid/b.yaml\", which .agent/projects.d/inst lacks and nothing reads any more: .agent/scripts/project_setting.sh set inst bootstrap_url=<url>" "$out"
+hasnt "S1: a key the settings file has is not reported" "sets BUILD_CMD=\"make\", which" "$out"
+has "S1: TEST_CMD: project_setting.sh set" ".agent/projects.d/alpha.sh sets TEST_CMD=\"make test\", which .agent/projects.d/alpha lacks and nothing reads any more: .agent/scripts/project_setting.sh set alpha test=<command> (or test=none)" "$out"
+has "S1: INSTALL_CMD: project_setting.sh set" ".agent/projects.d/alpha.sh sets INSTALL_CMD=\"make install\", which .agent/projects.d/alpha lacks" "$out"
+has "S1: an exported variable: move it into the script" ".agent/projects.d/alpha.sh sets or exports SDK_ROOT, which no command gets any more" "$out"
+hasnt "S1: ros2_colcon: BUILD_CMD is a key the type never reads, not reported" "inst.sh sets BUILD_CMD" "$out"
+has "S2: ROS_DISTRO: distro= on the registry line, by hand" ".agent/projects.d/inst.sh sets ROS_DISTRO=\"fakefox\", which nothing reads any more: if inst's manifest declares no distro, add distro=fakefox to its line in .agent/projects.local by hand" "$out"
+hasnt "S2: ROS_DISTRO: never project_setting.sh" "set inst distro" "$out"
+has "S2: ROS_ROOT_DIR: the environment" ".agent/projects.d/inst.sh sets ROS_ROOT_DIR=\"/srv/ros\", which is no longer read from a file: export ROS_ROOT_DIR=/srv/ros in the environment that runs the adapter" "$out"
+has "S1: MANIFEST_BOOTSTRAP_URL: bootstrap_url" ".agent/projects.d/inst.sh sets MANIFEST_BOOTSTRAP_URL=\"https://example.invalid/b.yaml\", which .agent/projects.d/inst lacks and nothing reads any more: .agent/scripts/project_setting.sh set inst bootstrap_url=<url>" "$out"
 sed -i "s|^inst ros2_colcon .*|inst ros2_colcon $sb/roots/inst distro=fakefox|" "$sb/.agent/projects.local"
 out="$(report "$sb")"
-hasnt "ROS_DISTRO with distro= on the line: not reported" "sets ROS_DISTRO" "$out"
+hasnt "S2: ROS_DISTRO with distro= on the line: not reported" "sets ROS_DISTRO" "$out"
 printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/alpha"
 printf 'BUILD_CMD="make"\n' > "$sb/.agent/projects.d/alpha.sh"
 out="$(report "$sb")"
-has "nothing left to move: delete it" ".agent/projects.d/alpha.sh is no longer read and holds nothing left to move: delete it" "$out"
+has "S4: nothing left to move: delete it" ".agent/projects.d/alpha.sh is no longer read and holds nothing left to move: delete it" "$out"
 printf 'BUILD_CMD="x"\n' > "$sb/.agent/projects.d/ghost.sh"
 out="$(report "$sb")"
 has "S9: a .sh of no registered project that sets something: register first, else delete" ".agent/projects.d/ghost.sh belongs to no registered project and still sets BUILD_CMD: if 'ghost' is a project not registered yet, register it first (.agent/scripts/register_project.sh <path>) and this report names what to move; otherwise delete it" "$out"
@@ -272,23 +302,23 @@ printf 'alpha single_project %s\ninst ros2_colcon %s\n' "$sb/roots/alpha" "$sb/r
 printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/alpha"
 printf 'ROS_DISTRO="fakefox"\nROS_ROOT_DIR="/srv/ros"\n' > "$sb/.agent/projects.d/alpha.sh"
 out="$(report "$sb")"
-hasnt "a single_project's .sh: no ROS_DISTRO line" "alpha.sh sets ROS_DISTRO" "$out"
-hasnt "a single_project's .sh: no ROS_ROOT_DIR line" "alpha.sh sets ROS_ROOT_DIR" "$out"
-has "a single_project's .sh with only ROS_* left: delete it" ".agent/projects.d/alpha.sh is no longer read and holds nothing left to move: delete it" "$out"
+hasnt "S3: a single_project's .sh: no ROS_DISTRO line" "alpha.sh sets ROS_DISTRO" "$out"
+hasnt "S3: a single_project's .sh: no ROS_ROOT_DIR line" "alpha.sh sets ROS_ROOT_DIR" "$out"
+has "S3, S4: a single_project's .sh with only ROS_* left: delete it" ".agent/projects.d/alpha.sh is no longer read and holds nothing left to move: delete it" "$out"
 rm "$sb/.agent/projects.d/alpha.sh"
 printf 'ROS_DISTRO="fakefox"\nROS_ROOT_DIR="/srv/ros"\n' > "$sb/.agent/project_config.sh"
 printf 'BUILD_CMD="colcon build"\n' > "$sb/.agent/projects.d/inst.sh"
 out="$(report "$sb")"
-hasnt "shared file applying to a single_project only: no ROS_DISTRO line" "sets ROS_DISTRO" "$out"
-hasnt "shared file applying to a single_project only: no ROS_ROOT_DIR line" "sets ROS_ROOT_DIR" "$out"
-has "shared file with nothing a reader needs: delete it is reached" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
+hasnt "C7: shared file applying to a single_project only: no ROS_DISTRO line" "sets ROS_DISTRO" "$out"
+hasnt "C7: shared file applying to a single_project only: no ROS_ROOT_DIR line" "sets ROS_ROOT_DIR" "$out"
+has "C2, C7: shared file with nothing a reader needs: delete it is reached" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
 rm "$sb/.agent/projects.d/inst.sh"
 out="$(report "$sb")"
-has "shared file applying to a ros2_colcon project: ROS_DISTRO per project" ".agent/project_config.sh sets ROS_DISTRO=\"fakefox\", which nothing reads any more: if inst's manifest declares no distro, add distro=fakefox to its line in .agent/projects.local by hand" "$out"
-hasnt "and not for the single_project" "if alpha's manifest" "$out"
-has "shared file applying to a ros2_colcon project: ROS_ROOT_DIR once" ".agent/project_config.sh sets ROS_ROOT_DIR=\"/srv/ros\", which is no longer read from a file: export ROS_ROOT_DIR=/srv/ros in the environment that runs the adapter" "$out"
-[[ "$(grep -c 'sets ROS_ROOT_DIR' <<< "$out")" -eq 1 ]] && pass "ROS_ROOT_DIR said once" || fail "ROS_ROOT_DIR count: $out"
-hasnt "no delete advice while it still holds something" "project_config.sh is no longer read and holds nothing" "$out"
+has "C7: shared file applying to a ros2_colcon project: ROS_DISTRO per project" ".agent/project_config.sh sets ROS_DISTRO=\"fakefox\", which nothing reads any more: if inst's manifest declares no distro, add distro=fakefox to its line in .agent/projects.local by hand" "$out"
+hasnt "C7: and not for the single_project" "if alpha's manifest" "$out"
+has "C7: shared file applying to a ros2_colcon project: ROS_ROOT_DIR once" ".agent/project_config.sh sets ROS_ROOT_DIR=\"/srv/ros\", which is no longer read from a file: export ROS_ROOT_DIR=/srv/ros in the environment that runs the adapter" "$out"
+[[ "$(grep -c 'sets ROS_ROOT_DIR' <<< "$out")" -eq 1 ]] && pass "C7: ROS_ROOT_DIR said once" || fail "ROS_ROOT_DIR count: $out"
+hasnt "C7: no delete advice while it still holds something" "project_config.sh is no longer read and holds nothing" "$out"
 
 echo "TEST: the shared project_config.sh — per project it applied to, per key (plan review N3)"
 sb="$(make_ws)"
@@ -302,13 +332,13 @@ printf 'build=make\ntest=make test\n' > "$sb/.agent/projects.d/alpha"
 printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/beta"
 printf 'BUILD_CMD="colcon build"\n' > "$sb/.agent/projects.d/inst.sh"
 out="$(report "$sb")"
-has "the project lacking install: named with its remedy" ".agent/project_config.sh sets INSTALL_CMD=\"cmake --install build\", which .agent/projects.d/alpha lacks and nothing reads any more: .agent/scripts/project_setting.sh set alpha install=<command> (or install=none)" "$out"
-hasnt "a project with install set: nothing for the key" "projects.d/beta lacks" "$out"
-hasnt "a project with its own .sh: nothing from the shared file (it never applied)" "project_config.sh sets INSTALL_CMD=\"cmake --install build\", which .agent/projects.d/inst" "$out"
-hasnt "a key the settings file has: nothing" "sets BUILD_CMD=\"make\", which .agent/projects.d/alpha" "$out"
+has "C1: the project lacking install: named with its remedy" ".agent/project_config.sh sets INSTALL_CMD=\"cmake --install build\", which .agent/projects.d/alpha lacks and nothing reads any more: .agent/scripts/project_setting.sh set alpha install=<command> (or install=none)" "$out"
+hasnt "C1: a project with install set: nothing for the key" "projects.d/beta lacks" "$out"
+hasnt "C1: a project with its own .sh: nothing from the shared file (it never applied)" "project_config.sh sets INSTALL_CMD=\"cmake --install build\", which .agent/projects.d/inst" "$out"
+hasnt "C1: a key the settings file has: nothing" "sets BUILD_CMD=\"make\", which .agent/projects.d/alpha" "$out"
 printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/alpha"
 out="$(report "$sb")"
-has "nothing left to move: delete it" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
+has "C2: nothing left to move: delete it" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
 
 echo "TEST: P3, P4 — a registered root under <ws>/project, or <ws>/project inside one, is silent (review round 2, M2)"
 sb="$(make_ws)"
@@ -328,6 +358,107 @@ mkdir -p "$sb/project"
 echo "outer single_project $sb" > "$sb/.agent/projects.local"
 out="$(report "$sb")"
 hasnt "P4: <ws>/project inside a registered root: silent" "project is" "$out"
+mkdir -p "$sb/projects/inside-outer"
+out="$(report "$sb")"
+hasnt "P4 (projects/): an entry inside a registered root: silent" "projects/inside-outer" "$out"
+rm -r "$sb/project" "$sb/projects/inside-outer"
+mkdir -p "$sb/projects/grp2"
+git_repo "$sb/projects/grp2/sub"
+git_repo "$sb/roots/far/sub"
+ln -s "$sb/roots/far" "$sb/projects/far"
+printf 'g2sub single_project %s\nfarsub single_project %s\n' "$sb/projects/grp2/sub" "$sb/projects/far/sub" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+[[ -z "$out" ]] && pass "P3 (projects/): an entry holding a registered root, as a folder and as a link the line names it through: silent" || fail "P3 projects/: $out"
+
+echo "TEST: P13, P14 — a root's worktrees= folder at <ws>/project or under projects/ is never 'remove it' (review round 3, M1)"
+sb="$(make_ws)"
+git_repo "$sb/roots/alpha"
+git -C "$sb/roots/alpha" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m seed
+mkdir -p "$sb/projects/alpha-wt"
+git -C "$sb/roots/alpha" worktree add -q "$sb/projects/alpha-wt/issue-alpha-1" -b wt1 2>/dev/null
+mkdir -p "$sb/project"
+git -C "$sb/roots/alpha" worktree add -q "$sb/project/issue-alpha-2" -b wt2 2>/dev/null
+printf 'BUILD_CMD="make"\n' > "$sb/.agent/project_config.sh"
+printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/alpha"
+echo "alpha single_project $sb/roots/alpha worktrees=projects/alpha-wt" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "P13: a worktrees= folder under projects/ is never called unregistered" "projects/alpha-wt" "$out"
+has "P5 beside it: an unregistered <ws>/project still is" "project is not registered" "$out"
+echo "alpha single_project $sb/roots/alpha worktrees=project" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "P13: <ws>/project as a root's worktrees= folder is silent" "project is" "$out"
+has "P5 beside it: the now unregistered projects/alpha-wt is named" "projects/alpha-wt is not registered" "$out"
+mkdir -p "$sb/projects/wtroot"
+echo "alpha single_project $sb/roots/alpha worktrees=projects/wtroot/inner" > "$sb/.agent/projects.local"
+mkdir -p "$sb/projects/wtroot/inner"
+rm -rf "$sb/projects/alpha-wt"; git -C "$sb/roots/alpha" worktree prune
+rm -rf "$sb/project"; git -C "$sb/roots/alpha" worktree prune
+out="$(report "$sb")"
+hasnt "P13: an entry holding a root's worktrees= folder is silent" "projects/wtroot" "$out"
+has "C2: no unregistered folder named, all moved: the shared file may be deleted" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
+mkdir -p "$sb/wtfar"
+echo "alpha single_project $sb/roots/alpha worktrees=wtfar" > "$sb/.agent/projects.local"
+rm -r "$sb/projects/wtroot"
+ln -s "$sb/wtfar" "$sb/project"
+out="$(report "$sb")"
+has "P14: a link to a root's worktrees= folder: remove the link (never 'register')" "project is a link to the worktrees= folder of registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/project)" "$out"
+has "C2: a link to a registered folder is not unregistered: delete it stays" ".agent/project_config.sh is no longer read and holds nothing left to move: delete it" "$out"
+rm "$sb/project"
+echo "alpha single_project $sb/roots/alpha worktrees=projects/alpha-wt2" > "$sb/.agent/projects.local"
+mkdir -p "$sb/projects/alpha-wt2"
+out="$(report "$sb")"
+hasnt "P13: the C3 line is not triggered by a registered worktrees= folder" "may have used it" "$out"
+
+echo "TEST: P15, P16, W8, C8 — the adversarial pass: a root registered through a link elsewhere, a dangling link a line names a root through, an applied project with an invalid settings file (review round 3)"
+sb="$(make_ws)"
+git_repo "$sb/projects/real"
+mkdir -p "$sb/roots"
+ln -s "$sb/projects/real" "$sb/roots/alias"
+echo "aliased single_project $sb/roots/alias" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "P15: a projects/ entry a root is registered at through a link elsewhere: silent" "projects/real" "$out"
+ln -s "$sb/roots/gone" "$sb/project"
+echo "ghostsub single_project $sb/project/sub" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "P16: a dangling project link a registry line names a root through: never 'remove it'" "project is a link" "$out"
+rm "$sb/project"
+git_repo "$sb/worktrees/project/realwt"
+ln -s "$sb/worktrees/project/realwt" "$sb/roots/alias2"
+echo "aliased2 single_project $sb/roots/alias2" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "W8: a retired-location checkout a root is registered at through a link: silent" "worktrees/project/ holds" "$out"
+git_repo "$sb/roots/beta"
+echo "beta single_project $sb/roots/beta" > "$sb/.agent/projects.local"
+printf 'not a setting line\n' > "$sb/.agent/projects.d/beta"
+printf 'BUILD_CMD="make"\n' > "$sb/.agent/project_config.sh"
+rm -rf "$sb/projects/real" "$sb/worktrees/project/realwt"
+out="$(report "$sb")"
+has "C8: an applied project's settings file is invalid: what is left cannot be told" "the settings file of 'beta', .agent/projects.d/beta, is invalid" "$out"
+hasnt "C8: never 'delete it' for the shared file" "project_config.sh is no longer read and holds nothing left to move" "$out"
+
+echo "TEST: W2 at depth 6, W7, and C3 from a retired worktree (review round 3)"
+sb="$(make_ws)"
+git_repo "$sb/origin"
+git -C "$sb/origin" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m seed
+mkdir -p "$sb/worktrees/project/a/b/c/d/e"
+git -C "$sb/origin" worktree add -q "$sb/worktrees/project/a/b/c/d/e/six" -b wt6 2>/dev/null
+out="$(report "$sb")"
+has "W2: a checkout six levels down is named" "worktrees/project/ holds worktrees that are no longer found" "$out"
+git -C "$sb/origin" worktree remove "$sb/worktrees/project/a/b/c/d/e/six"
+git_repo "$sb/worktrees/project/holder"
+git_repo "$sb/worktrees/project/holder/nested"
+echo "nested single_project $sb/worktrees/project/holder/nested" > "$sb/.agent/projects.local"
+out="$(report "$sb")"
+hasnt "W7: a retired checkout that holds a registered root is never told to be removed" "worktrees/project/ holds" "$out"
+rm -rf "$sb/worktrees/project/holder"
+git_repo "$sb/roots/alpha"
+echo "alpha single_project $sb/roots/alpha" > "$sb/.agent/projects.local"
+printf 'build=make\ntest=make test\ninstall=none\n' > "$sb/.agent/projects.d/alpha"
+printf 'INSTALL_CMD="make install"\n' > "$sb/.agent/project_config.sh"
+git -C "$sb/origin" worktree add -q "$sb/.workspace-worktrees/issue-x-9" -b wt9 2>/dev/null
+out="$(report "$sb")"
+has "C3: an unregistered retired worktree may have used the shared file: register first" ".agent/project_config.sh still sets INSTALL_CMD, and an unregistered folder or retired worktree named above may have used it" "$out"
+hasnt "C3: never 'delete it' for the shared file" "project_config.sh is no longer read and holds nothing left to move" "$out"
 
 echo "TEST: P6 to P12 — links: into a root, holding a root, to a file; projects/<entry> follows the same rule (review round 2, M2)"
 sb="$(make_ws)"
@@ -337,12 +468,12 @@ echo "alpha single_project $sb/roots/alpha" > "$sb/.agent/projects.local"
 rp="$(cd "$sb/roots" && pwd -P)"
 ln -s "$sb/roots/alpha/sub" "$sb/project"
 out="$(report "$sb")"
-has "P7: a link into a registered root: remove it" "project is a link to $rp/alpha/sub, inside registered project 'alpha'; nothing reads the link any more: remove it (rm $sb/project)" "$out"
+has "P7: a link into a registered root: remove the link" "project is a link to $rp/alpha/sub, inside registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/project)" "$out"
 hasnt "P7: never 'register' a subfolder of a registered root" "register_project" "$out"
 rm "$sb/project"
 ln -s "$sb/roots" "$sb/project"
 out="$(report "$sb")"
-has "P8: a link to a folder holding a registered root: remove it" "project is a link to $rp, which holds registered project 'alpha'; nothing reads the link any more: remove it (rm $sb/project)" "$out"
+has "P8: a link to a folder holding a registered root: remove the link" "project is a link to $rp, which holds registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/project)" "$out"
 rm "$sb/project"
 printf 'x\n' > "$sb/roots/afile"
 ln -s "$sb/roots/afile" "$sb/project"
@@ -354,8 +485,13 @@ ln -s "$sb/roots/alpha" "$sb/projects/lnk"
 ln -s "$sb/roots/alpha/sub" "$sb/projects/into"
 ln -s "$sb/roots/loose" "$sb/projects/loose"
 ln -s "$sb/roots/gone" "$sb/projects/gone"
+ln -s "$sb/roots" "$sb/projects/holder"
+ln -s "$sb/roots/afile" "$sb/projects/afile"
 out="$(report "$sb")"
-has "P6 (projects/): a link to a registered root: remove it" "projects/lnk is a link to registered project 'alpha'; nothing reads the link any more: remove it (rm $sb/projects/lnk)" "$out"
+has "P6 (projects/): a link to a registered root: remove the link" "projects/lnk is a link to registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/projects/lnk)" "$out"
+has "P8 (projects/): a link holding a registered root: remove the link" "projects/holder is a link to $rp, which holds registered project 'alpha'; nothing reads the link any more: remove the link (rm $sb/projects/holder)" "$out"
+has "P11 (projects/): a link to a file: remove it" "projects/afile is a link to $sb/roots/afile, which is not a folder; nothing reads the link any more: remove it (rm $sb/projects/afile)" "$out"
+rm "$sb/projects/holder" "$sb/projects/afile"
 has "P7 (projects/): a link into a registered root: remove it" "projects/into is a link to $rp/alpha/sub, inside registered project 'alpha'" "$out"
 has "P9 (projects/): a link to an unregistered folder: register the target, remove the link" "projects/loose is a link to $sb/roots/loose, which is not registered; nothing reads the link any more: register $rp/loose" "$out"
 has "P10 (projects/): a dangling link: remove it" "projects/gone is a link to $sb/roots/gone, which does not exist; nothing reads the link any more: remove it (rm $sb/projects/gone)" "$out"
@@ -443,7 +579,7 @@ has "C4: only a parent root registered: register first" ".agent/project_config.s
 echo "alpha single_project $sb/roots/alpha" > "$sb/.agent/projects.local"
 git_repo "$sb/project"
 out="$(report "$sb")"
-has "C3: applies to alpha (all moved), but the unregistered project/ is named: register first" ".agent/project_config.sh still sets BUILD_CMD, INSTALL_CMD, and an unregistered folder named above may have used it" "$out"
+has "C3: applies to alpha (all moved), but the unregistered project/ is named: register first" ".agent/project_config.sh still sets BUILD_CMD, INSTALL_CMD, and an unregistered folder or retired worktree named above may have used it" "$out"
 hasnt "C3: never 'delete it' for the shared file" "project_config.sh is no longer read and holds nothing left to move" "$out"
 rm -r "$sb/project"
 out="$(report "$sb")"

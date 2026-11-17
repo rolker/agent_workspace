@@ -1547,14 +1547,17 @@ _registry_phys_nofollow() {
 # How folder <x> stands to the registered roots in <full> (the
 # registry_entries_full lines). <mode> 'name' compares the path that names
 # <x> (lexical, and with its parents resolved but <x> itself not followed);
-# 'target' compares what <x> resolves to (physical). Each root is compared
-# in the same forms (lexical, parents resolved, physical). Prints
-# "<relation>\t<root name>" for the first match, relation 'self' (the same
-# folder), 'inside' (<x> lies in the root) or 'holds' (the root lies in
-# <x>), 'self' first; returns 1 when <x> stands in no relation to any root.
+# 'target' compares what <x> resolves to (physical). Each root, and each
+# root's worktrees= folder (live worktrees: as much the project's as its
+# root), is compared in the same forms (lexical, parents resolved,
+# physical). Prints "<relation>\t<root name>\t<what>" for the first match:
+# relation 'self' (the same folder), 'inside' (<x> lies in it) or 'holds'
+# (it lies in <x>), 'self' first; <what> is 'root' or 'worktrees' (the
+# root's worktrees= folder). Returns 1 when <x> stands in no relation to
+# any of them.
 # Usage: rel=$(_stale_root_relation "$full" "$x" name)
 _stale_root_relation() {
-    local full="$1" x="$2" mode="$3" name type path fields f r best="" bestname=""
+    local full="$1" x="$2" mode="$3" name type path fields f r p what wt best="" bestname="" bestwhat=""
     local -a xs=() rs=()
     if [ "$mode" = name ]; then
         xs=("$(_registry_normpath "$x")" "$(_registry_phys_nofollow "$x")")
@@ -1564,24 +1567,45 @@ _stale_root_relation() {
     fi
     while IFS=$'\t' read -r name type path fields; do
         [ -n "$name" ] || continue
-        rs=("$(_registry_normpath "$path")" "$(_registry_phys_nofollow "$path")")
-        f="$(cd "$path" 2>/dev/null && pwd -P)" && rs+=("$f")
-        for f in "${xs[@]}"; do
-            for r in "${rs[@]}"; do
-                if [ "$f" = "$r" ]; then
-                    printf 'self\t%s\n' "$name"
-                    return 0
-                elif [[ "$f" == "$r/"* ]]; then
-                    [ -z "$best" ] && { best=inside; bestname="$name"; }
-                elif [[ "$r" == "$f/"* ]]; then
-                    [ -z "$best" ] && { best=holds; bestname="$name"; }
-                fi
+        wt="$(_registry_field_of "$fields" worktrees)" || wt=""
+        for what in root worktrees; do
+            if [ "$what" = root ]; then p="$path"; else p="$wt"; fi
+            [ -n "$p" ] || continue
+            rs=("$(_registry_normpath "$p")" "$(_registry_phys_nofollow "$p")")
+            f="$(cd "$p" 2>/dev/null && pwd -P)" && rs+=("$f")
+            for f in "${xs[@]}"; do
+                for r in "${rs[@]}"; do
+                    if [ "$f" = "$r" ]; then
+                        printf 'self\t%s\t%s\n' "$name" "$what"
+                        return 0
+                    elif [[ "$f" == "$r/"* ]]; then
+                        [ -z "$best" ] && { best=inside; bestname="$name"; bestwhat="$what"; }
+                    elif [[ "$r" == "$f/"* ]]; then
+                        [ -z "$best" ] && { best=holds; bestname="$name"; bestwhat="$what"; }
+                    fi
+                done
             done
         done
     done <<< "$full"
     [ -n "$best" ] || return 1
-    printf '%s\t%s\n' "$best" "$bestname"
+    printf '%s\t%s\t%s\n' "$best" "$bestname" "$bestwhat"
 }
+
+# How a _stale_root_relation answer names what it matched: "registered
+# project '<n>'" or "the worktrees= folder of registered project '<n>'".
+_stale_relation_noun() {
+    local rel="$1" name what
+    IFS=$'\t' read -r _ name what <<< "$rel"
+    if [ "$what" = worktrees ]; then
+        echo "the worktrees= folder of registered project '$name'"
+    else
+        echo "registered project '$name'"
+    fi
+}
+
+# What to check before removing a folder that may hold a repository: its
+# uncommitted work and commits on no remote.
+_STALE_CHECK_FIRST="after checking any repository in it for uncommitted work (git status) and commits on no remote (git log --branches --not --remotes)"
 
 # The line for one retired folder, <ws>/project or an entry under
 # <ws>/projects/ (<label> is how the line names it), or nothing. The case
@@ -1605,9 +1629,9 @@ _stale_folder_line() {
         fi
         if rel="$(_stale_root_relation "$full" "$x" target)"; then
             case "${rel%%$'\t'*}" in
-                self) echo "$label is a link to registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
-                inside) echo "$label is a link to $tabs, inside registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
-                holds) echo "$label is a link to $tabs, which holds registered project '${rel#*$'\t'}'; nothing reads the link any more: remove it (rm $x)" ;;
+                self) echo "$label is a link to $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
+                inside) echo "$label is a link to $tabs, inside $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
+                holds) echo "$label is a link to $tabs, which holds $(_stale_relation_noun "$rel"); nothing reads the link any more: remove the link (rm $x)" ;;
             esac
             return 0
         fi
@@ -1617,7 +1641,7 @@ _stale_folder_line() {
     fi
     [ -d "$x" ] || return 0
     _STALE_UNREGISTERED=1
-    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or remove it"
+    echo "$label is not registered; nothing reads it any more: register it with .agent/scripts/register_project"".sh <path>, or, $_STALE_CHECK_FIRST, remove it"
 }
 
 # The variables retired config file <file> sets (the read set's non-empty
@@ -1648,8 +1672,7 @@ _STALE_WORKTREE_SCAN_DEPTH=6
 # Usage: registry_stale_report "$main_root"
 registry_stale_report() {
     local root="$1" full name type path fields d dphys f n lines shared any
-    local wt g base skip applied rootdir plines setnames insts why
-    local -a bases=()
+    local g applied rootdir plines setnames insts why
     if ! full="$(registry_entries_full "$root" 2>/dev/null)"; then
         echo ".agent/projects.local has errors, so which retired shapes are still in use cannot be told: fix the registry (make validate names each bad line), then read this report again"
         return 0
@@ -1664,25 +1687,15 @@ registry_stale_report() {
     # walk stops at each checkout (never descending into it) and at
     # _STALE_WORKTREE_SCAN_DEPTH. Empty folders left after the worktrees were
     # removed are not named.
-    while IFS=$'\t' read -r name type path fields; do
-        [ -n "$name" ] || continue
-        bases+=("$(_registry_normpath "$path")" "$(cd "$path" 2>/dev/null && pwd -P || _registry_normpath "$path")")
-        wt="$(_registry_field_of "$fields" worktrees)" || continue
-        bases+=("$(_registry_normpath "$wt")" "$(cd "$wt" 2>/dev/null && pwd -P || _registry_normpath "$wt")")
-    done <<< "$full"
     for d in "$root/worktrees/project" "$root/.workspace-worktrees"; do
         [ -d "$d" ] || continue
         dphys="$(cd "$d" && pwd -P)" || continue
         while IFS= read -r g; do
-            skip=0
-            for base in ${bases[@]+"${bases[@]}"}; do
-                if [ "$g" = "$base" ] || [[ "$g" == "$base/"* ]]; then
-                    skip=1
-                    break
-                fi
-            done
-            [ "$skip" -eq 1 ] && continue
-            echo "${d#"$root/"}/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path>, then recreate it under its project's root"
+            # A checkout that is, lies in or holds a registered root or a
+            # root's worktrees= folder is the registry's: skipped.
+            _stale_root_relation "$full" "$g" name >/dev/null && continue
+            _STALE_UNREGISTERED=1
+            echo "${d#"$root/"}/ holds worktrees that are no longer found: remove each with git -C <its repository> worktree remove <path> (it refuses one with uncommitted changes and keeps its branch), then recreate it under its project's root; a plain clone there is not a worktree: $_STALE_CHECK_FIRST, move or delete it"
             break
         done < <(find "$dphys" -mindepth 1 -maxdepth "$_STALE_WORKTREE_SCAN_DEPTH" \
             \( -name .git -prune \) -o \( -type d -exec test -e '{}/.git' \; -prune -print \) 2>/dev/null)
@@ -1762,7 +1775,7 @@ registry_stale_report() {
                 if [ "$applied" -eq 0 ]; then
                     why="it applies to no registered project (none is registered, or each has its own .agent/projects.d/<name>.sh)"
                 else
-                    why="an unregistered folder named above may have used it"
+                    why="an unregistered folder or retired worktree named above may have used it"
                 fi
                 echo ".agent/project_config.sh still sets $setnames, and $why: register that project first (.agent/scripts/register_project"".sh <path>) and this report names what to move; delete the file only when no project needs it"
                 any=1
