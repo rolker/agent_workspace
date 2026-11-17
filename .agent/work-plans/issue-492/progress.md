@@ -126,3 +126,13 @@ Checked: the four ADR notes match the issue body character for character (script
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-17 14:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review at `1fe8302e` is approved with no findings; the host's full pre-commit pass over the changed files ran 12 hooks, none failed; the text is the owner's, approved word for word)
+**After**: publish
+**Decision**: publish
+
+Read: the `## Local Review (Pre-Push)` entry (approved, round 1, no must-fix, no suggestions; the four ADR notes and both AGENTS.md phrases match the issue text exactly). The merge decision stays the owner's.
