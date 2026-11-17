@@ -1448,6 +1448,10 @@ test_validate_python_parser_matches_shell() {
     echo "tools.sh single_project $sb/tools" >> "$sb/.agent/projects.local"
     echo "kit.SH single_project $sb/kit" >> "$sb/.agent/projects.local"
     echo "box.sH single_project $sb/box" >> "$sb/.agent/projects.local"
+    echo "dot single_project $sb/dot worktrees=." >> "$sb/.agent/projects.local"
+    echo "ww single_project $sb/ww worktrees=worktrees" >> "$sb/.agent/projects.local"
+    echo "wsw single_project $sb/wsw worktrees=worktrees/workspace/x" >> "$sb/.agent/projects.local"
+    echo "okw single_project $sb/okw worktrees=worktrees/okw" >> "$sb/.agent/projects.local"
     # Shell: entries as name|type|path|fields, then errors without the file prefix.
     shell_out="$( { reg "$sb" registry_entries_full "$sb" 2>/dev/null | tr '\t' '|' || true; echo "--errors--"; reg "$sb" registry_entries_full "$sb" 2>&1 >/dev/null | sed -E 's/^ERROR: [^:]+:([0-9]+): /\1: /' || true; } )"
     # Python: the same shape from read_projects_registry.
@@ -1471,6 +1475,12 @@ for err in errors:
     assert_contains "the comparison kept the in-root '..' override" "w|single_project|$sb/w|worktrees=$sb/w/x" "$shell_out"
     assert_contains "the comparison covered a name ending in .sh" "invalid project name 'tools.sh': a name may not end in '.sh'" "$shell_out"
     assert_not_contains "neither parser keeps the .sh name" "tools.sh|" "$py_out"
+    # A worktrees= that is or holds the workspace root or worktrees/workspace
+    # is refused by both parsers (review round 3).
+    assert_contains "worktrees=. (the workspace root) is refused" "worktrees '$sb' for 'dot' is or holds the workspace root, or is, holds or lies in its worktrees/workspace" "$shell_out"
+    assert_contains "worktrees=worktrees (holds worktrees/workspace) is refused" "worktrees '$sb/worktrees' for 'ww' is or holds the workspace root" "$shell_out"
+    assert_contains "a folder inside worktrees/workspace is refused" "worktrees '$sb/worktrees/workspace/x' for 'wsw' is or holds the workspace root" "$shell_out"
+    assert_contains "a folder of its own under worktrees/ is kept" "okw|single_project|$sb/okw|worktrees=$sb/worktrees/okw" "$shell_out"
     assert_contains "the comparison covered an upper-case .SH" "invalid project name 'kit.SH': a name may not end in '.sh', in any letter case" "$shell_out"
     assert_contains "the comparison covered a mixed-case .sH, naming project 'box'" "legacy .agent/projects.d/<name>.sh of project 'box')" "$shell_out"
     assert_not_contains "neither parser keeps a mixed-case name" "kit.SH|" "$py_out"

@@ -259,6 +259,20 @@ def read_projects_registry(root=None):
                 f"{abs_path} or under the workspace root {root}"
             )
             continue
+        # Same rule and text as the shell parser: a worktrees= that is or
+        # holds the workspace root, or is, holds or lies in its
+        # worktrees/workspace, would make a workspace worktree (or the
+        # workspace itself) count as the project's, or the reverse.
+        ws_worktrees = root / "worktrees" / "workspace"
+        if wt is not None and (
+            _path_under(root, wt) or _path_under(ws_worktrees, wt) or _path_under(wt, ws_worktrees)
+        ):
+            errors.append(
+                f"{registry}:{lineno}: worktrees '{wt}' for '{name}' is or holds the "
+                "workspace root, or is, holds or lies in its worktrees/workspace; a "
+                "project's worktrees go in a folder of their own"
+            )
+            continue
         parsed.append((lineno, {"name": name, "type": ptype, "path": abs_path, "fields": fields}))
 
     # First definition wins for lookups; a repeated name is an error.

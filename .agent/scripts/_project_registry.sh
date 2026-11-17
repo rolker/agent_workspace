@@ -263,6 +263,15 @@ registry_entries_full() {
             rc=2
             continue
         fi
+        # A worktrees= that is or holds the workspace root, or is, holds or
+        # lies in the workspace's own worktrees/workspace, would make a
+        # workspace worktree (or the workspace itself) count as that
+        # project's, or a project worktree as a workspace one.
+        if [ -n "$wt" ] && { _registry_path_under "$root" "$wt" || _registry_path_under "$root/worktrees/workspace" "$wt" || _registry_path_under "$wt" "$root/worktrees/workspace"; }; then
+            echo "ERROR: ${file}:${lineno}: worktrees '$wt' for '$name' is or holds the workspace root, or is, holds or lies in its worktrees/workspace; a project's worktrees go in a folder of their own" >&2
+            rc=2
+            continue
+        fi
         lines+=("$(printf '%s\t%s\t%s\t%s\t%s' "$lineno" "$name" "$type" "$path" "$fields")")
     done < "$file"
 
