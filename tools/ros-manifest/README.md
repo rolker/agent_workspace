@@ -7,13 +7,30 @@ Status: prototype. The format and the tools are still being designed; see
 
 ## Goals
 
-A ROS 2 system is usually many repositories, and the same system is installed in several
-variants: a robot, an operator station, a development machine, one ROS distro or another.
-repos-manifest lets one description cover all of them.
+The main goal is to manage a large project made up of multiple git repositories, which can be
+grouped as layers to help manage build times.
 
-It was built for ROS 2 systems, and nothing in it requires ROS. `vcs` and `colcon` both work
-on other kinds of projects, and a distro is to the format only a named variant that picks a
-repo's version.
+Roles let different subsets of the repos be used on different target systems. For example,
+roles can distinguish between deployments of the project on headless machines and on machines
+with a GUI.
+
+Groups are sets of repos that can be switched on and off together. A role is a choice of
+groups, and a machine can switch on more of them on top of its role. Cross-platform projects
+can use this, for example to include the drivers for a target hardware platform, a common
+case in robotics.
+
+Distros describe major versions of the project, typically targeting different versions of an
+underlying framework it depends on.
+
+It was built for ROS 2 systems, but nothing in it requires ROS. `vcs` and `colcon` both work
+on other kinds of projects.
+
+| Concept | What it is | What it is for |
+|---|---|---|
+| Layer | An ordered set of repos that is built as one unit, on top of the layers before it | Keeping build times down: a layer that rarely changes is built once |
+| Group | A set of repos that is switched on or off together | Parts of the project that only some machines need, such as a simulator or the drivers for one hardware platform |
+| Role | A named choice of groups | The different uses of the project: a robot, an operator station, a development machine |
+| Distro | A major version of the project | Picking the branch or tag of each repo that goes with a version of the underlying framework |
 
 This repo holds the specification of the manifest format and a set of tools that work with
 it. The tools are one way to use a manifest. Anyone can pick the ones they want, or write
@@ -66,7 +83,6 @@ We looked at tools that do compose manifests before writing this one (survey of 
   do not write `.repos` files.
 - **rosinstall_generator** works per distro, from the released ROS index. It answers what a
   released package needs, not which of a project's own repos a given machine should have.
-
 
 ## What works today
 

@@ -9,9 +9,9 @@ The format of a manifest is in [spec.md](spec.md). This document is about the to
 ## The parts
 
 - The specification of the manifest format.
-- A resolver: given a manifest, a role and a distro, it works out which repos a machine gets,
-  at which version, in which layer. It reads and writes files and fetches manifests. It does
-  not clone repos or build anything.
+- A resolver: given a manifest, a role, a distro and any extra groups, it works out which
+  repos a machine gets, at which version, in which layer. It reads and writes files and
+  fetches manifests. It does not clone repos or build anything.
 - A set of commands on top of the resolver that fetch, update and build a system by calling
   `vcs` and `colcon`.
 
@@ -46,7 +46,8 @@ The system directory is not a repo. Nothing in `.repos-manifest/` is ever commit
 ```yaml
 manifest: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/project11.manifest.yaml
 local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
-role: developer
+role: robot
+groups: [hw-ben]
 distro: jazzy
 prefer_owner: rolker
 ```
@@ -56,10 +57,11 @@ prefer_owner: rolker
 | `manifest` | Where the manifest is: a path or a URL. |
 | `local_manifest` | Optional. A path inside the system directory that is used instead, once that file exists. |
 | `role` | The role of this machine, if the manifest has roles. |
+| `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `distro` | The ROS distro of this system, if the manifest has distros. |
 | `prefer_owner` | Optional. See "Preferred owner". |
 
-`role` and `distro` are facts about the machine, which is why they are recorded here and not
+`role`, `groups` and `distro` are facts about the machine, which is why they are recorded here and not
 in the manifest.
 
 ## Where the manifest comes from
@@ -97,7 +99,7 @@ After `init`, the other commands take no arguments in the common case. A person 
 machine types:
 
 ```
-repos-manifest init <manifest> --role robot --distro jazzy
+repos-manifest init <manifest> --role robot --with hw-ben --distro jazzy
 repos-manifest build
 source setup.bash
 ```

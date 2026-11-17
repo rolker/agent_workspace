@@ -168,6 +168,27 @@ A repo that is in several groups is part of the system if any of its groups is s
 If `roles:` is absent, the manifest has one unnamed role in which every group has its
 default, and no role is given when resolving.
 
+Resolving can also be given extra groups to switch on, on top of what the role selects. This
+keeps roles about how a machine is used and leaves things like its hardware to groups. A
+robot role on two hardware platforms is one role and two groups, not two roles.
+
+```yaml
+groups:
+  simulation:
+    default: exclude
+  hw-ben:
+    default: exclude
+  hw-echoboat:
+    default: exclude
+
+roles:
+  robot: {}
+  developer:
+    add: [simulation]
+```
+
+A machine resolves this for the role `robot` with the extra group `hw-ben`.
+
 Open: roles have not had a real design pass. The example above is the smallest thing that
 separates a robot from a development machine. Whether a role should also be able to name
 single repos, or pick layers, is undecided.
@@ -236,7 +257,8 @@ repositories:
 
 ## What resolving produces
 
-Given a manifest, and a role and a distro where the manifest has them, resolving produces:
+Given a manifest, a role and a distro where the manifest has them, and any extra groups,
+resolving produces:
 
 - one plain `.repos` file per layer, holding only `type`, `url` and `version` for the repos
   that the role and distro select;
