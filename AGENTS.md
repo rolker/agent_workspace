@@ -7,7 +7,7 @@ setup (environment, identity, features), see your framework's adapter file:
 
 ## Terminology
 
-- **Project**: the managed product, any folder registered with the workspace (`register_project.sh`),
+- **Project**: what is being built: any folder registered with the workspace (`register_project.sh`),
   wherever it lives. A hosting service is optional; git is meant to be, but registration still needs it.
   Features, deployment and user-facing behavior are project scope.
 - **Workspace**: the agent infrastructure in this repo — skills, governance,
@@ -26,7 +26,7 @@ repo that owns the code being changed:
 | Scope | Repo | What lives there |
 |-------|------|-----------------|
 | Workspace | `agent_workspace` | `AGENTS.md`, `.agent/`, skills, scripts, docs |
-| Project | project repo (e.g. `my_project`) | The product being built (its registered folder) |
+| Project | project repo (e.g. `my_project`) | The project's own files (its registered folder) |
 
 ## Boundaries
 
