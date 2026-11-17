@@ -16,16 +16,10 @@
 SHELL := /bin/bash
 
 # --- Workspace root resolution ---
-# When running from a worktree, resolve back to main workspace root.
-#   .workspace-worktrees/<name>/   → 2 levels up
-#   project/worktrees/<name>/      → 3 levels up
-ifneq ($(findstring /project/worktrees/,$(CURDIR)),)
-  MAIN_ROOT := $(abspath $(CURDIR)/../../..)
-else ifneq ($(findstring /.workspace-worktrees/,$(CURDIR)),)
-  MAIN_ROOT := $(abspath $(CURDIR)/../..)
-else
-  MAIN_ROOT := $(CURDIR)
-endif
+# The checkout make runs in, a worktree included: its own script copies run
+# (issue #239). Issue #265 part 4 retired the .workspace-worktrees/ and
+# project/worktrees/ shapes this used to walk up from.
+MAIN_ROOT := $(CURDIR)
 
 # --- Dev-tools root: the checkout that owns .git (issue #272) ---
 # The venv, the stamps, and the pre-commit hook belong to the main checkout,
@@ -104,8 +98,10 @@ setup: $(STAMP)/git-bug.done $(STAMP)/ros-manifest.done
 	@echo "Optional, enable the workspace in project sessions: .agent/scripts/user_tier_install.sh"
 
 # Multi-tenant hosting (issue #227): PROJECT=<name> selects a project from
-# .agent/projects.local; unset means legacy project/ (or cwd discovery in
-# direct script invocations).
+# .agent/projects.local; unset means cwd discovery (a directory under a
+# registered root), and from the workspace with nothing selected the
+# adapter refuses, except `make sync`, which syncs the workspace alone
+# (issue #265 part 4 retired the project/ default).
 PROJECT_FLAG := $(if $(PROJECT),--project $(PROJECT))
 
 build: $(STAMP)/setup-dev.done

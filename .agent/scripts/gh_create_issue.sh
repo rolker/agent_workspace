@@ -167,21 +167,12 @@ if [ -z "$GH_REPO" ]; then
     _WS_REMOTE=$(git -C "$_WORKSPACE_ROOT" remote get-url origin 2>/dev/null || echo "")
     _WS_SLUG=$(echo "$_WS_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
 
-    # Extract project repo slug (if configured)
-    _PROJECT_SLUG=""
-    if [ -d "$_WORKSPACE_ROOT/project" ] && git -C "$_WORKSPACE_ROOT/project" rev-parse --is-inside-work-tree &>/dev/null; then
-        _PROJ_REMOTE=$(git -C "$_WORKSPACE_ROOT/project" remote get-url origin 2>/dev/null || echo "")
-        _PROJECT_SLUG=$(echo "$_PROJ_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-    fi
-
     # Every registered root's repository (issue #295): a project session runs
     # from the project's own checkout, so it is accepted because it is
     # registered in this checkout's .agent/projects.local. _PROJECT_SLUGS is
-    # the whole accepted project set, one per line.
+    # the whole accepted project set, one per line; a project/ checkout in
+    # the workspace is not read (issue #265 part 4).
     _PROJECT_SLUGS="$(registry_repo_slugs "$_WORKSPACE_ROOT")"
-    if [ -n "$_PROJECT_SLUG" ]; then
-        _PROJECT_SLUGS="$(printf '%s\n%s' "$_PROJECT_SLUG" "$_PROJECT_SLUGS")"
-    fi
     _PROJECT_SLUGS="$(printf '%s\n' "$_PROJECT_SLUGS" | awk 'NF && !seen[$0]++')"
 
     # Validate slug format (owner/repo) before comparing — non-GitHub remotes

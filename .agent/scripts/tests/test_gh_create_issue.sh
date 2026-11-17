@@ -575,6 +575,18 @@ else
     fail295 "registry parse error: rc=$RC295 out=${OUT295:0:300}"
 fi
 
+# An unregistered project/ checkout's own slug is not accepted (issue #265
+# part 4: the registry slugs are the whole project set; project/ is not read).
+echo "demo single_project $DEMO295" > "$WS295/.agent/projects.local"
+git init -q -b main "$WS295/project"
+git -C "$WS295/project" remote add origin https://github.com/legacy-owner/legacy.git
+run295 "$WS295/project"
+if [[ "$RC295" -eq 2 && ! -f "$ARGV_LOG" && "$OUT295" == *"gh would target 'legacy-owner/legacy'"* ]]; then
+    pass295 "an unregistered project/ checkout's slug is refused by the safety check"
+else
+    fail295 "unregistered project/ slug: rc=$RC295 out=${OUT295:0:300}"
+fi
+
 echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"

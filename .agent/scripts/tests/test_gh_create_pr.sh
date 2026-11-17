@@ -652,6 +652,16 @@ for CWD295 in "$WS295/project" "$DEMO295" "$DEMO295B"; do
     fi
 done
 
+# An unregistered project/ checkout's own slug is not accepted (issue #265
+# part 4: the registry slugs are the whole project set; project/ is not read).
+git -C "$WS295/project" remote set-url origin https://github.com/legacy-owner/legacy.git
+run295 "$WS295/project"
+if [[ "$RC295" -eq 2 && ! -f "$ARGV_LOG" && "$OUT295" == *"gh would target 'legacy-owner/legacy'"* ]]; then
+    pass295 "an unregistered project/ checkout's slug is refused by the safety check"
+else
+    fail295 "unregistered project/ slug: rc=$RC295 out=${OUT295:0:300}"
+fi
+
 echo
 echo "=== Temp files ==="
 if [[ -s "$LEAK_LOG" ]]; then

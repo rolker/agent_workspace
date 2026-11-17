@@ -158,6 +158,22 @@ else
 fi
 no_project_dirs "(d)"
 
+# (g) make build and adapter build with nothing registered refuse, naming
+# the registration script (issue #265 part 4: no project/ fallback)
+run_clean "$WS" make --no-print-directory build
+if [[ "$RC" -ne 0 && "$OUT" == *"and none is registered. Register one: .agent/scripts/register_project.sh <path>"* ]]; then
+    pass "(g) make build refuses and names register_project.sh"
+else
+    fail "(g) make build: rc=$RC out=${OUT:0:600}"
+fi
+run_clean "$WS" "$WS/.agent/scripts/adapter" build
+if [[ "$RC" -ne 0 && "$OUT" == *"and none is registered. Register one: .agent/scripts/register_project.sh <path>"* ]]; then
+    pass "(g) adapter build refuses and names register_project.sh"
+else
+    fail "(g) adapter build: rc=$RC out=${OUT:0:600}"
+fi
+no_project_dirs "(g)"
+
 echo "=== After registering a demo project ==="
 
 # (e) register the demo checkout, then gh_create_pr.sh from inside it
@@ -179,6 +195,21 @@ else
     fail "(e) gh_create_pr.sh: rc=$RC out=${OUT:0:600}"
 fi
 no_project_dirs "(e)"
+
+# (h) the registered project is selected by name: its build runs (build=none
+# records that it has none, so the run reports nothing to build).
+run_clean "$WS" "$WS/.agent/scripts/adapter" --project demo build
+if [[ "$RC" -eq 0 && "$OUT" == *"build=none: project 'demo'"* ]]; then
+    pass "(h) adapter --project demo build runs the registered project's build setting"
+else
+    fail "(h) adapter --project demo build: rc=$RC out=${OUT:0:600}"
+fi
+run_clean "$WS" make --no-print-directory build PROJECT=demo
+if [[ "$RC" -eq 0 && "$OUT" == *"build=none: project 'demo'"* ]]; then
+    pass "(h) make build PROJECT=demo runs it too"
+else
+    fail "(h) make build PROJECT=demo: rc=$RC out=${OUT:0:600}"
+fi
 
 echo "=== A worktree of the copy, with the demo project registered in the main checkout ==="
 

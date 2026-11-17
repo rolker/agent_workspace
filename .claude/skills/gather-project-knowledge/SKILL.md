@@ -45,7 +45,7 @@ workspace and project repos.
 
 ### 2. Scan project repos and build the component inventory
 
-For every project repo under `project/`:
+For every registered project root (`.agent/projects.local`; each repository under it):
 
 - Glob for all source manifest files (e.g., `package.json`, `pyproject.toml`,
   `Cargo.toml`, `go.mod`, `pom.xml`, `*.cabal`) in the repo

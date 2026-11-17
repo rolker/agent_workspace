@@ -1,8 +1,8 @@
 #!/bin/bash
-# discover_governance.sh — Scan workspace and project repos for governance documents.
+# discover_governance.sh — Scan the workspace and every registered project root for governance documents.
 #
 # Outputs a TSV inventory: path<tab>type<tab>size<tab>scope
-#   scope: "workspace" or the project repo directory name
+#   scope: "workspace" or "project" (a registered root)
 #   type:  principles | adr | agent-guide | architecture | agents-config | workspace-context
 #   size:  bytes for files, file count for workspace-context directories
 #
@@ -15,6 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 # A read-only report: without a working helper, still report, using the
 # candidate spelling that found each file (exact on case-sensitive
 # filesystems; on a case-insensitive one a file may be reported under the
@@ -56,7 +58,7 @@ check_file() {
         # Report the name the file is stored under, not the candidate
         # spelling that found it: on a case-insensitive filesystem the
         # docs/PRINCIPLES.md probe also opens a stored docs/principles.md.
-        path="$ROOT_DIR/$(real_case_relpath "$ROOT_DIR" "${path#"$ROOT_DIR"/}")"
+        path="$SCAN_BASE/$(real_case_relpath "$SCAN_BASE" "${path#"$SCAN_BASE"/}")"
         size=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo 0)
         emit "$path" "$type" "$size" "$scope"
     fi
@@ -99,6 +101,8 @@ check_directory() {
 
 scan_scope() {
     local dir="$1" scope="$2"
+    # The directory check_file resolves stored spellings against.
+    SCAN_BASE="$dir"
 
     # Both spellings are accepted: the root/uppercase names (ARCHITECTURE.md,
     # PRINCIPLES.md) and the lowercase docs/ names the workspace itself uses
@@ -123,10 +127,16 @@ fi
 # Scan workspace root
 scan_scope "$ROOT_DIR" "workspace"
 
-# Scan project repo under project/
-if [[ -d "$ROOT_DIR/project" ]] && [[ ! -L "$ROOT_DIR/project" ]] || [[ -L "$ROOT_DIR/project" ]]; then
-    project_dir="$ROOT_DIR/project"
-    if [[ -d "$project_dir" ]]; then
-        scan_scope "$project_dir" "project"
+# Scan every registered (non-parent) project root, read from the main
+# checkout's registry (issue #265 part 4: a project/ checkout in the
+# workspace is not read). A root inside the workspace tree is reported by
+# its path relative to the workspace, one elsewhere by its absolute path.
+REGISTRY_ROOT="$(registry_main_checkout "$ROOT_DIR")"
+_entries="$(registry_entries "$REGISTRY_ROOT" 2>/dev/null)" || true
+while IFS=$'\t' read -r _name _type _path; do
+    [[ -n "$_name" ]] || continue
+    [[ "$_type" == "$REGISTRY_PARENT_TYPE" ]] && continue
+    if [[ -d "$_path" ]]; then
+        scan_scope "$_path" "project"
     fi
-fi
+done <<< "$_entries"

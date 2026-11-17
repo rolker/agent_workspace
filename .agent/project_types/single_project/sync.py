@@ -25,11 +25,18 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 from workspace import (
     get_main_checkout_root,
     get_workspace_root,
-    get_project_path,
-    is_project_configured,
     read_projects_registry,
     REGISTER_PROJECT_POINTER,
 )
+
+
+def is_git_checkout(path):
+    """True when <path> exists and is a git checkout (a .git at the path
+    itself, or at its symlink target)."""
+    path = Path(path)
+    if not path.exists():
+        return False
+    return (path / ".git").exists() or (path.resolve() / ".git").exists()
 
 
 def run_git_cmd(repo_path, cmd_args, dry_run=False):
@@ -163,23 +170,23 @@ def main():
     )
     parser.add_argument(
         "--project-root",
-        help="Project checkout to sync (registry-hosted project, issue #227); "
-        "default: the legacy project/ directory.",
+        help="Project checkout to sync (a registered project, issue #227); "
+        "without it the workspace alone is synced.",
     )
     args = parser.parse_args()
 
     root_dir = Path(get_workspace_root())
-    project_dir = Path(args.project_root) if args.project_root else get_project_path()
+    project_dir = Path(args.project_root) if args.project_root else None
 
     # Sync workspace repo
     if sync_repo(root_dir, "agent_workspace (workspace)", args.dry_run):
         sync_gitbug(root_dir, args.dry_run)
 
     # Sync project repo
-    if is_project_configured(project_dir):
+    if project_dir is not None and is_git_checkout(project_dir):
         if sync_repo(project_dir, f"project ({project_dir.resolve().name})", args.dry_run):
             sync_gitbug(project_dir, args.dry_run)
-    elif args.project_root:
+    elif project_dir is not None:
         print("Checking project...")
         print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:

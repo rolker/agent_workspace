@@ -9,6 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export REPO_ROOT
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -36,19 +38,12 @@ discover_repos() {
         [ -n "$root_slug" ] && repos+=("$root_slug")
     fi
 
-    # Project repo
-    local project_dir="$REPO_ROOT/project"
-    if [ -d "$project_dir" ] && git -C "$project_dir" rev-parse --git-dir &>/dev/null; then
-        local project_url
-        project_url=$(git -C "$project_dir" remote get-url origin 2>/dev/null || echo "")
-        if [ -n "$project_url" ] && [[ "$project_url" == *"github.com"* ]]; then
-            local proj_slug
-            proj_slug=$(echo "$project_url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-            if [ -n "$proj_slug" ]; then
-                repos+=("$proj_slug")
-            fi
-        fi
-    fi
+    # Project repos: every registered root's github.com repository (issue
+    # #265 part 4: the registry, read from the main checkout, not project/).
+    local proj_slug
+    while IFS= read -r proj_slug; do
+        [ -n "$proj_slug" ] && repos+=("$proj_slug")
+    done < <(registry_repo_slugs "$(registry_main_checkout "$REPO_ROOT")")
 
     if [ ${#repos[@]} -gt 0 ]; then
         printf '%s\n' "${repos[@]}" | sort -u

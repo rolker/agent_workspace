@@ -122,11 +122,14 @@ make_registered_project() {
 # ---- Registry parsing tests ----
 
 test_registry_absent_is_legacy() {
-    echo "TEST: no registry → legacy project_root (from a cwd outside projects/)"
-    local sb out
+    echo "TEST: no registry → project_root refuses, a project/ checkout is not used (issue #265 part 4)"
+    local sb out rc=0
     sb="$(make_sandbox)"
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "legacy root" "$sb/project" "$out"
+    make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_not_contains "never the project/ root" "$sb/project" "$out"
+    assert_contains "says none is registered" "no registered project here (cwd $(cd "$sb" && pwd -P)), and none is registered" "$out"
 }
 
 test_registry_malformed_line_fails() {
@@ -259,16 +262,19 @@ test_unregistered_under_projects_fails() {
     mkdir -p "$sb/projects/orphan"
     out="$(cd "$sb/projects/orphan" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "explains the problem" "no registered project owns it" "$out"
+    assert_contains "explains the problem" "no registered project here (cwd $(cd "$sb/projects/orphan" && pwd -P)). Registered: alpha." "$out"
 }
 
 test_legacy_unaffected_by_registry() {
-    echo "TEST: registry present + cwd outside projects/ still resolves legacy"
-    local sb out
+    echo "TEST: registry present + cwd outside every root refuses, listing the registered names (issue #265 part 4)"
+    local sb out rc=0
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
-    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root)" || true
-    assert_eq "legacy root wins outside projects/" "$sb/project" "$out"
+    make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "lists the registered project and --project" "Registered: alpha. Pass --project <name>" "$out"
+    assert_not_contains "never the project/ root" "$sb/project" "$out"
 }
 
 # ---- Per-project command config tests ----
@@ -486,7 +492,7 @@ test_validate_malformed_registry() {
 }
 
 test_validate_legacy_still_works() {
-    echo "TEST: validate on a legacy-only machine behaves as before"
+    echo "TEST: validate with an unregistered project/ checkout and no registry passes (project/ is not read)"
     local sb out rc=0
     sb="$(make_validate_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
@@ -779,16 +785,17 @@ test_single_project_scoped_validate_nested_dir_fails() {
 }
 
 test_single_project_legacy_validate() {
-    echo "TEST: adapter validate (no --project) checks the legacy project/ only"
+    echo "TEST: adapter validate (no --project) from the workspace refuses; a project/ checkout is not validated (issue #265 part 4)"
     local sb out rc=0
     sb="$(make_sandbox)"
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
-    assert_eq "missing project/ fails" "1" "$rc"
-    assert_contains "names project/" "checkout does not exist: $sb/project" "$out"
+    assert_eq "nothing registered: exit 1" "1" "$rc"
+    assert_contains "nothing registered: names the registration script" "and none is registered. Register one: .agent/scripts/register_project.sh <path>" "$out"
     make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
     rc=0
     out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
-    assert_eq "git project/ passes" "0" "$rc"
+    assert_eq "a git project/ does not make it pass" "1" "$rc"
+    assert_not_contains "project/ is not validated" "single_project checkout is a git repository" "$out"
 }
 
 # ---- worktree_create.sh --project wiring ----

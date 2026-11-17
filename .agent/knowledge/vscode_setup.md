@@ -62,7 +62,7 @@ If the project uses CMake, enable `compile_commands.json` generation
   "configurations": [
     {
       "name": "Default",
-      "compileCommands": "${workspaceFolder}/project/build/compile_commands.json",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
       "intelliSenseMode": "linux-gcc-x64"
     }
   ],
@@ -85,7 +85,7 @@ extra analysis paths in `.vscode/settings.json`:
 ```jsonc
 {
   "python.analysis.extraPaths": [
-    "${workspaceFolder}/project/src"
+    "${workspaceFolder}/src"
   ]
 }
 ```

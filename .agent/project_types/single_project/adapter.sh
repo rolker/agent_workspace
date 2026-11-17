@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # .agent/project_types/single_project/adapter.sh
-# single_project adapter — one repo cloned or symlinked at $WORKSPACE_ROOT/project.
+# single_project adapter — one registered repository: the checkout at the
+# registry line's path (issue #265 part 4 retired the project/ symlink).
 #
 # Facade over the pre-adapter workspace scripts (ADR-0011, #210): behavior
 # matches the old build.sh/test.sh/sync_project.py flow (setup ran via a shim,
@@ -137,17 +138,18 @@ _single_project_exec_cmd() {
 }
 
 adapter_setup() {
-    if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
-        exec "$ADAPTER_TYPE_DIR/setup.sh" --project-root "$(adapter_project_root)" "$@"
-    fi
-    exec "$ADAPTER_TYPE_DIR/setup.sh" "$@"
+    local root
+    root="$(adapter_project_root)" || return 1
+    exec "$ADAPTER_TYPE_DIR/setup.sh" --project-root "$root" "$@"
 }
 
 adapter_sync() {
-    if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
-        exec python3 "$ADAPTER_TYPE_DIR/sync.py" --project-root "$(adapter_project_root)" "$@"
+    # No project resolved: the dispatcher sends `sync` here alone, to sync
+    # the workspace by itself (sync.py with no --project-root).
+    if [ -z "${ACTIVE_PROJECT_ROOT:-}" ]; then
+        exec python3 "$ADAPTER_TYPE_DIR/sync.py" "$@"
     fi
-    exec python3 "$ADAPTER_TYPE_DIR/sync.py" "$@"
+    exec python3 "$ADAPTER_TYPE_DIR/sync.py" --project-root "$ACTIVE_PROJECT_ROOT" "$@"
 }
 
 adapter_validate() {
@@ -215,26 +217,20 @@ adapter_env() {
 }
 
 adapter_project_root() {
-    # ACTIVE_PROJECT_ROOT is set by the dispatcher (registry hosting dir for
-    # named projects, project/ for the legacy shape).
-    echo "${ACTIVE_PROJECT_ROOT:-$WORKSPACE_ROOT/project}"
+    # ACTIVE_PROJECT_ROOT is set by the dispatcher: the registry hosting dir.
+    # There is no default (issue #265 part 4 retired project/).
+    if [ -z "${ACTIVE_PROJECT_ROOT:-}" ]; then
+        echo "ERROR: no project selected (select one: --project <name>)" >&2
+        return 1
+    fi
+    echo "$ACTIVE_PROJECT_ROOT"
 }
 
 adapter_repos() {
     local root
-    root="$(adapter_project_root)"
+    root="$(adapter_project_root)" || return 1
     if [ ! -d "$root" ] || ! git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
-        if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
-            echo "ERROR: project '$ACTIVE_PROJECT_NAME' is not checked out at $root" >&2
-        else
-            # The script's path is split in two on purpose (issue #295):
-            # the test selector (suites_for_files.sh) reads every path token
-            # in this file as a read of that file, and this adapter is
-            # reached by most suites, so naming the script whole would make
-            # them all run whenever it changes (the hub guard in
-            # test_script_tests_hook_scope.sh). A message is not a read.
-            echo "ERROR: no project selected and project/ is not configured (register one: .agent/scripts/register_project"".sh <path>; select one: --project <name>)" >&2
-        fi
+        echo "ERROR: project '${ACTIVE_PROJECT_NAME:-}' is not checked out at $root" >&2
         return 1
     fi
     local name

@@ -70,7 +70,13 @@ _rc_config_file() {
 }
 
 _rc_root() {
-    echo "${ACTIVE_PROJECT_ROOT:-$WORKSPACE_ROOT/project}"
+    # The registry hosting dir the dispatcher resolved; no default (issue
+    # #265 part 4 retired project/).
+    if [ -z "${ACTIVE_PROJECT_ROOT:-}" ]; then
+        echo "ERROR: no project selected (select one: --project <name>)" >&2
+        return 1
+    fi
+    echo "$ACTIVE_PROJECT_ROOT"
 }
 
 # The manifest directory every verb reads: configs/manifest on the

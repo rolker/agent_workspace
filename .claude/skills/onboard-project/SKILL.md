@@ -494,10 +494,9 @@ once more before creating anything. Then:
    the top of a git repository gets none: for such a project nothing goes
    on a branch, and only fixes that touch no tracked file are made.
 
-   `--project` is required: with `--type` given, `worktree_create.sh`
-   does not look at the current directory, so without it it would take a
-   legacy `project/` checkout (the wrong repository) or stop when several
-   projects are registered. `<settings-name>` is step 1's: `<name>` from
+   `--project` is required: at a parent root the instance is a choice the
+   current directory does not make, and naming the project keeps the
+   worktree on the repository the audit read. `<settings-name>` is step 1's: `<name>` from
    `session_root.sh`, or at a parent root the chosen instance, whose
    repository the worktree is of, and the one repository the audit read
    (the parent root's own files were not audited). Enter the worktree

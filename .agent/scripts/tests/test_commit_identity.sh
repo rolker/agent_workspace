@@ -336,23 +336,33 @@ out="$(run_in "$sb" -- bash -c 'source "$1" --agent gemini >/dev/null; echo "$AG
 [ "$out" = "dev+gemini-cli@example.org" ] && pass "after configure, the base is unchanged" || fail "after configure (got: $out)"
 
 echo "TEST: configure_git_identity.sh derives per repository it writes to"
+# The repositories of a registered root (issue #265 part 4: the registry of
+# the current directory, never a project/ directory). The root is a plain
+# directory holding two clones, as a ros2_colcon instance holds its repos.
 sb="$(mk_repo "dev@example.org")"
-git init --quiet "$sb/repo/project/own"
-git -C "$sb/repo/project/own" config user.email "other@example.net"
-git init --quiet "$sb/repo/project/plain"
+mkdir -p "$sb/repo/.agent"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/proj/own"
+git -C "$sb/proj/own" config user.email "other@example.net"
+git init --quiet "$sb/proj/plain"
+git init --quiet "$sb/repo/project/unread"
 run_in "$sb" -- bash "$CONFIGURE" --agent codex >/dev/null 2>&1
 ws="$(git -C "$sb/repo" config --local user.email)"
-own="$(git -C "$sb/repo/project/own" config --local user.email)"
-plain="$(git -C "$sb/repo/project/plain" config --local user.email)"
+own="$(git -C "$sb/proj/own" config --local user.email)"
+plain="$(git -C "$sb/proj/plain" config --local user.email)"
 [ "$ws|$own|$plain" = "dev+codex@example.org|other+codex@example.net|dev+codex@example.org" ] \
     && pass "a clone with its own email keeps its base; the others use the global one" \
     || fail "per-repo derivation (got: $ws|$own|$plain)"
+unread="$(git -C "$sb/repo/project/unread" config --local user.email || true)"
+[ -z "$unread" ] && pass "a project/ directory is not read" || fail "project/ was written (got: $unread)"
 sb="$(mk_repo "dev@example.org")"
-git init --quiet "$sb/repo/project/bad"
-git -C "$sb/repo/project/bad" config user.email "foo"
+mkdir -p "$sb/repo/.agent"
+echo "demo ros2_colcon $sb/proj" > "$sb/repo/.agent/projects.local"
+git init --quiet "$sb/proj/bad"
+git -C "$sb/proj/bad" config user.email "foo"
 out="$(run_in "$sb" -- bash "$CONFIGURE" --agent codex 2>&1)"; rc=$?
 ws="$(git -C "$sb/repo" config --local user.email)"
-[[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"project/bad"* ]] \
+[[ $rc -ne 0 && -z "$ws" && "$out" == *"$MALFORMED_TEXT"* && "$out" == *"proj/bad"* ]] \
     && pass "one underivable repository: nothing is written anywhere" || fail "partial write (rc=$rc, ws=$ws, got: $out)"
 
 echo "TEST: .agent/.identity reads back exactly in bash and in a POSIX sh"

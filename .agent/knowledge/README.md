@@ -1,8 +1,8 @@
 # Workspace Knowledge
 
 Workspace-level guidance for AI agents. All files in this directory are
-version-controlled and apply regardless of which project repository is
-checked out in `project/`.
+version-controlled and apply whichever projects are registered
+(`.agent/projects.local`).
 
 ## IDE Setup
 - **[VS Code Setup Guide](vscode_setup.md)**: Makefile tasks, C++/Python IntelliSense, worktree workflow, and Claude Code extension integration.

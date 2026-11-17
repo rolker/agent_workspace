@@ -79,6 +79,6 @@ These are the mistakes agents make most often. Check your documentation against 
 
 ## Workspace-Specific Notes
 
-- **`project/` may be a symlink** — Git-aware tools (`git grep`, `rg`) may
+- **A registered project root may be a symlink** — Git-aware tools (`git grep`, `rg`) may
   behave differently when searching through symlinks. Use `rg --no-ignore`
   or search within the project directory directly.

@@ -136,8 +136,8 @@ else
     check_warn "git-bug not installed (optional: offline issue tracking — run: make skip-git-bug to suppress)"
 fi
 
-# Project directory (legacy shape) + registered projects (issue #227)
-PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
+# Registered projects (issue #227); the registry is the only link to a
+# project (issue #265 part 4 retired the project/ directory).
 REGISTRY_OK=1
 REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     REGISTRY_OK=0
@@ -157,14 +157,7 @@ if _MAIN_ENTRIES="$(registry_entries "$(registry_main_checkout "$ROOT_DIR")" 2>/
     [ -z "$_MAIN_ENTRIES" ]; then
     NONE_REGISTERED=1
 fi
-if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-    PROJECT_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
-    if [ -n "$PROJECT_REMOTE" ]; then
-        check_pass "project/ configured ($(basename "$PROJECT_REMOTE" .git))"
-    else
-        check_warn "project/ is a git repo but has no remote"
-    fi
-elif [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
+if [ -z "$REGISTRY_ENTRIES" ] && [ "$NONE_REGISTERED" -eq 1 ]; then
     check_warn "No project is registered. Register one: .agent/scripts/register_project.sh <path>"
 fi
 if [ -n "$REGISTRY_ENTRIES" ]; then
@@ -273,16 +266,6 @@ if [ "$SKIP_SYNC" = false ]; then
         echo "⚠️ (fetch failed)"
     fi
 
-    if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-        PROJECT_NAME=$(basename "$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo project)" .git)
-        echo -n "Syncing project ($PROJECT_NAME)... "
-        if git -C "$PROJECT_DIR" fetch --quiet 2>/dev/null; then
-            echo "✅"
-        else
-            echo "⚠️ (fetch failed)"
-        fi
-    fi
-
     if [ -n "${REGISTRY_ENTRIES:-}" ]; then
         while IFS=$'\t' read -r _name _type _path; do
             [ -z "$_name" ] && continue
@@ -324,37 +307,18 @@ else
 fi
 echo ""
 
-# Project repository
-echo "### Project Repository"
-if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-    PROJ_BRANCH=$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null || echo "detached HEAD")
-    PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "(no remote)")
-    if [ -n "$(git -C "$PROJECT_DIR" status --porcelain)" ]; then
-        echo "- **Status**: ⚠️ Modified"
-        echo "- **Branch**: $PROJ_BRANCH"
-        echo "- **Remote**: $PROJ_REMOTE"
-        echo ""
-        echo "**Modified Files:**"
-        echo '```'
-        git -C "$PROJECT_DIR" status --short
-        echo '```'
-    else
-        echo "- **Status**: ✅ Clean"
-        echo "- **Branch**: $PROJ_BRANCH"
-        echo "- **Remote**: $PROJ_REMOTE"
-    fi
-else
-    if [ -n "${REGISTRY_ENTRIES:-}" ]; then
-        echo "- **Status**: (legacy project/ not configured; registered projects below)"
-    elif [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
+# Project repositories: the registered projects below; with none, why.
+if [ -z "${REGISTRY_ENTRIES:-}" ]; then
+    echo "### Project Repositories"
+    if [ "${NONE_REGISTERED:-0}" -eq 1 ]; then
         echo "- **Status**: ⚠️ No project is registered. Register one: .agent/scripts/register_project.sh <path>"
     elif [ "${REGISTRY_OK:-1}" -eq 0 ]; then
         echo "- **Status**: ⚠️ projects.local has malformed entries (see the checks above)"
     else
-        echo "- **Status**: (legacy project/ not configured)"
+        echo "- **Status**: no project is registered in ${MAIN_ROOT:-$ROOT_DIR}/.agent/projects.local"
     fi
+    echo ""
 fi
-echo ""
 
 # Registered projects (issue #227)
 if [ -n "${REGISTRY_ENTRIES:-}" ]; then
@@ -450,10 +414,6 @@ if [ "$SKIP_GITHUB" = false ]; then
         WS_REMOTE=$(cd "$ROOT_DIR" && git remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
         [ -n "$WS_REMOTE" ] && REPOS="$WS_REMOTE"
 
-        if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-            PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
-            [ -n "$PROJ_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$PROJ_REMOTE")
-        fi
         if [ -n "${REGISTRY_ENTRIES:-}" ]; then
             while IFS=$'\t' read -r _name _type _path; do
                 [ -z "$_name" ] && continue

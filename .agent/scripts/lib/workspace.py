@@ -2,8 +2,9 @@
 Workspace Management Library
 
 Provides common functions for discovering and managing repositories in the
-general-purpose Agent Workspace: the legacy single-repo model (project/)
-and the per-machine project registry (.agent/projects.local, issue #227).
+general-purpose Agent Workspace through the per-machine project registry
+(.agent/projects.local, issue #227). The registry is the only link to a
+project: issue #265 part 4 retired the project/ symlink and its helpers.
 """
 
 import os
@@ -105,31 +106,6 @@ def _is_own_toplevel(path):
         return False
     top = _git_out(path, "rev-parse", "--show-toplevel")
     return bool(top) and _canonical(top) == _canonical(path)
-
-
-def get_project_path():
-    """
-    Return the Path to the project/ directory (may not exist yet).
-    """
-    return Path(get_workspace_root()) / "project"
-
-
-def is_project_configured(project=None):
-    """
-    Return True if the project checkout exists and is a valid git repo.
-
-    Defaults to the legacy project/ directory; pass a Path to check a
-    registry-hosted project instead.
-    """
-    if project is None:
-        project = get_project_path()
-    project = Path(project)
-    if not project.exists():
-        return False
-    if (project / ".git").exists():
-        return True
-    # project may be a symlink to a checkout
-    return (project.resolve() / ".git").exists()
 
 
 def _path_under(path, base):
@@ -324,26 +300,6 @@ def read_projects_registry(root=None):
                 continue
         entries.append(entry)
     return entries, errors
-
-
-def get_project_remote_url():
-    """
-    Return the remote URL of the project repo, or None if not configured.
-    """
-    project = get_project_path()
-    if not is_project_configured():
-        return None
-    try:
-        result = subprocess.run(
-            ["git", "remote", "get-url", "origin"],
-            cwd=str(project),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return result.stdout.strip() or None
-    except subprocess.CalledProcessError:
-        return None
 
 
 def extract_github_owner_repo(url):
