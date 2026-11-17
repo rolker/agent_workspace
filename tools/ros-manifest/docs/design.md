@@ -38,8 +38,11 @@ my_system/
 
 A manifest without layers gives an ordinary colcon workspace: `src/`, `build/`, `install/`
 and `log/` directly in the system directory, with `.repos-manifest/` beside them. For a
-small project the tools then do little more than `vcs` and `colcon` do, and the project can
-add layers later.
+small project the tools then do little more than `vcs` and `colcon` do.
+
+That workspace is the unnamed first layer. When a project adds layers later, the repos that
+name no layer stay where they are, and the named layers get their own directories beside
+`src/`. `build` builds the unnamed layer first.
 
 A repo is cloned at the path its key in the manifest gives, under `src/`. A key may contain
 directories, so a repo can be several levels down. The tools find repos from the resolved
@@ -608,8 +611,8 @@ extra remotes are not built.
 
 ## Open questions
 
-- What happens to a system directory when its manifest gains layers. The repos move from
-  `src/` to `<layer>/src/`. `sync` could move them, or say what to move.
+- What `sync` does when a repo that is already cloned is given a different layer. Its
+  directory has to move. `sync` could move it, or say what to move.
 - With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
   for every repo on every sync costs a network call per repo.
 - With more than one distro, whether a distro needs its own settings, such as a different

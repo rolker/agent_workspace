@@ -121,7 +121,7 @@ Two things follow from the key being a path:
 | `url` | yes | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
 | `absent` | no | `true` if the repo is not part of the system unless a distro says so. |
-| `layer` | see Layers | The layer the repo belongs to. |
+| `layer` | no | The layer the repo belongs to. The unnamed first layer if left out. |
 | `groups` | no | The groups the repo belongs to. |
 | `distros` | no | Per-distro differences from the default. |
 | `optional` | no | `true` if the system is still usable without this repo. |
@@ -212,14 +212,25 @@ The suggested layout, and the one the tools here use, makes each layer its own c
 workspace built on top of the ones before it. The format only says that layers are ordered
 groups of repos; it does not say what a tool does with them.
 
-Layers are optional. If `layers:` is absent, the manifest has one unnamed layer and no repo
-may have a `layer:` key. A small project can start this way, down to a single repo, and add
-layers when build times call for them. If `layers:` is present, every repo must name a layer
-from the list.
+Layers are optional. A repo that names no layer is in the unnamed first layer, which comes
+before every named one. A manifest with no `layers:` at all has only that layer. A small
+project can start this way, down to a single repo, and add layers when build times call for
+them, without touching the repos it already has. A `layer:` that is not in the `layers:`
+list is an error.
 
-Open: whether a repo with no `layer:` should go into a default layer instead of being an
-error. The error is the current rule because it can be relaxed later without breaking a
-manifest that is valid today.
+A manifest that extends another can give a layer to a repo the earlier one left without one,
+like any other key:
+
+```yaml
+extends: small_project.manifest.yaml
+layers: [drivers, my_robot]
+repositories:
+  sonar_driver:
+    layer: drivers
+```
+
+The unnamed layer is always first, so this moves a repo up, not down. To put a new layer
+under the existing repos, each of them is given a layer.
 
 ## Groups and roles
 
