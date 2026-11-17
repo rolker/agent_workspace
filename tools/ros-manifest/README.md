@@ -30,7 +30,7 @@ on other kinds of projects.
 | Layer | An ordered set of repos that is built as one unit, on top of the layers before it | Keeping build times down: a layer that rarely changes is built once |
 | Group | A set of repos that is switched on or off together | Parts of the project that only some machines need, such as a simulator or the drivers for one hardware platform |
 | Role | A named choice of groups | The different uses of the project: a robot, an operator station, a development machine |
-| Distro | A major version of the project | Picking the branch or tag of each repo that goes with a version of the underlying framework |
+| Distro | A major version of the project, built in its own environment | Picking the branch or tag of each repo that goes with a version of the underlying framework |
 
 This repo holds the specification of the manifest format and a set of tools that work with
 it. The tools are one way to use a manifest. Anyone can pick the ones they want, or write

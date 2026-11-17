@@ -109,7 +109,13 @@ checkout once it exists. The copies may differ, as the copies on a project's dis
 may.
 
 A command run inside a distro's directory acts on that distro. Run at the top of the system
-directory it acts on every distro in turn, or on the ones named with `--distro`.
+directory, `sync` and `status` act on every distro in turn, or on the ones named with
+`--distro`.
+
+`build` acts on one distro at a time: the one whose directory it is run in, or the one named
+with `--distro`. Each distro is built in its own environment, which the person sets up
+before building, for example by sourcing that distro's setup file, so one shell can build
+only one of them.
 
 The layout is chosen at `init`. A system directory set up for one distro has no distro
 directories, as in the first diagram. A manifest without layers gives each distro directory
@@ -231,8 +237,15 @@ For each layer in order, run `colcon build` in the layer's directory with the la
 it sourced. Then write `setup.bash` in the system directory, which sources the last layer
 that was built.
 
-`build` with layer names builds only those layers. Arguments after `--` are passed to
-`colcon`.
+`build` with layer names builds only those layers.
+
+How the code is built, such as a debug or a release build, is not a distro and not part of
+the manifest. It stays with `colcon`:
+
+- Arguments after `--` are passed to `colcon` for every layer built.
+- `colcon` reads a `colcon_defaults.yaml` file from the directory it is run in. A person
+  who wants a layer always built a certain way puts that file in the layer's directory.
+  `build` does nothing special for it. (Checked with colcon-defaults 0.2.9.)
 
 A layer that has no repos on this machine, because all of them were left out by the role or
 skipped as optional, is skipped.

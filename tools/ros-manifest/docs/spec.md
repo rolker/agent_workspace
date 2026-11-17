@@ -125,7 +125,13 @@ be used to set up a public version of a project.
 
 ## Distros
 
-`distros:` lists the ROS distros the manifest covers. Resolving for a distro that is not in
+A distro is a major version of the project that goes with a version of something underneath
+it: a ROS distro, an operating system release, a firmware release. What marks a distro is
+that it is built in its own environment, apart from the others. A choice that only changes
+how the same code is built, such as debug or release, is not a distro and is not in the
+manifest.
+
+`distros:` lists the distros the manifest covers. Resolving for a distro that is not in
 the list is an error. A distro named under a repo's `distros:` must be in the list.
 
 If `distros:` is absent, the manifest covers one unnamed variant: no repo may have a
@@ -297,6 +303,7 @@ document.
 
 - Package dependencies. They stay in each package's `package.xml` and with `rosdep`.
 - System packages, udev rules and other machine setup.
+- Build arguments. They are given to the build tool.
 - The exact commits a machine has checked out. `vcs export --exact` records those.
 
 ## Open questions
