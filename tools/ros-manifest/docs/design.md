@@ -93,6 +93,7 @@ distro, each holding its own layers and its own setup file:
 my_system/
   .repos-manifest/
     config.yaml
+    state.yaml
     resolved/
       jazzy/
       rolling/
@@ -230,7 +231,7 @@ way to look at a manifest before setting anything up.
 
 A manifest can build on others, and what a machine gets depends on the role, the distro, the
 extra groups and where repos are fetched from. `show` prints the result of all of that for
-a person to read, before any repo is cloned:
+a person to read, before any of the system's repos is cloned:
 
 ```
 $ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
@@ -299,12 +300,14 @@ vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest'
 and it refuses a repo whose URL has changed.
 
 Parents are read from where their locations say, each time. A parent at a relative path
-comes from the same clone as the manifest that names it, which step 1 has updated. A parent
-in another git repo or at a URL is fetched afresh.
+comes from the same place as the manifest that names it; when that is the local copy, step 1
+has updated it. A parent in another git repo or at a URL is fetched afresh.
 
 Sync does not discard work, and it tells a change in the manifest from a change a person
-made. It records the version it last put each repo on, in `.repos-manifest/state.yaml`. A
-repo it has no record for is treated as one a person has moved.
+made. It records the version it last put each repo on, in `.repos-manifest/state.yaml`, for
+each distro when there is more than one. A repo it has no record for is recorded and
+followed if it is on the manifest's version, and treated as one a person has moved if it is
+not.
 
 - A repo that is still on that version follows the manifest: it is updated, and moved to a
   new version when the manifest names one.
