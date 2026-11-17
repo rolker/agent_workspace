@@ -144,6 +144,16 @@ repos-manifest init git@git.example.org:field/unh_marine_autonomy.git \
     --manifest-ref jazzy --manifest-path project11.manifest.yaml --role robot --distro jazzy
 ```
 
+A URL is taken as a git repo when `--manifest-path` is given, and as the file itself
+otherwise. In `config.yaml` the git form is a mapping, as in the specification:
+
+```yaml
+manifest:
+  url: git@git.example.org:field/unh_marine_autonomy.git
+  version: jazzy
+  path: project11.manifest.yaml
+```
+
 The git form is read by making a shallow clone of the branch or tag and taking the file out
 of it, with `git` as it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
 read the manifest: ssh keys, an ssh agent, entries in `~/.ssh/config`, a credential helper.
@@ -187,7 +197,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 | Command | What it does |
 |---|---|
 | `init` | Records the manifest, role and distro in a new system directory, then syncs. |
-| `show` | Prints what a manifest comes to for a role and distro, without fetching or writing anything. |
+| `show` | Prints what a manifest comes to for a role and distro, without cloning the system's repos or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
 | `sync` | Resolves, then fetches and updates the repos of each layer. |
 | `build` | Builds each layer in order. |
@@ -248,6 +258,10 @@ which manifest an entry came from when that is not the first in the chain, and i
 repos that are left out with the reason. Inside a system directory it uses what `config.yaml`
 records, so it also shows the effect of `fetch_from`.
 
+`show` does not clone the system's repos. It does read every manifest in the chain, which
+for one in a git repo means fetching it, and with a `fetch_from` fallback it asks the other
+place which repos exist there.
+
 `init` prints the same thing and asks before it fetches. `--yes` skips the question, for
 scripts.
 
@@ -256,7 +270,9 @@ scripts.
 Reads the manifest and everything it builds on, applies the role and the distro, and writes
 into `.repos-manifest/resolved/`:
 
-- one `.repos` file per layer, with `type`, `url` and `version` for each repo;
+- one `.repos` file per layer, with `type`, `url` and `version` for each repo. A named
+  layer's file is `<layer>.repos`; the unnamed layer's is `_unnamed.repos`. A layer with no
+  repos for this machine gets no file;
 - the order of the layers;
 - which repos are optional.
 
@@ -264,8 +280,9 @@ Each file starts with a comment that says which manifest, role and distro it cam
 
 ### sync
 
-1. Update the clones that manifests are read from. That is the clone `local_manifest` points
-   into, and the clone of any parent manifest that is read from the system directory.
+1. Update the clones that manifests are read from, each on the branch it is on. That is the
+   clone `local_manifest` points into, and the clone of any parent manifest that is read
+   from the system directory.
 2. Resolve.
 3. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
    the repos that are missing, and update the ones that are there.
@@ -279,13 +296,18 @@ it is. A developer who is editing the manifest in its checkout gets that edited 
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
-vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest's branch, it
-refuses a repo whose URL has changed, and one repo with local changes makes the whole run
-fail.
+vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest's branch,
+and it refuses a repo whose URL has changed.
 
-Sync does not discard work. A repo with uncommitted changes, or on a branch other than the
-one the manifest names, is left as it is and reported. A repo that is no longer in the
-manifest is left on disk and reported; `sync` does not delete it.
+Sync does not discard work, and it tells a change in the manifest from a change a person
+made. It records the version it last put each repo on.
+
+- A repo that is still on that version follows the manifest: it is updated, and moved to a
+  new version when the manifest names one.
+- A repo that a person has moved to another branch is left as it is and reported.
+- A repo with uncommitted changes is left as it is and reported.
+- A repo that is no longer in the manifest is left on disk and reported; `sync` does not
+  delete it.
 
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
 submodules.
@@ -332,8 +354,11 @@ as optional, or present but no longer in the manifest.
 ### freeze
 
 Writes a manifest that records the exact commit of every repo the machine has. It is one
-complete manifest that builds on no other: everything the manifest in use and its parents say
-is merged in, and each repo the machine has is given its commit as its `version`.
+complete manifest that builds on no other, for the one distro the machine has: everything
+the manifest in use and its parents say is merged in, the `distros:` list names only that
+distro, and each repo the machine has is given its commit as its `version` with no
+per-distro entries left to override it. Each `url` is the published one, not the place this
+machine fetched from.
 
 It is a record of what a machine ran, and `init` and `sync` accept it like any manifest, so
 the same state can be set up on another machine.
@@ -360,7 +385,7 @@ having to say so:
 
 `fetch_from` in `config.yaml` covers both. It names a place by a URL prefix. For each repo,
 the tools build another URL from the prefix, the repo's name (the last part of its published
-URL) and `.git`.
+URL, without a `.git` ending) and `.git`.
 
 ```yaml
 # a field machine: everything comes from the private server
@@ -391,10 +416,9 @@ Because only the repo's name is kept, repos from different owners all land side 
 the other place. Two repos in a manifest with the same name and different owners cannot both
 be fetched this way, and `resolve` says so.
 
-The rule applies to the repo that holds the manifest like any other repo. A repo entry that
-the machine's own manifest points somewhere with `base` is used as written; `fetch_from`
-only applies to URLs that come from the published manifest unchanged. `status` shows where
-each repo was fetched from.
+The rule applies to every repo the manifest resolves to, whichever manifest in the chain its
+URL came from, and to the repo that holds the manifest. `status` shows where each repo was
+fetched from.
 
 A machine that should run exactly what is published leaves `fetch_from` unset.
 
@@ -482,7 +506,9 @@ and a private repo marked optional.
 
 ```
 repos-manifest init https://github.com/example/system.git --manifest-ref rolling \
-    --manifest-path system.manifest.yaml --role developer --distro jazzy --distro rolling
+    --manifest-path system.manifest.yaml --role developer --distro jazzy --distro rolling \
+    --fetch-from https://github.com/developer/ --fetch-fallback \
+    --remote field=git@git.example.org:field/
 ```
 
 Besides the manifest's location, `config.yaml` then holds:
@@ -572,7 +598,7 @@ Not every command needs all of these:
 
 | Command | Needs |
 |---|---|
-| `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo |
+| `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo, or when `fetch_from` has a fallback |
 | `init`, `sync`, `status`, `freeze` | `vcs` and `git` as well |
 | `build` | `colcon` as well |
 

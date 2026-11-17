@@ -6,15 +6,17 @@ under their layer, the version key is `ref`, and a manifest that extends another
 to it. [design.md](design.md) says where it is going, and [roadmap.md](roadmap.md) in what
 order.
 
-The rules below on names, URLs, refs and characters, and the care taken when fetching an
-`extends` base, are meant to carry over as the format changes.
+Its checks on a manifest are stricter than the specification's. The specification keeps a
+few of them, listed under "Reading a manifest before using it" in [spec.md](spec.md); the
+rest are not requirements of the format.
 
 ## The format it reads
 
 A resolver for a manifest format that lets multiple ROS 2 repos compose into one build:
 
 - **Composition**: a manifest may `extends` another (local path, or a git `url` + `ref` + `path`).
-  Extensions may only *add* repos, groups, and roles — they can never remove or re-version a
+  Extensions may only *add*: new repos, groups and roles, repos to an existing group, and
+  groups to an existing role's lists. They can never remove or re-version a
   repo the base manifest already defines (that's a hard error).
 - **Layers**: a fixed, ordered list of colcon-overlay build units. Roles only ever *subtract*
   from a layer's repo list. `optional_layers` (a list of names from the same manifest's own

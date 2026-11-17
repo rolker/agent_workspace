@@ -51,9 +51,9 @@ repositories:
     distros:
       rolling:
         version: rolling
-  ccomjhc_project11:
+  site_config:
     type: git
-    url: git@github.com:CCOMJHC/ccomjhc_project11.git
+    url: git@github.com:example/site_config.git
     version: jazzy
     layer: core
     optional: true
@@ -78,7 +78,7 @@ roles:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `repositories` | yes | The repos of the system, by name. |
+| `repositories` | yes, in the first manifest of a chain | The repos of the system, by name. |
 | `format` | no | Version of this format. `1` if absent. |
 | `base` | no | One or more other manifests this one builds on. |
 | `distros` | no | The distros this manifest covers. |
@@ -140,7 +140,8 @@ distro:
 - `absent: true`: the repo is not part of the system on that distro.
 
 `absent: true` on the repo itself turns the default around: the repo is part of the system
-only on the distros that have an entry for it.
+only on the distros that have an entry for it. Any entry counts, an empty one included,
+unless the entry itself says `absent: true`.
 
 ```yaml
 repositories:
@@ -195,7 +196,8 @@ how the same code is built, such as debug or release, is not a distro and is not
 manifest.
 
 `distros:` lists the distros the manifest covers. Resolving for a distro that is not in
-the list is an error. A distro named under a repo's `distros:` must be in the list.
+the list is an error. An entry under a repo's `distros:` for a distro that is not in the
+list is ignored, so a copy of a manifest that lists fewer distros stays valid.
 
 If `distros:` is absent, the manifest covers one unnamed variant: no repo may have a
 `distros:` key, and no distro is given when resolving. This is the plain `.repos` case.
@@ -239,7 +241,8 @@ unless something switches it on. A repo in no group is always part of the system
 group is only needed for repos that some machines should not have.
 
 The top-level `groups:` list names the groups. A repo lists the groups it belongs to under
-its own `groups:` key, and each must be in the top-level list, so that a misspelt name is
+its own `groups:` key. Every group that is named anywhere, on a repo, in a role or as an
+extra group when resolving, must be in the top-level list, so that a misspelt name is
 caught. A repo may be in several groups, and is part of the system if any of them is on.
 
 A role is a named variant: a list of the groups it switches on.
@@ -350,7 +353,9 @@ repositories:
 ```
 
 Only the first manifest in a chain has to be complete. An entry in a later one may leave out
-the required keys when an earlier manifest gives them.
+the required keys when an earlier manifest gives them, and a later manifest that adds no
+repo needs no `repositories:` at all. An entry whose key matches nothing earlier is a new
+repo and has to be complete; this catches a misspelt key.
 
 Adding a repo to a group of the published manifest works the same way as adding it to a
 layer: the new repo names the group.
@@ -387,14 +392,24 @@ as any code taken from somewhere else: read it before using it. A manifest is as
 the code it points at, and a tool does not try to protect a person from repos they chose.
 
 A tool does make sure that a manifest does what it appears to say, and that nothing happens
-outside the place the person chose before anything is built. It checks four things and
+outside the place the person chose before anything is built. It checks these things and
 refuses a manifest that fails one:
 
 - The file is loaded as data. Loading a manifest never runs code.
-- Everything lands inside the directory the system is set up in. A repo's key and a layer's
-  name are relative paths with no `..` in them.
-- A value handed to `git` cannot be read as one of its options. A `url` or a `version` does
-  not start with `-`.
+- Everything lands inside the directory the system is set up in, at a place of its own.
+  - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is the
+    start of another key's path, so one repo is never cloned inside another.
+  - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`
+    and `-`, starting with a letter.
+  - A layer is not named `src`, `build`, `install` or `log`. Those names are used for the
+    directories of the unnamed layer.
+- `git` is not handed anything that makes it run a program.
+  - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
+    read one as an option. The `path` of a location has no `..` in it.
+  - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, the `user@host:path`
+    form, or a path on the local disk. Others are refused; `git` has transports that run a
+    command.
+  - These apply to a repo and to a location named under `base:` alike.
 - The file has no invisible characters and none that change the direction of text. They can
   make a file read differently from what it does.
 

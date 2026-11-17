@@ -58,15 +58,15 @@ their own against the specification.
   and update the repos, and build the layers in order. They can be run by hand, from an
   install script, in CI, or by a coding agent.
 
-The tools do not replace `vcs` or `colcon`; they call them. For ROS 2 projects, package
-dependencies stay with `rosdep`.
+The tools are not meant to replace `vcs` or `colcon`; they are designed to call them. For ROS
+2 projects, package dependencies stay with `rosdep`.
 
 ## Why another tool
 
 The output is `.repos` files, the format the `vcs` command reads, so `vcs import` can fetch
-what a manifest resolves to. The tools here use vcs2l, the maintained successor of vcstool,
-which provides that command. The files are plain enough that the older vcstool reads them too,
-and nothing stops someone from feeding the resolved list to a different tool.
+what a manifest resolves to. The tools are designed around vcs2l, the maintained successor of
+vcstool, which provides that command. The files are plain enough that the older vcstool reads
+them too, and nothing stops someone from feeding the resolved list to a different tool.
 
 `vcs` on its own gets part of the way. vcs2l is adding an `extends` key (on its main branch,
 not in release 1.1.7) that lets a `.repos` file build on other local files and replace entries
