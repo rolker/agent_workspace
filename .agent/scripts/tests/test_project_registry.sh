@@ -1588,6 +1588,41 @@ test_worktree_create_several_registered_needs_a_name() {
     assert_contains "--project <unregistered>: names it" "project 'nosuch' is not registered" "$out"
 }
 
+test_worktree_scripts_cwd_in_worktrees_override() {
+    echo "TEST: create, enter, remove and wt_resolve_project_repo_root take the root a cwd is in, by its worktrees= dir too (review suggestion)"
+    local sb out rc=0 a wtd
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    a="$sb/roots/alpha"
+    make_git_repo "$a" "file:///nonexistent/alpha.git"
+    seed_commit "$a"
+    echo "alpha single_project $a worktrees=wt/alpha" >> "$sb/.agent/projects.local"
+    make_registered_project "$sb" beta >/dev/null
+    make_registered_project "$sb" gamma >/dev/null
+    mkdir -p "$sb/wt/alpha" "$sb/projects/beta/worktrees"
+    wtd="$(cd "$sb/wt/alpha" && pwd -P)"
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue 501 --type project 2>&1)" || rc=$?
+    assert_eq "create from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_not_contains "create: never 'no registered project here'" "no registered project here" "$out"
+    assert_eq "create: the worktree is alpha's" "yes" "$([ -d "$wtd/issue-alpha-501" ] && echo yes || echo no)"
+    rc=0
+    out="$(cd "$wtd/issue-alpha-501" && wt "$sb" wt_resolve_project_repo_root "$sb" 2>&1)" || rc=$?
+    assert_eq "wt_resolve_project_repo_root from the worktree: exit 0" "0" "$rc"
+    assert_eq "wt_resolve_project_repo_root from the worktree: alpha's root" "$a" "$out"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 501 --type project --print-path 2>&1)" || rc=$?
+    assert_eq "enter from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_contains "enter: alpha's worktree, not 'Multiple projects'" "$wtd/issue-alpha-501" "$out"
+    rc=0
+    out="$(cd "$a" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --issue 501 --type project --print-path 2>&1)" || rc=$?
+    assert_eq "enter from alpha's hosting dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    rc=0
+    out="$(cd "$wtd" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 501 --type project --force 2>&1)" || rc=$?
+    assert_eq "remove from alpha's worktrees= dir: exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_eq "remove: the worktree is gone" "no" "$([ -d "$wtd/issue-alpha-501" ] && echo yes || echo no)"
+}
+
 test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
     echo "TEST: a malformed registry makes project removal and listing refuse, never list or delete on partial state"
     local sb out rc=0
@@ -1928,6 +1963,7 @@ test_worktree_create_parent_not_autoselected
 test_worktree_create_ignores_project_checkout
 test_worktree_create_uses_registered_root_not_project_checkout
 test_worktree_create_several_registered_needs_a_name
+test_worktree_scripts_cwd_in_worktrees_override
 test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove
 test_worktree_create_outoftree_root_exclusion
 test_wt_ensure_exclusion_is_type_agnostic

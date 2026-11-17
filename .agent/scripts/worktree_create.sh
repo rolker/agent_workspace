@@ -512,13 +512,14 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             echo "Using instance '$PROJECT_NAME' of '$PROJECT_REPO' ($PROJECT_DIR)"
         fi
     else
-        # No --project: the registered root the cwd is in, else the single
-        # registered project (parent roots are not candidates: their
-        # instances are, #265). Issue #265 part 4 retired the project/
-        # symlink step: a project/ checkout is never used.
+        # No --project: the registered root the cwd is in (its hosting dir,
+        # or its worktrees= dir wherever that lies: registry_resolve_session_dir),
+        # else the single registered project (parent roots are not
+        # candidates: their instances are, #265). Issue #265 part 4 retired
+        # the project/ symlink step: a project/ checkout is never used.
         _ENTRIES=""
         _RC=0
-        _CWD_ENTRY="$(registry_resolve_from_dir "$ROOT_DIR" "$PWD")" || _RC=$?
+        _CWD_ENTRY="$(registry_resolve_session_dir "$ROOT_DIR" "$PWD")" || _RC=$?
         [ "$_RC" -eq 2 ] && exit 1
         if [ "$_RC" -eq 0 ]; then
             # A cwd in a parent root selects its default/only instance.

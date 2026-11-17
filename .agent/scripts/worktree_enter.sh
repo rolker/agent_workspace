@@ -182,7 +182,7 @@ fi
 
 # Resolve base directory for the specified type
 _resolve_base_dirs() {
-    local type="$1"
+    local type="$1" _cwd_entry=""
     NEW_BASE=""
 
     if [ "$type" == "workspace" ]; then
@@ -195,6 +195,16 @@ _resolve_base_dirs() {
         if [ -n "$PROJECT_REPO" ]; then
             # A parent root resolves to its instance, exactly as create did (#265).
             if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")"; then
+                return 1 2>/dev/null || exit 1
+            fi
+            if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                return 1 2>/dev/null || exit 1
+            fi
+        elif _cwd_entry="$(registry_resolve_session_dir "$ROOT_DIR" "$PWD" 2>/dev/null)"; then
+            # The registered root the cwd is in (its hosting dir or its
+            # worktrees= dir), as worktree_create.sh picks it; a parent root
+            # resolves to its instance.
+            if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$(cut -f1 <<< "$_cwd_entry")")"; then
                 return 1 2>/dev/null || exit 1
             fi
             if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then

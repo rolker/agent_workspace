@@ -110,8 +110,9 @@ wt_count_project_worktrees() {
 # branch resolution. Precedence matches worktree_create.sh (#265):
 #   1. an explicit registered name (a parent root resolves to its
 #      default/only instance); an unregistered name is refused
-#   2. the registered root the cwd is in (an instance's own root; a parent
-#      root resolves like 1)
+#   2. the registered root the cwd is in, by its hosting dir or its
+#      worktrees= dir (registry_resolve_session_dir; an instance's own
+#      root; a parent root resolves like 1)
 #   3. the single registered non-parent project, if there is exactly one
 # Issue #265 part 4 retired the project/ symlink step. Prints the absolute
 # path on success. Returns 1 (registry_no_project_message on stderr) when
@@ -121,7 +122,7 @@ wt_count_project_worktrees() {
 wt_resolve_project_repo_root() {
     local root_dir="$1" name="${2:-}" entry rc=0
     if [ -z "$name" ]; then
-        entry="$(registry_resolve_from_dir "$root_dir" "$PWD")" || rc=$?
+        entry="$(registry_resolve_session_dir "$root_dir" "$PWD")" || rc=$?
         [ "$rc" -eq 2 ] && return 2
         [ "$rc" -eq 0 ] && name="$(cut -f1 <<< "$entry")"
     fi
