@@ -401,7 +401,7 @@ for _dest in "${ENTRY_DESTS[@]}"; do
     fi
     if [ -z "$_common_dir" ]; then
         echo "Error: cannot resolve the repository that owns ${_dest}; nothing was removed."
-        echo "It is not a git checkout's own top folder. Inspect it; if nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
+        echo "It is not a git checkout's own top folder, so this script cannot tell what removing it would lose. Inspect it first: if it, or a folder in it, is a git repository of its own, check git status there for uncommitted work and git log --branches --not --remotes for commits that are on no remote, and keep or push what you need. Only when nothing in it is needed, delete it by hand (rm -r $_dest), then run this command again: an entry already gone is skipped."
         exit 1
     fi
     ENTRY_OWNERS+=("$(dirname "$_common_dir")")

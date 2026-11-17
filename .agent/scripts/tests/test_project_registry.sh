@@ -1805,6 +1805,9 @@ test_worktree_remove_unresolvable_owner_removes_nothing() {
     assert_eq "the aggregate dir is kept" "yes" "$([ -f "$wt/.worktree-repos" ] && echo yes || echo no)"
     assert_not_contains "never advises --path, which refuses the same entry (review suggestion)" "--path" "$out"
     assert_contains "advises deleting the entry by hand, then running again" "delete it by hand (rm -r $wt/l1_ws/src/pkg_b), then run this command again" "$out"
+    assert_contains "says to check uncommitted work before rm -r (review round 2)" "check git status there for uncommitted work" "$out"
+    assert_contains "says to check commits on no remote before rm -r (review round 2)" "git log --branches --not --remotes for commits that are on no remote" "$out"
+    assert_contains "rm -r comes only after the checks" "Only when nothing in it is needed, delete it by hand" "$out"
     # Following the advice works: the entry gone, the removal goes through.
     rm -r "$wt/l1_ws/src/pkg_b"
     rc=0
