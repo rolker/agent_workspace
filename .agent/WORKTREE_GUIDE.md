@@ -24,7 +24,7 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type workspace
 # Project repo work
 .agent/scripts/worktree_create.sh --issue 42 --type project
 source .agent/scripts/worktree_enter.sh --issue 42 --type project
-# work in the project/ worktree, commit, push to project repo
+# work in the project worktree, commit, push to project repo
 .agent/scripts/worktree_remove.sh --issue 42 --type project
 
 # Skill worktrees (no GitHub issue needed)
@@ -81,13 +81,9 @@ worktrees live under that project's own root, wherever it is on disk:
 ```
 agent_workspace/
 ├── worktrees/
-│   ├── workspace/                 # Workspace repo worktrees
-│   │   └── issue-workspace-42/
-│   │       └── ... (workspace files)
-│   └── project/                   # TRANSITION FALLBACK only: an
-│       └── <name>/                # unregistered project (legacy project/
-│           └── issue-<name>-42/   # symlink) still lands here. Dropped in
-│               └── ...            # PR 4 together with project/ itself.
+│   └── workspace/                 # Workspace repo worktrees
+│       └── issue-workspace-42/
+│           └── ... (workspace files)
 
 /anywhere/on/disk/<registered-root>/   # e.g. ~/src/boat_sim, ~/shore_tools/rolling
 └── worktrees/                         # <root>/worktrees/ by default; a
@@ -98,8 +94,8 @@ agent_workspace/
 `registry_worktree_dir` (`.agent/scripts/_project_registry.sh`) is the single
 source of truth for where a project's worktrees live: a registered name
 resolves to its own root (or its `worktrees=` override); an unregistered name
-falls back to the pre-#265 `worktrees/project/<name>/` shape shown above, so
-legacy projects keep working mid-rollout. On first worktree creation under a
+is refused with the registration command (issue #265 part 4: only a registered
+project has worktrees). On first worktree creation under a
 registered root, the workspace appends `worktrees/` to that root's own
 `.git/info/exclude` (never a tracked file) so the worktree dir never shows up
 in the project's own `git status`. Type-specific markers are the adapter's
@@ -107,12 +103,11 @@ job (ADR-0012): the `ros2_colcon` adapter's `worktree_env` verb writes an
 untracked `worktrees/COLCON_IGNORE` so colcon never descends into a package
 worktree's own colcon workspace(s).
 
-**Transition.** Worktrees created before a project was registered stay at
-`worktrees/project/<name>/` and remain discoverable: `worktree_list.sh`,
-`dashboard.sh`, and `merge_pr.sh` enumerate that location alongside the
-registered dir, and `worktree_enter.sh` / `worktree_remove.sh` search it
-after the registered dir (with a notice). Remove and recreate to move a
-worktree under the project root; nothing migrates it silently.
+**Retired locations.** Issue #265 part 4 retired the transition fallback
+`worktrees/project/<name>/` and the pre-#25 `.workspace-worktrees/` and
+`project/worktrees/` shapes: no script finds, lists or counts a worktree
+there any more. Remove such a worktree with `git -C <its repository> worktree
+remove <path>` and recreate it under the project's root.
 
 ## Worktree Types
 
@@ -131,16 +126,14 @@ For infrastructure changes: `.agent/`, `docs/`, `.claude/skills/`, `Makefile`, e
 
 ### Project Worktrees
 
-For changes to a project repo — registered in `.agent/projects.local`, or the
-legacy `project/` checkout.
+For changes to a project repo registered in `.agent/projects.local`.
 
 ```bash
 .agent/scripts/worktree_create.sh --issue <N> --type project
 ```
 
-- Created in: `<registered root>/worktrees/issue-<slug>-<N>/` (or, for an
-  unregistered project, the transition fallback
-  `worktrees/project/<repo>/issue-<slug>-<N>/`)
+- Created in: `<registered root>/worktrees/issue-<slug>-<N>/` (or the root's
+  `worktrees=` override)
 - Git worktree of the **project repo**
 - Branch: `feature/issue-<N>` in the project repo
 - PRs target the project repo with `-R <project-remote>`
@@ -213,9 +206,10 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type project --project <nam
 On `worktree_create.sh`, `--project <name>` selects a registered project from
 `.agent/projects.local` (issue #227); the worktree is created under that
 project's own root (`registry_worktree_dir`, issue #265) so `enter`/`remove
---project <name>` find it by the same key. Without `--project`, the legacy `project/` checkout is used; when
-`project/` is absent and exactly one project is registered, that project is
-auto-selected (multiple registrations require `--project`). Parent roots
+--project <name>` find it by the same key. Without `--project`, the registered root the
+current directory is in is used, else the one registered project; with several
+registered and none found from the directory, the script refuses and lists them (a
+`project/` checkout in the workspace is never used, issue #265 part 4). Parent roots
 (registry pseudo-type `project`, issue #265) are never auto-selected;
 `--project <parent>` resolves to the parent's `default_instance`, else its
 only instance, and the worktree is keyed by the instance name.
@@ -395,6 +389,7 @@ Use `make merge-pr PR=<N>` or `gh pr merge <N> --merge` (without `--delete-branc
 **Branch already exists**: The script reuses an existing local branch, or tracks
 the remote branch if one exists.
 
-**"Found worktree in legacy location"**: Worktrees created before issue #25 live in
-`.workspace-worktrees/` or `project/worktrees/`. They still work but should be removed
-(`git worktree remove <path>`) and recreated to use the new `worktrees/` layout.
+**A worktree in a retired location is not found**: worktrees under
+`.workspace-worktrees/`, `project/worktrees/` or `worktrees/project/<name>/` are no
+longer found (issue #265 part 4). Remove one with `git -C <its repository> worktree
+remove <path>` and recreate it with `worktree_create.sh`.

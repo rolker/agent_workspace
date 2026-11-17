@@ -346,6 +346,17 @@ wts "$R/proj/worktrees/issue-proj-4"
 [[ $RC -eq 0 && "$OUT" == *"project proj 4 yes"* && "$OUT" != *workspace* ]] \
     && pass "project: a session in one of its worktrees lists the same root" || fail "project from a worktree: rc=$RC '$OUT' err='$(cat "$SB/err")'"
 
+echo "TEST: --worktrees does not find a worktree under the retired <ws>/worktrees/project/<name>/ (issue #265 part 4)"
+mkdir -p "$WSC/worktrees/project/proj"
+g -C "$R/proj" worktree add -q -b feature/issue-30 "$WSC/worktrees/project/proj/issue-proj-30" 2>/dev/null
+wts "$R/proj" "$SB/rows-p.tsv"
+[[ $RC -eq 0 && "$OUT" == "$want" && "$JSON" != *"worktrees/project"* ]] \
+    && pass "project: the retired-location worktree is not listed, own or otherwise" \
+    || fail "retired location: rc=$RC got '$OUT' err='$(cat "$SB/err")'"
+g -C "$R/proj" worktree remove --force "$WSC/worktrees/project/proj/issue-proj-30"
+g -C "$R/proj" branch -q -D feature/issue-30
+rm -rf "$WSC/worktrees/project"
+
 # field <issue> <name>: a field of the kept entry with that issue, from $JSON
 field() { python3 -c '
 import json, sys

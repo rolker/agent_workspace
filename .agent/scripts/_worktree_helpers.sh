@@ -44,13 +44,10 @@ is_allowed_skill() {
 #   <registered_root>/worktrees/        — project worktrees, one dir per
 #                                        registered root (registry_worktree_dir;
 #                                        honors a worktrees= override)
-#   worktrees/project/<name>/           — TRANSITION FALLBACK (PR 2 -> PR 4):
-#                                        a project with no registry entry
-#                                        (legacy project/ symlink) still
-#                                        lands here, exactly as before #265.
-# Legacy layout (deprecated):
-#   .workspace-worktrees/         — old workspace worktrees
-#   project/worktrees/            — old project worktrees
+# Only registered projects have worktrees. Issue #265 part 4 retired the
+# worktrees/project/<name>/ fallback for an unregistered project and the
+# older .workspace-worktrees/ and project/worktrees/ shapes: nothing finds
+# a worktree there any more (validate_workspace.py reports one).
 
 # Resolve the workspace worktree base directory.
 # Usage: dir=$(wt_workspace_base "$root_dir")
@@ -58,12 +55,10 @@ wt_workspace_base() {
     echo "$1/worktrees/workspace"
 }
 
-# Resolve the project worktree base directory for a given registered
-# project (or, unregistered, the legacy fallback). Delegates entirely to
-# registry_worktree_dir (#265): a registered name resolves under its own
-# root (or its worktrees= override); an unregistered name falls back to
-# the pre-#265 <root>/worktrees/project/<name> location so legacy
-# projects keep working mid-rollout.
+# Resolve the project worktree base directory for a registered project.
+# Delegates entirely to registry_worktree_dir (#265): a registered name
+# resolves under its own root (or its worktrees= override); an
+# unregistered name is refused (return 1, message on stderr).
 # Usage: dir=$(wt_project_base "$root_dir" "$repo_name")
 wt_project_base() {
     local root_dir="$1"
@@ -74,14 +69,6 @@ wt_project_base() {
         return 1
     fi
     registry_worktree_dir "$root_dir" "$repo_name"
-}
-
-# Resolve the LEGACY project worktree base glob (all repos with no
-# registry entry, or predating #265). Registered projects are NOT under
-# here (they're under their own root) — use wt_registry_worktree_dirs for
-# those. Usage: for dir in $(wt_project_base_glob "$root_dir"); do ...
-wt_project_base_glob() {
-    echo "$1/worktrees/project"
 }
 
 # Enumerate every registered non-parent project's worktree directory that
@@ -106,66 +93,15 @@ wt_registry_worktree_dirs() {
     return $rc
 }
 
-# Enumerate legacy project worktree dirs still under
-# <root>/worktrees/project/*, one "<name>\t<dir>" per line — for
-# unregistered projects AND for registered ones whose worktrees were
-# created before registration (the transition case, #265 PR 2 review):
-# registering a project must never make its existing worktrees invisible
-# to list/enter/remove/merge. A dir is skipped only when it IS the
-# registered worktree dir (a worktrees= override pointing here), so a
-# project is never listed twice for the same directory.
-# Usage: while IFS=$'\t' read -r name dir; do ...; done < <(wt_legacy_worktree_dirs "$root")
-wt_legacy_worktree_dirs() {
-    local root_dir="$1" base name d regdir lrc
-    base="$(wt_project_base_glob "$root_dir")"
-    [ -d "$base" ] || return 0
-    # Fail closed on a malformed registry: rc 2 from the parser means "cannot
-    # tell what is registered", so nothing here may be listed as legacy.
-    registry_entries "$root_dir" >/dev/null 2>&1; lrc=$?
-    if [ "$lrc" -eq 2 ]; then
-        echo "ERROR: project registry is malformed; refusing to enumerate legacy worktrees (fix .agent/projects.local)" >&2
-        return 2
-    fi
-    for d in "$base"/*/; do
-        [ -d "$d" ] || continue
-        name="$(basename "${d%/}")"
-        if registry_lookup "$root_dir" "$name" >/dev/null 2>&1; then
-            regdir="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null || true)"
-            [ -n "$regdir" ] && [ "$(realpath -m "$regdir")" = "$(realpath -m "${d%/}")" ] && continue
-        fi
-        printf '%s\t%s\n' "$name" "${d%/}"
-    done
-}
-
-# The transition location for a registered project: <ws>/worktrees/project/
-# <name>/, where its worktrees lived before registration. Prints it when it
-# exists and differs from the project's current worktree dir; prints
-# nothing otherwise. enter/remove search it after the current dir.
-# Usage: t=$(wt_transition_project_base "$root_dir" "$name")
-wt_transition_project_base() {
-    local root_dir="$1" name="$2" cur t rc=0
-    t="$(wt_project_base_glob "$root_dir")/$name"
-    [ -d "$t" ] || return 0
-    cur="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null)" || rc=$?
-    if [ "$rc" -eq 2 ]; then
-        echo "ERROR: project registry is malformed; cannot resolve the transition worktree dir for '$name'" >&2
-        return 2
-    fi
-    [ -n "$cur" ] && [ "$(realpath -m "$cur")" = "$(realpath -m "$t")" ] && return 0
-    echo "$t"
-}
-
-# Count every existing project worktree (issue/skill subdirectory), across
-# every registered non-parent root's worktree dir AND the legacy fallback
-# location. Does not include the ancient pre-#25 project/worktrees/ shape
-# (callers add that separately if they still care about it).
+# Count every existing project worktree (issue/skill subdirectory) across
+# every registered non-parent root's worktree dir.
 # Usage: n=$(wt_count_project_worktrees "$root_dir")
 wt_count_project_worktrees() {
     local root_dir="$1" total=0 name dir
     while IFS=$'\t' read -r name dir; do
         [ -z "$dir" ] && continue
         total=$((total + $(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)))
-    done < <(wt_registry_worktree_dirs "$root_dir" 2>/dev/null; wt_legacy_worktree_dirs "$root_dir" 2>/dev/null)
+    done < <(wt_registry_worktree_dirs "$root_dir" 2>/dev/null)
     echo "$total"
 }
 
@@ -173,23 +109,26 @@ wt_count_project_worktrees() {
 # the repo itself (not just its worktree dir) — e.g. merge_pr.sh's PR/
 # branch resolution. Precedence matches worktree_create.sh (#265):
 #   1. an explicit registered name (a parent root resolves to its
-#      default/only instance)
-#   2. the legacy project/ symlink, if it is a git checkout
+#      default/only instance); an unregistered name is refused
+#   2. the registered root the cwd is in (an instance's own root; a parent
+#      root resolves like 1)
 #   3. the single registered non-parent project, if there is exactly one
-# Prints the absolute path on success. Returns 1 (message on stderr) when
-# nothing resolves or the registry has more than one candidate and no
-# name was given; 2 on registry parse errors.
+# Issue #265 part 4 retired the project/ symlink step. Prints the absolute
+# path on success. Returns 1 (registry_no_project_message on stderr) when
+# nothing names a project and the registry holds none or several
+# candidates; 2 on registry parse errors.
 # Usage: dir=$(wt_resolve_project_repo_root "$root_dir" ["$name"])
 wt_resolve_project_repo_root() {
     local root_dir="$1" name="${2:-}" entry rc=0
+    if [ -z "$name" ]; then
+        entry="$(registry_resolve_from_dir "$root_dir" "$PWD")" || rc=$?
+        [ "$rc" -eq 2 ] && return 2
+        [ "$rc" -eq 0 ] && name="$(cut -f1 <<< "$entry")"
+    fi
     if [ -n "$name" ]; then
         name="$(registry_resolve_project_arg "$root_dir" "$name")" || return $?
         entry="$(registry_lookup "$root_dir" "$name")" || return $?
         cut -f2 <<< "$entry"
-        return 0
-    fi
-    if [ -d "$root_dir/project" ] && git -C "$root_dir/project" rev-parse --git-dir &>/dev/null; then
-        echo "$root_dir/project"
         return 0
     fi
     local entries count
@@ -200,11 +139,8 @@ wt_resolve_project_repo_root() {
     if [ "$count" -eq 1 ]; then
         cut -f3 <<< "$entries"
         return 0
-    elif [ "$count" -gt 1 ]; then
-        echo "ERROR: multiple projects registered; pass --project <name> to disambiguate" >&2
-        return 1
     fi
-    echo "ERROR: no project configured (no legacy project/ checkout, nothing registered)" >&2
+    echo "ERROR: $(registry_no_project_message "$root_dir" "$PWD")" >&2
     return 1
 }
 
@@ -213,8 +149,7 @@ wt_resolve_project_repo_root() {
 # COLCON_IGNORE) are the adapter's job — its worktree_env verb writes them
 # — never a type check here (ADR-0012). Idempotent; never touches a
 # tracked file. A no-op for:
-#   - an unregistered project (the transition fallback already lives
-#     under the WORKSPACE's own worktrees/, which is already gitignored)
+#   - an unregistered project (it has no worktree dir)
 #   - a worktree dir that lies outside the project's own root (a
 #     worktrees= override pointed at the workspace root instead — the
 #     registry parser already requires one or the other)
@@ -243,15 +178,6 @@ wt_ensure_exclusion() {
             fi
         fi
     fi
-}
-
-# Legacy base directories (for migration/deprecation warnings)
-wt_legacy_workspace_base() {
-    echo "$1/.workspace-worktrees"
-}
-
-wt_legacy_project_base() {
-    echo "$1/project/worktrees"
 }
 
 # Find an issue worktree in a given base directory.

@@ -819,13 +819,15 @@ fi
 
 echo
 echo "=== A project worktree starts from its own repo's default ==="
-# The legacy project/ checkout (as test_precommit_hook_path.sh uses):
-# its default is `develop`, its origin is ahead of the local develop, and
-# its HEAD is a feature branch ahead of develop.
+# A registered single-repository project at $SB3/demo (issue #265 part 4:
+# only a registered project is read): its default is `develop`, its origin
+# is ahead of the local develop, and its HEAD is a feature branch ahead of
+# develop.
 SB3="$SANDBOX/ws3"
 make_ws_repo "$SB3"
-P="$SB3/project"
+P="$SB3/demo"
 gitq init -q -b develop "$P"
+printf 'demo single_project %s\n' "$P" >> "$SB3/.agent/projects.local"
 gitq -C "$P" commit -q --allow-empty -m "project init"
 gitq init -q --bare -b develop "$SANDBOX/project-origin.git"
 gitq -C "$P" remote add origin "$SANDBOX/project-origin.git"
@@ -899,16 +901,27 @@ else
 fi
 
 echo
-echo "=== --type project with no project/ and nothing registered: points at register_project.sh ==="
+echo "=== --type project with nothing registered: points at register_project.sh, a project/ checkout is ignored ==="
 SB4="$SANDBOX/ws4"
 make_ws_repo "$SB4"
 OUT="$(cd "$SB4" && PATH="$SB4/stubbin:$PATH" "$SB4/.agent/scripts/worktree_create.sh" --issue 12 --type project 2>&1)"
 RC=$?
-if [[ "$RC" -ne 0 && "$OUT" == *"no project is registered in $SB4/.agent/projects.local"* \
+if [[ "$RC" -ne 0 && "$OUT" == *"no registered project here (cwd $SB4), and none is registered"* \
       && "$OUT" == *"Register one: .agent/scripts/register_project.sh <path>"* && "$OUT" != *"make setup"* ]]; then
-    pass "no project: exit $RC, names the registry read and register_project.sh, not make setup"
+    pass "no project: exit $RC, names the cwd and register_project.sh, not make setup"
 else
     fail "no project: rc=$RC: ${OUT:0:600}"
+fi
+# The retired project/ shape: a checkout there is not used (issue #265 part 4).
+gitq init -q -b main "$SB4/project"
+gitq -C "$SB4/project" commit -q --allow-empty -m "project init"
+OUT="$(cd "$SB4" && PATH="$SB4/stubbin:$PATH" "$SB4/.agent/scripts/worktree_create.sh" --issue 12 --type project 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"none is registered. Register one: .agent/scripts/register_project.sh <path>"* \
+      && ! -e "$SB4/worktrees/project" ]] && ! git -C "$SB4/project" show-ref --verify --quiet refs/heads/feature/issue-12; then
+    pass "project/ present, nothing registered: exit $RC, the checkout is not used"
+else
+    fail "project/ present: rc=$RC: ${OUT:0:600}"
 fi
 
 echo

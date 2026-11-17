@@ -1147,6 +1147,11 @@ mkdir -p "$SBP2/project/worktrees/issue-9" "$SBP2/worktrees/project/legacy/issue
 out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
 [[ "$rc" -ne 0 && "$out" == *"no project worktree found for issue #9"* && "$out" != *"worktree=$SBP2/project"* && "$out" != *"worktree=$SBP2/worktrees/project"* ]] \
     && pass "resolve_worktree --type project: no registry entry -- the retired project/worktrees/ and worktrees/project/<n>/ shapes are not found" || fail "resolve_worktree project retired shapes (rc=$rc out=$out)"
+# An unregistered --project finds nothing either: registry_worktree_dir
+# refuses the name instead of mapping it to worktrees/project/<name>/.
+out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project --project legacy 2>&1); rc=$?
+[[ "$rc" -ne 0 && "$out" == *"no project worktree found for issue #9"* && "$out" != *"worktree=$SBP2/worktrees/project"* ]] \
+    && pass "resolve_worktree --type project --project <unregistered>: not found" || fail "resolve_worktree unregistered --project (rc=$rc out=$out)"
 
 echo ""
 echo "TEST: base -- an issue with no package base prints nothing, exit 0 (issue 429)"

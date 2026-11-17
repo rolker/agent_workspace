@@ -506,19 +506,29 @@ registry_no_project_message() {
     return $rc
 }
 
+# The refusal for a name that is not registered (issue #265 part 4: an
+# unregistered name no longer falls back to the retired
+# worktrees/project/<name> location). On stderr.
+_registry_not_registered() {
+    local root="$1" name="$2" names list
+    names="$(registry_names "$root" 2>/dev/null)" || true
+    list="$(printf '%s' "$names" | tr '\n' ' ' | sed -e 's/ *$//' -e 's/ /, /g')"
+    echo "ERROR: project '$name' is not registered (registered: ${list:-none}); register it: .agent/scripts/register_project"".sh <path>" >&2
+}
+
 # Resolve a --project argument the way every worktree script must (#265):
 # a registered parent root becomes its default/only instance (or an error
-# listing the instances); any other name — registered or not — is printed
-# back unchanged so legacy callers keep working. Return 1 on an ambiguous
-# parent, 2 on registry parse errors.
+# listing the instances); any other registered name is printed back. An
+# unregistered name is refused (issue #265 part 4). Return 1 on an
+# unregistered name or an ambiguous parent, 2 on registry parse errors.
 # Usage: name=$(registry_resolve_project_arg "$root" "$arg") || exit 1
 registry_resolve_project_arg() {
     local root="$1" arg="$2" entry rc=0
     entry="$(registry_lookup "$root" "$arg")" || rc=$?
     [ "$rc" -eq 2 ] && return 2
     if [ "$rc" -eq 1 ]; then
-        echo "$arg"
-        return 0
+        _registry_not_registered "$root" "$arg"
+        return 1
     fi
     if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
         registry_default_instance "$root" "$arg"
@@ -528,12 +538,10 @@ registry_resolve_project_arg() {
 }
 
 # Print the directory a root's worktrees live in: its worktrees= field,
-# else <hosting_dir>/worktrees. Transition rule (#265, until the legacy
-# project/ shape is removed): a name that is not registered maps to the
-# pre-#265 location <root>/worktrees/project/<name>, so unregistered
-# legacy projects keep working mid-rollout. The name is validated like a
-# registry name (no '/', no '..') so the fallback can never leave the
-# workspace. Return 1 on an invalid name, 2 on parse errors.
+# else <hosting_dir>/worktrees. A name that is not registered is refused
+# (issue #265 part 4 retired the <root>/worktrees/project/<name>
+# fallback). Return 1 on an invalid or unregistered name, 2 on parse
+# errors.
 # Usage: dir=$(registry_worktree_dir "$root" "$name")
 registry_worktree_dir() {
     local root="$1" name="$2" entries ename etype epath efields override
@@ -554,8 +562,8 @@ registry_worktree_dir() {
             return 0
         fi
     done <<< "$entries"
-    echo "$root/worktrees/project/$name"
-    return 0
+    _registry_not_registered "$root" "$name"
+    return 1
 }
 
 # Resolve the project owning a directory: the registry entry whose hosting
@@ -589,7 +597,7 @@ registry_resolve_from_dir() {
 # Resolve the root a SESSION in <dir> belongs to (ADR-0018 decision 6):
 # registry_resolve_from_dir, else the entry whose worktrees= directory
 # contains <dir> -- that directory may lie outside the hosting dir (under
-# the workspace's worktrees/project/, say), and a session in one of its
+# the workspace root, say), and a session in one of its
 # worktrees is still that root's. Longest worktrees= match wins.
 # Prints "<name>\t<type>\t<abs_path>" (the hosting dir, as registered).
 # Return 1 if no entry owns <dir>, 2 on registry parse errors.

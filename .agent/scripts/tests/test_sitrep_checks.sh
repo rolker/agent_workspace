@@ -1064,6 +1064,10 @@ echo "Package title" > "$SB/gh_state"
 # A Direction line names project p, so the workspace's report lists its
 # worktrees (issue #418: project work no Direction line names drops out).
 printf 'line\tP validates\tfalse\tscript adapter --project p validate\t2026-10-15\n' > "$SB/rows-p"
+# p is registered: an unregistered name resolves to nothing (issue #265
+# part 4), so a Direction line naming one keeps no worktree.
+mkdir -p "$SB/p"
+printf 'p  ros2_colcon  %s\n' "$SB/p" > "$WS/.agent/projects.local"
 blkpp="${blk//<rows_file printed in step 1>/$SB/rows-p}"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkpp" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\timplementation partial\tPath 1' ]] \

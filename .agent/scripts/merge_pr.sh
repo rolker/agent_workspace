@@ -224,6 +224,16 @@ fi
 # docs/decisions/0016-session-roots-and-the-user-tier.md.
 registry_require_root "$ROOT_DIR" || exit 1
 
+# --project must name a registered project, whatever --type says (issue
+# #265 part 4; plan review S6): an unregistered name is refused here, once,
+# instead of being compared raw against manifest headers and matching
+# nothing in silence. _PROJECT_SEL is the resolved instance (a parent root
+# becomes its default/only instance), the form manifest headers record.
+_PROJECT_SEL=""
+if [[ -n "$PROJECT_ARG" ]]; then
+    _PROJECT_SEL="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_ARG")" || exit 1
+fi
+
 # --- Helper: find a worktree for a given branch ---
 # Issue #173: previous logic globbed `worktrees/project/issue-project-<N>`,
 # which never matched the actual multi-project layout
@@ -573,11 +583,11 @@ echo "========================================"
 # --- Manifest-driven worktree lookup (ADR-0012 package worktrees) ---
 # Scan every `.worktree-repos` manifest for an entry whose owning repo
 # matches PR_REPO_SLUG and whose recorded branch matches PR_BRANCH:
-# under every registered non-parent root's worktree dir (#265), and under
-# the legacy fallback worktrees/project/*/*/ for still-unregistered
-# projects. Directory names are never parsed for this shape — only the
-# manifest's entries (and header) are read. A miss here (no manifest
-# matches, e.g. a legacy single-repo project PR or a workspace PR) falls
+# under every registered non-parent root's worktree dir (#265; the
+# worktrees/project/<name>/ fallback was retired in part 4). Directory
+# names are never parsed for this shape — only the manifest's entries (and
+# header) are read. A miss here (no manifest matches, e.g. a single-repo
+# project PR or a workspace PR) falls
 # back to find_worktree_for_branch below, unchanged from before #252 PR 2.
 PKG_WT_DIR=""
 PKG_WT_PROJECT=""
@@ -600,7 +610,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
         for _m in "$_reg_dir"/*/.worktree-repos; do
             [[ -f "$_m" ]] && _PKG_MANIFESTS+=("$_m")
         done
-    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
     unset _reg_name _reg_dir _m
     for _manifest in "${_PKG_MANIFESTS[@]:-}"; do
         [[ -f "$_manifest" ]] || continue
@@ -633,8 +643,7 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             # parent such as demo to demo-rolling before writing it), so the
             # selector is resolved the same way before comparing; the raw
             # --project value stays for user-facing messages.
-            if [[ -n "$PROJECT_ARG" ]]; then
-                _PROJECT_SEL="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_ARG" 2>/dev/null || echo "$PROJECT_ARG")"
+            if [[ -n "$_PROJECT_SEL" ]]; then
                 if [[ "$_hdr_project" != "$_PROJECT_SEL" ]]; then
                     continue
                 fi

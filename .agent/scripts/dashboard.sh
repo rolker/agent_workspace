@@ -58,17 +58,12 @@ done
 # question here is whether THIS COPY of the workspace repo is itself a
 # worktree of the workspace repo — never a project worktree: post-#265,
 # project worktrees live under their own root, never inside the workspace
-# tree, so that case is dead (it could only ever fire for the pre-#265
-# `<ws>/worktrees/project/<repo>/` shape, which is now the *legacy
-# fallback* project worktree location, not a location dashboard.sh's own
-# script could be running from).
+# tree (issue #265 part 4 retired the worktrees/project/<repo>/ fallback
+# and the .workspace-worktrees/ shape).
 WORKTREE_INFO=""
 if [[ "$ROOT_DIR" == *"/worktrees/workspace/"* ]]; then
     WORKTREE_INFO="workspace worktree"
     MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
-elif [[ "$ROOT_DIR" == *"/.workspace-worktrees/"* ]]; then
-    WORKTREE_INFO="workspace worktree (legacy)"
-    MAIN_ROOT="$(dirname "$(dirname "$ROOT_DIR")")"
 else
     MAIN_ROOT="$ROOT_DIR"
 fi
@@ -405,13 +400,9 @@ WORKTREE_SCRIPT="$SCRIPT_DIR/worktree_list.sh"
 if [ -x "$WORKTREE_SCRIPT" ]; then
     WT_COUNT=$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " | wc -l)
     # Also count project worktrees: every registered non-parent root's
-    # worktree dir, plus the legacy fallback (worktrees/project/<name>/)
-    # for still-unregistered projects (#265), plus the ancient pre-#25
-    # shape (project/worktrees/<worktree>).
+    # worktree dir (#265; the retired worktrees/project/<name>/ and
+    # project/worktrees/ shapes are not counted).
     PROJ_WT_COUNT="$(wt_count_project_worktrees "${MAIN_ROOT:-$ROOT_DIR}")"
-    if [ -d "$PROJECT_DIR/worktrees" ]; then
-        PROJ_WT_COUNT=$((PROJ_WT_COUNT + $(find "$PROJECT_DIR/worktrees" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)))
-    fi
     if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ]; then
         "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|  )" || true
         echo ""

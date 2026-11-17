@@ -188,12 +188,9 @@ fi
 _resolve_base_dirs() {
     local type="$1"
     NEW_BASE=""
-    LEGACY_BASE=""
-    TRANSITION_BASE=""
 
     if [ "$type" == "workspace" ]; then
         NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
-        LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
         # Fail closed: a malformed registry means we cannot tell which
         # worktree belongs to which project — never remove on partial state.
@@ -206,16 +203,14 @@ _resolve_base_dirs() {
                 exit 1
             fi
         else
-            # Auto-detect: find the single project, or list every candidate
-            # for --project to disambiguate (#265). The enumeration lists a
-            # registered project's current dir AND its pre-registration
-            # transition dir under the same name, so distinct names decide.
+            # Auto-detect: find the single project with a worktree dir, or
+            # list every candidate for --project to disambiguate (#265).
             local -a candidates=()
             local cname cdir
             while IFS=$'\t' read -r cname cdir; do
                 [ -z "$cdir" ] && continue
                 candidates+=("$cname"$'\t'"$cdir")
-            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
             local -a names=()
             local c n
             for c in "${candidates[@]}"; do
@@ -233,12 +228,8 @@ _resolve_base_dirs() {
                 return 1
             fi
         fi
-        # Worktrees created before the project was registered still live at
-        # <ws>/worktrees/project/<name>/; keep finding them (#265 PR 2 review).
-        if [ -n "$PROJECT_REPO" ]; then
-            TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")" || return 1
-        fi
-        LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
+        # Issue #265 part 4: no transition (worktrees/project/<name>/) or
+        # legacy (project/worktrees/) location is searched any more.
     fi
 }
 
@@ -308,12 +299,6 @@ if [ -n "$PATH_ARG" ]; then
 elif [ -n "$SKILL_NAME" ]; then
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_skill "$TRANSITION_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE)." >&2
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree in legacy location." >&2
     else
         echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'"
         echo ""
@@ -323,12 +308,6 @@ elif [ -n "$SKILL_NAME" ]; then
 else
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_issue "$TRANSITION_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE)." >&2
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
-        WORKTREE_DIR="$FOUND"
-        echo "⚠️  Found worktree in legacy location." >&2
     else
         echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
         echo ""
@@ -393,6 +372,35 @@ while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
     fi
 done <<< "$MANIFEST_ENTRIES"
 
+# --- Resolve every entry's owning repository before removing any ---
+# From the entry itself (its git-common-dir), not from the manifest's
+# recorded origin path: the checkout is the ground truth if a repo has since
+# moved. An existing entry whose owner cannot be resolved refuses the whole
+# removal (issue #265 part 4: there is no project/ to fall back on), so an
+# aggregate worktree is never half removed. ENTRY_OWNERS stays index-aligned
+# with ENTRY_DESTS; an entry already gone has an empty owner.
+declare -a ENTRY_OWNERS=()
+for _dest in "${ENTRY_DESTS[@]}"; do
+    if [ ! -d "$_dest" ]; then
+        ENTRY_OWNERS+=("")
+        continue
+    fi
+    # The entry must be a checkout's own top folder: git would otherwise walk
+    # up from a plain directory to an enclosing repository (the root the
+    # worktree dir lies in, say) and name that as the owner.
+    _common_dir=""
+    _top="$(git -C "$_dest" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -n "$_top" ] && [ "$(cd "$_top" 2>/dev/null && pwd -P)" = "$(cd "$_dest" && pwd -P)" ]; then
+        _common_dir="$(git -C "$_dest" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    fi
+    if [ -z "$_common_dir" ]; then
+        echo "Error: cannot resolve the repository that owns ${_dest}; nothing was removed."
+        echo "It is not a git worktree. Inspect it, then remove the worktree by hand or with --path."
+        exit 1
+    fi
+    ENTRY_OWNERS+=("$(dirname "$_common_dir")")
+done
+
 # --- Preflight every entry before removing any (unless --force) ---
 declare -a DIRTY_DESTS=()
 for _dest in "${ENTRY_DESTS[@]}"; do
@@ -416,35 +424,26 @@ fi
 # --- Remove every entry, then the aggregate dir last ---
 echo "Removing worktree..."
 
-declare -a ENTRY_OWNERS=()
-for _dest in "${ENTRY_DESTS[@]}"; do
+for _i in "${!ENTRY_DESTS[@]}"; do
+    _dest="${ENTRY_DESTS[$_i]}"
+    _owner="${ENTRY_OWNERS[$_i]}"
+    [ -n "$_owner" ] || continue
     [ -d "$_dest" ] || continue
-    # Resolve the owning repo from the entry itself (its git-common-dir),
-    # not from the manifest's recorded origin path — the checkout is the
-    # ground truth if a repo has since moved.
-    _common_dir="$(git -C "$_dest" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    if [ -n "$_common_dir" ]; then
-        _owner="$(dirname "$_common_dir")"
-    else
-        _owner="$ROOT_DIR/project"
-    fi
     if [ "$FORCE" = true ]; then
         git -C "$_owner" worktree remove --force "$_dest"
     else
         git -C "$_owner" worktree remove "$_dest"
     fi
     git -C "$_owner" worktree prune
-    ENTRY_OWNERS+=("$_owner")
 done
 
-# Aggregate dir last: a no-op for the legacy/single-entry shape (already
+# Aggregate dir last: a no-op for the single-entry shape (already
 # removed above, since dest == WORKTREE_DIR); deletes the leftover
 # .worktree-repos/env.sh/build.sh/test.sh/layer dirs for a package worktree.
 # Only $WORKTREE_DIR itself is removed — never its parent (the root's
-# worktrees/ dir, registered or legacy). Unregistering a project that has
-# no worktrees left is PR 4's concern (#265); this script never deletes a
-# directory the user may have customized (a worktrees= override, say),
-# so an empty worktrees/ dir is simply left behind.
+# worktrees/ dir). This script never deletes a directory the user may have
+# customized (a worktrees= override, say), so an empty worktrees/ dir is
+# simply left behind.
 rm -rf "$WORKTREE_DIR"
 
 echo ""

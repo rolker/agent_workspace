@@ -139,15 +139,15 @@ rc=0; out="$(cd "$sb2" && PATH="$sb2/stubbin:$PATH" "$sb2/.agent/scripts/worktre
 sb3="$(mk_ws)"
 mkdir -p "$sb3/.venv/bin"; printf '#!/bin/sh\n' > "$sb3/.venv/bin/python3"; chmod +x "$sb3/.venv/bin/python3"
 write_hook "$sb3" "$sb3/.venv/bin/python3"                       # workspace hook healthy
-mkdir -p "$sb3/project"; git -C "$sb3/project" init --quiet -b main
-git -C "$sb3/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-git -C "$sb3/project" remote add origin "file:///nonexistent/legacyrepo.git"
-printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' "$sb3/gone/.venv/bin/python3" > "$sb3/project/.git/hooks/pre-commit"
-chmod +x "$sb3/project/.git/hooks/pre-commit"                     # project hook broken
+mkdir -p "$sb3/demo"; git -C "$sb3/demo" init --quiet -b main; echo "demo single_project $sb3/demo" >> "$sb3/.agent/projects.local"  # registered (#265 part 4)
+git -C "$sb3/demo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+git -C "$sb3/demo" remote add origin "file:///nonexistent/legacyrepo.git"
+printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' "$sb3/gone/.venv/bin/python3" > "$sb3/demo/.git/hooks/pre-commit"
+chmod +x "$sb3/demo/.git/hooks/pre-commit"                     # project hook broken
 # origin is unreachable, so origin cannot say whether it has feature/issue-8:
 # --allow-unverified-branch starts it anyway (this case is about the hook).
 rc=0; out="$(cd "$sb3" && PATH="$sb3/stubbin:$PATH" "$sb3/.agent/scripts/worktree_create.sh" --issue 8 --type project --allow-unverified-branch 2>&1)" || rc=$?
-if [[ "$rc" -eq 0 && "$out" == *"shared pre-commit hook points to a Python that no longer exists"*"$sb3/gone/.venv/bin/python3"*"make -C \"$sb3/project\" repair"* ]]; then
+if [[ "$rc" -eq 0 && "$out" == *"shared pre-commit hook points to a Python that no longer exists"*"$sb3/gone/.venv/bin/python3"*"make -C \"$sb3/demo\" repair"* ]]; then
     pass "project worktree: the warning names the PROJECT repo's broken hook and its repair root"
 else
     fail "project worktree hook (rc=$rc out=${out:0:400})"
