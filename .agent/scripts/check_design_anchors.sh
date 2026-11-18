@@ -36,16 +36,23 @@
 #     How the path resolves (issue #488), one rule per form:
 #       - a leading `$VAR/` or `${VAR}/` (`$WS_ROOT/docs/design.md#x`) or `/`
 #         anchors it at the root;
-#       - a Markdown link target, `[..](<path>#x)`, resolves from the
-#         directory of the file that holds it, as GitHub resolves it
+#       - a Markdown link target, `[..](<path>#x)` or `[..](<<path>#x>)`,
+#         resolves from the directory of the file that holds it, as GitHub
+#         resolves it
 #         (`manifest/design.md#x` in docs/roadmap.md is docs/manifest/...;
 #         `../../tools/t/docs/design.md#x` in docs/manifest/design.md);
 #       - any other citation (in backticks or prose) is tried from the
 #         citing file's directory first and, when no file is there, from the
 #         root. So in a file under docs/ a backtick path and a link with the
 #         same text name the same file whenever that file exists
-#         (`design.md#x` and `manifest/design.md#x` in docs/roadmap.md), and
-#         `docs/design.md#x` still means the root's design from any citer.
+#         (`design.md#x` and `manifest/design.md#x` in docs/roadmap.md).
+#         The citing file's directory wins whenever the file is there, for
+#         `docs/design.md#x` too: it means the root's design from a citer
+#         whose directory has no docs/design.md of its own, and the part's
+#         design from one that has (`tools/t/ROADMAP.md` beside
+#         `tools/t/docs/design.md`), as a part's own files would cite it.
+#         Such a citer names the root's design with an anchored path
+#         (`/docs/design.md#x`, `$WS_ROOT/docs/design.md#x`).
 #         When the file exists from neither base, the citation is an error
 #         naming both paths.
 #     A path that resolves to docs/design.md is a citation of the root's
@@ -116,7 +123,8 @@
 # Output: each finding as `file:line: message` on stdout, with file relative
 # to the root.
 # A pointer table that sitrep_checks.sh cannot read (the script missing or
-# failing) is a finding on the roadmap, never a silent skip.
+# failing) is a finding on the roadmap, never a silent skip; so is a citer
+# that cannot be read, and the citers after it are still checked.
 # Exit codes:
 #   0  no findings
 #   1  one or more findings
@@ -274,7 +282,7 @@ design_records() {
         if (has_link && reg_level > 0 && line ~ /^ *\|/) print "ROW", NR
     }
     END { if (fence != "") print "OPEN", fence_line }
-    ' "${1:-$DESIGN}"
+    ' <"${1:-$DESIGN}"
 }
 
 # Run awk first so its failure is seen: a failing process substitution would
@@ -389,7 +397,14 @@ norm() {
 # it.
 declare -A SEEN=()
 CITERS=()
-add_citer() { [[ -f "$1" && -z "${SEEN[$1]+x}" ]] || return 0; SEEN["$1"]=1; CITERS+=("$1"); }
+# A path is kept in its folded form (`./design.md` is `design.md`), so one
+# file is never read, and its findings printed, twice.
+add_citer() {
+    norm "$1" || return 0
+    [[ -n "$NORM" && -f "$NORM" && -z "${SEEN[$NORM]+x}" ]] || return 0
+    SEEN["$NORM"]=1
+    CITERS+=("$NORM")
+}
 shopt -s nullglob
 for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md "$DESIGN" \
          .claude/skills/*/SKILL.md .agent/knowledge/*.md; do
@@ -423,7 +438,9 @@ for f in ${CITERS[@]+"${CITERS[@]}"}; do
 done
 
 # Citation forms (see the header): every `<path>design.md#<fragment>` run in
-# a citer, with whether it is a Markdown link target (`](` before it).
+# the citer on stdin, with whether it is a Markdown link target (`](` or
+# `](<` before it). The file is read through a redirect, never as an awk
+# operand, so a path holding `=` is not taken for an awk assignment.
 citations() {
     awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t" }
     {
@@ -431,14 +448,24 @@ citations() {
         while (match(substr(line, off + 1), re)) {
             s = off + RSTART
             tok = substr(line, s, RLENGTH)
-            print FILENAME, FNR, (s > 2 && substr(line, s - 2, 2) == "](") ? 1 : 0, tok
+            islink = (s > 2 && substr(line, s - 2, 2) == "](") \
+                     || (s > 3 && substr(line, s - 3, 3) == "](<")
+            print FNR, islink ? 1 : 0, tok
             off = s + RLENGTH - 1
         }
-    }' "$@"
+    }'
 }
 
-if [[ ${#CITERS[@]} -gt 0 ]]; then
-    while IFS=$'\t' read -r file line islink tok; do
+# Each citer is scanned on its own, and a citer that cannot be read is a
+# finding: one failed read must not end the scan of the citers after it,
+# nor leave the hook exiting 0 (never a silent skip).
+for file in ${CITERS[@]+"${CITERS[@]}"}; do
+    if ! CITES="$(citations 2>/dev/null <"$file")"; then
+        finding "$file" 1 "could not read $file, so its citations are not checked"
+        continue
+    fi
+    while IFS=$'\t' read -r line islink tok; do
+        [[ -n "$tok" ]] || continue                               # no citation
         frag="${tok##*#}"
         path="${tok%#*}"
         [[ -n "$frag" ]] || continue                              # placeholder
@@ -490,8 +517,8 @@ if [[ ${#CITERS[@]} -gt 0 ]]; then
             load_design "$target"
             check_anchor "$file" "$line" "$frag" "$target"
         fi
-    done < <(citations "${CITERS[@]}")
-fi
+    done <<<"$CITES"
+done
 
 # Anti-vacuity guards, live only once the register heading exists and
 # docs/decisions/ exists.

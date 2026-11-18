@@ -692,6 +692,71 @@ run_checker "$R"
 expect "h: pointers through sitrep_checks.sh: a CRLF table is read, a ./ repeat once, no link out of the root, no table past a Setext heading" 1 \
     "tools/t/docs/design.md:3:" "#gone-t" "check_design_anchors: 1 finding(s)"
 
+# A citer that cannot be read is a finding, and the citers after it are
+# still checked (README.md is read first, the skill after it). Root can
+# read a mode-000 file, so the case is skipped there.
+if [[ "$(id -u)" -ne 0 ]]; then
+    R="$(new_root h8)"
+    plain_design "$R/docs/design.md"
+    mkdir -p "$R/.claude/skills/s"
+    printf 'See docs/design.md#how-it-works.\n' > "$R/README.md"
+    printf 'See docs/design.md#gone-after.\n' > "$R/.claude/skills/s/SKILL.md"
+    chmod 000 "$R/README.md"
+    run_checker "$R"
+    chmod 644 "$R/README.md"
+    expect "h: an unreadable citer is a finding and the citers after it are still checked" 1 \
+        "README.md:1: could not read README.md" ".claude/skills/s/SKILL.md:1: broken anchor '#gone-after'" \
+        "check_design_anchors: 2 finding(s)"
+else
+    echo "  SKIP: h: an unreadable citer (running as root, which reads a mode-000 file)"
+fi
+
+# A citer whose path holds '=' after a name (a=b/...) is read as a file,
+# not taken by awk for an assignment.
+R="$(part_root h9)"
+mkdir -p "$R/a=b/docs"
+printf 'See `/docs/design.md#gone-eq`.\n' > "$R/a=b/docs/roadmap.md"
+git -C "$R" add -A
+run_checker "$R"
+expect "h: a citer path holding '=' is read and its citations checked" 1 \
+    "a=b/docs/roadmap.md:1: broken anchor '#gone-eq'" "check_design_anchors: 1 finding(s)"
+
+# A pointer to a root-level ROADMAP.md adds the design beside it,
+# `./design.md`, once: its findings are printed once, not twice.
+R="$(new_root h10)"
+plain_design "$R/docs/design.md"
+printf '# Top\n\n[x](#gone-top)\n' > "$R/design.md"
+: > "$R/ROADMAP.md"
+printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| ROADMAP.md | . |\n' > "$R/docs/roadmap.md"
+printf 'See `design.md#top`.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: the design beside a root-level sub-roadmap is read once, also when cited as design.md" 1 \
+    "design.md:3:" "#gone-top" "check_design_anchors: 1 finding(s)"
+
+# `docs/design.md#x` from a citer whose own directory has docs/design.md
+# names that part's design (the citing file's directory wins); an anchored
+# `/docs/design.md#x` names the root's.
+R="$(part_root h11)"
+printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| tools/t/ROADMAP.md | tools/t |\n' > "$R/docs/roadmap.md"
+printf 'See `docs/design.md#only-part` and `/docs/design.md#only-root`.\n' > "$R/tools/t/ROADMAP.md"
+git -C "$R" add -A
+run_checker "$R"
+expect "h: docs/design.md# beside a part's docs/design.md names the part's; /docs/design.md# the root's" 0
+printf 'See `docs/design.md#only-root`.\n' > "$R/tools/t/ROADMAP.md"
+run_checker "$R"
+expect "h: ... so a root-only fragment cited as docs/design.md# from there fails against the part's" 1 \
+    "tools/t/ROADMAP.md:1: broken anchor '#only-root' (no such heading in tools/t/docs/design.md)"
+
+# An angle-bracket link destination is a link: it resolves from the file
+# that holds it only, never from the root.
+R="$(part_root h12)"
+printf 'See [x](<manifest/design.md#route>).\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: an angle-bracket link destination resolves from its file" 0
+printf 'See [x](<docs/manifest/design.md#route>).\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: ... and never falls back to the root" 1 "no such design file 'docs/docs/manifest/design.md'"
+
 # ------------------------------------------------------- usage and root
 echo "== usage and root selection =="
 R="$(new_root u1)"

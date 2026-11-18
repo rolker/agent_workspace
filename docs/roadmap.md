@@ -77,7 +77,10 @@ problems, and keeps the steps that do.
   holding it; a citation in backticks or prose resolves from that file's
   directory when the file is there, else from the repository root, so in
   this file `manifest/design.md#<section>` names `docs/manifest/` either
-  way and `docs/design.md#<section>` the root's design.
+  way and `docs/design.md#<section>` the root's design. From a file whose
+  directory has a `docs/design.md` of its own, such as a part's
+  `tools/<t>/ROADMAP.md`, `docs/design.md#<section>` names that part's
+  design; `/docs/design.md#<section>` names the root's from any file.
 - A check starts with its kind: `file-exists <path>`,
   `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
   under the file's `## Status` heading starts with that word),
