@@ -385,3 +385,47 @@ Part 3 (the switch):
 - The adapter's locked sweep also removes marked or empty leftover temporary directories of the tool beside its generated directories, with a test (finding 1).
 - The converted adapter fixture lists the distros the adapter's tests pass (finding 4).
 - The adapter comment that says every remote call has a time limit is corrected: at a terminal there is none (finding 6).
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-18 13:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-498 at `32f847e2`
+
+Part 1 of 3 (the reader for one manifest with no `base`). Everything in the newest Checkpoint's "Part 1" list is done except the CI change. That change is why the status is partial.
+
+- `3e690378`: the Python 3.14 fix in the old reader, in the form the first Plan Review gave. `_resolve_one` stats the candidate. Only `FileNotFoundError` or a file that is not regular means "not found". Any other `OSError` goes to the existing "cannot be followed" handler. The test is unchanged.
+- `bb202e42`: the safe YAML loader moved unchanged from `schema.py` to `yamlload.py`.
+- `193c905d` `manifest.py`: reads and checks one manifest. `yamlload.first_unsafe_in_text` checks the raw file text, comments included, and allows only newline, CR and tab.
+- `96c89471` `selection.py`: picks the repos of each layer for a role, a distro and extra groups.
+- `cd5b8830` `output.py` and `cli.py`:
+  - A file with a top-level `repositories:` goes to the new reader. Any other file goes to the old one, including a file that does not read or parse.
+  - The new reader writes `<layer>.repos`, `layers.txt` and `optional.txt` with the head comment. The output is written whole or not at all, with the marker file and a sweep of leftover siblings.
+  - SIGTERM and SIGHUP end a resolve through an exception, and a `finally` removes the temporary directory. One test covers this.
+  - `--role`, `--distro` and `--with` are optional flags. `validate` resolves every role and distro the manifest lists.
+  - `--layout` and `--cache-dir` are refused for the new format. The old format still needs `--role` and `--distro`, and argparse refuses a missing one with exit 2.
+- `7bdb7183`: the project11 fixture. The private repo is renamed `site_config` with a made-up URL and a comment saying so. There are 6 expected output directories. `developer` matches the old 44-repo fixture apart from that repo.
+- `32f847e2`: documents. `spec.md` records the points settled for part 1. `design.md` changes under "resolve" and "What is built". `prototype.md` has a pointer note, `README.md` has the new usage, and `docs/manifest/design.md` lines 237–240 are corrected. `roadmap.md` is unchanged: no row is fully true until `base` is read.
+
+CI, not done. While I worked, the coordinator relayed the owner's answer to question 10 (2026-11-18): "yes, add python 3.14 to CI". My edit of `.github/workflows/validate.yml` (a 3.10/3.14 matrix in `validate-repos-manifest` only) was refused by the permission system as a change to CI. I did not try another way. Nothing under `.github/` changed, and `git diff origin/main -- .github` is empty. The host or the owner needs to make or allow that change before the pull request.
+
+Suites run:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests` on Python 3.14.4: `487 passed`. The baseline was 333, with 2 failing.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`. The suite runs this checkout's `tools/repos-manifest/src` through PYTHONPATH, so it checks the branch.
+- Python 3.10 was not run here. CI checks it after the push.
+- The full pre-commit pass was left to the host.
+
+Not done from the plan or the Checkpoint:
+- The plan's Prior Art line on signal handling is not corrected. The dispatch said nothing under `.agent/` changes.
+- The plan's step 9 put the output file names and `_unnamed` in `spec.md`. They are in `design.md#resolve` instead, because the spec says layout on disk belongs to the tools.
+
+Questions not settled by the spec or a Checkpoint. Each was given the narrowest reading:
+1. A distro entry that gives both `version` and `absent: true` is refused.
+2. An unknown key inside a distro entry is warned about, like a repo key.
+3. A host in a `url` that starts with `-` is refused. This is written into the spec as part of "no value makes git run a program".
+4. Only `user@host:path` is taken as the scp form; `host:path` with no user is refused.
+5. A role with no value (`robot:`) is refused; `[]` is required. Recorded in the spec.
+6. A `--out` that is a symbolic link is refused.
+7. A file starting with a byte-order mark is refused (U+FEFF is invisible).
+8. Names of one kind that differ only in case (`Core` and `core`) are not refused, since that is a destination check. The two layer files would collide in `--out` on a case-insensitive disk.
+9. `repositories: {}` is accepted and gives no files.
