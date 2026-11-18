@@ -268,3 +268,25 @@ The split, the refusal order, the two-phase resolve-then-apply and the interrupt
 - [ ] Fix the by-hand commands: no `-e` into the worktree, a tracked file for "dirty", and compare `git status` too (finding 10).
 - [ ] Add the six-layer owner-shape test from `fixtures/p11` with local remotes, and a two-distro stop test (finding 11).
 - [ ] Move Q1, Q3 and the layer-change question to part 2's plan as owner questions; answer Q2 from the design (finding on open questions).
+
+## Checkpoint
+**When**: 2026-11-18 16:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is needs-work; its findings are mechanism and make part 1 smaller)
+**After**: plan
+**Decision**: revise
+
+Revise the plan with every finding of the Plan Review. Host decisions where it left a choice (owner may veto):
+
+- Cloning (finding 1): each missing repo is cloned into a temporary directory made beside its destination, under the layer's src/, and renamed into place when vcs import exits 0; on any failure only that temporary directory is removed. The tool never removes a path it did not make in that same call. One call per missing repo, success by exit status. The "not a complete clone" listing goes.
+- The destination check (finding 2) is in part 1, as the spec says: the real path of the destination's parent stays inside the layer's src/, and an existing destination is never written into.
+- .repos-manifest/ is made with a temporary directory and one rename, not with the output writer; output.py is not changed for it (finding 3).
+- Messages do not name a command that is not built: no add-distro, no build (findings 4 and the stub's text).
+- vcs for the tests: vcs2l goes in the package's test extra, so the clone tests run in CI as it is and fail, not skip, when vcs is missing. No change under .github/. The tool itself still accepts vcs from vcstool or vcs2l on PATH and has no new runtime dependency.
+- Modules (finding 7): signals.py, system.py (config, paths, state, reading the manifest from its location), sync.py, init.py. No layout.py.
+- Cut from part 1: --local-manifest and the local-copy read; the -- pass-through of vcs import arguments; the "not a complete clone" listing; the vcs behaviour tests that part 1 does not rely on. Each is listed in the plan as moved to part 2 or to its own later step, not dropped from the issue.
+- Kept in part 1: setup.bash, a file that says nothing is built yet and returns a failure when sourced, as the design's refusals table implies init writes it.
+- Findings 8 to 11 as stated: an OSError reported with its path and reason; a test in the owner's own shape (six layers, --distro-dirs, one distro, a role) from the existing fixture with local remotes; a two-distro sync stopped during the second; state.yaml's no-lock note; resolve called once.
+- The by-hand commands: install from the main checkout after the merge, not from the worktree; make the dirty file from one the repo tracks; compare git status as well as git log.
+- Questions moved to part 2's own plan checkpoint, for the owner then: untracked files when sync updates a repo; a repo whose url changed in the manifest; a cloned repo whose layer changed.
+- No question remains for the owner on part 1.
