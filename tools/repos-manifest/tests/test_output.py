@@ -443,6 +443,25 @@ def test_a_missing_file_goes_to_the_earlier_reader(tmp_path, capsys):
     assert capsys.readouterr().err == f"ERROR: manifest not found: {path}\n"
 
 
+@pytest.mark.parametrize("command", ["resolve", "validate"])
+def test_a_file_that_does_not_parse_without_role_and_distro_reports_the_parse_error(
+    command, tmp_path, capsys
+):
+    path = tmp_path / "m.yaml"
+    path.write_text("repositories: [\n")
+    argv = [command, "--manifest", str(path)]
+    assert main(argv + (["--out", str(tmp_path / "out")] if command == "resolve" else [])) == 1
+    assert capsys.readouterr().err == f"ERROR: {path}: invalid YAML at line 2, column 1\n"
+
+
+@pytest.mark.parametrize("command", ["resolve", "validate"])
+def test_a_missing_file_without_role_and_distro_reports_it_missing(command, tmp_path, capsys):
+    path = tmp_path / "missing.yaml"
+    argv = [command, "--manifest", str(path)]
+    assert main(argv + (["--out", str(tmp_path / "out")] if command == "resolve" else [])) == 1
+    assert capsys.readouterr().err == f"ERROR: {path}: not found\n"
+
+
 def test_the_earlier_format_still_needs_role_and_distro(fixtures_dir, tmp_path, capsys):
     with pytest.raises(SystemExit) as excinfo:
         _resolve(fixtures_dir / "p11" / "manifest.yaml", tmp_path / "out", "--role", "dev")

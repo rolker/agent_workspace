@@ -29,11 +29,16 @@ def _load_merged(manifest_path: str, cache_dir: str | None):
 
 
 def _require_old_flags(args: argparse.Namespace) -> None:
-    """The earlier shape needs --role and --distro, and takes no --with."""
+    """The earlier shape needs --role and --distro, and takes no --with. A file that does not
+    read or parse is reported as such, not as missing flags: it may be meant for either
+    reader."""
     missing = [
         flag for flag, value in (("--role", args.role), ("--distro", args.distro)) if not value
     ]
     if missing:
+        problem = new_manifest.read_problem(Path(args.manifest), source=args.manifest)
+        if problem is not None:
+            raise ManifestError(problem)
         args.parser.error(f"the following arguments are required: {', '.join(missing)}")
     if getattr(args, "with_groups", None):
         args.parser.error("--with is for a manifest in the format of docs/spec.md")

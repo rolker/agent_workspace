@@ -94,19 +94,33 @@ def has_repositories_key(path: Path) -> bool:
     return isinstance(data, dict) and "repositories" in data
 
 
-def load_manifest(path: Path, source: Optional[str] = None) -> Manifest:
-    """Read and check the manifest at `path`. `source` names it in messages (default: the path
-    as given)."""
+def read_problem(path: Path, source: Optional[str] = None) -> Optional[str]:
+    """Why the file at `path` cannot be read or parsed as YAML, as an error message; None if it
+    can be. Says nothing about whether it is a valid manifest."""
     label = source if source is not None else str(path)
     try:
-        text = Path(path).read_text(encoding="utf-8")
+        _load_yaml(_read_text(Path(path), label), label)
+    except ManifestError as exc:
+        return str(exc)
+    return None
+
+
+def _read_text(path: Path, label: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ManifestError(f"{label}: not found") from None
     except UnicodeDecodeError:
         raise ManifestError(f"{label}: cannot be read as UTF-8 text") from None
     except OSError as exc:
         raise ManifestError(f"{label}: cannot be read ({exc.strerror or 'an OS error'})") from None
-    return parse_manifest(text, label)
+
+
+def load_manifest(path: Path, source: Optional[str] = None) -> Manifest:
+    """Read and check the manifest at `path`. `source` names it in messages (default: the path
+    as given)."""
+    label = source if source is not None else str(path)
+    return parse_manifest(_read_text(Path(path), label), label)
 
 
 def parse_manifest(text: str, source: str) -> Manifest:
