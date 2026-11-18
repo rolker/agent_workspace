@@ -65,21 +65,21 @@ Two limitations of slash-command argument forwarding worth knowing:
 The check below uses `git rev-parse --git-dir` vs `--git-common-dir`: in the main tree they're equal; in a linked worktree they differ. This is the most reliable git-native test for "am I in a linked worktree", regardless of where the worktrees live on disk.
 
 ```bash
-GITDIR=$(git rev-parse --git-dir 2>/dev/null) || {
+if ! GITDIR=$(git rev-parse --git-dir 2>/dev/null); then
     echo "Not in a git repository: no linked worktree to refuse; step 2a decides whether this directory is a session's root."
-    exit 0
-}
-COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
+else
+    COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
 
-# Resolve to absolute paths so the comparison is robust.
-GITDIR_ABS=$(cd "$GITDIR" && pwd -P)
-COMMON_ABS=$(cd "$COMMON" && pwd -P)
+    # Resolve to absolute paths so the comparison is robust.
+    GITDIR_ABS=$(cd "$GITDIR" && pwd -P)
+    COMMON_ABS=$(cd "$COMMON" && pwd -P)
 
-if [ "$GITDIR_ABS" != "$COMMON_ABS" ]; then
-    echo "Already inside a linked worktree:" >&2
-    echo "  $(git rev-parse --show-toplevel)" >&2
-    echo "Exit it first (cd back to the main workspace), then re-run /start-task." >&2
-    exit 1
+    if [ "$GITDIR_ABS" != "$COMMON_ABS" ]; then
+        echo "Already inside a linked worktree:" >&2
+        echo "  $(git rev-parse --show-toplevel)" >&2
+        echo "Exit it first (cd back to the main workspace), then re-run /start-task." >&2
+        exit 1
+    fi
 fi
 ```
 
