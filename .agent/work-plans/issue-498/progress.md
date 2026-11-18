@@ -614,3 +614,31 @@ Suites run on Python 3.14:
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`
 - Python 3.10 was not run. Every changed .py file parses with the 3.10 grammar, and nothing newer than 3.8's library is used.
 - The full pre-commit pass was left to the host. Every commit ran its hooks with `SKIP=validate-script-tests`, and black and flake8 passed on each.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 14:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `304fded6`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff is Deep: input-safety checks and an output writer that replaces and deletes directories, 69 files, +4880 -175)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 3 | **Ship**: continue — round 3: must-fix rising (1 -> 2); both are mechanical one-place fixes, so the host may choose fix-and-ship over a fourth round
+
+Round 3 convergence check: the round 2 findings and `git diff fbaca8b4..HEAD` (91d7f4ec..304fded6) only. The round 2 must-fix is fixed for what it named: `ssh://%2doProxyCommand=x/p`, `ssh://h:%2d1/p` and `ssh://h?x@-oProxyCommand=y/p` are refused, with tests. But git decodes the whole url before it looks for `@[`, so an encoded `@[` in the path still gets a host starting with `-` to ssh (must-fix 1). The other 14 round 2 items were checked against the code and docs: done as the Implementation entry says (CR only in CRLF, invalid pid left alone, marker removed last, put-back of the marked old copy, `--out` resolved on the disk, mode kept, spec and design lines, narrowed documents test). One fix brought a regression: SIGINT now ends with a plain exit 130 instead of death by SIGINT (must-fix 2).
+
+Checked by running: about 25 urls against git 2.53 with a GIT_SSH that prints its arguments, plus an independent probe of about 45 by the adversarial subagent. Ordinary urls pass: https with a port, `ssh://git@host:2222/path`, `git@host:owner/repo.git`, `host:path`, IPv6 in brackets (ssh:// and scp forms), `file:///abs`, absolute paths, `%20`, `?`, `#` and `@` in a path. `--out` under the current directory (`sub/out`, `./sub/deep/out2`, `../../out` from below) is accepted; `.`, `..`, `sub/..`, `sub/deep/../..` are refused. Put-back moves a dead run's marked `.old` copy back and leaves a live run's copy alone; the kept mode (0700) survives. A CRLF manifest validates, error line and column are right in CRLF files, a lone CR is refused at its position; `has_repositories_key` still reads in universal-newline mode, which only routes the file and gives the same result. The old reader does not use the text check, so `newline=""` does not change it. The fixer's two choices for the owner's veto (`%` refused in the scp form; a bracketed port starting with `-` refused): reviewer agrees with both.
+
+Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` gives `674 passed in 11.49s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`. `git diff fbaca8b4..HEAD -- .github` is empty. Every changed .py parses with the 3.10 grammar; the new library calls (`Path.unlink(missing_ok=)`, `signal.raise_signal`) are 3.8. Python 3.10 not run here.
+
+Specialists: static analysis (3.10 grammar parse; pre-commit covers the rest), governance and plan drift inline (docs updated with the design per ADR-0017; no plan drift beyond round 2's deferred item), Claude adversarial (fresh subagent; found must-fix 2 and suggestion 1, both re-run here). Cross-model: skipped (round-3 convergence check, per handoff).
+
+### Findings
+- [ ] (must-fix) git url-decodes the whole `ssh://` url before its host_end() looks for `@[`, so an encoded `@[` in the path passes: `ssh://host/x%40[-oProxyCommand=y]/p`, `ssh://host/x@%5b-oProxyCommand=y]/p` and `ssh://host/x%40%5b-oProxyCommand=y%5d/p` are accepted and git hands ssh `host/x@-oProxyCommand=y` (OpenSSH 10.2 then refuses the hostname, as git did for round 2's case); for urls with `://`, find the host on the decoded text (or refuse `%40`/`%5b` in the path), and fix spec.md's "refusing `%` there is simpler than decoding" line, with tests — `tools/repos-manifest/src/repos_manifest/manifest.py:216`
+- [ ] (must-fix) A Ctrl-C now ends `resolve` with a normal exit 130, not death by SIGINT (Python's own KeyboardInterrupt exit did that before), so a shell loop over `resolve` keeps going: reproduced, `exit=130 run 1`, `exit=0 run 2`, `loop-done`; for SIGINT set `SIG_DFL` and `raise_signal` after the message, with a test on the exit signal — `tools/repos-manifest/src/repos_manifest/cli.py:94`
+- [ ] (suggestion) The kept mode is applied to the new directory before its files are written, so an existing `--out` with mode 0555 can no longer be replaced ("cannot be written (Permission denied)"); chmod after writing. With a read-only old copy, `_remove_ours(old)` also fails silently and leaves a marked `.old` each later sweep fails on — `tools/repos-manifest/src/repos_manifest/output.py:285`
+- [ ] (suggestion) An `@[` with no `]` is refused as "the host has an unclosed '['" where git takes no bracketed host: `ssh://h/p@[x`, `git@h:p@[x`, `https://h/x@[y`; follow git (no bracketed host) — `tools/repos-manifest/src/repos_manifest/manifest.py:241`
+- [ ] (suggestion) If a removal of the old copy after a good swap is cut short (marker kept, files partly gone) and the person then deletes `--out`, the next run puts the partial copy back as the output, and it stays if that run fails; remove `old` by first renaming it to a `.new-` name, which is swept but never put back — `tools/repos-manifest/src/repos_manifest/output.py:171`
+- [ ] (suggestion) design.md: "the new one keeps its mode" reads as the new hidden directory; say "the new output keeps the mode of the one it replaces" — `tools/repos-manifest/docs/design.md:301`
