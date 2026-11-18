@@ -743,3 +743,26 @@ Cross-model pass: warranted before merge. Gemini and Codex last saw `fbaca8b4`; 
 **Decision**: address
 
 Fix all four findings of the Integrated Review: the two tests that fail on Python 3.10 because they patch os.unlink, which pathlib does not go through there; the silent failure when a previous copy holds a read-only subdirectory; the spec line on where a url's user, host and port end; and the urls git cannot use that pass the check. The triage recommends one cross-model pass on the head after this fix round; the post-fix review of the pull request runs at full depth and includes it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #506 at `9b118f18`
+**Addressed**: Integrated Review at `0145c79` (2026-11-18 15:07 -05:00)
+**Commits**: d2142c6f, 0f90ae18, 91a7b971, 9b118f18
+
+### Actions
+- [x] (must-fix, CI Python 3.10) `_cut_short_removal` now patches `output.Path.unlink` (failing for every name but the marker) as well as `os.unlink` (kept for `shutil.rmtree`). Checked against cpython 3.10's `Lib/pathlib.py` (`_NormalAccessor.unlink = os.unlink` bound at class definition; `Path.unlink` calls `self._accessor.unlink(self)`) and `Lib/shutil.py` (`_rmtree_safe_fd` calls `os.unlink(entry.name, dir_fd=topfd)` by name at call time); on 3.14 `Path.unlink` calls `os.unlink` at call time, so the patched `Path.unlink` serves both. No 3.10 here: with a plugin emulating 3.10's bound `Path.unlink`, the old helper fails both tests and the new one passes, and the whole suite passes (718) — `tools/repos-manifest/tests/test_output.py:376`
+- [x] (must-fix) `_remove_ours` makes every directory in the tree writable first (`_make_writable`: `os.walk`, top-down, chmod each real directory before it is entered; links are not followed or chmodded), and `_sweep_leftovers` prints a WARNING naming a leftover it cannot remove. Tests: a read-only (r-x and none) subdirectory inside the previous output, a leftover with a read-only subdirectory, a sweep that cannot remove a leftover warns and the next run sweeps it, a link in a copy keeps its target's mode; design.md says so — `tools/repos-manifest/src/repos_manifest/output.py:143`
+- [x] (should-fix) spec.md now says where the user, host and port end for each kind of url: an `ssh://` url at the first `/` after the host, the scp form at the first `:` after the host, `https`, `http` and `file` at the first `/` after `://` — `tools/repos-manifest/docs/spec.md:440`
+- [x] (should-fix) Refused: an `ssh://` url with no path, an empty host in any ssh address (bracketed or not: `[]:r`, `ssh://[]/r`, `ssh:///r`, `u@:r`), and an scp-form path starting with `-` (`h:-x`, `u:-x@h:p`); each with its own message rather than `_URL_RULE`, which does not explain them. New spec line; 17 refused cases and one accepted case in `test_manifest_reading.py`, all 17 failing before the change. The Checkpoint's ssh structural rule (no `%`, brackets only around the host) is unchanged — `tools/repos-manifest/src/repos_manifest/manifest.py:218`
+
+### Python 3.10 check
+Read every test file the branch adds or changes (test_output.py, test_manifest_reading.py, test_selection.py, test_documents.py, test_project11.py) and output.py, cli.py, manifest.py, selection.py, yamlload.py for the same class of problem. The only `os`/`shutil` patch reached through pathlib was `_cut_short_removal`; the `os.rename` patches reach `os.rename` calls made directly in output.py (never `Path.rename`), and `_write_text` is patched on the module. Behaviour that differs between 3.10 and 3.14 but gives the same result: `Path.exists`/`is_file` raise on EACCES on 3.10 and return False on 3.14, and the unreadable-out test gets "Permission denied" either way (from `is_file` on 3.10, `iterdir` on 3.14). No `onexc`/`onerror` on rmtree, `Path.walk`, `tomllib`, `except*` or other 3.11+ call; `is_relative_to`, `signal.raise_signal`, `pthread_sigmask`, `unlink(missing_ok=)` and `X | None` (with `from __future__ import annotations`, valid on 3.10 anyway) exist on 3.10. The unicode characters the tests use are assigned the same in Unicode 13.0 (3.10) and 16.0 (3.14), or are noncharacters, private-use or in the hard-coded default-ignorable table.
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests` (Python 3.14.4): 718 passed in 11.69s
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: === Results: 1014 passed, 0 failed, 0 skipped ===
+- Commits ran every hook but `validate-script-tests` (black and flake8 passed). The full pre-commit pass is left to the host; Python 3.10 itself was not run here (not installed) and is left to CI.
