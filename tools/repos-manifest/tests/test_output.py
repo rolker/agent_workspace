@@ -426,8 +426,8 @@ def test_a_previous_output_that_cannot_be_put_back_is_named_and_put_back_next_ru
     aside = [p for p in tmp_path.iterdir() if p.name.startswith(".out.old-")]
     assert len(aside) == 1 and not out.exists()
     assert capsys.readouterr().err == (
-        f"WARNING: --out {out}: is now missing; the previous output is in {aside[0]}, and the"
-        " next resolve to the same place puts it back\n"
+        f"WARNING: --out {out}: is now missing; the previous output is kept in {aside[0]}, and"
+        " the next resolve to the same place puts it back if --out is still missing\n"
         f"ERROR: --out {out}: cannot be written (No space left on device)\n"
     )
 

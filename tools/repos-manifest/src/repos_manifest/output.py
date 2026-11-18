@@ -359,8 +359,9 @@ def write_output(
             except OSError:
                 # It stays where it is, marked, and is not removed by this run.
                 print(
-                    f"WARNING: --out {out}: is now missing; the previous output is in {old}, and"
-                    " the next resolve to the same place puts it back",
+                    f"WARNING: --out {out}: is now missing; the previous output is kept in {old},"
+                    " and the next resolve to the same place puts it back if --out is still"
+                    " missing",
                     file=sys.stderr,
                 )
                 old = None
