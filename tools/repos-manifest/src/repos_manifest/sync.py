@@ -327,7 +327,11 @@ def create_setup(system: Path, parts: Parts) -> Optional[str]:
                 path.unlink()
                 raise
     except OSError as exc:
-        return f"{path}: cannot be created: {oserror_message(exc)}"
+        # The path once: the reason alone when the error is about the file itself.
+        reason = oserror_message(exc)
+        if exc.filename2 is None and exc.filename is not None and Path(exc.filename) == path:
+            reason = exc.strerror or type(exc).__name__
+        return f"{path}: cannot be created: {reason}"
     return None
 
 

@@ -274,7 +274,7 @@ def test_a_setup_bash_in_a_read_only_directory_is_reported_with_its_reason(two_d
         (system / "jazzy").chmod(0o700)
     out = capsys.readouterr().out
     setup = system / "jazzy" / "setup.bash"
-    assert f"ERROR: {setup}: cannot be created: {setup}: Permission denied" in out
+    assert f"ERROR: {setup}: cannot be created: Permission denied\n" in out
     assert not os.path.lexists(setup)
     assert "distro rolling:" in out
 
