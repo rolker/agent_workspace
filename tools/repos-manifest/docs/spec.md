@@ -1,9 +1,9 @@
 # Manifest format
 
-Status: draft. This describes the format we are moving to. The resolver in `src/` reads it
-for a manifest that stands on its own; it does not read `base` yet, and it still reads the
-prototype's earlier shape for a manifest without `repositories:`. Sections marked "Open" are
-not settled.
+Status: draft. This describes the format we are moving to. The resolver in `src/` reads it,
+with `base` given as paths on the local disk; it does not yet read a `base` given as a URL or
+as a file in a git repo, and it still reads the prototype's earlier shape for a manifest
+without `repositories:` or `base:`. Sections marked "Open" are not settled.
 
 ## What a manifest is
 
@@ -80,7 +80,7 @@ roles:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `repositories` | yes, in the first manifest of a chain | The repos of the system, by name. |
+| `repositories` | yes, in a manifest with no `base` | The repos of the system, by name. |
 | `format` | no | Version of this format. `1` if absent. |
 | `base` | no | One or more other manifests this one builds on. |
 | `distros` | no | The distros this manifest covers. |
@@ -119,8 +119,8 @@ Two things follow from the key being a path:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `type` | yes | As in a `.repos` file. The format takes any type a `.repos` file takes; the tools here read `git` only and refuse a manifest with another. |
-| `url` | yes | Where to fetch from. |
+| `type` | yes, where the repo's key first appears | As in a `.repos` file. The format takes any type a `.repos` file takes; the tools here read `git` only and refuse a manifest with another. |
+| `url` | yes, where the repo's key first appears | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
 | `absent` | no | `true` if the repo is not part of the system unless a distro says so. `false` if left out. |
 | `layer` | no | The layer the repo belongs to. The unnamed first layer if left out. |
@@ -295,7 +295,8 @@ a location it cannot read says so and stops.
 These three forms are the ones every tool is expected to read:
 
 - A path on the local disk. A relative path is taken from the directory of the manifest that
-  names it.
+  names it, after links are followed: if that manifest was reached through a link, the
+  directory is the one of the file the link leads to.
 - An `http` or `https` URL of the file. Plain `http` gives no protection against the file
   being changed on the way, so it is for networks the person trusts.
 - A file in a git repo, given as a mapping with the repo's `url`, a `version` (a branch or
@@ -310,6 +311,12 @@ base:
   path: project11.manifest.yaml
 ```
 
+A string with a `:` before its first `/` is a URL, not a path. A file whose name has a `:` in
+it is named with a directory in front, as in `./a:b.manifest.yaml`.
+
+The tools here read a path only for now. They refuse a URL or the git form with a message
+that says so.
+
 ### How manifests combine
 
 The parents are read first, in the order given, then the manifest itself. Where the same
@@ -321,10 +328,13 @@ parents share a parent, is given further down):
   the earlier value. An entry that gives only `url` changes where the repo is fetched from
   and nothing else.
 - A role replaces the earlier one of the same name.
-- `groups:` adds to the earlier list.
+- `groups:` adds to the earlier list. A group already in the list keeps its place.
 - `layers:` adds to the earlier list. A layer already in the list keeps its place, and new
   layers go on the end in the order given.
 - `distros:`, when present, replaces the earlier list.
+
+A repo keeps the place in the order of repos where it first appeared, so a later manifest that
+changes it does not move it to the end.
 
 A later manifest cannot put a layer below an earlier one or reorder the earlier layers. It
 does not need to for the build to be correct: the earlier manifest's repos cannot depend on
@@ -351,6 +361,9 @@ entry that changes one distro gives the whole block, with the other distros repe
 A parent may itself build on other manifests. A manifest that builds on itself, directly or
 through others, is an error.
 
+A manifest is known by its location: for a path, the path after links are followed. One file
+reached by two paths is one manifest.
+
 Two parents may share a parent. Each manifest is read once, the first time it is reached,
 and the order of reading is: a manifest's parents in the order it names them, each after its
 own parents, then the manifest itself. If `A` and `B` both build on `C`, and a manifest names
@@ -374,10 +387,20 @@ repositories:
     url: https://github.com/rolker/unh_marine_navigation.git
 ```
 
-Only the first manifest in a chain has to be complete. An entry in a later one may leave out
-the required keys when an earlier manifest gives them, and a later manifest that adds no
-repo needs no `repositories:` at all. An entry whose key matches nothing earlier is a new
-repo and has to be complete; this catches a misspelt key.
+A repo's entry has `type` and `url` in the manifest where its key first appears in the order
+of reading; a later manifest may then change any key of it, and leave out the keys it does
+not change. A manifest that brings in a key with only part of an entry is refused, and the
+message names that manifest, whatever a later manifest adds. A manifest with no `base` is no
+exception: every key it has that no manifest read before it has is new there. This also
+catches a misspelt key, which matches nothing read before it. A manifest with `base` that
+adds no repo needs no `repositories:` at all.
+
+The other rules that read more than one part of a manifest are judged on the combination:
+that a repo's `layer` is in `layers:` and its groups and a role's groups are in `groups:`,
+that a repo's `distros:` key has a `distros:` list to go with it, that no repo key is inside
+another and that no two layer names differ only in case. So "`distros:` is absent" means
+absent from every manifest of the chain. A message about one of these names the manifest that
+gave the value. Every other rule is checked on each manifest as it is read, parents included.
 
 Adding a repo to a group of the published manifest works the same way as adding it to a
 layer: the new repo names the group.
@@ -462,7 +485,7 @@ command that writes there.
     is a path on the local disk, so a relative one is refused. Anything else is refused,
     and so is every `name::address` form (a word at the start, then `::`); `git` has
     transports that run a command.
-  - These apply to a repo and to a location named under `base:` alike.
+  - These apply to a repo and to a location named under `base:` alike, in every manifest read.
 - The file has no invisible characters and none that change the direction of text, in a
   comment or anywhere else. They can make a file read differently from what it does. That
   covers the characters a text shows as nothing (Unicode's default-ignorable code points, such

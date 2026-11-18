@@ -1,8 +1,8 @@
 """`repos-manifest` CLI: resolve and validate; init and sync set up a system directory and
 clone its repos.
 
-A manifest with a top-level `repositories:` key is read by the reader for the format in
-docs/spec.md (``manifest.py``); any other file, one that does not read or parse included, by
+A manifest with a top-level `repositories:` or `base:` key is read by the reader for the format
+in docs/spec.md (``base.py``); any other file, one that does not read or parse included, by
 the reader for the earlier shape (``schema.py`` and ``extends.py``).
 """
 
@@ -94,6 +94,8 @@ def cmd_validate_new(args: argparse.Namespace) -> int:
     if args.cache_dir is not None:
         raise ManifestError("--cache-dir is for a manifest in the earlier format")
     loaded = _load_new(args)
+    for parent in loaded.bases:
+        print(f"base: {parent}")
     roles = sorted(loaded.roles) if loaded.roles is not None else [None]
     distros = loaded.distros if loaded.distros is not None else [None]
     if args.role is not None:

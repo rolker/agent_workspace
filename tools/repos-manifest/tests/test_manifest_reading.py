@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from repos_manifest.manifest import load_manifest, parse_manifest
+from repos_manifest.base import load_manifest, parse_manifest
 from repos_manifest.yamlload import ManifestError, has_unsafe_char
 
 REPO = "    type: git\n    url: https://example.org/a.git\n"

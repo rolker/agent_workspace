@@ -4,7 +4,7 @@ import textwrap
 
 import pytest
 
-from repos_manifest.manifest import parse_manifest
+from repos_manifest.base import parse_manifest
 from repos_manifest.selection import resolve
 from repos_manifest.yamlload import ManifestError
 

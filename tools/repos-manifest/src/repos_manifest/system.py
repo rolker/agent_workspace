@@ -23,7 +23,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from .manifest import UNNAMED_LAYER, Manifest, load_manifest
+from .base import load_manifest
+from .manifest import UNNAMED_LAYER, Manifest
 from .yamlload import ManifestError
 
 SYSTEM_DIR = ".repos-manifest"
@@ -359,8 +360,9 @@ def put_distro_state(system: Path, distro: Optional[str], state: DistroState) ->
 
 
 def read_manifest(location: str, base: Path) -> Manifest:
-    """Read the manifest at `location`, a path taken from `base` when relative; the one place
-    a command reads a manifest. Its warnings go to stderr."""
+    """Read the manifest at `location`, a path taken from `base` when relative, and the
+    manifests it builds on through its own `base` key (``base.py``); the one place a command
+    reads a manifest. Its warnings go to stderr."""
     path = base / location
     if "://" in location and not os.path.lexists(path):
         raise ManifestError(
