@@ -102,7 +102,7 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A `\| Sub-roadmap \| Root \|` table there points at a part's roadmap (below); the sit-rep follows each pointer one level and reports, in every run, each part's next step beside the root's, from the same saved rows. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored. A part is a third kind of focus: work that no root line names but a part's line does (its `gh-issue` check) is marked with the part's sub-roadmap path, which the closing question offers beside the Paths; a sub-roadmap's own Paths paragraphs are not read |
 | Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run, per root, with the counts of lines true and deferrals due, so the next run says what moved for that root |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
@@ -115,6 +115,24 @@ run to run, which shows net change only (one line going true while another goes 
 change) and says nothing about whether a change helped beyond that case. Status and dates are measured
 by each run and stay on the machine; the roadmap holds no status column. The result words (`true`,
 `false`, `partial`, `unknown`, `unchecked`) are a trial.
+
+A root (the workspace, or a project) may have parts that carry their own goals, design and roadmap
+(ADR-0022, owner decisions 2026-11-18, #488). A part owns its inside: the root's design describes a part
+only by what crosses its boundary and points at the part's design, which is the one current picture of
+that part, so ADR-0017's one picture holds per owner. A part's design is cited as
+`<path>/design.md#<section>`, `<path>` being the design file's directory
+(`tools/ros-manifest/docs/design.md#<section>`); `check_design_anchors.sh` resolves it against that file's
+headings (a Markdown link from the linking file's directory, any other citation from the citing file's
+directory and then the root), and reads each tracked design or roadmap under a `docs/` directory and
+each sub-roadmap the pointer table names as a citer. The root's roadmap points at a part's roadmap in its
+Direction section: `| Sub-roadmap | Root |`, the file and the directory its checks are relative to.
+`sitrep_checks.sh` follows the pointers one level: a broken, circular or repeated pointer is a problem
+row, a pointer inside a sub-roadmap is listed as not followed, and a part's lines stay out of the root's
+totals in the run record. One level is the checker's limit, not the rule's: the rule puts none on levels
+of planning and design. The same grammar serves a project's roadmap, since the sit-rep reads the session
+root's own. `update_roadmap.sh` reads only the root's three candidate roadmap paths, so it never edits a
+sub-roadmap (checked by `test_update_roadmap.sh`). A pointer into another repository is not supported
+until there is a case.
 
 `.agent/scripts/discover_governance.sh` lists the governance files it finds in the workspace root and in
 every registered (non-parent) project root, read from the main checkout's registry (#265 part 4; it
@@ -136,7 +154,9 @@ own root (#418): in a project session it checks that project's Direction section
 else `ROADMAP.md`), lists its worktrees and pull requests and reports the problems its own files allow,
 and in the workspace it reports the workspace, with project work only where a workspace Direction line
 names it; `sitrep_root.sh` decides the root once. A view that combines the workspace and every project
-is not part of it (owner, 2026-11-09); it belongs with a later skill for the personal root.
+is not part of it (owner, 2026-11-09); it belongs with a later skill for the personal root. A part
+with documents of its own (ADR-0022) is one instance of such a mapping, inside a root; it does not
+answer OQ-1, where a project records its mapping.
 
 ## Rules
 
@@ -167,6 +187,8 @@ only.
 | The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
+| A citation of a part's design resolves against that part's headings, never the root's | Keep one current design; ADR-0022 | `hook` | `check_design_anchors.sh` (`check-design-anchors`, whose `files:` filter takes any design or roadmap under a `docs/` directory); `make lint` and CI run it again |
+| The root's design describes a part only by what crosses its boundary and points at the part's design | Keep one current design; ADR-0022 | `review only` | Review guide row "Keep one current design": the reviewer compares the root's text about a part with the part's own design; mechanics, steps and internals belong in the part's |
 | `AGENTS.md` stays at most 200 lines | Only what's needed | `hook` | `check_agents_md_budget.sh` (`agents-md-line-budget`), run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged; `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
 | Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
@@ -947,7 +969,7 @@ no budget of their own.
 Status: `decided`
 
 Purpose: tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row
-per ADR in `docs/decisions/` (21), in order. The ADRs are history and none is edited here (owner
+per ADR in `docs/decisions/` (22), in order. The ADRs are history and none is edited here (owner
 decision 2026-10-09, C1-c); this table is the only place the standing below is recorded.
 
 Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
@@ -983,6 +1005,7 @@ no section of this file carries that ADR.
 | [0019](decisions/0019-repo-pin-verb.md) | The `repo_pin` adapter verb: the ref a repository is pinned at and whether it is a branch, tag, commit or unknown, so a base never comes from the forge's default branch | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-11-12 |
 | [0020](decisions/0020-plugin-enabled-once-at-user-scope.md) | The plugin is enabled once, at user scope; nothing is written into a project checkout; the workspace checkout's tracked settings set it to false, and a session in a subdirectory of the checkout lists each shipped skill under both names (accepted, 2026-11-12) | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-12 |
 | [0021](decisions/0021-a-project-session-may-register-its-own-folder.md) | A session started in a folder that is not registered may write that folder's own registry line and settings file through one guarded script, `register_session_root.sh`, and nothing else in the workspace; the script is not promoted, so each call asks for permission; registration from the workspace keeps working | in force | [Sessions and roots](#sessions-and-roots) | yes 2026-11-13 |
+| [0022](decisions/0022-a-part-owns-its-inside.md) | A part of a root may carry its own goals, design and roadmap; the root's design describes it only by what crosses its boundary and points at the part's design, the one current picture of that part; no limit on levels in the rule, one followed by the sit-rep's checker; scopes ADR-0017 | in force | [Documentation layers](#documentation-layers) | yes 2026-11-18 |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -1109,6 +1132,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Registry and adapters | The resolver's clone of an `extends` base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (owner's decision on pull request 480: in the resolver). One clause in the manifest-route bullet; the rules live in the `ros2_colcon/adapter.sh` header and the `tools/ros-manifest` README | #436 | 1094 |
 | 2026-11-15 | Merge gate, Rules, Worktrees, Registry and adapters | Skill pull requests go through `merge_pr.sh` (issue 478, owner's choice G1): report-only like a project pull request, condition (a) always unmet, the record on the pull request, the roadmap step a stated no-op, the worktree removed by its path (`worktree_remove.sh --path`, the one on the head branch); every pull request's remote branch is deleted by one rule (`delete_remote_branch`: already gone counts, any other failure is said and marks the cleanup incomplete), no more silent `|| true` on the workspace and project path; the Rules row, Table 1's `merge_pr.sh` and `worktree_remove.sh` rows, the Records bullet and mechanism 1 citations are refreshed. Merge gate grows by 15 lines to 73, past the 60-line prompt: the two new bullets state what crosses the scripts (gate treatment, cleanup rule) and the mechanics stay in the `merge_pr.sh` header and `delete_remote_branch`, so no detail moves. After the pre-push review rounds: `--path` names a package entry and the repository check, a pull request from a fork touches no branch or worktree, and every `merge_pr.sh` and `worktree_remove.sh` line citation (Table 1, the Records bullet, mechanism 1) is refreshed | #478 | 1118 |
 | 2026-11-17 | Sessions and roots, Registry and adapters, Worktrees, ADR register | The registry is the only link from a session to a project (#265 part 4): Discovery becomes registry-only moves from Target to Now; a call that names no project and runs in no registered root refuses with one sentence (`registry_no_project_message`), `sync` excepted (it syncs the workspace alone); the `worktrees/project/<name>/`, `.workspace-worktrees/` and `project/worktrees/` locations are not searched; a registry entry needs its path; a project's commands and URLs come from its settings file alone (the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are read by no adapter; `ROS_ROOT_DIR` comes from the environment); a retired-shape report names what is left on disk; the main-checkout lookup's separate-git-dir fallback is said (PR 454's F1, F2). What changes on a machine like the owner's first one: every call that named no project used to resolve to the `project` symlink (worktree creation, `session_root.sh`, the adapter for `make build`, `make test` and `make install`, `merge_pr.sh`, `gh_create_*`, `pr_status.sh`, `discover_governance.sh`, `configure_git_identity.sh`); each now refuses, naming the registered projects and `--project <name>`, except `make sync`, which syncs the workspace alone. `make install` for a project whose install command was in the shared `project_config.sh` refuses until it is moved to the settings file, and a `ros2_colcon` instance whose distro was only in its `.sh` stops with "cannot resolve the ROS distro"; `make validate` names both. ADR register rows 0002 and 0011 restated (no ADR edited) | #265 | 1143 |
+| 2026-11-18 | Documentation layers, Rules, Decision register | Parts with their own documents (#488, ADR-0022): a part owns its inside; the Direction row adds the `Sub-roadmap \| Root` pointer, each part's next step in every run and a part's sub-roadmap path as a third kind of focus; a Now paragraph gives the boundary, the citation form, the one level the checker follows and the totals rule; the Target relates parts to OQ-1 without answering it; two Rules rows (the part-citation check, `hook`; the boundary, `review only`); register row 0022. Documentation layers is about 75 lines, past the 60-line prompt: the pointer and citation mechanics are in the `sitrep_checks.sh` and `check_design_anchors.sh` headers, and the section keeps what two parts must agree on | #488 | 1189 |
 
 ## Glossary
 
