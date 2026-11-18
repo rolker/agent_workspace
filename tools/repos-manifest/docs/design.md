@@ -335,7 +335,7 @@ Beyond the specification, `resolve` refuses a distro entry that gives both a `ve
 `absent: true`, and an output directory that is a symbolic link. It reads at most 64
 manifests for one run, the one it was given included, and refuses a manifest of a chain that
 is in the prototype's earlier shape (one with `repos:`, `extends:`, `optional_layers:` or
-`packages:` and no `repositories:`), before any other check on that manifest.
+`packages:` and no `repositories:`), before any check on its keys.
 
 ### sync
 
