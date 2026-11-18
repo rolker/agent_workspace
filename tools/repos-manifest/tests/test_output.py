@@ -374,16 +374,33 @@ def test_a_failed_second_rename_puts_the_previous_output_back(manifest, tmp_path
 
 
 def _cut_short_removal(monkeypatch):
-    """Make every removal of a file but the marker fail; returns the function that undoes it."""
-    real_unlink = os.unlink
+    """Make every removal of a file but the marker fail; returns the function that undoes it.
 
-    def unlink(path, *args, **kwargs):
+    Both ways output.py removes a file are patched: `Path.unlink` (its own removals) and
+    `os.unlink` (what `shutil.rmtree` calls, by name, at call time). Patching `os.unlink`
+    alone is not enough: on Python 3.10 `Path.unlink` calls the `os.unlink` that pathlib's
+    accessor class took when it was defined, which a later patch of `os` does not reach."""
+    real_path_unlink = output.Path.unlink
+    real_os_unlink = os.unlink
+
+    def path_unlink(self, missing_ok=False):
+        if self.name != MARKER:
+            raise OSError(5, "Input/output error")
+        return real_path_unlink(self, missing_ok=missing_ok)
+
+    def os_unlink(path, *args, **kwargs):
         if os.path.basename(path) != MARKER:
             raise OSError(5, "Input/output error")
-        return real_unlink(path, *args, **kwargs)
+        return real_os_unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(output.os, "unlink", unlink)
-    return lambda: monkeypatch.setattr(output.os, "unlink", real_unlink)
+    monkeypatch.setattr(output.Path, "unlink", path_unlink)
+    monkeypatch.setattr(output.os, "unlink", os_unlink)
+
+    def undo():
+        monkeypatch.setattr(output.Path, "unlink", real_path_unlink)
+        monkeypatch.setattr(output.os, "unlink", real_os_unlink)
+
+    return undo
 
 
 def test_a_removal_cut_short_leaves_the_marker_for_the_next_run(
