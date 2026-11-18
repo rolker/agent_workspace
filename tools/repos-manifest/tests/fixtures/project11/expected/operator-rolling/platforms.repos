@@ -1,0 +1,5 @@
+repositories:
+  mru_transform:
+    type: git
+    url: https://github.com/rolker/mru_transform.git
+    version: jazzy

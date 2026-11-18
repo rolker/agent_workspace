@@ -1,0 +1,297 @@
+# Test data for repos-manifest: project11's manifest in the format of docs/spec.md.
+#
+# Copied from a draft made on 2026-11-18 from the layer files on the `jazzy` branch of
+# rolker/unh_marine_autonomy (config/repos/*.repos). The group names are the author's
+# guesses and the URLs are not the released ones. This file is a fixture: it need not
+# follow later changes to the real manifest.
+#
+# Long lists of the draft are written one item per line here; their content is unchanged.
+format: 1
+
+distros: [jazzy, rolling]
+
+layers:
+  - underlay
+  - core
+  - platforms
+  - site
+  - sensors
+  - simulation
+  - ui
+
+groups:
+  - simulation
+  - ui
+  - sonar-drivers
+  - ben-hardware
+  - drix-hardware
+  - lr30-hardware
+  - echoboat-hardware
+  - unh-echoboat-hardware
+  - mobile-lab
+
+roles:
+  robot: []
+  operator: [ui]
+  developer:
+    - simulation
+    - ui
+    - sonar-drivers
+    - ben-hardware
+    - drix-hardware
+    - lr30-hardware
+    - echoboat-hardware
+    - unh-echoboat-hardware
+    - mobile-lab
+
+repositories:
+  ros2launch_gui:
+    type: git
+    url: https://github.com/rolker/ros2launch_gui.git
+    version: jazzy
+    layer: underlay
+  ros2launch_session:
+    type: git
+    url: https://github.com/rolker/ros2launch_session.git
+    version: jazzy
+    layer: underlay
+  geographic_info:
+    type: git
+    url: https://github.com/ros-geographic-info/geographic_info.git
+    version: ros2
+    layer: underlay
+  audio_common:
+    type: git
+    url: https://github.com/rolker/audio_common.git
+    version: port_sound_play_h_to_ros2
+    layer: underlay
+    groups: [ui]
+  detection_visualizer:
+    type: git
+    url: https://github.com/rolker/detection_visualizer.git
+    version: support_rotation
+    layer: underlay
+    groups: [ui]
+  nmea_navsat_driver:
+    type: git
+    url: https://github.com/rolker/nmea_navsat_driver.git
+    version: add_pashr
+    layer: underlay
+  norbit:
+    type: git
+    url: https://github.com/rolker/norbit.git
+    version: jazzy
+    layer: underlay
+    groups: [sonar-drivers]
+  ros2sonic:
+    type: git
+    url: https://github.com/rolker/ros2sonic.git
+    version: jazzy
+    layer: underlay
+    groups: [sonar-drivers]
+  vrx:
+    type: git
+    url: https://github.com/rolker/vrx.git
+    version: add-santorini-seafloor
+    layer: underlay
+    groups: [simulation]
+  manda_coverage:
+    type: git
+    url: https://github.com/rolker/manda_coverage.git
+    version: jazzy
+    layer: core
+  marine_ais:
+    type: git
+    url: https://github.com/rolker/marine_ais.git
+    version: jazzy
+    layer: core
+  marine_control:
+    type: git
+    url: https://github.com/rolker/marine_control.git
+    version: jazzy
+    layer: core
+  udp_bridge:
+    type: git
+    url: https://github.com/rolker/udp_bridge.git
+    version: jazzy
+    layer: core
+  unh_marine_navigation:
+    type: git
+    url: https://github.com/rolker/unh_marine_navigation.git
+    version: jazzy
+    layer: core
+  s57_tools:
+    type: git
+    url: https://github.com/rolker/s57_tools.git
+    version: jazzy
+    layer: core
+  unh_marine_autonomy:
+    type: git
+    url: https://github.com/rolker/unh_marine_autonomy.git
+    version: jazzy
+    layer: core
+    distros:
+      rolling:
+        version: rolling
+  ben_project11:
+    type: git
+    url: https://github.com/rolker/ben_project11.git
+    version: jazzy
+    layer: platforms
+    groups: [ben-hardware]
+  ben_description:
+    type: git
+    url: https://github.com/rolker/ben_description.git
+    version: jazzy
+    layer: platforms
+    groups: [ben-hardware]
+  mru_transform:
+    type: git
+    url: https://github.com/rolker/mru_transform.git
+    version: jazzy
+    layer: platforms
+  seafloor_echoboat_project11:
+    type: git
+    url: https://github.com/rolker/seafloor_echoboat_project11.git
+    version: jazzy
+    layer: platforms
+    groups: [echoboat-hardware]
+  unh_echoboats_project11:
+    type: git
+    url: https://github.com/rolker/unh_echoboats_project11.git
+    version: jazzy
+    layer: platforms
+    groups: [unh-echoboat-hardware]
+  lr30_project11:
+    type: git
+    url: https://github.com/rolker/lr30_project11.git
+    version: jazzy
+    layer: platforms
+    groups: [lr30-hardware]
+  drix_description:
+    type: git
+    url: https://github.com/rolker/drix_description.git
+    version: jazzy
+    layer: platforms
+    groups: [drix-hardware]
+  mobile_lab:
+    type: git
+    url: https://github.com/rolker/mobile_lab.git
+    version: jazzy
+    layer: platforms
+    groups: [mobile-lab]
+  # A made-up name and URL: the real repo of this layer is private, and tracked files
+  # name only public repos.
+  site_config:
+    type: git
+    url: git@github.com:example/site_config.git
+    version: jazzy
+    layer: site
+    optional: true
+  unh_marine_radar:
+    type: git
+    url: https://github.com/rolker/unh_marine_radar.git
+    version: jazzy
+    layer: sensors
+  cube_bathymetry:
+    type: git
+    url: https://github.com/rolker/cube_bathymetry.git
+    version: jazzy
+    layer: sensors
+  unh_marine_perception:
+    type: git
+    url: https://github.com/rolker/unh_marine_perception.git
+    version: jazzy
+    layer: sensors
+  marine_tools:
+    type: git
+    url: https://github.com/rolker/marine_tools.git
+    version: jazzy
+    layer: sensors
+  imagenex_deltat:
+    type: git
+    url: https://github.com/rolker/imagenex_deltat.git
+    version: jazzy
+    layer: sensors
+  edgetech_sonar:
+    type: git
+    url: https://github.com/rolker/edgetech_sonar.git
+    version: jazzy
+    layer: sensors
+    groups: [sonar-drivers]
+  starlink_stats_ros:
+    type: git
+    url: https://github.com/rolker/starlink_stats_ros.git
+    version: jazzy
+    layer: sensors
+  ros2_network_monitor:
+    type: git
+    url: https://github.com/rolker/ros2_network_monitor.git
+    version: jazzy
+    layer: sensors
+  ben_gazebo:
+    type: git
+    url: https://github.com/rolker/ben_gazebo.git
+    version: jazzy
+    layer: simulation
+    groups: [simulation]
+  drix_gazebo:
+    type: git
+    url: https://github.com/rolker/drix_gazebo.git
+    version: jazzy
+    layer: simulation
+    groups: [simulation]
+  unh_marine_simulation:
+    type: git
+    url: https://github.com/rolker/unh_marine_simulation.git
+    version: jazzy
+    layer: simulation
+    groups: [simulation]
+  camp:
+    type: git
+    url: https://github.com/rolker/camp.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  rqt_operator_tools:
+    type: git
+    url: https://github.com/rolker/rqt_operator_tools.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  rqt_marine_radar:
+    type: git
+    url: https://github.com/rolker/rqt_marine_radar.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  rqt_udp_bridge:
+    type: git
+    url: https://github.com/rolker/rqt_udp_bridge.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  rviz_sonar_image:
+    type: git
+    url: https://github.com/rolker/rviz_sonar_image.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  marine_perception_tools:
+    type: git
+    url: https://github.com/rolker/marine_perception_tools.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  marine_colormap:
+    type: git
+    url: https://github.com/rolker/marine_colormap.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
+  marine_sonar_widgets:
+    type: git
+    url: https://github.com/rolker/marine_sonar_widgets.git
+    version: jazzy
+    layer: ui
+    groups: [ui]
