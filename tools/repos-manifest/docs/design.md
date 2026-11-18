@@ -252,11 +252,14 @@ one `--distro`, or none when the manifest has no `distros:`. More than one `--di
 
 `init <manifest> --distro <d> [--distro <d2> ...] --distro-dirs` sets up a system with a
 directory per distro, for one distro or several. It is refused when the manifest has no
-`distros:`.
+`distros:`, and the message says that such a manifest gives a flat system, set up without
+`--distro-dirs`.
 
 A `--distro` that the manifest does not list is the resolver's error (see "Distros" in the
 specification). `init` reports it when it prints what the manifest comes to, before it asks
-to go on.
+to go on. When the manifest lists some of the distros given and not others, as a copy on one
+distro's branch may, the message also says to set up with the distros it lists and to add
+each other one with `add-distro <name> --manifest-ref <ref>`.
 
 `init` only sets up a new system directory. It writes its record, `.repos-manifest/config.yaml`,
 whole before it clones anything, so a record is either there and complete or not there at
@@ -317,7 +320,8 @@ It refuses, and changes nothing, when:
   per distro, so a distro cannot be added to it. Nothing has been moved. To have more than
   one distro, set up a new directory with `repos-manifest init <manifest> --distro <d>
   --distro <d2> --distro-dirs`."
-- the distro is already in `distros`;
+- the distro is already in `distros`. The message is: "<name> is already a distro of this
+  system. Nothing has been changed. To update it, run `repos-manifest sync --distro <name>`.";
 - the manifest it reads does not list the distro. When `manifest` is in a git repo, the
   message is: "The manifest read for <name> does not list it. Nothing has been changed. Give
   the branch or tag of the manifest that lists <name> with `--manifest-ref <ref>`." When
@@ -327,9 +331,12 @@ It refuses, and changes nothing, when:
 - a directory `<name>/` is already in the system directory and is not a recorded distro. The
   message is: "<system directory>/<name> already exists and is not a distro of this system.
   Nothing has been changed. Move it out of the way, then run `add-distro` again.";
-- the manifest has no `distros:`;
+- the manifest has no `distros:`. The message is: "The manifest read for <name> has no
+  `distros:`, so it has no distro to add. Nothing has been changed.";
 - `--manifest-ref` is given and `manifest` is not in a git repo, since a path on the disk or a
-  URL has no version.
+  URL has no version. The message is: "The manifest at <location> is not in a git repo, so
+  it has no branch or tag to give with `--manifest-ref`. Nothing has been changed. Run
+  `add-distro <name>` without it."
 
 A system on a manifest kept on one branch per distro is set up and grown like this, which
 gives the third `config.yaml` example above:
