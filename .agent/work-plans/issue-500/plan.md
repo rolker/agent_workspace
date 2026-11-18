@@ -491,6 +491,7 @@ real local repos (`snapshot_repo` compares `HEAD`, the branch, `git write-tree`,
 | The manifest lists a distro the system does not record: nothing happens | no new directory |
 | An optional repo that cannot be fetched is skipped and listed; another is an error | for a present repo whose fetch fails |
 | A present path that is not a git repository (the case the removed listing handled) | reported, left alone |
+| The destination check runs before a repo is treated as present: a repo behind a link on the way is not present | a link on the way to a cloned repo; reported, nothing touched |
 
 ## Files to Change
 
