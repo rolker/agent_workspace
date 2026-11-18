@@ -606,7 +606,8 @@ is not resolved, and none of its repos is touched.
   deleted, and the distro stays recorded until the manifest lists it again or a person edits
   `config.yaml`.
 - A flat system records no distro, because its manifest had none, and the manifest now has
-  `distros:`. Resolving for no distro is then an error (see "Distros" in the specification).
+  `distros:`. Resolving for no distro is then an error, since a distro is given where the
+  manifest has them (see "What resolving produces" in the specification).
   The message says that nothing has been moved, and that a system with distros is set up in a
   new directory with `init --distro-dirs`.
 - The manifest lists a distro the system does not record. Nothing happens: a distro is added
