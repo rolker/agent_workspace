@@ -683,3 +683,26 @@ Specialists: static (no linter profile for .md; `check_design_anchors.sh` exit 0
 - [x] (suggestion) Say `add-distro` replaces `config.yaml` whole, as `init` writes it aside and moves it, so an interrupted `add-distro` cannot leave the record unreadable for every distro — `tools/repos-manifest/docs/design.md:204-207` (gemini, codex)
 - [x] (suggestion) `add-distro <name>` checks `<name>/` before anything checks the name, so `add-distro ..` gets "Move it out of the way"; refuse a name that breaks the spec's name rule first; and distro names that differ only in case collide as directories on some disks, which the spec rules out only for layers — `tools/repos-manifest/docs/design.md:235-237` (gemini, codex)
 - [x] (suggestion) The small trees show `resolved/` with only `_unnamed.repos` and omit `./system.manifest.yaml`, while `resolve` always writes `layers.txt`, `optional.txt` and its marker; say they are abridged or complete them — `tools/repos-manifest/docs/design.md:114-148` (Claude adversarial, gemini)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #508 at `68bf29a6`
+**Addressed**: Local Review at `dddf0074` (2026-11-18 16:30 -05:00)
+**Commits**: 6ac7c5c3, 85f9ba21, f0dd48d5, 37d07352, 9a0b3fb3, b62d4bfd, d90d16a6, 68bf29a6
+
+The three must-fix as the review states. The five suggestions are the host's decisions, applied as the handoff worded them and listed here for the owner's veto. Documents only; `spec.md` unchanged.
+
+### Actions
+- [x] (must-fix) The commands line now reads "The tool has the commands the adapter calls: `show`, `init`, `add-distro`, `sync`, `build` and `status`"; words only, the line still parses (sitrep_checks lists it as `unchecked`, like its neighbours) — `docs/manifest/roadmap.md:28`
+- [x] (must-fix) "Which distro a command uses" has a `validate` row: "Every distro the system records, in the order of `distros`; it writes nothing, so checking them all does no harm. `--distro` names one."; the sentence under "Commands" now ends "`validate` at the top checks every distro the system records, or the one `--distro` names." — `tools/repos-manifest/docs/design.md:263, 412-414`
+- [x] (must-fix) Refusals: new `init` row, third, among the no-fetch rows: "`--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form: a local path, or a URL with `--manifest-ref` and no `--manifest-path`." / "Give the manifest in the git form, or leave the option out."; the `add-distro` row for the same case now says "Leave `--manifest-ref` out." — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion, host decision) The `init` row now reads "A directory or file it would create already exists"; who writes `setup.bash` is left to issue 500 — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion, host decision) No rule added; the open question on `sync`'s exit status now also asks whether it goes on with the other distros when one distro's manifest does not resolve or one of its required repos cannot be fetched — `tools/repos-manifest/docs/design.md` "Open questions"
+- [x] (suggestion, host decision) "`add-distro` replaces `config.yaml` whole, written aside and moved into place, as `init` writes it." — `tools/repos-manifest/docs/design.md` "Adding a distro"
+- [x] (suggestion, host decision) One `add-distro` row at the head of its rows: a name that breaks the rule for names in the specification's "Reading a manifest before using it", or differs only in case from a recorded distro, is refused ("Use another name.") — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion, host decision) "The two trees below are abridged and show only what the layout changes" — `tools/repos-manifest/docs/design.md:113-115`
+
+Refusals table re-read whole: 18 lines, 5 `|`-fields each. No `init` or `add-distro` next step leads to a refusal and back, reading "give ... with `--manifest-ref`" as the git-form option beside the "when `manifest` is not given in the git form" clause, as rounds 4 and 5 did. Checks: `test_documents.py` 11 passed; `check_design_anchors.sh` exit 0; `sitrep_checks.sh --root . --roadmap docs/manifest/roadmap.md --no-follow` exit 0. No script changed, so no script suite ran; the full pre-commit pass is left to the host.
