@@ -106,6 +106,16 @@ def test_a_repo_key_that_starts_with_a_hash_is_refused(key):
     _refused(f"repositories:\n  {key}:\n{REPO}", "a repo key does not start with '#'")
 
 
+@pytest.mark.parametrize("key", ["' '", "' a'", "'a '"])
+def test_a_repo_key_with_white_space_at_an_end_is_refused(key):
+    # A reader of optional.txt may trim its lines (bash `read`) or skip a blank one.
+    _refused(f"repositories:\n  {key}:\n{REPO}", "does not start or end with white space")
+
+
+def test_a_space_inside_a_repo_key_is_accepted():
+    assert list(_m(f"repositories:\n  'a b':\n{REPO}").repositories) == ["a b"]
+
+
 def test_a_hash_later_in_a_repo_key_is_accepted():
     assert list(_m(f"repositories:\n  a#b:\n{REPO}").repositories) == ["a#b"]
 

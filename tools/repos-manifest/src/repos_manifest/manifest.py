@@ -441,6 +441,9 @@ class _Checker:
         if key.startswith("#"):
             # optional.txt lists repo keys one per line, and its readers skip `#` lines.
             raise self.error(where, "a repo key does not start with '#'")
+        if key != key.strip():
+            # A reader of optional.txt may trim its lines, or skip a blank one.
+            raise self.error(where, "a repo key does not start or end with white space")
         if key.endswith("/") or "//" in key:
             raise self.error(where, "a repo key has no empty part (no '//', no '/' at the end)")
         for part in key.split("/"):

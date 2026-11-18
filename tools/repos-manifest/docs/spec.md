@@ -427,7 +427,8 @@ command that writes there.
     another key followed by `/` and more, so one repo is never cloned inside another. Its
     parts are separated by single `/`, with none at the start or the end, no `\` and no part
     that is `.`, so each place on disk has one key. It does not start with `#`, so that a
-    list of keys, one per line, can hold comments.
+    list of keys, one per line, can hold comments, and does not start or end with white
+    space, so that a reader that trims such a line reads the key.
   - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`
     and `-`, starting with a letter.
   - A layer is not named `src`, `build`, `install` or `log`, in any mix of upper and lower
