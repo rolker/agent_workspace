@@ -378,3 +378,13 @@ Scope: the round 2 findings, the fix diff `45b2d243..6c323166` and the merge of 
 - [ ] (suggestion) The deferral of plan step 7 waited for #487, which is now merged into the branch: the pointer rows for `docs/manifest/roadmap.md` and `tools/ros-manifest/docs/roadmap.md` and the root design's link to `tools/ros-manifest/docs/design.md` (ADR-0022 decision 2) can land now, or the deferral can be restated with a new reason. Acceptance bullet 3 stays open until then. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:36`
 - [ ] (suggestion) An unreadable part design is reported twice (once by `load_design`, once by the citer scan), and the `design_records` redirect leaks a bare bash "Permission denied" to stderr, unlike `citations 2>/dev/null`. Reproduced with `chmod 000` on a tracked `tools/t/docs/design.md`: "2 finding(s)" for one fault. — `.agent/scripts/check_design_anchors.sh:285`
 - [ ] (suggestion) The header now names `](<path#x>)` as a link, but the citation token excludes spaces, the main reason for the angle-bracket form: `[x](<my part/design.md#route>)` becomes the non-link token `part/design.md#route` and is resolved as prose. Recognise spaces inside `](<...>)` or narrow the header. Reproduced. — `.agent/scripts/check_design_anchors.sh:446`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 11:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+The owner chose "Fix all four first" over publishing now as a first part. The four are the round 3 review's suggestions: land plan step 7 now that #487 is merged (the pointer rows for docs/manifest/roadmap.md and tools/ros-manifest/docs/roadmap.md in the main roadmap, and the root design's link to tools/ros-manifest/docs/design.md); have the manifest text in docs/design.md cite ADR-0022 where it says the rule for parts is being written; report an unreadable part design once, with no stray line on stderr; and resolve a link target with a space inside angle brackets correctly.
