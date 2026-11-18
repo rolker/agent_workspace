@@ -4,8 +4,9 @@
 # row per line (issue #386). Read-only. The sit-rep skill formats this
 # output; it decides nothing itself.
 #
-# Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]
+# Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]
 #        sitrep_checks.sh --summary-from <rows-file>
+#        sitrep_checks.sh --next-steps-from <rows-file>
 #   --root     the roadmap's repository root (default: this script's own
 #              checkout, resolved through symlinks, so a run through the
 #              repo-root `scripts/` link finds it). Relative paths in checks
@@ -30,7 +31,67 @@
 #              readable: ...)`): no Direction line was looked at, so there
 #              is no 0/0 to record. A roadmap that was read and has no
 #              section or no rows still counts, as 0/0. `--summary` exits
-#              3 the same way.
+#              3 the same way. Only `line` and `deferral` rows count: a
+#              part's rows (below) never enter the root's totals.
+#   --no-follow
+#              read the root's roadmap only: no `Sub-roadmap | Root` table
+#              is followed and no `part` row is printed. `--summary` never
+#              follows (it counts the root's rows only).
+#   --next-steps-from <rows-file>
+#              the next step of the root and of each part, from rows saved
+#              by an earlier run (no roadmap is read, no check runs, so it
+#              agrees with the rows shown). One TAB-separated line each:
+#                (root)<TAB><item><TAB><result>   the first `line` row
+#                                                 whose result is not true
+#                (root)<TAB>none open             when every one is true
+#              then, for each `part` row whose result is `true` (a followed
+#              sub-roadmap), in order, the same with the sub-roadmap path
+#              in place of `(root)`, from that part's `subline` rows (item
+#              without the path prefix). Parts that were not followed have
+#              no line here; their `part` row says why. Same exits as
+#              `--summary-from` (2 for a rows file it cannot use, 3 when the
+#              root's roadmap was not read).
+#
+# Sub-roadmaps (issue #488, ADR-0022). A part of the root may carry its own
+# roadmap. The root's Direction section points at it with a third table:
+#   | Sub-roadmap | Root |
+#   | `tools/ros-manifest/docs/roadmap.md` | `tools/ros-manifest` |
+#   | `docs/manifest/roadmap.md` | . |
+# Cell 1 is the sub-roadmap file, cell 2 the directory its checks' paths
+# are relative to (what --root gets for it); both are relative to this
+# root, backticks optional, and an empty Root cell is `.`. Each valid
+# pointer is followed one level: the sub-roadmap's Direction section is
+# read with the same rules, under --root <root>/<Root>, and its rows are
+# printed after the root's. One level is what this checker follows, not a
+# limit of the rule (ADR-0022 puts none on levels of planning and design).
+# A sub-roadmap's own Paths paragraphs are not read here (they are prose).
+# Row kinds for parts:
+#   part         one per pointer row; item = the Sub-roadmap cell as
+#                written (unwrapped), check = what happened. Results:
+#                  true          followed (check `read`)
+#                  unknown       the target exists but cannot be read,
+#                                or a directory on the way cannot be
+#                                entered
+#                  unchecked     a broken pointer, never fatal to the
+#                                root's rows: an empty cell, extra cells,
+#                                an absolute or `..` path, a path or
+#                                Root outside the root, a missing target
+#                                or Root, a file outside its Root, the
+#                                root's own roadmap, a sub-roadmap
+#                                already followed (a cycle or a repeat),
+#                                or a sub-roadmap with nothing to check
+#                                (no Direction section, no Line or
+#                                Deferral table, no rows)
+#                  not-followed  a pointer table inside a sub-roadmap
+#                                (check `nested pointer`); item is
+#                                `<sub-roadmap>: <cell 1>`. Not a
+#                                problem: the checker follows one level.
+#   subline, subdeferral, subformat
+#                the sub-roadmap's `line`, `deferral` and `format` rows;
+#                item = `<sub-roadmap>: <item>`, so a report names a
+#                part's lines by the part's path.
+# A bare `gh-issue N` in a sub-roadmap takes its repository from the
+# Root's `origin`, as --root does for the root.
 #
 # What is read: only the `## Direction` section (up to the next level-1 or
 # level-2 heading: `#` or `##` with up to 3 spaces of indent, or a setext
@@ -43,6 +104,7 @@
 # and nothing after it. Tables are picked by header:
 #   | Line | Check |               -> rows of kind `line`
 #   | Deferral | Revisit check |   -> rows of kind `deferral`
+#   | Sub-roadmap | Root |         -> pointers (see Sub-roadmaps above)
 # Any other table in the section is ignored. Cells split on `|` as GFM
 # does: `\|` is a literal pipe in the cell (and in the check), and no other
 # backslash is special. A row with more than two cells is `unchecked`, with
@@ -57,9 +119,10 @@
 # <check> is the cell text, or `none` when the cell is empty. `section` rows,
 # result `unchecked`, say why there is nothing to check: the item is
 # `(roadmap not found: <path>)`, `(no Direction section)`, `(no Line or
-# Deferral table)` for a section that has neither table (an empty section
-# included), or `(no rows in the Line or Deferral tables)` for tables with
-# a header and nothing under it. A roadmap that exists but cannot be read
+# Deferral table)` for a section that has none of the three tables (an
+# empty section included), or `(no rows in the Line or Deferral tables)`
+# for tables with a header and nothing under it (a pointer row counts as a
+# row: a root whose section only points at parts has no section row). A roadmap that exists but cannot be read
 # (no permission, not a regular file, under a directory that cannot be
 # entered) gives `(roadmap not readable: <path>)`, result `unknown`, never
 # a "no Direction section". Every run prints at least one row. Rows
@@ -143,8 +206,9 @@ REGISTRY_OK=true
 source "$SCRIPT_DIR/_project_registry.sh" 2>/dev/null || REGISTRY_OK=false
 
 usage() {
-    echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]" >&2
+    echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]" >&2
     echo "       sitrep_checks.sh --summary-from <rows-file>" >&2
+    echo "       sitrep_checks.sh --next-steps-from <rows-file>" >&2
     exit 2
 }
 
@@ -152,14 +216,19 @@ ROOT=""
 ROADMAP=""
 SUMMARY=false
 SUMMARY_FROM=""
+NEXT_FROM=false
+FOLLOW=true
 while [ $# -gt 0 ]; do
     case "$1" in
         --root) [ $# -ge 2 ] || usage; ROOT="$2"; shift 2 ;;
         --roadmap) [ $# -ge 2 ] || usage; ROADMAP="$2"; shift 2 ;;
         --summary) SUMMARY=true; shift ;;
-        --summary-from)
+        --no-follow) FOLLOW=false; shift ;;
+        --summary-from|--next-steps-from)
             [ $# -ge 2 ] || usage
-            [ -n "$2" ] || { echo "--summary-from needs a rows file; got an empty argument" >&2; exit 2; }
+            [ -z "$SUMMARY_FROM" ] || usage
+            [ -n "$2" ] || { echo "$1 needs a rows file; got an empty argument" >&2; exit 2; }
+            [ "$1" = --summary-from ] || NEXT_FROM=true
             SUMMARY_FROM="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown argument: $1" >&2; usage ;;
@@ -182,10 +251,48 @@ summarize() {
     echo "lines $lt/$ln deferrals $dt/$dn"
 }
 
+# fields <row>: sets F_K, F_I, F_R to its kind, item and result (an item
+# may be empty, so the row is not split with read, which joins TABs).
+fields() {
+    local r="$1"
+    F_K="${r%%$'\t'*}"; r="${r#*$'\t'}"
+    F_I="${r%%$'\t'*}"; r="${r#*$'\t'}"
+    F_R="${r%%$'\t'*}"
+}
+
+# next_steps: the --next-steps-from lines for the rows in ROWS.
+next_steps() {
+    local r p first="" fres="" found
+    local -a parts=()
+    for r in "${ROWS[@]}"; do
+        fields "$r"
+        if [ "$F_K" = line ] && [ "$F_R" != true ] && [ -z "$first" ]; then
+            first="$F_I"; fres="$F_R"
+        fi
+        [ "$F_K" = part ] && [ "$F_R" = true ] && parts+=("$F_I")
+    done
+    if [ -n "$fres" ]; then
+        printf '(root)\t%s\t%s\n' "$first" "$fres"
+    else
+        printf '(root)\tnone open\n'
+    fi
+    for p in ${parts[@]+"${parts[@]}"}; do
+        found=false
+        for r in "${ROWS[@]}"; do
+            fields "$r"
+            [ "$F_K" = subline ] && [[ "$F_I" == "$p: "* ]] && [ "$F_R" != true ] || continue
+            printf '%s\t%s\t%s\n' "$p" "${F_I#"$p: "}" "$F_R"
+            found=true
+            break
+        done
+        [ "$found" = true ] || printf '%s\tnone open\n' "$p"
+    done
+}
+
 ROWS=()
 if [ -n "$SUMMARY_FROM" ]; then
     [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
-    ROW_RE=$'^(line|deferral|format|section)\t[^\t]*\t(true|false|unknown|unchecked|partial)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    ROW_RE=$'^(line|deferral|format|section|part|subline|subdeferral|subformat)\t[^\t]*\t(true|false|unknown|unchecked|partial|not-followed)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     n=0
     not_read=""
     while IFS= read -r r || [ -n "$r" ]; do
@@ -200,7 +307,7 @@ if [ -n "$SUMMARY_FROM" ]; then
     done < "$SUMMARY_FROM"
     [ "${#ROWS[@]}" -gt 0 ] || { echo "rows file has no rows: $SUMMARY_FROM" >&2; exit 2; }
     [ -z "$not_read" ] || { echo "the roadmap was not read $not_read; nothing to count" >&2; exit 3; }
-    summarize
+    if [ "$NEXT_FROM" = true ]; then next_steps; else summarize; fi
     exit 0
 fi
 
@@ -524,37 +631,58 @@ split_row() {
     done
 }
 
-in_section=false
-seen_section=false
-seen_table=false
-in_fence=false
-fence_char=""
-fence_len=0
-table=none      # none | line | deferral | other
-prev_table_line=false
-after_header=false   # the last table line was a header (the delimiter row is next)
-prev_para=false # the line before was paragraph text (a setext underline may follow)
 START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
 END_RE='^ {0,3}##?([[:space:]]|$)'
 SETEXT_RE='^ {0,3}(=+|-+)[[:space:]]*$'
 NOT_PARA_RE='^[[:space:]]*$|^ {0,3}(#|>|[-*+]([[:space:]]|$)|[0-9]+[.)]([[:space:]]|$))'
 THEMATIC_RE='^ {0,3}([*_][[:space:]]*){3,}$'
 FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
-# found | missing | unreadable. A file that exists but cannot be opened (no
-# read permission, a directory) is not read as a roadmap without the
-# section: that would be a false "no Direction section".
-ROADMAP_STATE=found
-if [ ! -e "$ROADMAP" ]; then
-    # Missing, unless the nearest directory above it that can be seen
-    # cannot be entered: then what is under it cannot be told.
-    ROADMAP_STATE=missing
-    d="$(dirname -- "$ROADMAP")"
-    while [ ! -e "$d" ] && [ "$d" != / ] && [ "$d" != . ]; do d="$(dirname -- "$d")"; done
-    if [ -d "$d" ] && [ ! -x "$d" ]; then ROADMAP_STATE=unreadable; fi
-elif [ ! -f "$ROADMAP" ] || ! { : < "$ROADMAP"; } 2>/dev/null; then
-    ROADMAP_STATE=unreadable
-fi
-if [ "$ROADMAP_STATE" = found ]; then
+
+# roadmap_state <file>: found | missing | unreadable. A file that exists but
+# cannot be opened (no read permission, a directory) is not read as a
+# roadmap without the section: that would be a false "no Direction section".
+roadmap_state() {
+    local f="$1" d
+    if [ ! -e "$f" ]; then
+        # Missing, unless the nearest directory above it that can be seen
+        # cannot be entered: then what is under it cannot be told.
+        d="$(dirname -- "$f")"
+        while [ ! -e "$d" ] && [ "$d" != / ] && [ "$d" != . ]; do d="$(dirname -- "$d")"; done
+        if [ -d "$d" ] && [ ! -x "$d" ]; then echo unreadable; else echo missing; fi
+    elif [ ! -f "$f" ] || ! { : < "$f"; } 2>/dev/null; then
+        echo unreadable
+    else
+        echo found
+    fi
+}
+
+# unwrap <cell>: the cell trimmed, one pair of enclosing backticks dropped.
+unwrap() {
+    local c
+    c="$(trim "$1")"
+    if [[ "$c" =~ ^\`([^\`]*)\`$ ]]; then c="$(trim "${BASH_REMATCH[1]}")"; fi
+    printf '%s' "$c"
+}
+
+# scan_roadmap <file> <part>: read the Direction section of <file> and emit
+# its rows. <part> is empty for the root's roadmap; for a sub-roadmap it is
+# the pointer's path, which prefixes every item and turns the kinds into
+# subline/subdeferral/subformat. Pointer rows of the root are collected in
+# POINTERS (one "<cell 1>\t<cell 2>\t<cell count>" each, unless --no-follow);
+# in a sub-roadmap they print `part` rows, `not-followed` (one level). Sets
+# SCAN_SECTION and SCAN_TABLE (true|false) and SCAN_ROWS (rows emitted, and
+# pointer rows seen).
+scan_roadmap() {
+    local file="$1" part="$2" kpre="" ipre="" raw run item cell extra x result
+    local in_section=false in_fence=false fence_char="" fence_len=0
+    local table=none      # none | line | deferral | pointer | other
+    local prev_table_line=false
+    local after_header=false   # the last table line was a header (the delimiter row is next)
+    local prev_para=false # the line before was paragraph text (a setext underline may follow)
+    local start_rows="${#ROWS[@]}" pointers=0
+    if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
+    SCAN_SECTION=false
+    SCAN_TABLE=false
     while IFS= read -r raw || [ -n "$raw" ]; do
         raw="${raw%$'\r'}"
         # Fences are tracked from the top of the file, so a fenced example
@@ -577,7 +705,7 @@ if [ "$ROADMAP_STATE" = found ]; then
         if [ "$in_section" = false ]; then
             if [[ "$raw" =~ $START_RE ]]; then
                 in_section=true
-                seen_section=true
+                SCAN_SECTION=true
             fi
             continue
         fi
@@ -594,8 +722,9 @@ if [ "$ROADMAP_STATE" = found ]; then
                 table=other
                 if [ "${#CELLS[@]}" -eq 2 ]; then
                     case "${CELLS[0],,}|${CELLS[1],,}" in
-                        "line|check") table=line; seen_table=true ;;
-                        "deferral|revisit check") table=deferral; seen_table=true ;;
+                        "line|check") table=line; SCAN_TABLE=true ;;
+                        "deferral|revisit check") table=deferral; SCAN_TABLE=true ;;
+                        "sub-roadmap|root") table=pointer; SCAN_TABLE=true ;;
                     esac
                 fi
                 prev_table_line=true
@@ -603,15 +732,23 @@ if [ "$ROADMAP_STATE" = found ]; then
                 continue
             fi
             prev_table_line=true
-            [ "$table" = line ] || [ "$table" = deferral ] || { after_header=false; continue; }
+            [ "$table" = line ] || [ "$table" = deferral ] || [ "$table" = pointer ] \
+                || { after_header=false; continue; }
             # The delimiter row is the one right under the header. Further
             # down, a row of only empty cells, dashes and colons is a data
             # row with nothing in it: shown as a format problem, not dropped.
             if [[ "$raw" =~ ^[[:space:]|:-]+$ ]]; then
                 if [ "$after_header" = true ]; then
                     after_header=false
+                elif [ "$table" = pointer ]; then
+                    pointers=$((pointers + 1))
+                    if [ -n "$part" ]; then
+                        emit part "$ipre(empty row in the Sub-roadmap table: $(trim "$raw"))" not-followed "nested pointer"
+                    elif [ "$FOLLOW" = true ]; then
+                        POINTERS+=($'\t\t2')
+                    fi
                 else
-                    emit format "(empty row in the ${table^} table: $(trim "$raw"))" unchecked ""
+                    emit "${kpre}format" "$ipre(empty row in the ${table^} table: $(trim "$raw"))" unchecked ""
                 fi
                 continue
             fi
@@ -619,15 +756,24 @@ if [ "$ROADMAP_STATE" = found ]; then
             split_row "$raw"
             item="${CELLS[0]:-}"
             cell="${CELLS[1]:-}"
+            if [ "$table" = pointer ]; then
+                pointers=$((pointers + 1))
+                if [ -n "$part" ]; then
+                    emit part "$ipre$(unwrap "$item")" not-followed "nested pointer"
+                elif [ "$FOLLOW" = true ]; then
+                    POINTERS+=("${item//$'\t'/ }"$'\t'"${cell//$'\t'/ }"$'\t'"${#CELLS[@]}")
+                fi
+                continue
+            fi
             if [ "${#CELLS[@]}" -gt 2 ]; then
                 # Extra cells are shown, never dropped.
                 extra="${CELLS[1]}"
                 for x in "${CELLS[@]:2}"; do extra+=" | $x"; done
-                emit "$table" "$item" unchecked "(${#CELLS[@]} cells) $extra"
+                emit "$kpre$table" "$ipre$item" unchecked "(${#CELLS[@]} cells) $extra"
                 continue
             fi
             if [ -z "$(trim "$cell")" ]; then
-                emit "$table" "$item" unchecked ""
+                emit "$kpre$table" "$ipre$item" unchecked ""
             else
                 # Read through a pipe, not $(...), so a signal is handled
                 # while the check runs (see Interruption above).
@@ -637,7 +783,7 @@ if [ "$ROADMAP_STATE" = found ]; then
                 IFS= read -r result <&4 || true
                 exec 4<&-
                 CHILD=""
-                emit "$table" "$item" "${result:-unknown}" "$cell"
+                emit "$kpre$table" "$ipre$item" "${result:-unknown}" "$cell"
             fi
             continue
         fi
@@ -650,21 +796,107 @@ if [ "$ROADMAP_STATE" = found ]; then
             prev_para=true
         fi
         if [[ "$raw" =~ ^[[:space:]]*[-*+][[:space:]]+\[[[:space:]xX]\][[:space:]]*(.*)$ ]]; then
-            emit format "${BASH_REMATCH[1]}" unchecked ""
+            emit "${kpre}format" "$ipre${BASH_REMATCH[1]}" unchecked ""
         fi
-    done < "$ROADMAP"
+    done < "$file"
+    SCAN_ROWS=$(( ${#ROWS[@]} - start_rows + pointers ))
+}
+
+# real_path <absolute path>: the path with its directory resolved, and the
+# file itself when it is a link (realpath), as in_root resolves a target.
+real_path() {
+    local d
+    d="$(cd -P -- "$(dirname -- "$1")" 2>/dev/null && pwd -P)" || { printf '%s' "$1"; return; }
+    d="$d/$(basename -- "$1")"
+    if [ -L "$d" ] && command -v realpath >/dev/null 2>&1; then
+        realpath -- "$d" 2>/dev/null || printf '%s' "$d"
+    else
+        printf '%s' "$d"
+    fi
+}
+
+# follow_pointer <cell 1> <cell 2> <cell count>: check one pointer row of the
+# root and, when it is valid, read the sub-roadmap with its Root as --root.
+# Always emits the `part` row first, then the part's rows.
+follow_pointer() {
+    local item rdir n="$3" rc=0 target rootdir f idx save_root why=""
+    item="$(unwrap "$1")"
+    rdir="$(unwrap "$2")"
+    [ -n "$rdir" ] || rdir=.
+    if [ -z "$item" ]; then
+        emit part "(empty Sub-roadmap cell)" unchecked "no sub-roadmap named"; return
+    fi
+    if [ "$n" -gt 2 ]; then
+        emit part "$item" unchecked "($n cells) a pointer row has two cells: Sub-roadmap and Root"; return
+    fi
+    safe_rel "$item" || { emit part "$item" unchecked "not a path inside the root (absolute, or with ..)"; return; }
+    [ "$rdir" = . ] || safe_rel "$rdir" || { emit part "$item" unchecked "Root $rdir is not a path inside the root (absolute, or with ..)"; return; }
+    in_root "$item" || rc=$?
+    case "$rc" in
+        0) ;;
+        1) emit part "$item" unchecked "outside the root (through a link)"; return ;;
+        2) emit part "$item" unchecked "not found"; return ;;
+        *) emit part "$item" unknown "cannot be told: a directory on the way cannot be entered"; return ;;
+    esac
+    target="${RESOLVED%/}"
+    case "$(roadmap_state "$target")" in
+        found) ;;
+        missing) emit part "$item" unchecked "not found"; return ;;
+        *) emit part "$item" unknown "not readable"; return ;;
+    esac
+    rootdir="$(cd -P -- "$ROOT/$rdir" 2>/dev/null && pwd -P)" || { emit part "$item" unchecked "Root $rdir not found"; return; }
+    case "$rootdir" in "$ROOT"|"$ROOT"/*) ;; *) emit part "$item" unchecked "Root $rdir is outside the root"; return ;; esac
+    case "$target" in "$rootdir"/*) ;; *) emit part "$item" unchecked "the file is outside its Root $rdir"; return ;; esac
+    if [ "$target" = "$ROADMAP_REAL" ]; then
+        emit part "$item" unchecked "points at the root's own roadmap"; return
+    fi
+    for f in ${FOLLOWED[@]+"${FOLLOWED[@]}"}; do
+        if [ "$f" = "$target" ]; then
+            emit part "$item" unchecked "already followed (a repeated or circular pointer)"; return
+        fi
+    done
+    FOLLOWED+=("$target")
+    idx="${#ROWS[@]}"
+    emit part "$item" true "read"
+    save_root="$ROOT"
+    ROOT="$rootdir"
+    scan_roadmap "$target" "$item"
+    ROOT="$save_root"
+    if [ "$SCAN_SECTION" = false ]; then why="no Direction section"
+    elif [ "$SCAN_TABLE" = false ]; then why="no Line or Deferral table"
+    elif [ "$SCAN_ROWS" -eq 0 ]; then why="no rows in the Line or Deferral tables"
+    fi
+    if [ -n "$why" ]; then
+        ROWS[idx]="part"$'\t'"$item"$'\t'"unchecked"$'\t'"$why"$'\t'"$TODAY"
+    fi
+}
+
+POINTERS=()
+FOLLOWED=()
+[ "$SUMMARY" = false ] || FOLLOW=false
+ROADMAP_STATE="$(roadmap_state "$ROADMAP")"
+if [ "$ROADMAP_STATE" = found ]; then
+    scan_roadmap "$ROADMAP" ""
 fi
 
 if [ "$ROADMAP_STATE" = missing ]; then
     emit section "(roadmap not found: $ROADMAP)" unchecked ""
 elif [ "$ROADMAP_STATE" = unreadable ]; then
     emit section "(roadmap not readable: $ROADMAP)" unknown ""
-elif [ "$seen_section" = false ]; then
+elif [ "$SCAN_SECTION" = false ]; then
     emit section "(no Direction section)" unchecked ""
-elif [ "$seen_table" = false ]; then
+elif [ "$SCAN_TABLE" = false ]; then
     emit section "(no Line or Deferral table)" unchecked ""
-elif [ "${#ROWS[@]}" -eq 0 ]; then
+elif [ "$SCAN_ROWS" -eq 0 ]; then
     emit section "(no rows in the Line or Deferral tables)" unchecked ""
+fi
+
+if [ "${#POINTERS[@]}" -gt 0 ]; then
+    ROADMAP_REAL="$(real_path "$ROADMAP")"
+    for p in "${POINTERS[@]}"; do
+        c1="${p%%$'\t'*}"; p="${p#*$'\t'}"
+        follow_pointer "$c1" "${p%%$'\t'*}" "${p#*$'\t'}"
+    done
 fi
 
 if [ "$SUMMARY" = true ]; then

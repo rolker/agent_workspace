@@ -1681,6 +1681,149 @@ run_step 1
 AT=""
 rm -f "$WS/.agent/projects.local"
 
+# --- 15. sub-roadmaps (issue #488) ------------------------------------------------------
+echo "TEST: a Sub-roadmap | Root table is followed one level"
+reset_marks
+# pointers <rows...>: a roadmap with one root line and a pointer table
+pointers() {
+    printf '# Roadmap\n\n## Direction\n\n| Line | Check |\n|------|-------|\n'
+    printf '| Root open | file-exists docs/ghost.md |\n| Root done | file-exists docs/notes.md |\n\n'
+    printf '| Sub-roadmap | Root |\n|---|---|\n'
+    printf '%s\n' "$@"
+    printf '\n## Next section\n'
+}
+# sub <file> <rows...>: a sub-roadmap with a Line table
+sub() {
+    local f="$1"; shift
+    mkdir -p "$(dirname "$f")"
+    { printf '# Part\n\n## Direction\n\n| Line | Check |\n|---|---|\n'; printf '%s\n' "$@"; printf '\n## Other\n'; } > "$f"
+}
+mkdir -p "$SB/root/tools/tool/docs" "$SB/root/docs/part"
+printf 'x\n' > "$SB/root/tools/tool/README.md"
+sub "$SB/root/docs/part/roadmap.md" \
+    '| Part done | file-exists docs/notes.md |' \
+    '| Part open | file-exists docs/part/missing.md |'
+sub "$SB/root/tools/tool/docs/roadmap.md" \
+    '| Tool readme | file-exists README.md |' \
+    '| Tool issue | gh-issue 486 closed |'
+run_rm "$(pointers \
+    '| `docs/part/roadmap.md` | . |' \
+    '| `tools/tool/docs/roadmap.md` | `tools/tool` |')"
+[[ $RC -eq 0 ]] && pass "(sub) exit 0" || fail "(sub) rc=$RC err=$(cat "$SB/err")"
+[[ "$(row 'docs/part/roadmap.md' | cut -f1,3,4)" == $'part\ttrue\tread' ]] \
+    && pass "(sub a) a Root of . is read: part row true" || fail "(sub a) $(row 'docs/part/roadmap.md')"
+[[ "$(row 'docs/part/roadmap.md: Part done' | cut -f1,3)" == $'subline\ttrue' \
+    && "$(res 'docs/part/roadmap.md: Part open')" == false ]] \
+    && pass "(sub a) the part's lines are subline rows prefixed by its path, paths from the root" || fail "(sub a) $OUT"
+[[ "$(res 'tools/tool/docs/roadmap.md: Tool readme')" == true ]] \
+    && pass "(sub b) a Root of its own directory: a relative file-exists resolves there" || fail "(sub b) $OUT"
+[[ "$(res 'tools/tool/docs/roadmap.md: Tool issue')" == true ]] && grep -q 'acme/widgets issue view 486' "$MARK/gh" \
+    && pass "(sub k) a bare gh-issue in a sub-roadmap takes the repository of its Root's origin" || fail "(sub k) $(cat "$MARK/gh" 2>/dev/null)"
+[[ "$(grep -c $'^line\t' <<< "$OUT")" -eq 2 && "$(grep -c $'^subline\t' <<< "$OUT")" -eq 4 ]] \
+    && pass "(sub) the root's two lines and the parts' four, apart" || fail "(sub) counts: $OUT"
+printf '%s\n' "$OUT" > "$SB/rows-sub"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-sub" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 1/2 deferrals 0/0" ]] \
+    && pass "(sub h, i) --summary-from accepts the new kinds and counts the root's lines only" || fail "(sub h) rc=$RC '$S'"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --summary 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 1/2 deferrals 0/0" ]] \
+    && pass "(sub h) --summary gives the same root-only totals" || fail "(sub h) --summary rc=$RC '$S'"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
+want=$'(root)\tRoot open\tfalse\ndocs/part/roadmap.md\tPart open\tfalse\ntools/tool/docs/roadmap.md\tnone open'
+[[ $RC -eq 0 && "$S" == "$want" ]] \
+    && pass "(sub j) --next-steps-from: the root's next step, then each part's by its path, none open when all are true" || fail "(sub j) rc=$RC '$S'"
+reset_marks
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
+[[ ! -e "$MARK/gh" ]] && pass "(sub j) --next-steps-from runs no check" || fail "(sub j) gh was called"
+printf 'line\tA\ttrue\tnone\t2026-11-18\n' > "$SB/rows-done"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-done" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'(root)\tnone open' ]] && pass "(sub j) a root with nothing open says none open" || fail "(sub j) '$S'"
+printf 'section\t(roadmap not found: x)\tunchecked\tnone\t2026-11-18\n' > "$SB/rows-nr"
+RC=0; bash "$SITREP" --next-steps-from "$SB/rows-nr" >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 3 ]] && pass "(sub j) --next-steps-from exits 3 when the roadmap was not read" || fail "(sub j) rc=$RC"
+printf 'part\tx\tbogus\tnone\t2026-11-18\n' > "$SB/rows-bad"
+RC=0; bash "$SITREP" --next-steps-from "$SB/rows-bad" >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 2 ]] && pass "(sub j) --next-steps-from exits 2 on a row it cannot read" || fail "(sub j) bad rc=$RC"
+RC=0; bash "$SITREP" --next-steps-from "" >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 2 ]] && pass "(sub j) --next-steps-from refuses an empty argument" || fail "(sub j) empty rc=$RC"
+
+echo "TEST: --no-follow reads the root only"
+run_rm "$(pointers '| `docs/part/roadmap.md` | . |')" --no-follow
+[[ $RC -eq 0 && "$OUT" != *part* && "$(grep -c $'^line\t' <<< "$OUT")" -eq 2 ]] \
+    && pass "(sub) --no-follow: no part or subline rows, no section row" || fail "(sub) no-follow: $OUT"
+
+echo "TEST: broken pointers are reported, never skipped, never fatal"
+ln -s /etc "$SB/root/docs/outlink"
+printf 'not a roadmap\n' > "$SB/root/README.md"
+mkdir -p "$SB/root/docs/noperm"
+sub "$SB/root/docs/noperm/roadmap.md" '| X | none |'
+chmod 000 "$SB/root/docs/noperm/roadmap.md"
+mkdir -p "$SB/root/docs/empty"
+printf '# Nothing\n' > "$SB/root/docs/empty/roadmap.md"
+run_rm "$(pointers \
+    '| `docs/gone/roadmap.md` | . |' \
+    '| docs/noperm/roadmap.md |  |' \
+    '| /etc/roadmap.md | . |' \
+    '| docs/../docs/part/roadmap.md | . |' \
+    '| docs/outlink/passwd | . |' \
+    '| docs/part/roadmap.md | tools/tool |' \
+    '| docs/part/roadmap.md | nowhere |' \
+    '| docs/roadmap.md | . |' \
+    '| docs/part/roadmap.md | . |' \
+    '| `docs/part/roadmap.md` | docs/part |' \
+    '| docs/empty/roadmap.md | . |' \
+    '| README.md | . | extra |' \
+    '|  | . |')"
+[[ $RC -eq 0 && "$(res 'Root done')" == true ]] && pass "(sub) broken pointers leave the root's rows whole" || fail "(sub) rc=$RC $OUT"
+pr() { awk -F'\t' -v i="$1" -v n="${2:-1}" '$1 == "part" && $2 == i { if (++k == n) { print $3 "|" $4; exit } }' <<< "$OUT"; }
+[[ "$(pr docs/gone/roadmap.md)" == "unchecked|not found" ]] && pass "(sub c) a missing target is unchecked, not found" || fail "(sub c) $(pr docs/gone/roadmap.md)"
+if [ -r "$SB/root/docs/noperm/roadmap.md" ]; then
+    pass "(sub d) skipped: running as a user who can read a mode-000 file"
+else
+    [[ "$(pr docs/noperm/roadmap.md)" == "unknown|not readable" ]] && pass "(sub d) an unreadable target is unknown" || fail "(sub d) $(pr docs/noperm/roadmap.md)"
+fi
+[[ "$(pr /etc/roadmap.md)" == unchecked* && "$(pr docs/../docs/part/roadmap.md)" == unchecked* ]] \
+    && pass "(sub e) an absolute or .. path is unchecked" || fail "(sub e) $(pr /etc/roadmap.md) $(pr docs/../docs/part/roadmap.md)"
+[[ "$(pr docs/outlink/passwd)" == "unchecked|outside the root (through a link)" ]] \
+    && pass "(sub e) a path that leaves the root through a link is unchecked" || fail "(sub e) link: $(pr docs/outlink/passwd)"
+[[ "$(pr docs/part/roadmap.md 1)" == "unchecked|the file is outside its Root tools/tool" \
+    && "$(pr docs/part/roadmap.md 2)" == "unchecked|Root nowhere not found" ]] \
+    && pass "(sub e) a file outside its Root and a missing Root are unchecked" || fail "(sub e) root: $(pr docs/part/roadmap.md 1) / $(pr docs/part/roadmap.md 2)"
+[[ "$(pr docs/roadmap.md)" == "unchecked|points at the root's own roadmap" ]] \
+    && pass "(sub f) a pointer at the root's own roadmap is unchecked" || fail "(sub f) self: $(pr docs/roadmap.md)"
+[[ "$(pr docs/part/roadmap.md 3)" == "true|read" && "$(pr docs/part/roadmap.md 4)" == "unchecked|already followed (a repeated or circular pointer)" ]] \
+    && pass "(sub f) the first valid pointer is followed, a repeat (other Root, same file) is not" || fail "(sub f) repeat: $(pr docs/part/roadmap.md 3) / $(pr docs/part/roadmap.md 4)"
+[[ "$(grep -c $'^subline\tdocs/part/roadmap.md: Part done\t' <<< "$OUT")" -eq 1 ]] \
+    && pass "(sub f) the repeated sub-roadmap's lines are printed once" || fail "(sub f) $OUT"
+[[ "$(pr docs/empty/roadmap.md)" == "unchecked|no Direction section" ]] \
+    && pass "(sub) a sub-roadmap with no Direction section is unchecked, with the reason" || fail "(sub) empty: $(pr docs/empty/roadmap.md)"
+[[ "$(pr README.md)" == unchecked*"(3 cells)"* && "$(pr '(empty Sub-roadmap cell)')" == "unchecked|no sub-roadmap named" ]] \
+    && pass "(sub) a row with extra cells and an empty cell are unchecked" || fail "(sub) cells: $(pr README.md) / $(pr '(empty Sub-roadmap cell)')"
+chmod 644 "$SB/root/docs/noperm/roadmap.md"
+rm -rf "$SB/root/docs/outlink" "$SB/root/docs/noperm" "$SB/root/docs/empty" "$SB/root/README.md"
+
+echo "TEST: a pointer inside a sub-roadmap is not followed, and not a problem"
+{ printf '# Part\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Nested done | file-exists docs/notes.md |\n\n'
+  printf '| Sub-roadmap | Root |\n|---|---|\n| `docs/deeper/roadmap.md` | . |\n'; } > "$SB/root/docs/part/roadmap.md"
+sub "$SB/root/docs/deeper/roadmap.md" '| Deep | file-exists docs/notes.md |'
+run_rm "$(pointers '| docs/part/roadmap.md | . |')"
+[[ "$(row 'docs/part/roadmap.md: docs/deeper/roadmap.md' | cut -f1,3,4)" == $'part\tnot-followed\tnested pointer' ]] \
+    && pass "(sub g, l) a nested pointer is a part row, not-followed (not unchecked)" || fail "(sub g) $OUT"
+[[ "$OUT" != *"Deep"* ]] && pass "(sub g) the nested sub-roadmap is not read" || fail "(sub g) nested was read: $OUT"
+printf '%s\n' "$OUT" > "$SB/rows-sub"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == *$'docs/part/roadmap.md\tnone open'* && "$S" != *deeper* ]] \
+    && pass "(sub l) the not-followed pointer has no next-step line" || fail "(sub l) '$S'"
+rm -rf "$SB/root/docs/part" "$SB/root/docs/deeper" "$SB/root/tools"
+
+echo "TEST: a section with only a pointer table has no section row"
+mkdir -p "$SB/root/docs/part"
+sub "$SB/root/docs/part/roadmap.md" '| P | file-exists docs/notes.md |'
+run_rm "$(printf '# R\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| docs/part/roadmap.md | . |\n')"
+[[ "$OUT" != *section* && "$(res 'docs/part/roadmap.md: P')" == true ]] \
+    && pass "(sub) a pointer-only section reads the part and prints no section row" || fail "(sub) pointer-only: $OUT"
+rm -rf "$SB/root/docs/part"
+
 echo "TEST: usage"
 RC=0; bash "$SITREP" --bogus >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(usage) unknown option exits 2" || fail "(usage) rc=$RC"
