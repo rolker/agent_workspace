@@ -282,8 +282,9 @@ groups, and writes into `.repos-manifest/resolved/`:
   empty when there are none.
 
 Each file starts with `#` comment lines that say which manifest, role, distro and extra groups
-it came from. The manifest is named as it was given, not as a resolved path. A reader of the
-two lists skips lines that start with `#`.
+it came from. The manifest is named as it was given, not as a resolved path. After it comes
+one `# base:` line for each manifest it builds on, in the order they were read, each named by
+its path after links are followed. A reader of the two lists skips lines that start with `#`.
 
 Outside a system directory the same files go to the directory given with `--out`:
 
@@ -331,7 +332,10 @@ names the disk treats as one cannot send a repo elsewhere, is made by `init` and
 clone the repos there.
 
 Beyond the specification, `resolve` refuses a distro entry that gives both a `version` and
-`absent: true`, and an output directory that is a symbolic link.
+`absent: true`, and an output directory that is a symbolic link. It reads at most 64
+manifests for one run, the one it was given included, and refuses a manifest of a chain that
+is in the prototype's earlier shape (one with `repos:`, `extends:`, `optional_layers:` or
+`packages:` and no `repositories:`).
 
 ### sync
 
@@ -708,16 +712,18 @@ A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 
 ## What is built
 
-`resolve` and `validate` read the format in the specification for a manifest that stands on
-its own, given as a path on the local disk. `resolve` writes the files described under
-"resolve" into `--out`. `validate` checks the file and resolves it for every role and distro it
-lists, and writes nothing. `--role` or `--distro` limits the check to that role or distro, and
-`--with` switches on extra groups in each one. `base` is not read yet: a manifest with `base` is
-refused.
+`resolve` and `validate` read the format in the specification, given as a path on the local
+disk. A manifest's `base` is read when it names paths on the local disk; a `base` given as a
+URL or as a file in a git repo is refused with a message that says this version reads a path
+only. `resolve` writes the files described under "resolve" into `--out`. `validate` checks the
+manifest and everything it builds on, prints a `base:` line for each manifest it builds on, in
+the order they were read, and resolves it for every role and distro it lists, writing nothing.
+`--role` or `--distro` limits the check to that role or distro, and `--with` switches on extra
+groups in each one.
 
-A manifest without a top-level `repositories:` key, or a file that does not read as YAML,
-still goes to a prototype that reads an earlier shape of the format, where repos are nested
-under their layer and the version key is `ref`. A caller that needs `repos/<layer>.repos`,
+A manifest without a top-level `repositories:` or `base:` key, or a file that does not read as
+YAML, still goes to a prototype that reads an earlier shape of the format, where repos are
+nested under their layer and the version key is `ref`. A caller that needs `repos/<layer>.repos`,
 `layers.txt` and `optional_layers.txt` uses that reader, with `--layout manifest-dir`. The
 prototype also has three things this design drops: a `packages:` section with package
 dependencies, roles defined by starting packages, and a cache of fetched parent manifests that

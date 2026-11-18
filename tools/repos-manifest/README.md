@@ -95,8 +95,9 @@ We looked at tools that do compose manifests before writing this one (survey of 
 
 ## What works today
 
-`resolve` and `validate` read the format in [docs/spec.md](docs/spec.md) for a manifest that
-stands on its own; `base` is not read yet. Nothing fetches, syncs or builds yet.
+`resolve` and `validate` read the format in [docs/spec.md](docs/spec.md), with `base` given
+as paths on the local disk; a `base` at a URL or in a git repo is not read yet. Nothing
+fetches, syncs or builds yet.
 [docs/design.md](docs/design.md#resolve) says what `resolve` writes.
 
 ```bash
