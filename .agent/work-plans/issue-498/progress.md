@@ -256,3 +256,103 @@ The plan's ten open questions, answered:
 **Plan**: `.agent/work-plans/issue-498/plan.md` at `090edff6` (revision answering the `revise` Checkpoint)
 
 Findings 1 to 12: resolve writes the per-layer files, `layers.txt` and `optional.txt` (repo keys) from part 1, and part 3's manifest-dir layout is a second writer over the same data; the adapter keeps its role and distro requirement (the tool's error passes through, no preflight code changes, comments and `docs/manifest/design.md` step 1 change, one new test, the plain-.repos adapter test dropped, the note says so); the git limit applies only with no terminal and ends the whole process group; `_rc_relabel_provenance`, its test and every cache use in the adapter and tests are listed with line numbers; the raw-text character check, `selection.py`, dispatch on parse failure, leftover sibling sweep, `--cache-dir` removed outright, baseline 333 tests, `developer` role in the end check, the `stat()` 3.14 fix, a test for unreadable location forms, `.` key part and redirect rules are in. The plan lists its additions with reasons. Questions 1 to 9 are carried as the host answered; question 10 (CI on 3.14) stays open with the plan written for either answer and nothing under `.github/` changed meanwhile.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 13:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #498 — repos-manifest: the resolver reads the format in the spec
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `090edff6`
+**Branch**: `feature/issue-498`
+**Serves**: Goal: Modular (`README.md#modular`); design `tools/repos-manifest/docs/design.md#resolve` and `#what-is-built`; format `tools/repos-manifest/docs/spec.md`; adapter route `docs/manifest/design.md` "The manifest route, step by step". Checked: `README.md:71` `### Modular`; the tool's design `### resolve` (line 269) and `## What is built` (line 655); `docs/manifest/design.md:56`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three PRs, as ordered. The dispatch rule is explicit, but it misses a base-only leaf in part 2 (finding 3). |
+| Issue alignment | Good | All three outputs come from part 1. Every spec rule has a part. Two groups of rules lack a named test (finding 5). |
+| File targeting | Good | Checked against the code: the adapter line numbers (914–922, 954–956, 1020, 1037–1041, 1084–1085, 1106, 1122, 1224, 574), every `cache` hit in `test_ros2_colcon.sh` (2522, 2523, 2691, 3278, 3472–3506, 3796; also 3284, which the plan's grep-and-account step covers), the `prototype.md` links (`README.md:99`, `adapter.sh:574`), the old `_TOP_LEVEL_KEYS` and `_resolve_one`. |
+| Consequences | Needs work | Two gaps. Leftover hidden siblings on the adapter route are never swept (finding 1). Signals no longer reach git when it runs in its own session (finding 2). Two root-design lines go stale earlier than part 3 (finding 6). |
+| Principle alignment | Good | "Test what breaks" is well served. "Only what's needed": `--cache-dir` is removed outright. "Keep one current design": see finding 6. |
+| ADR compliance | Good | ADR-0022, 0017, 0011, 0009 and 0013 are named and followed. |
+| ROS conventions | N/A | Workspace plan. |
+
+Baseline re-run here on Python 3.14.4: `PYTHONPATH=src python3 -m pytest tools/repos-manifest/tests` gives 2 failed and 331 passed, the two being `test_an_extends_path_too_long_is_a_message_without_the_path` (both parametrizations). This matches the plan. I did not run the adapter suite. I did not re-check the `stat()` fix: running it in a scratch copy was denied. The earlier review had checked it.
+
+**Earlier findings, carried?**
+1. Yes. Part 1 step 5 writes `<layer>.repos`, `layers.txt` and `optional.txt`; step 8 tests them; step 9 records them in design#resolve.
+2. Yes. Part 3 step 3. The claim that no adapter code is needed holds. `_rc_manifest_resolve` prints the resolver's stderr (`[ -n "$err" ] && printf …`), then "the manifest resolver failed … nothing changed", and returns 1. The registry checks (`_rc_manifest_prepare` 1125, `_rc_distro` 249, validate 1224) already require `role=` and `distro=`. Gap: finding 4.
+3. Yes. The head comment prints the `--manifest` string as given, and the adapter comment is corrected. Gap for a base next to a URL source: finding 7.
+4. Yes. The check reads the raw text, allows newline, CR and tab, and refuses every other `Cc`/`Cf`/`Zl`/`Zp` and non-ASCII `Zs`. There is a test with the character inside a comment.
+5. Yes, but a new gap: finding 2.
+6. Yes. Every `.cache` use is listed, and the sweep keeps old leftovers on purpose.
+7. Yes. The rule is right for the tests named (`test_cli_any_other_exception_is_one_fixed_line` passes a missing `m.yaml`, which reads and fails, goes to the old path and hits the patched `cli.resolve_chain`). Gap for part 2: finding 3.
+8. Partly. The sweep exists, but it is keyed to the same `--out` name, which the adapter never reuses (finding 1).
+9. Yes. Removed outright; argparse gives exit 2, and the adapter's stale-resolver check also needs `--layout` in the text (`adapter.sh:925`).
+10. Yes. 333 tests; the end check names `developer`.
+11. Yes. `selection.py`.
+12. Yes. The additions table is present. The `.` part, the non-http(s) redirect and the test for an unreadable location form are in.
+
+**Host answers 1–10, carried?** 1 yes (`optional.txt`). 2 yes (part 1 step 3 and the spec.md record in step 9). 3 yes (`a//b`, `a/./b`, `./a`, `a/`, `/a`, `a\b`, `..`, `.git`). 4 yes. 5 yes (part 3 step 3, plus the note). 6 yes. 7 yes, with finding 2. 8 yes (part 2 step 5). 9 yes (part 3 step 2). 10 yes. `.github/` is unchanged unless the owner says yes, and the plan works either way. Nit: in the yes branch, going from `python-version: '3.10'` to a matrix is more than "one line" (a `strategy.matrix` block plus `${{ matrix.python-version }}`). The part 1 proof already lists every changed line, so nothing is lost.
+
+**Spec rules to parts and tests.** Each section of `spec.md` has a part:
+- top-level keys: part 1 step 3 and part 2 step 4;
+- repo keys and fields, versions and distros: part 1 steps 3, 4 and 8;
+- optional repos: written in part 1; reporting a skipped fetch is `sync`, #500;
+- distros, layers, groups and roles: part 1;
+- base, locations, order and merge: part 2;
+- what resolving produces: part 1 step 5 and part 3 step 2;
+- reading before using: part 1 step 8 and part 2 step 6; the destination check is #500.
+
+Two groups of rules have a part but no named test (finding 5).
+
+### Findings
+
+1. **[Consequences] Medium: on the adapter route, leftover temporary output directories are never swept.** The tool sweeps only `.<out>.new-*` and `.<out>.old-*` for the same `<out>` name. The adapter passes a new `mktemp -d` name every run (`configs/manifest-resolved.gen-XXXXXX`, `adapter.sh:893`). So the tool's sweep never sees a previous run's `.manifest-resolved.gen-AAAAAA.new-*`. The adapter's sweeps glob `manifest-resolved.gen-*` (lines 1081, 1103), which by design skips dot names. A killed resolve therefore leaves a hidden directory in `configs/` for good. No planned test sees this, because every tool test reuses one `--out`. A SIGTERM to the tool's process group leaves one too: Python's default SIGTERM action runs no `finally` (see finding 2). Resolution, part 3: extend the adapter's locked sweep (`_rc_resolve_sweep`) to remove `.manifest-resolved.gen-XXXXXX.{new,old}-*` directories that hold the marker file or are empty. Test it in `test_mr_swap_interrupt_and_sweep` next to the `gen-Ab12Cd.cache` fixture. Alternatively, the tool's sweep could match any marked `.*.new-*`/`.*.old-*` beside `--out`; that is broader, so the adapter route is simpler.
+
+2. **[Consequences] Medium: with no terminal, git runs in its own session, so a signal to the tool's group no longer reaches it.** Part 2 step 2 starts git with `start_new_session=True` when there is no terminal. The Prior Art section drops the old signal handling ("the process-group and signal machinery", which it says the Checkpoint drops; the Checkpoint dropped the hook, filter and no-prompt guards and the cache, not signal handling). Suppose the caller ends the run: a CI cancel, or an agent harness timeout that signals the process group. The tool dies, but git and the ssh it started live on with no limit at all, because the tool that kept the timer is gone. On SIGTERM, Python also skips `finally`, so the clone directory and the `.new-*` output sibling stay. This is the "no terminal" case the time limit was meant for. Resolution, folded into part 2 step 2 and part 1 step 5: while `resolve` runs, SIGTERM and SIGHUP raise an exception, as SIGINT already does. A `finally` around the git call sends SIGTERM and then SIGKILL to git's group if it is still alive, and removes the clone. The output writer's `finally` removes `.new-*`. Add one test: a stub git that sleeps, SIGTERM sent to the tool, and afterwards the stub's child is gone and no clone or sibling is left. Correct the Prior Art line to match.
+
+3. **[Scope] Low: in part 2, the dispatch rule sends a base-only leaf to the old reader.** The rule for parts 1 and 2 is that a top-level `repositories:` goes to the new reader. Part 2 makes "a later manifest that adds no repo needs no `repositories:`" valid and tests it (step 6), but a leaf of that kind has only `base:` and would go to the old reader. There it fails as an unknown top-level key (`schema.py` `_TOP_LEVEL_KEYS` has no `base`). Resolution: from part 2, dispatch on a top-level `repositories:` or `base:`. Neither is an old key, so the old tests are unaffected. The failing test would show this at once.
+
+4. **[File targeting] Low: the converted adapter fixture needs a `distros:` list.** Part 3 step 1 converts `write_mr_manifest` with `roles:` but names no `distros:`. The adapter always passes `--distro`, and the suite uses `fakefox`, `otherfox` and `emptyfox` (`test_ros2_colcon.sh` lines 2478, 3308, 3424). Without the list, every converted test hits "distro given to a manifest with no distros". Add `distros: [fakefox, otherfox, emptyfox]`, or whichever ones each test needs. `write_mr_base` can leave it out (the leaf's list replaces it).
+
+5. **[Test what breaks] Low: two groups of rules have no named test.**
+   - "An undeclared group anywhere is an error" (an issue bullet): step 8 tests only `--with`. Add a test for a repo's `groups:` and one for a role naming an undeclared group.
+   - The part 2 merge rules for top-level lists have no test in step 6 (the diamond test may touch some):
+     - a role replaces the earlier one by name;
+     - `groups:` appends without repeating;
+     - `layers:` appends, and a layer already listed keeps its place;
+     - `distros:` replaces the list;
+     - a later entry giving `layer:` to a repo moves it out of the unnamed layer (the spec's own example).
+
+   Add one test each.
+
+6. **[Keep one current design] Low: the root's `docs/manifest/design.md` "What the tool has to give" goes stale before part 3.** Line 237–240 says "The tool's design says where `resolve` writes and not what a failure leaves behind". That is false once part 1 records replace-whole in design#resolve. Line 235 says "the resolver bounds its clones of parent manifests", and line 108–109 says the clone "runs no user hook or filter driver and is bounded by `REPOS_MANIFEST_GIT_TIMEOUT`". After part 2, both hold only with no terminal, or no longer hold, but the plan edits this file only in part 3. The same applies to the adapter comment at 576–582: "while the source lock is held, every call that asks a remote has a limit … the resolver's for each base" stops being true at a terminal, yet the plan's comment list for 572–580 leaves that sentence out. Resolution: update the line 237–240 bullet in part 1. Update lines 108–109 and 235, and add the comment sentence at 576–582, in part 3's list.
+
+7. **[Consequences] Low: a base next to a URL source prints a temporary path.** For a URL source the adapter passes `--manifest $tmp.src/<path>`, and `_rc_relabel_provenance` replaces only that exact string. Part 2 prints a relative local base "as written resolved against its parent", which gives `$tmp.src/<dir>/common.yaml`. That does not contain the leaf's string, so a path that is gone after the run stays in the header. Resolution: say what the head comment prints for a base next to the leaf (for example, the leaf's string with its file name replaced, so a prefix rewrite can find it, or the path relative to the leaf). Extend the planned "no temporary path in the header" assertion to a URL source with a sibling base.
+
+8. **[Note] The additions table** is complete against the plan body. It still lists "Refusing … a trailing or leading `/`", which is accurate. One row is missing: part 3 writes `optional.txt` in the manifest-dir layout too, with the reason "#500 reads it". #500 reads the default layout, not the adapter's, so the real reason is "costs nothing". Either drop it there or record it with that reason.
+
+**Checked hardest, and sound apart from the findings above:**
+- The three-part output: `_unnamed` cannot clash with a name that starts with a letter, `.repos` and `.txt` cannot clash, and the adapter's layer regex `^[A-Za-z0-9_-]+$` accepts `_unnamed`.
+- One structure with two writers, `optional_layers.txt` derived from `optional.txt`.
+- The `/dev/tty` rule, with `has_terminal()` replaceable in tests, and no new session at a terminal.
+- The whole-or-nothing swap fits the adapter: its `--out` is an empty `mktemp -d`, which the "empty or marked" rule accepts.
+- The no-code-change claim for the adapter.
+
+### Summary
+
+The revision carries all twelve earlier findings and all ten host answers. Its claims about the code check out, and the tool baseline was reproduced. No finding would make an implementer build the wrong thing overall. Two mediums are gaps an implementer following the plan would build in and no planned test would catch: the sweep never runs on the adapter route, and signals do not reach git once it is in its own session. Each has a short fix that can be given as a Checkpoint instruction without another planning round. Ready, with the actions below carried into implementation.
+
+### Recommended Actions
+
+- [ ] Part 3: the adapter's locked sweep removes marked or empty `.manifest-resolved.gen-XXXXXX.{new,old}-*` directories; test it (finding 1).
+- [ ] Parts 1 and 2: SIGTERM and SIGHUP raise during `resolve`; a `finally` ends git's group and removes the clone and the `.new-*` sibling; one test with SIGTERM sent to the tool; correct the Prior Art line (finding 2).
+- [ ] Part 2: dispatch on top-level `repositories:` or `base:` (finding 3).
+- [ ] Part 3: the converted `write_mr_manifest` lists the distros the suite uses (finding 4).
+- [ ] Tests: an undeclared group on a repo and in a role; the part 2 list-merge rules and moving a repo's layer (finding 5).
+- [ ] `docs/manifest/design.md` lines 237–240 in part 1; lines 108–109 and 235, and adapter comment 576–582, in part 3 (finding 6).
+- [ ] Part 2/3: what the header prints for a base next to a URL source, and a test for it (finding 7).
