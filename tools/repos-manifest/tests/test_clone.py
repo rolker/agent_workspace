@@ -339,6 +339,31 @@ def test_a_clone_whose_head_cannot_be_read_is_that_repos_failure(
     assert temporaries(system) == []
 
 
+def test_a_remote_with_no_commits_yet_is_a_failure_a_later_sync_fixes(setup, tmp_path, capsys):
+    # Nothing is in the way: once the remote has a commit, another sync clones it, and the
+    # closing advice says so.
+    system, add = setup
+    empty = tmp_path / "remotes" / "empty"
+    empty.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(empty)], check=True)
+    path = tmp_path / "m.manifest.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["repositories"]["e"] = repo(empty)
+    write_manifest(path, data)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert "ERROR: src/e: " in out
+    assert out.endswith(FETCH) and IN_THE_WAY not in out, out
+    assert not os.path.lexists(system / "src" / "e")
+    (empty / "README").write_text("e\n")
+    subprocess.run(["git", "-C", str(empty), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(empty), "commit", "-q", "-m", "first"], check=True)
+    assert run(system, "sync") == 0
+    assert head(system / "src" / "e") == head(empty)
+    assert _recorded(system) == {"a", "e"}
+
+
 @pytest.mark.parametrize("where", ["src/grp", "core"])
 def test_a_file_where_a_directory_belongs_is_found_before_the_clone(
     setup, tmp_path, monkeypatch, capsys, where

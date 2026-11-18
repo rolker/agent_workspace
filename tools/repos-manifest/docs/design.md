@@ -636,8 +636,9 @@ password prompt works. A stop signal removes the clone in progress, and the run 
 `sync` to finish. A temporary that cannot be removed then, because a clone is still writing
 into it, is a warning, and a second stop signal during that cleanup cuts it short; the next
 run's sweep removes what is left. A run killed outright loses at most the repo in progress.
-After failures, the run says to run `sync` again only when a repo could not be fetched;
-for a repo in the way it says that another sync will not change that.
+After failures, the run says to run `sync` again only when a repo could not be fetched or
+its clone's `HEAD` cannot be read, as for a remote with no commits yet; for a repo in the way
+it says that another sync will not change that.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with

@@ -133,7 +133,7 @@ class RepoResult:
     outcome: str  # cloned, present, skipped (optional), failed
     detail: str = ""
     commit: Optional[str] = None
-    fetch: bool = False  # it failed to fetch, which a later sync may get past
+    fetch: bool = False  # it failed to fetch or had no HEAD, which a later sync may get past
 
 
 CLONED, PRESENT, SKIPPED, FAILED = "cloned", "present", "skipped", "failed"
@@ -239,7 +239,9 @@ def _put_in_place(
             return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
         commit = _head(temporary.joinpath(*key_parts), env)
         if commit is None:
-            return RepoResult(shown, FAILED, "the clone's HEAD cannot be read; not put in place")
+            # A remote with no commits yet clones with no HEAD; a later sync gets past it.
+            detail = "the clone's HEAD cannot be read; not put in place"
+            return RepoResult(shown, FAILED, detail, fetch=True)
         try:
             place.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -349,7 +351,7 @@ def sync_distros(
 
 def closing(results: Sequence[DistroResult]) -> int:
     """Print what to do about the repos that failed; returns the exit status, 1 when a repo
-    that is not optional failed. Running sync again is advised only for a failed fetch."""
+    that is not optional failed. Running sync again is advised only for what a sync can fix."""
     failed = [repo for result in results for repo in result.of(FAILED)]
     if any(repo.fetch for repo in failed):
         print(f"Some repos failed; {FINISH} once they can be fetched.")
