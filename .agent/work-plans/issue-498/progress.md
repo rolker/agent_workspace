@@ -1246,3 +1246,31 @@ Suites (Python 3.14.4): `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -
 **Decision**: publish
 
 The full pass (every hook, no SKIP, over the files the branch changes) passed on 8441df5d. Published as part 2a: the pull request says "Part of #498" and does not close the issue. Parts 2b (a parent read from an http(s) URL or a git repo) and 3 (the adapter reads the new format, the old reader goes) remain. The owner's decision of 2026-11-18, "yes, warn on layer order", is for part 2b's plan.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 17:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #511 at `51eb72d7`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `a652e368` (covers `51eb72d7` via bookkeeping), CI rollup; no hosted reviews and no conversation comments on the pull request)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+CI at `51eb72d7`, two runs (44407300719 and 44407314771), every job finished and passed in both: Lint (pre-commit) (11m0s, 13m38s), Validate Adapter Contract, Validate Documentation, repos-manifest tests on Python 3.10 and on Python 3.14. This is the first run of this code on Python 3.10; it passed.
+
+Hosted reviews: `fetch_pr_reviews.sh --pr 511` found 0 reviews, 0 inline comments, 0 conversation comments. Nothing to classify.
+
+Timeline: `review_progress.sh sources` at this head returns one open local finding (round 3's suggestion) and no dropped entries. The open boxes of this pull request's Plan Review (16:20) were ruled by the 16:21 Checkpoint (split into 2a and 2b; findings 3, 4, 8, 9, 13 applied in 2a; findings 2, 5, 6, 7, 10, 11 and question 8 left for part 2b's plan checkpoint; finding 12 for part 3). Rounds 1 and 2 of the pre-push review are all closed by fix rounds or host decisions. Round 2's layer-order suggestion went to the owner, who answered "yes, warn on layer order" for part 2b's plan (17:00 Checkpoint). Open boxes before the merge of part 1 belong to pull request 506 and are not re-listed.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `a652e368`, covers `51eb72d7` via bookkeeping) design.md's "before any check on its keys" could read "before any check of what its keys are or hold", since the per-string character check (`_refuse_unsafe_chars`) runs first. Checked: `manifest.parse_part` runs `first_unsafe_in_text`, `_load_yaml`, the top-level mapping check and `_refuse_unsafe_chars` before `_Checker.part()`, whose first step is the earlier-format refusal; the reviewer judged the sentence true as written (deferred: host decision: no action) — `tools/repos-manifest/docs/design.md:338`
+
+### False positives
+(none)
+
+### Information for the host: overlap with feature/issue-500 (not a finding)
+`git merge-tree --write-tree HEAD feature/issue-500` (merge base `4d319d9d`, issue-500 at `bee08a84`): one file conflicts, `tools/repos-manifest/src/repos_manifest/cli.py`, one hunk in `_load_new` (this branch: `base.load_manifest(...)` and print the warnings; issue-500: `return read_manifest(args.manifest, Path("."))`). No other file conflicts. After a merge, issue-500's `system.py` line 26 `from .manifest import UNNAMED_LAYER, Manifest, load_manifest` fails with an ImportError: this branch moves `load_manifest` to `base.py` and `manifest.py` no longer defines it (`UNNAMED_LAYER` and `Manifest` stay in `manifest.py`). The call itself, `load_manifest(path, source=location)` in `read_manifest`, keeps the same signature, so only the import changes: `load_manifest` comes from `.base` (no import cycle: `base` imports `manifest`, not `system`). Resolving the cli.py hunk in issue-500's favour (through `read_manifest`) keeps this branch's behaviour, since `read_manifest` also loads through the loader and prints the warnings, provided its import comes from `.base`. No test that issue-500 adds imports `load_manifest` or `parse_manifest` from `repos_manifest.manifest`.
+
+### Summary
+Nothing remains open before the owner's merge decision: no must-fix, no hosted comment, CI all-pass on Python 3.10 and 3.14, and the one suggestion ruled no action by the host. The pull request is ready for the merge decision; `merge_pr.sh` also needs a `## Decision summary` in the pull request body or a comment.
