@@ -109,3 +109,11 @@ Proceed to planning, with these instructions for the plan:
 - The owner's requirement, in his words: several distros in one project root, "starting with one, adding more", without moving the first. He also said a small project should be able to start as little more than vcs and colcon and grow later, so the plan says what the smallest system looks like under the new rule and does not make one repo on one distro heavier than it has to be.
 - Choices that change the design and are hard to undo are listed in the plan as open questions for the owner at the plan checkpoint, each with a recommendation: distro directories always or only on request; distros always a list in config.yaml; local_manifest per distro; a manifest version per distro; what happens to a system made without distro directories.
 - The six things the workspace asks of the tool (docs/manifest/design.md, "What the tool has to give") are not in this issue, except the one overlap: what init does in an existing directory. A separate issue for the rest is the owner's to open; the host will propose it.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 15:07 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-495/plan.md` at `46fbb9f6`
+
+Distro directories from the first distro on, config.yaml with a list of distros, and `init --distro` adding a distro to an existing directory; the plan leads with the section issue 500 waits for, draws the smallest system before and after a second distro, lists every place in the tool's documents the rule touches, and puts five open questions with recommendations to the owner.
