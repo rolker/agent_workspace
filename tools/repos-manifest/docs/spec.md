@@ -130,8 +130,8 @@ Two things follow from the key being a path:
 
 `type`, `url` and `version` are strings, and so is a `version` under `distros:`. A value that
 YAML would read as something else is quoted: unquoted, `1.10` is the number 1.1. `absent` and
-`optional` are `true` or `false`. A tool warns about a key in a repo entry that it does not
-know, and leaves it out of what it writes.
+`optional` are `true` or `false`. A tool warns about a key in a repo entry, or in an entry
+under its `distros:`, that it does not know, and leaves it out of what it writes.
 
 ### Versions and distros
 
@@ -205,7 +205,8 @@ manifest.
 
 `distros:` lists the distros the manifest covers. Resolving for a distro that is not in
 the list is an error. An entry under a repo's `distros:` for a distro that is not in the
-list is ignored, so a copy of a manifest that lists fewer distros stays valid.
+list is checked like any other entry but never used, so a copy of a manifest that lists fewer
+distros stays valid.
 
 If `distros:` is absent, the manifest covers one unnamed variant: no repo may have a
 `distros:` key, and no distro is given when resolving; giving one is an error. This is the
