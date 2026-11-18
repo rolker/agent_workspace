@@ -193,7 +193,10 @@ def sync_distro(system: Path, config: Config, resolved: Resolved) -> DistroResul
     distro = resolved.distro
     files = output_files(resolved)
     state = read_state(system, distro)
-    write_output(system.joinpath(*resolved_parts(config.layout, distro)), files)
+    resolved_dir = system.joinpath(*resolved_parts(config.layout, distro))
+    write_output(
+        resolved_dir, files, label=f"the resolved files' directory {resolved_dir}", again="sync"
+    )
     result = DistroResult(distro)
     added = False
     try:

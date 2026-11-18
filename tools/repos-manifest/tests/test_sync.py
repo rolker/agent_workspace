@@ -1,6 +1,7 @@
 """`sync` in part 1: it clones what is missing, touches nothing that is there, and a manifest
 that does not resolve changes nothing."""
 
+import shutil
 import signal
 
 import pytest
@@ -193,3 +194,21 @@ def test_a_sync_stopped_in_the_second_distro_keeps_what_it_finished(
     assert run(system, "sync") == 0
     assert set(_state(system)["rolling"]["repos"]) == {"a", "b", "c", "d"}
     assert (system / "rolling/core/src/d/README").is_file()
+
+
+@pytest.mark.parametrize("what", ["a link", "a file"])
+def test_a_resolved_directory_that_cannot_be_written_is_named_without_resolves_options(
+    two_distros, tmp_path, capsys, what
+):
+    system, _, _ = two_distros
+    resolved = system / ".repos-manifest/resolved/rolling"
+    shutil.rmtree(resolved)
+    if what == "a link":
+        (tmp_path / "elsewhere").mkdir()
+        resolved.symlink_to(tmp_path / "elsewhere")
+    else:
+        resolved.write_text("a person's file\n")
+    assert run(system, "sync", "--distro", "rolling") == 1
+    err = capsys.readouterr().err
+    assert f"the resolved files' directory {resolved}: " in err, err
+    assert "--out" not in err and "resolve" not in err.replace("resolved", ""), err
