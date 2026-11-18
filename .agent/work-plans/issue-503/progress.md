@@ -159,3 +159,28 @@ Mechanism, decided in the plan and listed for veto:
 - [ ] Make `validate`'s success line on the tool route say it checked the last resolve and did not read the manifest again.
 - [ ] Say in the documentation that the tool's `<distro>/setup.bash` is a stub until its `build` lands, and that the instance's environment is `adapter env`.
 - [ ] Bring questions 1 to 3 to the owner at the plan checkpoint, each with its recommendation.
+
+## Checkpoint
+**When**: 2026-11-18 17:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions order the work and correct stale text; the owner chose this route and asked for it next: "Let's push to get 3 done so we can use the workflow to fix the rolling issues")
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning part 1, the first cut, as the Issue Review lays it out in (a) to (e). One pull request, "Part of #503". Parts 2 to 4 stay in the plan as an outline only.
+
+The owner's words that part 1 serves (2026-11-18): "what gets us to setting up ~/project11 with the structure, registering it, and working on the issues we identified so it can build. I think it's acceptable that some stuff gets done manually as we wait for everything to be built." One registration for the project, not one per distro; and on which distro a session works on: "yes, the directory the session is started in decides."
+
+Instructions for the plan:
+- The route is chosen by .repos-manifest/ existing at the root. Today's routes are untouched and every assertion in today's suites stays as it is. A root with .repos-manifest/ that cannot be used is an error that names the next step; it never falls back to a route that fetches.
+- The change is kept to the adapter's few path helpers plus the route, as the review found, so the verbs built on them and the package-worktree machinery work unchanged. The plan lists each helper and each caller.
+- The distro rule lives in one place and is the owner's rule: the directory the call comes from decides; with one distro set up, that one; otherwise refuse and list them. The plan says exactly how the calling directory reaches the adapter.
+- A session started in <root>/<distro>/: the owner asked for it; ADR-0020 decision 6 refuses a subdirectory of a root that is not a git repository. This is a conflict between his stated rule and an accepted decision, and it is put to him. The plan is written so that part 1 works with a session started at the root (one distro set up, so the rule gives that distro), and names what changing ADR-0020's refusal would take, so that either answer is a small change to the plan.
+- build before the tool's own build exists: the adapter's present colcon-per-layer loop, over the tool's layers, said plainly to be interim. validate checks the tool's last resolved files and says that is what it checked.
+- setup and sync call the tool's sync; setup on a root not yet set up refuses and prints the init command. The adapter never pulls or moves a clone on this route.
+- A repo key with a directory in it is read, not skipped; if it cannot be supported in part 1 it is refused by name.
+- The pin and the base of a package worktree come from the resolved .repos files.
+- Tests need no network: a fixture system directory made by the tool from local git repositories. The command line is checked against issue 500's branch (feature/issue-500, local) now and against main once it merges; this pull request merges after it.
+- The design documents change in the same pull request (docs/manifest/design.md, its roadmap's checks, docs/design.md where the registry and adapters are described).
+- The by-hand acceptance for the owner on this machine, with exact commands: init in ~/project11 by hand, register, validate, sync, build the layers, then /run-issue on a package repo's issue making a worktree whose build script builds against those layers.
+- Lessons carried from the tool's issues: each rule stated once; documents say exactly what the code does; no hardening against inputs nobody writes.
