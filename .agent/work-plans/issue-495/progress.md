@@ -365,6 +365,6 @@ Writer's readings: `resolve` left unedited is not enough (must-fix 7); no third 
 - [x] (suggestion) spec "Distros" does not say that resolving for no distro is an error when the manifest has `distros:`; cite "What resolving produces" or add the sentence to the spec — `tools/repos-manifest/docs/design.md:576`
 - [x] (suggestion) The config key `layout: flat|distro-dirs` shares a name with the built `resolve --layout manifest-dir`; and the manifest's version has three names (`--manifest-ref`, `version`, `manifest_version`) — `tools/repos-manifest/docs/design.md:83`
 - [x] (suggestion) "holds one distro" / "holds a single distro" should read "one distro, or none" — `tools/repos-manifest/docs/design.md:445`, `tools/repos-manifest/README.md:54`
-- [ ] (suggestion) The `setup` row sends the new distro's version to "Not decided", whose item names only how a session says its distro; add the version there — `docs/manifest/design.md:192,331`
+- [x] (suggestion) The `setup` row sends the new distro's version to "Not decided", whose item names only how a session says its distro; add the version there — `docs/manifest/design.md:192,331`
 - [ ] (suggestion) How `init` decides the manifest's repo "is one the manifest lists" (URL match across ssh and https forms) and which distro's path it records when the repo is absent on one distro — `tools/repos-manifest/docs/design.md:420-422`
 - [ ] (suggestion) Style: "The smallest system, one repo on one distro with no layers and no roles, set up flat." is not a sentence — `tools/repos-manifest/docs/design.md:117`

@@ -330,7 +330,9 @@ no user and is removed, with `bootstrap_url` and `configs/manifest`.
 
 ## Not decided
 
-- How a session says which distro it is working on, when its root holds several. Today a
+- How a session says which distro it is working on, when its root holds several, and how it
+  gives the version of the manifest for a distro it adds whose manifest is on a branch of its
+  own (`add-distro --manifest-ref`). Today a
   distro is recorded once per instance, on the registry line, and a worktree's environment
   script is written for that one distro.
 - Which distro runs on the host and which in a container. That is a fact about a machine. It
