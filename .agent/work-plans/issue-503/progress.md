@@ -253,3 +253,21 @@ The adapter side is right and confined to the helpers it lists, and steps 1 to 3
 - [ ] Ask the owner about `AGENTS.md`'s "registration still needs it" sentence, or name it in the PR as stale
 - [ ] Name in part 3 that `worktree_create.sh` calls the adapter from two different directories; compare physical paths in rule 1
 - [ ] Optional: a stderr NOTE from `worktree_env` for lower layers with no install; `--continue-on-error` in the by-hand build command
+
+## Checkpoint
+**When**: 2026-11-18 17:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is needs-work; its findings are located and none changes what the owner asked for)
+**After**: plan
+**Decision**: revise
+
+Revise the plan with every finding of the Plan Review. Host decisions (owner may veto):
+
+- Finding 1 is in part 1. The owner's aim for the first cut is "working on the issues we identified so it can build", and without this the workflow stops before a worktree exists. The two refusals of a project root that is not a git repository are relaxed generically, with no type name: worktree_create.sh requires that the project root is a directory (each repo it makes a worktree of is still checked to be a git repository where it is today), and start-task's first step accepts a current directory outside git when session_root.sh accepts it as a session root. This widens the earlier Checkpoint's "kept to the adapter's few path helpers": said plainly, with its tests. Every other caller that assumes the root is a git repository on the path from /run-issue to a merged package pull request is found and listed (grep for git rev-parse and git -C on the root in start-task, run-issue's steps, dispatch_phase.sh, worktree_enter.sh, worktree_remove.sh, merge_pr.sh, progress_append.sh and the resolve-work-plans helper) with what each does for a non-git root.
+- Finding 2: the fixtures for the tool route sit outside every git repository, with an absolute path on the registry line, so the tests would fail without finding 1's fix.
+- Finding 3: no code. The acceptance steps and WORKTREE_GUIDE.md say that after a package pull request merges, the root's clone of that repo is updated by hand (git pull in the clone) and that layer rebuilt, until the tool's sync updates existing clones.
+- Finding 4: the sentence in AGENTS.md is an instruction file and is the owner's to approve; the host asks him. The plan carries the one-line edit as a separate, last commit that is made only on his yes, and otherwise names the sentence as stale in the pull request.
+- Finding 5: do it. worktree_env prints a note on stderr at creation naming each lower layer with no install directory.
+- Findings 6 and 7: the plan's part 3 outline names the two-distro inconsistency between the calls made from the caller's directory and the one made after a cd; the distro rule compares physical paths.
+- Finding 8: the by-hand build steps use --continue-on-error per layer, and say that adapter build stops at the first failing layer.
+- How the Rolling port is worked with this first cut goes in the acceptance section as the recommended way, for the owner to confirm: one issue per repo in that repo's own tracker, each run with its own --layer and --package-repos, bottom-up by layer, with the summary issue as the tracker.
