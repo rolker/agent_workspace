@@ -335,3 +335,36 @@ Read a particular way, or not done as the plan's table said:
 Post-task check against issue 495: the design describes starting with one distro in the per-distro layout and adding a second later with the commands typed, and the roadmap has a line. The issue's second bullet (`init --distro` again adds a distro) is replaced by the owner's answer 2 (`add-distro`). Per-distro settings: a manifest version is settled; role, groups, a differing `local_manifest` and removing a distro are left open in "Open questions". Not done here: the issue bodies' stale `tools/ros-manifest` paths and the follow-up comment on issue 500 (host's).
 
 Hooks: each commit ran the hooks with `SKIP=validate-script-tests` (anchor check passed). No suite applies (no script changed); the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 15:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-495 at `210a5621`
+**Base**: origin/main
+**Depth**: Deep (reason: 438 changed lines in 4 files, documents only)
+**Must-fix**: 7 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 7 must-fix; first round always re-reviews after fixes
+
+Specialists: static (no linter profile for .md; `check_design_anchors.sh` passed), governance, plan drift and Claude adversarial completed; cross-model gemini and codex completed (EXIT=0). The owner's three answers are carried out; no departure found. Nothing is claimed as built that is not (cli.py has only `resolve` and `validate`). The tool's documents do not mention the workspace, its adapter or `ros2_colcon`.
+
+Writer's readings: `resolve` left unedited is not enough (must-fix 7); no third `init` example is fine; `add-distro` refusing `--manifest-ref` for a non-git manifest is right but makes the "does not list" refusal's next step impossible there (must-fix 5); spec.md unchanged is right, but one citation of it does not hold (suggestion 3).
+
+### Findings
+- [ ] (must-fix) "This is the layout of a system with one distro, or none" is false for a one-distro system set up with `--distro-dirs`; say "a flat system" — `tools/repos-manifest/docs/design.md:39`
+- [ ] (must-fix) `init`'s refusal is not exact: say that a first sync that fails after the record is written is finished with `sync`, give a next step for a record that is not complete (`sync` cannot read it), and say whether `init` run inside an existing system (found by walking up, the table's "not run in a system directory") is refused — `tools/repos-manifest/docs/design.md:261-265,339`
+- [ ] (must-fix) "A directory whose record is not complete is set up by running registration again" now contradicts the tool's `init` refusing any `.repos-manifest/`; tie it to the "`init` can be run again" ask — `docs/manifest/design.md:212-213`
+- [ ] (must-fix) `sync`'s check: "changes nothing for it" is false once step 1 has moved the manifest's clone, and "does not list a distro the system records" reads as every recorded distro, which a jazzy-only copy (spec.md:205) would fail; say "does not list that distro" and that step 1 has already run — `tools/repos-manifest/docs/design.md:567-574`
+- [ ] (must-fix) `add-distro` refusals: the "manifest does not list the distro" next step (`--manifest-ref`) is refused when `manifest` is not in git, so that case needs its own next step; and nothing says what happens when a directory `<name>/` already exists in the system directory — `tools/repos-manifest/docs/design.md:304-315`
+- [ ] (must-fix) "A manifest that is not in a git repo has no version, and every distro reads the same file" is false when `local_manifest` is set (allowed with a non-git manifest, as the example at line 63-64 has); add "until its local copy exists" — `tools/repos-manifest/docs/design.md:362-363`
+- [ ] (must-fix) `resolve` "writes into `.repos-manifest/resolved/`": with a directory per distro it is `resolved/<distro>/`, and pull request 506 makes that output "replaced whole", which would then wipe the other distros' files; point to "Where the resolved files and state go" here, or record it as a fix for whichever of 495 and 506 merges second — `tools/repos-manifest/docs/design.md:537-538`
+- [ ] (suggestion) Refusals with no message or next step: `add-distro` for a distro already recorded (point to `sync --distro`), a manifest with no `distros:` (also `init --distro-dirs`, line 254), and `init --distro-dirs` with several distros when the manifest read lists only one (next step: set up with one, then `add-distro --manifest-ref`) — `tools/repos-manifest/docs/design.md:254,310-313`
+- [ ] (suggestion) Say which version the local copy is at: the manifest repo's checkout at the version the manifest gives that repo on that distro, so "one manifest for all" can read per-branch copies from the second sync on — `tools/repos-manifest/docs/design.md:350-358`
+- [ ] (suggestion) spec "Distros" does not say that resolving for no distro is an error when the manifest has `distros:`; cite "What resolving produces" or add the sentence to the spec — `tools/repos-manifest/docs/design.md:576`
+- [ ] (suggestion) The config key `layout: flat|distro-dirs` shares a name with the built `resolve --layout manifest-dir`; and the manifest's version has three names (`--manifest-ref`, `version`, `manifest_version`) — `tools/repos-manifest/docs/design.md:83`
+- [ ] (suggestion) "holds one distro" / "holds a single distro" should read "one distro, or none" — `tools/repos-manifest/docs/design.md:445`, `tools/repos-manifest/README.md:54`
+- [ ] (suggestion) The `setup` row sends the new distro's version to "Not decided", whose item names only how a session says its distro; add the version there — `docs/manifest/design.md:192,331`
+- [ ] (suggestion) How `init` decides the manifest's repo "is one the manifest lists" (URL match across ssh and https forms) and which distro's path it records when the repo is absent on one distro — `tools/repos-manifest/docs/design.md:420-422`
+- [ ] (suggestion) Style: "The smallest system, one repo on one distro with no layers and no roles, set up flat." is not a sentence — `tools/repos-manifest/docs/design.md:117`
