@@ -672,3 +672,19 @@ Hand runs with local remotes (the tool's entry point `cli.run`): init, then sync
 - [ ] (suggestion) setup.bash failure repeats its path: "jazzy/setup.bash: cannot be created: jazzy/setup.bash: Permission denied" — `tools/repos-manifest/src/repos_manifest/sync.py:319`
 - [ ] (suggestion) design.md config.yaml table: the `manifest` row's "A distro with its own `manifest_version` reads it at that version" and the `distros` row's "each with its settings" carry no "Not read in this part" mark, though a distro setting is refused; the optional-rule list at design.md:675 omits "a file where a directory on its path belongs" — `tools/repos-manifest/docs/design.md:79`
 - [ ] (suggestion) Not worth doing, noted: mkdtemp failing or vcs/git vanishing mid-run ends the whole run, outside the optional rule; a recorded `manifest` containing `://` whose file was removed is reported as a URL (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:227`
+
+## Checkpoint
+**When**: 2026-11-18 18:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 left one mechanical must-fix and its ship line recommends fixing it and publishing)
+**After**: rounds
+**Decision**: address
+
+Fix the round 3 review's one must-fix and its suggestions 1 to 5, then publish. Suggestion 6 is no action, for the review's own reason.
+
+- Must-fix: a clone whose HEAD cannot be read (a remote with no commits yet) is a failure a later sync can fix, and the closing advice says so; the design's sentence matches.
+- 1: setup.bash's first line names no command that wrote it, or names both.
+- 2: a setup.bash that could not be written whole is not left behind: what this call created is removed on failure, and the stop signals are held over creating and writing it.
+- 3: a failed rename's message names the repo's place and the reason, not a temporary that is gone.
+- 4: the setup.bash failure message gives its path once.
+- 5: the config.yaml table marks what is not read in this part on the manifest and distros rows; the optional-repo rule's list includes a file where a directory on the repo's path belongs.
