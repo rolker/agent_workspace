@@ -820,3 +820,12 @@ Item 6 checked by running, in a scratch directory with a local bare repository (
 - (Local Review @ `1c32487` (Claude adversarial), a second signal during cleanup) No action. The cleanup removes a handful of small files, a window of milliseconds. What a second Ctrl-C leaves is a marked `.<name>.new-…` that the next `resolve` sweeps. design.md:311-313 already says a run ended before its cleanup can leave one and the next run removes it. Holding signals over the cleanup would trade that for a Ctrl-C that does not answer.
 - (Local Review @ `1c32487` (Claude adversarial), liveness by pid across PID namespaces) No action. Leftovers are matched by the output's own name, so only runs to the same output can meet. design.md:320 already says two runs writing to the same output at once are not supported. A dead container's leftover whose pid is live on the host is kept, not removed (fails closed: a hidden marked directory).
 - (Local Review @ `1c32487` (lead), `_make_writable` stops at a directory it cannot chmod) No action. It needs a directory owned by another user (root) inside an output that `resolve` generates and that holds only `.repos` files. Even then the result is a WARNING naming the leftover on every run, never a silent failure. rmtree alone would succeed only when that directory is empty; a non-empty one needs the other user to remove it either way.
+
+## Checkpoint
+**When**: 2026-11-18 15:33 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (three located should-fix findings: two false statements in the documents and one loss that is not reported)
+**After**: findings
+**Decision**: address
+
+Fix the three open findings of the Integrated Review: an --out whose parent is not a directory is refused as the system refuses it; the message when the previous output cannot be put back names where it is and says the next resolve restores it, and the design says so; a version of heads/-x or tags/-x is refused, with the spec line. The five the triage ruled no action stay as ruled.
