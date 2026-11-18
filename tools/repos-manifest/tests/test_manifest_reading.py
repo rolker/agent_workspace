@@ -343,6 +343,13 @@ def test_a_version_starting_with_a_dash_after_heads_or_tags_is_refused(version):
     _refused(_one_repo(extra, top="distros: [jazzy]\n"), "starts with '-' after")
 
 
+@pytest.mark.parametrize("version", ["heads/", "tags/"])
+def test_a_version_that_is_only_heads_or_tags_is_refused(version):
+    _refused(_one_repo(f"    version: {version}\n"), "names nothing after")
+    extra = f"    distros:\n      jazzy:\n        version: {version}\n"
+    _refused(_one_repo(extra, top="distros: [jazzy]\n"), "names nothing after")
+
+
 @pytest.mark.parametrize("version", ["heads/main", "tags/v1.0", "feature/-x", "refs/heads/-x"])
 def test_a_version_with_heads_or_tags_and_no_dash_after_is_read(version):
     assert _m(_one_repo(f"    version: {version}\n")).repositories["a"].version == version

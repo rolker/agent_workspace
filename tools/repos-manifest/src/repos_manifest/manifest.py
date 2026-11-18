@@ -201,9 +201,13 @@ class _Checker:
 
     def version(self, value, where: str) -> str:
         """A version that git cannot read as an option, as given or as vcstool passes it: it
-        takes a leading `heads/` or `tags/` off and checks out the rest."""
+        takes a leading `heads/` or `tags/` off and checks out the rest, which is not empty."""
         version = self.not_an_option(self.string(value, where), where)
         for prefix in ("heads/", "tags/"):
+            if version == prefix:
+                raise self.error(
+                    where, f"{version!r} names nothing after {prefix!r}, which vcstool takes off"
+                )
             if version.startswith(prefix) and version[len(prefix) :].startswith("-"):
                 raise self.error(
                     where,
