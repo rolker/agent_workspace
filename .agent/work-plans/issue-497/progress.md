@@ -266,7 +266,7 @@ Dropped: codex's "uninstall before install leaves no resolver" (after the merge 
 
 ### Findings
 - [x] (suggestion) ADR-0022's Context paragraph mixes names: line 36 ("It did not point at ...") was renamed while 31 and 33 keep the old path as history; revert it or add "(now `tools/repos-manifest`)" (gemini, codex, Claude adversarial) — `docs/decisions/0022-a-part-owns-its-inside.md:36`
-- [ ] (suggestion) The cleanup swallows real `pip uninstall` failures (`>/dev/null 2>&1 || true`) and then stamps; pip already exits 0 for an absent distribution, so drop the `|| true` (keep stderr quiet if wanted) so a real failure stops before the stamp — `Makefile:206`
+- [x] (suggestion) The cleanup swallows real `pip uninstall` failures (`>/dev/null 2>&1 || true`) and then stamps; pip already exits 0 for an absent distribution, so drop the `|| true` (keep stderr quiet if wanted) so a real failure stops before the stamp — `Makefile:206`
 - [ ] (suggestion) The description and docstring still call the name a placeholder, though the owner chose repos-manifest — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:3`
 - [ ] (suggestion) The `setup` row this branch edits cites "`Makefile` line 100"; `setup:` is on line 99 (also on origin/main) — `docs/design.md:531`
 - [ ] (suggestion) After pulling, the main checkout keeps an ignored `tools/ros-manifest/` (src/ros_manifest.egg-info, __pycache__); say in the README note (or the PR) that it can be deleted — `tools/repos-manifest/README.md:118`

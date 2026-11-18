@@ -201,9 +201,12 @@ $(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 # cwd, and that file lists PyPI tools; this is a path in this repository.
 # The tool was called ros-manifest until #497: the recipe first removes that
 # install (distribution, command and stamp) on a machine that still has it.
+# pip exits 0 when ros-manifest is not installed, so a non-zero exit is a
+# real failure and stops the recipe before the stamp is written; -qq hides
+# pip's "not installed" warning and keeps its errors.
 $(STAMP)/repos-manifest.done: $(WS_ROOT)/tools/repos-manifest/pyproject.toml $(STAMP)/setup-dev.done
 	@echo "--- Installing the repos-manifest resolver ---"
-	@$(LOCKED) '{ $(VENV_BIN)/python3 -m pip uninstall --quiet -y ros-manifest >/dev/null 2>&1 || true; } && rm -f $(VENV_BIN)/ros-manifest $(STAMP)/ros-manifest.done && $(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/repos-manifest && touch $@'
+	@$(LOCKED) '$(VENV_BIN)/python3 -m pip uninstall -qq -y ros-manifest && rm -f $(VENV_BIN)/ros-manifest $(STAMP)/ros-manifest.done && $(VENV_BIN)/python3 -m pip install --quiet -e $(WS_ROOT)/tools/repos-manifest && touch $@'
 
 # git-bug: configure identity + GitHub bridge
 $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
