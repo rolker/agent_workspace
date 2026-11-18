@@ -183,3 +183,24 @@ The layout rule, the `distros` list, the flat case and the section issue 500 wai
 - [ ] Label open question 1 as a conflict with the issue's first bullet; decide 2 and 3 as mechanism (findings 6, 3)
 - [ ] State the flat limit and the `distros: [main]` way around it in the design (finding 7)
 - [ ] Leave `state.yaml`'s split to 500, or choose a file per distro (finding 8)
+
+## Checkpoint
+**When**: 2026-11-18 15:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+The owner answered three design questions in a dialog (2026-11-18). His answers, as chosen:
+
+1. Distro directories: "Only when asked". A one-distro system is flat unless init is told to use a directory per distro. The option he chose was described to him as: lighter for one distro, but a system made flat can never gain a second distro in place; it needs a new directory and a fresh clone.
+2. Adding a distro: "Its own command (Recommended)", for example `repos-manifest add-distro rolling` (name open). init has one job, setting up a new directory, and refuses a directory that is already set up.
+3. Where a second distro reads its manifest: "Support both". One manifest that lists every distro, and a manifest per distro (project11 keeps its manifest on per-distro branches).
+
+Host instructions for the revision (mechanism; owner may veto):
+- Answer 1 reverses the plan's recommendation, so the plan is rewritten around it: flat is the default; init takes a flag that gives a directory per distro (name it in the plan); add-distro works only on a system made with that flag and otherwise refuses, changing nothing, with a message that says nothing is moved and how to set up a new directory. The design states this plainly as a limit, where a reader choosing at init will see it, not only in a refusal message.
+- In config.yaml the list of distros has one shape whether there is one or several (the Plan Review agreed; it follows from wanting no rewrite of the settings when a distro is added). The layout choice is recorded there too.
+- Answer 3: keep it as small as supporting both allows. Distros are named in one place in config.yaml (the Plan Review's suggestion: a mapping whose entries may carry a manifest), with the top-level manifest used by any distro that has none of its own. Say exactly which manifest is read when, for every read and not only the first, so the second sync of a distro with its own manifest works.
+- local_manifest stays one path, the same in every distro; add-distro takes no flag for it (Plan Review finding 3).
+- Take every other Plan Review finding: the places in the documents the table missed (finding 4), what sync does when the manifest gains or drops distros (5), one rule for which distro every command uses inside a system directory, state.yaml's shape left to issue 500 (8).
+- A manifest with no distros stays flat and has nothing to add.
