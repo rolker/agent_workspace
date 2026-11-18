@@ -184,3 +184,11 @@ Instructions for the plan:
 - The design documents change in the same pull request (docs/manifest/design.md, its roadmap's checks, docs/design.md where the registry and adapters are described).
 - The by-hand acceptance for the owner on this machine, with exact commands: init in ~/project11 by hand, register, validate, sync, build the layers, then /run-issue on a package repo's issue making a worktree whose build script builds against those layers.
 - Lessons carried from the tool's issues: each rule stated once; documents say exactly what the code does; no hardening against inputs nobody writes.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 17:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `3c2fdd0d`
+
+Part 1, the first cut: a root holding `.repos-manifest/` takes a third route through the adapter's existing path helpers (`_rc_manifest_dir` to `resolved/<d>`, a new `_rc_repos_file`, `_rc_layer_dir` to `<root>/<d>/<layer>` or `<root>/<d>` for `_unnamed`, optional per repo), the distro by the owner's rule from `ACTIVE_PROJECT_FROM` set by the dispatcher, `setup`/`sync` running `repos-manifest sync --distro <d>`, `build`/`test` the interim colcon loop with `--base-paths src`, and `validate` checking the last resolve and refusing a second record; type detection in `register_project.sh`; no new verb. Owner's decisions recorded (2026-11-18): "yes, the directory the session is started in decides"; "yes, starting at ~/project11 is fine for the first cut", so sessions start at the root and `<root>/<distro>/` sessions are part 3 with a decision superseding that part of ADR-0020. No open questions remain. Merges after #500 part 1.
