@@ -124,14 +124,11 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 
 ## The design we are working towards
 
-Nothing in this section is built. It depends on three things outside the workspace's own
+Nothing in this section is built. It depends on two things outside the workspace's own
 code:
 
-- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`), which
-  the tool's roadmap has;
-- a change to the tool's design that is not made yet: a directory per distro from the first
-  distro on, and adding a distro later (#495). The tool's design today gives a system set up
-  for one distro no distro directories;
+- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`,
+  `add-distro`), which the tool's roadmap has;
 - some of what the adapter relies on today, which the tool's design does not promise yet. It
   is listed under "What the tool has to give".
 
@@ -162,10 +159,11 @@ What has to happen behind that request:
 3. The session shows what the manifest comes to for a role and that distro
    (`repos-manifest show`) and asks before fetching the project's repos. Reading the
    manifest and its parents, which `show` needs, happens before the question.
-4. `repos-manifest init` sets the directory up with one directory per distro, holding the
-   first distro only.
+4. `repos-manifest init --distro-dirs` sets the directory up with one directory per distro,
+   holding the first distro only.
 5. The distro is built, and the project is onboarded as any other.
-6. Later, another distro is added to the same directory, without moving the first.
+6. Later, `repos-manifest add-distro` adds another distro to the same directory, without
+   moving the first.
 
 ### A project instance is a system directory
 
@@ -173,7 +171,8 @@ The tool sets a system up in one directory, with a `.repos-manifest/` folder tha
 the manifest, the role, the distros and where repos are fetched from. A project instance of
 type `ros2_colcon` is such a directory, and it is the root a session is started in. It holds
 every distro of the project the machine has, each in its own directory from the first distro
-on, so that adding a distro later moves nothing:
+on. `setup` passes `--distro-dirs` to `init` whenever the project has a distro, even for the
+first one alone, so that adding a distro later moves nothing:
 
 ```
 ~/project11/
@@ -190,7 +189,7 @@ instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init` for a directory that is not set up yet, or for a distro the instance does not have yet (#495); `repos-manifest sync` for a distro that is set up, which clones what is missing |
+| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init --distro-dirs` for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
 | `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
@@ -214,9 +213,9 @@ way is finished with `sync`. A directory whose record is not complete is set up 
 registration again.
 
 An existing instance is not converted in place. Its layout is `layers/main/<layer>_ws`, the
-tool's is `<distro>/<layer>/`, and its checkouts may hold work. It is moved by setting up a
-new directory with the tool, after work in the old checkouts has been pushed, and it keeps
-working on its current route until then.
+tool's, with a directory per distro, is `<distro>/<layer>/`, and its checkouts may hold work.
+It is moved by setting up a new directory with the tool, after work in the old checkouts has
+been pushed, and it keeps working on its current route until then.
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
@@ -299,8 +298,8 @@ checkout, in the way the tool's design gives for changing them after `init`.
 - Keeping generated directories, the `configs/manifest-resolved` link and its lock, and
   `.resolved-from`. The tool's `.repos-manifest/` folder takes their place.
 - Reading `.repos` files with its own parser to update repos one at a time.
-- The `layers/main/<layer>_ws` layout. The tool's layout is `<distro>/<layer>/` in the
-  instance's directory.
+- The `layers/main/<layer>_ws` layout. The tool's layout, with a directory per distro, is
+  `<distro>/<layer>/` in the instance's directory.
 
 ### What stays in the workspace
 
