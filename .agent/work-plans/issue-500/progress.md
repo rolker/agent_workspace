@@ -438,3 +438,37 @@ Build part 1 ("Part of #500": init and a first sync that clones what is missing)
 9. state.yaml stays in part 1: it is small, and it records the exact commit each repo was put on.
 
 Design documents: the code does not depend on pull request 508's text. Build first. The design edits are the last commit, made after 508 has merged and origin/main has been merged into this branch; if 508 has not merged when the code is done, the implementation is recorded complete for the code with the design edits listed as the one step left, and the host brings main in.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-500 at `bffb6d55`
+
+Part 1 of #500: `init`, and a `sync` that clones what is missing and touches nothing that is there. The code is complete; the design edits are the one step left (see the end). Design read from `origin/feature/issue-495` at `03d7fa7d` (pull request 508, still OPEN); `origin/main` (`4d319d9d`) does not have the layout design (no `--distro-dirs` in its design.md), so no design edit was made and `origin/main` was not merged.
+
+Commits (each "Part of #500"):
+- `291848eb` stop-signal handling moved from `cli.py` to `signals.py` (`Stopped`, `signals_end_the_run`, `stop_exit`); the resolve signal tests pass unchanged.
+- `d64943dc` `system.py`: `config.yaml` (`config_text`, `read_config`, whose errors name the file and say to repair or remove the folder), `find_system`, `distros_for`, the path functions and `paths_init_creates`, `is_in_place` (the check on the real destination as one equality), `state.yaml` per distro (`read_state`, `put_distro_state`), `replace_file`, `oserror_message` and `reporting_oserror` (the one `OSError` rule), and `read_manifest`, the only caller of `load_manifest` (resolve and validate now use it too, so 498 part 2's `base.py` is a one-line change there).
+- `f5033ca4` `vcs2l>=1.1.7` in the `test` extra (no runtime dependency, nothing under `.github/`); a `vcs` fixture that appends the Python's directory to PATH, fails (not skips) with "install vcs2l or vcstool" when no `vcs` is found, and sets `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`; the pytest header names the `vcs`; `test_vcs_behaviours.py` (six tests, a missing version included).
+- `bffb6d55` `sync.py` (`require_tools`, `sweep_temporaries`, `clone_repo`, `sync_distro`, `sync_distros`, `resolve_all`, `run_sync`) and `init.py` (`check_distros`, `summary`, `make_system_dir`, `run_init`), the `init` and `sync` parsers in `cli.py`, and tests: `test_init.py`, `test_init_refusals.py`, `test_clone.py`, `test_sync.py`, `test_interrupted.py`.
+
+Checks run:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 823 passed (736 before, none changed; 87 new). The `vcs` used: `/usr/bin/vcs (vcs 0.3.0)`, vcstool, as the report header prints. vcs2l was not installed or run here; CI's first run is its first execution.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `Results: 1014 passed, 0 failed, 0 skipped`.
+- black and flake8 by the commit hooks; pylint's hook does not cover `tools/`. The full pre-commit pass is left to the host.
+- Hand run in the session scratchpad with local remotes (two layers, three repos, one optional with a url that does not exist), `init --distro-dirs --distro rolling --role dev --yes`: exit 0, two clones, the optional one skipped and listed; `sync`: nothing cloned but the optional retried, "present, not touched (2)"; after deleting one clone, `sync` cloned it again and recorded it. Removed afterwards.
+
+Readings where the design, plan and Checkpoints were silent:
+- Refusal row 3 (`--manifest-ref`/`--manifest-path` without the git form) is not built: neither option exists in part 1, so argparse refuses them.
+- Rows 6 and 7 (a distro not listed) are checked by `init` itself before `resolve`, so each gets its own next step; the condition is the resolver's.
+- `read_manifest(location, base)` takes a location and a base directory rather than `(system, config)`, because `init` has no config yet; it is still the one place.
+- A sweep of `.repos-manifest/` runs once per run in `sync_distros` (shared by `init` and `sync`); `init`'s step 8 sweeps the system directory for its own aside.
+- An error after `.repos-manifest/` exists in `init` says "the system is set up: run `repos-manifest sync` to finish".
+- `write_output`'s own errors name `--out <path>` (output.py is unchanged), so a resolved directory that cannot be written reads "--out .../.repos-manifest/resolved...".
+- `setup.bash` is written after a distro's clones, only when absent and only when its directory passes the destination check.
+- The summary prints a `Layout:` line for every layout; the design's exact line for a flat system with a distro.
+
+Not built (with reason): everything in the plan's "Cut from part 1" table (`--local-manifest` and the local-copy read, the `--` pass-through, the incomplete-clone listing, existing-repo vcs tests); updating present clones (part 2); `add-distro` (its own issue); refusal row 3 (above); case-folding disks are not checked (Checkpoint 2).
+
+Left: the design edits the plan lists for part 1, with the README and both roadmaps (pull request 508 changes the same three files), as the last commit after 508 merges and `origin/main` is merged into this branch.
