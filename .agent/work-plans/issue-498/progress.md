@@ -915,3 +915,24 @@ CI at `c76b990`, push and pull_request runs: "repos-manifest tests (#267 prototy
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 16:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #506 at `9356877`
+**Sources**: 2 (Local Review @ `c76b990` (covers `9356877` via bookkeeping: the only change since is `.agent/work-plans/issue-498/progress.md`), CI rollup); no hosted review (0 reviews, 0 inline comments, 0 conversation comments at `9356877`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+CI at `9356877` (a progress-only commit), push and pull_request runs: "repos-manifest tests (#267 prototype) (Python 3.10)" pass, "(Python 3.14)" pass, Validate Documentation pass; Lint (pre-commit) and Validate Adapter Contract pending in both runs at 16:06. At `c76b990`, the code head, every job passed in both runs (Local Review @ `c76b990`).
+
+Timeline: `review_progress.sh sources` returns no open local findings at this head. The stale Local Review (Pre-Push) @ `b88a372` (3 open boxes) was ruled on by the Integrated Review at `0145c79` and fixed in the Implementation at `9b118f18`; the stale Local Review @ `1c32487` (8 open boxes) was ruled on by the Integrated Review at `42e2663` (3 fixed in the Implementation at `ee6683a`, 5 no action). Neither is re-listed. The open boxes in the Issue Review and the two Plan Reviews are planning recommendations, ruled on by the Checkpoints of 13:00, 13:13 and 13:21 (proceed, revise, proceed); their part 2 and part 3 items belong to the later pull requests of #498, not to this one. The Local Review @ `c76b990` approved with 0 must-fix and 0 suggestions.
+
+### Findings
+
+### False positives
+- (Local Review @ `c76b990` (Claude adversarial), noted and not raised) The WARNING's "the previous output is kept in <dir>" does not itself say that the next run's sweep removes that copy if `--out` was made again by hand. No action. The WARNING (output.py:362-364) makes the put-back conditional in its own words ("puts it back if --out is still missing"), so it promises nothing for the case where `--out` exists again. design.md:311-317 states both halves: the put-back happens only if the output is still missing, and the next `resolve` removes marked hidden directories left by an ended process. This is the wording round 2 offered as a fix (Local Review @ `0d062ef`, suggestion 4). The copy is removed only after a person made `--out` again by hand following two failed renames in a row.
+
+Nothing remains open before the owner's merge decision, apart from the two CI jobs pending on the progress-only head (both passed at `c76b990`); `merge_pr.sh` gates on CI either way.
