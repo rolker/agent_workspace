@@ -550,3 +550,12 @@ Scope: the round 3 findings and `git diff 4084a9e5..HEAD` (eight commits plus th
 ### Findings
 - [ ] (must-fix) Two or more `--distro` on a manifest with no `distros:` loops: row "More than one `--distro` without `--distro-dirs`" says add `--distro-dirs`, then row "`--distro-dirs` with a manifest that has no `distros:`" says set up without it, and back; make the latter's next step "Set up without `--distro-dirs` and without `--distro`" — `tools/repos-manifest/docs/design.md:228-229`
 - [ ] (suggestion) The two unlisted-`--distro` rows give only `--manifest-ref` steps, which need `manifest` in the git form; add "or, when `manifest` is not given in the git form, add the distro to its `distros:`", as the `add-distro` row does — `tools/repos-manifest/docs/design.md:232-233`
+
+## Checkpoint
+**When**: 2026-11-18 15:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 left one one-line fix and one suggestion, and its ship line recommends fixing and publishing)
+**After**: rounds
+**Decision**: address
+
+Make the two text fixes of the round 4 review: the refusal for --distro-dirs on a manifest with no distros says to set up without --distro-dirs and without --distro, so that two refusals do not send a person back and forth; and the two unlisted-distro rows also give the next step for a manifest that is not given in the git form. Nothing else. This is the host's second address answer at this checkpoint in a row; the next answer here is publish or the owner's.
