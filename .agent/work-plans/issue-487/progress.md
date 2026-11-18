@@ -69,3 +69,22 @@ Specialists: Claude adversarial (confirmed every statement about today's code ag
 - [x] (suggestion) A manifest that does not resolve can leave the manifest's clone moved forward (codex) — `docs/manifest/design.md:211`
 - [ ] (suggestion) Always passing --manifest-path rules out a raw-file URL as source (gemini); today's source URL is always a git repo, so nothing is lost — `docs/manifest/design.md:234`
 - [ ] (suggestion) The check for the Rolling line is an issue closing, not a live validation (codex, round 1) — `docs/manifest/roadmap.md:35`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 10:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Verdict**: approved
+
+**Branch**: feature/issue-487 at `75ee6a78`
+**Base**: origin/main
+**Depth**: Standard (reason: round 3 convergence check on the round 2 findings and the fix commit ecd6b71e)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — two mechanical must-fix found and fixed, down from 6
+
+Specialists: Claude adversarial, scoped to the round 2 findings and the fix diff. Cross-model skipped (round-3 convergence check). The reviewer read the tree at ecd6b71e: all round 2 findings resolved, checks pass, and it found two mechanical must-fix and one suggestion, fixed in 75ee6a78, which no reviewer has read.
+
+### Findings
+- [x] (must-fix) "three things the adapter relies on" where the section now lists four — `docs/manifest/design.md:135`
+- [x] (must-fix) "init records what it was given before it fetches anything" is not what the tool's design says — `docs/manifest/design.md:203`
+- [x] (suggestion) role= and distro= were said to stay only until the verbs move; the roadmap keeps them one line longer — `docs/manifest/design.md:257`
