@@ -872,4 +872,25 @@ Specialists: static analysis; governance and plan drift inline (spec.md and desi
 - [x] (suggestion) A repo key with a leading or trailing space, or only spaces (`" "`, `" a"`, `"a "`), is accepted and written as a line of `optional.txt`. A reader that trims lines (bash `read`) or skips blank lines changes or loses it. Refuse leading and trailing whitespace in a key, as `#` is refused for the same list — `tools/repos-manifest/src/repos_manifest/manifest.py:433` (Codex, checked by lead)
 - [x] (suggestion) The WARNING promises that the next resolve puts the previous output back, but if anything makes `--out` first (a person's `mkdir out`), the sweep removes the marked `.old-` copy without a message. Say "if `--out` is still missing", or warn before sweeping an `.old-` copy — `tools/repos-manifest/src/repos_manifest/output.py:367` (Claude adversarial)
 - [x] (suggestion) `version: "heads/"` and `version: "tags/"` are accepted. From vcstool's source (not run), they leave an empty name, and `tags/` then skips the checkout in an existing repo. Refuse an empty remainder — `tools/repos-manifest/src/repos_manifest/manifest.py:206` (Claude adversarial)
-- [ ] (suggestion) The pull request body's Verified and Reviews lines are stale (695 tests, four pre-push rounds). Refresh them before the merge — PR #506 body (lead)
+- [x] (suggestion) The pull request body's Verified and Reviews lines are stale (695 tests, four pre-push rounds). Refresh them before the merge — PR #506 body (lead) (deferred: the pull request body is the host's; answered by the host)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #506 at `0f7e2f8`
+**Addressed**: Local Review at `0d062ef` (2026-11-18 15:45 -05:00)
+**Commits**: 9783b76, 64c428c, b3c777d, b3d2181, 0f7e2f8
+
+Last fix round before the merge decision, done to the host's instruction to make the code simpler. For the must-fix, last round's part-by-part check (a stat of the path, re-raising NotADirectoryError) and its parametrized test were removed rather than extended: the directory `--out` is in now goes through `os.path.realpath` and is made as `mkdir -p` would. No ordinary path changes: a parent that is a file (`a-file/out`) is still refused with "Not a directory" by that mkdir (existing test), and `a-file/../out` now writes `./out` like any other folded `..` (new test, which failed before). design.md now says: "`--out` is made absolute, and the directory it is in is passed through Python's `os.path.realpath`, which resolves the links that exist and folds `..` parts; that directory is then made as `mkdir -p` would, and the paths `resolve` prints are the ones it wrote."
+
+Each new test was run against the previous source (a copy of HEAD's src) and failed there. Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` gives `736 passed in 11.88s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`. No script under .agent/scripts changed, so no script suite applies; black and flake8 ran in the commit hooks. The full pre-commit pass is left to the host.
+
+### Actions
+- [x] (must-fix) `--out` through a part that does not exist then `..`: last round's check removed, docstring and design.md sentence rewritten to say what the code does — `tools/repos-manifest/src/repos_manifest/output.py:255`, `tools/repos-manifest/docs/design.md:305`
+- [x] (suggestion) A marker that is a symbolic link does not count, in `_is_ours_or_empty` and the put-back (`_has_marker`) — `tools/repos-manifest/src/repos_manifest/output.py:109`
+- [x] (suggestion) A repo key that starts or ends with white space is refused; one clause in spec.md (no existing rule implied it: the single-word rule covers names, not keys) — `tools/repos-manifest/src/repos_manifest/manifest.py:444`, `tools/repos-manifest/docs/spec.md:429`
+- [x] (suggestion) The WARNING now says the previous output is kept in the hidden directory and the next resolve puts it back if `--out` is still missing; design.md matches — `tools/repos-manifest/src/repos_manifest/output.py:362`
+- [x] (suggestion) A `version` that is exactly `heads/` or `tags/` is refused, folded into the version check and its spec sentence — `tools/repos-manifest/src/repos_manifest/manifest.py:206`, `tools/repos-manifest/docs/spec.md:446`
+- [x] (suggestion) Pull request body's stale Verified and Reviews lines — PR #506 body (deferred: the body is the host's; answered by the host)
