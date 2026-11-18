@@ -730,3 +730,20 @@ Specialists: static (no linter profile for .md), governance (no departure from t
 - [x] (suggestion) `init --distro-dirs` has no refusal for two `--distro` that differ only in case, which the `add-distro` row (:238) refuses because "a distro's name is a directory name"; add an `init` row ("Two `--distro` that differ only in case, with `--distro-dirs`." / "Name one of them.") — `tools/repos-manifest/docs/design.md:229-237` (gemini, Claude adversarial)
 - [x] (suggestion) Row :236 offers no way to correct a single mistyped `--distro` or a wrong `--manifest-ref` in the git form, and "Set up with the distros it lists" sets up a distro the person did not ask for; prefix "Name distros it lists, or give with `--manifest-ref` a version that lists them (git form), or ..." — `tools/repos-manifest/docs/design.md:236` (gemini, Claude adversarial) (deferred: covered by the must-fix rewrite of the --distro-dirs row, which now opens with 'Name distros it lists')
 - [x] (suggestion) "a system with distros is set up in a new directory with `init --distro-dirs`" contradicts flat-by-default with one distro (:98-99); say "set up in a new directory with `init`, with `--distro-dirs` to hold more than one distro" — `tools/repos-manifest/docs/design.md:561-562` (gemini)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:49 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #508 at `a9e2c102`
+**Addressed**: Local Review at `03d7fa7d` (2026-11-18 16:47 -05:00)
+**Commits**: 2ee69471, 05dd227f, a9e2c102
+
+### Actions
+- [x] (must-fix) Three next-step cells now name the condition for each option. `init`, unlisted distro without `--distro-dirs`: "Name a distro it lists; or, when the manifest is given in the git form, give with `--manifest-ref` a version of it that lists the distro; or, when it is not, add the distro to its `distros:`." `init`, with `--distro-dirs`: "Name distros it lists; or set up with the ones it lists and add each other one afterwards: with `add-distro <name> --manifest-ref <ref>` when `manifest` is given in the git form, or, when it is not, by adding the distro to its `distros:` and then `add-distro <name>`." `add-distro`, unlisted: "When `manifest` is given in the git form, `--manifest-ref` for a version that lists it; when it is not, add the distro to its `distros:`." — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion) New `init` row, third, among the no-fetch rows: "Two `--distro` that differ only in case, with `--distro-dirs`, since a distro's name is a directory name." / "Name one of them." — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion) Row with `--distro-dirs` offers "Name distros it lists" first (deferred: covered by the must-fix rewrite of that cell) — `tools/repos-manifest/docs/design.md` Refusals
+- [x] (suggestion) "a system with distros is set up in a new directory with `init`, and with `--distro-dirs` to hold more than one distro." — `tools/repos-manifest/docs/design.md` "Keeping a system in step"
+
+Refusals table walked for a manifest given as a local path, as an http URL and in the git form: 19 lines, 5 `|`-fields each. No `init` or `add-distro` next step leads to a refusal that sends the person back. Local path and http URL: the `--manifest-ref` options are now offered only for the git form, so R7/R8 lead to naming a listed distro or editing `distros:`; R8's later `add-distro <name>` has no `--manifest-ref`, so A5 does not apply and A7 passes once the distro is listed; A7 leads to editing `distros:`. Git form: the `--manifest-ref` options reach a new read; the `init` row for `--manifest-ref` without the git form never applies. The new case row leads to one `--distro`, which no later row refuses for that reason. Checks: `test_documents.py` 11 passed; `check_design_anchors.sh` exit 0. No script changed, so no script suite ran; the full pre-commit pass is left to the host.
