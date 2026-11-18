@@ -206,7 +206,8 @@ manifest, prints what `show` prints for it and asks before it goes on, which `--
 It then adds the distro's entry to `distros`, with `manifest_version` when `--manifest-ref`
 was given, and syncs that distro only; a sync that fails part way is finished with `sync`.
 The role, the groups, `fetch_from`, `remotes` and `local_manifest` are shared by every distro
-and changed by editing `config.yaml`.
+and changed by editing `config.yaml`. `add-distro` replaces `config.yaml` whole, written aside and moved into
+place, as `init` writes it.
 
 A system on a manifest kept on a branch per distro is set up and grown like this, which gives
 the `config.yaml` example above:
