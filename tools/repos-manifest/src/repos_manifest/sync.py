@@ -270,7 +270,11 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
     state = read_state(system, distro)
     resolved_dir = system.joinpath(*resolved_parts(config.layout, distro))
     write_output(
-        resolved_dir, files, label=f"the resolved files' directory {resolved_dir}", again="sync"
+        resolved_dir,
+        files,
+        label=f"the resolved files' directory {resolved_dir}",
+        again="sync",
+        elsewhere=f"run `sync` from the system directory or from below it, outside {SYSTEM_DIR}/",
     )
     result = DistroResult(distro)
     for layer in resolved.layers:

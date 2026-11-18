@@ -291,3 +291,15 @@ def test_a_manifest_not_found_after_the_system_moved_says_where_its_path_comes_f
         f"(the manifest's path is `manifest` in {moved / '.repos-manifest/config.yaml'}, taken"
         f" from the system directory {moved})\n"
     ) in err
+
+
+def test_sync_from_inside_the_resolved_files_says_where_to_run_it(two_distros, capsys):
+    system, _, _ = two_distros
+    inside = system / ".repos-manifest" / "resolved" / "jazzy"
+    capsys.readouterr()
+    assert run(inside, "sync", "--distro", "jazzy") == 1
+    err = capsys.readouterr().err
+    assert err.endswith(
+        "which replacing it would delete from under this shell; run `sync` from the system"
+        " directory or from below it, outside .repos-manifest/\n"
+    ), err

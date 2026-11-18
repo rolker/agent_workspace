@@ -279,11 +279,13 @@ def write_output(
     *,
     label: Optional[str] = None,
     again: str = "resolve to the same place",
+    elsewhere: str = "give a directory beside or below it",
 ) -> List[Path]:
     """Write `files` as the whole content of `out`; returns the paths written, as they are on
     the disk. `on_replaced` is called as soon as the new output is in place, before any held
     signal is delivered. Every message names `out` by `label` (by default `--out <out>`, as
-    `resolve` takes it) and says that a later `again` finishes what a warning leaves."""
+    `resolve` takes it) and says that a later `again` finishes what a warning leaves;
+    `elsewhere` says what to do when `out` is the current directory or above it."""
     where = label if label is not None else f"--out {out}"
     named = "--out" if label is None else "it"
     try:
@@ -298,7 +300,7 @@ def write_output(
     if out_abs == cwd or out_abs in cwd.parents:
         raise ManifestError(
             f"{where}: is the current directory or one of its parents, which replacing it"
-            " would delete from under this shell; give a directory beside or below it"
+            f" would delete from under this shell; {elsewhere}"
         )
     parent, name = out_abs.parent, out_abs.name
     if _TEMP_NAME.fullmatch(name):
