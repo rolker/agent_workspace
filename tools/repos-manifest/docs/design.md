@@ -76,12 +76,12 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: the git form and a URL. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: the git form, a URL, and a distro's own `manifest_version`. |
 | `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. Not read in this part. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
-| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
+| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". Not read in this part: a distro's settings; each distro's entry is empty. |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". Not read in this part. |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". Not read in this part. |
 
@@ -675,6 +675,7 @@ Arguments after `--` are passed to `vcs import`, for example `--recursive` for r
 submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
 
 Whatever stops a repo from being put in place (it cannot be fetched, the clone's `HEAD` cannot be read, a link is on the way,
+a file is where a directory on its path belongs,
 its place is taken by something that is not a directory or is filled meanwhile, a directory
 cannot be made, the rename fails) skips an optional repo, which is listed with the reason and
 never makes the exit status non-zero; for any other repo it is an error, and the exit status
