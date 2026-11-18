@@ -1,0 +1,348 @@
+"""Reading one manifest in the format of docs/spec.md: keys, types, names, and the checks of
+"Reading a manifest before using it"."""
+
+import re
+import textwrap
+
+import pytest
+
+from repos_manifest.manifest import parse_manifest
+from repos_manifest.yamlload import ManifestError
+
+REPO = "    type: git\n    url: https://example.org/a.git\n"
+
+
+def _m(text):
+    return parse_manifest(textwrap.dedent(text), "m.yaml")
+
+
+def _refused(text, match):
+    with pytest.raises(ManifestError, match=match):
+        _m(text)
+
+
+def _one_repo(extra="", top=""):
+    return top + "repositories:\n  a:\n" + REPO + extra
+
+
+# --- What a manifest is ----------------------------------------------------------------------
+
+
+def test_a_plain_repos_file_is_a_manifest():
+    m = _m(
+        """\
+        repositories:
+          a:
+            type: git
+            url: https://example.org/a.git
+            version: main
+          b:
+            type: git
+            url: https://example.org/b.git
+        """
+    )
+    assert list(m.repositories) == ["a", "b"]
+    assert m.repositories["a"].version == "main"
+    assert m.repositories["b"].version is None
+    assert m.distros is None and m.roles is None and m.layers == [] and m.groups == []
+
+
+# --- Top-level keys --------------------------------------------------------------------------
+
+
+def test_repositories_is_required():
+    _refused("layers: [a]\n", "has no `repositories:`")
+
+
+def test_format_absent_is_1_and_1_is_read():
+    assert _m(_one_repo()).format == 1
+    assert _m(_one_repo(top="format: 1\n")).format == 1
+
+
+def test_a_higher_format_is_refused():
+    _refused(_one_repo(top="format: 2\n"), "format: is 2; this tool reads format 1")
+
+
+@pytest.mark.parametrize("value", ["'1'", "1.0", "true", "0"])
+def test_a_format_that_is_not_a_whole_number_from_1_is_refused(value):
+    _refused(_one_repo(top=f"format: {value}\n"), "format: must be a whole number")
+
+
+def test_an_unknown_top_level_key_is_warned_about_and_ignored():
+    m = _m(_one_repo(top="colour: blue\n"))
+    assert m.warnings == ["m.yaml: unknown top-level key 'colour' is ignored"]
+
+
+def test_base_is_refused_for_now():
+    _refused(_one_repo(top="base: other.yaml\n"), "base: this version of the tool cannot read")
+
+
+@pytest.mark.parametrize("value", ["[]", "{}", "a.yaml"])
+def test_repositories_must_be_a_mapping(value):
+    if value == "{}":
+        assert _m("repositories: {}\n").repositories == {}
+    else:
+        _refused(f"repositories: {value}\n", "repositories: must be a mapping")
+
+
+# --- Repos -----------------------------------------------------------------------------------
+
+
+def test_a_repo_key_may_be_a_path():
+    m = _m("repositories:\n  drivers/sonar/x:\n" + REPO)
+    assert list(m.repositories) == ["drivers/sonar/x"]
+
+
+@pytest.mark.parametrize(
+    "key", ["a//b", "a/./b", "./a", "a/", "/a", "'a\\b'", "a/../b", "..", "x/.git"]
+)
+def test_an_odd_repo_key_is_refused(key):
+    _refused(f"repositories:\n  {key}:\n" + REPO, "a repo key")
+
+
+def test_a_repo_key_that_is_not_a_string_is_refused():
+    _refused("repositories:\n  12:\n" + REPO, "a repo key must be a path")
+
+
+def test_no_key_is_another_key_followed_by_a_slash():
+    text = "repositories:\n  a:\n" + REPO + "  a/b:\n" + REPO
+    _refused(text, "'a/b'.*is inside repo 'a'")
+
+
+def test_a_key_that_only_starts_like_another_is_not_inside_it():
+    m = _m("repositories:\n  a:\n" + REPO + "  ab/c:\n" + REPO)
+    assert list(m.repositories) == ["a", "ab/c"]
+
+
+def test_a_repeated_repo_key_is_refused():
+    _refused("repositories:\n  a:\n" + REPO + "  a:\n" + REPO, "repeats a key")
+
+
+@pytest.mark.parametrize("missing", ["type", "url"])
+def test_type_and_url_are_required(missing):
+    entry = {"type": "    type: git\n", "url": "    url: https://example.org/a.git\n"}
+    del entry[missing]
+    _refused("repositories:\n  a:\n" + "".join(entry.values()), f"has no `{missing}`")
+
+
+def test_a_repo_entry_must_be_a_mapping():
+    _refused("repositories:\n  a:\n", "repositories.a: must be a mapping")
+
+
+def test_a_type_other_than_git_is_refused():
+    text = "repositories:\n  a:\n    type: hg\n    url: https://example.org/a\n"
+    _refused(text, "type: is 'hg'; the format takes any type a .repos file takes, and these")
+
+
+@pytest.mark.parametrize("key,value", [("version", "1.10"), ("url", "12"), ("type", "true")])
+def test_url_type_and_version_are_strings(key, value):
+    entry = {"type": "git", "url": "https://example.org/a.git", key: value}
+    text = "repositories:\n  a:\n" + "".join(f"    {k}: {v}\n" for k, v in entry.items())
+    _refused(text, f"repositories.a.{key}: must be a string")
+
+
+def test_a_quoted_version_is_a_string():
+    assert _m(_one_repo("    version: '1.10'\n")).repositories["a"].version == "1.10"
+
+
+@pytest.mark.parametrize("key", ["absent", "optional"])
+def test_absent_and_optional_are_booleans(key):
+    _refused(_one_repo(f"    {key}: 'yes'\n"), f"repositories.a.{key}: must be true or false")
+
+
+def test_absent_and_optional_are_false_if_left_out():
+    repo = _m(_one_repo()).repositories["a"]
+    assert repo.absent is False and repo.optional is False
+
+
+def test_an_unknown_repo_key_is_warned_about():
+    m = _m(_one_repo("    colour: blue\n"))
+    assert m.warnings == [
+        "m.yaml: repositories.a: unknown key 'colour' is ignored and left out of the output"
+    ]
+
+
+def test_an_empty_distro_entry_is_an_entry():
+    m = _m(_one_repo("    absent: true\n    distros:\n      jazzy:\n", top="distros: [jazzy]\n"))
+    entry = m.repositories["a"].distros["jazzy"]
+    assert entry.version is None and entry.absent is False
+
+
+def test_a_distro_entry_must_be_a_mapping():
+    text = _one_repo("    distros:\n      jazzy: main\n", top="distros: [jazzy]\n")
+    _refused(text, "distros.jazzy: must be a mapping")
+
+
+def test_a_distro_entry_with_a_version_and_absent_true_is_refused():
+    extra = "    distros:\n      jazzy:\n        version: x\n        absent: true\n"
+    _refused(_one_repo(extra, top="distros: [jazzy]\n"), "both a `version` and `absent: true`")
+
+
+def test_a_distro_entry_version_is_a_string():
+    extra = "    distros:\n      jazzy:\n        version: 2\n"
+    _refused(_one_repo(extra, top="distros: [jazzy]\n"), "distros.jazzy.version: must be a str")
+
+
+# --- Distros ---------------------------------------------------------------------------------
+
+
+def test_without_distros_no_repo_may_have_a_distros_key():
+    _refused(_one_repo("    distros:\n      jazzy: {}\n"), "has no top-level `distros:` list")
+
+
+def test_an_empty_distros_list_is_refused():
+    _refused(_one_repo(top="distros: []\n"), "distros: is empty")
+
+
+def test_a_distro_entry_outside_the_list_is_kept_but_never_used():
+    # (It is ignored when resolving: see test_selection.py.)
+    m = _m(_one_repo("    distros:\n      humble: {version: h}\n", top="distros: [jazzy]\n"))
+    assert "humble" in m.repositories["a"].distros
+
+
+# --- Layers ----------------------------------------------------------------------------------
+
+
+def test_a_repo_with_no_layer_is_in_the_unnamed_layer():
+    assert _m(_one_repo(top="layers: [core]\n")).repositories["a"].layer is None
+
+
+def test_a_layer_not_in_the_list_is_an_error():
+    _refused(_one_repo("    layer: ui\n", top="layers: [core]\n"), "'ui' is not in the top")
+
+
+def test_a_layer_without_a_layers_list_is_an_error():
+    _refused(_one_repo("    layer: core\n"), "'core' is not in the top-level `layers:` list")
+
+
+@pytest.mark.parametrize("name", ["src", "build", "install", "log"])
+def test_a_layer_cannot_have_a_reserved_name(name):
+    _refused(_one_repo(top=f"layers: [{name}]\n"), f"a layer cannot be named '{name}'")
+
+
+def test_a_layer_named_twice_is_refused():
+    _refused(_one_repo(top="layers: [core, core]\n"), "names layer 'core' twice")
+
+
+# --- Groups and roles ------------------------------------------------------------------------
+
+
+def test_an_undeclared_group_on_a_repo_is_an_error():
+    _refused(_one_repo("    groups: [sim]\n", top="groups: [ui]\n"), "group 'sim' is not in")
+
+
+def test_an_undeclared_group_in_a_role_is_an_error():
+    _refused(_one_repo(top="groups: [ui]\nroles:\n  dev: [sim]\n"), "roles.dev.*'sim' is not in")
+
+
+def test_a_role_given_as_a_string_is_refused():
+    _refused(_one_repo(top="groups: [ui]\nroles:\n  dev: ui\n"), "roles.dev: must be a list")
+
+
+def test_a_role_with_nothing_is_refused():
+    _refused(_one_repo(top="roles:\n  robot:\n"), r"roles.robot: must be a list .*\[\] for none")
+
+
+def test_groups_on_a_repo_given_as_a_string_is_refused():
+    _refused(_one_repo("    groups: ui\n", top="groups: [ui]\n"), "groups: must be a list")
+
+
+def test_roles_must_be_a_mapping():
+    _refused(_one_repo(top="roles: [robot]\n"), "roles: must be a mapping")
+
+
+# --- Reading a manifest before using it ------------------------------------------------------
+
+
+def test_the_file_is_loaded_as_data():
+    _refused("repositories: !!python/object:os.system {}\n", "invalid YAML")
+
+
+@pytest.mark.parametrize(
+    "top",
+    [
+        "layers: [Core.x]\n",
+        "layers: [1core]\n",
+        "distros: [jaz zy]\n",
+        "groups: [hw:deltat]\n",
+        "groups: [_x]\n",
+        "roles:\n  -dev: []\n",
+    ],
+)
+def test_a_name_that_is_not_a_single_word_is_refused(top):
+    _refused(_one_repo(top=top), "name .* is not allowed; a name is a single word")
+
+
+def test_names_with_capitals_digits_underscores_and_dashes_are_allowed():
+    top = "layers: [Core_2]\ngroups: [ben-hw]\nroles:\n  R-1: [ben-hw]\ndistros: [Jazzy]\n"
+    m = _m(_one_repo(top=top))
+    assert m.layers == ["Core_2"] and m.roles == {"R-1": ["ben-hw"]}
+
+
+@pytest.mark.parametrize("line", ["    url: -oProxyCommand=x\n", "    version: --upload-pack=x\n"])
+def test_a_url_or_version_starting_with_a_dash_is_refused(line):
+    entry = {"type": "    type: git\n", "url": "    url: https://example.org/a.git\n"}
+    key = line.split(":")[0].strip()
+    entry[key] = line
+    _refused("repositories:\n  a:\n" + "".join(entry.values()), "starts with '-'")
+
+
+def test_a_distro_version_starting_with_a_dash_is_refused():
+    extra = "    distros:\n      jazzy:\n        version: -x\n"
+    _refused(_one_repo(extra, top="distros: [jazzy]\n"), "starts with '-'")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://example.org/a.git",
+        "http://example.org/a.git",
+        "ssh://git@example.org/a.git",
+        "file:///srv/git/a.git",
+        "git@github.com:example/a.git",
+        "/srv/git/a.git",
+    ],
+)
+def test_the_transports_that_only_fetch_are_accepted(url):
+    assert (
+        _m(f"repositories:\n  a:\n    type: git\n    url: '{url}'\n").repositories["a"].url == url
+    )
+
+
+@pytest.mark.parametrize(
+    "url,match",
+    [
+        ("ftp://example.org/a.git", "is refused"),
+        ("git://example.org/a.git", "is refused"),
+        ("ext::sh -c touch% /tmp/x", "<transport>::<address> form is refused"),
+        ("fd::17", "<transport>::<address> form is refused"),
+        ("https::example.org/a.git", "<transport>::<address> form is refused"),
+        ("relative/path.git", "is refused"),
+        ("example.org:a.git", "is refused"),
+        ("ssh://-oProxyCommand=x/a", "the host starts with '-'"),
+        ("git@-oProxyCommand=x:a", "the host starts with '-'"),
+    ],
+)
+def test_other_transports_are_refused(url, match):
+    _refused(f"repositories:\n  a:\n    type: git\n    url: '{url}'\n", match)
+
+
+@pytest.mark.parametrize(
+    "char,name",
+    [("\u202e", "U+202E"), ("\u200b", "U+200B"), ("\x07", "U+0007"), ("\u00a0", "U+00A0")],
+)
+def test_an_invisible_or_direction_changing_character_is_refused(char, name):
+    _refused(
+        _one_repo(f"    version: a{char}b\n"),
+        "line 5, column 15: the file holds " + re.escape(name),
+    )
+
+
+@pytest.mark.parametrize("char", ["\u202e", "\u200b"])
+def test_such_a_character_inside_a_comment_is_refused(char):
+    _refused("# a comment " + char + "\n" + _one_repo(), "line 1, column 13: the file holds")
+
+
+def test_a_tab_and_crlf_line_ends_are_accepted():
+    text = "#\ta comment\r\n" + _one_repo().replace("\n", "\r\n")
+    assert list(_m(text).repositories) == ["a"]

@@ -32,6 +32,25 @@ def has_unsafe_char(text: str) -> bool:
     )
 
 
+# What a whole file's text may hold that a value may not: the ends of lines and a tab.
+_TEXT_ALLOWED = frozenset("\n\r\t")
+
+
+def first_unsafe_in_text(text: str):
+    """The first character of a whole file's text, comments included, that is a control
+    character, invisible or changes the direction of text, as ``(line, column, code point)``;
+    None if there is none. Newline, carriage return and tab are allowed here."""
+    line, column = 1, 1
+    for ch in text:
+        if ch not in _TEXT_ALLOWED and has_unsafe_char(ch):
+            return line, column, f"U+{ord(ch):04X}"
+        if ch == "\n":
+            line, column = line + 1, 1
+        else:
+            column += 1
+    return None
+
+
 _UNSAFE_WHAT = (
     "a control or invisible character (newline, carriage return, a zero-width or bidirectional"
     " character, a non-ASCII space or similar)"
