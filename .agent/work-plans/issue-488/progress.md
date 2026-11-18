@@ -138,3 +138,19 @@ The plan follows the owner's decisions and covers every Issue Review action with
 - [ ] Replace the Serves goal with a `README.md#workspace-goals` section name.
 - [ ] Name the Rules row ADR-0022 adds, mark the boundary rule `review only` with a review-guide row, and check the Registry and adapters manifest-route bullet against the rule.
 - [ ] Say how `gh-issue` checks in sub-roadmap lines feed the sit-rep's named-work and path marking; fix the `<path>` wording.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 08:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+The owner chose "Revise the plan" for the Plan Review's five findings and for one instruction of his own.
+
+His instruction on nesting, in his words (2026-11-18): "The excuses for sticking to one level are just minor technical ones, so sure, only support one level with the scripts, and that actually probably makes sense when looking at the big picture to not get bogged down in details, but I see no reason to not allow however many levels of planning and design I need for my work."
+
+As put to him and accepted: the decision record puts no limit on levels of planning and design; one level is stated as what the checker follows today; and a pointer inside a sub-roadmap is listed as "not followed", not as a problem.
+
+He chose "Keep both" for the planner's two other choices: a part's lines do not count in the root's totals, and a pointer to a roadmap in another repo is deferred until there is a case.
