@@ -796,3 +796,14 @@ None.
 None.
 
 Nothing remains open in this pull request before the merge, apart from the CI jobs still pending at `e4c12a2c` on a progress-only commit.
+
+## Checkpoint
+**When**: 2026-11-18 17:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner answered this merge in advance, in a dialog on 2026-11-18, choosing "Resolve, re-check, merge (Recommended)": after the conflict with main was resolved, a short review checks the result and CI runs again, "and then I merge it without asking you again, provided the review finds nothing and CI is green. If anything else turns up, I come back to you."
+
+What happened since: the first re-check found three must-fix text gaps and the second found one (a loop between two refusals); the host told the owner each time and did not merge. Both were fixed. The third PR-mode review (head 5c5e88b9) found nothing, CI passed on every job at that head, and the Integrated Review after it leaves no finding open. The condition of his answer is met.
