@@ -1065,3 +1065,51 @@ This pull request is part 2a ("Part of #498"): base read from local paths only.
 Left for part 2b's own plan checkpoint, not decided now: whether a manifest fetched from the network may name a file on the local disk; whether git's and an http server's error text is printed (with unsafe characters replaced) or only a status; findings 2, 5, 6, 7, 10, 11 and the added question 8.
 
 Part 3 stays as planned, with finding 12.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-498 at `56826780`
+
+Part 2a of #498 ("Part of #498"): `base` read from local paths only, as the newest Checkpoint (16:21) scopes it.
+
+- `f2fe58cd` read base and merge the chain.
+  - `manifest.py`: `_Checker.manifest` becomes `_Checker.part`, returning a `Part` that keeps only the keys each manifest and each repo entry gives (a repo entry is a mapping of given keys to checked values). New `_Checker.base_locations`: one location or a non-empty list; a mapping is refused as the git form, a string with a `:` before its first `/` as a URL, both with "this version of the tool reads a location in `base` given as a path only". A manifest with no `repositories:` and an earlier-format key (`repos`, `extends`, `optional_layers`, `packages`) is refused in the per-file pass (Plan Review finding 3). `has_repositories_key` widened to `repositories:` or `base:`, not renamed (finding 9). `parse_part` replaces `parse_manifest` here.
+  - `base.py` (new): `load_manifest(path, source=None)`, `parse_manifest(text, source)` (refuses `base`: no file to take a relative path from), `_Reader.visit` (depth first, parents then self, each manifest once, identity and join both on `os.path.realpath`, finding 8), `MAX_MANIFESTS = 64`.
+  - `combine.py` (new): `merge_parts(parts, bases)`, the merge rules, and the checks on the combination (`_check_layer_case`, `_check_declared`, `_repo`, `_check_repo`, `_check_no_key_inside_another`), each naming the manifest that gave the value.
+  - `cli.py`: `_load_new` calls `base.load_manifest`; `validate` prints `base: <path>` per parent.
+  - Tests: `test_base_reading.py`, `test_base_merge.py`. Part 1 tests changed only in their import lines (`test_manifest_reading.py`, `test_selection.py`, now from `repos_manifest.base`).
+- `1f8f3c88` the head comment's `# base: <real path>` lines, in reading order, between `# manifest:` and `# role:` (`selection.Resolved.bases`, `output.head_comment`); `test_base_output.py`.
+- `2911a19f` the message for a mapping in `base` says it is the git form's shape.
+- `56826780` documents: `spec.md` (status line, path only for now, a `:` before the first `/` makes a URL, relative path after links, identity, groups keep their place, repo order, "first manifest" is one with no `base`, the rules judged on the combination), `design.md` (`# base:` lines, the 64 limit, the earlier-shape refusal, "What is built"), `README.md`. `roadmap.md` unchanged: its resolver line is not fully true until `base` is read from a URL and a git repo.
+
+Merge rules and their tests (`test_base_merge.py` unless noted): key by key, `dict` of given keys updated in reading order (`test_a_repo_entry_merges_key_by_key`, `test_a_key_the_later_entry_gives_replaces_the_earlier_value_whole`, `test_a_new_version_without_distros_keeps_the_earlier_per_distro_entries`); `distros: {}` clears (`test_an_empty_distros_block_clears_the_inherited_per_distro_entries`, `test_an_empty_distros_block_drops_an_inherited_absent_true`); `absent: false`/`optional: false` (`test_absent_false_undoes_an_earlier_absent_true`, `test_optional_false_undoes_an_earlier_optional_true`); layer moved (`test_a_later_manifest_moves_a_repo_to_another_layer`); repo order (`test_the_order_of_repos_is_where_each_first_appears`); a role replaces (`test_a_role_replaces_the_earlier_one_of_the_same_name_and_a_new_role_goes_on_the_end`); groups and layers append (`test_groups_add_to_the_earlier_list`, `test_layers_add_to_the_earlier_list_and_a_listed_layer_keeps_its_place`); top-level `distros:` replaces (`test_top_level_distros_replaces_the_earlier_list`); no `repositories:` in a later manifest (`test_a_later_manifest_may_have_no_repositories`); a new entry complete (`test_a_new_entry_must_be_complete`, `test_a_misspelt_key_is_a_new_entry_and_is_refused`); the diamond (`test_what_a_changes_in_c_stays_changed_unless_b_changes_it_again`, and in `test_base_reading.py` `test_the_diamond_is_read_c_a_b_then_the_manifest_each_once` with a counter on `base._read_text`, finding 13); cycles and the cap (`test_a_manifest_that_builds_on_itself_is_refused`, `..._through_others_is_refused_with_the_chain`, `test_more_than_64_manifests_are_refused`, `test_the_count_takes_in_every_manifest_read_not_only_one_line`).
+
+Readings where the spec and Checkpoints were silent:
+1. "Required in the first manifest of a chain" is read as: a manifest with no `base` has `repositories:`. Recorded in the spec.
+2. The cap of 64 counts every manifest read in one run, the leaf included, not only the depth of one line.
+3. A parent is named in messages, the head comment and `validate` by its real path (the identity), not the path as written; the leaf keeps the `--manifest` string.
+4. A string location with a `:` before its first `/` is a URL; `./a:b.yaml` names such a file. Recorded in the spec.
+5. `base: []` is refused ("is empty"), as `distros: []` and `roles: {}` are.
+6. The `distros:` message on a chain says "no manifest of the chain has a top-level `distros:` list"; the misspelt-key hint is added only when a manifest was read before the one that brought the entry (finding 4). For a manifest with no `base` every part 1 message is unchanged; `base.parse_manifest` keeps refusing `base` on text, so part 1's `test_base_is_refused_for_now` is untouched.
+7. All per-file checks of every manifest run before any combined check, so for a single manifest with two faults of the two kinds the reported one may differ from part 1; no part 1 test has such a case.
+
+Suites:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` (Python 3.14): `815 passed` (736 before, none changed but two import lines).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+- Python 3.10 not run here; CI runs it. black and flake8 ran in the commit hooks; the full pre-commit pass is left to the host.
+
+Hand run on a diamond (c; a and b build on c; m builds on [a, b]), head comment of `core.repos`:
+```
+# Generated by repos-manifest resolve; resolve again rather than editing.
+# manifest: m.yaml
+# base: <scratchpad>/diamond/c.yaml
+# base: <scratchpad>/diamond/a.yaml
+# base: <scratchpad>/diamond/b.yaml
+# role: dev
+# distro: jazzy
+# extra groups: (none)
+```
+
+Not built, in scope: none. Out of scope by the Checkpoint: the http(s) and git readers (2b). Not done from the plan: the `project11_split` fixture test (the plan's part 2 list; the 2a Checkpoint does not name it); a separate commit for the `validate` line (it went in with the reading commit, tested in the next).
