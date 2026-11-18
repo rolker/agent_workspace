@@ -1,6 +1,7 @@
 """`sync` in part 1: it clones what is missing, touches nothing that is there, and a manifest
 that does not resolve changes nothing."""
 
+import os
 import shutil
 import signal
 
@@ -237,3 +238,39 @@ def test_a_config_or_state_of_the_wrong_shape_is_an_error_that_names_it(
     err = capsys.readouterr().err
     assert f"ERROR: {system}/.repos-manifest/{file}: " in err, err
     assert "internal error" not in err
+
+
+def test_a_setup_bash_that_cannot_be_created_is_reported_and_the_other_distros_go_on(
+    two_distros, capsys
+):
+    # A file where the jazzy directory belongs: its repos and its setup.bash cannot be put in
+    # place; rolling, after it, is synced as usual.
+    system, _, _ = two_distros
+    shutil.rmtree(system / "jazzy")
+    (system / "jazzy").write_text("a person's file\n")
+    (system / "rolling" / "setup.bash").unlink()
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    jazzy, rolling = out.split("distro rolling:")
+    assert f"ERROR: {system / 'jazzy' / 'setup.bash'}: cannot be created: " in jazzy
+    assert jazzy.index("distro jazzy:") < jazzy.index("setup.bash: cannot be created")
+    assert (system / "rolling" / "setup.bash").read_text().startswith("# Written by")
+    assert (system / "jazzy").read_text() == "a person's file\n"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write anywhere")
+def test_a_setup_bash_in_a_read_only_directory_is_reported_with_its_reason(two_distros, capsys):
+    system, _, _ = two_distros
+    (system / "jazzy" / "setup.bash").unlink()
+    (system / "jazzy").chmod(0o500)
+    try:
+        capsys.readouterr()
+        assert run(system, "sync") == 1
+    finally:
+        (system / "jazzy").chmod(0o700)
+    out = capsys.readouterr().out
+    setup = system / "jazzy" / "setup.bash"
+    assert f"ERROR: {setup}: cannot be created: {setup}: Permission denied" in out
+    assert not os.path.lexists(setup)
+    assert "distro rolling:" in out

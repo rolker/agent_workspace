@@ -43,7 +43,6 @@ from .system import (
     read_config,
     read_manifest,
     read_state,
-    create_file,
     reporting_oserror,
     resolved_parts,
     setup_parts,
@@ -256,6 +255,7 @@ def _put_in_place(
 class DistroResult:
     distro: Optional[str]
     repos: List[RepoResult] = field(default_factory=list)
+    setup_failure: Optional[str] = None  # why the distro's setup.bash could not be created
 
     def of(self, outcome: str) -> List[RepoResult]:
         return [r for r in self.repos if r.outcome == outcome]
@@ -287,11 +287,28 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
                 print(f"ERROR: {done.path}: {done.detail}", flush=True)
             elif done.outcome == SKIPPED:
                 print(f"skipped {done.path} (optional): {done.detail}", flush=True)
-    setup = setup_parts(config.layout, distro)
-    if not os.path.lexists(system.joinpath(*setup)) and is_in_place(system, setup):
-        system.joinpath(*setup).parent.mkdir(parents=True, exist_ok=True)
-        create_file(system, system.joinpath(*setup), SETUP_TEXT)
+    result.setup_failure = create_setup(system, setup_parts(config.layout, distro))
     return result
+
+
+def create_setup(system: Path, parts: Parts) -> Optional[str]:
+    """Create `setup.bash` where nothing is, in one exclusive create, so that a file made
+    meanwhile is left as it is. Returns why it could not be created, or None."""
+    path = system.joinpath(*parts)
+    if os.path.lexists(path):
+        return None
+    if not is_in_place(system, parts):
+        return f"{path}: cannot be created: a link on the way leads outside its place"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(path, "x", encoding="utf-8", newline="\n") as handle:
+                handle.write(SETUP_TEXT)
+        except FileExistsError:
+            pass  # made meanwhile, and left as it is
+    except OSError as exc:
+        return f"{path}: cannot be created: {oserror_message(exc)}"
+    return None
 
 
 def report(result: DistroResult) -> None:
@@ -304,6 +321,8 @@ def report(result: DistroResult) -> None:
     present = len(result.of(PRESENT))
     if present:
         print(f"  present, not touched ({present}); updating a repo that is there is not built yet")
+    if result.setup_failure is not None:
+        print(f"ERROR: {result.setup_failure}", flush=True)
 
 
 def sync_distros(
@@ -330,7 +349,7 @@ def closing(results: Sequence[DistroResult]) -> int:
             "Some repos could not be put in place, and another sync will not change that: the"
             " ERROR lines above say what is in the way."
         )
-    return 1 if failed else 0
+    return 1 if failed or any(result.setup_failure for result in results) else 0
 
 
 def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Resolved]:
