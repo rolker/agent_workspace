@@ -5,6 +5,7 @@
 # output; it decides nothing itself.
 #
 # Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]
+#        sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-pointers
 #        sitrep_checks.sh --summary-from <rows-file>
 #        sitrep_checks.sh --next-steps-from <rows-file>
 #   --root     the roadmap's repository root (default: this script's own
@@ -40,6 +41,16 @@
 #              holds only pointers gives the `(no Line or Deferral table)`
 #              section row. `--summary` never follows (it counts the
 #              root's rows only).
+#   --list-pointers
+#              run no check and print no row: one line per pointer that
+#              passes every rule of a `part` row except what the
+#              sub-roadmap's own Direction section holds (that file is
+#              not read), as the sub-roadmap's resolved path relative to
+#              the root, in order. Nothing for a roadmap that is missing
+#              or unreadable or has no valid pointer. Exit 0.
+#              check_design_anchors.sh reads the pointer table through
+#              this, so both scripts share one parser and one set of
+#              validity rules.
 #   --next-steps-from <rows-file>
 #              the next step of the root and of each part, from rows saved
 #              by an earlier run (no roadmap is read, no check runs, so it
@@ -217,6 +228,7 @@ source "$SCRIPT_DIR/_project_registry.sh" 2>/dev/null || REGISTRY_OK=false
 
 usage() {
     echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]" >&2
+    echo "       sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-pointers" >&2
     echo "       sitrep_checks.sh --summary-from <rows-file>" >&2
     echo "       sitrep_checks.sh --next-steps-from <rows-file>" >&2
     exit 2
@@ -227,6 +239,7 @@ ROADMAP=""
 SUMMARY=false
 SUMMARY_FROM=""
 NEXT_FROM=false
+LIST_POINTERS=false
 FOLLOW=true
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -234,6 +247,7 @@ while [ $# -gt 0 ]; do
         --roadmap) [ $# -ge 2 ] || usage; ROADMAP="$2"; shift 2 ;;
         --summary) SUMMARY=true; shift ;;
         --no-follow) FOLLOW=false; shift ;;
+        --list-pointers) LIST_POINTERS=true; shift ;;
         --summary-from|--next-steps-from)
             [ $# -ge 2 ] || usage
             [ -z "$SUMMARY_FROM" ] || usage
@@ -244,6 +258,9 @@ while [ $# -gt 0 ]; do
         *) echo "unknown argument: $1" >&2; usage ;;
     esac
 done
+if [ "$LIST_POINTERS" = true ]; then
+    [ -z "$SUMMARY_FROM" ] && [ "$SUMMARY" = false ] && [ "$FOLLOW" = true ] || usage
+fi
 
 # summarize: the summary line of the rows in ROWS.
 summarize() {
@@ -796,7 +813,7 @@ scan_roadmap() {
                 emit "$kpre$table" "$ipre$item" unchecked "(${#CELLS[@]} cells) $extra"
                 continue
             fi
-            if [ -z "$(trim "$cell")" ]; then
+            if [ -z "$(trim "$cell")" ] || [ "$LIST_POINTERS" = true ]; then
                 emit "$kpre$table" "$ipre$item" unchecked ""
             else
                 # Read through a pipe, not $(...), so a signal is handled
@@ -895,6 +912,7 @@ follow_pointer() {
         fi
     done
     FOLLOWED+=("$target")
+    [ "$LIST_POINTERS" = false ] || return 0
     idx="${#ROWS[@]}"
     emit part "$item" true "read"
     save_root="$ROOT"
@@ -937,6 +955,13 @@ if [ "${#POINTERS[@]}" -gt 0 ]; then
         c1="${p%%$'\t'*}"; p="${p#*$'\t'}"
         follow_pointer "$c1" "${p%%$'\t'*}" "${p#*$'\t'}"
     done
+fi
+
+if [ "$LIST_POINTERS" = true ]; then
+    for f in ${FOLLOWED[@]+"${FOLLOWED[@]}"}; do
+        printf '%s\n' "${f#"$ROOT"/}" || exit 1
+    done
+    exit 0
 fi
 
 if [ "$SUMMARY" = true ]; then

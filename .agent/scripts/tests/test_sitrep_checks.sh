@@ -1760,6 +1760,19 @@ RC=0; bash "$SITREP" --next-steps-from "$SB/rows-bad" >/dev/null 2>&1 || RC=$?
 RC=0; bash "$SITREP" --next-steps-from "" >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(sub j) --next-steps-from refuses an empty argument" || fail "(sub j) empty rc=$RC"
 
+echo "TEST: --list-pointers prints the sub-roadmaps that would be followed, and runs no check"
+reset_marks
+mkdir -p "$SB/root/tools/tool/docs"
+run_rm "$(pointers \
+    '| `docs/part/roadmap.md` | . |' \
+    '| ./docs/part/roadmap.md | . |' \
+    '| docs/gone/roadmap.md | . |' \
+    '| `tools/tool/docs/roadmap.md` | `tools/tool` |')" --list-pointers
+[[ $RC -eq 0 && "$OUT" == $'docs/part/roadmap.md\ntools/tool/docs/roadmap.md' && ! -e "$MARK/gh" ]] \
+    && pass "(sub) --list-pointers: valid pointers once each, resolved, in order; no check run" || fail "(sub) list-pointers: rc=$RC '$OUT'"
+RC=0; bash "$SITREP" --root "$SB/root" --list-pointers --summary >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 2 ]] && pass "(sub) --list-pointers with --summary is a usage error" || fail "(sub) list-pointers --summary rc=$RC"
+
 echo "TEST: --no-follow reads the root only"
 run_rm "$(pointers '| `docs/part/roadmap.md` | . |')" --no-follow
 [[ $RC -eq 0 && "$OUT" != *part* && "$(grep -c $'^line\t' <<< "$OUT")" -eq 2 ]] \

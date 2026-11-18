@@ -22,7 +22,8 @@
 #       headings, never the root's; each form's base (link from its file,
 #       backtick from its file then the root); URLs skipped; the root's
 #       design, part designs and followed sub-roadmaps as citers; untracked
-#       copies ignored
+#       copies ignored; pointers read through sitrep_checks.sh
+#       --list-pointers
 #   usage and root selection, including the default root: a sandbox copy of
 #       the checker run with no argument through a `scripts/` symlink checks
 #       its own repository, not the repository's parent
@@ -626,6 +627,24 @@ printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| `tools
 run_checker "$R"
 expect "h: a followed sub-roadmap and the design beside it are citers, found through the pointer table" 1 \
     "tools/t/docs/roadmap.md:3:" "#gone-sub" "tools/t/docs/design.md:5:" "#gone-inner" "check_design_anchors: 2 finding(s)"
+
+# The pointer table is read by sitrep_checks.sh --list-pointers: CRLF line
+# ends, ./ paths deduplicated, a Setext heading ends the section, a target
+# outside the root through a link is not followed.
+R="$(new_root h7)"
+plain_design "$R/docs/design.md"
+mkdir -p "$R/tools/t/docs" "$R/tools/u/docs" "$SANDBOX/h7-outside/docs"
+printf '# T\n\n[x](#gone-t)\n' > "$R/tools/t/docs/design.md"
+: > "$R/tools/t/docs/roadmap.md"
+printf '# U\n\n[x](#gone-u)\n' > "$R/tools/u/docs/design.md"
+: > "$R/tools/u/docs/roadmap.md"
+printf '# O\n\n[x](#gone-o)\n' > "$SANDBOX/h7-outside/docs/design.md"
+: > "$SANDBOX/h7-outside/docs/roadmap.md"
+ln -s "$SANDBOX/h7-outside" "$R/out"
+printf '# Roadmap\r\n\r\n## Direction\r\n\r\n| Sub-roadmap | Root |\r\n|---|---|\r\n| tools/t/docs/roadmap.md | tools/t |\r\n| ./tools/t/docs/roadmap.md | tools/t |\r\n| out/docs/roadmap.md | . |\r\n\r\nLater\r\n-----\r\n\r\n| Sub-roadmap | Root |\r\n|---|---|\r\n| tools/u/docs/roadmap.md | tools/u |\r\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: pointers through sitrep_checks.sh: a CRLF table is read, a ./ repeat once, no link out of the root, no table past a Setext heading" 1 \
+    "tools/t/docs/design.md:3:" "#gone-t" "check_design_anchors: 1 finding(s)"
 
 # ------------------------------------------------------- usage and root
 echo "== usage and root selection =="

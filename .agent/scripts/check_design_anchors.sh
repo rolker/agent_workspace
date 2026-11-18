@@ -86,8 +86,11 @@
 # design.md or roadmap.md under a docs/ directory, so a part's design and
 # roadmap; and each sub-roadmap docs/roadmap.md (else ROADMAP.md) names in
 # its `## Direction` section's `| Sub-roadmap | Root |` table, with the
-# design.md beside it. Files git does not track are never read: the main
-# checkout's git-ignored worktrees/ folder holds other branches' drafts.
+# design.md beside it, in any directory. The table is read by
+# `sitrep_checks.sh --list-pointers` (beside this script), so the pointers
+# taken here are the ones the sit-rep follows. Other files git does not
+# track are never read: the main checkout's git-ignored worktrees/ folder
+# holds other branches' drafts.
 # Outside a git repository only the pointer table finds part files. Every
 # in-file link in docs/design.md is checked, and every in-file link of each
 # part design found this way (or cited), against that part's headings.
@@ -107,6 +110,8 @@
 #
 # Output: each finding as `file:line: message` on stdout, with file relative
 # to the root.
+# A pointer table that sitrep_checks.sh cannot read (the script missing or
+# failing) is a finding on the roadmap, never a silent skip.
 # Exit codes:
 #   0  no findings
 #   1  one or more findings
@@ -128,6 +133,10 @@ if [[ $# -gt 1 ]]; then
     usage
     exit 2
 fi
+
+# The pointer table is read by sitrep_checks.sh beside this script, so the
+# two share one parser (-P: as below, through the `scripts/` symlink).
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 if [[ $# -eq 1 ]]; then
     ROOT="$1"
@@ -385,27 +394,22 @@ while IFS= read -r -d '' f; do
     [[ "$f" =~ ^(.*/)?docs/(.*/)?(design|roadmap)\.md$ ]] && add_citer "$f"
 done < <(git ls-files -z 2>/dev/null)
 # The pointer table: `| Sub-roadmap | Root |` in docs/roadmap.md's (else
-# ROADMAP.md's) `## Direction` section, outside fenced code.
+# ROADMAP.md's) `## Direction` section, read by sitrep_checks.sh
+# --list-pointers, so the pointers followed here are exactly the ones the
+# sit-rep follows (same parser, same rules: inside the root through links,
+# inside its Root, the same repository, no repeat). Each sub-roadmap and
+# the design.md beside it, wherever it is, are citers.
 for rm_file in docs/roadmap.md ROADMAP.md; do
-    [[ -f "$rm_file" ]] || continue
+    [[ -e "$rm_file" ]] || continue
+    if ! PTRS="$(bash "$SELF_DIR/sitrep_checks.sh" --root . --roadmap "$rm_file" --list-pointers 2>/dev/null)"; then
+        finding "$rm_file" 1 "could not read the Sub-roadmap | Root table (sitrep_checks.sh --list-pointers failed)"
+        break
+    fi
     while IFS= read -r f; do
-        [[ -n "$f" && "$f" != /* && "$f" != *..* ]] || continue
+        [[ -n "$f" ]] || continue
         add_citer "$f"
         add_citer "$(dirname -- "$f")/design.md"
-    done < <(awk '
-        /^ {0,3}(```|~~~)/ { fence = !fence; next }
-        fence { next }
-        /^ {0,3}##[ \t]+Direction[ \t#]*$/ { d = 1; next }
-        d && /^ {0,3}##?([ \t]|$)/ { exit }
-        !d { next }
-        /^[ \t]*\|/ {
-            n = split($0, c, "|")
-            for (i = 1; i <= n; i++) { gsub(/^[ \t`]+|[ \t`]+$/, "", c[i]) }
-            if (!t) { t = (tolower(c[2]) == "sub-roadmap" && tolower(c[3]) == "root") ? 1 : -1; next }
-            if (t == 1 && c[2] !~ /^[-: ]*$/) print c[2]
-            next
-        }
-        { t = 0 }' "$rm_file" 2>/dev/null)
+    done <<<"$PTRS"
     break
 done
 for f in ${CITERS[@]+"${CITERS[@]}"}; do
