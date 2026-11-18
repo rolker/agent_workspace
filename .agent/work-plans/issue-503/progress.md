@@ -360,3 +360,20 @@ The `/run-issue` path from `~/project11` to a merged package pull request is now
 - [ ] Split: PR A, a project root need not be a git repository (now); PR B, the tool route (after #500) (finding 4)
 - [ ] Tool-route text in `docs/manifest/design.md` and part 4's outline: the fast-forward after a merge, ahead of `state.yaml`'s commit (finding 5)
 - [ ] Wording of the table row and step 11 (finding 6)
+
+## Checkpoint
+**When**: 2026-11-18 18:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review confirms the path from /run-issue to a merged package pull request is complete and says its remaining fixes are small; the owner asked for this next: "Let's push to get 3 done so we can use the workflow to fix the rolling issues")
+**After**: plan
+**Decision**: proceed
+
+Proceed, with the plan's part 1 delivered as two pull requests, as the second Plan Review recommends. Where this entry and the plan differ, this entry wins. Its findings are applied while building.
+
+This pull request is part 1A ("Part of #503"): a project root need not be a git repository.
+- In scope: worktree_create.sh requires only that a project's root is a directory, with the check that each repo a worktree is made of is a git repository moved to just after the manifest is resolved, before anything is created; start-task's first step, outside git, hands over to its step 2a, where session_root.sh decides (no second call, no new script); gh_create_issue.sh, outside git, requires -R and reads its label list from the workspace checkout; the sentences that become untrue (docs/design.md where worktrees and a folder outside git are described, WORKTREE_GUIDE.md, the header of register_session_root.sh, .agent/knowledge/script_reference.md) and only those; tests.
+- The main test: a package worktree made on a multi-repo project root, in today's layout, placed outside every git repository; it fails without the change. It needs nothing of the manifest tool. The guard test: a single-repository project whose root is not a git repository is still refused with today's message and nothing is created. A test of gh_create_issue.sh run outside git, with -R and without.
+- Everything generic: no project type's name in a script. Every assertion of today's suites stays as it is.
+- Out of scope, for part 1B: the adapter's tool route, the dispatcher's calling-directory variable, type detection in registration, docs/manifest/design.md and its roadmap, the AGENTS.md sentence (the owner's to approve). Part 1B is built after issue 500 part 1 has merged, from a fresh run of this issue.
+
+Recorded for part 1B, from the second Plan Review: the table's two rows reworded; the design says that a merge moves the root's clone ahead of the commit recorded in the tool's state.yaml, by the same move the tool's own sync would make, and that the tool's status should treat that as expected; the merge script's update of the clone stays as it is.
