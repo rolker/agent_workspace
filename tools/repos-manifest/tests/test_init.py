@@ -299,8 +299,8 @@ def test_a_directory_that_cannot_be_written_names_it_and_the_reason(
     finally:
         system.chmod(0o700)
     err = capsys.readouterr().err
-    assert f"ERROR: {system}/.repos-manifest-tmp-" in err
-    assert "Permission denied" in err
+    assert f"ERROR: {system}: cannot be written (Permission denied); nothing was set up\n" in err
+    assert ".repos-manifest-tmp-" not in err
 
 
 def test_git_variables_naming_another_repository_do_not_reach_the_clones(

@@ -154,7 +154,11 @@ def make_system_dir(system: Path, config: Config, on_made: Callable[[], None]) -
     """`.repos-manifest/` with its `config.yaml`, in one rename from a directory made aside.
     `on_made` is called right after the rename, before a stop signal held over it arrives."""
     sweep_asides(system)
-    aside = Path(tempfile.mkdtemp(prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system))
+    try:
+        aside = Path(tempfile.mkdtemp(prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system))
+    except OSError as exc:
+        why = exc.strerror or type(exc).__name__
+        raise ManifestError(f"{system}: cannot be written ({why}); nothing was set up") from None
     try:
         (aside / CONFIG_FILE).write_text(config_text(config), encoding="utf-8")
         os.chmod(aside / CONFIG_FILE, default_mode(0o666))
