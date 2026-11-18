@@ -241,18 +241,12 @@ def test_an_out_that_cannot_be_created_is_one_line(manifest, tmp_path, capsys):
     assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
 
 
-@pytest.mark.parametrize("given", ["a-file/../out", "a-file/../sub/out", "a-file/.."])
-def test_an_out_through_a_file_is_refused_as_the_system_refuses_it(
-    given, manifest, tmp_path, capsys, monkeypatch
-):
-    # `mkdir -p a-file/../out` fails with "Not a directory"; so does resolve.
+def test_dot_dot_after_a_file_is_folded_like_any_other_part(manifest, tmp_path, monkeypatch):
+    # The directory --out is in goes through os.path.realpath, which folds `a-file/..`.
     (tmp_path / "a-file").write_text("")
     monkeypatch.chdir(tmp_path)
-    assert _resolve(manifest, given, "--role", "robot", "--distro", "jazzy") == 1
-    assert capsys.readouterr().err == (
-        f"ERROR: --out {given}: cannot be written (Not a directory)\n"
-    )
-    assert _names(tmp_path) == ["a-file", "m.manifest.yaml"]
+    assert _resolve(manifest, "a-file/../out", "--role", "robot", "--distro", "jazzy") == 0
+    assert (tmp_path / "out" / "layers.txt").is_file()
 
 
 def test_an_out_through_a_part_that_does_not_exist_yet_is_written(manifest, tmp_path, monkeypatch):

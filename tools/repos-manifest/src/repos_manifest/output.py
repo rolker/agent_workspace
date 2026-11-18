@@ -253,19 +253,11 @@ def _write_text(path: Path, text: str) -> None:
 
 
 def _on_disk(out: Path) -> Path:
-    """`out` as the system finds it: the directory it is in resolved on the disk, so that a
-    link followed by '..' leads where the system takes it, and its last part kept as it is, so
-    that a link there is seen (and refused). A last part of '.' or '..' is resolved too. A path
-    that goes through something that is not a directory raises NotADirectoryError, as the system
-    refuses it; a part that does not exist yet is left to `mkdir`."""
+    """`out` made absolute, with the directory it is in passed through `os.path.realpath` (links
+    resolved, '..' folded) and its last part kept as it is, so that a link there is seen (and
+    refused). A last part of '.' or '..' is resolved too."""
     given = os.path.join(os.getcwd(), os.fspath(out)).rstrip(os.sep) or os.sep
     head, tail = os.path.split(given)
-    try:
-        os.stat(given if tail in ("", ".", "..") else head)
-    except NotADirectoryError:
-        raise
-    except OSError:
-        pass
     if tail in ("", ".", ".."):
         return Path(os.path.realpath(given))
     return Path(os.path.realpath(head)) / tail
@@ -280,10 +272,6 @@ def write_output(
     try:
         out_abs = _on_disk(out)
         cwd = Path(os.path.realpath(os.getcwd()))
-    except NotADirectoryError as exc:  # a part of the path is a file
-        raise ManifestError(
-            f"--out {out}: cannot be written ({exc.strerror or 'Not a directory'})"
-        ) from None
     except OSError as exc:
         raise ManifestError(
             f"--out {out}: cannot be checked ({exc.strerror or 'an OS error'})"

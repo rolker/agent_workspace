@@ -302,10 +302,9 @@ after, and put back if the move fails; it is renamed to a `.new-` name before it
 so that a removal cut short is never put back as the output, and a removal that fails is
 reported. The new output keeps the mode of the one it replaces. A directory is only replaced when it is empty or holds
 the marker file `.repos-manifest-output` that `resolve` writes, so it cannot delete a person's
-files. `--out` is found on the disk before it is checked, as the system finds it (a link
-followed by `..` leads beside the link's target, and a path through something that is not a
-directory is refused with "Not a directory"), and the paths `resolve` prints are the ones
-it wrote. The current directory and its parents are refused, since replacing one would leave
+files. `--out` is made absolute, and the directory it is in is passed through Python's
+`os.path.realpath`, which resolves the links that exist and folds `..` parts; that directory is then made as
+`mkdir -p` would, and the paths `resolve` prints are the ones it wrote. The current directory and its parents are refused, since replacing one would leave
 the shell in a deleted directory. A SIGINT, SIGTERM or SIGHUP while resolving ends the run, removes the hidden
 directory, says whether the output had been replaced, and then ends the process by that signal, so a shell loop over `resolve` stops on a Ctrl-C. The three are held during the two moves and delivered after them,
 and an interrupt that still comes between them puts the previous output back, so the output is
