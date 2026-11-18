@@ -458,8 +458,9 @@ done
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
 reads `(no branch)`. Work that no root line names but a line of a
-followed sub-roadmap does (its `gh-issue` check, by the same rules,
-`named_part`) is marked with that sub-roadmap's path, such as
+followed sub-roadmap does, by the same rules as a root line (`(#N)` in
+its item, a `gh-issue` check or an `adapter --project` check;
+`named_part`), is marked with that sub-roadmap's path, such as
 `tools/ros-manifest/docs/roadmap.md`, whether or not the root has Paths
 paragraphs: the path stands for the part (issue #488). Otherwise the path
 is empty when the root's Direction section
