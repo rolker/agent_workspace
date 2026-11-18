@@ -209,8 +209,10 @@ The test is the tool answering, not the `.repos-manifest/` folder being there, b
 `init` that was interrupted can leave the folder without a complete record. A `status` that
 reports a missing repo has answered: the instance is on the tool, and `validate` fails. The tool's
 design has `init` record what it was given and then sync, so a first sync that fails part
-way is finished with `sync`. A directory whose record is not complete is set up by running
-registration again.
+way is finished with `sync`. A directory whose record is not complete would be set up by
+running registration again, which needs the ask "`init` can be run again" under "What the
+tool has to give". The tool's design does not give that yet: its `init` refuses a directory
+that has `.repos-manifest/`.
 
 An existing instance is not converted in place. Its layout is `layers/main/<layer>_ws`, the
 tool's, with a directory per distro, is `<distro>/<layer>/`, and its checkouts may hold work.
