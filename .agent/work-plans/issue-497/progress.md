@@ -157,3 +157,11 @@ The host, running /orchestrator, read the Plan Review (six findings, two major).
 4. Add a step showing the issue's first acceptance check true on the real tree (the tool roadmap's file-exists line, with the pointer row's Root cell set to the new directory), and run the anchor check after the sweep.
 5. Correct the list of files pull request 504 adds; do not use fixed line numbers in docs/design.md; the new change-log row needs its line count.
 6. The CI change in the adapter-tests job is three lines, not two: the step's name on line 39 also carries the old name. Host decision, listed for the owner's veto: that line is inside what he approved ("Yes, both jobs": the tool's test job and the adapter-tests job's install lines, nothing else in CI); the pull request lists every CI line changed. The job name's "(#267 prototype)" suffix stays.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 11:58 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-497/plan.md` at `e24ba873`
+
+Revision after the Plan Review: the three "still carries the old name" sentences are rewritten by hand, fixture regeneration is dropped (the expected files carry no header; only emit.py and test_layout.py change), ADR-0022 takes path fixes only under ADR-0008 with its Context mentions kept as history, a step shows the roadmap's file-exists line true and runs the anchor check, PR 504's file list is corrected, the CI change is three lines in the adapter-tests job plus the tool's job, and the generate-skills output is noted as gitignored.
