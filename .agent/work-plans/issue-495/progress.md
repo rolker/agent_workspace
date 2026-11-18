@@ -772,3 +772,27 @@ Specialists: governance, plan drift and adversarial reads done by the lead, not 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 17:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #508 at `e4c12a2c`
+**Sources**: 2 (Local Review round 3 of PR mode @ `5c5e88b9`, covers `e4c12a2c` via bookkeeping; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+No hosted review: `fetch_pr_reviews.sh --pr 508` at `e4c12a2c` found 0 reviews, 0 inline comments and 0 conversation comments; Copilot has not reviewed. `review_progress.sh sources --head e4c12a2c` returned no local findings, no dropped entries and no candidates. `git diff --stat 5c5e88b9 e4c12a2c` touches only `.agent/work-plans/issue-495/progress.md`, so the round 3 review (approved, 0 must-fix, 0 suggestions) covers the head.
+
+CI. At `5c5e88b9`, both runs: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14 all completed with success. At `e4c12a2c` (the record-only commit of the round 3 review), both runs (44407651626, 44407659910): Validate Documentation pass; Lint (pre-commit), Validate Adapter Contract and repos-manifest tests 3.10 and 3.14 pending at 17:03. The host re-checks CI before the merge; `merge_pr.sh` gates on it. `gh pr view 508 --json mergeable`: MERGEABLE.
+
+Earlier open boxes. Every finding of the three PR-mode Local Reviews (`dddf0074`, `03d7fa7d`) is ticked; the round 3 entry's only box is the "No issues found. LGTM." placeholder, not a finding. The unticked boxes of the Issue Review and the two Plan Reviews were ruled on in the Integrated Review at `85c3ed05`; the three items it named outside this pull request (the `tools/ros-manifest/` paths in the text of issues 495 and 500, the separate issue for the workspace's asks of the tool, now issue 510, and issue 500's stale "part of the design follow-up (#495)" bullet) stay outside it and are not findings here.
+
+### Findings
+None.
+
+### False positives
+None.
+
+Nothing remains open in this pull request before the merge, apart from the CI jobs still pending at `e4c12a2c` on a progress-only commit.
