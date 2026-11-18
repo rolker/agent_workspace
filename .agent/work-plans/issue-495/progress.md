@@ -657,3 +657,29 @@ The finding to address: pull request 508 conflicts with main since pull request 
 The section still reads true after the merge: the failed-resolve bullet now credits the tool's `resolve` with whole-or-nothing output and keeps as the ask what `sync` must do when the manifest does not resolve (other repos and the resolved output unchanged, the manifest named as the failure). The "Three of today's guarantees" sentence lists the manifest re-read on every `sync`, `sync` deleting nothing, and the interrupted `init`; it does not list the failed resolve, so nothing is both asked and given. No edit beyond the conflict.
 
 Checks on the merge: `test_documents.py` 11 passed; the tool suite `tools/repos-manifest/tests` 736 passed; `check_design_anchors.sh` exit 0. `tools/repos-manifest/docs/design.md` read where both branches wrote ("resolve", "What is built", the Commands table): no sentences disagree (flat `.repos-manifest/resolved/` and `--out` from 506, `resolved/<distro>/` for a directory per distro from this branch, and the same split under "Where the resolved files and state go"), so no second commit.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 16:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #508 at `dddf0074`
+**Depth**: Deep (reason: 1546 changed lines over 7 files; round 1 of PR mode)
+**Must-fix**: 3 | **Suggestions**: 5
+
+Merge 645971dd: resolved exactly as described. "What the tool has to give" keeps main's "A failed resolve changes nothing" bullet and drops "`init` can be run again"; the section, the route paragraph ("an interrupted `init` leaves either nothing ... or a system whose first sync is finished with `sync`") and "Three of today's guarantees" agree with the tool's design ("Setting up with init", "resolve": output replaced whole). Main's `resolve` text (`--out`, replaced whole, no lock, issue 500) is intact; this branch adds only the per-distro output paragraph, which agrees with it. spec.md is unchanged; every citation of it ("Distros", "What resolving produces", "Reading a manifest before using it") exists and says what is claimed. Nothing claimed as built beyond `resolve` and `validate` (cli.py). No workspace or adapter in the tool's documents (test_documents.py: 11 passed).
+
+Checks: CI at `dddf0074`, both runs (44399975410, 44399989016): Lint (pre-commit) pass (13m30s, 13m17s), Validate Adapter Contract pass, Validate Documentation pass, repos-manifest tests 3.10 and 3.14 pass. Local: `pytest -q tools/repos-manifest/tests` 736 passed; `check_design_anchors.sh` exit 0; mergeable MERGEABLE.
+
+Specialists: static (no linter profile for .md; `check_design_anchors.sh` exit 0), governance (no departure from the owner's three answers or the host's checkpoints), plan drift (none), Claude adversarial, cross-model gemini and codex (both EXIT=0, both completed). Dropped: unreadable `config.yaml` counting as the tool not answering (gemini, codex: host decision, Checkpoint 15:52); scp/`ssh://` URL comparison (codex, gemini: reviewed and chosen in round 1); resolved/<name>/ leftover (codex: the output rule already replaces a marked directory).
+
+### Findings
+- [ ] (must-fix) docs/manifest/roadmap.md's commands line lists `show`, `init`, `sync`, `build` and `status`; the design now has the adapter's `setup` call `add-distro` (docs/manifest/design.md:130-131, :192) — `docs/manifest/roadmap.md:28` (Claude adversarial, gemini, codex)
+- [ ] (must-fix) "Inside a system directory the distro is chosen as under 'Which distro a command uses'" covers `validate`, but that section's table has no `validate` row, so what `validate` does at the top of a system with several distros is unsaid — `tools/repos-manifest/docs/design.md:259-263, 408-411` (gemini)
+- [ ] (must-fix) Refusals: `add-distro` refuses `--manifest-ref` when `manifest` is not in the git form (:238), but `init` has no row for `--manifest-ref` with a local path or a URL without `--manifest-path` (:304), so the builder guesses refuse or ignore — `tools/repos-manifest/docs/design.md:220-234` (Claude adversarial)
+- [ ] (suggestion) The `init` row says "a file it writes such as `setup.bash`", but `build` writes `setup.bash` (:605); say "a file the system will have" — `tools/repos-manifest/docs/design.md:234` (Claude adversarial)
+- [ ] (suggestion) Whether `sync` goes on with the other distros when one distro's manifest does not resolve or a required repo cannot be fetched is unsaid (only the config mismatch case is); state it or add it beside the exit-status open question — `tools/repos-manifest/docs/design.md:543-546, 593-594, 963` (Claude adversarial)
+- [ ] (suggestion) Say `add-distro` replaces `config.yaml` whole, as `init` writes it aside and moves it, so an interrupted `add-distro` cannot leave the record unreadable for every distro — `tools/repos-manifest/docs/design.md:204-207` (gemini, codex)
+- [ ] (suggestion) `add-distro <name>` checks `<name>/` before anything checks the name, so `add-distro ..` gets "Move it out of the way"; refuse a name that breaks the spec's name rule first; and distro names that differ only in case collide as directories on some disks, which the spec rules out only for layers — `tools/repos-manifest/docs/design.md:235-237` (gemini, codex)
+- [ ] (suggestion) The small trees show `resolved/` with only `_unnamed.repos` and omit `./system.manifest.yaml`, while `resolve` always writes `layers.txt`, `optional.txt` and its marker; say they are abridged or complete them — `tools/repos-manifest/docs/design.md:114-148` (Claude adversarial, gemini)
