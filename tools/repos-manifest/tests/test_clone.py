@@ -55,7 +55,7 @@ def test_a_nested_key_arrives_with_its_directories_made(setup):
     assert temporaries(system) == []
 
 
-@pytest.mark.parametrize("kind", ["directory", "empty directory", "file", "link"])
+@pytest.mark.parametrize("kind", ["directory", "empty directory", "link"])
 def test_a_destination_that_exists_is_present_and_untouched(setup, tmp_path, capsys, kind):
     system, add = setup
     place = system / "src" / "d"
@@ -64,8 +64,6 @@ def test_a_destination_that_exists_is_present_and_untouched(setup, tmp_path, cap
         (place / "mine.txt").write_text("a person's work\n")
     elif kind == "empty directory":
         place.mkdir()
-    elif kind == "file":
-        place.write_text("a person's file\n")
     else:
         (tmp_path / "elsewhere").mkdir()
         place.symlink_to(tmp_path / "elsewhere")
@@ -78,6 +76,31 @@ def test_a_destination_that_exists_is_present_and_untouched(setup, tmp_path, cap
     assert resolved(after) == resolved(before)
     assert _recorded(system) == {"a"}
     assert "present, not touched (2)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("kind", ["file", "dangling link"])
+@pytest.mark.parametrize("optional", [False, True])
+def test_a_place_that_is_not_a_directory_is_reported(setup, tmp_path, capsys, kind, optional):
+    system, add = setup
+    place = system / "src" / "d"
+    if kind == "file":
+        place.write_text("a person's file\n")
+    else:
+        place.symlink_to(tmp_path / "nowhere")
+    add("d", optional=optional)
+    before = snapshot(tmp_path)
+    capsys.readouterr()
+    assert run(system, "sync") == (0 if optional else 1)
+    after = snapshot(tmp_path)
+    resolved = lambda snap: {k: v for k, v in snap.items() if "resolved" not in k}  # noqa: E731
+    assert resolved(after) == resolved(before)
+    assert _recorded(system) == {"a"}
+    out = capsys.readouterr().out
+    if optional:
+        assert "skipped src/d (optional): is there and is not a directory; left as it is" in out
+    else:
+        assert "ERROR: src/d: is there and is not a directory; left as it is" in out
+        assert "another sync will not change that" in out
 
 
 def test_a_link_inside_src_on_the_way_refuses_the_repo(setup, tmp_path, capsys):

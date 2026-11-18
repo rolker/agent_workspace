@@ -186,6 +186,8 @@ def clone_repo(
     shown = "/".join(parts)
     failed = SKIPPED if repo.optional else FAILED
     if os.path.lexists(place):
+        if not place.is_dir():
+            return RepoResult(shown, failed, "is there and is not a directory; left as it is")
         return RepoResult(shown, PRESENT)
     if not is_in_place(system, parts):
         return RepoResult(shown, FAILED, "a link on the way leads outside its place; not cloned")
