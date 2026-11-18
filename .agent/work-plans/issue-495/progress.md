@@ -641,3 +641,19 @@ Nothing remains open in this pull request before the owner's merge decision. Out
 The owner chose "Resolve, re-check, merge (Recommended)" in a dialog (2026-11-18). The option as shown to him: a background agent merges main into the branch and resolves the one conflict as described (in docs/manifest/design.md, "What the tool has to give": keep the sentence pull request 506 wrote for "A failed resolve changes nothing", drop the "init can be run again" bullet this branch removes), a short review checks the result and CI runs again, and then the host merges without asking him again, provided the review finds nothing and CI is green; if anything else turns up, the host comes back to him.
 
 The finding to address: pull request 508 conflicts with main since pull request 506 merged (4d319d9d). Merge origin/main into feature/issue-495 and resolve that conflict as stated; resolve nothing else by judgment.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #508 at `645971dd`
+**Addressed**: owner Checkpoint (After: merge, Decision: address) at 2026-11-18 16:15 -05:00, which follows Integrated Review at `85c3ed05` (2026-11-18 16:14 -05:00)
+**Commits**: 645971dd (merge of origin/main at 4d319d9d)
+
+### Actions
+- [x] Merge origin/main into feature/issue-495 and resolve the one conflict as the Checkpoint states — `docs/manifest/design.md` "What the tool has to give": kept main's (pull request 506) text of the bullet "A failed resolve changes nothing" (the tool's `resolve` replaces its output whole) and kept this branch's removal of the bullet "`init` can be run again". No other file conflicted.
+
+The section still reads true after the merge: the failed-resolve bullet now credits the tool's `resolve` with whole-or-nothing output and keeps as the ask what `sync` must do when the manifest does not resolve (other repos and the resolved output unchanged, the manifest named as the failure). The "Three of today's guarantees" sentence lists the manifest re-read on every `sync`, `sync` deleting nothing, and the interrupted `init`; it does not list the failed resolve, so nothing is both asked and given. No edit beyond the conflict.
+
+Checks on the merge: `test_documents.py` 11 passed; the tool suite `tools/repos-manifest/tests` 736 passed; `check_design_anchors.sh` exit 0. `tools/repos-manifest/docs/design.md` read where both branches wrote ("resolve", "What is built", the Commands table): no sentences disagree (flat `.repos-manifest/resolved/` and `--out` from 506, `resolved/<distro>/` for a directory per distro from this branch, and the same split under "Where the resolved files and state go"), so no second commit.
