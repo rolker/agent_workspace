@@ -301,7 +301,9 @@ directory is moved into place. An existing output directory is moved aside first
 after, and put back if the move fails. A directory is only replaced when it is empty or holds
 the marker file `.repos-manifest-output` that `resolve` writes, so `--out .` cannot delete a
 person's files. A SIGTERM or SIGHUP while resolving ends the run and removes the hidden
-directory. A run killed outright can leave one behind; the next `resolve` to the same place
+directory. SIGINT, SIGTERM and SIGHUP are held during the two moves and delivered after them,
+and an interrupt that still comes between them puts the previous output back, so the output
+is the previous one or the new one, never neither. A run killed outright can leave one behind; the next `resolve` to the same place
 removes hidden directories beside it that hold the marker or are empty. Two runs writing to
 the same place at once are not supported.
 

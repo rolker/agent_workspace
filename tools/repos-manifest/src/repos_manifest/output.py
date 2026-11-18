@@ -27,7 +27,7 @@ import signal
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 import yaml
 
@@ -42,7 +42,7 @@ _MARKER_TEXT = (
     "# This directory was written by repos-manifest resolve; the next resolve replaces it.\n"
 )
 _SWAP_SIGNALS = tuple(
-    sig for sig in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGHUP", None)) if sig
+    sig for sig in (getattr(signal, name, None) for name in ("SIGINT", "SIGTERM", "SIGHUP")) if sig
 )
 
 
@@ -118,8 +118,8 @@ def _sweep_leftovers(parent: Path, name: str) -> None:
 
 @contextmanager
 def _signals_held():
-    """Hold SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run between
-    them; a held signal is delivered when the renames are done."""
+    """Hold SIGINT, SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run
+    between them; a held signal is delivered when the renames are done."""
     if not hasattr(signal, "pthread_sigmask") or not _SWAP_SIGNALS:
         yield
         return
@@ -135,8 +135,11 @@ def _write_text(path: Path, text: str) -> None:
         handle.write(text)
 
 
-def write_output(out: Path, files: Dict[str, str]) -> List[Path]:
-    """Write `files` as the whole content of `out`; returns the paths written."""
+def write_output(
+    out: Path, files: Dict[str, str], on_replaced: Optional[Callable[[], None]] = None
+) -> List[Path]:
+    """Write `files` as the whole content of `out`; returns the paths written. `on_replaced` is
+    called as soon as the new output is in place, before any held signal is delivered."""
     out_abs = Path(os.path.abspath(out))
     if out_abs.parent == out_abs:
         raise ManifestError(f"--out {out}: cannot be the root directory")
@@ -176,20 +179,22 @@ def write_output(out: Path, files: Dict[str, str]) -> List[Path]:
         with _signals_held():
             if old is not None:
                 os.rename(out_abs, old)  # onto the empty directory mkdtemp made
-            try:
-                os.rename(new, out_abs)
-            except OSError:
-                if old is not None:
-                    # Put the previous output back. If that fails too it stays where it is,
-                    # marked, and is not removed by this run.
-                    previous_output, old = old, None
-                    os.rename(previous_output, out_abs)
-                raise
+            os.rename(new, out_abs)
+            if on_replaced is not None:
+                on_replaced()
     except OSError as exc:
         raise ManifestError(
             f"--out {out}: cannot be written ({exc.strerror or 'an OS error'})"
         ) from None
     finally:
+        # Whatever stopped the run (an OS error, or an interrupt where signals cannot be held),
+        # the output is the previous one or the new one, never neither. What is on the disk
+        # says how far the swap got: no `--out` means the previous output is aside, in `old`.
+        if old is not None and not os.path.lexists(out_abs):
+            try:
+                os.rename(old, out_abs)
+            except OSError:
+                old = None  # it stays where it is, marked, and is not removed by this run
         if new.exists():
             shutil.rmtree(new, ignore_errors=True)
         if old is not None and old.exists():

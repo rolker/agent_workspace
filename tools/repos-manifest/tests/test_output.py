@@ -277,6 +277,78 @@ def test_sigterm_while_resolving_ends_the_run_and_leaves_nothing_behind(
     assert _names(tmp_path) == ["m.manifest.yaml"]
 
 
+def _swap_with(monkeypatch, during_first_rename):
+    """Run `during_first_rename` just after the first rename of the swap (the previous output
+    moved aside, the new one not yet in place)."""
+    real_rename = os.rename
+
+    def rename(src, dst):
+        real_rename(src, dst)
+        if ".old-" in str(dst):
+            during_first_rename()
+
+    monkeypatch.setattr(output.os, "rename", rename)
+
+
+def test_sigint_is_held_during_the_swap(manifest, tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    held = []
+    _swap_with(monkeypatch, lambda: held.append(signal.pthread_sigmask(signal.SIG_BLOCK, [])))
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert held and {signal.SIGINT, signal.SIGTERM, signal.SIGHUP} <= held[0]
+
+
+def test_ctrl_c_during_the_swap_leaves_the_new_output(manifest, tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    _swap_with(monkeypatch, lambda: os.kill(os.getpid(), signal.SIGINT))
+    with pytest.raises(KeyboardInterrupt):
+        _resolve(manifest, out, "--role", "robot", "--distro", "jazzy")
+    assert "# role: robot\n" in (out / "layers.txt").read_text()
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+def test_an_interrupt_between_the_renames_puts_the_previous_output_back(
+    manifest, tmp_path, monkeypatch
+):
+    # Where signals cannot be held, an interrupt can arrive between the two renames.
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    before = {name: (out / name).read_text() for name in _names(out)}
+
+    def interrupt():
+        raise KeyboardInterrupt
+
+    _swap_with(monkeypatch, interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        _resolve(manifest, out, "--role", "robot", "--distro", "jazzy")
+    assert {name: (out / name).read_text() for name in _names(out)} == before
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+def test_sigterm_during_the_swap_says_the_output_was_replaced(
+    manifest, tmp_path, monkeypatch, capsys
+):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    capsys.readouterr()
+    received = []
+    previous = signal.signal(signal.SIGTERM, lambda signum, _frame: received.append(signum))
+    _swap_with(monkeypatch, lambda: os.kill(os.getpid(), signal.SIGTERM))
+    try:
+        rc = _resolve(manifest, out, "--role", "robot", "--distro", "jazzy")
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert rc == 128 + signal.SIGTERM
+    assert received == [signal.SIGTERM]
+    assert capsys.readouterr().err == (
+        f"ERROR: stopped by SIGTERM after --out {out} was replaced by the new output\n"
+    )
+    assert "# role: robot\n" in (out / "layers.txt").read_text()
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 # --- The CLI ---------------------------------------------------------------------------------
 
 

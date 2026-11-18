@@ -71,11 +71,17 @@ def _signals_end_the_run():
             signal.signal(sig, handler)
 
 
-def _stopped(exc: Stopped) -> int:
-    print(
-        f"ERROR: stopped by {signal.Signals(exc.signum).name}; nothing was written",
-        file=sys.stderr,
-    )
+def _stopped(exc: Stopped, replaced_out=None) -> int:
+    """`replaced_out` is the `--out` the new output had replaced when the signal came, if it
+    had: a signal held during the swap is delivered after it."""
+    name = signal.Signals(exc.signum).name
+    if replaced_out is None:
+        print(f"ERROR: stopped by {name}; nothing was written", file=sys.stderr)
+    else:
+        print(
+            f"ERROR: stopped by {name} after --out {replaced_out} was replaced by the new output",
+            file=sys.stderr,
+        )
     # The previous handlers are back: the signal is delivered again, to end the process as it
     # would have or to run the caller's own handler.
     signal.raise_signal(exc.signum)
@@ -97,13 +103,18 @@ def cmd_resolve_new(args: argparse.Namespace) -> int:
         )
     if args.cache_dir is not None:
         raise ManifestError("--cache-dir is for a manifest in the earlier format")
+    replaced = []
     try:
         with _signals_end_the_run():
             loaded = _load_new(args)
             resolved = selection.resolve(loaded, args.role, args.distro, args.with_groups or [])
-            written = output.write_output(Path(args.out), output.output_files(resolved))
+            written = output.write_output(
+                Path(args.out),
+                output.output_files(resolved),
+                on_replaced=lambda: replaced.append(args.out),
+            )
     except Stopped as exc:
-        return _stopped(exc)
+        return _stopped(exc, replaced[0] if replaced else None)
     if not resolved.layers:
         print("WARNING: no repo is selected for this machine", file=sys.stderr)
     for path in written:
