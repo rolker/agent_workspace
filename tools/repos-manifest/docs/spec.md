@@ -425,11 +425,14 @@ command that writes there.
   - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is
     another key followed by `/` and more, so one repo is never cloned inside another. Its
     parts are separated by single `/`, with none at the start or the end, no `\` and no part
-    that is `.`, so each place on disk has one key.
+    that is `.`, so each place on disk has one key. It does not start with `#`, so that a
+    list of keys, one per line, can hold comments.
   - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`
     and `-`, starting with a letter.
-  - A layer is not named `src`, `build`, `install` or `log`. Those names are used for the
-    directories of the unnamed layer.
+  - A layer is not named `src`, `build`, `install` or `log`, in any mix of upper and lower
+    case. Those names are used for the directories of the unnamed layer.
+  - No two layer names differ only in case. A layer's name is a file and directory name, and
+    some disks treat names that differ only in case as one.
 - No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
     read one as an option, and nor do the user, the host or the port of a `url`. The host is

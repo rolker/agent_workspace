@@ -100,6 +100,16 @@ def test_an_odd_repo_key_is_refused(key):
     _refused(f"repositories:\n  {key}:\n" + REPO, "a repo key")
 
 
+@pytest.mark.parametrize("key", ["'#a'", "'#'", "'#a/b'"])
+def test_a_repo_key_that_starts_with_a_hash_is_refused(key):
+    # optional.txt lists repo keys, one per line, and its readers skip lines starting with '#'.
+    _refused(f"repositories:\n  {key}:\n{REPO}", "a repo key does not start with '#'")
+
+
+def test_a_hash_later_in_a_repo_key_is_accepted():
+    assert list(_m(f"repositories:\n  a#b:\n{REPO}").repositories) == ["a#b"]
+
+
 def test_a_repo_key_that_is_not_a_string_is_refused():
     _refused("repositories:\n  12:\n" + REPO, "a repo key must be a path")
 
@@ -218,6 +228,17 @@ def test_a_layer_without_a_layers_list_is_an_error():
 @pytest.mark.parametrize("name", ["src", "build", "install", "log"])
 def test_a_layer_cannot_have_a_reserved_name(name):
     _refused(_one_repo(top=f"layers: [{name}]\n"), f"a layer cannot be named '{name}'")
+
+
+@pytest.mark.parametrize("name", ["Src", "BUILD", "Install", "lOg"])
+def test_a_reserved_layer_name_is_compared_without_case(name):
+    _refused(_one_repo(top=f"layers: [{name}]\n"), f"a layer cannot be named '{name}'")
+
+
+def test_layer_names_that_differ_only_in_case_are_refused():
+    _refused(
+        _one_repo(top="layers: [core, Core]\n"), "layers 'core' and 'Core' differ only in case"
+    )
 
 
 def test_a_layer_named_twice_is_refused():

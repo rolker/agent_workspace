@@ -255,13 +255,23 @@ class _Checker:
                 raise self.error("distros", "is empty; leave it out for a manifest with no distros")
 
         layers = self.names(raw.get("layers", []), "layer", "layers")
+        # Layer names are file and directory names, and some disks treat names that differ
+        # only in case as one; so they are compared without case here.
+        by_case: Dict[str, str] = {}
         for layer in layers:
-            if layer in RESERVED_LAYERS:
+            if layer.lower() in RESERVED_LAYERS:
                 raise self.error(
                     "layers",
                     f"a layer cannot be named {layer!r}; {', '.join(RESERVED_LAYERS)} are the"
-                    " directories of the unnamed layer",
+                    " directories of the unnamed layer, in any case",
                 )
+            if layer.lower() in by_case:
+                raise self.error(
+                    "layers",
+                    f"layers {by_case[layer.lower()]!r} and {layer!r} differ only in case; some"
+                    " disks treat them as one",
+                )
+            by_case[layer.lower()] = layer
 
         groups = self.names(raw.get("groups", []), "group", "groups")
 
@@ -326,6 +336,9 @@ class _Checker:
             raise self.error(where, "a repo key is a path with '/' between its parts, no '\\'")
         if key.startswith("/"):
             raise self.error(where, "a repo key is a relative path")
+        if key.startswith("#"):
+            # optional.txt lists repo keys one per line, and its readers skip `#` lines.
+            raise self.error(where, "a repo key does not start with '#'")
         if key.endswith("/") or "//" in key:
             raise self.error(where, "a repo key has no empty part (no '//', no '/' at the end)")
         for part in key.split("/"):
