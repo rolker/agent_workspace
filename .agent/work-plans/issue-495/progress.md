@@ -204,3 +204,11 @@ Host instructions for the revision (mechanism; owner may veto):
 - local_manifest stays one path, the same in every distro; add-distro takes no flag for it (Plan Review finding 3).
 - Take every other Plan Review finding: the places in the documents the table missed (finding 4), what sync does when the manifest gains or drops distros (5), one rule for which distro every command uses inside a system directory, state.yaml's shape left to issue 500 (8).
 - A manifest with no distros stays flat and has nothing to add.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 15:18 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-495/plan.md` at `e7f02e02`
+
+Revised around the owner's three answers: flat by default with `init --distro-dirs` for a directory per distro, `add-distro` as its own command (flat systems refuse), and `distros` as a mapping in config.yaml whose entries may carry their own manifest. The plan states which distro and which manifest each command reads, what `sync` does when `distros:` changes, and every place the rule touches, including five sentences of docs/manifest/design.md.
