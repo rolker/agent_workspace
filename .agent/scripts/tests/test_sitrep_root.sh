@@ -66,6 +66,16 @@ mkdir -p "$R/both/docs"; printf 'a\n' > "$R/both/docs/roadmap.md"; printf 'b\n' 
 mkroot onlyr https://github.com/acme/onlyr.git
 printf '# Roadmap\n\nNo section here.\n' > "$R/onlyr/ROADMAP.md"
 mkroot named-ws https://github.com/acme/named-ws.git
+# parts: a project whose docs/roadmap.md points at a sub-roadmap (Root .);
+# partsr: one whose ROADMAP.md points at a part with a Root of its own.
+mkroot parts https://github.com/acme/parts.git
+mkdir -p "$R/parts/docs/part"
+printf '# Roadmap\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Root file | file-exists docs/roadmap.md |\n\n| Sub-roadmap | Root |\n|---|---|\n| `docs/part/roadmap.md` | . |\n' > "$R/parts/docs/roadmap.md"
+printf '# Part\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Part file | file-exists docs/part/roadmap.md |\n| Part issue | gh-issue 8 closed |\n' > "$R/parts/docs/part/roadmap.md"
+mkroot partsr https://github.com/acme/partsr.git
+mkdir -p "$R/partsr/tool/docs"
+printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| tool/docs/roadmap.md | tool |\n' > "$R/partsr/ROADMAP.md"
+printf '# Tool\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Tool open | file-exists docs/missing.md |\n' > "$R/partsr/tool/docs/roadmap.md"
 mkroot trunk https://github.com/acme/trunk.git
 g -C "$R/trunk" branch -q -m main trunk
 g -C "$R/trunk" update-ref refs/remotes/origin/trunk HEAD
@@ -91,6 +101,8 @@ noroad      single_project  $R/noroad
 both        single_project  $R/both
 onlyr       single_project  $R/onlyr
 workspace   single_project  $R/named-ws
+parts       single_project  $R/parts
+partsr      single_project  $R/partsr
 trunk       single_project  $R/trunk
 nodefault   single_project  $R/nodefault
 twodefault  single_project  $R/twodefault
@@ -172,6 +184,37 @@ root_of "$R/onlyr"
 OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/onlyr" --roadmap "$(val roadmap)" 2>&1)"
 [[ "$(cut -f1-3 <<< "$OUTR")" == $'section\t(no Direction section)\tunchecked' ]] \
     && pass "no Direction section: one section row, no line invented" || fail "onlyr rows: '$OUTR'"
+
+echo "TEST: a project's roadmap points at a sub-roadmap (issue #488): one code path for every root"
+# A stub gh for the checks below: no network; issue 8 is closed.
+mkdir -p "$SB/bin"
+printf '#!/usr/bin/env bash\necho CLOSED\n' > "$SB/bin/gh"; chmod +x "$SB/bin/gh"
+root_of "$R/parts"
+OUTR="$(PATH="$SB/bin:$PATH" bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$(val root)" --roadmap "$(val roadmap)" 2>&1)"
+[[ "$(cut -f1-3 <<< "$OUTR")" == $'line\tRoot file\ttrue\npart\tdocs/part/roadmap.md\ttrue\nsubline\tdocs/part/roadmap.md: Part file\ttrue\nsubline\tdocs/part/roadmap.md: Part issue\ttrue' ]] \
+    && pass "project (docs/roadmap.md): the pointer is followed through sitrep_root.sh's root and roadmap" || fail "parts rows: '$OUTR'"
+root_of "$R/partsr"
+OUTR="$(PATH="$SB/bin:$PATH" bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$(val root)" --roadmap "$(val roadmap)" 2>&1)"
+[[ "$(val roadmap)" == "$R/partsr/ROADMAP.md" && "$(cut -f1-3 <<< "$OUTR")" == $'part\ttool/docs/roadmap.md\ttrue\nsubline\ttool/docs/roadmap.md: Tool open\tfalse' ]] \
+    && pass "project (ROADMAP.md): a part with a Root of its own is read relative to that Root; a pointer-only section has no section row" || fail "partsr rows: '$OUTR'"
+printf '%s\n' "$OUTR" > "$SB/rows-partsr.tsv"
+NS="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --next-steps-from "$SB/rows-partsr.tsv" 2>&1)"
+[[ "$NS" == $'(root)\tnone open\ntool/docs/roadmap.md\tTool open\tfalse' ]] \
+    && pass "project: the part's next step is given by its path from the saved rows" || fail "partsr next steps: '$NS'"
+# The workspace session: the same grammar, on a copy of its roadmap that
+# points at a part (the original is put back after).
+cp "$WSC/docs/roadmap.md" "$SB/ws-roadmap.bak"
+mkdir -p "$WSC/docs/part"
+printf '## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| docs/part/roadmap.md | . |\n| docs/part/missing.md | . |\n' > "$WSC/docs/roadmap.md"
+printf '## Direction\n\n| Line | Check |\n|---|---|\n| WS part | file-exists docs/design.md |\n' > "$WSC/docs/part/roadmap.md"
+root_of "$WSC"
+OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$(val root)" --roadmap "$(val roadmap)" 2>&1)"
+[[ "$(cut -f1-4 <<< "$OUTR")" == $'part\tdocs/part/roadmap.md\ttrue\tread\nsubline\tdocs/part/roadmap.md: WS part\ttrue\tfile-exists docs/design.md\npart\tdocs/part/missing.md\tunchecked\tnot found' ]] \
+    && pass "workspace session: the same pointer grammar, a broken pointer reported" || fail "ws rows: '$OUTR'"
+cp "$SB/ws-roadmap.bak" "$WSC/docs/roadmap.md"
+rm -f "$WSC/docs/part/roadmap.md" "$SB/ws-roadmap.bak"
+rmdir "$WSC/docs/part"
+
 root_of "$R/both"
 [[ "$(val roadmap)" == "$R/both/docs/roadmap.md" ]] && pass "both present: docs/roadmap.md comes first" || fail "both: '$OUT'"
 
@@ -425,6 +468,14 @@ wts "$R/proj" "$SB/rows-sub.tsv"
     || fail "named_part: 4='$(field 4 named)/$(field 4 named_part)' 3='$(field 3 named_part)' 12='$(field 12 named)/$(field 12 named_part)' 13='$(field 13 named_part)' 20='$(field 20 named_part)'"
 wts "$R/proj"
 [[ "$(field 4 named_part)" == "(absent)" ]] && pass "named_part: absent without a rows file" || fail "named_part without rows: '$(field 4 named_part)'"
+
+wt "$R/parts" parts 8; wt "$R/parts" parts 9
+root_of "$R/parts"
+PATH="$SB/bin:$PATH" bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$(val root)" --roadmap "$(val roadmap)" > "$SB/rows-parts.tsv" 2>/dev/null
+wts "$R/parts" "$SB/rows-parts.tsv"
+[[ "$(field 8 named)" == no && "$(field 8 named_part)" == docs/part/roadmap.md && "$(field 9 named_part)" == "" ]] \
+    && pass "project: a worktree for an issue the sub-roadmap's gh-issue check names is marked with the sub-roadmap's path" \
+    || fail "parts named_part: 8='$(field 8 named)/$(field 8 named_part)' 9='$(field 9 named_part)'"
 
 echo "TEST: a package worktree whose checkouts of its repository disagree on the branch"
 wts "$R/proj"
