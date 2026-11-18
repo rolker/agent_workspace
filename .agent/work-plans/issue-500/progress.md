@@ -774,3 +774,14 @@ None open.
 
 ### False positives
 None (no hosted comments).
+
+## Checkpoint
+**When**: 2026-11-18 18:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+The owner chose "Outside pass, then merge (Recommended)" in a dialog (2026-11-18) for pull request 512. The option as shown to him: run Gemini and Codex over the last two fix rounds' code only; "If they find nothing of substance, I merge without asking again and reinstall the tool on main; if they find something, I fix it and come back to you."
+
+What is addressed: the outside models last read the branch at 03171755 (pre-push round 2). The step is a PR-mode review of pull request 512 with the cross-model reviewers, centred on `git diff 03171755..HEAD -- tools/repos-manifest/src`. It is a review, not a fix round; nothing in the code changes unless it finds something.
