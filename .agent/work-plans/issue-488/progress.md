@@ -463,3 +463,13 @@ Rounds 1 to 3 of the local review are closed (every box ticked by the fix rounds
 - [ ] (suggestion, Local Review (Pre-Push) @ `53ab3d3`, deferred by the owner at publish) A reference-style link definition with a space inside angle brackets, `[r]: <my part/design.md#x>`, goes through the run scan and has its path cut at the space (checks `part/design.md`); the inline `](<...>)` form is handled. Confirmed in the code at this head (the angle-bracket loop matches only `](<`), and `git grep` finds no tracked Markdown file using the form, so no current check result is wrong. Fix when taken up: match `^ {0,3}\[[^]]+\]:[ \t]*<[^<>]*>` in the same loop, with an h13-style test, or name the limit in the header. Not must-fix. — `.agent/scripts/check_design_anchors.sh:462`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 12:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner chose "Merge, F1 deferred" with CI passed on all four checks. F1 is the one open suggestion of the Integrated Review: a reference-style link definition with a space inside angle brackets has its path cut at the space in check_design_anchors.sh. He deferred it at the publish checkpoint too; no tracked file uses that form.
