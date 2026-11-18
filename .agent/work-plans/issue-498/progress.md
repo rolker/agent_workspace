@@ -215,3 +215,36 @@ The plan is thorough, follows the Checkpoint, and its factual claims about the c
 - [ ] List every `.cache` use in the adapter and its tests and change them together (finding 6). Make the dispatch-on-failure rule explicit (finding 7).
 - [ ] Smaller items: leftover siblings (8), `--cache-dir` (9), baseline count and the `developer` role in the end check (10), the `select.py` name (11), a test for a location form the tool cannot read, a `.` key component, non-http(s) redirects.
 - [ ] 3.14 fix: use `stat()` in place of `is_file()` in `_resolve_one`, with no `pathconf` branch.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is needs-work with two high findings; revising a plan is a mechanism answer the checkpoint table allows the host; the answers to the plan's open questions below are listed for the owner's veto)
+**After**: plan
+**Decision**: revise
+
+The host, running /orchestrator, read the Plan Review (verdict needs-work: two high, three medium, six low findings, and a note on additions). Revise for every finding, with these answers.
+
+Findings:
+1. (high) resolve writes all three parts of its output from part 1 on, as the spec and the design say: the per-layer .repos files, the layer order, and which repos are optional (by repo key). Tests for each.
+2. (high) The adapter and a manifest without roles or distros. The tool keeps the spec's rule: a role given to a manifest with no roles, or a distro to one with no distros, is an error. The adapter's current route always records a role and a distro and needs the distro to find the ROS install, so on that route it requires a manifest that has roles and distros, and passes the tool's error through otherwise. Drop the plan's part 3 test of the adapter with a plain .repos source; say in the note on moving that the adapter's current route needs roles: and distros: in the manifest, and that a manifest without them is for the tool used directly until the thin adapter (issue 503). List the preflight, validate and docs/manifest/design.md changes this needs, if any.
+3. (medium) Part 3 covers _rc_relabel_provenance and test_mr_provenance_names_the_source: say what the head comment prints for the manifest's location so the adapter's rewrite still finds it, and correct the comment that will be false after part 2.
+4. (medium) The check for invisible and direction-changing characters reads the raw file text, comments included, with newline allowed. Test with such a character inside a comment.
+5. (medium) The time limit on git calls applies only when there is no terminal. At a terminal git or ssh may ask for a password and wait for a person, as the design says. Record that in design.md.
+6-11. (low) Take each as the review states it: find every use of the cache directory in the adapter and its tests, not only the option; a read or parse failure goes to the old reader while both exist, so existing error-message tests keep their behaviour; leftover temporary output directories from a killed run are swept on the next run; --cache-dir is removed, not kept as a named error; fix the baseline count (333 tests: 331 pass, 2 fail on 3.14) and the "seven layers" end check, which holds for the developer role; do not name a module select.py or anything else that shadows a standard library module.
+12. List the plan's additions in the plan, each with its reason. Also refuse a "." path part in a repo key, and a redirect to any scheme other than http or https. Add a test for a location form the tool cannot read.
+
+The Python 3.14 fix: use the smaller form the review gives (in the old reader, stat the candidate; "not found" on FileNotFoundError, any other OSError to the existing "cannot be followed" handler). The old test stays until part 3.
+
+The plan's ten open questions, answered:
+1. The list of optional repos is written in the output (finding 1).
+2. A type other than git is refused by these tools, with a message. Record in spec.md that the format takes any type a .repos file takes and that these tools read git only.
+3. Odd repo keys (a doubled or leading or trailing slash, a "." or ".." part, a backslash) are refused.
+4. An empty distros list is refused.
+5. A role given to a manifest with no roles, or a distro to one with no distros, is an error (and see finding 2).
+6. An http or https base: a 60 second limit, a 1 MiB size limit, and a redirect to anything but http or https refused, as is one from https to http.
+7. The git time limit applies only when there is no terminal (finding 5).
+8. The head comment names the commit read for a base in a git repo.
+9. In the layout the adapter reads, "every repo in the layer is optional" counts the repos selected for the machine, with a warning on a mixed layer.
+10. Adding Python 3.14 to the CI job is the owner's to decide and has been put to him; until he answers, the plan leaves CI unchanged.
