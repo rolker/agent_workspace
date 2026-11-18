@@ -160,8 +160,10 @@ else
     #
     # Recovery: a partial creation may have left a worktree on disk even on
     # non-zero exit (e.g., set -e fires after `git worktree add` succeeds but
-    # before bookkeeping finishes). Run `git worktree list` and, if anything
-    # under worktrees/<type>/ matches, offer the user
+    # before bookkeeping finishes). Run `$WS_ROOT/.agent/scripts/worktree_list.sh`
+    # (it works from a project root outside git) and, if anything under
+    # worktrees/<type>/ (a project's: its root's worktrees/, or its
+    # override) matches, offer the user
     # `$WS_ROOT/.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or
     # `--skill <name>`) to clean up before retrying.
     exit 1
