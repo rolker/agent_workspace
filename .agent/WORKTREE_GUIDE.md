@@ -97,7 +97,8 @@ resolves to its own root (or its `worktrees=` override); an unregistered name
 is refused with the registration command (issue #265 part 4: only a registered
 project has worktrees). A project root need not be a git repository (a
 plain directory holding clones, issue 503); each repo a worktree is made of
-must be, and `worktree_create.sh` refuses one that is not before it makes
+must be the top of its own git repository (not a directory inside an
+enclosing one), and `worktree_create.sh` refuses one that is not before it makes
 anything (a single-repository project's one repo is its root). On first
 worktree creation under a registered root that is a git repository, the
 workspace appends `worktrees/` to that root's own

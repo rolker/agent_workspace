@@ -579,7 +579,8 @@ Status: `decided`
   project has worktrees: an unregistered name is refused, and the `worktrees/project/<repo>/`,
   `.workspace-worktrees/` and `project/worktrees/` locations are no longer searched (#265 part 4).
   A project root need not be a git repository (a plain directory holding clones); each repository a
-  worktree is made of must be, and `worktree_create.sh` checks that before it makes anything, so a
+  worktree is made of must be the top of its own git repository (not a directory inside an enclosing
+  one), and `worktree_create.sh` checks that before it makes anything, so a
   single-repository project, whose one repository is its root, still needs one (issue 503).
   Naming, the `.git/info/exclude` line the workspace adds to a project root that is a git
   repository, and the `COLCON_IGNORE`
