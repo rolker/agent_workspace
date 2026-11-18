@@ -509,3 +509,26 @@ Host decisions (owner may veto):
 - docs/manifest/design.md: the ask "init can be run again" leaves the list of things the tool's design does not give yet, because the tool's design now gives what it was for: init makes the settings folder and its record in one step, so an interrupted init leaves either nothing, and registration is run again, or a system whose first sync is finished by sync. It moves to the guarantees the workspace relies on. docs/manifest/roadmap.md's mention of it is corrected in the same change. Undoing it: put the bullet back.
 - init with no --distro on a manifest that has distros is refused, with the next step "name one with --distro".
 - The tool's error for a settings folder whose config.yaml cannot be read tells the person to repair or remove the folder; for the workspace, that error counts as the tool not answering, so the instance is not treated as set up.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-495 at `131943f8`
+**Addressed**: Local Review (Pre-Push) at `bbb18d04` (2026-11-18 15:53 -05:00)
+**Commits**: dab7fb0f, 1b957932, 45a5acd0, 32b7bda2, dc9b9d6f, 21b76690, 3c0f97a8, 131943f8
+
+### Actions
+- [x] (must-fix 1) The "`init` can be run again" ask dropped from "What the tool has to give"; "Two of today's guarantees" is now three, adding that an interrupted `init` leaves either nothing, in which case registration is run again, or a system whose first sync `sync` finishes; roadmap line drops "an `init` that can be run again" (words only, its empty check cell untouched). No count other than "Two" was in that section; no other sentence describes a folder without a complete record — `docs/manifest/design.md` "What the tool has to give", `docs/manifest/roadmap.md:27`
+- [x] (must-fix 2) Refusals row: `init`, no `--distro` with a manifest that has `distros:`, next step "Name one with `--distro`", before the unlisted-distro rows — `tools/repos-manifest/docs/design.md` "Refusals"
+- [x] (must-fix 3) Unlisted-`--distro` row split by layout: without `--distro-dirs` "Name a distro it lists, or give the version of the manifest that lists it with `--manifest-ref`"; with it, the `add-distro` next step; new row for a `--distro` without `--distro-dirs` on a manifest with no `distros:` ("Set up without `--distro`") — "Refusals"
+- [x] (suggestion 1) `init` gives the unreadable-`config.yaml` error, not the "system is set up" refusal; next step: repair or remove that `.repos-manifest/` folder — "Setting up with init"
+- [x] (suggestion 2) The tool's error for an unreadable record counts as the tool not answering, so the instance is not treated as set up — `docs/manifest/design.md` route order
+- [x] (suggestion 3) "A flat system has one entry, and the key is absent when the manifest has no distros" — "More than one distro"
+- [x] (suggestion 4) The existing-directory row says it is checked after the manifest is read — "Refusals"
+- [x] (suggestion 5) Same row covers a file it writes such as `setup.bash` — "Refusals"
+
+Host decisions applied as given in the Checkpoint at 15:52 (listed for the owner's veto).
+
+Checks: `bash .agent/scripts/check_design_anchors.sh` printed nothing and exited 0. The tool's documents were grepped for workspace, adapter, `.agent/` and `ros2_colcon`: only "colcon workspace" and prototype.md's issue links, both untouched by this round. The `resolve` section's first lines untouched. Commits ran the hooks with `SKIP=validate-script-tests`; no script changed, so no suite applies; the full pre-commit pass is left to the host. One line in "More than one distro" is now longer than its neighbours (the suggestion 3 clause), left unreflowed by the no-reflow rule.
