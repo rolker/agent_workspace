@@ -504,3 +504,44 @@ Hand runs with local remotes: the owner's case (`--distro-dirs --distro rolling`
 - [x] (suggestion) init in a read-only directory names the tool's temporary path ("…/.repos-manifest-tmp-…: Permission denied") rather than the directory — `tools/repos-manifest/src/repos_manifest/init.py:115`
 - [x] (suggestion) sync.py and init.py use output.py's private `_process_has_ended`, `_make_writable` and `_signals_held`; make them public names since they are shared — `tools/repos-manifest/src/repos_manifest/sync.py:89`
 - [x] (suggestion) A second signal during the finally blocks aborts cleanup and the state write; the next sweep and part 2's no-record rule recover, so not worth more than a note — `tools/repos-manifest/src/repos_manifest/signals.py:22`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 17:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `317f66d8`
+**Addressed**: Local Review (Pre-Push) at `bee08a84` (2026-11-18 17:05 -05:00)
+**Commits**: `e61d8104` (merge of origin/main), `3c72eb98`, `6d1fea11`, `c4767294`, `18c4d2bf`, `e21742bb`, `abe90f09`, `58083832`, `2a26390c`, `eed91acc`, `f03a972d`, `b6222bb5`, `02dcbb47`, `d59d8088`, `317f66d8`
+
+origin/main (`0a1502b4`, with pull request 508's layout design) merged cleanly as `e61d8104`; the tool's suite passed on it unchanged (823 passed). Each code fix has a test that failed before it, except the renames of suggestion 9 (no behaviour) and the regression case of suggestion 2's empty aside. Suggestions are done by host decision (the handoff), listed for the owner's veto.
+
+### Actions
+- [x] (must-fix) Two `--distro` that differ only in case, with `--distro-dirs`, are refused ("Name one of them"), checked after "more than one --distro without --distro-dirs" and before the manifest is read, as the design's table orders it; tested with a manifest that lists both, one, and none. Found: the new reader (`manifest.py`, `names()`) accepts `distros: [rolling, Rolling]` (its name rule is `[A-Za-z][A-Za-z0-9_-]*`, with a duplicate check only); the old reader's lower-case distro rule in `schema.py` does not apply to it. Not changed here (another issue's code) — `tools/repos-manifest/src/repos_manifest/init.py:48`
+- [x] (must-fix) `write_output` takes `label` (default `--out <out>`) and `again` (default "resolve to the same place"); `sync_distro` passes "the resolved files' directory <path>" and "sync". resolve's messages and `test_output.py` are unchanged — `tools/repos-manifest/src/repos_manifest/output.py:272`, `sync.py`
+- [x] (must-fix) One shape check each in `read_config` and `_read_state_data`: wrong types at any level, unknown `layout`, `distro-dirs` without distros, empty `distros`, a flat system with two distros, a setting in a distro's entry ("not read in this version"); every error names the file and what is wrong. CLI test: no shape gives "internal error" or exit 0 — `tools/repos-manifest/src/repos_manifest/system.py`
+- [x] (must-fix) `require_tools` asks `git rev-parse --local-env-vars` once per run and returns the environment without those names; every `vcs import` and `git` call gets it; a git that cannot be asked is a refusal. Nothing about prompts is set. Test: with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` set to another repo, `init` clones and records each clone's own commit, the other repo unchanged (before: all three clones failed) — `tools/repos-manifest/src/repos_manifest/sync.py:55`
+- [x] (suggestion 1) The commit is read from the clone before the rename; signals held over the rename and the state write; state written whole after each repo. Test: a SIGKILL during the second clone keeps the first's record (before: no state.yaml) — `sync.py` `clone_repo`
+- [x] (suggestion 2) `init`'s `sweep_asides` removes only a dead-pid directory that is empty or holds only config.yaml; anything else of that name is left with a warning — `init.py`
+- [x] (suggestion 3) `create_file` writes a temporary in `.repos-manifest/` and hard-links it into place; a file made meanwhile is left — `system.py`
+- [x] (suggestion 4) `stop_exit` flushes stdout and stderr before re-raising the signal — `signals.py`
+- [x] (suggestion 5) `closing()` (shared by init and sync): "run sync to finish once they can be fetched" only for a failed fetch; for a repo in the way, "another sync will not change that" — `sync.py`
+- [x] (suggestion 6) A place that is there and is not a directory (file, dangling link) is that repo's error (skipped when optional), exit 1 — `sync.py`
+- [x] (suggestion 7) Temporaries stay in `.repos-manifest/`; an EXDEV rename gives a message naming both places and the one-filesystem limit, no copy fallback; stated in the design. Tested on a constructed EXDEV error (no test can mount a filesystem) — `sync.py` `rename_failure`
+- [x] (suggestion 8) `init` in an unwritable directory: "<dir>: cannot be written (Permission denied); nothing was set up" — `init.py` `make_system_dir`
+- [x] (suggestion 9) `process_has_ended`, `make_writable`, `signals_held` are public in output.py; behaviour and tests unchanged — `output.py`
+- [x] (suggestion 10) No code; the design says a second stop signal during cleanup cuts it short and the next run's sweep removes what is left — `docs/design.md`
+
+### Design documents (`317f66d8`, on main's text)
+- `tools/repos-manifest/docs/design.md`: "Setting up with init" (the aside and its sweep, config.yaml's shape errors, the stub setup.bash, the summary for several distros, the question and `--yes`); Refusals (rows for no vcs/git and a non-terminal input, and a note that next steps naming `add-distro` or `--manifest-ref` are left out until built); "Where the resolved files and state go" (state.yaml's shape, written after each repo, no lock); resolve's lock sentence no longer names issue 500; "sync" (a role or group a distro's manifest lacks; a distro that does not resolve is reported and the others go on; the exit status; how a missing repo is cloned, the one-filesystem limit, what a stop, a second stop or a kill leaves, the closing advice); "What the tools rely on" (vcs from vcs2l or vcstool on PATH; the git variables removed); "What is built" (init and sync to part 1's extent, with what is not built); "Open questions" (three removed; removing a distro and the add-distro half of the role/group question stay).
+- `tools/repos-manifest/README.md`: "What works today" (init and sync, what they need) and "Development" (the test extra, git, vcs).
+- Left unchanged: `tools/repos-manifest/docs/roadmap.md` and `docs/manifest/roadmap.md` — their Direction tables hold no status, and no line is fully true yet ("init and sync set up and update", "gains another later", "the commands the adapter calls" all need part 2 or add-distro). `.agent/knowledge/build_and_test.md` has no line on the tool (the plan's "nothing fetches yet" line is not there). The plan's README sentence on ssh passphrase prompts was not added: not verified here.
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 868 passed; vcs: /usr/bin/vcs (vcs 0.3.0), vcstool.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: Results: 1014 passed, 0 failed, 0 skipped.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0, no output.
+- black and flake8 by the commit hooks. Full pre-commit pass left to the host. No script under `.agent/scripts/` changed.
+- Hand run (scratchpad, local remotes, two layers, an optional repo with no remote): `init ../m.manifest.yaml --distro-dirs --distro rolling --role developer --yes` exit 0, cloned 2, optional skipped; `sync` exit 0, optional retried and skipped, "present, not touched (2)"; tree, config.yaml and state.yaml as the design says. Removed afterwards.
+
+Left open: none from this review. The manifest reader's acceptance of distro names differing only in case is for the reader's owner.
