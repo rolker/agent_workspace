@@ -97,3 +97,11 @@ Spec gaps, settled by the host from what the owner already decided. Each part up
 - Reading a base from a git repo keeps the time limit on git calls and the transport rule, uses git as it is set up on the machine, and lets git or ssh ask for a password at a terminal. The no-hook, no-filter and no-prompt guards go, by the owner's decision of 2026-11-17 on how far the tool's checks go. No parent cache is kept between runs.
 
 The existing user (part 3). The adapter keeps reading layers.txt, optional_layers.txt and repos/<layer>.repos. In that layout a layer is listed as optional when every repo in it is optional, and the unnamed layer is written as _unnamed. An old-format manifest is refused with a message that points at the note on moving. Optional repos inside a layer that also has required repos are not expressible in that layout; say so in the note, and leave the per-repo form to the thin adapter (issue 503).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 13:40 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `b9ed981a`
+
+Three pull requests: (1) a reader for one new-format manifest with its per-layer output, validate, the project11 fixture (private repo renamed) and the 3.14 fix, beside the old reader; (2) base in its three location forms with reading order and merge; (3) the manifest-dir layout, converted adapter fixtures, removal of the old reader and the note on moving. Ten open questions for the owner are listed in the plan, each with a default.
