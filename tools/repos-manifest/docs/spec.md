@@ -271,7 +271,8 @@ resolves the manifest above for the role `robot` with the extra group `ben-hardw
 
 If `roles:` is absent, the manifest has one unnamed role that switches on no group, and no
 role is given when resolving; giving one is an error. If `roles:` is present, a role is given
-when resolving. A role is always a list, `[]` when it switches on nothing.
+when resolving. A role is always a list, `[]` when it switches on nothing. An empty `roles:`
+mapping is an error, as no role could be resolved.
 
 Open: whether a role should also be able to name single repos, or pick layers.
 

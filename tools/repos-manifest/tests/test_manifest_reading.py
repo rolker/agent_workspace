@@ -247,6 +247,10 @@ def test_groups_on_a_repo_given_as_a_string_is_refused():
     _refused(_one_repo("    groups: ui\n", top="groups: [ui]\n"), "groups: must be a list")
 
 
+def test_an_empty_roles_mapping_is_refused():
+    _refused(_one_repo(top="roles: {}\n"), "roles: is empty; leave it out for a manifest with no")
+
+
 def test_roles_must_be_a_mapping():
     _refused(_one_repo(top="roles: [robot]\n"), "roles: must be a mapping")
 

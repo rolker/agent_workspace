@@ -272,6 +272,8 @@ class _Checker:
                 raise self.error(
                     "roles", f"must be a mapping of role names, got {_type_name(roles_raw)}"
                 )
+            if not roles_raw:
+                raise self.error("roles", "is empty; leave it out for a manifest with no roles")
             roles = {}
             for role, role_groups in roles_raw.items():
                 self.name(role, "role", "roles")
