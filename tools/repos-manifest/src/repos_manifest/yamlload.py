@@ -18,18 +18,53 @@ class ManifestError(Exception):
 
 # Characters no key or value may hold: control characters (newline, carriage return, tab, NUL,
 # DEL, NEL, ...), line and paragraph separators, invisible format characters (zero-width
-# spaces, the byte-order mark, bidirectional overrides such as U+202E) and any space other than
-# the ASCII one (no-break space and friends).
-_UNSAFE_CATEGORIES = ("Cc", "Cf", "Zl", "Zp")
+# spaces, the byte-order mark, bidirectional overrides such as U+202E), private-use, surrogate
+# and unassigned code points (a later Unicode version may make an unassigned one invisible),
+# and any space other than the ASCII one (no-break space and friends).
+_UNSAFE_CATEGORIES = frozenset(("Cc", "Cf", "Cn", "Co", "Cs", "Zl", "Zp"))
+
+# Unicode's default-ignorable code points (Default_Ignorable_Code_Point in
+# DerivedCoreProperties.txt), which a text shows as nothing. Most are in category Cf, Cn or
+# Zs and are caught by those; the ones that are not (variation selectors, the Hangul fillers,
+# the combining grapheme joiner, the Mongolian free variation selectors, ...) are why the whole
+# list is here. Python's unicodedata does not give this property.
+_DEFAULT_IGNORABLE = (
+    (0x00AD, 0x00AD),
+    (0x034F, 0x034F),
+    (0x061C, 0x061C),
+    (0x115F, 0x1160),
+    (0x17B4, 0x17B5),
+    (0x180B, 0x180F),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x206F),
+    (0x3164, 0x3164),
+    (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF),
+    (0xFFA0, 0xFFA0),
+    (0xFFF0, 0xFFF8),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0000, 0xE0FFF),
+)
+
+# Characters that are not default-ignorable but show as a blank all the same.
+_BLANK = frozenset("\u2800")  # the Braille pattern with no dots
+
+
+def _is_unsafe(ch: str) -> bool:
+    category = unicodedata.category(ch)
+    if category in _UNSAFE_CATEGORIES or (category == "Zs" and ch != " ") or ch in _BLANK:
+        return True
+    code = ord(ch)
+    return any(low <= code <= high for low, high in _DEFAULT_IGNORABLE)
 
 
 def has_unsafe_char(text: str) -> bool:
-    """True if `text` holds a character that can split a line or hide what a line says."""
-    return any(
-        unicodedata.category(ch) in _UNSAFE_CATEGORIES
-        or (unicodedata.category(ch) == "Zs" and ch != " ")
-        for ch in text
-    )
+    """True if `text` holds a character that can split a line, hide what a line says or
+    change the direction it is shown in: a control character, an invisible one, one that
+    shows as a blank and is not the ASCII space, or a private-use or unassigned code point."""
+    return any(not (" " <= ch <= "~") and _is_unsafe(ch) for ch in text)
 
 
 # What a whole file's text may hold that a value may not: the ends of lines and a tab.
@@ -52,8 +87,9 @@ def first_unsafe_in_text(text: str):
 
 
 _UNSAFE_WHAT = (
-    "a control or invisible character (newline, carriage return, a zero-width or bidirectional"
-    " character, a non-ASCII space or similar)"
+    "a control or invisible character (newline, carriage return, a zero-width, bidirectional or"
+    " other invisible character, a non-ASCII space, a private-use or unassigned code point or"
+    " similar)"
 )
 
 

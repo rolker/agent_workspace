@@ -438,8 +438,11 @@ command that writes there.
     and so is every `name::address` form; `git` has transports that run a command.
   - These apply to a repo and to a location named under `base:` alike.
 - The file has no invisible characters and none that change the direction of text, in a
-  comment or anywhere else. They can make a file read differently from what it does. The
-  only control characters a file holds are newline, carriage return and tab.
+  comment or anywhere else. They can make a file read differently from what it does. That
+  covers the characters a text shows as nothing (Unicode's default-ignorable code points, such
+  as zero-width spaces, variation selectors and the Hangul fillers), every space but the ASCII
+  one and other characters that show only as a blank, and private-use and unassigned code
+  points. The only control characters a file holds are newline, carriage return and tab.
 
 Those are all the checks. A message about a manifest may print a value from it, and a
 credential in a `url` is not looked for: the manifest is as trusted as the code it names.

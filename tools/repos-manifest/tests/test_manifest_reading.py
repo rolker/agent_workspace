@@ -7,7 +7,7 @@ import textwrap
 import pytest
 
 from repos_manifest.manifest import parse_manifest
-from repos_manifest.yamlload import ManifestError
+from repos_manifest.yamlload import ManifestError, has_unsafe_char
 
 REPO = "    type: git\n    url: https://example.org/a.git\n"
 
@@ -341,6 +341,74 @@ def test_an_invisible_or_direction_changing_character_is_refused(char, name):
 @pytest.mark.parametrize("char", ["\u202e", "\u200b"])
 def test_such_a_character_inside_a_comment_is_refused(char):
     _refused("# a comment " + char + "\n" + _one_repo(), "line 1, column 13: the file holds")
+
+
+# Characters that show nothing, or look like a space, and are not in the categories above:
+# variation selectors, the Hangul fillers, the combining grapheme joiner, the blank Braille
+# pattern, other default-ignorable code points, private-use and unassigned code points.
+_INVISIBLE = [
+    "\ufe0f",
+    "\U000e0100",
+    "\u115f",
+    "\u1160",
+    "\u3164",
+    "\uffa0",
+    "\u034f",
+    "\u2800",
+    "\u180b",
+    "\u17b4",
+    "\U0001d173",
+    "\U000e0041",
+    "\ue000",
+    "\U000f0000",
+    "\U0010fffd",
+    "\U000e0fff",
+    "\U0003fffe",
+    "\ufdd0",
+]
+
+
+@pytest.mark.parametrize("char", _INVISIBLE)
+def test_an_invisible_character_in_a_value_is_refused(char):
+    _refused(_one_repo(f"    version: a{char}b\n"), "line 5, column 15: the file holds U\\+")
+
+
+@pytest.mark.parametrize("char", _INVISIBLE)
+def test_an_invisible_character_in_a_comment_is_refused(char):
+    _refused("# a comment " + char + "\n" + _one_repo(), "line 1, column 13: the file holds")
+
+
+@pytest.mark.parametrize("char", _INVISIBLE)
+def test_an_invisible_character_in_a_key_is_refused(char):
+    text = f"repositories:\n  ok:\n{REPO}  'ok{char}':\n{REPO}"
+    _refused(text, "line 5, column 6: the file holds U\\+")
+
+
+@pytest.mark.parametrize("char", _INVISIBLE)
+def test_the_walk_over_parsed_values_also_refuses_them(char):
+    # The check on the parsed values, which the earlier reader uses, holds the same rule.
+    assert has_unsafe_char(f"a{char}b")
+
+
+def test_two_keys_that_look_the_same_are_not_two_repos():
+    _refused(f'repositories:\n  ok:\n{REPO}  "ok\u3164":\n{REPO}', "U\\+3164")
+
+
+def test_a_byte_order_mark_is_refused():
+    _refused("\ufeff" + _one_repo(), "line 1, column 1: the file holds U\\+FEFF")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\u00e9 \u00fc \u00df",
+        "\u65e5\u672c\u8a9e",
+        "\u03a9\u03bc\u03ad\u03b3\u03b1",
+        "\u2192 \u2713",
+    ],
+)
+def test_visible_text_outside_ascii_is_accepted_in_a_comment(text):
+    assert list(_m("# " + text + "\n" + _one_repo()).repositories) == ["a"]
 
 
 def test_a_tab_and_crlf_line_ends_are_accepted():
