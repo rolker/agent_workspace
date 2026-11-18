@@ -45,6 +45,20 @@ FLAT_LAYOUT_LINE = (
 )
 
 
+def refuse_case_twins(distros: Sequence[str]) -> None:
+    """Two distros that differ only in case are refused: each is a directory, and on a disk
+    that ignores case they would be one."""
+    seen = {}
+    for name in distros:
+        other = seen.setdefault(name.casefold(), name)
+        if other != name:
+            raise Refusal(
+                f"--distro {other!r} and {name!r} differ only in case, and each distro is a"
+                " directory",
+                "Name one of them",
+            )
+
+
 def check_distros(manifest, distros: List[str], distro_dirs: bool) -> None:
     """The design's refusals on the distros, in its order; the manifest has been read."""
     listed = manifest.distros
@@ -151,6 +165,7 @@ def run_init(
             raise Refusal(
                 f"{len(distros)} distros given without --distro-dirs", "Add --distro-dirs"
             )
+        refuse_case_twins(distros)
         manifest = read_manifest(manifest_location, system)
         check_distros(manifest, distros, distro_dirs)
         layout = LAYOUT_DISTRO_DIRS if distro_dirs else LAYOUT_FLAT

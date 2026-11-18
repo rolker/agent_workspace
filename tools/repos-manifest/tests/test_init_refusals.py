@@ -125,6 +125,29 @@ def test_2_two_distros_without_distro_dirs(tmp, capsys):
     )
 
 
+@pytest.mark.parametrize(
+    "listed",
+    [("rolling", "Rolling"), ("jazzy", "rolling"), ()],
+    ids=["the-manifest-lists-both", "it-lists-one", "it-has-no-distros"],
+)
+def test_2b_two_distros_that_differ_only_in_case(tmp, capsys, listed):
+    # Checked before the manifest is read, so it wins over the rows about the manifest's list.
+    manifest(tmp, distros=listed)
+    refused(
+        _system(tmp),
+        capsys,
+        "../m.manifest.yaml",
+        "--distro-dirs",
+        "--distro",
+        "rolling",
+        "--distro",
+        "Rolling",
+        "--yes",
+        expect="--distro 'rolling' and 'Rolling' differ only in case, and each distro is a"
+        " directory. Name one of them",
+    )
+
+
 def test_3_distro_dirs_with_a_manifest_without_distros(tmp, capsys):
     manifest(tmp, distros=())
     refused(
