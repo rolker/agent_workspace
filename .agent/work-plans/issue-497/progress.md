@@ -377,3 +377,13 @@ The three round 2 suggestions were all handled at the publish Checkpoint; each w
 - [x] (suggestion, Local Review R2 @ `4fcdbdb`) Branches made before #497 lose the old command once main runs `make setup` (shared venv and stamps) — the PR description now says such branches need main merged in (body line 12) — `Makefile:207`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 12:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge, then run make setup" with CI passed on all four checks and no open findings. He also said to start the next issue (498, the resolver reading the new manifest format) as soon as this has landed.
