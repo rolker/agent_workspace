@@ -471,7 +471,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 
 | Command | What it does |
 |---|---|
-| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
+| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro, or none, and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
 | `add-distro` | Adds a distro to a system set up with `--distro-dirs`, then syncs it. |
 | `show` | Prints what a manifest comes to for a role and distro, without cloning the system's repos or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
