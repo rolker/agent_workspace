@@ -968,3 +968,81 @@ Instructions for the revision:
 **Plan**: `.agent/work-plans/issue-498/plan.md` at `88caddab`
 
 Revision after part 1 (#506) merged: part 1 marked delivered; part 2 (base) planned as new fetch.py, base.py, combine.py plus a Part/PartRepo split in manifest.py, with per-file checks separated from combined checks; six open questions with recommendations; part 3 corrected (output.py/cli.py names, URL-sourced relative base, sweep, head lines); lessons from part 1 added.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 16:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #498 — repos-manifest: the resolver reads the format in the spec
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `88caddab`
+**Branch**: `feature/issue-498`
+
+Scope of this review: part 2 (`base`) of the revised plan, and part 3's corrections. Read: the plan, every Checkpoint and the newest Plan Authored entry in progress.md, spec.md (Locations, How manifests combine, Reading a manifest before using it), design.md (Where the manifest comes from, What is built), manifest.py, cli.py, the part 1 tests' use of the loader, extends.py, and issue 510. No command was run to check git's behaviour (a scratch check was denied); the statement about `cat-file -s` below is from git's documented behaviour.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | One pull request of about 600 lines of source and 900 of tests. It falls into two halves that fail in different ways: the merge (pure data, settled by the spec) and the fetchers (subprocess, signals, timing, http). Splitting them is recommended (finding 1). |
+| Issue alignment | Good | Every merge rule in the spec has a step and a test: key-by-key, a role replaces, `groups:`/`layers:` append, `distros:` replaces, read once, parents then self, the diamond `C, A, B, leaf`, self-reference and a two-step cycle, `distros: {}`, `absent: false`/`optional: false`, a later manifest with no `repositories:`, a new entry must be complete. Serves (checked): "Goal: Modular (`README.md#modular`) ... Design: `tools/repos-manifest/docs/design.md#resolve`, `#what-is-built` and 'Where the manifest comes from'". The part 2 instructions of the 13:21 Checkpoint (dispatch on `base:`, git in its own session and the `finally`, list-merge tests, the head line for a relative base beside a URL manifest, stale lines of docs/manifest/design.md) are all carried. |
+| File targeting | Good | `fetch.py`, `base.py`, `combine.py` new; `manifest.py`, `cli.py`, `output.py`/`selection.py` (the `chain` field only). The rename of `has_repositories_key` is churn (finding 9). |
+| Consequences | Good | Import changes in the two test files and the documents that say "`base` is not read yet" are named. Part 1's message texts for a manifest with no `base` are not stated as kept (finding 4). |
+| Principle alignment | Needs work | "State a rule once" is followed for locations (one `checked()`), the url rules (part 1's function reused) and the per-file/combined split. Two rules are wider than they need to be: git's error text is never printed (finding 2), and the http deadline as written reaches into urllib (finding 6). |
+| ADR compliance | Good | ADR-0022/0017 (the tool's own design and spec change in the same part), ADR-0011 (adapter suite at the end of each part), ADR-0009, ADR-0013. |
+| ROS conventions | N/A | Workspace tool plan. |
+
+### Judgment on the representation
+
+A `Part` whose repo entries keep only the keys they gave, merged by `dict.update` in reading order, is the simplest structure that gets "a key not given keeps the earlier value" right: a dataclass with defaults cannot tell "not given" from "given as the default", and `distros: {}` and `absent: false` must count as given. Putting the per-file checks on each `Part` and running the cross-reference checks once on the merged result is the right single split; the plan lists the combined checks in one place (step 4) and everything else stays per-file. For a manifest with no `base`, `merge_parts([part])` must reproduce part 1 exactly, which the plan implies but does not state (finding 4).
+
+### Judgment on fetching
+
+- Local path: `open` plus `os.path.realpath` for identity. Correct and simplest. One inconsistency: a relative base is joined to the naming manifest's path as opened while identity uses the real path (finding 8).
+- http(s): `urllib` with the 60 s and 1 MiB limits and the redirect rule, all three answered by the 13:13 Checkpoint (question 6), so not new hardening. The "socket timeout is the remaining time" detail is the one piece nobody asked for and the one that needs urllib internals (finding 6).
+- Git form: a shallow clone with no checkout and `cat-file blob` is the simplest correct choice. A checkout (the old reader's route) would run filters the remote's `.gitattributes` selects from the person's config (git-lfs, for one), which is why the old reader needed its guards. `git archive --remote` is not served by GitHub. A partial clone adds a second round trip (question 6). Against the old reader: no cache, no `reset --hard`, no hook/filter/fsmonitor flags, no `GIT_TERMINAL_PROMPT=0`; all right given the 2026-11-17 owner decision and the fact that nothing is checked out. `--bare` would say "no work tree" more directly than `--no-checkout` (finding 10).
+- What a manifest can make git do: the url rules of part 1 plus `--` before the url, `GIT_ALLOW_PROTOCOL=https:http:ssh:file` (which overrides `protocol.*.allow` config), `version` never starting with `-`, and `path` only inside the `HEAD:<path>` argument. No hook fires (no checkout, and a remote cannot ship hooks or config); `core.fsmonitor` and filters come only from the person's own config and are not reached by `cat-file blob`; `GIT_CONFIG_PARAMETERS`/`GIT_CONFIG_COUNT` are the person's. Nothing found that lets a manifest run a program. `file://` and absolute paths named by a network manifest only read the person's own disk and print to the person's own terminal (question 1).
+- Password prompts. At a terminal: git stays in the tool's process group with the terminal, ssh and git's https credential prompt read `/dev/tty`, and Ctrl-C reaches both. With no terminal: git starts in its own session, so it has no controlling terminal; git's https prompt fails at once ("could not read Username"), and ssh fails at once unless `SSH_ASKPASS` and `DISPLAY` are set, in which case a desktop password dialog may appear and the 60 s limit ends it. That matches design.md ("when there is no terminal ... it fails with a message and does not wait") and is not scope creep: the first Checkpoint kept the time limit on git calls and the 13:13 Checkpoint (answer 7) set it to "no terminal only". Issue 510 is about the repos `init`/`sync` fetch and asks for a settable limit; part 2's limit for a base is already decided. Write the process handling as one small function so 510 can reuse it rather than redo it (finding 11).
+
+### Findings
+
+1. **[Scope]** (medium) Split part 2 into two pull requests. 2a: `Part`, `combine.merge_parts`, reading order, identity, cycles, the chain cap, head and `validate` lines, documents, with local paths only; a string with an http(s) scheme or the git form is refused with "this version reads a path only", as part 1 refused `base` (about 350 lines of source, 500 of tests, no subprocess or timing). 2b: `fetch.py`'s http and git readers, their limits, process handling and cleanup. Part 1's seven rounds split between the reading checks (url, characters) and the output writer (`--out` paths, put-back, signals); a must-fix in one half sent the whole change round again. A reader/writer split in part 1 would have let each half converge on its own; the same split here keeps the timing and Python 3.10 subprocess findings away from the merge rules.
+2. **[Principle alignment]** (medium) "Text from a remote is never printed": git's stderr is discarded and a failure gives only the exit status. The common failures (branch or tag not found, repository not found, `Permission denied (publickey)`, host key not trusted) all exit 128 and become the same message, which is close to a silent failure. It also contradicts step 2's promise that a commit given as `version` gets a message saying a branch or tag is meant: the tool cannot tell that case from exit status alone. Under the owner's balance (a message may print a manifest value), print git's stderr with the unsafe characters replaced (the character check of `yamlload.py` already exists), and make the commit-as-version hint part of every clone failure's message. This is a design choice to list for the owner (see added question 7).
+3. **[Issue alignment]** (medium) Question 5's reasoning is wrong: the old-format check is not "written twice". Write it once in the per-file pass in part 2 (a manifest with `repos:`, `extends:` or `optional_layers:` and no `repositories:` is refused as "in the earlier format"); part 3 then reuses it for the leaf when the dispatch goes. Under A, a new-format leaf over the old published project11 manifest (likely while both formats exist) fails with "new entry has no `type`, misspelt key?", which points at the wrong file and the wrong cause. The 13:00 Checkpoint already decided old-format manifests are refused, so this is mechanism, not an owner question. Recommend B.
+4. **[Consequences]** (low) State that for a manifest with no `base` every part 1 message is unchanged and part 1's tests pass with only their import lines changed. Two things can move: the "has no `type`/`url`" text if the combined check adds a misspelt-key hint (give the hint only when the chain has a parent), and which of two errors is reported first, since the combined checks now run after all per-file checks. Name any part 1 test that changes. Keep `load_manifest(path)` callable with a path alone (test_manifest_reading.py lines 606 and 612 call it that way).
+5. **[File targeting]** (low) `git cat-file -s HEAD:<dir>` succeeds and prints the tree's size, so it does not tell a directory from a file; and with stderr discarded a missing path and a directory give the same exit status. One call, `git cat-file --batch-check='%(objecttype) %(objectsize)'` on `HEAD:<path>`, gives missing, tree, or blob with its size, then `cat-file blob` reads it.
+6. **[Principle alignment]** (low) "The socket timeout is the remaining time" needs reaching into the response's socket mid-read. Simpler, and enough for the Checkpoint's "60 second limit": `urlopen(timeout=HTTP_SECONDS)`, then `read1` in a loop checking the deadline between reads. The worst case is then the deadline plus one socket timeout; say that in design.md and test the drip server against it.
+7. **[Principle alignment]** (low) Question 1: the stated harm is overstated. A local file named by a network manifest is read and its error printed only on the person's own terminal; nothing goes back over the network. Either answer is defensible; under the owner's balance A (a sentence in the spec) is the smaller one. It is a design choice and rightly asked.
+8. **[Principle alignment]** (low) A relative base is joined to the naming manifest's path as opened, but identity is the real path. If one file is reached by two spellings through a symlink, "read once" keeps whichever came first, and its relative parents then depend on that order. Take the relative path from the same real path used for identity, one rule, and say so in the spec.
+9. **[File targeting]** (low) Renaming `has_repositories_key` to `is_new_format` is churn for a function part 3 deletes: widen the existing function to `repositories:` or `base:` and update its docstring. Moving `parse_manifest`/`load_manifest` to `base.py` is justified (no function in `manifest.py` should read a manifest and ignore its `base`) and costs two import lines.
+10. **[Approach]** (low) `git clone --bare --depth 1` instead of `--no-checkout`: no work tree is ever made, and `git --git-dir <dir>` needs no `/.git`.
+11. **[Approach]** (low) At a terminal git is in the tool's process group, so the `finally` must end git by its pid, not by `killpg` (that would signal the tool itself); say which in the plan. Put "start git, end it on time limit or exit" in one function so issue 510 can reuse it.
+12. **[Consequences]** (low, part 3) `test_mr_extends_base_no_user_hooks_or_filters` is removed with the reason "the resolver no longer disables user hooks or filters". With no checkout, a smudge filter or a post-checkout hook from the person's config still does not run, so the test may pass as converted. Convert it to show that nothing runs, or give a reason that is true.
+13. **[Issue alignment]** (low) The diamond test checks that each file is opened once. Also assert the spec's sentence "what `A` changes in `C` stays changed unless `B` changes it again": a value A sets on C's repo survives B.
+
+### Open questions: view on each
+
+1. Network manifest naming the local disk: an owner's design choice, rightly asked. Lean A (finding 7); B is acceptable.
+2. Chain cap: mechanism, just decide. Agree B (64): one constant, and it bounds an endless chain from a server when nobody is at the terminal.
+3. http limits fixed or settable: already answered by the 13:13 Checkpoint (60 s, 1 MiB). Mechanism. Agree A.
+4. `version` to `--branch` as written: mechanism. Agree A; the spec says a branch or tag, and the message (with finding 2) says so.
+5. Old-format parent: mechanism already decided by the 13:00 Checkpoint. Disagree with A; recommend B (finding 3).
+6. Shallow against partial clone: mechanism. Agree A.
+
+Missing from the list:
+7. Whether git's and the http server's error text is printed (sanitised) or only the exit status and HTTP status (finding 2). A design choice for the owner; recommend printing git's stderr with unsafe characters replaced.
+8. (Mention only.) The same file in a git repo named once with no `version` and once with its default branch by name is two identities and is read twice; the second read undoes what came between. One sentence in the spec is enough; no code.
+
+### Summary
+
+The merge design is right and complete against the spec, the per-file/combined split states each rule once, and the git reader (no-checkout clone, read a blob) is the simplest correct mechanism and lets a manifest run nothing. The no-terminal-only time limit was decided by Checkpoints and is sound. Ready for implementation, with these as instructions; the open choices are whether to split part 2 (recommended) and whether git's error text is printed.
+
+### Recommended Actions
+
+- [ ] Decide the split of part 2 into 2a (merge with local paths) and 2b (http and git readers) (finding 1).
+- [ ] Put question 7 (print git's error text, sanitised) to the owner; fix step 2's commit-as-version message either way (finding 2).
+- [ ] Answer question 5 with B and write the old-format check once in the per-file pass (finding 3).
+- [ ] State that part 1's messages and tests are unchanged for a manifest with no `base` (finding 4).
+- [ ] Use `cat-file --batch-check` (finding 5), the simpler http deadline (finding 6), relative paths taken from the real path (finding 8), no rename (finding 9), `--bare` (finding 10), end git by pid at a terminal (finding 11).
+- [ ] Part 3: convert or truthfully explain the removed hooks/filters test (finding 12); diamond test asserts A's change survives (finding 13).
