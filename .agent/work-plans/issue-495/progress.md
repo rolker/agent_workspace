@@ -494,7 +494,7 @@ Scope: the round 2 findings and `git diff b3438aba..HEAD`. Specialists: static (
 - [x] (suggestion) Route test: say that the tool's error for an unreadable record does not count as answering (or does), so the adapter knows which route a damaged instance takes — `docs/manifest/design.md:208-209`
 - [x] (suggestion) "A flat system has one entry, or none": say the key is absent, as the table at line 84 does — `tools/repos-manifest/docs/design.md:152`
 - [x] (suggestion) The ordering sentence: say the row "a directory it would create already exists" is checked after the manifest is read — `tools/repos-manifest/docs/design.md:220-221,229`
-- [ ] (suggestion) The "directory it would create" row: say whether an existing `setup.bash` or other file at a path `init` writes is refused too — `tools/repos-manifest/docs/design.md:229`
+- [x] (suggestion) The "directory it would create" row: say whether an existing `setup.bash` or other file at a path `init` writes is refused too — `tools/repos-manifest/docs/design.md:229`
 
 ## Checkpoint
 **When**: 2026-11-18 15:52 -05:00

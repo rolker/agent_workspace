@@ -231,7 +231,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `init` | A `--distro` without `--distro-dirs`, with a manifest that has no `distros:`. | Set up without `--distro`. |
 | `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists, or give the version of the manifest that lists it with `--manifest-ref`. |
 | `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Set up with the distros it lists, and add each other one with `add-distro <name> --manifest-ref <ref>`. |
-| `init` | A directory it would create already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
+| `init` | A directory it would create, or a file it writes such as `setup.bash`, already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
 | `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
 | `add-distro` | The distro is already recorded. | `sync --distro <name>`. |
 | `add-distro` | `<name>/` exists in the system directory. | Move it out of the way. |
