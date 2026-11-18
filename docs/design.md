@@ -123,8 +123,9 @@ that part, so ADR-0017's one picture holds per owner. A part's design is cited a
 `<path>/design.md#<section>`, `<path>` being the design file's directory
 (`tools/ros-manifest/docs/design.md#<section>`); `check_design_anchors.sh` resolves it against that file's
 headings (a Markdown link from the linking file's directory, any other citation from the citing file's
-directory and then the root), and reads each tracked design or roadmap under a `docs/` directory and
-each sub-roadmap the pointer table names as a citer. The root's roadmap points at a part's roadmap in its
+directory and then the root; a file missing from both is an error), and reads each tracked design or
+roadmap under a `docs/` directory, and each sub-roadmap the pointer table names with the design beside
+it in any directory, as citers. The root's roadmap points at a part's roadmap in its
 Direction section: `| Sub-roadmap | Root |`, the file and the directory its checks are relative to.
 `sitrep_checks.sh` follows the pointers one level: a broken, circular or repeated pointer is a problem
 row, a pointer inside a sub-roadmap is listed as not followed, and a part's lines stay out of the root's
@@ -187,7 +188,7 @@ only.
 | The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
-| A citation of a part's design resolves against that part's headings, never the root's | Keep one current design; ADR-0022 | `hook` | `check_design_anchors.sh` (`check-design-anchors`, whose `files:` filter takes any design or roadmap under a `docs/` directory); `make lint` and CI run it again |
+| A citation of a part's design resolves against that part's headings, never the root's | Keep one current design; ADR-0022 | `hook` | `check_design_anchors.sh` (`check-design-anchors`, whose `files:` filter takes any `design.md`, `roadmap.md` or `ROADMAP.md`); `make lint` and CI run it again |
 | The root's design describes a part only by what crosses its boundary and points at the part's design | Keep one current design; ADR-0022 | `review only` | Review guide row "Keep one current design": the reviewer compares the root's text about a part with the part's own design; mechanics, steps and internals belong in the part's |
 | `AGENTS.md` stays at most 200 lines | Only what's needed | `hook` | `check_agents_md_budget.sh` (`agents-md-line-budget`), run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged; `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |

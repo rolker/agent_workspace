@@ -22,8 +22,9 @@
 #       headings, never the root's; each form's base (link from its file,
 #       backtick from its file then the root); URLs skipped; the root's
 #       design, part designs and followed sub-roadmaps as citers; untracked
-#       copies ignored; pointers read through sitrep_checks.sh
-#       --list-pointers
+#       copies ignored; a part's design in any directory; a missing file
+#       is an error from either base; pointers read
+#       through sitrep_checks.sh --list-pointers
 #   usage and root selection, including the default root: a sandbox copy of
 #       the checker run with no argument through a `scripts/` symlink checks
 #       its own repository, not the repository's parent
@@ -174,10 +175,23 @@ printf 'See docs/design.md#gone here.\n' > "$R/docs/roadmap.md"
 run_checker "$R"
 expect "b: a docs/design.md# citation in docs/roadmap.md is reported once, not again as relative" 1 \
     "check_design_anchors: 1 finding(s)"
-printf '[x](../design.md#elsewhere) [y](other-design.md#elsewhere)\n' > "$R/docs/roadmap.md"
+printf '[y](other-design.md#elsewhere)\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "b: other-design.md# names another file and is not checked" 0
+# A design.md anywhere is a part's design (ADR-0022 decision 6, issue #488):
+# ../design.md# from docs/ and a bare design.md# in README.md both name the
+# root-level design.md, checked when it exists and an error when it does not.
+printf '[x](../design.md#elsewhere)\n' > "$R/docs/roadmap.md"
 printf 'design.md#elsewhere\n' > "$R/README.md"
 run_checker "$R"
-expect "b: ../design.md#, other-design.md# and a bare design.md# outside docs/ name other files and are not checked" 0
+expect "b: ../design.md# and a bare design.md# naming a missing root-level design.md are errors" 1 \
+    "docs/roadmap.md:1: no such design file 'design.md'" "README.md:1: no such design file 'design.md'" \
+    "check_design_anchors: 2 finding(s)"
+printf '# Top\n\n## Elsewhere\n' > "$R/design.md"
+run_checker "$R"
+expect "b: ... and resolve against its headings when it exists" 0
+rm -f "$R/design.md" "$R/README.md"
+: > "$R/docs/roadmap.md"
 
 # slug rules
 R="$(new_root b3)"
@@ -627,6 +641,31 @@ printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| `tools
 run_checker "$R"
 expect "h: a followed sub-roadmap and the design beside it are citers, found through the pointer table" 1 \
     "tools/t/docs/roadmap.md:3:" "#gone-sub" "tools/t/docs/design.md:5:" "#gone-inner" "check_design_anchors: 2 finding(s)"
+
+# A part's design need not be under a docs/ directory (ADR-0022 decision
+# 6): the design beside a followed sub-roadmap anywhere is a citer, and a
+# citation of any design.md is checked against that file.
+R="$(new_root h4)"
+plain_design "$R/docs/design.md"
+mkdir -p "$R/tools/x"
+printf '# X\n\n## Ok\n\n[x](#gone-x)\n' > "$R/tools/x/design.md"
+printf '# X roadmap\n\n## Direction\n\n| Line | Check |\n|---|---|\n| A | file-exists design.md |\n' > "$R/tools/x/ROADMAP.md"
+printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| tools/x/ROADMAP.md | tools/x |\n' > "$R/docs/roadmap.md"
+printf 'Cites `tools/x/design.md#ok` and `tools/x/design.md#nope`.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: the design beside a sub-roadmap outside docs/ is read and its links checked; a citation of it is checked" 1 \
+    "tools/x/design.md:5:" "#gone-x" "README.md:1: broken anchor '#nope' (no such heading in tools/x/design.md)" \
+    "check_design_anchors: 2 finding(s)"
+
+# A backtick citation whose file is missing both beside the citer and from
+# the root is an error naming both, never a silent pass.
+R="$(part_root h5)"
+printf 'See `manifest/design.md#gone` and `docs/manifest/design.md#route`.\n' > "$R/docs/roadmap.md"
+rm -rf "$R/docs/manifest"
+run_checker "$R"
+expect "h: a missing part design cited in backticks from docs/ is an error, not a fallback that passes" 1 \
+    "docs/roadmap.md:1: no such design file 'docs/manifest/design.md' or 'manifest/design.md' for '#gone'" \
+    "docs/roadmap.md:1: no such design file 'docs/docs/manifest/design.md' or 'docs/manifest/design.md' for '#route'"
 
 # The pointer table is read by sitrep_checks.sh --list-pointers: CRLF line
 # ends, ./ paths deduplicated, a Setext heading ends the section, a target

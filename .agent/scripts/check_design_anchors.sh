@@ -43,14 +43,16 @@
 #         same text name the same file whenever that file exists
 #         (`design.md#x` and `manifest/design.md#x` in docs/roadmap.md), and
 #         `docs/design.md#x` still means the root's design from any citer.
+#         When the file exists from neither base, the citation is an error
+#         naming both paths.
 #     A path that resolves to docs/design.md is a citation of the root's
-#     design. One that resolves to any other `design.md` under a `docs/`
-#     directory (`tools/ros-manifest/docs/design.md`, `docs/manifest/
-#     design.md`) cites a part's design (ADR-0022) and is checked against
-#     that file's headings, by the same slug() rule; a missing file is an
-#     error, as is a path whose `..` leaves the root. Anything else
-#     (`design.md` at the root, a `../design.md` that lands outside docs/)
-#     names some other file and is not checked.
+#     design. One that resolves to any other file named `design.md`,
+#     wherever it is (`tools/ros-manifest/docs/design.md`,
+#     `docs/manifest/design.md`, `tools/x/design.md`, a root-level
+#     `design.md`), cites a part's design (ADR-0022 decision 6: `<path>` is
+#     the design file's directory) and is checked against that file's
+#     headings, by the same slug() rule; a missing file is an error, as is a
+#     path whose `..` leaves the root.
 #   * Inside design.md: a Markdown link `](#<fragment>)` outside fenced code.
 #     The fragment is everything up to the ')'. Ignored: an all-digit fragment
 #     (an issue reference such as `[x](#12)`; a bare `(#295)` has no `](` and is
@@ -330,10 +332,11 @@ for rec in ${LINKS[@]+"${LINKS[@]}"}; do
     check_fragment "$DESIGN" "$line" "$frag"
 done
 
-# A part's design (issue #488, ADR-0022): any design.md under a docs/
-# directory other than the root's own. Its headings are read with the same
-# slug() rule, once, and its own in-file links are checked then.
-PART_RE='(^|/)docs/(.*/)?design\.md$'
+# A part's design (issue #488, ADR-0022): any file named design.md other
+# than the root's own, wherever it is (ADR-0022 decision 6: `<path>` is the
+# design file's directory). Its headings are read with the same slug()
+# rule, once, and its own in-file links are checked then.
+is_part_design() { [[ "$1" != "$DESIGN" && ( "$1" == design.md || "$1" == */design.md ) ]]; }
 declare -A PSLUGS=()
 declare -A LOADED=()
 load_design() {  # <file relative to the root>
@@ -413,7 +416,7 @@ for rm_file in docs/roadmap.md ROADMAP.md; do
     break
 done
 for f in ${CITERS[@]+"${CITERS[@]}"}; do
-    [[ "$f" != "$DESIGN" && "$f" =~ $PART_RE ]] && load_design "$f"
+    is_part_design "$f" && load_design "$f"
 done
 
 # Citation forms (see the header): every `<path>design.md#<fragment>` run in
@@ -451,10 +454,23 @@ if [[ ${#CITERS[@]} -gt 0 ]]; then
         elif [[ "$islink" == 1 ]]; then
             norm "$dir/$path" && target="$NORM"
         else
-            if norm "$dir/$path" && [[ -f "$NORM" ]]; then
-                target="$NORM"
-            elif norm "$path"; then
-                target="$NORM"
+            # From the citing file's directory, then from the root; when
+            # neither file exists the citation is an error naming both,
+            # never a silent pass.
+            from_dir=""; from_root=""
+            norm "$dir/$path" && from_dir="$NORM"
+            norm "$path" && from_root="$NORM"
+            if [[ -n "$from_dir" && -f "$from_dir" ]]; then
+                target="$from_dir"
+            elif [[ -n "$from_root" && -f "$from_root" ]]; then
+                target="$from_root"
+            elif [[ -n "$from_dir$from_root" ]]; then
+                if [[ -z "$from_dir" || -z "$from_root" || "$from_dir" == "$from_root" ]]; then
+                    finding "$file" "$line" "no such design file '${from_dir:-$from_root}' for '#$frag'"
+                else
+                    finding "$file" "$line" "no such design file '$from_dir' or '$from_root' for '#$frag'"
+                fi
+                continue
             fi
         fi
         if [[ -z "$target" ]]; then
@@ -463,7 +479,7 @@ if [[ ${#CITERS[@]} -gt 0 ]]; then
         fi
         if [[ "$target" == "$DESIGN" ]]; then
             check_fragment "$file" "$line" "$frag"
-        elif [[ "$target" =~ $PART_RE ]]; then
+        else
             if [[ ! -f "$target" ]]; then
                 finding "$file" "$line" "no such design file '$target' for '#$frag'"
                 continue
