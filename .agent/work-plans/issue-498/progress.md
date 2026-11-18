@@ -577,3 +577,40 @@ Specialists: static analysis (3.10 grammar parse; pre-commit covers the rest), g
 - [x] (suggestion) Plan drift for the PR description: plan line 45's job name lacks the `(Python <version>)` suffix; the Files to Change table lists `docs/manifest/design.md` for part 3 only (it changed in part 1) and lacks `tests/test_documents.py` — `.agent/work-plans/issue-498/plan.md:45` (deferred: host decision: answered by the host, who writes the pull request body and states the three items there; the plan is not edited)
 - [x] (suggestion) `test_documents.py` bans the word `adapter` anywhere in the tool's documents, which a generic use would trip; match `ros2_colcon` and the workspace adapter's wording, or say in the docstring that the word is banned on purpose — `tools/repos-manifest/tests/test_documents.py:19`
 - [x] (suggestion) The old reader now refuses the wider character set (it imports the shared `has_unsafe_char`), against the plan's "moved unchanged"; say so in design.md or the PR, or keep the old predicate for `schema.py` — `tools/repos-manifest/src/repos_manifest/yamlload.py:63` (deferred: host decision: the check stays shared; the Implementation entry states it for the pull request, and the old reader goes in part 3)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 14:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `b03c1da9`
+**Addressed**: Local Review (Pre-Push) at `765a5a39` (2026-11-18 14:13 -05:00)
+**Commits**: 91d7f4ec 74a3acc8 1d9cc0f7 17c6807f 752383de d82fbb01 7eb17a0d 15eabd60 096ded8b 73d68032 570c4b4d 5092d5a9 b03c1da9
+
+Second fix round for part 1. Each code fix has a test that was run against the source as it was at `fbaca8b4` and failed there; the document-only fixes (9, 11, 12) have none.
+
+### Actions
+- [x] (must-fix) The url's user, host and port are read as git 2.53 reads them, checked against what git hands ssh (GIT_SSH set to a script that prints its arguments). They run to the first `/` after the host, so a `?` or `#` before it is part of them. git finds a host in brackets after the first `@[` wherever it is, so `ssh://x/@[-oProxyCommand=y]/p` and `h:p@[-oProxyCommand=y]:q` were holes too (git hands ssh `x/@-oProxyCommand=y`), and both are now refused. A `%` in the user, host or port is refused for every transport and the scp form; spec.md says why. Refused in tests: `ssh://%2doProxyCommand=x/p`, `ssh://h:%2d1/p`, `ssh://h?x@-oProxyCommand=y/p`, `ssh://h#x@...`, `https://h?x@-y/p`, `%2dh:a.git`. Accepted in tests: `%`, `?`, `#` and `@-` in the path. — `manifest.py`, 91d7f4ec
+- [x] (suggestion 1) The rule stays (host decision). spec.md says it refuses an emoji with a variation selector or a zero-width joiner, and the joiners Persian and the Indic scripts use, comments included. It also says "unassigned" follows the running Python's Unicode tables, and that the message names code point, line and column. The message already did. A new test shows it for U+FE0F, U+200D and U+200C in a comment. — `spec.md`, `tests/test_manifest_reading.py`, 74a3acc8
+- [x] (suggestion 2) A carriage return is allowed only as part of CRLF. A manifest is now read from the disk with `newline=""`. Text mode had turned a lone CR into a newline before the check could see it, so the file test failed before the fix. — `yamlload.py`, `manifest.py`, 74a3acc8
+- [x] (suggestion 3) A pid that `os.kill` cannot take (OverflowError, ValueError) is not known to have ended, so the directory is left alone. Tested with `99999999999999999999`, `2147483648` and `0`. — `output.py`, 1d9cc0f7
+- [x] (suggestion 4) When `--out` is missing, the next run first moves the newest marked `.<name>.old-*` of an ended process back into place. The test sets up the post-kill state on disk and then makes the run fail, and the previous output is still there. — `output.py`, `design.md`, 752383de
+- [x] (suggestion 5) Temporary directories are removed by `_remove_ours`, marker last. A removal cut short leaves the marker, and the next run sweeps the directory. Tested by making unlink fail. — `output.py`, 17c6807f
+- [x] (suggestion 6) SIGINT ends the run through `Stopped`, as SIGTERM does. It prints "stopped by SIGINT after --out ... was replaced" or "nothing was written" and exits 130. With Python's default handler it shows no KeyboardInterrupt and no traceback; another handler is delivered the signal again. — `cli.py`, `design.md`, d82fbb01
+- [x] (suggestion 7) `--out` is found on the disk first: its directory is realpath'ed, its last part kept, and `.`/`..` resolved. The current directory and its parents are refused, and the printed paths are the ones written. Tested: `.`, `..`, `../..`, and `link/../x`, which is now written beside the link's target. — `output.py`, `design.md`, 7eb17a0d
+- [x] (suggestion 8) A replaced output keeps the mode of the directory it replaces. A new one gets mkdir's mode as before. Tested with 0700, 0750 and 02775, and umask 027. — `output.py`, 15eabd60
+- [x] (suggestion 9) No lock (host decision). design.md says two runs on one output at once are not supported. Each still leaves a whole output, and a lock belongs with init and sync (issue 500). — `design.md`, 096ded8b
+- [x] (suggestion 10) Chosen by what git does: inside the brackets of the scp form, ssh reads a user before the last `@` and git a port after a `:`. The parts are split and checked, so `[a@-oX]:p`, `[-oX@h]:p` and `[h:-p]:path` are refused. spec.md says so. — `manifest.py`, `spec.md`, 91d7f4ec
+- [x] (suggestion 11) spec.md now says an unknown key in a distro entry is warned about, and an entry for an unlisted distro is checked but never used. — `spec.md`, 570c4b4d
+- [x] (suggestion 12) design.md's command table and "What is built" now say `validate` resolves every role and distro and writes nothing. They also say what `--role`, `--distro` and `--with` do there. — `design.md`, 73d68032
+- [x] (suggestion 13) Plan drift — `plan.md:45` (deferred: host decision: answered by the host, who states the three items in the pull request body; the plan is not edited)
+- [x] (suggestion 14) `test_documents.py` bans `ros2_colcon`, `.agent/`, "project-type adapter", "workspace('s) adapter" and "the adapter", not the word itself. The docstring says what it guards, and a second test shows a general use passes. — `tests/test_documents.py`, 5092d5a9
+- [x] (suggestion 15) The old reader shares `has_unsafe_char` — `yamlload.py:63` (deferred: host decision: it stays shared; for the pull request, the old reader in `schema.py` now refuses the wider set of invisible characters too, against the plan's "moved unchanged", and it is removed in part 3)
+
+Host decisions recorded for the owner's veto: the invisible-character rule kept as written, emoji with selectors or joiners included (suggestion 1); no lock for two runs at once (suggestion 9); the old reader keeps the shared check (suggestion 15). This pass also chose to refuse `%` in the scp form's user and host, though git does not decode it there, so the rule reads the same for every form. It also chose to refuse a bracketed port that starts with `-`, which git would not take as a port.
+
+Suites run on Python 3.14:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests`: `674 passed in 11.62s`
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`
+- Python 3.10 was not run. Every changed .py file parses with the 3.10 grammar, and nothing newer than 3.8's library is used.
+- The full pre-commit pass was left to the host. Every commit ran its hooks with `SKIP=validate-script-tests`, and black and flake8 passed on each.
