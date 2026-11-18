@@ -306,3 +306,26 @@ Suites run, each on its own from the worktree:
 - `test_update_roadmap.sh`: `test_update_roadmap:16 passed, 0 failed`
 
 `check_design_anchors.sh` on the worktree exits 0. Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465). The full pre-commit pass over the branch was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 11:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-488 at `45b2d243`
+**Base**: origin/main
+**Depth**: Deep (reason: 1896 changed lines in 19 files, with governance files: ADR, skills, .pre-commit-config.yaml; fix-round re-review classified on the whole diff)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 5), not rising — fix and ship rather than another full round
+
+Specialists: static analysis (shellcheck clean on the 7 changed scripts, yamllint clean on `.pre-commit-config.yaml`, the anchor check exits 0 on the worktree), governance, plan drift, Claude adversarial, and cross-model gemini and codex (both completed). All ten round 1 findings are fixed, apart from suggestion 5, which was deferred by the host until #487 lands. Each code fix has a test that fails on the scripts at `28b2028f`, checked by running HEAD's suites against that tree: 5 failures in test_design_anchors, 7 in test_sitrep_checks and 1 in test_sitrep_root. At HEAD the four suites pass: test_design_anchors 69, test_sitrep_checks 252, test_sitrep_root 65, test_update_roadmap 16.
+
+### Findings
+- [ ] (must-fix) The citation scan runs awk inside `done < <(citations ...)` and never checks its exit status. When a citer cannot be opened, awk stops and every later citer goes unchecked, yet the hook exits 0. This contradicts the header's "never a silent skip", and it matters more now that any tracked or pointed part file is a citer. Fix: capture the output and check the status first, as `design_records` already does, and pass `--` (or `./`) so that a path containing `=` is not read as an awk assignment. Add a test with an unreadable citer. Found by codex, gemini and the adversarial reviewer, who reproduced it with `chmod 000`. — `.agent/scripts/check_design_anchors.sh:493`
+- [ ] (suggestion) A pointer to a root-level `ROADMAP.md` adds the citer `./design.md`, which is never normalised. The same file is then loaded a second time as `design.md`, and every finding in it is printed twice. Fix: normalise the path, and add a test. Found by gemini and the adversarial reviewer (reproduced). — `.agent/scripts/check_design_anchors.sh:417`
+- [ ] (suggestion) The header says "`docs/design.md#x` still means the root's design from any citer". That is false for a citer whose directory has its own `docs/design.md`, for example `tools/t/ROADMAP.md`: the backtick citation resolves to `tools/t/docs/design.md`. Either state the exception in the header and in docs/roadmap.md, or resolve a literal `docs/design.md` from the root first. Add a collision test. Found by gemini and codex. — `.agent/scripts/check_design_anchors.sh:46`
+- [ ] (suggestion) An angle-bracket link destination, `](<manifest/design.md#x>)`, is not recognised as a link. It gets the prose rule (beside the file, then the root) instead of resolving file-relative only. Found by codex. — `.agent/scripts/check_design_anchors.sh:434`
+- [ ] (suggestion) The #488 Change log row records 1189 lines, but the file now has 1190: commit `99135314` added a line and did not update the count. Found by gemini. — `docs/design.md:1136`
+- [ ] (suggestion) The design text and the skill both say `named_part` comes from a part line's `gh-issue` check. `sitrep_root.sh` also matches `adapter --project` checks and issue numbers in the Line cell, by the same rules as root lines. Found by gemini. — `docs/design.md:105`, `.claude/skills/sitrep/SKILL.md:460`
+- [ ] (suggestion) `update_roadmap.sh` still edits `ROADMAP.md` and `docs/ROADMAP.md` beside `docs/roadmap.md`. A sub-roadmap at one of those paths would therefore have its items ticked, although the docs say the updater leaves sub-roadmaps alone; the added test covers only paths outside its candidate list. Either skip a candidate that the active roadmap's pointer table names, or narrow the claim. Found by codex. — `.agent/scripts/update_roadmap.sh:169`
