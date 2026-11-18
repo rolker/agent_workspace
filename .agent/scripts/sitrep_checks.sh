@@ -79,7 +79,10 @@
 #                                root's rows: an empty cell, extra cells,
 #                                an absolute or `..` path, a path or
 #                                Root outside the root, a missing target
-#                                or Root, a file outside its Root, the
+#                                or Root, a file outside its Root, a
+#                                target or Root in another git repository
+#                                (a nested repository or a submodule,
+#                                ADR-0022: not supported), the
 #                                root's own roadmap, a sub-roadmap
 #                                already followed (a cycle or a repeat),
 #                                or a sub-roadmap with nothing to check
@@ -836,6 +839,14 @@ real_path() {
     fi
 }
 
+# repo_top <dir>: the top of the git repository <dir> is in (symlinks
+# resolved), or nothing outside one.
+repo_top() {
+    local t
+    t="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 0
+    (cd -P -- "$t" 2>/dev/null && pwd -P)
+}
+
 # follow_pointer <cell 1> <cell 2> <cell count>: check one pointer row of the
 # root and, when it is valid, read the sub-roadmap with its Root as --root.
 # Always emits the `part` row first, then the part's rows.
@@ -868,6 +879,13 @@ follow_pointer() {
     rootdir="$(cd -P -- "$ROOT/$rdir" 2>/dev/null && pwd -P)" || { emit part "$item" unchecked "Root $rdir not found"; return; }
     case "$rootdir" in "$ROOT"|"$ROOT"/*) ;; *) emit part "$item" unchecked "Root $rdir is outside the root"; return ;; esac
     case "$target" in "$rootdir"/*) ;; *) emit part "$item" unchecked "the file is outside its Root $rdir"; return ;; esac
+    # A pointer into another repository is not supported (ADR-0022): a
+    # target or Root in a nested repository or a submodule would take a
+    # bare gh-issue's repository from that repository's origin.
+    if [ "$(repo_top "$(dirname -- "$target")")" != "$ROOT_TOP" ] \
+        || [ "$(repo_top "$rootdir")" != "$ROOT_TOP" ]; then
+        emit part "$item" unchecked "in another repository (a nested repository or a submodule)"; return
+    fi
     if [ "$target" = "$ROADMAP_REAL" ]; then
         emit part "$item" unchecked "points at the root's own roadmap"; return
     fi
@@ -914,6 +932,7 @@ fi
 
 if [ "${#POINTERS[@]}" -gt 0 ]; then
     ROADMAP_REAL="$(real_path "$ROADMAP")"
+    ROOT_TOP="$(repo_top "$ROOT")"
     for p in "${POINTERS[@]}"; do
         c1="${p%%$'\t'*}"; p="${p#*$'\t'}"
         follow_pointer "$c1" "${p%%$'\t'*}" "${p#*$'\t'}"

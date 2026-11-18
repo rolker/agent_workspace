@@ -1815,6 +1815,23 @@ fi
 chmod 644 "$SB/root/docs/noperm/roadmap.md"
 rm -rf "$SB/root/docs/outlink" "$SB/root/docs/noperm" "$SB/root/docs/empty" "$SB/root/README.md"
 
+echo "TEST: a pointer into a nested repository is unchecked (ADR-0022: no pointer into another repository)"
+mkdir -p "$SB/root/vendor/lib/docs"
+git -C "$SB/root/vendor/lib" init -q
+sub "$SB/root/vendor/lib/docs/roadmap.md" '| Lib issue | gh-issue 7 closed |'
+mkdir -p "$SB/root/docs/part"
+sub "$SB/root/docs/part/roadmap.md" '| Part done | file-exists docs/notes.md |'
+reset_marks
+run_rm "$(pointers \
+    '| vendor/lib/docs/roadmap.md | vendor/lib |' \
+    '| docs/part/roadmap.md | . |')"
+[[ "$(pr vendor/lib/docs/roadmap.md)" == "unchecked|in another repository (a nested repository or a submodule)" \
+    && "$OUT" != *"Lib issue"* && ! -e "$MARK/gh" ]] \
+    && pass "(sub e) a target in a nested git repository is unchecked and not read; no gh call" || fail "(sub e) nested repo: $(pr vendor/lib/docs/roadmap.md) $OUT"
+[[ "$(pr docs/part/roadmap.md)" == "true|read" ]] \
+    && pass "(sub e) a pointer in the root's own repository is still followed" || fail "(sub e) own repo: $(pr docs/part/roadmap.md)"
+rm -rf "$SB/root/vendor"
+
 echo "TEST: a pointer inside a sub-roadmap is not followed, and not a problem"
 { printf '# Part\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Nested done | file-exists docs/notes.md |\n\n'
   printf '| Sub-roadmap | Root |\n|---|---|\n| `docs/deeper/roadmap.md` | . |\n'; } > "$SB/root/docs/part/roadmap.md"
