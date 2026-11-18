@@ -97,14 +97,17 @@ We looked at tools that do compose manifests before writing this one (survey of 
 
 ## What works today
 
-A prototype resolves and validates manifests in an earlier shape of the format. It does not
-yet fetch, sync or build. [docs/prototype.md](docs/prototype.md) describes what it reads, its
-commands, and the checks it applies to a manifest.
+`resolve` and `validate` read the format in [docs/spec.md](docs/spec.md) for a manifest that
+stands on its own; `base` is not read yet. Nothing fetches, syncs or builds yet.
+[docs/design.md](docs/design.md#resolve) says what `resolve` writes.
 
 ```bash
-repos-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy --out ./out
-repos-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
+repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy --out ./out
+repos-manifest validate --manifest project11.manifest.yaml
 ```
+
+A manifest in the prototype's earlier shape still goes to the prototype's reader, which
+[docs/prototype.md](docs/prototype.md) describes, with its commands and the checks it applies.
 
 ## Installing
 

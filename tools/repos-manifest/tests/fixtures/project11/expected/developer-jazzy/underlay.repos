@@ -1,0 +1,37 @@
+repositories:
+  ros2launch_gui:
+    type: git
+    url: https://github.com/rolker/ros2launch_gui.git
+    version: jazzy
+  ros2launch_session:
+    type: git
+    url: https://github.com/rolker/ros2launch_session.git
+    version: jazzy
+  geographic_info:
+    type: git
+    url: https://github.com/ros-geographic-info/geographic_info.git
+    version: ros2
+  audio_common:
+    type: git
+    url: https://github.com/rolker/audio_common.git
+    version: port_sound_play_h_to_ros2
+  detection_visualizer:
+    type: git
+    url: https://github.com/rolker/detection_visualizer.git
+    version: support_rotation
+  nmea_navsat_driver:
+    type: git
+    url: https://github.com/rolker/nmea_navsat_driver.git
+    version: add_pashr
+  norbit:
+    type: git
+    url: https://github.com/rolker/norbit.git
+    version: jazzy
+  ros2sonic:
+    type: git
+    url: https://github.com/rolker/ros2sonic.git
+    version: jazzy
+  vrx:
+    type: git
+    url: https://github.com/rolker/vrx.git
+    version: add-santorini-seafloor
