@@ -68,3 +68,32 @@ issue: 498
 - [ ] Add tests for the rules that are easy to leave out because the draft does not use them: `absent: true` on the repo with and without a distro entry (an empty entry counts), `distros: {}` replacing a base's block, a later `optional: false` or `absent: false` undoing an earlier one, a base listed twice through two parents (the diamond order `C, A, B, manifest`), a manifest that builds on itself directly and through another, `base` as a list, and every refusal in "Reading a manifest before using it", one test each, including the bidirectional-character and `name::address` cases.
 - [ ] Fix the 3.14 failures in part 1 by making the error message independent of `Path.resolve()` raising: check the length and existence of the base path before use, and never print the manifest's own path value; keep the test's secret check, and run the tool tests on 3.10 and 3.14. Do not weaken the test.
 - [ ] Before part 3, run the adapter suite (`.agent/scripts/tests/test_ros2_colcon.sh`) with the new resolver on the original fixtures converted one by one, and list which `test_mr_*` tests assert resolver behaviour (hooks, filter drivers, a commit as `extends.ref`, timeouts) that moves with the old code; a test that no longer applies is removed with a line saying why, not left skipped.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 13:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Issue Review's actions are about how the issue is cut and about gaps in the spec that the owner's recorded decisions already answer; none changes what the work is for; each host choice below is listed for his veto)
+**After**: issue-actions
+**Decision**: proceed
+
+The host, running /orchestrator, read the Issue Review. Instructions for the plan:
+
+Delivery. Three pull requests on this one issue, each leaving the tool and the adapter working, as the review proposes: (1) a reader for a single new-format manifest with no base, its per-layer output, validate, and the project11 fixture, added beside the old reader; (2) base: the three location forms, the reading order, the cycle error, the merge rules; (3) the new reader writes the layout the adapter reads, the adapter's fixtures and tests are converted, the old reader and the dropped features are removed, prototype.md is rewritten or removed, and the note on moving from the old format is written. The plan covers all three and names the parts; each part but the last says "Part of #498".
+
+The tool's tests pass on Python 3.14 as well as on CI's Python at the end of part 1. The owner's machine runs 3.14 and the project11 test happens there.
+
+Spec gaps, settled by the host from what the owner already decided. Each part updates tools/repos-manifest/docs/spec.md or design.md where it settles one, so the documents say what the code does:
+- An error message may print a value from the manifest. The owner dropped the rule against it on 2026-11-17 ("Reading a manifest before using it" lists what a tool checks; this is not on it).
+- Credentials in a url are not looked for or refused, for the same reason; the workspace's design already says so.
+- resolve checks the rules that can be checked on the text (names, keys, no key inside another, transports, options). The check on the real destination belongs to init and sync, which write there.
+- A relative base path is taken from where the naming manifest is: beside it on disk; in the same repo at the same version for a manifest in a git repo; relative to its URL for one at a URL.
+- A manifest is identified by its resolved location (an absolute path, a URL, or a repo URL with version and path) for "read once" and "builds on itself".
+- "No distros:" is judged on the merged chain, like every other rule that reads the result of combining.
+- url, type and version are strings; an unknown key on a repo is warned about and kept out of the output, as an unknown top-level key is.
+- Names follow the spec's rule (a single word: letters, digits, _ and -, starting with a letter). Names the prototype allowed and the spec does not are refused.
+- The comment at the head of each output file says which manifest, role, distro and extra groups it came from.
+- Output is written to a new directory beside the target and moved into place, so it is replaced whole or not at all.
+- Reading a base from a git repo keeps the time limit on git calls and the transport rule, uses git as it is set up on the machine, and lets git or ssh ask for a password at a terminal. The no-hook, no-filter and no-prompt guards go, by the owner's decision of 2026-11-17 on how far the tool's checks go. No parent cache is kept between runs.
+
+The existing user (part 3). The adapter keeps reading layers.txt, optional_layers.txt and repos/<layer>.repos. In that layout a layer is listed as optional when every repo in it is optional, and the unnamed layer is written as _unnamed. An old-format manifest is refused with a message that points at the note on moving. Optional repos inside a layer that also has required repos are not expressible in that layout; say so in the note, and leave the per-repo form to the thin adapter (issue 503).
