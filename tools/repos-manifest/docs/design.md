@@ -189,8 +189,8 @@ of that name and leaves it. Before that step nothing of the system exists, and `
 run again. If the first sync after it fails or is interrupted, `sync` finishes it. Every
 command finds `.repos-manifest/` by walking up from the current directory, and one without a
 readable `config.yaml` is an error that names the file. `init` gives that error too, not the
-refusal for a system that is set up, and its next step is to repair or remove that
-`.repos-manifest/` folder. A `config.yaml` without exactly the shape this version writes
+refusal for a system that is set up, and its next step is to repair the file, or, to set up
+again, to move the system directory aside and run `init` in an empty directory. A `config.yaml` without exactly the shape this version writes
 (`manifest` as a path, `layout`, and `role`, `groups` and `distros` when set, each of its type,
 with an empty entry for each distro) is the same error, naming the key and what is wrong; any
 other key is named with the words that this version does not read it.

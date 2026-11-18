@@ -106,7 +106,10 @@ def test_1b_a_system_dir_with_no_readable_config_is_that_error(tmp, capsys):
         "--distro",
         "jazzy",
         "--yes",
-        expect="config.yaml: not found; repair it, or remove that .repos-manifest/ folder",
+        expect=(
+            f"config.yaml: not found; repair the file, or, to set up again, move {system} aside"
+            " and run `repos-manifest init` in an empty directory"
+        ),
     )
 
 

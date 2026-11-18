@@ -167,7 +167,8 @@ def read_config(system: Path) -> Config:
 
     def bad(why: str) -> ManifestError:
         return ManifestError(
-            f"{path}: {why}; repair it, or remove that {SYSTEM_DIR}/ folder to set up again"
+            f"{path}: {why}; repair the file, or, to set up again, move {system} aside and run"
+            " `repos-manifest init` in an empty directory"
         )
 
     try:
