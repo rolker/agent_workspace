@@ -49,7 +49,9 @@ their own against the specification.
 - The published manifest can point at the released repos while a machine fetches them from
   somewhere else: a developer's forks, or a private server for machines in the field. The
   published manifest is not edited for either.
-- A development machine can hold more than one distro of the same system side by side.
+- A development machine can hold more than one distro of the same system side by side. A
+  system set up with a directory per distro can gain a distro later, without moving the
+  first. A system set up without one holds one distro, or none.
 - Some repos can be optional. For example, marking a private repo optional allows the same
   manifest to be used to set up a public version of a project.
 - A manifest is a file, and it can live anywhere: in one of the system's repos, in a repo of
