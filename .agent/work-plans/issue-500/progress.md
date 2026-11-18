@@ -290,3 +290,11 @@ Revise the plan with every finding of the Plan Review. Host decisions where it l
 - The by-hand commands: install from the main checkout after the merge, not from the worktree; make the dirty file from one the repo tracks; compare git status as well as git log.
 - Questions moved to part 2's own plan checkpoint, for the owner then: untracked files when sync updates a repo; a repo whose url changed in the manifest; a cloned repo whose layer changed.
 - No question remains for the owner on part 1.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 16:29 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `9afc4552`
+
+Revision after the plan review and its checkpoint. Part 1 is `init` and a clone-only first `sync` in four modules (signals, system, sync, init): each missing repo is cloned by `vcs import` into a temporary directory under the layer's `src/` and renamed into place on exit status 0, with the destination check, `.repos-manifest/` made aside and renamed, vcs2l in the test extra, and no change to `output.py` or `.github/`. Cut items are listed as moved to part 2; no open question remains for part 1.
