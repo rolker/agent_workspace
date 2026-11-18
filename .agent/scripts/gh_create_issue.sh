@@ -36,9 +36,11 @@
 #     source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 #   - No body flag at all (interactive editor mode) means nothing is signed.
 #   - Outside a git repository (a project root that is a plain directory
-#     holding clones) -R / --repo must name the repository, and the label
-#     list is read from the workspace checkout this script lives in; inside
-#     one, from that repository's own .agent/github_metadata.json.
+#     holding clones) -R / --repo must name the repository. Labels are
+#     validated against a local list only when it is the target's own:
+#     inside a git repository, that repository's .agent/github_metadata.json;
+#     outside one, the workspace checkout's, only when -R names the
+#     workspace's own repository. For any other target GitHub validates them.
 #   - A --body-file is read once into a temporary copy (under TMPDIR,
 #     removed on exit), which is what gets signed and what gh reads: a
 #     pipe, FIFO or process substitution is signed like a regular file,
@@ -84,9 +86,6 @@ _UT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_UT_SCRIPT_DIR/_project_registry.sh"
 registry_require_root "$(cd "$_UT_SCRIPT_DIR/../.." && pwd)" || exit 1
 
-# Outside a git repository, the labels are the workspace checkout's.
-METADATA_FILE="${REPO_ROOT:-$(cd "$_UT_SCRIPT_DIR/../.." && pwd)}/.agent/github_metadata.json"
-
 # Check for required dependencies
 if ! command -v gh &> /dev/null; then
     echo "❌ Error: 'gh' (GitHub CLI) is not installed or not in PATH"
@@ -113,6 +112,21 @@ gh_create_parse issue "$@" || exit 2
 if [ -z "$REPO_ROOT" ] && [ -z "$GH_REPO" ]; then
     echo "❌ Error: Not in a git repository: pass -R <owner/repo> to name the repository the issue is for" >&2
     exit 2
+fi
+
+# A label list describes one repository. Inside a git repository it is that
+# repository's own; outside one, the workspace checkout's list is read only
+# when -R names the workspace's own repository. Any other -R target outside
+# git has no local list (METADATA_FILE empty): GitHub validates its labels.
+_WS_CHECKOUT="$(cd "$_UT_SCRIPT_DIR/../.." && pwd)"
+_WS_OWN_SLUG=$(git -C "$_WS_CHECKOUT" remote get-url origin 2>/dev/null \
+    | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//') || _WS_OWN_SLUG=""
+if [ -n "$REPO_ROOT" ]; then
+    METADATA_FILE="$REPO_ROOT/.agent/github_metadata.json"
+elif [ -n "$_WS_OWN_SLUG" ] && [ "$GH_REPO" = "$_WS_OWN_SLUG" ]; then
+    METADATA_FILE="$_WS_CHECKOUT/.agent/github_metadata.json"
+else
+    METADATA_FILE=""
 fi
 
 # --- Mutually exclusive body sources -----------------------------------------
@@ -312,6 +326,12 @@ fi
 # If no labels specified or metadata file doesn't exist, just pass through to gh
 if [ ${#GH_LABELS[@]} -eq 0 ]; then
     echo "ℹ️  No labels specified, passing through to 'gh issue create'"
+    gh issue create "${GH_ARGS[@]}"; exit $?
+fi
+
+if [ -z "$METADATA_FILE" ]; then
+    echo "⚠️  Warning: no local label list for $GH_REPO outside a git repository"
+    echo "   Skipping label validation. Labels will be validated by GitHub."
     gh issue create "${GH_ARGS[@]}"; exit $?
 fi
 

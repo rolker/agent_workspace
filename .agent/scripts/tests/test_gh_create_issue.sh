@@ -631,12 +631,21 @@ else
     fail "outside git, -R: no -R/--repo in argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
 fi
 
+# A label list describes one repository: outside git, the workspace's list
+# is read only when -R names the workspace's own repository.
 run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --label nope
+if [[ "$RC503" -eq 0 ]] && gh_called && argv_has "nope" \
+   && [[ "$OUT503" == *"Labels will be validated by GitHub."* && "$OUT503" != *"Invalid label"* ]]; then
+    pass "outside git, -R another repository: a label not in the workspace's list reaches gh, GitHub validates it"
+else
+    fail "outside git, -R pkg, label not in the workspace's list: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503" -R ws-owner/ws --title T --body B --label nope
 if [[ "$RC503" -eq 1 && ! -f "$ARGV_LOG" && "$OUT503" == *"Invalid label(s) detected: nope"* \
       && "$OUT503" == *"Valid labels (from $WS503/.agent/github_metadata.json)"* ]]; then
-    pass "outside git, -R: labels are checked against the workspace checkout's list"
+    pass "outside git, -R the workspace's repository: labels are checked against the workspace checkout's list"
 else
-    fail "outside git, invalid label: rc=$RC503 out=${OUT503:0:300}"
+    fail "outside git, -R workspace, invalid label: rc=$RC503 out=${OUT503:0:300}"
 fi
 
 run503 "$ROOT503" --title T --body B --label bug
