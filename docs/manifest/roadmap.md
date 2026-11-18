@@ -21,6 +21,8 @@ passes. This is the acceptance of the issue that started the adapter's manifest 
 | The workspace's design for using the tool is written down (#487) | `file-exists docs/manifest/design.md` |
 | The tool has the commands the adapter calls: `init`, `sync`, `build` and `status` | |
 | Registration passes the manifest's location, role, distro and fetch settings to `init`, and the workspace keeps no second copy | |
+| The tool sets up a directory per distro from the first distro on, and adds a distro to a system directory later | |
+| A session started in an empty directory sets up and onboards a project from the repo that holds its manifest (#473) | |
 | The adapter's `setup`, `sync`, `build` and `validate` call the tool, and its own manifest fetch and generated directories are removed | |
 | A worktree of a package repo builds against an instance in the tool's layout | |
 | Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
@@ -30,7 +32,6 @@ passes. This is the acceptance of the issue that started the adapter's manifest 
 
 | Deferral | Revisit check |
 |---|---|
-| One instance holding several distros | |
 | Recording which distro runs on the host and which in a container | |
 | Checking package dependencies when a manifest is changed | |
 | A review workflow for changes made on field machines | |

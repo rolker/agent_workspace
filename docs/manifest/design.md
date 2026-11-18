@@ -96,11 +96,39 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 Nothing in this section is built. It depends on tool commands that are themselves not built
 yet (`init`, `show`, `sync`, `build`, `status`); the tool's roadmap has them.
 
+### The case it is designed for
+
+The owner's description of how setting up a project should go (2026-11-18): make a
+directory, start a session in it, and ask for the project to be set up and onboarded from
+the repo it lives in, for more than one distro, starting with one.
+
+```
+mkdir ~/project11
+cd ~/project11
+claude
+> set up and onboard project11, which lives at rolker/unh_marine_autonomy on GitHub,
+  to work on several distros, starting with rolling
+```
+
+What has to happen behind that request:
+
+1. The session is in a directory that is not registered. The workspace offers to register
+   it as a project root.
+2. The manifest is found in the named repo, on the branch for the first distro.
+3. The session shows what the manifest comes to for a role and that distro
+   (`repos-manifest show`) and asks before fetching.
+4. `repos-manifest init` sets the directory up with one directory per distro, holding the
+   first distro only.
+5. The distro is built, and the project is onboarded as any other.
+6. Later, another distro is added to the same directory, without moving the first.
+
 ### A project instance is a system directory
 
 The tool sets a system up in one directory, with a `.repos-manifest/` folder that records
 the manifest, the role, the distro and where repos are fetched from. A project instance of
-type `ros2_colcon` is such a directory. The adapter becomes thin: each of its verbs calls
+type `ros2_colcon` is such a directory, and it is the root a session is started in. It holds
+every distro of the project the machine has, each in its own directory, from the first
+distro on, so that adding a distro later moves nothing. The adapter becomes thin: each of its verbs calls
 one of the tool's commands in the instance's directory.
 
 | Adapter verb | Today | Target |
@@ -171,8 +199,12 @@ no user and is removed, with `bootstrap_url` and `configs/manifest`.
 
 ## Not decided
 
-- Whether one instance holds one distro or several. The tool can keep several distros side
-  by side in one system directory. The workspace registers one instance per distro today.
+- How a session says which distro it is working on, when its root holds several. Today a
+  distro is recorded once per instance, on the registry line, and a worktree's environment
+  script is written for that one distro.
+- How the manifest is found when only a repo is named. The tool is given a repo, a branch
+  and a path. A convention for the path, or a search of the repo's top directory, would
+  remove the need to name it.
 - Which distro runs on the host and which in a container. That is a fact about a machine. It
   would be recorded with the instance, and the adapter would use it to decide where `build`
   runs.
