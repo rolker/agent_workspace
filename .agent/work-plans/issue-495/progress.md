@@ -290,3 +290,26 @@ The revision carries out the owner's three answers without adding to them, and t
 - [ ] Fold the second "not built" bullet in `docs/manifest/design.md` into the first (finding 5)
 - [ ] Add one line: a `--distro` the system does not record is an error, flat included
 - [ ] Put open question 1 to the owner; decide 2-4 as mechanism
+
+## Checkpoint
+**When**: 2026-11-18 15:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review found the plan carries out the owner's three answers exactly and its first section complete; the six findings left are located text fixes)
+**After**: plan
+**Decision**: proceed
+
+Proceed to writing the documents, with the second Plan Review's findings applied as the documents are written; where this entry and the plan differ, this entry wins.
+
+1. A distro's own manifest entry carries only a version: `distros: {rolling: {manifest_version: rolling}}` or the like (name it in the documents), read as the top-level manifest's location with that version. add-distro takes only --manifest-ref, no <manifest> and no --manifest-path. This is the smallest thing that supports a manifest per distro on per-distro branches, which is the case the owner named; a different url or path per distro is not supported, and the design says so. Editing the top-level manifest's url or path then reaches every distro.
+2. Add the three passages of design.md the table missed (where the local copy is read from; editing manifest after init; "a copy in another clone or another branch of the same repo is not looked at", now said per distro).
+3. add-distro's refusal when the recorded manifest does not list the distro names --manifest-ref as the next step. A --distro the system does not record is an error for every command, flat systems included. init leaves a --distro the manifest does not list to the resolver's error.
+4. docs/manifest/design.md: setup "passes --distro-dirs" (it does not ask the person); how the adapter passes a version for a new distro is left with the open question of how a session names its distro, and the text says so.
+5. The "not built" bullets in docs/manifest/design.md: fold add-distro into the first bullet; "two things".
+6. The trees do not decide state.yaml's shape; issue 500 does.
+
+Host decisions on the plan's four new questions (owner may veto):
+- The workspace's setup passes --distro-dirs whenever the project has a distro. The workspace's design, which the owner merged, already says a project instance "holds every distro, each in its own directory from the first distro on", and his own project starts with one distro and adds more. Undoing it: one sentence, and a flag the adapter stops passing.
+- At the top of a per-distro system with one distro, show, resolve, build and freeze use it; with several they refuse and list them.
+- --distro wins over the directory the person is standing in.
+- init prints its one line about the layout for every flat system with a named distro.
+- Names: --distro-dirs, add-distro, layout: flat | distro-dirs.
