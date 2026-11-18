@@ -894,3 +894,24 @@ Each new test was run against the previous source (a copy of HEAD's src) and fai
 - [x] (suggestion) The WARNING now says the previous output is kept in the hidden directory and the next resolve puts it back if `--out` is still missing; design.md matches — `tools/repos-manifest/src/repos_manifest/output.py:362`
 - [x] (suggestion) A `version` that is exactly `heads/` or `tags/` is refused, folded into the version check and its spec sentence — `tools/repos-manifest/src/repos_manifest/manifest.py:206`, `tools/repos-manifest/docs/spec.md:446`
 - [x] (suggestion) Pull request body's stale Verified and Reviews lines — PR #506 body (deferred: the body is the host's; answered by the host)
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 16:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #506 at `c76b990`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+PR-mode review, round 3: a narrow convergence check on the round 2 review's findings (1 must-fix, 5 suggestions) and the fix diff `ffb880a3..HEAD` (9783b76, 64c428c, b3c777d, b3d2181, 0f7e2f8 and the record commits). Cross-model: skipped (round-3 convergence check, per handoff). Specialists run: static analysis (flake8 and black hooks from the workspace .venv pre-commit on the four changed .py files: Passed), governance and plan drift inline (design.md and spec.md changed with the code, ADR-0017), Claude adversarial (a fresh subagent on the fix diff: no must-fix).
+
+Round 2's must-fix is settled: the part-by-part check was removed, and design.md:305-307 and the `_on_disk` docstring now say exactly what the code does. `--out` values run through `resolve` in a scratch directory: `out`, `./o2`, `sub/o3`, absolute paths, and `../o16` from a subdirectory are written where given; `sub/../o4`, `<abs>/sub/../o6`, `missing/../o11`, `afile/../o13` and `flink/../o14` are folded and written beside them; `missing/deep/o10` makes its parents; `lnk/o7` and `lnk/inner/../o9` go under the link's target and `lnk/../o8` beside it; `dangling/o15` (a link to a missing directory) makes the target and writes there; `afile/o12` is refused "cannot be written (Not a directory)"; `.` and `lnk/..` are refused as the current directory or a parent; `lnk` is refused as a symbolic link; `sub/x/..` resolves to `sub`, a person's non-empty directory, and is refused. A second run to `out` replaces it. Each matches design.md's sentence.
+
+The four suggestions: a marker that is a link does not count in the replace check or the put-back (`_has_marker`; the adversarial pass confirmed both new tests fail without it); repo keys `" a"`, `"a "`, `" "` refused, `"a b"` accepted, tabs and non-ASCII spaces already refused by the invisible-character rule; `heads/` and `tags/` refused in a repo and a distro entry, `heads`, `tags/x` read; the WARNING's "if --out is still missing" matches design.md:313-314. The adversarial pass noted that, read alone, "is kept in" does not say the next run's sweep removes the copy when `--out` was made again by hand; design.md's sweep sentence says so, and this is the option round 2 offered, so it is not re-raised. No test added this round patches anything (only `monkeypatch.chdir`); nothing in the diff needs a Python newer than 3.10.
+
+CI at `c76b990`, push and pull_request runs: "repos-manifest tests (#267 prototype) (Python 3.10)" pass, "(Python 3.14)" pass, Validate Adapter Contract pass, Validate Documentation pass, Lint (pre-commit) pass. Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` gives `736 passed in 11.89s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+
+### Findings
+- [ ] No issues found. LGTM.
