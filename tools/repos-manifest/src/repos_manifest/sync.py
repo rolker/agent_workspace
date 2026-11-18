@@ -130,6 +130,7 @@ class RepoResult:
     outcome: str  # cloned, present, skipped (optional), failed
     detail: str = ""
     commit: Optional[str] = None
+    fetch: bool = False  # it failed to fetch, which a later sync may get past
 
 
 CLONED, PRESENT, SKIPPED, FAILED = "cloned", "present", "skipped", "failed"
@@ -195,7 +196,8 @@ def clone_repo(
     try:
         status, printed = vcs_import(temporary, text, env)
         if status != 0:
-            return RepoResult(shown, failed, f"vcs import exited {status}:\n{printed.rstrip()}")
+            detail = f"vcs import exited {status}:\n{printed.rstrip()}"
+            return RepoResult(shown, failed, detail, fetch=True)
         if not is_in_place(system, parts):
             return RepoResult(shown, FAILED, "a link on the way leads outside its place")
         if os.path.lexists(place):
@@ -270,17 +272,31 @@ def report(result: DistroResult) -> None:
         print(f"  present, not touched ({present}); updating a repo that is there is not built yet")
 
 
-def sync_distros(system: Path, config: Config, plan: Sequence[Resolved], env: Env) -> int:
-    """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro.
-    Exit status 1 when a repo that is not optional failed."""
+def sync_distros(
+    system: Path, config: Config, plan: Sequence[Resolved], env: Env
+) -> List[DistroResult]:
+    """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro."""
     sweep_temporaries(system / SYSTEM_DIR)
-    status = 0
+    results = []
     for resolved in plan:
         result = sync_distro(system, config, resolved, env)
         report(result)
-        if result.of(FAILED):
-            status = 1
-    return status
+        results.append(result)
+    return results
+
+
+def closing(results: Sequence[DistroResult]) -> int:
+    """Print what to do about the repos that failed; returns the exit status, 1 when a repo
+    that is not optional failed. Running sync again is advised only for a failed fetch."""
+    failed = [repo for result in results for repo in result.of(FAILED)]
+    if any(repo.fetch for repo in failed):
+        print(f"Some repos failed; {FINISH} once they can be fetched.")
+    if any(not repo.fetch for repo in failed):
+        print(
+            "Some repos could not be put in place, and another sync will not change that: the"
+            " ERROR lines above say what is in the way."
+        )
+    return 1 if failed else 0
 
 
 def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Resolved]:
@@ -310,9 +326,7 @@ def run_sync(named_distros: Sequence[str]) -> int:
         env = require_tools()
         try:
             with signals_end_the_run():
-                status = sync_distros(system, config, plan, env)
+                results = sync_distros(system, config, plan, env)
         except Stopped as exc:
             return stop_exit(exc, f"stopped by {signal_name(exc)}; {FINISH}")
-    if status:
-        print(f"Some repos failed; {FINISH} once they can be fetched.")
-    return status
+    return closing(results)

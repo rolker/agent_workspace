@@ -95,6 +95,35 @@ def test_a_link_inside_src_on_the_way_refuses_the_repo(setup, tmp_path, capsys):
     assert temporaries(system) == []
 
 
+IN_THE_WAY = (
+    "Some repos could not be put in place, and another sync will not change that: the ERROR"
+    " lines above say what is in the way.\n"
+)
+FETCH = "Some repos failed; run `repos-manifest sync` to finish once they can be fetched.\n"
+
+
+def test_the_closing_advice_says_sync_again_only_for_what_a_sync_can_fix(setup, tmp_path, capsys):
+    system, add = setup
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (system / "src" / "grp").symlink_to(outside)
+    add("grp/c")
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert out.endswith(IN_THE_WAY) and FETCH not in out, out
+    path = tmp_path / "m.manifest.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["repositories"]["later"] = repo(tmp_path / "remotes" / "later")
+    write_manifest(path, data)
+    assert run(system, "sync") == 1
+    assert capsys.readouterr().out.endswith(FETCH + IN_THE_WAY)
+    (system / "src" / "grp").unlink()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert out.endswith(FETCH) and IN_THE_WAY not in out, out
+
+
 def test_a_layer_directory_that_is_a_link_refuses_its_repos(setup, tmp_path, capsys):
     system, add = setup
     outside = tmp_path / "outside"

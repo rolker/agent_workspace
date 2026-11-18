@@ -19,7 +19,7 @@ from . import selection
 from .output import process_has_ended, signals_held
 from .selection import Resolved
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
-from .sync import FINISH, require_tools, sync_distros
+from .sync import FINISH, closing, require_tools, sync_distros
 from .yamlload import ManifestError
 from .system import (
     CONFIG_FILE,
@@ -229,14 +229,11 @@ def run_init(
                 make_system_dir(system, config, lambda: made.append(True))
                 try:
                     with reporting_oserror():
-                        status = sync_distros(system, config, plan, env)
+                        results = sync_distros(system, config, plan, env)
                 except ManifestError as exc:
                     raise ManifestError(f"{exc}; the system is set up: {FINISH}") from None
         except Stopped as exc:
             then = FINISH if made else "nothing was created"
             return stop_exit(exc, f"stopped by {signal_name(exc)}; {then}")
-    if status:
-        print(f"The system is set up, and some repos failed; {FINISH} once they can be fetched.")
-    else:
-        print("The system is set up.")
-    return status
+    print("The system is set up.")
+    return closing(results)
