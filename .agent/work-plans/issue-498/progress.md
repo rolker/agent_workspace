@@ -960,3 +960,11 @@ Instructions for the revision:
 - Part 2 reads base as the spec defines it, and nothing else. Every check part 1 applies to a manifest applies to each manifest read through base; a location given in base passes the same url rules as a repo url.
 - Carry part 1's lessons into the plan so they are not found again one review round at a time: state each rule once and structurally instead of case by case; say in the documents exactly what the code does; no test patches an os function reached through pathlib; nothing needs a Python newer than 3.10; fetching anything over the network is covered by tests that use local git repositories and local files, never the network.
 - Keep it as small as the spec allows. Where the spec leaves a choice open for base, list it as a question with a recommendation instead of deciding it silently.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 16:15 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `88caddab`
+
+Revision after part 1 (#506) merged: part 1 marked delivered; part 2 (base) planned as new fetch.py, base.py, combine.py plus a Part/PartRepo split in manifest.py, with per-file checks separated from combined checks; six open questions with recommendations; part 3 corrected (output.py/cli.py names, URL-sourced relative base, sweep, head lines); lessons from part 1 added.
