@@ -346,6 +346,13 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
         "example.org:a.git",
         "myrobot:repos/a.git",
         "[::1]:a.git",
+        "[git@example.org:22]:a.git",
+        # A '%', '?' or '#' in the path is the path's business.
+        "https://example.org/a%20b.git",
+        "ssh://git@example.org/%2da.git",
+        "https://example.org/a.git?x=1#y",
+        "ssh://git@example.org/a?b@-c#d.git",
+        "git@example.org:a%2db?c#d.git",
     ],
 )
 def test_the_transports_that_only_fetch_are_accepted(url):
@@ -387,6 +394,30 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("ssh://host:-oProxyCommand=x/p", "the port starts with '-'"),
         # Only a leading <word>:: is the transport form.
         ("ext+x.y-z::cmd", "<transport>::<address> form is refused"),
+        # git decodes a '%' in a url with '://', so a '%' in the user, host or port is refused.
+        ("ssh://%2doProxyCommand=x/p", "a '%' in the user, host or port is refused"),
+        ("ssh://h:%2d1/p", "a '%' in the user, host or port is refused"),
+        ("ssh://%2do@h/p", "a '%' in the user, host or port is refused"),
+        ("https://%2dh/a.git", "a '%' in the user, host or port is refused"),
+        ("file://%2dh/a.git", "a '%' in the user, host or port is refused"),
+        ("%2dh:a.git", "a '%' in the user, host or port is refused"),
+        ("u%40v@h:a.git", "a '%' in the user, host or port is refused"),
+        # For git, the host runs to the first '/', not to a '?' or a '#'.
+        ("ssh://h?x@-oProxyCommand=y/p", "the host starts with '-'"),
+        ("ssh://h#x@-oProxyCommand=y/p", "the host starts with '-'"),
+        ("https://h?x@-y/p", "the host starts with '-'"),
+        ("h?x@-oProxyCommand=y:p", "the host starts with '-'"),
+        # git looks for a host in brackets after the first '@[', even past a '/' or a ':'.
+        ("ssh://x/@[-oProxyCommand=y]/p", "the host starts with '-'"),
+        ("h:p@[-oProxyCommand=y]:q", "the host starts with '-'"),
+        # In brackets, ssh still reads a user before the last '@', and git a port after a ':'.
+        ("[a@-oProxyCommand=x]:p", "the host starts with '-'"),
+        ("[-oProxyCommand=x@h]:p", "the user starts with '-'"),
+        ("[h:-p]:path", "the port starts with '-'"),
+        ("ssh://a@[h:-p]/p", "the port starts with '-'"),
+        ("ssh://[h]:-p/p", "the port starts with '-'"),
+        ("[h]x:p", "is refused"),
+        ("h:", "is refused"),
     ],
 )
 def test_other_transports_are_refused(url, match):

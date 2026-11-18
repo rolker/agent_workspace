@@ -38,10 +38,6 @@ UNNAMED_LAYER = "_unnamed"
 
 # The transports a `url` may use: they only fetch.
 _URL_SCHEMES = ("https://", "http://", "ssh://", "file://")
-# git's scp-like form, `[user@]host:path`: a ':' before any '/'. The user, which may be left
-# out (an ssh host alias), runs to the last '@' before the host; a host in brackets may hold
-# ':' (an IPv6 address). A relative path on the local disk has a '/' before any ':', or no ':'.
-_SCP_FORM = re.compile(r"(?:(?P<user>[^/:\[\]]*)@)?(?P<host>\[[^\]/]*\]|[^/:@\[\]]+):(?P<path>.+)")
 # git's <transport>::<address> form: a word at the start, then '::'.
 _TRANSPORT_FORM = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*::")
 _URL_RULE = (
@@ -210,38 +206,67 @@ class _Checker:
             )
         scheme = next((s for s in _URL_SCHEMES if url.startswith(s)), None)
         if scheme is not None:
-            # The authority runs to the first '/', '?' or '#'; the host follows its last '@'.
-            authority = re.split(r"[/?#]", url[len(scheme) :], maxsplit=1)[0]
-            user, _, host_port = authority.rpartition("@")
-            if host_port.startswith("["):
-                close = host_port.find("]")
-                if close < 0:
-                    raise self.error(where, f"{url!r}: the host has an unclosed '['")
-                host, rest = host_port[1:close], host_port[close + 1 :]
-                if rest and not rest.startswith(":"):
-                    raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
-                port = rest[1:]
-            else:
-                host, _, port = host_port.partition(":")
-            self.url_parts_not_options(url, where, user=user, host=host, port=port)
+            # As git reads it, the part with the user, host and port runs to the first '/'
+            # after the host; not to a '?' or a '#'.
+            rest = url[len(scheme) :]
+            slash = rest.find("/", self.host_end(url, rest, where))
+            self.authority(url, rest if slash < 0 else rest[:slash], where)
             return url
-        if "://" not in url:
-            scp = _SCP_FORM.fullmatch(url)
-            if scp:
-                host = scp.group("host")
-                if host.startswith("["):
-                    host = host[1:-1]
-                self.url_parts_not_options(url, where, user=scp.group("user"), host=host)
-                return url
+        colon = url.find(":")
+        if "://" not in url and colon >= 0 and "/" not in url[:colon]:
+            # git's scp-like form, `[user@]host:path`: the host ends at the first ':' after it.
+            sep = url.find(":", self.host_end(url, url, where))
+            if sep <= 0 or sep == len(url) - 1:
+                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+            self.authority(url, url[:sep], where)
+            return url
+        # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url
         raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
 
-    def url_parts_not_options(self, url: str, where: str, **parts: Optional[str]) -> None:
-        """No part of a url's authority starts with '-', where ssh would read it as an
-        option."""
-        for part, text in parts.items():
-            if text and text.startswith("-"):
+    def host_end(self, url: str, text: str, where: str) -> int:
+        """Where the host ends in `text`, as git's host_end() finds it: just after the ']' of a
+        host in brackets, which git looks for at the start of `text` or after its first '@['
+        wherever that is; 0 when there is no such host."""
+        at = text.find("@[")
+        start = at + 1 if at >= 0 else 0
+        if text[start : start + 1] != "[":
+            return 0
+        close = text.find("]", start + 1)
+        if close < 0:
+            raise self.error(where, f"{url!r}: the host has an unclosed '['")
+        return close + 1
+
+    def authority(self, url: str, text: str, where: str) -> None:
+        """Check the user, host and port in `text`, the part of a url git hands to ssh: no '%'
+        (git decodes it in a url with '://', so a '%2d' would be a '-'), and none starts with
+        '-', where ssh would read it as an option."""
+        if "%" in text:
+            raise self.error(where, f"{url!r}: a '%' in the user, host or port is refused")
+        at = text.find("@[")
+        start = at + 1 if at >= 0 else 0
+        if text[start : start + 1] == "[":
+            close = text.index("]", start + 1)
+            outer_user, inner, rest = text[: max(at, 0)], text[start + 1 : close], text[close + 1 :]
+            if rest and not rest.startswith(":"):
+                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+            # Inside the brackets, ssh still reads a user before the last '@', and git a port
+            # after a ':'.
+            user, _, host_port = inner.rpartition("@")
+            parts = [
+                ("user", outer_user),
+                ("user", user),
+                ("host", host_port),
+                ("port", host_port.partition(":")[2]),
+                ("port", rest[1:]),
+            ]
+        else:
+            user, _, host_port = text.rpartition("@")
+            host, _, port = host_port.partition(":")
+            parts = [("user", user), ("host", host), ("port", port)]
+        for part, value in parts:
+            if value.startswith("-"):
                 raise self.error(where, f"{url!r}: the {part} starts with '-'")
 
     # --- the manifest ---------------------------------------------------------------------

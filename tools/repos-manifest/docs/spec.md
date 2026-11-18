@@ -435,10 +435,16 @@ command that writes there.
     some disks treat names that differ only in case as one.
 - No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
-    read one as an option, and nor do the user, the host or the port of a `url`. The host is
-    what follows the last `@` before the first `/` (in the `[user@]host:path` form, before the
-    `:`), without the brackets of an IPv6 address. The `path` of a location is relative and
-    has no `..` in it.
+    read one as an option, and nor do the user, the host or the port of a `url`. They are read
+    as `git` reads them. They run to the first `/` after the host, so a `?` or a `#` before
+    it is part of them (in the `[user@]host:path` form, to the first `:` after the host). The
+    host is what follows the last `@`, without the brackets of an IPv6 address; `git` takes
+    a host in brackets wherever it finds `@[`, even after a `/`. Inside the brackets, the
+    text before the last `@` is a user too, and the text after the first `:` a port. The
+    `path` of a location is relative and has no `..` in it.
+  - The user, the host and the port of a `url` hold no `%`. `git` decodes `%` escapes in a
+    url with `://`, so `%2d` would be a `-`; refusing `%` there is simpler than decoding,
+    and a real url does not need it. A `%` in the path is accepted.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the
     `[user@]host:path` form (the user may be left out, as with an ssh host alias), or an
     absolute path on the local disk. A path with a `/` before its first `:`, or with no `:`,
