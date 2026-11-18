@@ -316,7 +316,7 @@ def _put_file(system: Path, path: Path, text: str, put) -> None:
 class RepoRecord:
     layer: str
     version: Optional[str]
-    commit: Optional[str]
+    commit: str
 
 
 @dataclass

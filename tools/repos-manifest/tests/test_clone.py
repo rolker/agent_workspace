@@ -11,7 +11,7 @@ import sys
 import pytest
 import yaml
 
-from helpers import dead_pid, make_remote, repo, run, snapshot, temporaries, write_manifest
+from helpers import dead_pid, head, make_remote, repo, run, snapshot, temporaries, write_manifest
 from repos_manifest.sync import rename_failure, sweep_temporaries
 from repos_manifest.system import is_in_place
 
@@ -296,5 +296,35 @@ def test_whatever_stops_a_repo_skips_it_when_optional_and_fails_it_otherwise(
     else:
         assert "ERROR: src/grp/c: " in out
         assert "failed (1): src/grp/c" in out
+    assert _recorded(system) == {"a"}
+    assert temporaries(system) == []
+
+
+def test_git_namespace_in_the_environment_does_not_reach_the_clones(setup, tmp_path, monkeypatch):
+    # GIT_NAMESPACE makes a clone from a local path see no refs; git's --local-env-vars does
+    # not list it, so the tool removes it with them.
+    system, add = setup
+    add("b")
+    monkeypatch.setenv("GIT_NAMESPACE", "elsewhere")
+    assert run(system, "sync") == 0
+    monkeypatch.delenv("GIT_NAMESPACE")
+    state = yaml.safe_load((system / ".repos-manifest/state.yaml").read_text())
+    remote_head = head(tmp_path / "remotes" / "r")
+    assert state["distros"]["_unnamed"]["repos"]["b"]["commit"] == remote_head
+    assert head(system / "src" / "b") == remote_head
+
+
+def test_a_clone_whose_head_cannot_be_read_is_that_repos_failure(
+    setup, tmp_path, monkeypatch, capsys
+):
+    system, add = setup
+    add("d")
+    _stub_vcs(tmp_path, monkeypatch, 'cat >/dev/null; git init -q "$2/d"')
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    assert "ERROR: src/d: the clone's HEAD cannot be read; not put in place" in (
+        capsys.readouterr().out
+    )
+    assert not os.path.lexists(system / "src" / "d")
     assert _recorded(system) == {"a"}
     assert temporaries(system) == []

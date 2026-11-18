@@ -666,7 +666,7 @@ person has moved if it is not.
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
 submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
 
-Whatever stops a repo from being put in place (it cannot be fetched, a link is on the way,
+Whatever stops a repo from being put in place (it cannot be fetched, the clone's `HEAD` cannot be read, a link is on the way,
 its place is taken by something that is not a directory or is filled meanwhile, a directory
 cannot be made, the rename fails) skips an optional repo, which is listed with the reason and
 never makes the exit status non-zero; for any other repo it is an error, and the exit status
@@ -972,7 +972,8 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries. Every
 `vcs` and `git` they run gets their environment without the variables that
-`git rev-parse --local-env-vars` names, such as `GIT_DIR`, so a run from a git hook acts on
+`git rev-parse --local-env-vars` names, such as `GIT_DIR`, and without `GIT_NAMESPACE`, which
+it does not name, so a run from a git hook acts on
 its own clones and not on the repo the hook runs in.
 
 Not every command needs all of these:

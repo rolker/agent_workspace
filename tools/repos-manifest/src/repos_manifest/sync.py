@@ -60,7 +60,8 @@ def require_tools() -> Env:
     """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read.
     Returns the environment every `vcs` and `git` of the run is given: this process's, without
     the variables that point git at a repository (those `git rev-parse --local-env-vars`
-    names), so that a run from a git hook or `git submodule foreach` acts on its own clones."""
+    names, and `GIT_NAMESPACE`, which it does not), so that a run from a git hook or
+    `git submodule foreach` acts on its own clones."""
     vcs = shutil.which("vcs")
     if vcs is None:
         raise Refusal("`vcs` is not found on PATH", "Install vcs2l or vcstool, which provide it")
@@ -94,7 +95,7 @@ def require_tools() -> Env:
         done = None
     if done is None or done.returncode != 0:
         raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
-    local = set(done.stdout.split())
+    local = set(done.stdout.split()) | {"GIT_NAMESPACE"}
     return {name: value for name, value in os.environ.items() if name not in local}
 
 
@@ -188,7 +189,7 @@ def clone_repo(
     repo: Selected,
     text: str,
     env: Env,
-    record: Callable[[Optional[str]], None],
+    record: Callable[[str], None],
 ) -> RepoResult:
     """Clone one repo to `src/<key>` unless something is there. Whatever stops a repo from
     being put in place makes an optional repo skipped and any other repo failed; this is the
@@ -205,7 +206,7 @@ def _put_in_place(
     repo: Selected,
     text: str,
     env: Env,
-    record: Callable[[Optional[str]], None],
+    record: Callable[[str], None],
 ) -> RepoResult:
     """`record` is given the clone's commit and writes it to the state; the stop signals are
     held over the rename into place and the record together, so a stop never leaves a clone in
@@ -234,6 +235,8 @@ def _put_in_place(
         if os.path.lexists(place):
             return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
         commit = _head(temporary.joinpath(*key_parts), env)
+        if commit is None:
+            return RepoResult(shown, FAILED, "the clone's HEAD cannot be read; not put in place")
         try:
             place.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
