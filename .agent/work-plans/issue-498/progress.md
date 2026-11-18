@@ -493,3 +493,47 @@ Readings where the spec was silent: (1) distro entry with `version` and `absent:
 - [x] (suggestion) No test pins readings 2 and 7 (unknown key in a distro entry warned; a BOM refused) — `tools/repos-manifest/tests/test_manifest_reading.py:165`
 - [x] (suggestion) Job name still says "#267 prototype" though it now tests the new reader too; owner's call, mention in the PR — `.github/workflows/validate.yml:56` (deferred: host decision: the job name keeps (#267 prototype); nothing under .github/ changes in this round)
 - [x] (suggestion) `test_developer_gets_the_44_repos_of_the_earlier_fixture` reads `fixtures/p11`, which part 3 deletes; add it to part 3's list — `tools/repos-manifest/tests/test_project11.py:69`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 14:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `0e345f33`
+**Addressed**: Local Review (Pre-Push) at `764f1195` (2026-11-18 13:46 -05:00)
+**Commits**: 066f284a f656ee2a 766bd700 41cbff57 de03f0fd 49bc8151 62d137f8 88c6e3cc fa1d9aa6 79b5dee7 2ca89190 0856619b 7f23a75c 346f97d9 0e345f33
+
+Fix round for part 1. Every must-fix has a test that failed before its fix, except must-fix 6 (a plan file, which no test reads). The test for must-fix 7 is its own commit (fa1d9aa6), and it fails on the design text before 88c6e3cc.
+
+### Actions
+- [x] (must-fix 1) Invisible characters. `has_unsafe_char` now also refuses categories Cn, Co and Cs, Unicode's default-ignorable code points (the full list, as Python's unicodedata does not give that property) and U+2800. Both the raw-text check (comments included) and the walk over parsed keys and values use it. Tests cover 18 such characters in a comment, a key and a value, `ok` against `"ok"` followed by U+3164, a BOM, and visible non-ASCII text that is still accepted. spec.md says what the rule covers. — `yamlload.py`, 066f284a
+- [x] (must-fix 2) The url host. It is found in the authority (up to the first `/`, `?` or `#`), after its last `@`, with brackets taken off; a `[` that is never closed is refused. `ssh://a@b@-oX/p`, `ssh://[-oX]/p`, `git@[-oX]:p` and `a@b@-oX:p` are refused. `https://example.org/repo@-v1.git` is accepted. — `manifest.py`, f656ee2a
+- [x] (must-fix 3) The swap. SIGINT is held with SIGTERM and SIGHUP. Whatever stops the run, the `finally` reads the disk: if `--out` is missing, the previous output goes back from `old`. Tests: SIGINT is in the held mask during the swap; a real SIGINT sent between the renames leaves the new output; a KeyboardInterrupt raised between them, as on a platform where signals cannot be held, leaves the old output. Neither leaves a temporary directory behind. design.md#resolve is updated. — `output.py`, 41cbff57
+- [x] (must-fix 4) `roles: {}` is refused, with a spec line and a test. — `manifest.py`, de03f0fd
+- [x] (must-fix 5) The private repo's name. `test_project11.py` reads the key and url from the old fixture's `site.repos` at run time. Its guard test now also checks the test file itself, and it failed when the name was appended to the file. The plan's mention is reworded. — `tests/test_project11.py`, 49bc8151
+- [x] (must-fix 6) plan.md. The Prior Art line now says only the old reader's detailed signal handling goes, and names what the new reader keeps. The manifest-dir `optional.txt` reason is corrected, since `init` and `sync` (#500) read the default layout, and it has a row in the additions table. — `plan.md`, 62d137f8
+- [x] (must-fix 7) The tool's design says "a caller that needs `repos/<layer>.repos`, `layers.txt` and `optional_layers.txt`" and no longer names the adapter. `tests/test_documents.py` checks README.md and docs/*.md, leaving out prototype.md, which goes in part 3. — `docs/design.md`, 88c6e3cc, fa1d9aa6
+- [x] (suggestion 1) A signal delivered after the swap now prints "stopped by SIGTERM after --out <out> was replaced by the new output". `write_output` takes an `on_replaced` callback for this. Tested. — `cli.py`, 41cbff57
+- [x] (suggestion 2) A repo key that starts with `#` is refused (host decision), with a spec line. `a#b` is still accepted. — `manifest.py`, 79b5dee7
+- [x] (suggestion 3) The sweep. Temporary directories are named `.<name>.(new|old)-<pid>-<random>`. The sweep removes only a directory with exactly that shape, named for this output, whose process has ended, and only if it holds the marker or is empty. A live run's directory and names that merely look similar are left alone. An `--out` named like a temporary directory is refused. Tested. design.md and the module docstring are updated. — `output.py`, 2ca89190
+- [x] (suggestion 4) Without `--role` and `--distro`, a missing file or one that does not parse now reports its own error, for both resolve and validate. Tested. — `cli.py`, `manifest.py` (`read_problem`), 0856619b
+- [x] (suggestion 5) The checks on `--out` run inside an OSError handler: "cannot be checked (Permission denied)" instead of an internal error. Tested. — `output.py`, 7f23a75c
+- [x] (suggestion 6) Layer names that differ only in case are refused, and reserved layer names are compared without case (host decision). spec.md has two lines for this. Repo keys keep the destination check. — `manifest.py`, 79b5dee7
+- [x] (suggestion 7) Only a leading `<word>::` is the transport form. IPv6 urls (`ssh://user@[::1]/repo`, `ssh://[::1]:22/repo`, `https://[2001:db8::1]/a.git`, `git@[::1]:repo`) are accepted. — `manifest.py`, f656ee2a
+- [x] (suggestion 8) A url's user or port that starts with `-` is refused. spec.md now names the user, host and port. — `manifest.py`, f656ee2a
+- [x] (suggestion 9) The BOM test went in with must-fix 1 (066f284a). The unknown key in a distro entry has its own test (346f97d9). — `tests/test_manifest_reading.py`
+- [x] (suggestion 10) CI job name — `.github/workflows/validate.yml:56` (deferred: host decision: the job name keeps "(#267 prototype)"; nothing under .github/ changes in this round)
+- [x] (suggestion 11) Added to part 3 step 4 of the plan: before `tests/fixtures/p11/` goes, the 44-repo test is removed with a line saying why, and the private-name guard is given another source or removed with a line saying why. The test itself is unchanged beyond must-fix 5. — `plan.md`, 62d137f8
+- [x] (host decision) The scp form also accepts `host:path` with no user, for ssh host aliases, and the bracketed `[::1]:path`. The host is still checked and every `name::address` form is still refused. A path with a `/` before its first `:`, or with no `:`, is a path on the local disk, so a relative one is refused. spec.md's transport line is updated. — `manifest.py`, 766bd700
+
+Host decisions recorded here for the owner's veto: layer names compared without case (suggestion 6); repo keys starting with `#` refused (suggestion 2); the scp form without a user accepted; the CI job name kept.
+
+Left open for the host:
+- progress.md still names the private repo in the Issue Review entry (lines 53, 55, 65, 67) and in the Local Review finding at line 482. Those are earlier entries in the timeline, and this pass did not rewrite them.
+- On Python 3.10, whose Unicode tables are older, characters assigned after Unicode 13 are refused as unassigned. On 3.14 they are accepted if they are visible.
+
+Suites run on Python 3.14:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests`: `619 passed in 11.41s`
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`
+- Python 3.10 was not run here. The changed files parse with the 3.10 grammar (`ast.parse(..., feature_version=(3,10))`), and CI runs 3.10.
+- The full pre-commit pass was left to the host. Every commit ran its hooks with `SKIP=validate-script-tests`. black reformatted three times, and those commits were made again after the reformat. flake8 found one long line, which was fixed.
