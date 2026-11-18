@@ -36,7 +36,7 @@ my_system/
   setup.bash         sources the layers that are built
 ```
 
-This is the layout of a system with one distro, or none. A system set up with a directory per
+This is the layout of a flat system, the default. A system set up with a directory per
 distro puts each distro's layers and setup file in a directory of its own; see "More than one
 distro".
 
