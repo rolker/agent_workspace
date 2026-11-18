@@ -237,6 +237,10 @@ repos-manifest add-distro rolling --manifest-ref rolling
 A refusal changes nothing. Each command checks the conditions below in the order listed and
 gives the first that applies, with its next step. The checks that need no fetch come first.
 
+Two kinds of row are not built in this part, and no command makes their check: the `init`
+row for `--manifest-ref` or `--manifest-path`, which `init` does not take yet, and every
+`add-distro` row, since `add-distro` is not built. Every other row is built.
+
 | Command | Condition | Next step the message gives |
 |---|---|---|
 | `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
