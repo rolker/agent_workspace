@@ -963,7 +963,9 @@ fetching from another place and extra remotes are not built.
 - What `init` prints for several distros.
 - What a distro's manifest that lacks the system's role or one of its groups gives, at
   `add-distro` and at `sync`.
-- `sync`'s exit status when one distro is reported and the others go on.
+- `sync`'s exit status when one distro is reported and the others go on, and whether it goes
+  on with the other distros when one distro's manifest does not resolve or one of its required
+  repos cannot be fetched.
 - Whether `build` should stop at the first layer that fails or carry on with layers that do
   not depend on it. The manifest does not say which layers depend on which, only their
   order, so stopping is the safe rule.
