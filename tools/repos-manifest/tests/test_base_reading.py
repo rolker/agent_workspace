@@ -110,7 +110,7 @@ def test_one_file_reached_by_two_paths_is_one_manifest(tmp_path, opened):
         ("'ext::sh -c x'", "base: 'ext::sh -c x' is a URL, not a path"),
         (
             "{url: 'https://example.org/r.git', version: main, path: p.yaml}",
-            "base: .* is a file in a git repo",
+            "base: .* is a mapping, the form of a file in a git repo",
         ),
         ("[p.yaml, {url: 'https://example.org/r.git', path: p.yaml}]", "base\\[1\\]: .* git repo"),
         ("12", "base: must be a string, got a int"),

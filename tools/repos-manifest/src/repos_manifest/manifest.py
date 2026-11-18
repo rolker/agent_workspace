@@ -466,7 +466,8 @@ class _Checker:
             if isinstance(location, dict):
                 raise self.error(
                     where,
-                    f"{location!r} is a file in a git repo; {_BASE_PATH_ONLY}",
+                    f"{location!r} is a mapping, the form of a file in a git repo;"
+                    f" {_BASE_PATH_ONLY}",
                 )
             path = self.string(location, where)
             colon = path.find(":")
