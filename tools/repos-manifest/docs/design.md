@@ -560,7 +560,7 @@ is not resolved, and none of its repos is touched.
   `distros:`. Resolving for no distro is then an error, since a distro is given where the
   manifest has them (see "What resolving produces" in the specification).
   The message says that nothing has been moved, and that a system with distros is set up in a
-  new directory with `init --distro-dirs`.
+  new directory with `init`, and with `--distro-dirs` to hold more than one distro.
 - The manifest lists a distro the system does not record. Nothing happens: a distro is added
   only with `add-distro`.
 
