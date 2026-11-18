@@ -164,3 +164,107 @@ What the owner wants first, in his words: "test the tool to build the project di
 **Plan**: `.agent/work-plans/issue-500/plan.md` at `584c1514`
 
 Two pull requests: part 1 is `init` and a `sync` that only clones what is missing (one `vcs import` call per missing repo, success by exit status, debris of a failed clone removed, `state.yaml` per distro keyed by repo key with layer, version and commit, placeholder `setup.bash`, every `init` refusal with a nothing-changed test); part 2 is `sync` against existing clones, one rule and one test per row. Four owner questions: untracked files, the stub `setup.bash`, a changed repo url, and a CI change to install `vcs`.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 16:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #500 — repos-manifest: `init` and `sync` set up and update a system directory
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `584c1514`
+**Branch**: `feature/issue-500`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Part 1 as planned is about 1,700 lines (650 code, 900 tests, 150 docs) in eight new modules (the plan says "seven" in one place and "nine" in another). It can be one pull request after the cuts in findings 6 and 7. The split into parts and keeping `add-distro` out are right. |
+| Issue alignment | Needs work | It follows the review's corrections and the checkpoint. Two things the design says `init` and `sync` do are missing (finding 2), and two refusal messages point at a command that does not exist (finding 4). Serves: "one system directory set up and kept in line from one manifest", under `tools/repos-manifest/docs/design.md#the-system-directory`, `#setting-up-with-init`, `#refusals`, `#sync`. These anchors are in 508's text (checked on `origin/feature/issue-495`); 508 is still OPEN as of this review. |
+| File targeting | Good | All the right files are named: README, both roadmaps, `build_and_test.md`, the design and the tests. Finding 9 removes the CI file from the list. |
+| Consequences | Good | `test_output.py` and the resolve signal tests are covered. Finding 3 removes the `write_output(marker_text=)` change and the test it would need. |
+| Principle alignment | Needs work | "Never discard work": the debris rule can remove another run's clone (finding 1). "Only what's needed": the module split, the vcs behaviour tests for existing repos, and `--local-manifest` are more than part 1 needs. "Keep one current design": handled; the design is edited in the same change. |
+| ADR compliance | Good | ADR-0017, 0022, 0009 and 0013 are handled. On the by-hand venv see finding 10. |
+| ROS conventions | N/A | Workspace tool. |
+
+### What vcstool 0.3.0 does (tried on local repositories in the scratchpad)
+
+- One call per layer with four repos: a good branch, a url that is not a repository, a version that does not exist, and a nested key at a tag. The call exits 1. The bad url leaves an empty directory. The bad version leaves a complete clone on `main`. The good repos are cloned correctly. This confirms what the planner found.
+- `--skip-existing` over those leftovers exits 0. A plain second call exits 1, switches nothing and leaves the leftovers in place.
+- `git -C <empty dir> rev-parse --verify -q HEAD` exits 0 when the system directory is inside a git repository that has a commit. Git finds the parent repository. So the plan's "not a complete clone" check misses an empty leftover directory in that case.
+- Cloning into a fresh temporary directory, then `mv` of `<tmp>/grp/c` to `src/grp/c`, gives a working clone. This was tried with `--shallow` and a nested key; HEAD is detached at the tag and the clone is shallow.
+- Cost: four repos took 0.84 s as four separate calls and 0.21 s as one call. That is about 0.2 s of start-up per call, so about 10 s for 50 repos, which is small next to the network clones themselves. What one call per repo really loses is the parallel clones: vcstool runs one worker per CPU and drops to one worker by itself when an ssh host key is unknown.
+- vcstool runs `git ls-remote` with `GIT_TERMINAL_PROMPT=0`. A private https repo with no credential helper therefore fails instead of asking. ssh prompts go to the tty. All 18 of the owner's urls for `simulator`/`rolling` are public `https://github.com/` urls, so neither affects his test.
+- An unknown flag exits 2 and creates nothing.
+
+### Findings
+
+1. **[Principle: never discard work] High.** The debris rule ("remove the path if it did not exist before the call") can remove a clone the tool did not create. Two runs at once (the plan accepts that there is no lock): both see the path missing; run A clones it; run B's `vcs import` fails because the path exists; B's `finally` then removes A's clone, possibly while A is still cloning. The fix is structural and removes rules instead of adding them. Clone each missing repo into a fresh `tempfile.mkdtemp` directory under the layer's `src/` (hidden, for example `.repos-manifest-clone-XXXX`). On exit status 0, rename `<tmp>/<key>` to its place, making the parent directories first; `os.rename` refuses a target that is not empty. Always remove the temporary directory. Then:
+   - only a directory made by `mkdtemp` is ever removed;
+   - a path that exists is always a complete clone or something a person put there;
+   - the "not a complete clone" listing and its wrong `rev-parse` check (above) can go;
+   - the SIGKILL row of the interruption table shrinks to "a hidden temporary directory is left", which the next `sync` can remove by the dead-pid rule `output.py` already has, or simply ignore.
+2. **[Issue alignment] Medium. The check on the real destination is missing.** spec.md ("Reading a manifest before using it") and design.md (`resolve`: "The check on the real destination ... is made by `init` and `sync`, which clone the repos there") require it: a link already on the disk, or two names the disk treats as one, must not send a repo outside its place. Before the rename, check that the target's parent, with links resolved (`os.path.realpath`), is the layer `src/` joined with the key's parent. The refused rename covers the collision case. Add a test with a symbolic link inside `src/`. Otherwise list it as cut, but the design says the commands that clone make this check.
+3. **[Principle: only what's needed] Medium. Do not create `.repos-manifest/` with `write_output`.** `write_output` puts its `.repos-manifest-output` marker in the directory, and that marker is what lets `write_output` replace the directory. `.repos-manifest/` would then carry a marker saying it may be replaced whole, `config.yaml` and `state.yaml` included. The plan already needs a new `marker_text` keyword to make that marker's words true. The design asks for "written aside and moved into place": `mkdtemp` beside it, write `config.yaml`, `os.rename`. That is about 6 lines, needs no marker and no change to `output.py`. A killed run leaves a hidden temporary directory that a second `init` does not look at.
+4. **[Issue alignment] Medium. Refusals 1 and 7 must not name `add-distro` while it is not built.** As planned, the messages give `add-distro <name>` as the next step. That command does not exist until its own issue lands, so the next step fails. Until then, row 1 says `sync`, and row 7 says to set up with the distros the manifest lists, or to add the distro to its `distros:`. The design's table then gets a sentence that the `add-distro` step is given once it is built. This is the same treatment the plan already gives `--manifest-ref`.
+5. **[Approach: `vcs import`] Recommendation.** Keep one call per missing repo, with success judged by its exit status, and add the temporary-directory change from finding 1.
+   - Why not one call per layer: a layer call's exit status says nothing per repo. To learn which repos failed, the tool would have to check each repo afterwards: is the clone's top level the path itself (not a parent repository), and is HEAD at the version (a branch vs. a tag or commit, and vcstool's `heads/` and `tags/` prefixes). That is a second set of rules, and part 2 has to own them anyway. A layer call into a temporary directory could fall back to one call per repo after a failure, but that is two code paths.
+   - Which matches the design: the design's wording ("Missing repos are cloned with `vcs import`"; "bring the layer's `src/` in line with its `.repos` file") allows either.
+   - Which is more robust on 0.3.0: one call per repo, because the result is the exit status only.
+   - The cost is serial clones. That is fine for the owner's 18 repos and acceptable at 50. Parallel clones can come later if wanted.
+   - Prompts: with one call per repo, an ssh key without an agent asks for its passphrase about twice per repo (`ls-remote`, then `clone`). The owner uses `ssh-add`, so this does not apply to him. Say it in the README.
+6. **[Scope] Medium. What to cut from part 1.**
+   - Cut (a), `--local-manifest` and the local-copy read. The owner's manifest is a scratch file in no repo, and the design has `init` set `local_manifest` itself only for the git form, which comes with 498 part 2. `locations.py` then becomes a one-line `load_manifest` call and can go.
+   - Cut (c), the `--` pass-through. The owner's test does not need it, and `argparse.REMAINDER` after a subcommand is fiddly. It can come back with part 2.
+   - Cut (d), the "not a complete clone" listing. It is wrong as written (above) and not needed after finding 1.
+   - Keep (b), `setup.bash` (see the open questions).
+   - Shrink `test_vcs_behaviours.py` to what part 1's code relies on: exit 0 means the repo is cloned at its version; a nested key; one failing repo gives a non-zero exit. The existing-repo cases justify part 2's design and belong in part 2. The debris cases stop mattering after finding 1.
+7. **[Scope] Low to medium. Module split.** Eight new modules is more structure than about 500 lines need.
+   - `config.py`, `layout.py` and `state.py` could be one `system.py`: finding the system, `config.yaml`, paths, `distros_for`, `state.yaml`. That is under 250 lines.
+   - The vcs and git calls in `tools.py` (three small functions) could live in `sync.py`.
+   - That gives `signals.py`, `system.py`, `sync.py` and `init.py`.
+   - Keeping the pure path functions separate for testing is fine. That does not need its own module.
+   - The name `layout.py` also clashes with the existing `--layout` option and `test_layout.py`, which mean something else.
+8. **[Approach] Low. Errors on disk.** `cli.main`'s catch-all prints only `internal error (PermissionError)` for an `OSError`, for example a read-only directory or a full disk while making directories or renaming. For `init` and `sync`, an `OSError` should be reported with the path and `strerror`. Say in which function, and add one test (for example a layer `src/` that cannot be written; skip it when running as root, as `test_output.py` does).
+9. **[Consequences / CI] Medium. Without `vcs`, the clone tests should fail, not skip.** This tool's main job is to clone. If the clone tests are skipped in CI, every later change to `init` and `sync` merges with its main path untested, and the skip is easy to miss. Instead, add `vcs2l` to the `test` extra in `pyproject.toml`. vcs2l 1.1.7 is on PyPI. The CI job already runs `pip install -e tools/repos-manifest[test]`, so `validate.yml` does not change and no CI change is needed, though the owner should still hear of it. Then make the tests require `vcs`: a conftest check that fails with "install vcs2l or vcstool" when `vcs` is missing. This drops the plan's `needs_vcs` skip and open question 4.
+10. **[By-hand commands] Low. They work on this machine, with three fixes.** Checked: the draft file exists and has no `base`; it resolves for `--role simulator --distro rolling` to 18 repos in the six layers named (underlay 5, core 6, platforms 3, sensors 1, simulation 1, ui 2), all public https; `python3 -m venv` works (Python 3.14); `~/p11-venv` and `~/p11-test` do not exist yet.
+    - `pip install -e` points the venv at this worktree, which is deleted when the pull request merges. Install without `-e`, or from the main checkout after the merge.
+    - `echo dirty >> README.md` makes an untracked file when the chosen repo has no `README.md`. Modify a file the repo tracks, for example the first file `git ls-files` lists.
+    - The check compares `git log` but not `git status`. Save both before the `sync` and diff both after. `<repo>` has to be filled in by hand; say so.
+    - `source rolling/setup.bash` returns 1 by design.
+11. **[Tests] Low. Coverage.**
+    - Every refusal row has a test. So do the interruption points (after the config step, during a clone, and the SIGKILL state built by hand). So does the failed resolve, in `test_sync_first.py` (a missing role, then a file that does not parse, with the snapshot equal).
+    - Not covered in tests: the owner's own shape, `--distro-dirs --distro rolling --role simulator` with six layers. Add one test from `tests/fixtures/p11/manifest.yaml` with every `url` rewritten to a local remote. It proves the six-layer tree without the network.
+    - Add one test where two distros are synced in one run and the run is stopped during the second distro: the first distro's state is complete and the second's holds what it finished.
+    - No `os` patching, local remotes, and Python 3.10 limits: the plan states each, and they hold.
+12. **[Approach] Low. `state.yaml`.** Isolation between distros is real within one run. Each distro's write reads the whole file, replaces one entry and swaps the file in with `os.replace`. A stop between two distros leaves the first distro's entry complete. Two processes at once can lose an update, which falls under the lock that is out of scope; the design text should say so next to the "Two runs at once" sentence. `layer` in each record exists only for a part 2 rule. It costs little, so it can stay.
+13. **[Approach] Low.** `init` step 3 calls `check_role_and_distro` and step 4 calls `resolve`, which calls it again. Once is enough: `resolve` alone, with its errors standing.
+
+### Open questions and mechanism items
+
+- **Q1, untracked files; Q3, a changed `url`.** Both are owner questions, since they change what a clone ends up as. Both are part 2 questions, so ask them in part 2's plan, where the owner sees them with the rules around them. Recommendations as the plan gives (a) for both. For Q3, one condition: only for a repo that otherwise follows (on its recorded version, clean), and always reported.
+- **Q2, `setup.bash`.** This is not an owner question; the design already answers it. The Refusals row says `init` refuses "a file it writes such as `setup.bash`", and the system directory section says `setup.bash` "sources the layers that are built", which right after `init` is none. So `init` writes it. A file that prints "nothing is built here yet" on stderr and returns 1 is better for a person than "No such file": it says what is going on, and the non-zero status stops a script that sources it before any build. Keep it, and do not cut (b). Its text should not tell the person to run `repos-manifest build` while issue 501 has not landed.
+- **Q4, CI.** See finding 9. With the test extra this is not a workflow change.
+- **Mechanism items.** The summary for several distros, the `sync` exit status, a role or group the manifest lacks (reported per distro), and a repo mid-rebase left alone are all fine as mechanism. One is not: "a layer change of an already cloned repo: left where it is, reported". That decides where a person's clone lives, and with it what `build` finds, since `build` gets the resolved layer's paths. It belongs to the owner. Ask it in part 2's plan, next to Q1 and Q3.
+
+### Dependencies
+
+Part 1 depends on 508 for the `config.yaml` keys (`layout`, `distros`), the Refusals table and the anchors; the plan says this, and 508 is OPEN at this review. It does not quietly depend on 498 part 2. Manifests are read only through `load_manifest` on a path, which refuses `base`, and the owner's draft has no `base` (checked). One quiet interaction: the existing `resolve` command, run inside a system directory, still needs `--manifest` and `--out` and does not write to `.repos-manifest/resolved/`. The plan keeps it unchanged, which is right, but the design's "What is built" has to say so.
+
+### Summary
+
+The split, the refusal order, the two-phase resolve-then-apply and the interruption analysis are sound, and the vcstool findings hold when re-run. Before implementation, the clone step needs one structural change: a temporary directory and a rename. That makes deletion provably limited to the tool's own temporary directory and removes three rules (debris removal, the incomplete-clone listing, its SIGKILL case). The plan also needs the destination check the spec requires, `.repos-manifest/` made without the output marker, and refusal messages that do not point at `add-distro`. Make the cuts and merge the modules so the first pull request is the smallest thing that builds the owner's tree.
+
+### Recommended Actions
+
+- [ ] Clone each missing repo into a `mkdtemp` directory and rename it into place; remove only that temporary directory; drop the "remove a path that did not exist before the call" rule and the "not a complete clone" listing (findings 1 and 5).
+- [ ] Add the real-destination check before the rename (no link in the target's parent path; refuse an existing target), with a test (finding 2).
+- [ ] Make `.repos-manifest/` with `mkdtemp` and `os.rename`, not `write_output`; drop `write_output(marker_text=)` (finding 3).
+- [ ] Refusals 1 and 7: no `add-distro` in the message until it is built; say so in the design's table (finding 4).
+- [ ] Cut `--local-manifest` and the local-copy read, the `--` pass-through, and the incomplete-clone listing from part 1; keep the stub `setup.bash`; shrink `test_vcs_behaviours.py` to what part 1 relies on (finding 6).
+- [ ] Merge `config.py`, `layout.py`, `state.py` and `locations.py` into one module, and `tools.py` into `sync.py`; fix the module count (finding 7).
+- [ ] Report an `OSError` in `init` and `sync` with its path and reason, with a test (finding 8).
+- [ ] Add `vcs2l` to the `test` extra; make a missing `vcs` fail the tests instead of skipping them; drop open question 4 (finding 9).
+- [ ] Fix the by-hand commands: no `-e` into the worktree, a tracked file for "dirty", and compare `git status` too (finding 10).
+- [ ] Add the six-layer owner-shape test from `fixtures/p11` with local remotes, and a two-distro stop test (finding 11).
+- [ ] Move Q1, Q3 and the layer-change question to part 2's plan as owner questions; answer Q2 from the design (finding on open questions).
