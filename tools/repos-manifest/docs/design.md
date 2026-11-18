@@ -268,16 +268,50 @@ scripts.
 
 ### resolve
 
-Reads the manifest and everything it builds on, applies the role and the distro, and writes
-into `.repos-manifest/resolved/`:
+Reads the manifest and everything it builds on, applies the role, the distro and the extra
+groups, and writes into `.repos-manifest/resolved/`:
 
-- one `.repos` file per layer, with `type`, `url` and `version` for each repo. A named
-  layer's file is `<layer>.repos`; the unnamed layer's is `_unnamed.repos`. A layer with no
-  repos for this machine gets no file;
-- the order of the layers;
-- which repos are optional.
+- one `.repos` file per layer, with `type`, `url` and `version` for each repo (no `version`
+  for a repo that names none). A named layer's file is `<layer>.repos`; the unnamed layer's
+  is `_unnamed.repos`, a name no layer can have, since a name starts with a letter. A layer
+  with no repos for this machine gets no file;
+- `layers.txt`, the order of the layers: one name per line, `_unnamed` first when it has
+  repos, only the layers that got a file;
+- `optional.txt`, which repos are optional: the keys of the selected repos marked
+  `optional: true`, one per line, in layer order and then in the order of the manifest. It is
+  empty when there are none.
 
-Each file starts with a comment that says which manifest, role and distro it came from.
+Each file starts with `#` comment lines that say which manifest, role, distro and extra groups
+it came from. The manifest is named as it was given, not as a resolved path. A reader of the
+two lists skips lines that start with `#`.
+
+Outside a system directory the same files go to the directory given with `--out`:
+
+```
+repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy \
+    --with ben-hardware --out resolved
+```
+
+`--role` is given when the manifest has roles and `--distro` when it has distros, and not
+otherwise. `--with` names an extra group and may be given more than once.
+
+The output is replaced whole or not at all. The files are built and checked first, then
+written into a new hidden directory beside the output (`.<name>.new-<random>`), and that
+directory is moved into place. An existing output directory is moved aside first and removed
+after, and put back if the move fails. A directory is only replaced when it is empty or holds
+the marker file `.repos-manifest-output` that `resolve` writes, so `--out .` cannot delete a
+person's files. A SIGTERM or SIGHUP while resolving ends the run and removes the hidden
+directory. A run killed outright can leave one behind; the next `resolve` to the same place
+removes hidden directories beside it that hold the marker or are empty. Two runs writing to
+the same place at once are not supported.
+
+`resolve` makes the checks of "Reading a manifest before using it" in the specification that
+can be made on the text. The check on the real destination, that a link on the disk or two
+names the disk treats as one cannot send a repo elsewhere, is made by `init` and `sync`, which
+clone the repos there.
+
+Beyond the specification, `resolve` refuses a distro entry that gives both a `version` and
+`absent: true`, and an output directory that is a symbolic link.
 
 ### sync
 
@@ -654,10 +688,17 @@ A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 
 ## What is built
 
-A prototype has `resolve` and `validate` for an earlier shape of the format, where repos are
-nested under their layer and the version key is `ref`. It also has three things this design
-drops: a `packages:` section with package dependencies, roles defined by starting packages,
-and a cache of fetched parent manifests that is kept between runs.
+`resolve` and `validate` read the format in the specification for a manifest that stands on
+its own, given as a path on the local disk. `resolve` writes the files described under
+"resolve" into `--out`. `validate` checks the file and resolves it for every role and distro it
+lists. `base` is not read yet: a manifest with `base` is refused.
+
+A manifest without a top-level `repositories:` key, or a file that does not read as YAML,
+still goes to a prototype that reads an earlier shape of the format, where repos are nested
+under their layer and the version key is `ref`. The ros2_colcon adapter uses that reader,
+with `--layout manifest-dir`. It also has three things this design drops: a `packages:`
+section with package dependencies, roles defined by starting packages, and a cache of
+fetched parent manifests that is kept between runs.
 
 Two things in the prototype differ from this design in smaller ways. It marks whole layers
 as optional, where the design marks repos. And when it fetches a parent manifest from a git

@@ -1,7 +1,9 @@
 # Manifest format
 
-Status: draft. This describes the format we are moving to. The prototype in `src/` still
-reads an earlier shape, and sections marked "Open" are not settled.
+Status: draft. This describes the format we are moving to. The resolver in `src/` reads it
+for a manifest that stands on its own; it does not read `base` yet, and it still reads the
+prototype's earlier shape for a manifest without `repositories:`. Sections marked "Open" are
+not settled.
 
 ## What a manifest is
 
@@ -117,7 +119,7 @@ Two things follow from the key being a path:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `type` | yes | As in a `.repos` file. The tools here are designed for `git`. |
+| `type` | yes | As in a `.repos` file. The format takes any type a `.repos` file takes; the tools here read `git` only and refuse a manifest with another. |
 | `url` | yes | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
 | `absent` | no | `true` if the repo is not part of the system unless a distro says so. `false` if left out. |
@@ -125,6 +127,11 @@ Two things follow from the key being a path:
 | `groups` | no | The groups the repo belongs to. |
 | `distros` | no | Per-distro differences from the default. |
 | `optional` | no | `true` if the system is still usable without this repo. `false` if left out. |
+
+`type`, `url` and `version` are strings, and so is a `version` under `distros:`. A value that
+YAML would read as something else is quoted: unquoted, `1.10` is the number 1.1. `absent` and
+`optional` are `true` or `false`. A tool warns about a key in a repo entry that it does not
+know, and leaves it out of what it writes.
 
 ### Versions and distros
 
@@ -140,8 +147,9 @@ distro:
 - `absent: true`: the repo is not part of the system on that distro.
 
 `absent: true` on the repo itself turns the default around: the repo is part of the system
-only on the distros that have an entry for it. Any entry counts, an empty one included,
-unless the entry itself says `absent: true`.
+only on the distros that have an entry for it. Any entry counts, an empty one included
+(`jazzy: {}`, or `jazzy:` with nothing after it), unless the entry itself says
+`absent: true`.
 
 ```yaml
 repositories:
@@ -200,7 +208,8 @@ the list is an error. An entry under a repo's `distros:` for a distro that is no
 list is ignored, so a copy of a manifest that lists fewer distros stays valid.
 
 If `distros:` is absent, the manifest covers one unnamed variant: no repo may have a
-`distros:` key, and no distro is given when resolving. This is the plain `.repos` case.
+`distros:` key, and no distro is given when resolving; giving one is an error. This is the
+plain `.repos` case. An empty `distros:` list is an error, as no distro could be resolved.
 
 Copies of a manifest on different branches may list different distros. A copy on a `jazzy`
 branch can list only `jazzy` while the copy on `rolling` lists them all.
@@ -261,7 +270,8 @@ robot role on two hardware platforms is one role and two groups, not two roles. 
 resolves the manifest above for the role `robot` with the extra group `ben-hardware`.
 
 If `roles:` is absent, the manifest has one unnamed role that switches on no group, and no
-role is given when resolving. If `roles:` is present, a role is given when resolving.
+role is given when resolving; giving one is an error. If `roles:` is present, a role is given
+when resolving. A role is always a list, `[]` when it switches on nothing.
 
 Open: whether a role should also be able to name single repos, or pick layers.
 
@@ -403,27 +413,36 @@ the code it points at, and a tool does not try to protect a person from repos th
 
 A tool does make sure that a manifest does what it appears to say, and that nothing happens
 outside the place the person chose before anything is built. It checks these things and
-refuses a manifest that fails one:
+refuses a manifest that fails one. Everything but the check on the real destination is
+checked on the text, when the manifest is read; the check on the destination is made by the
+command that writes there.
 
 - The file is loaded as data. Loading a manifest never runs code.
 - Everything lands inside the directory the system is set up in, at a place of its own. A
   tool checks this again on the real destination before it writes, so that a link already on
   the disk, or two names that the disk treats as the same, cannot defeat the rules below.
   - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is
-    another key followed by `/` and more, so one repo is never cloned inside another.
+    another key followed by `/` and more, so one repo is never cloned inside another. Its
+    parts are separated by single `/`, with none at the start or the end, no `\` and no part
+    that is `.`, so each place on disk has one key.
   - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`
     and `-`, starting with a letter.
   - A layer is not named `src`, `build`, `install` or `log`. Those names are used for the
     directories of the unnamed layer.
 - No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
-    read one as an option. The `path` of a location is relative and has no `..` in it.
+    read one as an option, and nor does the host of a `url`. The `path` of a location is
+    relative and has no `..` in it.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the
     `user@host:path` form, or an absolute path on the local disk. Anything else is refused,
     and so is every `name::address` form; `git` has transports that run a command.
   - These apply to a repo and to a location named under `base:` alike.
-- The file has no invisible characters and none that change the direction of text. They can
-  make a file read differently from what it does.
+- The file has no invisible characters and none that change the direction of text, in a
+  comment or anywhere else. They can make a file read differently from what it does. The
+  only control characters a file holds are newline, carriage return and tab.
+
+Those are all the checks. A message about a manifest may print a value from it, and a
+credential in a `url` is not looked for: the manifest is as trusted as the code it names.
 
 A manifest that builds on others is only as readable as the whole chain. A tool can show the
 combined result for a machine; see `show` in the design document.
