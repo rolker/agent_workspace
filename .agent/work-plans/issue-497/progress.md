@@ -270,3 +270,21 @@ Dropped: codex's "uninstall before install leaves no resolver" (after the merge 
 - [ ] (suggestion) The description and docstring still call the name a placeholder, though the owner chose repos-manifest — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:3`
 - [ ] (suggestion) The `setup` row this branch edits cites "`Makefile` line 100"; `setup:` is on line 99 (also on origin/main) — `docs/design.md:531`
 - [ ] (suggestion) After pulling, the main checkout keeps an ignored `tools/ros-manifest/` (src/ros_manifest.egg-info, __pycache__); say in the README note (or the PR) that it can be deleted — `tools/repos-manifest/README.md:118`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 12:18 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round 1 review approved with five suggestions, each a few lines; the Quality Standard says not to table a fix that is minutes away, and address at publish is a token the checkpoint table allows the host)
+**After**: publish
+**Decision**: address
+
+The host, running /orchestrator, read the round 1 review (approved, no must-fix, five suggestions). Fix all five before publishing:
+
+1. ADR-0022's Context mixes the old and new path. Keep the Context as history: revert the renamed line there to the old path and add "(now tools/repos-manifest)" where a reader needs it; the one current-path mention outside the Context stays renamed.
+2. Makefile: the removal of the old install must not hide a real pip failure. Drop the "|| true" (pip uninstall -y of a package that is not installed already exits 0), so a real failure stops the recipe before the new stamp is written. Keep it safe when the old install is absent and when run twice; say how you checked.
+3. pyproject.toml's description and the package's __init__ docstring still call the name a placeholder. Say what is true now.
+4. docs/design.md, the setup row this branch edits: it cites a Makefile line number that is one off. Correct it, and keep the change-log row's line count right.
+5. The tool's README note on what the rename leaves behind: say that an ignored tools/ros-manifest/ directory (egg-info, __pycache__) can remain in a checkout after pulling, and can be deleted.
+
+Not taken, as the review already dropped them: a fallback or warning for the old environment variable (the owner decided no fallback), rewording the history sentence in prototype.md, and quoting in a CI line outside what the owner approved.
