@@ -472,3 +472,35 @@ Readings where the design, plan and Checkpoints were silent:
 Not built (with reason): everything in the plan's "Cut from part 1" table (`--local-manifest` and the local-copy read, the `--` pass-through, the incomplete-clone listing, existing-repo vcs tests); updating present clones (part 2); `add-distro` (its own issue); refusal row 3 (above); case-folding disks are not checked (Checkpoint 2).
 
 Left: the design edits the plan lists for part 1, with the README and both roadmaps (pull request 508 changes the same three files), as the last commit after 508 merges and `origin/main` is merged into this branch.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 17:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-500 at `bee08a84`
+**Base**: origin/main
+**Depth**: Deep (reason: 3568 lines over 17 files; new code that creates directories, clones and removes temporaries on a person's disk)
+**Must-fix**: 4 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix; first round always re-reviews after fixes
+
+Contract read from `origin/feature/issue-495` (pull request 508, not merged). Suites: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` 823 passed (vcs: /usr/bin/vcs, vcstool 0.3.0; Python 3.14); `bash .agent/scripts/tests/test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped. No existing test file edited (conftest.py only gains the fixture). pre-commit (black, flake8) passed on the changed files. Specialists: static, governance, plan drift, Claude adversarial, gemini and codex all completed.
+
+Hand runs with local remotes: the owner's case (`--distro-dirs --distro rolling`, unnamed + two named layers, nested key, optional repo that cannot be cloned), flat, no distros, and two distros gave the design's trees, config.yaml, state.yaml and resolved/<distro>/; clones on the manifest's version with `origin` as given. Every init refusal changed nothing (listing compared). Links on the way (src, a layer directory, a key's parent) were refused per repo and nothing was written outside. Sweep: dead-pid temporaries removed (a read-only one included), a live pid's, a link and wrong-length names kept. SIGINT/SIGTERM/SIGHUP during clones: exit 130/143/129, no temporaries left, the next `sync` finished. A broken manifest after init changed nothing, and the message says the manifest failed. vcs2l 1.1.7's `vcs import <dir>` with stdin has the same semantics and exit status as vcstool 0.3.0's (import_.py and the git client's import_ compared).
+
+### Findings
+- [ ] (must-fix) The design's init refusal "two --distro that differ only in case, with --distro-dirs" is not built and not listed as not built; the manifest reader accepts distros [rolling, Rolling], and init then makes both directories (on a case-folding disk the second distro would replace the first's resolved files). Check it in check_distros before the manifest's list — `tools/repos-manifest/src/repos_manifest/init.py:48`
+- [ ] (must-fix) Errors from write_output, reached by init and sync, name `--out` ("--out …/.repos-manifest/resolved: cannot be written", "is a symbolic link; give the directory itself", "is the current directory or one of its parents"), an option neither command has; give write_output the label to use, or rephrase at the call — `tools/repos-manifest/src/repos_manifest/sync.py:196`
+- [ ] (must-fix) read_config and read_state check only the top level: `layout: distro-dirs` with no distros and a scalar distro entry in state.yaml give "internal error (TypeError/AttributeError)" with no file named; `groups: abc` and `distros: jazzy` are split into characters and reported as "the manifest is what failed"; `distros: {}` makes sync a silent no-op. One shape check per file that names the file (the design: an unreadable config.yaml is an error that names it) — `tools/repos-manifest/src/repos_manifest/system.py:113`, `system.py:248`
+- [ ] (must-fix) `vcs import` and `git rev-parse HEAD` inherit GIT_DIR/GIT_WORK_TREE: with GIT_DIR set (git hooks, `submodule foreach`), init exits 0 and state.yaml records the other repo's HEAD for every repo (reproduced). Remove the repo-locating variables as extends.py's `_LOCAL_ENV_FLOOR` does (that rule shared, not copied; without its no-prompt part, since clones must still prompt) — `tools/repos-manifest/src/repos_manifest/sync.py:123`, `sync.py:137`
+- [ ] (suggestion) A stop or kill after the rename and before the distro's end loses that repo's (or the whole distro's) state record; part 2's no-record rule heals it, but holding signals over rename + record and writing state per repo is cheap — `tools/repos-manifest/src/repos_manifest/sync.py:171`
+- [ ] (suggestion) init's sweep of the person's directory removes any dead-pid entry with a temporary's name whatever it holds; remove only an empty directory or one holding only config.yaml — `tools/repos-manifest/src/repos_manifest/init.py:114`
+- [ ] (suggestion) setup.bash is checked with lexists then written with os.replace, which would overwrite a file made in between; os.link of the temporary refuses instead (the directory renames' windows are not worth closing) — `tools/repos-manifest/src/repos_manifest/sync.py:217`
+- [ ] (suggestion) stop_exit re-raises the signal without flushing stdout, so `report()` lines of finished distros are lost when output is redirected — `tools/repos-manifest/src/repos_manifest/signals.py:44`
+- [ ] (suggestion) "run sync to finish once they can be fetched" is printed after a Permission denied or a link-on-the-way failure, which another sync will not fix — `tools/repos-manifest/src/repos_manifest/sync.py:279`
+- [ ] (suggestion) A file or a dangling link where a required repo belongs counts as "present, not touched" with exit 0; part 2 owns it, but saying "not a directory" now costs one line — `tools/repos-manifest/src/repos_manifest/sync.py:155`
+- [ ] (suggestion) Owner's call: staging clones in .repos-manifest/ (Checkpoint point 1) makes every clone fail with "Invalid cross-device link" when a distro or layer directory is a separate mount; say so in the design, or stage beside the destination — `tools/repos-manifest/src/repos_manifest/sync.py:161`
+- [ ] (suggestion) init in a read-only directory names the tool's temporary path ("…/.repos-manifest-tmp-…: Permission denied") rather than the directory — `tools/repos-manifest/src/repos_manifest/init.py:115`
+- [ ] (suggestion) sync.py and init.py use output.py's private `_process_has_ended`, `_make_writable` and `_signals_held`; make them public names since they are shared — `tools/repos-manifest/src/repos_manifest/sync.py:89`
+- [ ] (suggestion) A second signal during the finally blocks aborts cleanup and the state write; the next sweep and part 2's no-record rule recover, so not worth more than a note — `tools/repos-manifest/src/repos_manifest/signals.py:22`
