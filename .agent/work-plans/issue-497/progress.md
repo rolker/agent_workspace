@@ -245,3 +245,28 @@ Implementation is not dispatched until pull request 504 (issue 488, sub-roadmaps
 - CI diff (`git diff -U0 origin/main -- .github`): validate.yml 39-41 (step name, `pip install -e tools/repos-manifest`, `repos-manifest --help`), 55-56 (job id `validate-repos-manifest`, name "repos-manifest tests (#267 prototype)"), 67-68 (step name, `pip install -e tools/repos-manifest[test]`), 71 (`pytest tools/repos-manifest/tests`). Nothing else. main: no classic protection (404); one ruleset `require_pr`.
 - Suites: pytest `tools/repos-manifest/tests` in a scratch venv: 331 passed, 2 failed (`test_untrusted_input.py::test_an_extends_path_too_long_is_a_message_without_the_path[ext_path0,1]`; the same 2 fail on origin/main's `tools/ros-manifest` here, Python 3.14.4: pre-existing, not from the rename). test_ros2_colcon.sh: 1014 passed, 0 failed, 0 skipped. test_register_project: 201 passed, 0 failed. test_fresh_clone_no_project.sh: 26 passed, 0 failed (after commit; it archives HEAD). test_sitrep_checks: 252 passed. test_design_anchors: 82 passed. test_sitrep_root: 65 passed. test_skill_paths: 163 passed. test_update_roadmap: 16 passed. The full pre-commit pass is left to the host.
 - `make generate-skills` run (`/make_install-repos-manifest` exists; output gitignored, nothing committed).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-497 at `1c0c0659`
+**Base**: origin/main
+**Depth**: Deep (reason: 60 files, +534 -187; override triggers .github/workflows/validate.yml, Makefile, an ADR)
+**Must-fix**: 0 | **Suggestions**: 5
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Specialists: static analysis (shellcheck: the six changed scripts warn on origin/main too, nothing new; yamllint validate.yml clean; pre-commit on the changed tool, CI, Makefile and shell files clean), governance, plan drift, Claude adversarial, cross-model gemini (complete) and codex (complete).
+
+Checked: the moved Python files, with the names normalised, are identical to origin/main's apart from the README, design.md and prototype.md sentences the plan names; CI diff is exactly validate.yml 39-41, 55-56, 67-68, 71; every remaining hit of the acceptance search is history (design.md rows 1072, 1110, 1129, 1133, 1139; ADR-0022:17,31,33; README:6; prototype.md:3), the owner-required ignored-settings note (README:119-120) or the Makefile cleanup (202, 206); the Makefile cleanup only touches the ros-manifest distribution, .venv/bin/ros-manifest and .make/ros-manifest.done, and `pip uninstall -y` of an absent distribution exits 0; sitrep_checks shows `file-exists src/repos_manifest/cli.py` true; check_design_anchors.sh exits 0. Pytest on Python 3.14.4: 331 passed, 2 failed (`test_untrusted_input.py::test_an_extends_path_too_long_is_a_message_without_the_path[ext_path0,1]`), the same 2 failing the same way on origin/main's tools/ros-manifest: pre-existing, not from this change. CI pins Python 3.10 and main's last validate run (b706da8a) passed, so CI is expected to pass them. On 3.14 the failing path prints "extends path not found: <path>" with the path the test calls secret; worth its own issue.
+
+Dropped: codex's "uninstall before install leaves no resolver" (after the merge the old editable install points at a deleted tree, so there is no working old resolver to keep); the old env var warning and old .gitignore entry (owner decision: no fallback); prototype.md:3 (host kept it as history); quoting `[test]` in CI (pre-existing, outside the approved lines).
+
+### Findings
+- [ ] (suggestion) ADR-0022's Context paragraph mixes names: line 36 ("It did not point at ...") was renamed while 31 and 33 keep the old path as history; revert it or add "(now `tools/repos-manifest`)" (gemini, codex, Claude adversarial) — `docs/decisions/0022-a-part-owns-its-inside.md:36`
+- [ ] (suggestion) The cleanup swallows real `pip uninstall` failures (`>/dev/null 2>&1 || true`) and then stamps; pip already exits 0 for an absent distribution, so drop the `|| true` (keep stderr quiet if wanted) so a real failure stops before the stamp — `Makefile:206`
+- [ ] (suggestion) The description and docstring still call the name a placeholder, though the owner chose repos-manifest — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:3`
+- [ ] (suggestion) The `setup` row this branch edits cites "`Makefile` line 100"; `setup:` is on line 99 (also on origin/main) — `docs/design.md:531`
+- [ ] (suggestion) After pulling, the main checkout keeps an ignored `tools/ros-manifest/` (src/ros_manifest.egg-info, __pycache__); say in the README note (or the PR) that it can be deleted — `tools/repos-manifest/README.md:118`
