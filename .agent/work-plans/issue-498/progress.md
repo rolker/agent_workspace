@@ -734,3 +734,12 @@ CI: "repos-manifest tests (#267 prototype) (Python 3.10)" fails in both the push
 ### False positives
 
 Cross-model pass: warranted before merge. Gemini and Codex last saw `fbaca8b4`; since then 22 commits changed manifest.py's url checks (the guard against `git`/`ssh` reading a value as an option) and output.py's replace-and-remove of the previous output (it deletes directories on the user's disk), both places where a second model's adversarial read has found defects before. One pass on the head after this fix round, not one per round.
+
+## Checkpoint
+**When**: 2026-11-18 15:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (four located findings, one of them a failing CI job; fixing them is mechanism)
+**After**: findings
+**Decision**: address
+
+Fix all four findings of the Integrated Review: the two tests that fail on Python 3.10 because they patch os.unlink, which pathlib does not go through there; the silent failure when a previous copy holds a read-only subdirectory; the spec line on where a url's user, host and port end; and the urls git cannot use that pass the check. The triage recommends one cross-model pass on the head after this fix round; the post-fix review of the pull request runs at full depth and includes it.
