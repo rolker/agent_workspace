@@ -313,3 +313,25 @@ Host decisions on the plan's four new questions (owner may veto):
 - --distro wins over the directory the person is standing in.
 - init prints its one line about the layout for every flat system with a named distro.
 - Names: --distro-dirs, add-distro, layout: flat | distro-dirs.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-495 at `0436088d`
+
+Documents only, three commits:
+
+- `0ef3deb2` tools/repos-manifest/docs/design.md, the part issue 500 waits for: a sentence under the first diagram (it is the flat layout); `config.yaml` example and table (`layout`, `distros` mapping, `local_manifest` per distro directory, `distro` removed); "More than one distro" rewritten under the same heading: what a distro is, the layout choice made once at `init`, the limit (a flat system cannot gain a second distro in place; several distros need `init --distro-dirs` and a fresh clone), four trees (smallest flat, `--distro-dirs`, after `add-distro rolling`, with layers), three `config.yaml` examples, "Setting up with init" (flags, refusal of a directory with `.repos-manifest/`, unlisted `--distro` left to the resolver, the layout line), "Where the resolved files and state go" (state.yaml's inner shape left open). One sentence under "show" points to the layout line.
+- `477bece8` the rest of design.md, README.md, roadmap.md: "Adding a distro" (`add-distro <name> [--manifest-ref <ref>] [--yes]`, nothing else; refusals with next steps, including `--manifest-ref` when the manifest read does not list the distro), "Which distro a command uses" (with the error for an unrecorded `--distro`), "Which manifest a distro reads" (local copy, else `manifest` at the distro's `manifest_version`; every read; no other URL or path per distro); "Where the manifest comes from" (local copy per distro, editing `manifest`, no reading another distro's copy); Commands table (`init` row, new `add-distro` row), a second walk-through, `show`, `sync` (per distro, and what it does when the manifest's distros change), state, `build`, `status`, `freeze`, "Three machines", "Not covered", "What is built" (`add-distro` added to the not-built list), open questions; README bullet; roadmap Direction line.
+- `0436088d` docs/manifest/design.md: "not built" bullets folded (two things, `add-distro` in the first); steps 4 and 6; `setup` passes `--distro-dirs` whenever the project has a distro; the `setup` row (`init --distro-dirs`, `add-distro`, the version for a new distro left with how a session names its distro); `<distro>/<layer>/` is the layout with a directory per distro.
+
+Read a particular way, or not done as the plan's table said:
+- The `resolve` section's "writes into `.repos-manifest/resolved/`" is not edited, because pull request 506 rewrites those lines; `resolved/<distro>/` is stated in "Where the resolved files and state go". Still true as written (the per-distro directories are inside `resolved/`).
+- No third `init` example under "Where the manifest comes from"; the `--distro-dirs` forms are in the second walk-through and the `add-distro` example.
+- `add-distro` refuses `--manifest-ref` when `manifest` is not in a git repo (a path or URL has no version); added to make the version-only rule hold.
+- spec.md: nothing in it is made false (checked its "Distros" section and every "distro" hit). prototype.md not touched.
+
+Post-task check against issue 495: the design describes starting with one distro in the per-distro layout and adding a second later with the commands typed, and the roadmap has a line. The issue's second bullet (`init --distro` again adds a distro) is replaced by the owner's answer 2 (`add-distro`). Per-distro settings: a manifest version is settled; role, groups, a differing `local_manifest` and removing a distro are left open in "Open questions". Not done here: the issue bodies' stale `tools/ros-manifest` paths and the follow-up comment on issue 500 (host's).
+
+Hooks: each commit ran the hooks with `SKIP=validate-script-tests` (anchor check passed). No suite applies (no script changed); the full pre-commit pass is left to the host.
