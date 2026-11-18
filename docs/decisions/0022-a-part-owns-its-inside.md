@@ -28,10 +28,15 @@ support one level with the scripts ... but I see no reason to not allow
 however many levels of planning and design I need for my work."
 
 The rule was checked against the two drafts before it was written down.
-`tools/ros-manifest/docs/` (#486, pull request 494): the root's
-`docs/design.md` on `main` names the tool only at its boundary (the
-resolver, installed by `make install-ros-manifest`, called by CLI from
-the adapter) and holds no resolver mechanics; it conforms as it stands.
+`tools/ros-manifest/docs/` (#486, merged in pull request 494): the
+root's `docs/design.md` on `main` names the tool only at its boundary
+(the resolver, installed by `make install-ros-manifest`, called by CLI
+from the adapter) and holds no resolver mechanics, so the boundary half
+of the rule holds. It does not yet point at
+`tools/ros-manifest/docs/design.md`, which decision 2 requires. That
+link is added together with the Direction pointer row for the tool's
+roadmap (#488), once #487 is merged: #487 changes the same rows of
+`docs/roadmap.md`.
 The workspace's manifest support (#487): on `main`, the Registry and
 adapters bullet for the manifest route mixes what crosses the boundary
 (the settings `source`, `source_ref`, `source_path`; the registry line's
