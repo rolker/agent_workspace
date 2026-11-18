@@ -26,7 +26,7 @@ A system is set up in one directory. Each layer is a colcon workspace inside it.
 my_system/
   .repos-manifest/
     config.yaml      what init recorded
-    state.yaml       the version sync last put each repo on
+    state.yaml       the version and commit sync last put each repo on
     resolved/        the .repos files from the last resolve, and the layer order
   underlay/
     src/             the repos of the layer
@@ -282,7 +282,8 @@ Each file starts with a comment that says which manifest, role and distro it cam
 
 ### sync
 
-1. Update the clone that `local_manifest` points into, on the branch it is on.
+1. Update the clone that `local_manifest` points into, by the same rules as any other repo
+   (below).
 2. Resolve.
 3. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
    the repos that are missing, and update the ones that are there.
@@ -291,8 +292,9 @@ Repos are only ever brought in line with the current manifest. On the first `syn
 no clone yet, and the manifest is read from the location given to `init`. A manifest on a
 local disk or at a URL has no clone to update, and step 1 does nothing for it.
 
-Step 1 follows the same rule as every other update: a clone with local changes is left as
-it is. A developer who is editing the manifest in its checkout gets that edited manifest.
+Step 1 follows the same rules as every other update: a clone that a person has moved to
+another branch, or that has local work, is left as it is. A developer who is editing the
+manifest in its checkout gets that edited manifest.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
@@ -304,15 +306,19 @@ comes from the same place as the manifest that names it; when that is the local 
 has updated it. A parent in another git repo or at a URL is fetched afresh.
 
 Sync does not discard work, and it tells a change in the manifest from a change a person
-made. It records the version it last put each repo on, in `.repos-manifest/state.yaml`, for
-each distro when there is more than one. A repo it has no record for is recorded and
-followed if it is on the manifest's version, and treated as one a person has moved if it is
-not.
+made. It records the version and the commit it last put each repo on, in
+`.repos-manifest/state.yaml`, for each distro when there is more than one. A repo it has no
+record for is recorded and followed if it is on the manifest's version, and treated as one a
+person has moved if it is not.
 
-- A repo that is still on that version follows the manifest: it is updated, and moved to a
-  new version when the manifest names one.
+- A repo that is still on that version, with nothing local in it, follows the manifest: it
+  is updated, and moved to a new version when the manifest names one.
 - A repo that a person has moved to another branch is left as it is and reported.
-- A repo with uncommitted changes is left as it is and reported.
+- A repo with local work is left as it is and reported. Local work is uncommitted changes,
+  or commits that are not on the remote. Such a repo is not switched to another version, so
+  commits made on a machine are never left out of what is built without a person deciding.
+  A repo that is only ahead of its remote on the manifest's branch is still updated when
+  that loses nothing, as described under "Work done on a field machine".
 - A repo that is no longer in the manifest is left on disk and reported; `sync` does not
   delete it.
 
@@ -327,7 +333,10 @@ access to.
 ### build
 
 For each layer in order, run `colcon build` in the layer's directory with the layers before
-it sourced. Then write `setup.bash` in the system directory, or in the distro's directory
+it sourced. `colcon` is given the paths of the repos the resolved files list for the layer
+(`--base-paths`), not the whole of `src/`. A repo that is still on disk but no longer part
+of the system for this machine, because a group was switched off or the manifest dropped it,
+is not built. Then write `setup.bash` in the system directory, or in the distro's directory
 when the system directory holds more than one distro. It sources the setup file of
 the last layer, in the manifest's order, that has been built, whichever layers this run
 built.
@@ -381,7 +390,8 @@ It is kept simple, and has limits it states in its output:
 
 - Repos the machine does not have, because its role leaves them out or because they were
   skipped as optional, keep the versions the manifest named. A record that pins every repo
-  is made on a machine that has them all.
+  is made on a machine that has them all. A machine set up from the record may therefore
+  fetch an optional repo that the first machine skipped.
 - A commit that was never pushed cannot be fetched elsewhere. `freeze` names the repos with
   uncommitted changes or unpushed commits.
 - A machine set up from the record has each repo at a commit with no local branch. See

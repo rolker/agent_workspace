@@ -336,7 +336,13 @@ entry can undo an earlier `absent: true` or `optional: true` on the repo by givi
 entry that changes one distro gives the whole block, with the other distros repeated.
 
 A parent may itself build on other manifests. A manifest that builds on itself, directly or
-through others, is an error. Two parents may share a parent.
+through others, is an error.
+
+Two parents may share a parent. Each manifest is read once, the first time it is reached,
+and the order of reading is: a manifest's parents in the order it names them, each after its
+own parents, then the manifest itself. If `A` and `B` both build on `C`, and a manifest names
+`base: [A, B]`, the order is `C`, `A`, `B`, then the manifest. What `A` changes in `C` stays
+changed unless `B` changes it again.
 
 vcs2l is adding an `extends` key to `.repos` files (on its main branch at the time of
 writing) that does part of this: a file builds on other local files, and a later entry
@@ -399,7 +405,9 @@ outside the place the person chose before anything is built. It checks these thi
 refuses a manifest that fails one:
 
 - The file is loaded as data. Loading a manifest never runs code.
-- Everything lands inside the directory the system is set up in, at a place of its own.
+- Everything lands inside the directory the system is set up in, at a place of its own. A
+  tool checks this again on the real destination before it writes, so that a link already on
+  the disk, or two names that the disk treats as the same, cannot defeat the rules below.
   - A repo's key is a relative path. No part of it is `..` or `.git`, and no key is
     another key followed by `/` and more, so one repo is never cloned inside another.
   - The name of a layer, a distro, a group or a role is a single word: letters, digits, `_`

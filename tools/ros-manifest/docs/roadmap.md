@@ -26,6 +26,7 @@ are relative to the tool's own directory.
 |---|---|
 | The format is written down | `file-exists docs/spec.md` |
 | The tool and its code carry the name repos-manifest | `file-exists src/repos_manifest/cli.py` |
+| The prototype's command, input format and output layout keep working until those who use them have moved to the new ones | |
 | The resolver reads the format in the spec: a superset of a `.repos` file, keys merged under `base`, layers appended, groups named on the repo | |
 | The resolver no longer has the package dependency section, roles defined by starting packages, or the cache of parents kept between runs | |
 | `base` and the manifest itself can be given as a path, a URL, or a file in a git repo | |
