@@ -220,10 +220,12 @@ else
     fail "(direction) checklist line: $(grep 'checklist deferral' "$f")"
 fi
 
-echo "TEST: a sub-roadmap (issue #488) is never edited; the root's roadmap still is"
+echo "TEST: a sub-roadmap (issue #488) outside the three candidate paths is never edited; the root's roadmap still is"
 # A part's roadmap (tools/<t>/docs/roadmap.md, docs/<part>/roadmap.md) is a
 # Direction-format file that holds no status; only the root's own three
-# candidate paths are processed.
+# candidate paths are processed, so a sub-roadmap at any other path is left
+# alone (one at ROADMAP.md, docs/ROADMAP.md or docs/roadmap.md would not be:
+# docs/design.md says so).
 root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
 mkdir -p "$root/docs/part" "$root/tools/t/docs"
 printf '%s' "$roadmap_body" > "$root/docs/roadmap.md"

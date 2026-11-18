@@ -131,8 +131,9 @@ Direction section: `| Sub-roadmap | Root |`, the file and the directory its chec
 row, a pointer inside a sub-roadmap is listed as not followed, and a part's lines stay out of the root's
 totals in the run record. One level is the checker's limit, not the rule's: the rule puts none on levels
 of planning and design. The same grammar serves a project's roadmap, since the sit-rep reads the session
-root's own. `update_roadmap.sh` reads only the root's three candidate roadmap paths, so it never edits a
-sub-roadmap (checked by `test_update_roadmap.sh`). A pointer into another repository is not supported
+root's own. `update_roadmap.sh` reads only the root's three candidate roadmap paths (`ROADMAP.md`,
+`docs/ROADMAP.md`, `docs/roadmap.md`), so it never edits a sub-roadmap at any other path (checked by
+`test_update_roadmap.sh`); a sub-roadmap at one of those three would be edited like the root's. A pointer into another repository is not supported
 until there is a case.
 
 `.agent/scripts/discover_governance.sh` lists the governance files it finds in the workspace root and in
