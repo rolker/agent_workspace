@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+import yaml
+
 from repos_manifest.cli import main
 from repos_manifest.output import strip_head_comment
 
@@ -12,6 +14,21 @@ MANIFEST = FIXTURE / "project11.manifest.yaml"
 EXPECTED = FIXTURE / "expected"
 OLD_EXPECTED = Path(__file__).parent / "fixtures" / "p11" / "expected"
 COMBINATIONS = [(r, d) for r in ("robot", "operator", "developer") for d in ("jazzy", "rolling")]
+
+
+def _private_repo():
+    """The key and url of the one private repo, as the earlier fixture names it: read from
+    there, so that no file this fixture adds spells its name."""
+    repos = yaml.safe_load((OLD_EXPECTED / "jazzy" / "site.repos").read_text())["repositories"]
+    ((key, entry),) = repos.items()
+    return key, entry["url"]
+
+
+def _made_up_repo():
+    """The key and url this fixture gives that repo instead."""
+    repos = yaml.safe_load(MANIFEST.read_text())["repositories"]
+    entry = repos["site_config"]
+    return "site_config", entry["url"]
 
 
 def _resolve(tmp_path, role, distro):
@@ -40,10 +57,9 @@ def test_developer_gets_the_44_repos_of_the_earlier_fixture(distro, tmp_path):
     old = _files(OLD_EXPECTED / distro)
     new = {n: strip_head_comment(t) for n, t in _files(out).items() if n.endswith(".repos")}
     assert set(new) == set(old)
+    (private_key, private_url), (made_up_key, made_up_url) = _private_repo(), _made_up_repo()
     for name, text in old.items():
-        text = text.replace("ccomjhc_project11", "site_config").replace(
-            "git@github.com:CCOMJHC/site_config.git", "git@github.com:example/site_config.git"
-        )
+        text = text.replace(private_url, made_up_url).replace(f"{private_key}:", f"{made_up_key}:")
         assert new[name] == text, name
     assert sum(t.count("type: git") for t in new.values()) == 44
 
@@ -60,12 +76,13 @@ def test_rolling_differs_from_jazzy_only_in_one_version():
         )
 
 
-def test_the_private_repo_is_not_named_in_the_fixture():
-    text = MANIFEST.read_text()
-    assert "ccomjhc_project11" not in text
-    for path in EXPECTED.rglob("*"):
-        if path.is_file():
-            assert "ccomjhc_project11" not in path.read_text()
+def test_the_private_repo_is_not_named_in_the_fixture_or_this_test():
+    private_key, private_url = _private_repo()
+    paths = [Path(__file__), MANIFEST] + [p for p in EXPECTED.rglob("*") if p.is_file()]
+    for path in paths:
+        text = path.read_text()
+        assert private_key not in text, path
+        assert private_url not in text, path
 
 
 def test_validate_checks_every_role_and_distro(capsys):
