@@ -532,3 +532,21 @@ Host decisions (owner may veto):
 Host decisions applied as given in the Checkpoint at 15:52 (listed for the owner's veto).
 
 Checks: `bash .agent/scripts/check_design_anchors.sh` printed nothing and exited 0. The tool's documents were grepped for workspace, adapter, `.agent/` and `ros2_colcon`: only "colcon workspace" and prototype.md's issue links, both untouched by this round. The `resolve` section's first lines untouched. Commits ran the hooks with `SKIP=validate-script-tests`; no script changed, so no suite applies; the full pre-commit pass is left to the host. One line in "More than one distro" is now longer than its neighbours (the suggestion 3 clause), left unreflowed by the no-reflow rule.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 15:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-495 at `a139997a`
+**Base**: main
+**Depth**: Standard (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — round 4: 1 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Scope: the round 3 findings and `git diff 4084a9e5..HEAD` (eight commits plus the checkpoint and implementation entries). Specialists: static (no linter profile for .md; `check_design_anchors.sh` printed nothing, exit 0), governance (ADR-0017 met; no departure from the owner's three answers or the host's round 3 decisions), plan drift (only the four expected files changed; progress.md changes are the round 3 boxes ticked plus the two new entries) and Claude adversarial completed; cross-model skipped (round-4 convergence check, per handoff). All three round 3 must-fix and all five suggestions are fixed as stated. docs/manifest/design.md and roadmap.md agree: five asks left in both, "Three of today's guarantees" includes the interrupted `init`, the route paragraph says the same, and the unreadable record counts as the tool not answering. `sitrep_checks.sh --root . --roadmap docs/manifest/roadmap.md --no-follow` (read-only) parses the changed line as an `unchecked` line, exit 0. Every `init` combination (`--distro` 0/1/2+, `--distro-dirs` or not, `distros:` or not, listed or not) falls in exactly one first-applying row or is allowed (no distro on a manifest without `distros:`; listed distros, one flat or one or more with `--distro-dirs`); the one defect is the loop below.
+
+### Findings
+- [ ] (must-fix) Two or more `--distro` on a manifest with no `distros:` loops: row "More than one `--distro` without `--distro-dirs`" says add `--distro-dirs`, then row "`--distro-dirs` with a manifest that has no `distros:`" says set up without it, and back; make the latter's next step "Set up without `--distro-dirs` and without `--distro`" — `tools/repos-manifest/docs/design.md:228-229`
+- [ ] (suggestion) The two unlisted-`--distro` rows give only `--manifest-ref` steps, which need `manifest` in the git form; add "or, when `manifest` is not given in the git form, add the distro to its `distros:`", as the `add-distro` row does — `tools/repos-manifest/docs/design.md:232-233`
