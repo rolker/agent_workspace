@@ -572,3 +572,37 @@ Main brought in again before the next review: pull request 511 made the tool rea
 - black and flake8 by the commit hooks. Full pre-commit pass left to the host.
 
 Left open: none.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 17:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-500 at `03171755`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff, 4363 lines over 20 files; new code that creates directories, clones and removes temporaries on a person's disk; fix-round rule, same tier as round 1)
+**Must-fix**: 3 | **Suggestions**: 12
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high (all mechanical, down from 4); another independent read warranted
+
+Suites: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` 962 passed (vcs: /usr/bin/vcs, vcs 0.3.0, vcstool; Python 3.14; no 3.10 interpreter here, a grep found no 3.11+ feature); `bash .agent/scripts/tests/test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped. pre-commit on the changed files: clean. `git diff origin/main...HEAD -- .github` empty. Existing test files unchanged; conftest.py only gains lines. No new test patches an os function reached through pathlib. Specialists: static, governance, plan drift, Claude adversarial, gemini and codex (both EXIT=0).
+
+Round 1 must-fix: 1 (case twins) fixed, refused before the manifest is read; 2 (`--out` in init/sync messages) fixed, resolve's messages and tests unchanged; 3 (shape checks) partly fixed: wrong types at every level are named, but unknown keys, missing fields and `format` pass (below); 4 (git variables) fixed for GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY: correct clones and commits, the other repo untouched, nothing set that stops a prompt; GIT_NAMESPACE is not in git's list (suggestion below).
+
+Hand runs with local remotes: the owner's case (`--distro-dirs --distro rolling --role developer`, unnamed and three named layers, nested key, branch, tag, unclonable optional) with `--yes` and at a pseudo-terminal answering y (two distros): trees, config.yaml, state.yaml, resolved/<distro>/ and setup.bash as the design says; piped y without `--yes` refused. Kill during the third clone: SIGKILL left one temporary in .repos-manifest/ and a state.yaml (parses) with the two finished repos; SIGTERM/SIGINT left no temporary, exit by the signal, same state; each next `sync` swept, cloned the rest, exit 0. `manifest` is recorded as given at init (e.g. `../mf/leaf.yaml`), read from the system directory: a later `sync` from a subdirectory finds it and its relative `base` (from the manifest's own directory); after moving the system or a parent the error names the recorded path. `validate` prints `base:` lines; init's and resolve's head comments carry `# base:`. init's aside sweep, the non-directory place, the closing advice and the unwritable directory behave as fixed.
+
+### Findings
+- [ ] (must-fix) config.yaml and state.yaml shape checks are open: unknown top-level config keys pass silently, including the design's `local_manifest`, `fetch_from`, `remotes` (fetch_from set, sync clones from the manifest's URL, exit 0) while a distro setting is an error; the design's git-form `manifest` mapping gets "is not a mapping with a `manifest`"; state.yaml accepts any `format`, repo entries missing `layer`/`version`/`commit`, and unknown keys, though design.md:284 says one of the wrong shape is an error (lead, gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/system.py:144`, `system.py:316`
+- [ ] (must-fix) Refusals table row "`--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form" is a check init does not make (argparse refuses the unknown option) and the row is not marked not built; the add-distro rows likewise (lead) — `tools/repos-manifest/docs/design.md:244`
+- [ ] (must-fix) "exits with 1 when ... a repo that is not optional could not be cloned or is in the way" is false: an optional repo with a link on the way, one that appeared meanwhile, a failed mkdir or a failed rename is FAILED (exit 1); only the not-a-directory and fetch cases use the optional rule; one rule for all (Claude adversarial, gemini, lead) — `tools/repos-manifest/src/repos_manifest/sync.py:206`, `sync.py:217`, `sync.py:224`, `sync.py:229`
+- [ ] (suggestion) GIT_NAMESPACE is not among `--local-env-vars`: with it set, local-path remotes clone empty, recorded as cloned with `commit: null`; drop it too and treat an unreadable HEAD as that repo's failure (lead) — `tools/repos-manifest/src/repos_manifest/sync.py:97`
+- [ ] (suggestion) setup.bash creation is unguarded: a file where a distro directory belongs gives an uncaught "File exists" after cloning every repo into nowhere, and EXDEV/EPERM from os.link on a separate mount or a filesystem without hard links names a temporary; both end the run before the report and other distros (gemini, Claude adversarial, lead) — `tools/repos-manifest/src/repos_manifest/sync.py:271`
+- [ ] (suggestion) A manifest error after the system moved names the recorded relative path without saying it is taken from the system directory or that `manifest` in config.yaml records it (Claude adversarial, lead) — `tools/repos-manifest/src/repos_manifest/sync.py:326`
+- [ ] (suggestion) sync from inside .repos-manifest/resolved/ is told to "give a directory beside or below it", which sync cannot (gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/output.py:301`
+- [ ] (suggestion) Ctrl-C before `signals_end_the_run()` (reading config and manifest, `vcs --version`) prints a KeyboardInterrupt traceback; nothing has changed (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:338`, `init.py:188`
+- [ ] (suggestion) A removed current directory gives "internal error (FileNotFoundError)" from init and sync: `os.getcwd()` is outside `reporting_oserror` (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:330`, `init.py:186`
+- [ ] (suggestion) A present repo behind a link on the way counts as present before the destination check runs; harmless while part 1 touches nothing present, but part 2 must check first (gemini) — `tools/repos-manifest/src/repos_manifest/sync.py:201`
+- [ ] (suggestion) A file where a layer or key directory belongs is found only after a full clone; check ancestors first (gemini) — `tools/repos-manifest/src/repos_manifest/sync.py:205`
+- [ ] (suggestion) The repair advice for a broken config.yaml, "remove that .repos-manifest/ folder to set up again", leads to init's refusal for the existing src/ and setup.bash (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/system.py:133`
+- [ ] (suggestion) design.md says init writes setup.bash; sync also re-creates a missing one: say so (Claude adversarial) — `tools/repos-manifest/docs/design.md:197`
+- [ ] (suggestion) Not worth doing, noted: rename over an empty directory made in the check-to-rename window (no RENAME_NOREPLACE in Python); a state write failing after the rename leaves an unrecorded clone that part 2's no-record rule heals; non-UTF-8 output or file names give internal error; URLs with credentials printed in the summary (codex, gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:227`
