@@ -15,8 +15,8 @@ earlier name, `ros-manifest`.
 A registered project of many repos is set up, updated and checked from a manifest, on any
 machine: the owner's development machine, a field machine, a collaborator's machine.
 
-- The workspace records which manifest a project instance uses, and for which role and
-  distro. It does not hold a copy of the list of repos.
+- Which manifest a project instance uses, and for which role and distros, is recorded once,
+  with the instance. The workspace does not hold a copy of the list of repos.
 - An agent and a person use the same commands on a project. What an agent does through the
   adapter, a person can do by hand with the tool.
 - A project that has no manifest yet can be set up from one written in a scratch place, and
@@ -77,11 +77,14 @@ After that:
   `git pull --rebase`. A clean repo on another branch, or on no branch, gets `git fetch`.
 - `build` runs `colcon build` in each layer in order, with `/opt/ros/<distro>` and the
   layers before it sourced.
-- `validate` fails, with a non-zero exit status, when `.resolved-from` does not match the
-  source, ref, path, role or distro recorded now, or when a checkout or a layer file the
-  manifest calls for is missing. It warns when a manifest at a path has changed since it was
-  resolved, and names checkouts the manifest no longer lists. It fetches nothing and removes
-  nothing.
+- `validate` fails, with a non-zero exit status, when `.resolved-from` is missing or does not
+  match the source, ref, path, role or distro recorded now, when no role is recorded or the
+  distro cannot be worked out, when a second source is set beside `source`, or when a checkout
+  or a layer file the manifest calls for is missing. It warns when a manifest at a path has
+  changed since it was resolved, and names checkouts the manifest no longer lists. It fetches
+  nothing and removes nothing. Its check has two limits: a layer marked optional is passed
+  over when its `.repos` file or its `src/` is absent, and a repo counts as checked out when
+  a directory of its name exists, whatever is in it.
 
 Network is needed at `setup` and `sync`, for the source, for the host of every `extends`
 base and for the host of every package repo, and for installing the resolver.
@@ -102,8 +105,8 @@ What the route guarantees, and how far each guarantee goes:
   tell, and keeps the directory before the live one instead; two later runs can then remove
   a directory a long run is still reading.
 - **Bounded and guarded fetches.** The adapter's fetch allows the https, ssh and file
-  transports only. The resolver's clone of an `extends` base runs no user hook or filter
-  driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`.
+  transports only and is bounded by `WT_FETCH_TIMEOUT`. The resolver's clone of an `extends`
+  base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`.
 - **Nothing is deleted.** The adapter removes no checkout and edits no ignore file.
 
 ### Worktrees
@@ -186,33 +189,60 @@ instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init` for a directory that is not set up yet; `repos-manifest sync` for one that is, which clones what is missing |
+| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init` for a directory that is not set up yet, or for a distro the instance does not have yet (#495); `repos-manifest sync` for a distro that is set up, which clones what is missing |
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
-| `build` | `colcon build` per layer | `repos-manifest build` for the distro, with that distro's environment sourced first |
-| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail on the same conditions, read from `repos-manifest status` |
+| `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
+| `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
+| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail when `repos-manifest status` says a repo the manifest calls for is missing, or cannot say |
+
+`setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: the
+one the session is working on. How a session says which is not decided yet.
+
+An instance is on the tool when its directory has a `.repos-manifest/` folder. That is how
+the adapter tells it from an instance still on the bootstrap route, until that route is
+removed. `init` records what it was given before it fetches anything, so a first fetch that
+fails is finished with `sync`; if `init` fails before that, registration is run again.
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
 
 ### What the tool has to give
 
-Three things the adapter gives today are not in the tool's design yet. The adapter cannot
-become thin without them, and they are asked of the tool, not rebuilt in the adapter:
+Some of what the adapter gives today is not in the tool's design yet. The adapter cannot
+become thin without it, and it is asked of the tool, not rebuilt in the adapter:
 
 - **A status a script can read.** `validate` fails with an exit status today. The tool's
-  `status` is described as something a person reads. It needs a form a script can read and
-  an exit status that says a repo the manifest calls for is missing or the system directory
-  was set up from something else.
+  `status` is described as something a person reads. It needs a form a script can read,
+  which also gives the role and the distros the system directory was set up for, and an exit
+  status that says a repo the manifest calls for is missing.
 - **Protection against two runs at once.** The adapter locks its fetch and resolve. The
   tool's design has no lock.
 - **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its
   clones of parent manifests. The tool's design sets no limit on `sync`.
+- **A failed resolve changes nothing.** The adapter keeps the previous generated directory
+  when a fetch or a resolve fails, and swaps the new one in whole. The tool's design says
+  where `resolve` writes and not what a failure leaves behind. Its resolved output has to be
+  replaced whole or not at all, which also keeps a reader from seeing half of it. The tool's
+  `sync` updates the manifest's own clone before it resolves, so a manifest that does not
+  resolve can leave that clone moved forward; the resolved output and every other repo have
+  to stay as they were, and `sync` has to say that the manifest is what failed.
 
-The other guarantees listed under "What exists today" are covered by the tool's design: it
-reads the manifest again on every `sync`, it allows only transports that fetch, and its
-`sync` deletes nothing and leaves local work alone. The order in which `sync` updates the
-manifest and the repos, and how it knows what it last put each repo on, are the tool's and
-are in its design.
+Two of today's guarantees are covered by the tool's design as it is: it reads the manifest
+again on every `sync`, and its `sync` deletes nothing and leaves local work alone.
+
+One is given up on purpose. Today's route refuses plain `http` and a URL that carries
+credentials, and clones a parent manifest's repo with none of the user's git configuration,
+so that no hook or filter driver runs. The tool allows `http` for networks a person trusts,
+does not look for credentials in a URL, and uses `git` as it is set up on the machine, by
+the owner's decision on how far the tool's checks go (2026-11-17): a manifest is read like
+any code about to be run. What the
+tool does check is in its spec, under "Reading a manifest before using it".
+
+`validate` no longer catches a directory that was set up from the wrong manifest, role or
+distro. Today it can, because the workspace holds a second record to compare with. In the
+target there is one record, in the instance, and nothing to compare it against; `show` and
+`status` say what it holds. The order in which `sync` updates the manifest and the repos, and how it knows
+what it last put each repo on, are the tool's and are in its design.
 
 ### What the workspace records
 
@@ -222,10 +252,12 @@ it: its name, its type and its path.
 Everything about the manifest is given once, at registration, and passed to `init`: the
 manifest's location, the role, the first distro, extra groups, where to fetch from and extra
 remotes. After that the tool's record in `.repos-manifest/` is the one record. The workspace
-asks the tool for the role and the distros when it needs them, through a command, and does
-not read the tool's files or keep a second copy that could disagree. Until the adapter's
-verbs have moved to the tool they still read `role=` and `distro=` from the registry line,
-so those stay until then.
+asks the tool for the role and the distros when it needs them, through `status`, and keeps no
+second copy that could disagree. The one thing it reads from `.repos-manifest/` directly is
+the resolved `.repos` files and layer order, which are the tool's stated output. Until the
+adapter's verbs have moved to the tool they still read `role=` and `distro=` from the registry
+line, so those stay until then, and so do `source`, `source_ref` and `source_path` in the settings
+file. All five go together.
 
 Today's settings keys map onto the manifest's location in its git form:
 
