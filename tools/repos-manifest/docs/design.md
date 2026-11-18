@@ -36,6 +36,10 @@ my_system/
   setup.bash         sources the layers that are built
 ```
 
+This is the layout of a system with one distro, or none. A system set up with a directory per
+distro puts each distro's layers and setup file in a directory of its own; see "More than one
+distro".
+
 A manifest without layers gives an ordinary colcon workspace: `src/`, `build/`, `install/`
 and `log/` directly in the system directory, with `.repos-manifest/` beside them. For a
 small project the tools then do little more than `vcs` and `colcon` do.
@@ -60,7 +64,9 @@ manifest: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/pr
 local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
 role: developer
 groups: [ben-hardware]
-distro: jazzy
+layout: flat
+distros:
+  jazzy: {}
 fetch_from:
   prefix: https://github.com/rolker/
   fallback: true
@@ -70,23 +76,99 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is. See "Where the manifest comes from". |
-| `local_manifest` | Optional. A path inside the system directory that is used instead, once that file exists. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. See "Where the manifest comes from". |
+| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
-| `distro` | The distro of this system, if the manifest has distros. |
-| `distros` | In place of `distro`, when the system directory holds more than one. See "More than one distro". |
+| `layout` | `flat`, or `distro-dirs` for a directory per distro. Chosen at `init` and not changed afterwards. See "More than one distro". |
+| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 
-`role`, `groups` and `distro` are facts about the machine, which is why they are recorded
-here and not in the manifest.
+`role`, `groups`, `layout` and `distros` are facts about the machine, which is why they are
+recorded here and not in the manifest.
 
 ### More than one distro
 
-A development machine often carries two distros of the same system at once, for example the
-current release and the next one. The system directory can then have one directory per
-distro, each holding its own layers and its own setup file:
+A distro is a build environment the system is built in, apart from the others, such as a ROS
+distribution or an operating system release (see "Distros" in the specification). A
+development machine often carries two distros of the same system at once, for example the
+current release and the next one.
+
+A system directory holds one distro, or one directory per distro. This is chosen when the
+system is set up, with `init`, and cannot be changed afterwards.
+
+By default a system directory is flat. It holds one distro, or none when the manifest has no
+`distros:`, and its layers (or `src/`, `build/`, `install/` and `log/` when the manifest has
+no layers) and `setup.bash` are directly in the system directory, as in the first diagram. A
+system set up flat cannot gain a second distro in place: the first distro's directories would
+have to move. Several distros need a directory set up with `init --distro-dirs`, and a fresh
+clone of the repos in it.
+
+With `init --distro-dirs` each distro has a directory of its own, from the first distro on,
+even when there is only one. Each distro's directory holds that distro's layers, or an
+ordinary colcon workspace when the manifest has no layers, and its own `setup.bash`. A distro
+is added later with `add-distro`, and nothing of the distros already there is moved or
+rewritten. The cost is one more level of directories. A person who may want a second distro
+later sets up with `--distro-dirs` from the start.
+
+A manifest with no `distros:` always gives a flat system, and has no distro to add.
+
+The smallest system, one repo on one distro with no layers and no roles, set up flat. The
+tools do little more here than `vcs` and `colcon`:
+
+```
+my_system/
+  .repos-manifest/
+    config.yaml        manifest: ./system.manifest.yaml, layout: flat, distros: {jazzy: {}}
+    state.yaml
+    resolved/
+      _unnamed.repos
+  src/
+    my_repo/
+  build/  install/  log/
+  setup.bash
+```
+
+The same system set up with `--distro-dirs`. Against the flat one it costs one directory level
+and `resolved/jazzy/`:
+
+```
+my_system/
+  .repos-manifest/
+    config.yaml        layout: distro-dirs, distros: {jazzy: {}}
+    state.yaml
+    resolved/
+      jazzy/
+        _unnamed.repos
+  jazzy/
+    src/
+      my_repo/
+    build/  install/  log/
+    setup.bash
+```
+
+After `repos-manifest add-distro rolling`. Nothing of `jazzy/` or `resolved/jazzy/` is touched:
+
+```
+my_system/
+  .repos-manifest/
+    config.yaml        distros: {jazzy: {}, rolling: {}}
+    state.yaml         state for rolling added
+    resolved/
+      jazzy/           unchanged
+      rolling/         new
+        _unnamed.repos
+  jazzy/               unchanged, not moved or rewritten
+    src/  build/  install/  log/  setup.bash
+  rolling/             new
+    src/
+      my_repo/
+    build/  install/  log/
+    setup.bash
+```
+
+With layers, each distro's directory holds them:
 
 ```
 my_system/
@@ -106,16 +188,58 @@ my_system/
     setup.bash
 ```
 
-`config.yaml` lists the distros in place of naming one:
+When a project adds layers later, the repos that name no layer stay where they are, in the
+system directory when it is flat and in the distro's directory otherwise, and the named
+layers get directories beside them.
+
+`distros` in `config.yaml` maps each distro's name to its settings, and has that one shape
+whether there is one distro or several, so adding a distro adds an entry and changes nothing
+else. The only setting an entry may carry is `manifest_version`: that distro reads the
+manifest from the location in `manifest`, at that branch or tag in place of the one `manifest`
+gives. An entry without it is `{}`. A flat system has exactly one entry, or none when the
+manifest has no distros. Three examples:
 
 ```yaml
-distros: [jazzy, rolling]
+# flat, one distro (the default)
+manifest: ./system.manifest.yaml
+layout: flat
+distros:
+  jazzy: {}
+```
+
+```yaml
+# a directory per distro, one manifest for all
+manifest:
+  url: git@git.example.org:team/system.git
+  version: main
+  path: system.manifest.yaml
+local_manifest: core/src/system/system.manifest.yaml
+role: developer
+layout: distro-dirs
+distros:
+  jazzy: {}
+  rolling: {}
+```
+
+```yaml
+# a directory per distro, the manifest on a branch per distro
+manifest:
+  url: git@git.example.org:team/system.git
+  version: jazzy
+  path: system.manifest.yaml
+local_manifest: core/src/system/system.manifest.yaml
+role: developer
+layout: distro-dirs
+distros:
+  jazzy: {}
+  rolling:
+    manifest_version: rolling
 ```
 
 Everything else in `config.yaml` applies to each distro. `local_manifest` is then a path
-inside the distro's directory, so each distro uses the copy of the manifest in its own
-checkout once it exists. The copies may differ, as the copies on a project's distro branches
-may.
+inside the distro's directory, the same path in each, so each distro uses the copy of the
+manifest in its own checkout once it exists. The copies may differ, as the copies on a
+project's distro branches may.
 
 A command run inside a distro's directory acts on that distro. Run at the top of the system
 directory, `sync` and `status` act on every distro in turn, or on the ones named with
@@ -126,9 +250,45 @@ with `--distro`. Each distro is built in its own environment, which the person s
 before building, for example by sourcing that distro's setup file, so one shell can build
 only one of them.
 
-The layout is chosen at `init`. A system directory set up for one distro has no distro
-directories, as in the first diagram. A manifest without layers gives each distro directory
-an ordinary colcon workspace.
+#### Setting up with init
+
+`init <manifest> --distro <d>` sets up a flat system. Without `--distro-dirs` it takes exactly
+one `--distro`, or none when the manifest has no `distros:`. More than one `--distro` without
+`--distro-dirs` is an error, and the message names `--distro-dirs`.
+
+`init <manifest> --distro <d> [--distro <d2> ...] --distro-dirs` sets up a system with a
+directory per distro, for one distro or several. It is refused when the manifest has no
+`distros:`.
+
+A `--distro` that the manifest does not list is the resolver's error (see "Distros" in the
+specification). `init` reports it when it prints what the manifest comes to, before it asks
+to go on.
+
+`init` only sets up a new system directory. It refuses a directory that already has
+`.repos-manifest/`, and changes nothing. The message says to use `sync` to update the system,
+or `add-distro` to add a distro to a system set up with `--distro-dirs`. This includes a
+directory where an earlier `init` stopped part way; what `init` should do there is not
+designed yet.
+
+Before its question, `init` prints what `show` prints (see "show"). For a flat system with a
+named distro it also prints one line about the layout:
+
+```
+Layout: one directory for the system, with no directory per distro. A distro cannot be added to this system later. To be able to add one, set up with --distro-dirs.
+```
+
+It is part of the text before the question, not a new question. `--yes` skips the question
+and still prints the line. A system whose manifest has no distros gets no such line, since it
+has no distro to add.
+
+#### Where the resolved files and state go
+
+In a flat system the resolved files are in `.repos-manifest/resolved/`. With a directory per
+distro, each distro's are in `.repos-manifest/resolved/<distro>/`.
+
+The version and commit `sync` last put each repo on are kept in `.repos-manifest/state.yaml`,
+for each distro. Its inner shape is not fixed here. What the design needs of it is that
+writing one distro's state leaves every other distro's as it was.
 
 ## Where the manifest comes from
 
@@ -264,7 +424,8 @@ for one in a git repo means fetching it, and with a `fetch_from` fallback it ask
 place which repos exist there.
 
 `init` prints the same thing and asks before it fetches. `--yes` skips the question, for
-scripts.
+scripts. For a flat system with a distro it also prints one line about the layout; see
+"Setting up with init".
 
 ### resolve
 
