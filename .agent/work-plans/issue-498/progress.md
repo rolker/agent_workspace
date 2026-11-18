@@ -1193,3 +1193,22 @@ Suites (Python 3.14.4; no 3.10 interpreter here): `PYTHONPATH=tools/repos-manife
 - [x] (suggestion) A banned transport in `base` (`ext::...`) gets the "path only, not yet an http(s) URL or git" message, which reads as if it might be read later; part 2b's URL check is the place for the proper refusal; not worth doing in 2a (gemini) — `tools/repos-manifest/src/repos_manifest/manifest.py:484` (deferred: host decision: no action in 2a; the proper refusal comes with part 2b's reading of URLs)
 
 Dropped: newline in a parent's real path (gemini 1, codex 3: round 1 suggestion, host decision; `resolve` already refuses it in the head comment); relative path from the real directory and real-path labels (gemini 2: Checkpoint finding 8, label left to part 3); http(s)/git readers (gemini 3: out of 2a); `has_repositories_key` not renamed (gemini 7: Checkpoint finding 9); duplicate layers in one list (gemini 6: still refused, "names layer 'core' twice"); `base:` lines printed before flag checks (gemini 8: true lines, exit 1); a credential echoed in a refused base URL (codex 1: the module's stated policy is that a message may print a manifest value, as repo url messages on main do); `missing/../p.yaml` (codex 2: round 1, host decision); `base: [p, ./p]` accepted silently (adversarial 4: harmless, read once).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:57 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-498 at `4b4d35af`
+**Addressed**: Local Review (Pre-Push) at `2e13d4ec` (2026-11-18 16:55 -05:00)
+**Commits**: `4b4d35af`
+
+### Actions
+- [x] (must-fix) design.md: the earlier-format refusal now reads "before any check on its keys"; the phrase "any other check" appears nowhere else in tools/repos-manifest (spec.md, README.md checked) — `tools/repos-manifest/docs/design.md:338`
+- [x] (suggestion) A later manifest's `layers:` order can differ from the combined order in a diamond — `tools/repos-manifest/docs/spec.md:329` (deferred: host decision: deferred to the owner; no change in this pull request)
+- [x] (suggestion) An overlay with no `base` that only changes roles or layers needs `repositories: {}` — `tools/repos-manifest/src/repos_manifest/manifest.py:436` (deferred: host decision: no action; it is what the spec's table says)
+- [x] (suggestion) A banned transport in `base` gets the "path only" message — `tools/repos-manifest/src/repos_manifest/manifest.py:484` (deferred: host decision: no action in 2a; the proper refusal comes with part 2b's reading of URLs)
+
+Suggestions 1 to 3 were decided by the host (listed for the owner's veto).
+
+Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests/test_documents.py`: `11 passed in 0.01s`. Full pass left to the host.
