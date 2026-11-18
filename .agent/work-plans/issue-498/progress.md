@@ -429,3 +429,14 @@ Questions not settled by the spec or a Checkpoint. Each was given the narrowest 
 7. A file starting with a byte-order mark is refused (U+FEFF is invisible).
 8. Names of one kind that differ only in case (`Core` and `core`) are not refused, since that is a destination check. The two layer files would collide in `--out` on a case-insensitive disk.
 9. `repositories: {}` is accepted and gives no files.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 13:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: takeover
+**Phase**: implement
+
+The implementation of part 1 came back partial for one reason: the agent's edit to .github/workflows/validate.yml was refused by the permission system, because the owner's approval ("yes, add python 3.14 to CI", 2026-11-18) reached it as a relayed message. Asked how the CI change should be made, the owner chose "You make that one edit": the host edits the workflow file itself for this step only, commits it, and records the implementation as complete. The change: the tool's test job runs on Python 3.10 and 3.14 and its name gains the Python version; no other job is touched.
