@@ -528,7 +528,7 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 
 | Verb | For the workspace | Based on |
 |---|---|---|
-| `setup` | thin wrapper | The `git-bug` and `repos-manifest` stamps (`Makefile` line 100; the header lists `setup-dev`, `repos-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` brings up a registered checkout (since #265 part 4 it clones and links nothing), which the workspace does not need |
+| `setup` | thin wrapper | The `git-bug` and `repos-manifest` stamps (`Makefile` line 99; the header lists `setup-dev`, `repos-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` brings up a registered checkout (since #265 part 4 it clones and links nothing), which the workspace does not need |
 | `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo, alone when no project is resolved (the dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, #265 part 4) |
 | `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
 | `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
