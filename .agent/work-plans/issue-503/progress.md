@@ -271,3 +271,11 @@ Revise the plan with every finding of the Plan Review. Host decisions (owner may
 - Findings 6 and 7: the plan's part 3 outline names the two-distro inconsistency between the calls made from the caller's directory and the one made after a cd; the distro rule compares physical paths.
 - Finding 8: the by-hand build steps use --continue-on-error per layer, and say that adapter build stops at the first failing layer.
 - How the Rolling port is worked with this first cut goes in the acceptance section as the recommended way, for the owner to confirm: one issue per repo in that repo's own tracker, each run with its own --layer and --package-repos, bottom-up by layer, with the summary issue as the tracker.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 18:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `3f2dae10`
+
+Revision applying the Plan Review's findings under the Checkpoint's decisions. Finding 1: the path from `/run-issue` to a merged package pull request was read and tabled for a root in no git repository; only `worktree_create.sh` 545–549 (now: root must be a directory, each worktree_repos origin checked to be a repository before anything is made, the `.` entry keeping today's message) and start-task step 1 (now: outside git, go on when `session_root.sh` accepts the cwd as a root) refuse, and both are relaxed generically; everything else works unchanged. Finding 2: tool roots are siblings of the sandbox under `mktemp -d` (outside git here and in CI), with an absolute registry path and a precondition assert; `test_tool_package_worktree` fails at line 545 without the fix. Finding 3 corrected: `merge_pr.sh`'s package path already fast-forwards the root's clone when clean and on the base, so by hand is the layer rebuild (and a pull only on "fetched only"). Findings 5–8 applied (stderr note in `worktree_env`, part 3 names the two-cwd inconsistency, physical paths in rule 1, `--continue-on-error` by hand). Finding 4: the `AGENTS.md` line 11 sentence as an approval-gated last commit, one line for one. The acceptance gives the port's pattern (one issue per repo, bottom-up, #415 as tracker) with `rolker/marine_control` and `rolker/manda_coverage` in `core` as the first two. Open for the owner: the `AGENTS.md` sentence, and confirming the port pattern.
