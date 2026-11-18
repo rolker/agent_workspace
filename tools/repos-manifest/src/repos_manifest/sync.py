@@ -379,6 +379,18 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
 
 
 def run_sync(named_distros: Sequence[str]) -> int:
+    """A stop signal at any point ends the run with one line, which says whether anything was
+    changed."""
+    changing: List[bool] = []
+    try:
+        with signals_end_the_run():
+            return _sync(named_distros, changing)
+    except Stopped as exc:
+        then = FINISH if changing else "nothing was changed"
+        return stop_exit(exc, f"stopped by {signal_name(exc)}; {then}")
+
+
+def _sync(named_distros: Sequence[str], changing: List[bool]) -> int:
     cwd = current_directory()
     with reporting_oserror():
         system = find_system(cwd)
@@ -391,9 +403,6 @@ def run_sync(named_distros: Sequence[str]) -> int:
         distros = distros_for(system, config, named_distros, cwd)
         plan = resolve_all(system, config, distros)
         env = require_tools()
-        try:
-            with signals_end_the_run():
-                results = sync_distros(system, config, plan, env)
-        except Stopped as exc:
-            return stop_exit(exc, f"stopped by {signal_name(exc)}; {FINISH}")
+        changing.append(True)
+        results = sync_distros(system, config, plan, env)
     return closing(results)

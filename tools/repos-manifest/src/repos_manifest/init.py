@@ -184,6 +184,26 @@ def run_init(
     distro_dirs: bool,
     yes: bool,
 ) -> int:
+    """A stop signal at any point ends the run with one line, which says whether the system
+    was made."""
+    made: List[bool] = []
+    try:
+        with signals_end_the_run():
+            return _init(manifest_location, role, groups, distros, distro_dirs, yes, made)
+    except Stopped as exc:
+        then = FINISH if made else "nothing was created"
+        return stop_exit(exc, f"stopped by {signal_name(exc)}; {then}")
+
+
+def _init(
+    manifest_location: str,
+    role: Optional[str],
+    groups: Sequence[str],
+    distros: Sequence[str],
+    distro_dirs: bool,
+    yes: bool,
+    made: List[bool],
+) -> int:
     system = current_directory()
     distros = list(dict.fromkeys(distros))
     with reporting_oserror():
@@ -224,21 +244,15 @@ def run_init(
                 "the input is not a terminal, so init cannot ask before it sets up",
                 "Give --yes to set up without asking",
             )
-        made: List[bool] = []
+        print(summary(config, plan), flush=True)
+        if not yes and not ask(f"Set up this system in {system}? [y/N] "):
+            print("Nothing was created.")
+            return 1
+        make_system_dir(system, config, lambda: made.append(True))
         try:
-            with signals_end_the_run():
-                print(summary(config, plan), flush=True)
-                if not yes and not ask(f"Set up this system in {system}? [y/N] "):
-                    print("Nothing was created.")
-                    return 1
-                make_system_dir(system, config, lambda: made.append(True))
-                try:
-                    with reporting_oserror():
-                        results = sync_distros(system, config, plan, env)
-                except ManifestError as exc:
-                    raise ManifestError(f"{exc}; the system is set up: {FINISH}") from None
-        except Stopped as exc:
-            then = FINISH if made else "nothing was created"
-            return stop_exit(exc, f"stopped by {signal_name(exc)}; {then}")
+            with reporting_oserror():
+                results = sync_distros(system, config, plan, env)
+        except ManifestError as exc:
+            raise ManifestError(f"{exc}; the system is set up: {FINISH}") from None
     print("The system is set up.")
     return closing(results)

@@ -8,6 +8,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 
 import pytest
 import yaml
@@ -222,3 +223,51 @@ def test_output_is_flushed_before_the_stop_signal_ends_the_process(monkeypatch):
     finally:
         signal.signal(signal.SIGTERM, previous)
     assert seen == [b"distro jazzy:\n"]
+
+
+@pytest.mark.parametrize("command", ["init", "sync"])
+def test_a_ctrl_c_before_anything_is_changed_is_one_line_and_no_traceback(
+    manifest, tmp_path, command
+):
+    # A `vcs` whose `--version` waits: the run is stopped while it checks for the tools,
+    # before it has changed anything.
+    system = _system(tmp_path)
+    if command == "sync":
+        assert run(system, *INIT) == 0
+    argv = list(INIT) if command == "init" else ["sync"]
+    before = snapshot(system)
+    waiting = tmp_path / "waiting"
+    stub = tmp_path / "bin" / "vcs"
+    stub.parent.mkdir()
+    stub.write_text(f'#!/bin/sh\ntouch "{waiting}"\nexec sleep 30\n')
+    stub.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": os.pathsep.join([str(stub.parent), os.environ["PATH"]]),
+        "PYTHONPATH": os.path.dirname(os.path.dirname(repos_manifest.__file__)),
+    }
+    child = subprocess.Popen(
+        [sys.executable, "-m", "repos_manifest.cli", *argv],
+        cwd=system,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        for _ in range(1000):
+            if waiting.exists() or child.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert waiting.exists()
+        child.send_signal(signal.SIGINT)
+        out, err = child.communicate(timeout=20)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+    assert child.returncode == -signal.SIGINT
+    then = "nothing was created" if command == "init" else "nothing was changed"
+    assert err == f"ERROR: stopped by SIGINT; {then}\n"
+    assert snapshot(system) == before

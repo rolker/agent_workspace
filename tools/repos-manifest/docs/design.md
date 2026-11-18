@@ -614,7 +614,8 @@ is not resolved, and none of its repos is touched.
 A distro whose manifest does not resolve is reported in the same way, and a repo that cannot
 be fetched is reported for that repo; the other distros go on. `sync` exits with 1 when a distro
 was reported or a repo was an error (below), and with 0 otherwise; a repo that is there and
-left as it is does not change it. A stop signal ends it with that signal.
+left as it is does not change it. A stop signal at any point of `init` or `sync` ends it with
+that signal and one line, which says when nothing was changed yet.
 
 Each missing repo is cloned by a `vcs import` of its own, given that one repo, into a
 temporary directory `.repos-manifest-tmp-<pid>-<random>` in `.repos-manifest/`. Only when
