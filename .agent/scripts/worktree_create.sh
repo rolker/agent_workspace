@@ -727,9 +727,16 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
     # Every repository the worktree is made of must be a git repository,
     # checked here, before any directory, branch or worktree is made, so a
     # refusal leaves nothing behind. The "." entry is the project root itself.
+    # The entry must be the top of its own repository (as the skill branch
+    # above checks): a plain directory inside an enclosing repository is
+    # refused, not taken for that enclosing repository.
     while IFS=$'\t' read -r WR_ORIGIN WR_REL _; do
         [ -z "$WR_ORIGIN" ] && continue
-        git -C "$WR_ORIGIN" rev-parse --git-dir >/dev/null 2>&1 && continue
+        _WR_TOP="$(git -C "$WR_ORIGIN" rev-parse --show-toplevel 2>/dev/null)" || _WR_TOP=""
+        [ -n "$_WR_TOP" ] && { _WR_TOP="$(cd "$_WR_TOP" 2>/dev/null && pwd -P)" || _WR_TOP=""; }
+        if [ -n "$_WR_TOP" ] && [ "$_WR_TOP" = "$(cd "$WR_ORIGIN" 2>/dev/null && pwd -P)" ]; then
+            continue
+        fi
         if [ "$WR_REL" = "." ]; then
             echo "Error: project checkout is not a git repository: $PROJECT_DIR"
             [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"

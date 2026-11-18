@@ -1007,6 +1007,50 @@ else
 fi
 
 echo
+echo "=== A repository the worktree is made of must be the top of its own git repository, not a directory inside an enclosing one (issue 503) ==="
+# A single-repository root that is a plain directory inside an enclosing
+# git repository: refused with today's message, and no worktree or branch
+# of the enclosing repository is made.
+SB8="$SANDBOX/ws8"
+make_ws_repo "$SB8"
+E8="$(mktemp -d -p "$SANDBOX")/enclosing"
+mkdir -p "$E8/inner"
+gitq -C "$E8" init -q -b main
+gitq -C "$E8" commit -q --allow-empty -m "enclosing init"
+printf 'inner single_project %s\n' "$E8/inner" >> "$SB8/.agent/projects.local"
+OUT="$(cd "$SB8" && PATH="$SB8/stubbin:$PATH" "$SB8/.agent/scripts/worktree_create.sh" --issue 54 --type project --project inner 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: project checkout is not a git repository: $E8/inner"$'\n'"Clone the project there or fix .agent/projects.local"* ]] \
+   && ! has_branch "$E8" feature/issue-54 \
+   && [[ "$(git -C "$E8" worktree list --porcelain | grep -c '^worktree ')" = 1 && ! -e "$E8/inner/worktrees" ]]; then
+    pass "single-repository root inside an enclosing repository: refused with today's message, nothing made in the enclosing one"
+else
+    fail "single-repository root inside an enclosing repository: rc=$RC: ${OUT:0:600}"
+fi
+# A multi-repository root inside an enclosing repository whose second entry
+# is a plain directory: refused, naming it, before anything is made.
+SB9="$SANDBOX/ws9"
+make_ws_repo "$SB9"
+mkdir -p "$SB9/.agent/project_types/twofold"
+cp "$SB6/.agent/project_types/twofold/adapter.sh" "$SB9/.agent/project_types/twofold/"
+E9="$(mktemp -d -p "$SANDBOX")/enclosing"
+mkdir -p "$E9/multi/a" "$E9/multi/b"
+gitq -C "$E9" init -q -b main
+gitq -C "$E9" commit -q --allow-empty -m "enclosing init"
+gitq -C "$E9/multi/a" init -q -b main
+gitq -C "$E9/multi/a" commit -q --allow-empty -m "a init"
+printf 'multi twofold %s\n' "$E9/multi" >> "$SB9/.agent/projects.local"
+OUT="$(cd "$SB9" && PATH="$SB9/stubbin:$PATH" "$SB9/.agent/scripts/worktree_create.sh" --issue 55 --type project --project multi 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: manifest entry is not a git repository: $E9/multi/b"* ]] \
+   && ! has_branch "$E9" feature/issue-55 && ! has_branch "$E9/multi/a" feature/issue-55 \
+   && [[ ! -e "$E9/multi/worktrees" ]]; then
+    pass "multi-repository root inside an enclosing repository, a plain directory entry: refused, naming it, nothing made"
+else
+    fail "multi-repository root inside an enclosing repository: rc=$RC: ${OUT:0:600}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
