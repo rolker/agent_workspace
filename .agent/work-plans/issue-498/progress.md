@@ -642,3 +642,16 @@ Specialists: static analysis (3.10 grammar parse; pre-commit covers the rest), g
 - [ ] (suggestion) An `@[` with no `]` is refused as "the host has an unclosed '['" where git takes no bracketed host: `ssh://h/p@[x`, `git@h:p@[x`, `https://h/x@[y`; follow git (no bracketed host) — `tools/repos-manifest/src/repos_manifest/manifest.py:241`
 - [ ] (suggestion) If a removal of the old copy after a good swap is cut short (marker kept, files partly gone) and the person then deletes `--out`, the next run puts the partial copy back as the output, and it stays if that run fails; remove `old` by first renaming it to a `.new-` name, which is swept but never put back — `tools/repos-manifest/src/repos_manifest/output.py:171`
 - [ ] (suggestion) design.md: "the new one keeps its mode" reads as the new hidden directory; say "the new output keeps the mode of the one it replaces" — `tools/repos-manifest/docs/design.md:301`
+
+## Checkpoint
+**When**: 2026-11-18 14:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 found two located must-fix items; fixing them is mechanism, and the owner is told and may veto)
+**After**: rounds
+**Decision**: address
+
+Round 3 (a convergence check) asked for two more fixes, so the limit of three rounds was reached without approval. The host answers address once: fix the two must-fix items and the four suggestions, then publish.
+
+Host decisions for this fix round (owner may veto):
+- The url rule stops following git's parser case by case. Three rounds each found another way to write an ssh address that git reads differently from the check. The owner's stated balance is that a manifest is read like a snippet of code from the internet and that unlikely corner cases should not take much time, so the rule becomes simple and structural: in an ssh:// url and in the scp form, a % is refused anywhere, and [ and ] are allowed only around the host at the start of the address. A path with % or brackets in an ssh address is refused; https and file urls keep % in the path. Undoing it: decode and search as git does.
+- Ctrl-C on resolve ends the process by the signal again, after the message, so a shell loop stops.
