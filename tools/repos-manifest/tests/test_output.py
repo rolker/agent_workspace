@@ -273,6 +273,13 @@ def test_a_directory_whose_name_only_looks_like_a_leftover_is_left_alone(manifes
     assert len(_names(tmp_path)) == 5
 
 
+@pytest.mark.parametrize("pid", ["99999999999999999999", "2147483648", "0"])
+def test_a_leftover_named_with_a_pid_that_cannot_be_one_is_left_alone(pid, manifest, tmp_path):
+    odd = _leftover(tmp_path, "out", pid=pid, files=("core.repos",))
+    assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
+    assert _names(tmp_path) == sorted([odd.name, "m.manifest.yaml", "out"])
+
+
 def test_an_out_named_like_a_temporary_directory_is_refused(manifest, tmp_path, capsys):
     out = tmp_path / ".out.new-123-abcd_123"
     assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1

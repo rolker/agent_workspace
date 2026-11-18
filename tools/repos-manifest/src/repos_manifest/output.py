@@ -132,6 +132,8 @@ def _process_has_ended(pid: int) -> bool:
         return True
     except OSError:  # PermissionError: it runs, as another user
         return False
+    except (OverflowError, ValueError):  # not a process id: not a directory this tool made
+        return False
     return False
 
 
