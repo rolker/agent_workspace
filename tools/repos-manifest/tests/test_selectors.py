@@ -1,8 +1,8 @@
 import pytest
 
-from ros_manifest.merge import merge_chain
-from ros_manifest.schema import ManifestError, parse_manifest_text
-from ros_manifest.selectors import (
+from repos_manifest.merge import merge_chain
+from repos_manifest.schema import ManifestError, parse_manifest_text
+from repos_manifest.selectors import (
     resolve_distro_ref,
     select_repos_by_closure,
     select_repos_by_groups,

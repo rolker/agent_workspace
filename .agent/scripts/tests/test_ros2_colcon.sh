@@ -2309,23 +2309,23 @@ test_repo_pin_two_layers() {
 # ---- manifest route (issue #436) ----
 #
 # The resolver these tests run is THIS checkout's source
-# (tools/ros-manifest/src on PYTHONPATH), never a copy installed elsewhere
+# (tools/repos-manifest/src on PYTHONPATH), never a copy installed elsewhere
 # (the main checkout's venv holds main's code; a worktree and CI have no
 # venv of their own). The interpreter is the first that imports both yaml
-# and that source: the python of a ros-manifest on PATH (CI installs one),
+# and that source: the python of a repos-manifest on PATH (CI installs one),
 # the main checkout's .venv python, then python3. When none can, the tests
 # are SKIPPED loudly, and that is a FAILURE where the resolver is meant to
-# be present: a ros-manifest on PATH, a main-checkout .venv/bin/ros-manifest,
+# be present: a repos-manifest on PATH, a main-checkout .venv/bin/repos-manifest,
 # or CI set (the adapter-contract job installs the resolver, so a quiet
 # skip there would pass the job without running these tests).
 
-MR_SRC="$REAL_ROOT/tools/ros-manifest/src"
+MR_SRC="$REAL_ROOT/tools/repos-manifest/src"
 MR_PY=""
 MR_SKIPPED=0
 mr_pick_python() {
     local c onpath shebang common
     local -a cands=()
-    onpath="$(command -v ros-manifest 2>/dev/null || true)"
+    onpath="$(command -v repos-manifest 2>/dev/null || true)"
     if [ -n "$onpath" ] && IFS= read -r shebang < "$onpath" && [[ "$shebang" == '#!'* ]]; then
         shebang="${shebang#\#!}"
         case "$shebang" in
@@ -2339,8 +2339,8 @@ mr_pick_python() {
     for c in "${cands[@]}"; do
         [ -n "$c" ] && [ -x "$c" ] || continue
         if PYTHONPATH="$MR_SRC" "$c" -c '
-import sys, yaml, ros_manifest
-sys.exit(0 if ros_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
+import sys, yaml, repos_manifest
+sys.exit(0 if repos_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
             MR_PY="$c"
             return 0
         fi
@@ -2349,9 +2349,9 @@ sys.exit(0 if ros_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_
 }
 if ! mr_pick_python; then
     _mr_common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    if command -v ros-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
-        || { [ -n "$_mr_common" ] && [ -x "${_mr_common%/.git}/.venv/bin/ros-manifest" ]; }; then
-        echo "  FAIL: manifest-route tests: no python imports both yaml and $MR_SRC, though the resolver is meant to be present here (a ros-manifest on PATH, a main-checkout .venv/bin/ros-manifest, or CI)"
+    if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_mr_common" ] && [ -x "${_mr_common%/.git}/.venv/bin/repos-manifest" ]; }; then
+        echo "  FAIL: manifest-route tests: no python imports both yaml and $MR_SRC, though the resolver is meant to be present here (a repos-manifest on PATH, a main-checkout .venv/bin/repos-manifest, or CI)"
         FAIL=$((FAIL + 1))
     fi
 fi
@@ -2360,24 +2360,24 @@ fi
 mr_test() {
     if [ -z "$MR_PY" ]; then
         echo "TEST: $1"
-        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC); install it (make install-ros-manifest, or a python3 with PyYAML)"
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC); install it (make install-repos-manifest, or a python3 with PyYAML)"
         MR_SKIPPED=$((MR_SKIPPED + 1))
         return 0
     fi
     "$1"
 }
 
-# The resolver wrapper at <sb>/.venv/bin/ros-manifest, where the adapter
+# The resolver wrapper at <sb>/.venv/bin/repos-manifest, where the adapter
 # looks (the sandbox is not a git checkout, so it is its own main checkout).
 make_mr_resolver() {
     local sb="$1"
     mkdir -p "$sb/.venv/bin"
-    cat > "$sb/.venv/bin/ros-manifest" <<EOF
+    cat > "$sb/.venv/bin/repos-manifest" <<EOF
 #!/usr/bin/env bash
 echo "RESOLVER_RAN:\$*" >> "$sb/resolver.log"
-PYTHONPATH="$MR_SRC" exec "$MR_PY" -m ros_manifest.cli "\$@"
+PYTHONPATH="$MR_SRC" exec "$MR_PY" -m repos_manifest.cli "\$@"
 EOF
-    chmod +x "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
 }
 
 # A manifest in the new format. Layers core and extra (extra optional);
@@ -2497,10 +2497,10 @@ run_mr() {
 mr_gen() { echo "$1/projects/tiered/configs/manifest-resolved"; }
 
 test_mr_wrapper_runs_this_checkouts_resolver() {
-    echo "TEST: manifest route: the test resolver is this checkout's tools/ros-manifest/src"
+    echo "TEST: manifest route: the test resolver is this checkout's tools/repos-manifest/src"
     local out
-    out="$(PYTHONPATH="$MR_SRC" "$MR_PY" -c 'import ros_manifest; print(ros_manifest.__file__)')"
-    assert_contains "ros_manifest imported from this checkout" "$MR_SRC/ros_manifest/" "$out"
+    out="$(PYTHONPATH="$MR_SRC" "$MR_PY" -c 'import repos_manifest; print(repos_manifest.__file__)')"
+    assert_contains "repos_manifest imported from this checkout" "$MR_SRC/repos_manifest/" "$out"
 }
 
 test_mr_setup_from_path_source() {
@@ -3340,12 +3340,12 @@ test_mr_path_source_edited_during_resolve() {
     sb="$(make_mr_sandbox dev)"
     write_mr_manifest "$sb/m/manifest.yaml"
     mr_settings "$sb" "source=$sb/m/manifest.yaml"
-    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    mv "$sb/.venv/bin/repos-manifest" "$sb/.venv/bin/repos-manifest.real"
     printf '%s\n' '#!/usr/bin/env bash' \
-        "\"$sb/.venv/bin/ros-manifest.real\" \"\$@\"; rc=\$?" \
+        "\"$sb/.venv/bin/repos-manifest.real\" \"\$@\"; rc=\$?" \
         "echo '# edited during the resolve' >> \"$sb/m/manifest.yaml\"" \
-        'exit $rc' > "$sb/.venv/bin/ros-manifest"
-    chmod +x "$sb/.venv/bin/ros-manifest"
+        'exit $rc' > "$sb/.venv/bin/repos-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
     rc=0; run_mr "$sb" setup >/dev/null 2>&1 || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"
     rc=0; out="$(run_mr "$sb" validate 2>&1)" || rc=$?
@@ -3444,20 +3444,20 @@ EOF
     write_mr_manifest "$sb/m/manifest.yaml"
 
     # A stale resolver (no --layout): the reinstall message.
-    cat > "$sb/.venv/bin/ros-manifest" <<'EOF'
+    cat > "$sb/.venv/bin/repos-manifest" <<'EOF'
 #!/usr/bin/env bash
-echo "ros-manifest: error: unrecognized arguments: --layout manifest-dir" >&2
+echo "repos-manifest: error: unrecognized arguments: --layout manifest-dir" >&2
 exit 2
 EOF
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "stale resolver: exit 1" "1" "$rc"
-    assert_contains "stale resolver: reinstall" "predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-ros-manifest" "$out"
+    assert_contains "stale resolver: reinstall" "predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-repos-manifest" "$out"
 
     # No resolver: one message naming the make target, before any fetch.
-    rm -f "$sb/.venv/bin/ros-manifest"
+    rm -f "$sb/.venv/bin/repos-manifest"
     rc=0; out="$(run_mr "$sb" sync 2>&1)" || rc=$?
     assert_eq "no resolver: exit 1" "1" "$rc"
-    assert_contains "no resolver: names the path and make target" "the manifest resolver is not installed at $sb/.venv/bin/ros-manifest; run: make install-ros-manifest" "$out"
+    assert_contains "no resolver: names the path and make target" "the manifest resolver is not installed at $sb/.venv/bin/repos-manifest; run: make install-repos-manifest" "$out"
 }
 
 test_mr_interrupt_cleans_up() {
@@ -3471,7 +3471,7 @@ test_mr_interrupt_cleans_up() {
     before="$(readlink "$gen")"
     # A resolver that fills --out and --cache-dir, then fails (or, with
     # MR_WAIT, waits to be interrupted).
-    cat > "$sb/.venv/bin/ros-manifest" <<EOF
+    cat > "$sb/.venv/bin/repos-manifest" <<EOF
 #!/usr/bin/env bash
 while [ \$# -gt 0 ]; do
     case "\$1" in --out) out="\$2"; shift ;; --cache-dir) cache="\$2"; shift ;; esac
@@ -3487,7 +3487,7 @@ if [ -n "\${MR_WAIT:-}" ]; then
 fi
 exit 1
 EOF
-    chmod +x "$sb/.venv/bin/ros-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
     rc=0; run_mr "$sb" sync >/dev/null 2>&1 || rc=$?
     assert_eq "failed resolve: exit 1" "1" "$rc"
     assert_eq "failed resolve: its directory removed" "no" "$([ -e "$(cat "$sb/resolve.out")" ] && echo yes || echo no)"
@@ -3576,7 +3576,7 @@ test_mr_source_lock() {
         "[ \"\$rc\" -eq 0 ] && echo GOT >> \"$sb/order.log\"" \
         'exit $rc' > "$sb/flockbin/flock"
     chmod +x "$sb/flockbin/flock"
-    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    mv "$sb/.venv/bin/repos-manifest" "$sb/.venv/bin/repos-manifest.real"
     printf '%s\n' '#!/usr/bin/env bash' \
         "echo START >> \"$sb/order.log\"" \
         "if [ -e \"$sb/hold\" ] && mkdir \"$sb/held.d\" 2>/dev/null; then" \
@@ -3584,8 +3584,8 @@ test_mr_source_lock() {
         "    while [ ! -e \"$sb/go\" ]; do sleep 0.1; done" \
         "    echo GO >> \"$sb/order.log\"" \
         'fi' \
-        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
-    chmod +x "$sb/.venv/bin/ros-manifest"
+        "exec \"$sb/.venv/bin/repos-manifest.real\" \"\$@\"" > "$sb/.venv/bin/repos-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
     touch "$sb/hold"
     run_mr "$sb" sync >"$sb/s1.out" 2>&1 & p1=$!
     for i in $(seq 1 100); do [ -e "$sb/ready" ] && break; sleep 0.1; done
@@ -3884,12 +3884,12 @@ test_mr_lock_fd_not_inherited() {
         "exec \"$realgit\" \"\$@\"" > "$sb/fdbin/git"
     chmod +x "$sb/fdbin/git"
     # The resolver: says whether it got fd 9 and whether the lock is held.
-    mv "$sb/.venv/bin/ros-manifest" "$sb/.venv/bin/ros-manifest.real"
+    mv "$sb/.venv/bin/repos-manifest" "$sb/.venv/bin/repos-manifest.real"
     printf '%s\n' '#!/usr/bin/env bash' \
         "[ -e /proc/self/fd/9 ] && echo resolver >> \"$sb/fd9.log\"" \
         "flock -n \"$lock\" true && echo NOT_HELD >> \"$sb/held.log\"" \
-        "exec \"$sb/.venv/bin/ros-manifest.real\" \"\$@\"" > "$sb/.venv/bin/ros-manifest"
-    chmod +x "$sb/.venv/bin/ros-manifest"
+        "exec \"$sb/.venv/bin/repos-manifest.real\" \"\$@\"" > "$sb/.venv/bin/repos-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
     rc=0; (cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/fdbin:$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         VCS_MKDIRS=1 "$sb/.agent/scripts/adapter" --project tiered setup >/dev/null 2>&1) || rc=$?
     assert_eq "setup: exit 0" "0" "$rc"

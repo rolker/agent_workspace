@@ -141,7 +141,7 @@ If the issue targets a project repo, also check:
   Work inside a part that has its own design (ADR-0022) names the root
   goal it serves and may also name the part's own goal, citing the part's
   design section as `<path>/design.md#<section>`, `<path>` being the
-  design file's directory (`tools/ros-manifest/docs/design.md#<section>`).
+  design file's directory (`tools/repos-manifest/docs/design.md#<section>`).
   Flag an issue that serves no goal, or that
   breaks a stated rule (for a workspace issue, a principle or a row of
   `$WS_ROOT/docs/design.md#rules`; for a project issue, the project's own

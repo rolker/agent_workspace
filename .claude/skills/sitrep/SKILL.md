@@ -152,7 +152,7 @@ section with no table). A root's Direction section may point at the
 roadmaps of its parts (a `| Sub-roadmap | Root |` table, ADR-0022); each
 is followed one level, and its rows come after the root's: a `part` row
 for the pointer, then `subline`, `subdeferral` and `subformat` rows whose
-item starts with the sub-roadmap's path (`tools/ros-manifest/docs/
+item starts with the sub-roadmap's path (`tools/repos-manifest/docs/
 roadmap.md: <line>`). Show a part's rows under its path, never mixed with
 the root's. A `part` row whose result is `unchecked` (a broken pointer:
 missing, outside the root, circular or repeated, or a sub-roadmap with
@@ -461,7 +461,7 @@ reads `(no branch)`. Work that no root line names but a line of a
 followed sub-roadmap does, by the same rules as a root line (`(#N)` in
 its item, a `gh-issue` check or an `adapter --project` check;
 `named_part`), is marked with that sub-roadmap's path, such as
-`tools/ros-manifest/docs/roadmap.md`, whether or not the root has Paths
+`tools/repos-manifest/docs/roadmap.md`, whether or not the root has Paths
 paragraphs: the path stands for the part (issue #488). Otherwise the path
 is empty when the root's Direction section
 has no Paths paragraph (the last block of this step prints `paths=none`):
@@ -1192,7 +1192,7 @@ Rules for the report:
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
     `Path 3`, a sub-roadmap path (work a part's line names, e.g.
-    `tools/ros-manifest/docs/roadmap.md`), `no path` or one of its
+    `tools/repos-manifest/docs/roadmap.md`), `no path` or one of its
     "path unknown (...)" labels; nothing when
     step 3 printed an empty path (the root's Direction section has no
     Paths paragraph). A branch with only a

@@ -9,7 +9,7 @@ driver or text conversion of the user's configuration runs on it; git's reposito
 environment variables are removed; git runs without a terminal, with GIT_TERMINAL_PROMPT=0, an
 empty core.askPass, no GIT_ASKPASS or SSH_ASKPASS and SSH_ASKPASS_REQUIRE=never, so neither git
 nor ssh can ask for a password or passphrase (a credential helper the user configured still
-runs); each call that asks the remote is bounded by ROS_MANIFEST_GIT_TIMEOUT (seconds, default
+runs); each call that asks the remote is bounded by REPOS_MANIFEST_GIT_TIMEOUT (seconds, default
 60), after which git's process group is killed, as it is on an interrupt, or on a SIGTERM or
 SIGHUP that was not ignored (which is then delivered again to the previous handler);
 and the clone is made in a temporary sibling and renamed into the cache only when complete.
@@ -71,9 +71,9 @@ _SAFETY = (
 )
 _NO_FILTERS = "* -filter -text -ident -working-tree-encoding\n"
 
-# The time limit on each git call that asks a remote, in seconds: ROS_MANIFEST_GIT_TIMEOUT,
+# The time limit on each git call that asks a remote, in seconds: REPOS_MANIFEST_GIT_TIMEOUT,
 # default 60. When it runs out, git and everything it started are killed and the clone fails.
-_TIMEOUT_VAR = "ROS_MANIFEST_GIT_TIMEOUT"
+_TIMEOUT_VAR = "REPOS_MANIFEST_GIT_TIMEOUT"
 _TIMEOUT_DEFAULT = 60
 
 # Names git reads to find a repository (`git rev-parse --local-env-vars`, git 2.53's list as a
@@ -444,7 +444,7 @@ def resolve_chain(manifest_path: Path, cache_dir: Optional[Path] = None) -> List
     except (OSError, RuntimeError) as exc:
         raise ManifestError(f"{manifest_path}: cannot be followed ({_os_reason(exc)})") from None
     if cache_dir is None:
-        cache_dir = Path.cwd() / ".ros-manifest-cache"
+        cache_dir = Path.cwd() / ".repos-manifest-cache"
     cache_dir = Path(cache_dir)
 
     chain: List[Manifest] = []

@@ -1,4 +1,4 @@
-"""`ros-manifest` CLI: resolve and validate."""
+"""`repos-manifest` CLI: resolve and validate."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ros-manifest", description=__doc__)
+    parser = argparse.ArgumentParser(prog="repos-manifest", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     resolve_p = sub.add_parser(

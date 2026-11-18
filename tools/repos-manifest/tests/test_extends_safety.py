@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from ros_manifest import extends
-from ros_manifest.extends import resolve_chain
-from ros_manifest.schema import ManifestError
+from repos_manifest import extends
+from repos_manifest.extends import resolve_chain
+from repos_manifest.schema import ManifestError
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -123,19 +123,19 @@ def test_a_stalled_remote_fails_within_the_limit_and_leaves_no_cache_entry(tmp_p
     # An ssh remote whose "ssh" never answers, as a stalled host or a prompt would.
     hang = _script(tmp_path / "hang-ssh", "exec sleep 30\n")
     monkeypatch.setenv("GIT_SSH_COMMAND", str(hang))
-    monkeypatch.setenv("ROS_MANIFEST_GIT_TIMEOUT", "1")
+    monkeypatch.setenv("REPOS_MANIFEST_GIT_TIMEOUT", "1")
     cache = tmp_path / "cache"
     started = time.monotonic()
-    with pytest.raises(ManifestError, match=r"within 1 s \(the limit; ROS_MANIFEST_GIT_TIMEOUT"):
+    with pytest.raises(ManifestError, match=r"within 1 s \(the limit; REPOS_MANIFEST_GIT_TIMEOUT"):
         resolve_chain(_leaf(tmp_path, "ssh://git@example.invalid/base.git"), cache_dir=cache)
     assert time.monotonic() - started < 15
     assert list(cache.iterdir()) == []
 
 
 def test_a_bad_time_limit_is_named(tmp_path, monkeypatch):
-    monkeypatch.setenv("ROS_MANIFEST_GIT_TIMEOUT", "soon")
+    monkeypatch.setenv("REPOS_MANIFEST_GIT_TIMEOUT", "soon")
     remote = _base_repo(tmp_path)
-    with pytest.raises(ManifestError, match="ROS_MANIFEST_GIT_TIMEOUT='soon' is not a number"):
+    with pytest.raises(ManifestError, match="REPOS_MANIFEST_GIT_TIMEOUT='soon' is not a number"):
         resolve_chain(_leaf(tmp_path, remote.as_uri()), cache_dir=tmp_path / "cache")
 
 
@@ -209,15 +209,15 @@ def _resolver_with_stalled_clone(tmp_path, prelude="", limit="60"):
     src = str(Path(extends.__file__).resolve().parents[1])
     code = (
         "import sys, signal; from pathlib import Path\n"
-        "from ros_manifest.extends import resolve_chain\n"
-        "from ros_manifest.schema import ManifestError\n"
+        "from repos_manifest.extends import resolve_chain\n"
+        "from repos_manifest.schema import ManifestError\n"
         f"{prelude}\n"
         "try:\n"
         "    resolve_chain(Path(sys.argv[1]), cache_dir=Path(sys.argv[2]))\n"
         "except ManifestError as exc:\n"
         "    print(exc, flush=True)\n"
     )
-    env = dict(os.environ, GIT_SSH_COMMAND=str(hang), ROS_MANIFEST_GIT_TIMEOUT=limit)
+    env = dict(os.environ, GIT_SSH_COMMAND=str(hang), REPOS_MANIFEST_GIT_TIMEOUT=limit)
     env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
     proc = subprocess.Popen(
         [sys.executable, "-c", code, str(leaf), str(cache)],
@@ -499,7 +499,7 @@ def test_a_signal_pending_at_the_unmask_leaves_no_partial_clone(tmp_path):
     proc, ssh_pid, cache = _resolver_with_stalled_clone(
         tmp_path,
         prelude=(
-            "import os, ros_manifest.extends as ex\n"
+            "import os, repos_manifest.extends as ex\n"
             "real_kill_group = ex._kill_group\n"
             "def kill_group(p):\n"
             "    os.kill(os.getpid(), signal.SIGTERM)\n"

@@ -690,24 +690,24 @@ check "no registry line, no settings file" \
     bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
 
 echo "TEST: ros2_colcon from a source (#436): registration runs setup from the manifest, and the gate passes"
-# The resolver is THIS checkout's tools/ros-manifest/src, run by the first
+# The resolver is THIS checkout's tools/repos-manifest/src, run by the first
 # python that imports it and yaml (the main checkout's venv, else python3);
 # with none it is a failure where the resolver is meant to be present (a
-# ros-manifest on PATH, the main checkout's .venv/bin/ros-manifest, or CI),
+# repos-manifest on PATH, the main checkout's .venv/bin/repos-manifest, or CI),
 # a loud skip elsewhere.
-MR_SRC="$REAL_ROOT/tools/ros-manifest/src"
+MR_SRC="$REAL_ROOT/tools/repos-manifest/src"
 MR_PY=""
 _common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 for _py in ${_common:+"${_common%/.git}/.venv/bin/python3"} "$(command -v python3 2>/dev/null || true)"; do
     [ -n "$_py" ] && [ -x "$_py" ] || continue
-    if PYTHONPATH="$MR_SRC" "$_py" -c 'import sys, yaml, ros_manifest; sys.exit(0 if ros_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
+    if PYTHONPATH="$MR_SRC" "$_py" -c 'import sys, yaml, repos_manifest; sys.exit(0 if repos_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
         MR_PY="$_py"; break
     fi
 done
 if [ -n "$MR_PY" ]; then
     mkdir -p "$WS/.venv/bin"
-    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m ros_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$WS/.venv/bin/ros-manifest"
-    chmod +x "$WS/.venv/bin/ros-manifest"
+    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$WS/.venv/bin/repos-manifest"
+    chmod +x "$WS/.venv/bin/repos-manifest"
     MW="$SANDBOX/mwork/tau"
     mkdir -p "$MW"
     gitq init --quiet --bare -b main "$SANDBOX/mremote/tau.git"
@@ -730,8 +730,8 @@ if [ -n "$MR_PY" ]; then
         bash -c '[ -L "$1/configs/manifest-resolved" ] && ! ls -d "$1"/configs/manifest-resolved.gen-*.src >/dev/null 2>&1 && [ -d "$1/layers/main/core_ws/src/pkg_a" ]' _ "$TAU"
     out="$(reg "$WS" --remove tau)"
 else
-    if command -v ros-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
-        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/ros-manifest" ]; }; then
+    if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then
         fail "no python imports both yaml and $MR_SRC, though the resolver is meant to be present here"
     else
         echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC)"

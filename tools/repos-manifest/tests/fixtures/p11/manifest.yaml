@@ -1,6 +1,6 @@
 # Acceptance-test fixture authored from the real project11 jazzy manifest at
 # projects/p11-jazzy/configs/manifest/ (workspace repo, read-only source — not copied
-# verbatim, re-expressed in the ros-manifest schema; repo names/urls/refs match exactly).
+# verbatim, re-expressed in the repos-manifest schema; repo names/urls/refs match exactly).
 layers:
   - underlay
   - core
