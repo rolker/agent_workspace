@@ -232,8 +232,8 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs` and without `--distro`. |
 | `init` | No `--distro`, with a manifest that has `distros:`. | Name one with `--distro`. |
 | `init` | A `--distro` without `--distro-dirs`, with a manifest that has no `distros:`. | Set up without `--distro`. |
-| `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists, or give the version of the manifest that lists it with `--manifest-ref`, or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
-| `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Set up with the distros it lists, and add each other one with `add-distro <name> --manifest-ref <ref>` or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
+| `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists; or, when the manifest is given in the git form, give with `--manifest-ref` a version of it that lists the distro; or, when it is not, add the distro to its `distros:`. |
+| `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Name distros it lists; or set up with the ones it lists and add each other one afterwards: with `add-distro <name> --manifest-ref <ref>` when `manifest` is given in the git form, or, when it is not, by adding the distro to its `distros:` and then `add-distro <name>`. |
 | `init` | A directory or file it would create already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
 | `add-distro` | `<name>` is not a name by the rule for names in "Reading a manifest before using it" in the specification, or differs only in case from a recorded distro, since a distro's name is a directory name. | Use another name. |
 | `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
@@ -241,7 +241,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `add-distro` | `<name>/` exists in the system directory. | Move it out of the way. |
 | `add-distro` | `--manifest-ref` is given and `manifest` is not given in the git form. | Leave `--manifest-ref` out. |
 | `add-distro` | The manifest read has no `distros:`. | None: there is no distro to add. |
-| `add-distro` | The manifest read has `distros:` and does not list the distro. | `--manifest-ref` for a version that lists it, or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
+| `add-distro` | The manifest read has `distros:` and does not list the distro. | When `manifest` is given in the git form, `--manifest-ref` for a version that lists it; when it is not, add the distro to its `distros:`. |
 
 #### Where the resolved files and state go
 
