@@ -88,3 +88,11 @@ The owner answered three questions put to him at this checkpoint, each by choosi
 - Q3, whether to go on to planning with those answers and with the review's remaining actions as instructions to the planner: "Proceed to planning".
 
 The remaining actions of the Issue Review are instructions for the plan, not owner decisions: fix the pointer format first and have it name the sub-roadmap's root; define how a part's design is cited and test the anchor check against it; decide how a broken or circular pointer is reported; say whether sub-roadmap lines count in the root's totals; make the acceptance that depends on the two manifest pull requests conditional.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 08:30 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-488/plan.md` at `505e7106`
+
+Seven commits: a new ADR-0022 and the design text with the pointer format fixed first (a `Sub-roadmap | Root` table in the Direction section); sit-rep follows pointers one level with `part` problem rows and part lines kept out of the root's totals; sit-rep skill; part-design citations in the anchor check; Serves wording in the review skills; project-session tests; and the manifest pointers last, conditional on #486 and #487 merging.
