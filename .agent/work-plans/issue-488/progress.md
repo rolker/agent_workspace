@@ -436,3 +436,13 @@ Scope: the round 3 findings and the fix diff `ee08e444..7aa09337` (commits `4ef7
 
 ### Findings
 - [ ] (suggestion) The angle-bracket handling covers inline links only: a reference definition `[r]: <my part/design.md#x>` still goes through the run scan, which cuts the path at the space and checks `part/design.md` (a valid link reported broken, a broken one passed when a decoy exists; reproduced). No file uses the form today; match `^ {0,3}\[[^]]+\]:[ \t]*<[^<>]*>` in the same loop, or name the limit in the header, with an h13-style test. — `.agent/scripts/check_design_anchors.sh:462`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 11:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+The owner chose "Publish now" after the round 4 review (approved, no must-fix, one suggestion). The open suggestion, that a reference-style link definition with a space inside angle brackets has its path cut at the space, is noted in the pull request as a known limit of a link form no file uses.
