@@ -493,7 +493,7 @@ Scope: the round 2 findings and `git diff b3438aba..HEAD`. Specialists: static (
 - [x] (suggestion) `.repos-manifest/` with an unreadable `config.yaml` above or here: say `init` gives that error (not the "system is set up" row) and its next step, repair or remove the folder — `tools/repos-manifest/docs/design.md:186,225`
 - [x] (suggestion) Route test: say that the tool's error for an unreadable record does not count as answering (or does), so the adapter knows which route a damaged instance takes — `docs/manifest/design.md:208-209`
 - [x] (suggestion) "A flat system has one entry, or none": say the key is absent, as the table at line 84 does — `tools/repos-manifest/docs/design.md:152`
-- [ ] (suggestion) The ordering sentence: say the row "a directory it would create already exists" is checked after the manifest is read — `tools/repos-manifest/docs/design.md:220-221,229`
+- [x] (suggestion) The ordering sentence: say the row "a directory it would create already exists" is checked after the manifest is read — `tools/repos-manifest/docs/design.md:220-221,229`
 - [ ] (suggestion) The "directory it would create" row: say whether an existing `setup.bash` or other file at a path `init` writes is refused too — `tools/repos-manifest/docs/design.md:229`
 
 ## Checkpoint
