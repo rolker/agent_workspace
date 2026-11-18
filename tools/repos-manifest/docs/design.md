@@ -377,7 +377,7 @@ then on. A distro never reads another distro's local copy.
 A distro can have its own version of the manifest and nothing else of its own. The URL and
 the path in the repo are the same for every distro, and so is `local_manifest`; a distro whose
 manifest is at another URL or path is not supported. A manifest that is not in a git repo has
-no version, and every distro reads the same file.
+no version, and every distro reads the same file until its local copy exists.
 
 For each distro a command acts on:
 
