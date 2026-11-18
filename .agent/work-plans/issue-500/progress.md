@@ -688,3 +688,28 @@ Fix the round 3 review's one must-fix and its suggestions 1 to 5, then publish. 
 - 3: a failed rename's message names the repo's place and the reason, not a temporary that is gone.
 - 4: the setup.bash failure message gives its path once.
 - 5: the config.yaml table marks what is not read in this part on the manifest and distros rows; the optional-repo rule's list includes a file where a directory on the repo's path belongs.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 18:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `23f5b9d8`
+**Addressed**: Local Review (Pre-Push) at `52656a19` (2026-11-18 18:24 -05:00)
+**Commits**: 9d95114b, e325844e, ff75f679, 5b0cabd4, 05ef224f, 23f5b9d8
+
+### Actions
+- [x] (must-fix) A clone whose HEAD cannot be read is marked fetch=True, so the closing advice says to run sync once it can be fetched; design.md says so. Test with an empty local remote for a required repo, then a sync after its first commit clones it — `tools/repos-manifest/src/repos_manifest/sync.py:241`
+- [x] (suggestion 1) setup.bash's first line is "# Written by repos-manifest. Nothing is built here yet."; test checks the first line of one sync wrote — `tools/repos-manifest/src/repos_manifest/system.py:44`
+- [x] (suggestion 2) create_setup holds the stop signals over the create and the write and removes the file it created when the write fails; an existing one is never touched. Test: RLIMIT_FSIZE below the stub's size (no os function patched); design.md sentence added — `tools/repos-manifest/src/repos_manifest/sync.py:302`
+- [x] (suggestion 3) A failed rename's message is "<place>: <reason>", not the temporary; test updated — `tools/repos-manifest/src/repos_manifest/sync.py:175`
+- [x] (suggestion 4) The setup.bash failure gives its path once ("<path>: cannot be created: Permission denied"); an error on another path (the parent's mkdir) still names that path; test updated — `tools/repos-manifest/src/repos_manifest/sync.py:323`
+- [x] (suggestion 5) design.md config.yaml table: the manifest and distros rows mark a distro's settings and its own manifest_version as not read in this part; the optional-repo rule lists a file where a directory on the path belongs — `tools/repos-manifest/docs/design.md:79`
+- [x] (suggestion 6) no action — `tools/repos-manifest/src/repos_manifest/sync.py:227` (deferred: the review notes it as not worth doing; the host's checkpoint agrees)
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 1003 passed in 102.36s (vcs: /usr/bin/vcs, vcstool 0.3.0)
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1014 passed, 0 failed, 0 skipped
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0
+- Hand check: `init --yes` with a required repo whose remote has no commits: "ERROR: src/empty: the clone's HEAD cannot be read; not put in place", failed (1), "Some repos failed; run `repos-manifest sync` to finish once they can be fetched.", exit 1; after a commit on that remote, `sync` cloned it, exit 0.
+- No script under .agent/scripts changed, so no other suite applies; the full pre-commit pass is left to the host.
