@@ -212,3 +212,19 @@ The revision resolves all six earlier findings, and its factual claims hold agai
 - [ ] Add `tools/ros-manifest/docs/prototype.md:3` ("It was written under the name `ros-manifest`") to step 3's hand rewrites: keep it as listed history or drop the clause.
 - [ ] Reword `docs/roadmap.md` row 4's "being reshaped as repos-manifest" clause by hand when its path is renamed.
 - [ ] In step 1, test `origin/feature/issue-488` or PR 504's state instead of the local branch; fix "below" to "above" in step 11.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 11:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review's verdict is ready, all six earlier findings resolved; its three new findings are minor and go to the implementer as instructions)
+**After**: plan
+**Decision**: proceed
+
+The host, running /orchestrator, read the second Plan Review (verdict ready). Instructions for the implementer, from its three new findings:
+
+1. tools/ros-manifest/docs/prototype.md says "It was written under the name ros-manifest". Keep that sentence as history, by hand, and list it with the kept history in the plan's last step; do not let the sweep rewrite it.
+2. docs/roadmap.md, the Manifest support row: after the sweep it would read "tools/repos-manifest ... being reshaped as repos-manifest". Reword that clause by hand.
+3. The plan's step 1 tests a local branch for issue 488. Test pull request 504's state, or origin/feature/issue-488 against origin/main, instead.
+
+Implementation is not dispatched until pull request 504 (issue 488, sub-roadmaps) is merged: the plan's first step stops otherwise, and that merge is the owner's.
