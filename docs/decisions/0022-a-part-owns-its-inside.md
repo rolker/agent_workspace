@@ -33,7 +33,8 @@ root's `docs/design.md` on `main` names the tool only at its boundary
 (the resolver, installed by `make install-ros-manifest`, called by CLI
 from the adapter) and holds no resolver mechanics, so the boundary half
 of the rule holds. It did not point at
-`tools/repos-manifest/docs/design.md`, which decision 2 requires; #488
+`tools/ros-manifest/docs/design.md` (now `tools/repos-manifest`), which
+decision 2 requires; #488
 adds that link, after #487 merged, together with the Direction pointer
 rows for the tool's roadmap and the workspace's manifest roadmap.
 The workspace's manifest support (#487): on `main`, the Registry and
