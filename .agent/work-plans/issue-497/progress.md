@@ -342,3 +342,17 @@ Dropped: codex's "remove the old install only after the new one works" (round 1 
 - [ ] (suggestion) ADR-0022's Context gains "(now `tools/repos-manifest`)": it passes ADR-0008's "how to tell" test but is not in ADR-0008's list (Status note, References, broken links or typos); the host asked for this form, so keep it or move the note to the Status line (gemini, Claude adversarial) — `docs/decisions/0022-a-part-owns-its-inside.md:36`
 - [ ] (suggestion) The note on the left-over `tools/ros-manifest/` describes a workspace checkout inside the tool's own README, while `docs/manifest/design.md:4` says the tool's documents do not mention the workspace; put that sentence in the PR description or the workspace's manifest docs (gemini) — `tools/repos-manifest/README.md:121`
 - [ ] (suggestion) Venv and stamps are shared from the main checkout, so worktrees on branches from before #497 lose `.venv/bin/ros-manifest` once main runs `make setup`, and their `make install-ros-manifest` fails (its pyproject prerequisite is gone from the main checkout); this branch's `install-repos-manifest` likewise fails until main has the rename. Say in the PR description that such branches merge main (Claude adversarial, codex) — `Makefile:207`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 12:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round 2 review approved with no must-fix; two of its three suggestions are notes for the pull request description and the third is a wording placement the host chose; publish is a token the checkpoint table allows the host)
+**After**: publish
+**Decision**: publish
+
+The host, running /orchestrator, read the round 2 review (approved, ship recommended, three suggestions). Publish, with the suggestions handled this way, each listed for the owner's veto in the hand-back:
+
+1. ADR-0022's Context keeps the "(now tools/repos-manifest)" note where the host asked for it. It passes ADR-0008's test for an edit that does not change the record; moving it to the Status line is a wording choice that can be made later.
+2. The README sentence about a left-over ignored directory stays in the tool's README: it speaks of "a checkout", not of the workspace. The pull request description repeats it.
+3. The pull request description says that branches made before this change need main merged in, because every worktree shares the main checkout's venv and stamps: after main runs make setup, the old command is gone.
