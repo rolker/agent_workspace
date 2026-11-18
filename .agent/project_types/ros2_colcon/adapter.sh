@@ -571,7 +571,7 @@ _rc_bootstrap_manifest() {
 # or fetched. Local manifest work uses the path form. Every `extends` base
 # is cloned afresh, the resolver's cache being a sibling of the new
 # generated directory removed on every exit; the resolver protects that
-# clone itself (tools/ros-manifest README: no user hook, filter driver or
+# clone itself (tools/ros-manifest/docs/prototype.md: no user hook, filter driver or
 # submodule, git's repository variables cleared, no terminal and no
 # askpass, the same three transports) and bounds each of its git calls by
 # ROS_MANIFEST_GIT_TIMEOUT (default 60 s). So while the source lock is
