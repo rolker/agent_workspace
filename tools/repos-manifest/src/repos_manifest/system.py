@@ -124,8 +124,35 @@ def _kind(value) -> str:
     return f"a {type(value).__name__}"
 
 
+def _check_keys(
+    value, where: str, required: Sequence[str], optional: Optional[Sequence[str]], bad
+) -> None:
+    """`value` is a mapping with every key of `required` and no key outside `required` and
+    `optional`; `optional` None allows any other key. `where` is its dotted place in the file,
+    empty for the whole file."""
+    named = f"`{where}` " if where else ""
+    if not isinstance(value, dict):
+        raise bad(f"{named}is {_kind(value)}, not a mapping")
+    for key in value:
+        if optional is not None and key not in required and key not in optional:
+            inside = f"{where}.{key}" if where else key
+            raise bad(f"`{inside}` is not read by this version")
+    for key in required:
+        if key not in value:
+            raise bad(f"{named}has no `{key}`")
+
+
+def is_url(location: str, base: Path) -> bool:
+    """A manifest location that is a URL: it has `://` and no path of that name exists."""
+    return "://" in location and not os.path.lexists(base / location)
+
+
+ONLY_A_PATH = "a path; this version reads a manifest given as a path only"
+
+
 def read_config(system: Path) -> Config:
-    """`config.yaml`, read and checked whole: each error names the file and what is wrong."""
+    """`config.yaml`, read and checked whole: it has exactly the shape `config_text` writes, and
+    each error names the file and what is wrong."""
     path = system / SYSTEM_DIR / CONFIG_FILE
 
     def bad(why: str) -> ManifestError:
@@ -141,22 +168,26 @@ def read_config(system: Path) -> Config:
         raise bad(f"cannot be read ({exc.strerror or type(exc).__name__})") from None
     except (yaml.YAMLError, UnicodeDecodeError):
         raise bad("does not read as YAML") from None
-    if not isinstance(data, dict) or not isinstance(data.get("manifest"), str):
-        raise bad("is not a mapping with a `manifest`")
+    _check_keys(data, "", ("manifest", "layout"), ("role", "groups", "distros"), bad)
+    manifest = data["manifest"]
+    if not isinstance(manifest, str):
+        raise bad(f"`manifest` is {_kind(manifest)}, not {ONLY_A_PATH}")
+    if is_url(manifest, system):
+        raise bad(f"`manifest` is a URL, not {ONLY_A_PATH}")
     role = data.get("role")
-    if role is not None and not isinstance(role, str):
+    if "role" in data and not isinstance(role, str):
         raise bad(f"`role` is {_kind(role)}, not a name")
-    groups = data.get("groups")
-    if groups is not None and not isinstance(groups, list):
+    groups = data.get("groups", [])
+    if not isinstance(groups, list):
         raise bad(f"`groups` is {_kind(groups)}, not a list of names")
-    for group in groups or []:
+    for group in groups:
         if not isinstance(group, str):
             raise bad(f"`groups` holds {_kind(group)}, not a name")
-    layout = data.get("layout")
+    layout = data["layout"]
     if layout not in (LAYOUT_FLAT, LAYOUT_DISTRO_DIRS):
         raise bad(f"`layout` is {layout!r}, not {LAYOUT_FLAT} or {LAYOUT_DISTRO_DIRS}")
     distros = data.get("distros")
-    if distros is None:
+    if "distros" not in data:
         if layout == LAYOUT_DISTRO_DIRS:
             raise bad(f"`layout` is {LAYOUT_DISTRO_DIRS} and there is no `distros`")
     else:
@@ -169,14 +200,11 @@ def read_config(system: Path) -> Config:
         for name, settings in distros.items():
             if not isinstance(name, str):
                 raise bad(f"`distros` has {name!r} as a name")
-            if settings is not None and not isinstance(settings, dict):
-                raise bad(f"`distros.{name}` is {_kind(settings)}, not a mapping")
-            for key in settings or {}:
-                raise bad(f"`distros.{name}.{key}` is not read in this version")
+            _check_keys(settings, f"distros.{name}", (), (), bad)
     return Config(
-        manifest=data["manifest"],
+        manifest=manifest,
         role=role,
-        groups=list(groups or []),
+        groups=list(groups),
         layout=layout,
         distros=list(distros) if distros is not None else None,
     )
@@ -301,7 +329,8 @@ def state_key(distro: Optional[str]) -> str:
 
 
 def _read_state_data(system: Path) -> dict:
-    """`state.yaml`, read and checked whole: each error names the file and what is wrong."""
+    """`state.yaml`, read and checked whole: it has exactly the shape `put_distro_state`
+    writes, and each error names the file and what is wrong."""
     path = system / SYSTEM_DIR / STATE_FILE
 
     def bad(why: str) -> ManifestError:
@@ -313,24 +342,24 @@ def _read_state_data(system: Path) -> dict:
         return {"format": STATE_FORMAT, "distros": {}}
     except (yaml.YAMLError, UnicodeDecodeError):
         raise bad("does not read as YAML") from None
-    if not isinstance(data, dict) or not isinstance(data.get("distros"), dict):
-        raise bad("is not a mapping with `distros`")
+    _check_keys(data, "", ("format", "distros"), (), bad)
+    if data["format"] != STATE_FORMAT or isinstance(data["format"], bool):
+        raise bad(
+            f"`format` is {data['format']!r}, not {STATE_FORMAT}, the one this version writes"
+        )
+    _check_keys(data["distros"], "distros", (), None, bad)
     for distro, entry in data["distros"].items():
         where = f"distros.{distro}"
-        if entry is None:
-            continue
-        if not isinstance(entry, dict):
-            raise bad(f"`{where}` is {_kind(entry)}, not a mapping")
-        repos = entry.get("repos")
-        if repos is not None and not isinstance(repos, dict):
-            raise bad(f"`{where}.repos` is {_kind(repos)}, not a mapping")
-        for key, record in (repos or {}).items():
-            if not isinstance(record, dict):
-                raise bad(f"`{where}.repos.{key}` is {_kind(record)}, not a mapping")
+        _check_keys(entry, where, ("repos",), (), bad)
+        _check_keys(entry["repos"], f"{where}.repos", (), None, bad)
+        for key, record in entry["repos"].items():
+            at = f"{where}.repos.{key}"
+            _check_keys(record, at, ("layer", "version", "commit"), (), bad)
             for name in ("layer", "version", "commit"):
-                value = record.get(name)
-                if value is not None and not isinstance(value, str):
-                    raise bad(f"`{where}.repos.{key}.{name}` is {_kind(value)}, not a string")
+                value = record[name]
+                if not isinstance(value, str) and not (name == "version" and value is None):
+                    what = "a string or empty" if name == "version" else "a string"
+                    raise bad(f"`{at}.{name}` is {_kind(value)}, not {what}")
     return data
 
 

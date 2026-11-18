@@ -83,10 +83,23 @@ def test_config_is_written_and_read_back(tmp_path):
     [
         (None, "not found"),
         ("manifest: [\n", "does not read as YAML"),
-        ("- a\n", "is not a mapping with a `manifest`"),
-        ("layout: flat\n", "is not a mapping with a `manifest`"),
+        ("- a\n", "is a list, not a mapping"),
+        ("layout: flat\n", "has no `manifest`"),
+        ("manifest: m.yaml\n", "has no `layout`"),
         ("manifest: m.yaml\nlayout: tall\n", "`layout` is 'tall'"),
-        ("manifest: [m.yaml]\nlayout: flat\n", "is not a mapping with a `manifest`"),
+        ("manifest: [m.yaml]\nlayout: flat\n", "`manifest` is a list, not a path; this"),
+        (
+            "manifest: {url: g, version: j, path: m.yaml}\nlayout: flat\n",
+            "`manifest` is a mapping, not a path; this version reads a manifest given as a path",
+        ),
+        (
+            "manifest: https://example.org/m.yaml\nlayout: flat\n",
+            "`manifest` is a URL, not a path; this version reads a manifest given as a path only",
+        ),
+        ("manifest: m.yaml\nlayout: flat\nfetch_from: x\n", "`fetch_from` is not read by this"),
+        ("manifest: m.yaml\nlayout: flat\nlocal_manifest: a\n", "`local_manifest` is not read"),
+        ("manifest: m.yaml\nlayout: flat\nremotes: {a: b}\n", "`remotes` is not read by this"),
+        ("manifest: m.yaml\nrole:\nlayout: flat\n", "`role` is empty, not a name"),
         ("manifest: m.yaml\nrole: [a]\nlayout: flat\n", "`role` is a list, not a name"),
         ("manifest: m.yaml\ngroups: abc\nlayout: flat\n", "`groups` is a string, not a list"),
         ("manifest: m.yaml\ngroups: [a, [b]]\nlayout: flat\n", "`groups` holds a list"),
@@ -94,16 +107,17 @@ def test_config_is_written_and_read_back(tmp_path):
         ("manifest: m.yaml\nlayout: flat\ndistros: [jazzy]\n", "`distros` is a list, not"),
         ("manifest: m.yaml\nlayout: flat\ndistros: {}\n", "`distros` is empty"),
         ("manifest: m.yaml\nlayout: distro-dirs\n", "`layout` is distro-dirs and there is"),
-        ("manifest: m.yaml\nlayout: distro-dirs\ndistros:\n", "`layout` is distro-dirs and"),
+        ("manifest: m.yaml\nlayout: distro-dirs\ndistros:\n", "`distros` is empty, not a"),
         (
             "manifest: m.yaml\nlayout: flat\ndistros: {jazzy: {}, rolling: {}}\n",
             "`layout` is flat and there are 2 distros",
         ),
         ("manifest: m.yaml\nlayout: flat\ndistros: {1: {}}\n", "`distros` has 1 as a name"),
         ("manifest: m.yaml\nlayout: flat\ndistros: {jazzy: 3}\n", "`distros.jazzy` is an int"),
+        ("manifest: m.yaml\nlayout: flat\ndistros: {jazzy: }\n", "`distros.jazzy` is empty"),
         (
             "manifest: m.yaml\nlayout: flat\ndistros: {jazzy: {manifest_version: j}}\n",
-            "`distros.jazzy.manifest_version` is not read in this version",
+            "`distros.jazzy.manifest_version` is not read by this version",
         ),
     ],
 )
@@ -128,12 +142,29 @@ def test_writing_one_distros_state_leaves_the_others_as_they_were(tmp_path):
     put_distro_state(tmp_path, "rolling", DistroState({"a": RepoRecord("core", None, "2" * 40)}))
     text = (tmp_path / ".repos-manifest/state.yaml").read_text()
     jazzy_part = yaml.safe_dump(yaml.safe_load(text)["distros"]["jazzy"])
-    put_distro_state(tmp_path, "rolling", DistroState({"b": RepoRecord("_unnamed", "v1", None)}))
+    put_distro_state(
+        tmp_path, "rolling", DistroState({"b": RepoRecord("_unnamed", "v1", "3" * 40)})
+    )
     after = yaml.safe_load((tmp_path / ".repos-manifest/state.yaml").read_text())
     assert yaml.safe_dump(after["distros"]["jazzy"]) == jazzy_part
-    assert read_state(tmp_path, "rolling").repos == {"b": RepoRecord("_unnamed", "v1", None)}
+    assert read_state(tmp_path, "rolling").repos == {"b": RepoRecord("_unnamed", "v1", "3" * 40)}
     assert after["format"] == 1
     assert [p.name for p in (tmp_path / ".repos-manifest").iterdir()] == ["state.yaml"]
+
+
+def test_a_state_of_the_shape_this_version_writes_is_read(tmp_path):
+    (tmp_path / ".repos-manifest").mkdir()
+    text = (
+        F
+        + "distros:\n  jazzy:\n    repos:\n      a: "
+        + REC
+        + "\n      b: {layer: x, version: null, commit: d}\n"
+    )
+    (tmp_path / ".repos-manifest/state.yaml").write_text(text)
+    assert read_state(tmp_path, "jazzy").repos == {
+        "a": RepoRecord("core", "v", "abc"),
+        "b": RepoRecord("x", None, "d"),
+    }
 
 
 def test_a_missing_state_is_empty_and_one_that_does_not_parse_names_the_file(tmp_path):
@@ -144,21 +175,49 @@ def test_a_missing_state_is_empty_and_one_that_does_not_parse_names_the_file(tmp
         read_state(tmp_path, "jazzy")
 
 
+F = "format: 1\n"
+REC = "{layer: core, version: v, commit: abc}"
+
+
 @pytest.mark.parametrize(
     "text,why",
     [
-        ("- a\n", "is not a mapping with `distros`"),
-        ("distros: []\n", "is not a mapping with `distros`"),
-        ("distros: {jazzy: 5}\n", "`distros.jazzy` is an int, not a mapping"),
-        ("distros: {jazzy: {repos: [a]}}\n", "`distros.jazzy.repos` is a list, not a mapping"),
-        ("distros: {jazzy: {repos: {a: x}}}\n", "`distros.jazzy.repos.a` is a string, not a"),
+        ("- a\n", "is a list, not a mapping"),
+        ("distros: {}\n", "has no `format`"),
+        (F, "has no `distros`"),
+        ("format: 2\ndistros: {}\n", "`format` is 2, not 1, the one this version writes"),
+        ("format: true\ndistros: {}\n", "`format` is True, not 1"),
+        (F + "distros: {}\nlocks: x\n", "`locks` is not read by this version"),
+        (F + "distros: []\n", "`distros` is a list, not a mapping"),
+        (F + "distros: {jazzy: 5}\n", "`distros.jazzy` is an int, not a mapping"),
+        (F + "distros: {jazzy: }\n", "`distros.jazzy` is empty, not a mapping"),
+        (F + "distros: {jazzy: {}}\n", "`distros.jazzy` has no `repos`"),
+        (F + "distros: {jazzy: {repos: {}, x: 1}}\n", "`distros.jazzy.x` is not read by this"),
+        (F + "distros: {jazzy: {repos: [a]}}\n", "`distros.jazzy.repos` is a list, not a mapping"),
+        (F + "distros: {jazzy: {repos: {a: x}}}\n", "`distros.jazzy.repos.a` is a string, not a"),
         (
-            "distros: {jazzy: {repos: {a: {layer: [x]}}}}\n",
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v}}}}\n",
+            "`distros.jazzy.repos.a` has no `commit`",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: c, url: u}}}}\n",
+            "`distros.jazzy.repos.a.url` is not read by this version",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: [x], version: v, commit: c}}}}\n",
             "`distros.jazzy.repos.a.layer` is a list, not a string",
         ),
         (
-            "distros: {jazzy: {repos: {a: {layer: core, commit: 5}}}}\n",
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: 5}}}}\n",
             "`distros.jazzy.repos.a.commit` is an int, not a string",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: }}}}\n",
+            "`distros.jazzy.repos.a.commit` is empty, not a string",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: 3, commit: c}}}}\n",
+            "`distros.jazzy.repos.a.version` is an int, not a string or empty",
         ),
     ],
 )

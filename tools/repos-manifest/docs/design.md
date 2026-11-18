@@ -76,14 +76,14 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". |
-| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: the git form and a URL. |
+| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. Not read in this part. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
 | `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
-| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
-| `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
+| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". Not read in this part. |
+| `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". Not read in this part. |
 
 `role`, `groups`, `layout` and `distros` are facts about the machine, which is why they are
 recorded here and not in the manifest.
@@ -190,9 +190,10 @@ run again. If the first sync after it fails or is interrupted, `sync` finishes i
 command finds `.repos-manifest/` by walking up from the current directory, and one without a
 readable `config.yaml` is an error that names the file. `init` gives that error too, not the
 refusal for a system that is set up, and its next step is to repair or remove that
-`.repos-manifest/` folder. A `config.yaml` of the wrong shape is the same error, saying what
-is wrong: a key of the wrong type, an unknown `layout`, `distro-dirs` with no distros, an
-empty `distros`, or a flat system with more than one distro.
+`.repos-manifest/` folder. A `config.yaml` without exactly the shape this version writes
+(`manifest` as a path, `layout`, and `role`, `groups` and `distros` when set, each of its type,
+with an empty entry for each distro) is the same error, naming the key and what is wrong; any
+other key is named with the words that this version does not read it.
 
 Until `build` is built, `init` writes a `setup.bash` that says nothing is built yet and fails
 when sourced. It is created only where no file is, so one made meanwhile is left as it is.
@@ -282,7 +283,8 @@ distros:
 ```
 
 It is made at the first clone and written whole, by one rename, after each repo is cloned. One
-of the wrong shape is an error that names it and says what is wrong. Nothing stops two runs at
+without exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, and
+no other key) is an error that names it and says what is wrong. Nothing stops two runs at
 once, and two runs can each lose the other's update to it.
 
 #### Which distro a command uses
@@ -1022,8 +1024,7 @@ terminal.
 
 `init` and `sync` are built for a manifest given as a path on the local disk, flat or with
 `--distro-dirs`, as far as setting a system up and cloning the repos that are missing.
-`config.yaml` holds `manifest`, `role`, `groups`, `layout` and `distros`, and a setting in a
-distro's entry is an error. `sync` reads and resolves every distro it acts on before it
+`sync` reads and resolves every distro it acts on before it
 changes anything, so a distro whose manifest does not resolve ends the run with nothing changed
 for any distro, rather than being reported while the others go on. A repo that is there is
 not touched, and `sync` says that updating it is not built yet. Two names that a disk which
