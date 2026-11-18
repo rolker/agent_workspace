@@ -203,7 +203,13 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   `$WS_ROOT/README.md#workspace-goals` and the design section is cited by
   its anchor, as `docs/design.md#<section>`; for a project, the project's
   own goals and design document, or "none" (a project is not asked to
-  keep either). Copy the line, as checked, into this row's Notes. A
+  keep either).
+  Work inside a part that has its own design (ADR-0022) names the root
+  goal it serves and may also name the part's own goal, citing the part's
+  design section as `<path>/design.md#<section>`, `<path>` being the
+  design file's directory (`tools/ros-manifest/docs/design.md#<section>`);
+  the anchor is checked against that file.
+  Copy the line, as checked, into this row's Notes. A
   missing line, work that serves no goal, or work that breaks a stated
   rule (for a workspace plan, a principle or a row of
   `$WS_ROOT/docs/design.md#rules`; for a project plan, the project's own
@@ -239,7 +245,10 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
     the design picture, and which design section changes? For the
     workspace, the section list and the Status key are in
     `$WS_ROOT/docs/design.md#the-design`, and the plan cites the section by
-    its anchor, as `docs/design.md#<section>`. For a project, it names the
+    its anchor, as `docs/design.md#<section>`. For work inside a part with
+    its own design (ADR-0022), the section may be the part's
+    (`<path>/design.md#<section>`), and the root's design text about the
+    part keeps only what crosses its boundary. For a project, it names the
     section of the project's own design document, or says there is none
   - "Look for prior art before building" — does the plan say what was looked
     at and what was taken or rejected?

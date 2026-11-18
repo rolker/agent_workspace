@@ -125,12 +125,19 @@ Read relevant files to understand the current state:
   for every plan (the plan's `## Serves` line, step 5). For the workspace,
   the goal is a section name under `$WS_ROOT/README.md#workspace-goals`
   and the section is cited by its anchor, as `docs/design.md#<section>`.
+  Work inside a part that has its own design (ADR-0022) names the root
+  goal it serves and may also name the part's own goal, citing the part's
+  design section as `<path>/design.md#<section>`, `<path>` being the
+  design file's directory (`tools/ros-manifest/docs/design.md#<section>`).
   For a project, use its own goals and design document, or write "none"
 - Ask whether the change alters the design picture (how the parts fit
   today) and, if so, which section of the owning repo's design document
   changes in the same change. For the workspace, the section list and the
   Status key are in `$WS_ROOT/docs/design.md#the-design`; cite the section
-  by its anchor, as `docs/design.md#<section>`. For a project, name the
+  by its anchor, as `docs/design.md#<section>`. The section that changes
+  may be a part's own design (`<path>/design.md#<section>`, ADR-0022):
+  the part owns its inside, and the root's design changes only where what
+  crosses the part's boundary changes. For a project, name the
   section of the project's own design document, or say there is none
 
 ### 4. Ensure correct worktree (hard check)
@@ -219,14 +226,17 @@ answer when true.>
 <One line: the goal this work serves and the design section it falls
 under. For the workspace, the goal by its section name under `## Workspace
 goals` in `README.md`, and the section by its anchor, as
-`docs/design.md#<section>`. For a project, its own goals and design
+`docs/design.md#<section>`. Work inside a part with its own design
+(ADR-0022) may also cite the part's section, as
+`<path>/design.md#<section>`. For a project, its own goals and design
 document, or "none".>
 
 ## Design Picture
 
 <Does this change alter how the parts fit? If yes, which section of the
 owning repo's design document changes, in this PR (for the workspace, cite it
-by its anchor, as `docs/design.md#<section>`; a project's own design
+by its anchor, as `docs/design.md#<section>`, or a part's own design as
+`<path>/design.md#<section>`; a project's own design
 document, if it keeps one; if the project has none, say so). If no, say "No
 change to the design picture".>
 
