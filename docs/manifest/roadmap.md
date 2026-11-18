@@ -25,7 +25,7 @@ checks are relative to the workspace's root.
 | The workspace's design for using the tool is written down (#487) | `file-exists docs/manifest/design.md` |
 | The tool has the commands the adapter calls: `init`, `sync`, `build` and `status` | |
 | Registration passes the manifest's location, role, distro and fetch settings to `init`, and the workspace keeps no second copy | |
-| The tool sets up a directory per distro from the first distro on, and adds a distro to a system directory later | |
+| The tool's design covers starting with one distro in a directory of its own and adding a distro later (#495) | `gh-issue 495 closed` |
 | A session started in an empty directory sets up and onboards a project from the repo that holds its manifest (#473) | |
 | The adapter's `setup`, `sync`, `build` and `validate` call the tool, and its own manifest fetch and generated directories are removed | |
 | A worktree of a package repo builds against an instance in the tool's layout | |
