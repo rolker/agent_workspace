@@ -88,3 +88,24 @@ Specialists: Claude adversarial, scoped to the round 2 findings and the fix diff
 - [x] (must-fix) "three things the adapter relies on" where the section now lists four — `docs/manifest/design.md:135`
 - [x] (must-fix) "init records what it was given before it fetches anything" is not what the tool's design says — `docs/manifest/design.md:203`
 - [x] (suggestion) role= and distro= were said to stay only until the verbs move; the roadmap keeps them one line longer — `docs/manifest/design.md:257`
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 11:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Verdict**: approved
+
+**PR**: #496 at `027919c0`
+**Depth**: Standard (reason: post-push cross-model review for the merge gate, then a narrow check of its fixes)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Sources: Codex reviewed the pull request at 8970287f and reported four must-fix and two suggestions; all six were fixed in 47d57080. A Claude reviewer checked 47d57080 alone: five resolved, one partly (the Rolling line's check is still an issue closing), no new must-fix, one suggestion, applied in 027919c0, which no reviewer has read (one sentence). CI passed on 8970287f.
+
+### Findings
+- [x] (must-fix) An instance whose manifest is pinned to a commit has no equivalent in the mapping (codex) — `docs/manifest/design.md:267`
+- [x] (must-fix) Existing source-based instances were treated as bootstrap ones; no account of how they carry over (codex) — `docs/manifest/design.md:201`
+- [x] (must-fix) Directory existence cannot tell a finished init from an interrupted one (codex) — `docs/manifest/design.md:201`
+- [x] (must-fix) The Rolling acceptance line omitted the build (codex; the check itself is still an issue closing) — `docs/manifest/roadmap.md:35`
+- [x] (suggestion) What the prompt after show covers (codex) — `docs/manifest/design.md:163`
+- [x] (suggestion) docs/design.md's validate summary did not mention optional layers (codex) — `docs/design.md:453`
+- [x] (suggestion) Whether a status that reports a missing repo counts as answering (check of the fixes) — `docs/manifest/design.md:203`
