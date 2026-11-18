@@ -713,3 +713,28 @@ Fix the round 3 review's one must-fix and its suggestions 1 to 5, then publish. 
 - `bash .agent/scripts/check_design_anchors.sh`: exit 0
 - Hand check: `init --yes` with a required repo whose remote has no commits: "ERROR: src/empty: the clone's HEAD cannot be read; not put in place", failed (1), "Some repos failed; run `repos-manifest sync` to finish once they can be fetched.", exit 1; after a commit on that remote, `sync` cloned it, exit 0.
 - No script under .agent/scripts changed, so no other suite applies; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 18:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-500 at `32da65b5`
+**Base**: main
+**Depth**: standard (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — the round 3 must-fix is fixed and every suggestion answered; nothing new in the fix diff
+
+Scope: the round 3 review's findings and `git diff b026c50f..HEAD` (9d95114b, e325844e, ff75f679, 5b0cabd4, 05ef224f, 23f5b9d8 and the record commits). Cross-model: skipped (round-4 convergence check, per handoff). Governance, plan-drift and adversarial reads done by this reviewer, not dispatched: the diff is small.
+
+Round 3 must-fix fixed. Hand runs with local remotes: `init --yes` with a required repo whose remote has no commits: "ERROR: src/empty: the clone's HEAD cannot be read; not put in place", "Some repos failed; run `repos-manifest sync` to finish once they can be fetched.", exit 1; after a commit on that remote, `sync` cloned it at the remote's HEAD, recorded in state.yaml, exit 0. The same as optional: "skipped src/empty (optional): …", listed, exit 0; the later sync cloned it. design.md:640 says the same.
+
+create_setup (sync.py:305): the unlink runs only after the exclusive create succeeded, so it can remove only a file this call created; a FileExistsError returns before it; signals held over create and write. Tries: an existing setup.bash with content, a partial one, a symlink, a dangling link, a directory: each unchanged after `sync`, exit 0. Read-only system directory: "ERROR: <path>/setup.bash: cannot be created: Permission denied" (path once), exit 1, nothing left; the next sync writes it. create_setup under RLIMIT_FSIZE 16: "<path>: cannot be created: File too large", nothing left; with a partial file already there, untouched. Rename failure (read-only src/): "ERROR: src/b: <system>/src/b: Permission denied", no temporary named, no temporary left. Stub first line "# Written by repos-manifest. Nothing is built here yet.", asserted in test_sync.py. Each message asserted by a test.
+
+design.md table marks (manifest and distros rows) match system.py's refusal of any distro setting; the optional-rule list's new item matches place_problem. The new test restores the file-size limit and SIGXFSZ in `finally`, patches no os function, is skipped where SIGXFSZ or `resource` is missing; nothing needs Python newer than 3.10. Only test_clone.py and test_sync.py changed among tests; resolve/validate tests untouched.
+
+Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 1003 passed in 102.83s (vcs: /usr/bin/vcs, vcstool 0.3.0; Python 3.14.4). `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1014 passed, 0 failed, 0 skipped.
+
+### Findings
+- [ ] No issues found. LGTM.
