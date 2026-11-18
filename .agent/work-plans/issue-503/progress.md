@@ -420,3 +420,26 @@ Scope: part 1A per the 18:09 Checkpoint. Verified: worktree_create.sh creates no
 - [x] (suggestion) The per-repo check `git -C <origin> rev-parse --git-dir` passes a plain directory inside an enclosing repository (and the single-repo "." entry of a plain root nested in one), so a worktree of the enclosing repo is made; pre-existing in the old root check; compare `--show-toplevel` with the path as the skill branch does (gemini, codex, adversarial) — `.agent/scripts/worktree_create.sh:726-729`
 - [x] (suggestion) A root that does not exist is refused as "project checkout is not a git repository"; say it is not a directory (gemini, adversarial) — `.agent/scripts/worktree_create.sh:549-550`
 - [x] (suggestion) Step 3's recovery note says to run `git worktree list` and look under `worktrees/<type>/`; from a root outside git that fails, and project worktrees live under `<root>/worktrees/` (adversarial) — `.claude/skills/start-task/SKILL.md` step 3
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 18:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `c1bfb150`
+**Addressed**: Local Review (Pre-Push) at `510f24f1` (2026-11-18 18:29 -05:00)
+**Commits**: 9952a038, e02dc090, 0e799176, d7bc15be, 8ed2e2e2, c1bfb150
+
+Decisions on each finding are the host's (listed for the owner's veto). The host corrects the 18:09 Checkpoint's wording "reads its label list from the workspace checkout": a label list describes one repository.
+
+### Actions
+- [x] (must-fix) Labels outside git: validated against a local list only when it is the target's own; outside git, the workspace checkout's list only when `-R` equals the workspace checkout's origin slug (derived with the sed the script and `gh_create_pr.sh` already use; the script had no `-R` comparison to reuse); any other `-R` target skips validation with "Labels will be validated by GitHub." Inside git unchanged. Tests: `-R pkg-owner/pkg --label nope` reaches gh (failed before: exit 1); `-R ws-owner/ws --label nope` refused as today. The branch's own earlier test asserting the workspace list for `-R pkg-owner/pkg` was replaced (it asserted the corrected wording; not in origin/main) — `9952a038` `.agent/scripts/gh_create_issue.sh`
+- [x] (must-fix) Parent reference: bare `#N` only when the target (`-R`, else `gh repo view` as today) is the parent's repository; qualified `owner/repo#N` when the parent's repository is known and differs (inside git: the worktree's own origin, as today; anywhere: a `WORKTREE_ISSUE` of the form `owner/repo#N`); none, with a one-line warning, when it cannot be known (bare `WORKTREE_ISSUE` outside git, or inside git with `-R` and no GitHub origin). `worktree_enter.sh` exports `WORKTREE_ISSUE` as the bare number even for a package worktree (it strips `owner/repo#` into `ISSUE_NUM`, lines 127-130, and exports that), so outside git today the reference is left out with the warning. Five tests (same repo with `-R`, inside git other repo, outside git qualified differing, outside git qualified same, outside git bare); four failed before. Inside git without `-R` the existing parent-ref tests pass unchanged — `e02dc090` `.agent/scripts/gh_create_issue.sh`
+- [x] (suggestion) The per-repo check compares `git rev-parse --show-toplevel` (resolved with `pwd -P`) with the entry's own path, as the skill branch does; today's message kept for the `.` entry. Two tests (single-repo root and a multi-repo plain entry, each inside an enclosing repository); both failed before (a worktree of the enclosing repository was made). No suite layout refused: test_ros2_colcon, test_package_issue_loop, test_merge_pr pass — `d7bc15be` `.agent/scripts/worktree_create.sh`
+- [x] (suggestion) A project root that does not exist: "Error: project root does not exist: <path>". Test fails before — `0e799176` `.agent/scripts/worktree_create.sh`
+- [x] (suggestion) start-task step 3's recovery note names `$WS_ROOT/.agent/scripts/worktree_list.sh` (it cds to the workspace and lists registered projects' worktrees, so it works from a root outside git) and says a project's worktrees are under its root's worktrees/ or its override — `8ed2e2e2` `.claude/skills/start-task/SKILL.md`
+- [x] `.agent/knowledge/script_reference.md` rows for gh_create_issue.sh and worktree_create.sh updated where now untrue; gh_create_issue.sh header updated — `c1bfb150`
+
+Suites, each run with `bash` on the final scripts: test_gh_create_issue 84 passed 0 failed; test_worktree_create 87/0; test_ros2_colcon 1030 passed 0 failed 0 skipped; test_session_root 71/0; test_register_project 201/0; test_merge_pr 170/0; test_package_issue_loop 220/0; test_skill_paths 163/0; test_gh_create_pr 113/0; `check_design_anchors.sh` exit 0. `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. shellcheck (hook) passed on each commit. Full pre-commit pass left to the host.
+
+Open: `worktree_enter.sh` does not export the qualified form for a package worktree, so outside git the parent reference is skipped (with the warning) rather than qualified; exporting it would change every other `WORKTREE_ISSUE` reader and is not in this round's scope.
