@@ -80,7 +80,7 @@ remotes:
 | `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
-| `layout` | `flat`, or `distro-dirs` for a directory per distro. Chosen at `init` and not changed afterwards. See "More than one distro". |
+| `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
 | `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
@@ -196,7 +196,8 @@ layers get directories beside them.
 whether there is one distro or several, so adding a distro adds an entry and changes nothing
 else. The only setting an entry may carry is `manifest_version`: that distro reads the
 manifest from the location in `manifest`, at that branch or tag in place of the one `manifest`
-gives. An entry without it is `{}`. A flat system has exactly one entry, or none when the
+gives. `manifest_version` is what `add-distro --manifest-ref` records, as `init --manifest-ref`
+records the `version` in `manifest`. An entry without it is `{}`. A flat system has exactly one entry, or none when the
 manifest has no distros. Three examples:
 
 ```yaml
