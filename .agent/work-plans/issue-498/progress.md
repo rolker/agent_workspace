@@ -440,3 +440,16 @@ Questions not settled by the spec or a Checkpoint. Each was given the narrowest 
 **Phase**: implement
 
 The implementation of part 1 came back partial for one reason: the agent's edit to .github/workflows/validate.yml was refused by the permission system, because the owner's approval ("yes, add python 3.14 to CI", 2026-11-18) reached it as a relayed message. Asked how the CI change should be made, the owner chose "You make that one edit": the host edits the workflow file itself for this step only, commits it, and records the implementation as complete. The change: the tool's test job runs on Python 3.10 and 3.14 and its name gains the Python version; no other job is touched.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 13:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Branch**: feature/issue-498 at `d2802211`
+**Mode**: inline
+
+Part 1 of 3, finished by the host on the owner's takeover answer. The dispatched pass built everything else (its entry above, partial, lists it: the 3.14 fix in the old reader, the YAML loader moved, manifest.py, selection.py, output.py and the CLI, the project11 fixture, the documents); this entry adds the one step it was not allowed to make.
+
+- .github/workflows/validate.yml: the tool's test job, validate-repos-manifest, runs on Python 3.10 and 3.14 through a version matrix (fail-fast off, so one version's failure does not hide the other's), and its name gains "(Python <version>)". No other job is touched. The owner's words: "yes, add python 3.14 to CI" (2026-11-18).
+- Not run by the host: the tool suite. The dispatched pass ran it on Python 3.14.4 here (487 passed) and the adapter suite (1014 passed, 0 failed); Python 3.10 is checked by CI after the push. The full pre-commit pass runs before the push.
+- Left from the dispatched pass's report, for the review to weigh: nine readings it chose where the spec and the Checkpoints were silent (listed in its entry), the plan's Prior Art line on signals not corrected, and the tool's roadmap unchanged because no row is fully true until base is read.
