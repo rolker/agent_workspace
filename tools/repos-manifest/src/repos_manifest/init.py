@@ -22,6 +22,7 @@ from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, closing, require_tools, sync_distros
 from .yamlload import ManifestError
 from .system import (
+    current_directory,
     CONFIG_FILE,
     LAYOUT_DISTRO_DIRS,
     LAYOUT_FLAT,
@@ -183,7 +184,7 @@ def run_init(
     distro_dirs: bool,
     yes: bool,
 ) -> int:
-    system = Path(os.getcwd())
+    system = current_directory()
     distros = list(dict.fromkeys(distros))
     with reporting_oserror():
         found = find_system(system)

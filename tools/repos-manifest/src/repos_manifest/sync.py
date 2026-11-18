@@ -26,6 +26,7 @@ from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
 from .system import (
+    current_directory,
     CONFIG_FILE,
     SETUP_TEXT,
     SYSTEM_DIR,
@@ -378,7 +379,7 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
 
 
 def run_sync(named_distros: Sequence[str]) -> int:
-    cwd = Path(os.getcwd())
+    cwd = current_directory()
     with reporting_oserror():
         system = find_system(cwd)
         if system is None:

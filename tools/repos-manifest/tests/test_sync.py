@@ -10,6 +10,7 @@ import yaml
 
 from helpers import branch, git, head, make_remote, repo, run, snapshot, write_manifest
 from repos_manifest import sync
+from repos_manifest.cli import main
 from repos_manifest.signals import Stopped
 
 
@@ -303,3 +304,20 @@ def test_sync_from_inside_the_resolved_files_says_where_to_run_it(two_distros, c
         "which replacing it would delete from under this shell; run `sync` from the system"
         " directory or from below it, outside .repos-manifest/\n"
     ), err
+
+
+@pytest.mark.parametrize("argv", [["sync"], ["init", "/m.manifest.yaml", "--yes"]])
+def test_a_current_directory_that_no_longer_exists_is_a_plain_error(tmp_path, capsys, argv):
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    previous = os.getcwd()
+    os.chdir(gone)
+    try:
+        gone.rmdir()
+        assert main(argv) == 1
+    finally:
+        os.chdir(previous)
+    assert capsys.readouterr().err == (
+        "ERROR: the current directory no longer exists; change to one that does and run it"
+        " again\n"
+    )

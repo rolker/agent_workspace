@@ -76,6 +76,16 @@ def warn(message: str) -> None:
     print(f"WARNING: {message}", file=sys.stderr)
 
 
+def current_directory() -> Path:
+    """The current directory; one that has been removed is an error with a plain message."""
+    try:
+        return Path(os.getcwd())
+    except FileNotFoundError:
+        raise ManifestError(
+            "the current directory no longer exists; change to one that does and run it again"
+        ) from None
+
+
 def default_mode(full: int) -> int:
     """The mode a plain `mkdir` (0o777) or `open` (0o666) would give under the umask."""
     umask = os.umask(0)
