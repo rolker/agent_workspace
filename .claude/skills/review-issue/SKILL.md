@@ -137,7 +137,12 @@ If the issue targets a project repo, also check:
   beside any other goal's section name (the sit-rep marks such work by
   that phrase). For a project issue, use the
   project's own goals and design document, or write "none"; a project is
-  not asked to keep either. Flag an issue that serves no goal, or that
+  not asked to keep either.
+  Work inside a part that has its own design (ADR-0022) names the root
+  goal it serves and may also name the part's own goal, citing the part's
+  design section as `<path>/design.md#<section>`, `<path>` being the
+  design file's directory (`tools/ros-manifest/docs/design.md#<section>`).
+  Flag an issue that serves no goal, or that
   breaks a stated rule (for a workspace issue, a principle or a row of
   `$WS_ROOT/docs/design.md#rules`; for a project issue, the project's own
   stated rules, if it has any), as a Principle Alignment row with
@@ -147,7 +152,10 @@ If the issue targets a project repo, also check:
 - **Design picture?** Does the proposal change how the parts fit, or is it
   not covered by the current design? If so, name the design section it
   touches and bring the question to the user on its own ("Ask about what
-  matters, and show how much"). Cite the section as in **Serves?**; for a
+  matters, and show how much"). Cite the section as in **Serves?** (for
+  work inside a part with its own design, the section may be the part's,
+  and the root's design changes only where what crosses the part's
+  boundary changes, ADR-0022); for a
   project issue, name the section of the project's own design document,
   or say there is none. Record it as a "Keep one current design" row
   with Status `Action needed` in the Principle Alignment table (step 4),

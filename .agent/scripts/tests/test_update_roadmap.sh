@@ -220,6 +220,34 @@ else
     fail "(direction) checklist line: $(grep 'checklist deferral' "$f")"
 fi
 
+echo "TEST: a sub-roadmap (issue #488) outside the three candidate paths is never edited; the root's roadmap still is"
+# A part's roadmap (tools/<t>/docs/roadmap.md, docs/<part>/roadmap.md) is a
+# Direction-format file that holds no status; only the root's own three
+# candidate paths are processed, so a sub-roadmap at any other path is left
+# alone (one at ROADMAP.md, docs/ROADMAP.md or docs/roadmap.md would not be:
+# docs/design.md says so).
+root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
+mkdir -p "$root/docs/part" "$root/tools/t/docs"
+printf '%s' "$roadmap_body" > "$root/docs/roadmap.md"
+part_body='# Part
+
+| Item | Issue | Status |
+|---|---|---|
+| Part row | #7 | open |
+
+- [ ] Part checklist (#7)
+'
+printf '%s' "$part_body" > "$root/docs/part/roadmap.md"
+printf '%s' "$part_body" > "$root/tools/t/docs/roadmap.md"
+stdout="$("$UPDATE" --issue 7 --root "$root" 2>/dev/null)"
+if [[ "$stdout" == "$root/docs/roadmap.md" ]] \
+    && [[ "$(cat "$root/docs/part/roadmap.md")" == "$(printf '%s' "$part_body")" ]] \
+    && [[ "$(cat "$root/tools/t/docs/roadmap.md")" == "$(printf '%s' "$part_body")" ]]; then
+    pass "(sub-roadmap) the root's roadmap updated; both part roadmaps byte-identical"
+else
+    fail "(sub-roadmap) stdout='$stdout' part=$(tr '\n' '|' < "$root/docs/part/roadmap.md")"
+fi
+
 echo ""
 echo "test_update_roadmap:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]
