@@ -35,6 +35,10 @@
 #     to be added; missing vars hard-fail (exit 2) before any gh call. Set via:
 #     source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 #   - No body flag at all (interactive editor mode) means nothing is signed.
+#   - Outside a git repository (a project root that is a plain directory
+#     holding clones) -R / --repo must name the repository, and the label
+#     list is read from the workspace checkout this script lives in; inside
+#     one, from that repository's own .agent/github_metadata.json.
 #   - A --body-file is read once into a temporary copy (under TMPDIR,
 #     removed on exit), which is what gets signed and what gh reads: a
 #     pipe, FIFO or process substitution is signed like a regular file,
@@ -47,6 +51,7 @@
 #   2 - Argument / usage errors:
 #         - a value-taking flag with no value (-R/--repo also refuses an
 #           empty one)
+#         - outside a git repository, no -R/--repo
 #         - both a body and a body file provided
 #         - --template / -T with no body, or --recover with or without
 #           one, and no --no-signature (gh would write a body this wrapper
@@ -64,11 +69,9 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
 fi
 set -euo pipefail
 
-# Get repository root
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-    echo "❌ Error: Not in a git repository"
-    exit 3
-}
+# Get repository root. Outside a git repository there is none: -R must then
+# name the repository (checked once the command line is parsed, below).
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT=""
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
@@ -81,7 +84,8 @@ _UT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_UT_SCRIPT_DIR/_project_registry.sh"
 registry_require_root "$(cd "$_UT_SCRIPT_DIR/../.." && pwd)" || exit 1
 
-METADATA_FILE="$REPO_ROOT/.agent/github_metadata.json"
+# Outside a git repository, the labels are the workspace checkout's.
+METADATA_FILE="${REPO_ROOT:-$(cd "$_UT_SCRIPT_DIR/../.." && pwd)}/.agent/github_metadata.json"
 
 # Check for required dependencies
 if ! command -v gh &> /dev/null; then
@@ -104,6 +108,12 @@ fi
 # shellcheck source=_gh_create_args.sh
 source "$_UT_SCRIPT_DIR/_gh_create_args.sh"
 gh_create_parse issue "$@" || exit 2
+
+# Outside a git repository gh cannot tell which repository is meant.
+if [ -z "$REPO_ROOT" ] && [ -z "$GH_REPO" ]; then
+    echo "❌ Error: Not in a git repository: pass -R <owner/repo> to name the repository the issue is for" >&2
+    exit 2
+fi
 
 # --- Mutually exclusive body sources -----------------------------------------
 # Both would mean the wrapper signs one source while gh may use the other

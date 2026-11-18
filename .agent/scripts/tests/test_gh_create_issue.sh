@@ -588,6 +588,90 @@ else
 fi
 
 echo
+echo "=== Outside a git repository: -R required, labels from the workspace checkout (issue 503) ==="
+# A sandbox workspace checkout with its own label list, and a registered
+# project root that is a plain directory holding clones, in no git
+# repository (a sibling of the workspace, under $SANDBOX, which is none).
+R503="$SANDBOX/r503"
+WS503="$R503/ws"
+mkdir -p "$WS503/.agent/scripts"
+cp "$SCRIPT_DIR/../gh_create_issue.sh" "$SCRIPT_DIR/../_project_registry.sh" \
+    "$SCRIPT_DIR/../_gh_create_args.sh" "$WS503/.agent/scripts/"
+printf '{"labels": ["bug", "enhancement"]}\n' > "$WS503/.agent/github_metadata.json"
+git -C "$WS503" init -q -b main
+git -C "$WS503" remote add origin https://github.com/ws-owner/ws.git
+ROOT503="$R503/root"
+mkdir -p "$ROOT503/clone"
+git init -q -b main "$ROOT503/clone"
+git -C "$ROOT503/clone" remote add origin https://github.com/pkg-owner/pkg.git
+echo "plainroot single_project $ROOT503" > "$WS503/.agent/projects.local"
+if git -C "$ROOT503" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "outside git: precondition failed, $ROOT503 is in a git repository"
+fi
+run503() {  # <cwd> <args...>: run the sandbox copy there; sets OUT503 and RC503
+    local cwd="$1"
+    shift
+    rm -f "$ARGV_LOG"
+    OUT503=$(cd "$cwd" && env -u WORKTREE_ISSUE TMPDIR="$R503" \
+        bash "$WS503/.agent/scripts/gh_create_issue.sh" "$@" 2>&1)
+    RC503=$?
+}
+
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --label bug
+if [[ "$RC503" -eq 0 ]] && gh_called && argv_has "pkg-owner/pkg" && argv_has "--label" && argv_has "bug" \
+   && sig_in "$ARGV_LOG"; then
+    pass "outside git, -R: gh issue create reached with -R, the label and the signature"
+else
+    fail "outside git, -R: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+if [[ "$(grep -n -- 'pkg-owner/pkg' "$ARGV_LOG" 2>/dev/null | cut -d: -f1)" -gt 1 ]] \
+   && grep -qxE -- '-R|--repo' "$ARGV_LOG"; then
+    pass "outside git, -R: the repository is passed to gh as -R/--repo"
+else
+    fail "outside git, -R: no -R/--repo in argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --label nope
+if [[ "$RC503" -eq 1 && ! -f "$ARGV_LOG" && "$OUT503" == *"Invalid label(s) detected: nope"* \
+      && "$OUT503" == *"Valid labels (from $WS503/.agent/github_metadata.json)"* ]]; then
+    pass "outside git, -R: labels are checked against the workspace checkout's list"
+else
+    fail "outside git, invalid label: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+run503 "$ROOT503" --title T --body B --label bug
+if [[ "$RC503" -eq 2 && ! -f "$ARGV_LOG" \
+      && "$OUT503" == *"Not in a git repository: pass -R <owner/repo> to name the repository the issue is for"* ]]; then
+    pass "outside git, no -R: refused (exit 2), naming -R, before gh"
+else
+    fail "outside git, no -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+# Inside a git repository, as before: no -R needed in the workspace
+# checkout; a clone under the root whose slug is no registered root's is
+# refused by the repo-safety check (-R is the way there, as today); with -R
+# its own (absent) label list is read, so validation is skipped.
+run503 "$WS503" --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -qxE -- '-R|--repo' "$ARGV_LOG"; then
+    pass "inside git, the workspace checkout: unchanged, no -R needed"
+else
+    fail "inside git, workspace: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503/clone" --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 2 && ! -f "$ARGV_LOG" && "$OUT503" == *"gh would target 'pkg-owner/pkg'"* ]]; then
+    pass "inside git, a clone under the root, no -R: the repo-safety check refuses, as before"
+else
+    fail "inside git, clone, no -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503/clone" -R pkg-owner/pkg --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called \
+   && [[ "$OUT503" == *"Warning: $ROOT503/clone/.agent/github_metadata.json not found"* ]]; then
+    pass "inside git, a clone with -R: its own label list is read, as before"
+else
+    fail "inside git, clone, -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
