@@ -703,3 +703,12 @@ Specialists: static analysis (pre-commit on the eight changed tool files: black,
 - [ ] (suggestion) `_remove_ours` makes only the top directory writable, so a read-only subdirectory a person added inside a marked output blocks removal of the previous copy; the WARNING says "a later resolve to the same place tries again", but `_sweep_leftovers` ignores the result and every later run fails on it silently, leaving `.out.new-<pid>-…` (reproduced: `mkdir out/sub; touch out/sub/f; chmod 555 out/sub`, two resolves, both exit 0); make subdirectories writable too (rmtree onerror chmod and retry) or reword — `tools/repos-manifest/src/repos_manifest/output.py:149`
 - [ ] (suggestion) spec.md says the user, host and port "run to the first `/` after the host"; for https, http and file urls the code now ends them at the first `/` (a bracketed host is not looked through), so `https://[-x/y]/p` and `file://[-x/y]/p` are accepted though the spec's reading gives a host `-x/y`; harmless (not handed to ssh; curl rejects it), but say the "after the host" reading is for ssh addresses — `tools/repos-manifest/docs/spec.md:440`
 - [ ] (suggestion) Urls git cannot use pass validation and fail only in git: no path (`ssh://h`, `ssh://[::1]:22`), an empty host (`[]:r`, `ssh://[]/r`, ssh gets an empty host argument), a path starting with `-` in the scp form (`h:-x`, `u:-x@h:p`; git refuses "strange pathname"); none hands ssh an option, likely older than this diff — `tools/repos-manifest/src/repos_manifest/manifest.py:218`
+
+## Checkpoint
+**When**: 2026-11-18 14:52 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 approved with no must-fix, and the full pre-commit pass passed at 20b12119)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on 20b12119. Published as part 1 of 3: the pull request says "Part of #498" and does not close the issue. Round 4's three suggestions go to the pull request's fix round with whatever its review finds.
