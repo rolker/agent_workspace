@@ -260,6 +260,7 @@ the current directory is inside; anywhere else in the system directory counts as
 |---|---|
 | `sync`, `status` | Every distro, in the order of `distros`. `--distro`, given once or more, names some of them. |
 | `show`, `resolve`, `build`, `freeze` | The system's only distro, when it has one. With several, an error that lists them. |
+| `validate` | Every distro the system records, in the order of `distros`; it writes nothing, so checking them all does no harm. `--distro` names one. |
 | `add-distro` | The distro named as its argument. |
 
 A `--distro` that the system does not record is an error for every command, a flat system
@@ -408,7 +409,8 @@ source setup.bash
 `show`, `resolve` and `validate` also work outside a system directory, with the manifest,
 role and distro given as arguments. That is the form a CI job or another tool uses, and the
 way to look at a manifest before setting anything up. Inside a system directory the distro is
-chosen as under "Which distro a command uses".
+chosen as under "Which distro a command uses": `validate` at the top checks every distro the
+system records, or the one `--distro` names.
 
 ### show
 
