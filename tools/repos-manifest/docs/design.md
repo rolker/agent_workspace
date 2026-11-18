@@ -574,11 +574,12 @@ Step 1 follows the same rules as every other update: a clone that a person has m
 another branch, or that has local work, is left as it is. A developer who is editing the
 manifest in its checkout gets that edited manifest.
 
-The manifest read for a distro is checked against what `config.yaml` records. Where they
-disagree, `sync` reports it for that distro, changes nothing for it, and goes on with the
-other distros:
+After step 1, the manifest read for a distro is checked against what `config.yaml` records.
+Where they disagree, `sync` reports it for that distro and goes on with the other distros. By
+then step 1 has updated the manifest's own clone; nothing else of that distro is changed: it
+is not resolved, and none of its repos is touched.
 
-- The manifest does not list a distro the system records, or lists no distros at all. The
+- The manifest this distro reads no longer lists it, or lists no distros at all. The
   message names the distro and says that nothing has been moved or removed. Nothing is
   deleted, and the distro stays recorded until the manifest lists it again or a person edits
   `config.yaml`.
