@@ -41,6 +41,11 @@
 #     inside a git repository, that repository's .agent/github_metadata.json;
 #     outside one, the workspace checkout's, only when -R names the
 #     workspace's own repository. For any other target GitHub validates them.
+#   - With WORKTREE_ISSUE set, "Part of #N" is added when the issue is in the
+#     parent's repository, "Part of owner/repo#N" when the parent's
+#     repository is known and differs (a WORKTREE_ISSUE of the form
+#     owner/repo#N names it), and nothing, with a warning, when it cannot be
+#     known (outside a git repository with a bare WORKTREE_ISSUE).
 #   - A --body-file is read once into a temporary copy (under TMPDIR,
 #     removed on exit), which is what gets signed and what gh reads: a
 #     pipe, FIFO or process substitution is signed like a regular file,
@@ -232,26 +237,55 @@ if [ -z "$GH_REPO" ]; then
     fi
 fi
 
-# Auto-inject parent issue reference when $WORKTREE_ISSUE is set
+# Auto-inject parent issue reference when $WORKTREE_ISSUE is set. The
+# reference is bare (#N) only when the new issue is in the parent's
+# repository, qualified (owner/repo#N) when the parent's repository is known
+# and differs from the target, and left out, with a warning, when the
+# parent's repository cannot be known (a bare WORKTREE_ISSUE outside git, or
+# inside git with -R and no GitHub origin): never a link into the wrong repo.
 if [ -n "${WORKTREE_ISSUE:-}" ]; then
-    # Determine the correct issue reference format (cross-repo vs same-repo)
-    PARENT_REF="#${WORKTREE_ISSUE}"
-    CURRENT_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
-    WORKSPACE_REPO_SLUG=""
-    WORKSPACE_ROOT="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
-    if [ -n "$WORKSPACE_ROOT" ] && git -C "$WORKSPACE_ROOT" remote get-url origin &>/dev/null; then
-        _WS_URL=$(git -C "$WORKSPACE_ROOT" remote get-url origin)
-        WORKSPACE_REPO_SLUG=$(echo "$_WS_URL" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+    _PARENT_NUM="$WORKTREE_ISSUE"
+    _PARENT_SLUG=""
+    _PARENT_QUALIFIED=false
+    if [[ "$WORKTREE_ISSUE" =~ ^([^/#[:space:]]+/[^/#[:space:]]+)#([0-9]+)$ ]]; then
+        _PARENT_SLUG="${BASH_REMATCH[1]}"
+        _PARENT_NUM="${BASH_REMATCH[2]}"
+        _PARENT_QUALIFIED=true
+    elif [ -n "$REPO_ROOT" ]; then
+        # The worktree's own repository is the parent's.
+        WORKSPACE_ROOT="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+        if [ -n "$WORKSPACE_ROOT" ] && git -C "$WORKSPACE_ROOT" remote get-url origin &>/dev/null; then
+            _WS_URL=$(git -C "$WORKSPACE_ROOT" remote get-url origin)
+            _PARENT_SLUG=$(echo "$_WS_URL" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+        fi
     fi
-    if [ -n "$CURRENT_REPO_SLUG" ] && [ -n "$WORKSPACE_REPO_SLUG" ] && [ "$CURRENT_REPO_SLUG" != "$WORKSPACE_REPO_SLUG" ]; then
-        PARENT_REF="${WORKSPACE_REPO_SLUG}#${WORKTREE_ISSUE}"
+    # The repository the issue is created in: -R, else the one gh resolves.
+    CURRENT_REPO_SLUG="$GH_REPO"
+    if [ -z "$CURRENT_REPO_SLUG" ]; then
+        CURRENT_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
     fi
-
+    PARENT_REF=""
+    if [ -n "$_PARENT_SLUG" ]; then
+        if [ -n "$CURRENT_REPO_SLUG" ] && [ "$CURRENT_REPO_SLUG" != "$_PARENT_SLUG" ]; then
+            PARENT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
+        elif [ -z "$CURRENT_REPO_SLUG" ] && [ "$_PARENT_QUALIFIED" = true ]; then
+            PARENT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
+        else
+            PARENT_REF="#${_PARENT_NUM}"
+        fi
+    elif [ -n "$REPO_ROOT" ] && [ -z "$GH_REPO" ]; then
+        # gh targets the worktree's own repository, the parent's.
+        PARENT_REF="#${_PARENT_NUM}"
+    else
+        echo "⚠️  Parent issue #${_PARENT_NUM}: its repository cannot be told here, so no parent reference was added (set WORKTREE_ISSUE=<owner/repo>#${_PARENT_NUM} to add one)"
+    fi
+fi
+if [ -n "${PARENT_REF:-}" ]; then
     # Check if body already references the parent issue. Word-boundary
     # regex avoids substring false positives (e.g., #12 matching #123); a
     # bash match, not a pipe, so a long body cannot cut the check short.
     NEEDS_INJECTION=true
-    _PARENT_PATTERN="(^|[^0-9])#${WORKTREE_ISSUE}([^0-9]|$)"
+    _PARENT_PATTERN="(^|[^0-9])#${_PARENT_NUM}([^0-9]|$)"
     if [ "$GH_BODY_INDEX" -ge 0 ]; then
         [[ "${GH_ARGS[$GH_BODY_INDEX]}" =~ $_PARENT_PATTERN ]] && NEEDS_INJECTION=false
     elif [ -n "$GH_BODY_COPY" ]; then

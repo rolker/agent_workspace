@@ -681,6 +681,49 @@ else
 fi
 
 echo
+echo "=== The parent reference never points at the wrong repository (issue 503) ==="
+run503w() {  # <WORKTREE_ISSUE> <cwd> <args...>: as run503, with WORKTREE_ISSUE set
+    local wi="$1" cwd="$2"
+    shift 2
+    rm -f "$ARGV_LOG"
+    OUT503=$(cd "$cwd" && WORKTREE_ISSUE="$wi" TMPDIR="$R503" \
+        bash "$WS503/.agent/scripts/gh_create_issue.sh" "$@" 2>&1)
+    RC503=$?
+}
+run503w 7 "$WS503" -R ws-owner/ws --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of #7' "$ARGV_LOG" \
+   && ! grep -q 'ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, same repository (-R the worktree's own): bare Part of #7"
+else
+    fail "parent ref, same repository: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w 7 "$WS503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, inside git, -R another repository: qualified Part of ws-owner/ws#7"
+else
+    fail "parent ref, inside git, other repository: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, qualified WORKTREE_ISSUE: Part of ws-owner/ws#7"
+else
+    fail "parent ref, outside git, qualified: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w pkg-owner/pkg#7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of #7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, qualified WORKTREE_ISSUE in the target repository: bare Part of #7"
+else
+    fail "parent ref, outside git, qualified same: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w 7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG" \
+   && [[ "$OUT503" == *"Parent issue #7: its repository cannot be told here, so no parent reference was added"* ]]; then
+    pass "parent ref, outside git, bare WORKTREE_ISSUE: none added, one-line warning"
+else
+    fail "parent ref, outside git, bare: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
