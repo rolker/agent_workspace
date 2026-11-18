@@ -18,6 +18,11 @@
 #   (f) guards are live once the register heading exists
 #   (g) a new ADR file without a register row fails only once the register
 #       exists
+#   (h) a part's design (issue #488): citations resolve against the part's
+#       headings, never the root's; each form's base (link from its file,
+#       backtick from its file then the root); URLs skipped; the root's
+#       design, part designs and followed sub-roadmaps as citers; untracked
+#       copies ignored
 #   usage and root selection, including the default root: a sandbox copy of
 #       the checker run with no argument through a `scripts/` symlink checks
 #       its own repository, not the repository's parent
@@ -522,6 +527,101 @@ plain_design "$R/docs/design.md"
 add_adrs "$R" 4
 run_checker "$R"
 expect "g: the same fourth ADR file with no register heading: exit 0" 0
+
+# ---------------------------------------------------------------- (h)
+echo "== (h) a part's design (issue #488) =="
+# part_root <name>: a git root with the root's design (headings How it
+# works, Glossary, Only root), a part design under tools/t/docs with the
+# headings Only part and Inner, and one under docs/manifest with Route.
+part_root() {
+    local root
+    root="$(new_root "$1")"
+    plain_design "$root/docs/design.md"
+    printf '\n## Only root\n' >> "$root/docs/design.md"
+    mkdir -p "$root/tools/t/docs" "$root/docs/manifest"
+    printf '# Tool\n\n## Only part\n\n## Inner\n\nSee [inner](#inner).\n' > "$root/tools/t/docs/design.md"
+    printf '# Manifest\n\n## Route\n' > "$root/docs/manifest/design.md"
+    git -C "$root" init -q
+    git -C "$root" add -A
+    echo "$root"
+}
+R="$(part_root h1)"
+printf 'Cites `tools/t/docs/design.md#only-part` and `docs/manifest/design.md#route`.\n' > "$R/README.md"
+git -C "$R" add README.md
+run_checker "$R"
+expect "h: a part's design is cited by its path and resolves against its own headings" 0
+printf 'Cites `tools/t/docs/design.md#only-root`.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a fragment present only in the root's design fails as a part citation" 1 \
+    "README.md:1:" "no such heading in tools/t/docs/design.md"
+printf 'Cites `docs/design.md#only-part`.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a fragment present only in the part's design fails as a root citation" 1 "no such heading in docs/design.md"
+printf 'Cites `tools/gone/docs/design.md#x`.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a missing part design file is an error" 1 "no such design file 'tools/gone/docs/design.md'"
+printf 'Cites `tools/t/docs/design.md#Only-Part` and `tools/t/docs/design.md#` here.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a malformed part fragment fails; an empty one is a placeholder" 1 "malformed" "check_design_anchors: 1 finding(s)"
+printf 'See https://github.com/o/r/blob/main/docs/design.md#nosuch and [x](https://github.com/o/r/blob/main/tools/t/docs/design.md#nosuch).\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a URL into a design file is neither checked nor an error" 0
+
+R="$(part_root h2)"
+mkdir -p "$R/.claude/skills/s"
+printf 'Use `docs/manifest/design.md#route`.\n' > "$R/.claude/skills/s/SKILL.md"
+printf 'See [route](manifest/design.md#route) and `manifest/design.md#route` and `design.md#glossary`.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: a backtick part path in a skill; a link and a backtick with the same text in docs/roadmap.md both resolve from docs/" 0
+printf 'See [route](manifest/design.md#gone) and `manifest/design.md#gone2`.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: both forms are checked against docs/manifest/design.md" 1 \
+    "docs/roadmap.md:1: broken anchor '#gone' (no such heading in docs/manifest/design.md)" "#gone2"
+printf 'See [x](docs/manifest/design.md#route).\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: a link resolves from its file only (docs/docs/manifest is missing)" 1 "no such design file 'docs/docs/manifest/design.md'"
+printf 'See `docs/manifest/design.md#route`.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: a backtick path with no file beside the citer falls back to the root" 0
+printf '[x](../../../outside/docs/design.md#a)\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: a path whose .. leaves the root is an error" 1 "leaves the root"
+: > "$R/docs/roadmap.md"
+
+printf '# Manifest\n\nSee [tool](../../tools/t/docs/design.md#only-part) and [bad](../../tools/t/docs/design.md#nope).\n\n## Route\n' > "$R/docs/manifest/design.md"
+run_checker "$R"
+expect "h: a link from one part's design to another resolves from its directory" 1 \
+    "docs/manifest/design.md:3:" "#nope" "check_design_anchors: 1 finding(s)"
+printf '# Manifest\n\n## Route\n' > "$R/docs/manifest/design.md"
+
+printf '\nThe manifest route: [manifest/design.md](manifest/design.md#gone).\n' >> "$R/docs/design.md"
+run_checker "$R"
+expect "h: the root's design is a citer of a part's design" 1 "docs/design.md:" "no such heading in docs/manifest/design.md"
+plain_design "$R/docs/design.md"
+
+printf '# Tool\n\n## Only part\n\n[broken](#not-here)\n' > "$R/tools/t/docs/design.md"
+run_checker "$R"
+expect "h: a tracked part design's own in-file links are checked against its headings" 1 \
+    "tools/t/docs/design.md:5:" "no such heading in tools/t/docs/design.md"
+printf '# Tool\n\n## Only part\n' > "$R/tools/t/docs/design.md"
+
+mkdir -p "$R/worktrees/x/docs" "$R/worktrees/y/tools/z/docs"
+printf '# Draft\n\n[broken](#nowhere)\n' > "$R/worktrees/x/docs/design.md"
+printf 'Cites `docs/design.md#nowhere`.\n' > "$R/worktrees/y/tools/z/docs/roadmap.md"
+run_checker "$R"
+expect "h: untracked copies (a git-ignored worktrees/ folder) are not read" 0
+
+# A citation inside a followed sub-roadmap, outside any git repository: the
+# pointer table finds the sub-roadmap and the design beside it.
+R="$(new_root h3)"
+plain_design "$R/docs/design.md"
+mkdir -p "$R/tools/t/docs"
+printf '# Tool\n\n## Only part\n\n[x](#gone-inner)\n' > "$R/tools/t/docs/design.md"
+printf '# Tool roadmap\n\nSee [d](design.md#only-part) and [e](design.md#gone-sub).\n' > "$R/tools/t/docs/roadmap.md"
+printf '# Roadmap\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| `tools/t/docs/roadmap.md` | `tools/t` |\n\n## Later\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: a followed sub-roadmap and the design beside it are citers, found through the pointer table" 1 \
+    "tools/t/docs/roadmap.md:3:" "#gone-sub" "tools/t/docs/design.md:5:" "#gone-inner" "check_design_anchors: 2 finding(s)"
 
 # ------------------------------------------------------- usage and root
 echo "== usage and root selection =="

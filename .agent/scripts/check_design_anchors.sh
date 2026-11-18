@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # check_design_anchors.sh -- every cited docs/design.md section anchor must
-# resolve to a heading in docs/design.md (issue #335, plan Wire-in 6).
+# resolve to a heading in docs/design.md (issue #335, plan Wire-in 6), and
+# every cited section of a part's design to a heading in that design
+# (issue #488).
 #
 # Purpose: renaming or dropping a design section must not silently break the
 # skills, README, roadmap and knowledge files that cite it by anchor. This is
@@ -13,19 +15,42 @@
 #   (<root>/.agent/scripts/check_design_anchors.sh). The test suite passes a
 #   fixture root.
 #
-# Citation forms (one form each way):
-#   * From outside design.md: `docs/design.md#<fragment>`; any prefix counts,
-#     so `$WS_ROOT/docs/design.md#<fragment>` is a citation. A citing file in
-#     docs/ itself (docs/roadmap.md) also cites by the relative
-#     `design.md#<fragment>` or `./design.md#<fragment>`. The fragment is
-#     the run of [A-Za-z0-9_-] after the '#'.
+# Citation forms. From outside design.md, a citation is a run of path
+# characters ending in `design.md#<fragment>`; the fragment is the run of
+# [A-Za-z0-9_-] after the '#'.
 #       - an empty run (the literal `docs/design.md#<section>` placeholder) is
 #         not a citation and is ignored;
+#       - a path with a scheme (`https://...`) or starting with `//` is a URL,
+#         never a citation of a local file: not checked, not an error;
+#       - a path whose last step is not exactly `design.md` (`other-design.md`)
+#         is not a citation;
 #       - any other fragment must match [a-z0-9][a-z0-9_-]*, otherwise it is a
 #         malformed-anchor error (so `#How-it-works` fails instead of slipping
 #         past a lowercase-only match). '_' is allowed because slug() keeps it,
 #         as GitHub does, so a heading with an underscore can be cited;
-#       - a fragment that matches is looked up among the heading slugs.
+#       - a fragment that matches is looked up among the headings of the file
+#         the path resolves to.
+#     How the path resolves (issue #488), one rule per form:
+#       - a leading `$VAR/` or `${VAR}/` (`$WS_ROOT/docs/design.md#x`) or `/`
+#         anchors it at the root;
+#       - a Markdown link target, `[..](<path>#x)`, resolves from the
+#         directory of the file that holds it, as GitHub resolves it
+#         (`manifest/design.md#x` in docs/roadmap.md is docs/manifest/...;
+#         `../../tools/t/docs/design.md#x` in docs/manifest/design.md);
+#       - any other citation (in backticks or prose) is tried from the
+#         citing file's directory first and, when no file is there, from the
+#         root. So in a file under docs/ a backtick path and a link with the
+#         same text name the same file whenever that file exists
+#         (`design.md#x` and `manifest/design.md#x` in docs/roadmap.md), and
+#         `docs/design.md#x` still means the root's design from any citer.
+#     A path that resolves to docs/design.md is a citation of the root's
+#     design. One that resolves to any other `design.md` under a `docs/`
+#     directory (`tools/ros-manifest/docs/design.md`, `docs/manifest/
+#     design.md`) cites a part's design (ADR-0022) and is checked against
+#     that file's headings, by the same slug() rule; a missing file is an
+#     error, as is a path whose `..` leaves the root. Anything else
+#     (`design.md` at the root, a `../design.md` that lands outside docs/)
+#     names some other file and is not checked.
 #   * Inside design.md: a Markdown link `](#<fragment>)` outside fenced code.
 #     The fragment is everything up to the ')'. Ignored: an all-digit fragment
 #     (an issue reference such as `[x](#12)`; a bare `(#295)` has no `](` and is
@@ -55,9 +80,18 @@
 # but no anchor with such a character can match the citation pattern anyway.
 #
 # Scope: every citation in README.md, .agent/AGENT_ONBOARDING.md,
-# .claude/skills/*/SKILL.md, .agent/knowledge/*.md and docs/roadmap.md (those
-# that exist), plus every in-file link in docs/design.md. Citations in fenced
-# code of the citing files still count.
+# docs/roadmap.md, docs/design.md (its citations of a part's design; its
+# own anchors are checked as in-file links), .claude/skills/*/SKILL.md and
+# .agent/knowledge/*.md (those that exist); every tracked (`git ls-files`)
+# design.md or roadmap.md under a docs/ directory, so a part's design and
+# roadmap; and each sub-roadmap docs/roadmap.md (else ROADMAP.md) names in
+# its `## Direction` section's `| Sub-roadmap | Root |` table, with the
+# design.md beside it. Files git does not track are never read: the main
+# checkout's git-ignored worktrees/ folder holds other branches' drafts.
+# Outside a git repository only the pointer table finds part files. Every
+# in-file link in docs/design.md is checked, and every in-file link of each
+# part design found this way (or cited), against that part's headings.
+# Citations in fenced code of the citing files still count.
 #
 # Anti-vacuity guards, conditional on the register: the register section is
 # the heading whose slug is `decision-register`. While docs/design.md has no
@@ -226,7 +260,7 @@ design_records() {
         if (has_link && reg_level > 0 && line ~ /^ *\|/) print "ROW", NR
     }
     END { if (fence != "") print "OPEN", fence_line }
-    ' "$DESIGN"
+    ' "${1:-$DESIGN}"
 }
 
 # Run awk first so its failure is seen: a failing process substitution would
@@ -261,15 +295,21 @@ while IFS=$'\t' read -r kind a b c; do
     esac
 done <<<"$RECORDS"
 
-# check_fragment <file> <line> <fragment> -- resolve or report one citation.
-check_fragment() {
-    local file="$1" line="$2" frag="$3"
+# check_anchor <file> <line> <fragment> <design file> -- resolve or report
+# one citation against the headings of <design file>.
+check_anchor() {
+    local file="$1" line="$2" frag="$3" target="$4"
     if [[ ! "$frag" =~ $ANCHOR_RE ]]; then
         finding "$file" "$line" "malformed anchor '#$frag' (must match [a-z0-9][a-z0-9_-]*)"
-    elif [[ -z "${SLUGS[$frag]+x}" ]]; then
-        finding "$file" "$line" "broken anchor '#$frag' (no such heading in $DESIGN)"
+    elif [[ "$target" == "$DESIGN" ]]; then
+        [[ -n "${SLUGS[$frag]+x}" ]] || finding "$file" "$line" "broken anchor '#$frag' (no such heading in $DESIGN)"
+    elif [[ -z "${PSLUGS["$target"$'\t'"$frag"]+x}" ]]; then
+        finding "$file" "$line" "broken anchor '#$frag' (no such heading in $target)"
     fi
 }
+
+# check_fragment <file> <line> <fragment> -- a citation of the root's design.
+check_fragment() { check_anchor "$1" "$2" "$3" "$DESIGN"; }
 
 # In-file links in design.md.
 for rec in ${LINKS[@]+"${LINKS[@]}"}; do
@@ -281,33 +321,153 @@ for rec in ${LINKS[@]+"${LINKS[@]}"}; do
     check_fragment "$DESIGN" "$line" "$frag"
 done
 
-# Citations from outside design.md.
-shopt -s nullglob
+# A part's design (issue #488, ADR-0022): any design.md under a docs/
+# directory other than the root's own. Its headings are read with the same
+# slug() rule, once, and its own in-file links are checked then.
+PART_RE='(^|/)docs/(.*/)?design\.md$'
+declare -A PSLUGS=()
+declare -A LOADED=()
+load_design() {  # <file relative to the root>
+    local f="$1" recs kind a b c rec frag
+    local -a plinks=()
+    [[ -z "${LOADED[$f]+x}" ]] || return 0
+    LOADED["$f"]=1
+    if ! recs="$(design_records "$f")"; then
+        finding "$f" 1 "could not read headings and links from $f"
+        return 0
+    fi
+    while IFS=$'\t' read -r kind a b c; do
+        case "$kind" in
+            HEAD) [[ -n "$c" ]] && PSLUGS["$f"$'\t'"$c"]=1 ;;
+            LINK) plinks+=("$a"$'\t'"$b") ;;
+            OPEN) finding "$f" "$a" "fenced code opened here is never closed, so no heading or link after it is checked" ;;
+        esac
+    done <<<"$recs"
+    for rec in ${plinks[@]+"${plinks[@]}"}; do
+        frag="${rec#*$'\t'}"
+        [[ -z "$frag" || "$frag" =~ ^[0-9]+$ || "$frag" == *'<'* ]] && continue
+        check_anchor "$f" "${rec%%$'\t'*}" "$frag" "$f"
+    done
+}
+
+# norm <path>: sets NORM to <path> with `.` and `..` steps folded; returns 1
+# when a `..` would leave the root.
+norm() {
+    local IFS=/ part
+    local -a parts out=()
+    read -ra parts <<<"$1"
+    for part in ${parts[@]+"${parts[@]}"}; do
+        case "$part" in
+            ''|.) ;;
+            ..) [[ ${#out[@]} -gt 0 ]] || return 1; unset 'out[${#out[@]}-1]' ;;
+            *) out+=("$part") ;;
+        esac
+    done
+    NORM="${out[*]}"
+}
+
+# Citers: the scoped files that exist, the root's own design (for its
+# citations of a part's design), every tracked design.md or roadmap.md
+# under a docs/ directory (git ls-files: an untracked copy, such as another
+# branch's draft in a git-ignored worktrees/ folder, is never read), and
+# each sub-roadmap the root's roadmap points at, with the design.md beside
+# it.
+declare -A SEEN=()
 CITERS=()
-for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md \
+add_citer() { [[ -f "$1" && -z "${SEEN[$1]+x}" ]] || return 0; SEEN["$1"]=1; CITERS+=("$1"); }
+shopt -s nullglob
+for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md "$DESIGN" \
          .claude/skills/*/SKILL.md .agent/knowledge/*.md; do
-    [[ -f "$f" ]] && CITERS+=("$f")
+    add_citer "$f"
 done
 shopt -u nullglob
-
-# A citer that sits in docs/ (docs/roadmap.md) may also cite design.md by a
-# relative path, `design.md#x` or `./design.md#x`.
-DOCS_CITERS=()
+while IFS= read -r -d '' f; do
+    [[ "$f" =~ ^(.*/)?docs/(.*/)?(design|roadmap)\.md$ ]] && add_citer "$f"
+done < <(git ls-files -z 2>/dev/null)
+# The pointer table: `| Sub-roadmap | Root |` in docs/roadmap.md's (else
+# ROADMAP.md's) `## Direction` section, outside fenced code.
+for rm_file in docs/roadmap.md ROADMAP.md; do
+    [[ -f "$rm_file" ]] || continue
+    while IFS= read -r f; do
+        [[ -n "$f" && "$f" != /* && "$f" != *..* ]] || continue
+        add_citer "$f"
+        add_citer "$(dirname -- "$f")/design.md"
+    done < <(awk '
+        /^ {0,3}(```|~~~)/ { fence = !fence; next }
+        fence { next }
+        /^ {0,3}##[ \t]+Direction[ \t#]*$/ { d = 1; next }
+        d && /^ {0,3}##?([ \t]|$)/ { exit }
+        !d { next }
+        /^[ \t]*\|/ {
+            n = split($0, c, "|")
+            for (i = 1; i <= n; i++) { gsub(/^[ \t`]+|[ \t`]+$/, "", c[i]) }
+            if (!t) { t = (tolower(c[2]) == "sub-roadmap" && tolower(c[3]) == "root") ? 1 : -1; next }
+            if (t == 1 && c[2] !~ /^[-: ]*$/) print c[2]
+            next
+        }
+        { t = 0 }' "$rm_file" 2>/dev/null)
+    break
+done
 for f in ${CITERS[@]+"${CITERS[@]}"}; do
-    [[ "$f" == docs/* && "$f" != docs/*/* ]] && DOCS_CITERS+=("$f")
+    [[ "$f" != "$DESIGN" && "$f" =~ $PART_RE ]] && load_design "$f"
 done
 
+# Citation forms (see the header): every `<path>design.md#<fragment>` run in
+# a citer, with whether it is a Markdown link target (`](` before it).
+citations() {
+    awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t" }
+    {
+        line = $0; off = 0
+        while (match(substr(line, off + 1), re)) {
+            s = off + RSTART
+            tok = substr(line, s, RLENGTH)
+            print FILENAME, FNR, (s > 2 && substr(line, s - 2, 2) == "](") ? 1 : 0, tok
+            off = s + RLENGTH - 1
+        }
+    }' "$@"
+}
+
 if [[ ${#CITERS[@]} -gt 0 ]]; then
-    while IFS=: read -r file line match; do
-        frag="${match#*design.md#}"
-        [[ -z "$frag" ]] && continue
-        check_fragment "$file" "$line" "$frag"
-    done < <(
-        grep -HnoE -- 'docs/design\.md#[A-Za-z0-9_-]*' "${CITERS[@]}" 2>/dev/null
-        if [[ ${#DOCS_CITERS[@]} -gt 0 ]]; then
-            grep -HnoE -- '(^|[^A-Za-z0-9_./-])(\./)?design\.md#[A-Za-z0-9_-]*' "${DOCS_CITERS[@]}" 2>/dev/null
+    while IFS=$'\t' read -r file line islink tok; do
+        frag="${tok##*#}"
+        path="${tok%#*}"
+        [[ -n "$frag" ]] || continue                              # placeholder
+        [[ "$path" =~ ^[A-Za-z][A-Za-z0-9+.-]*: || "$path" == //* ]] && continue   # a URL
+        [[ "$path" == design.md || "$path" == */design.md ]] || continue
+        anchored=false
+        if [[ "$path" =~ ^\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)/(.*)$ ]]; then
+            path="${BASH_REMATCH[2]}"; anchored=true
+        elif [[ "$path" == /* ]]; then
+            anchored=true
         fi
-    )
+        dir="$(dirname -- "$file")"
+        target=""
+        if [[ "$anchored" == true ]]; then
+            norm "$path" && target="$NORM"
+        elif [[ "$islink" == 1 ]]; then
+            norm "$dir/$path" && target="$NORM"
+        else
+            if norm "$dir/$path" && [[ -f "$NORM" ]]; then
+                target="$NORM"
+            elif norm "$path"; then
+                target="$NORM"
+            fi
+        fi
+        if [[ -z "$target" ]]; then
+            finding "$file" "$line" "'$tok' leaves the root"
+            continue
+        fi
+        if [[ "$target" == "$DESIGN" ]]; then
+            check_fragment "$file" "$line" "$frag"
+        elif [[ "$target" =~ $PART_RE ]]; then
+            if [[ ! -f "$target" ]]; then
+                finding "$file" "$line" "no such design file '$target' for '#$frag'"
+                continue
+            fi
+            load_design "$target"
+            check_anchor "$file" "$line" "$frag" "$target"
+        fi
+    done < <(citations "${CITERS[@]}")
 fi
 
 # Anti-vacuity guards, live only once the register heading exists and
