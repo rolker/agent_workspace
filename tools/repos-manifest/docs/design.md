@@ -109,7 +109,8 @@ who may want a second distro later sets up with `--distro-dirs` from the start. 
 with no `distros:` always gives a flat system.
 
 The smallest system is one repo on one distro with no layers and no roles, set up flat. The
-tools do little more here than `vcs` and `colcon`:
+tools do little more here than `vcs` and `colcon`. The two trees below are abridged and show
+only what the layout changes:
 
 ```
 my_system/
