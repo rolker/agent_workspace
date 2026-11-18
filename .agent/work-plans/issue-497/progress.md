@@ -321,3 +321,24 @@ Sandbox removed afterwards.
 - test_ros2_colcon.sh: `=== Results: 1014 passed, 0 failed, 0 skipped ===`
 - test_design_anchors.sh: `test_design_anchors: 82 passed, 0 failed`; `check_design_anchors.sh` rc=0
 - The tool's pytest suite was not rerun (only the docstring and the pyproject description changed). The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 12:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-497 at `4fcdbdb3`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff of 61 files, +624 -194; fix-round re-review classified as a first review)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All five round-1 suggestions are done (bf7263ac, 17aa9e0a, efa5d181, 1a2e0d0a, 0f268ac8). Re-checked: the acceptance search leaves only history or needed hits (Makefile:202,204,209; ADR-0022:17,31,33,36; design.md change-log rows 1072,1110,1129,1133,1139; README:6,119,120,122; prototype.md:3); `git diff -U0 origin/main -- .github` is only the approved lines, and no ruleset or `needs:` names the renamed job. Makefile recipe run in a scratch copy with its own venv (pip 25.1.1; main `.venv` untouched): old editable install present, removed and replaced, rc 0; stamp present, nothing done; old absent, quiet, rc 0 (`--quiet` alone prints the "Skipping" warning, `-qq` does not); old source already deleted, still removed, rc 0; RECORD missing, pip error shown, make rc 2, no new stamp. The recipe removes only the old distribution, `.venv/bin/ros-manifest` and `.make/ros-manifest.done`. pyproject.toml and `__init__.py` changed only in the description and the docstring. `setup:` is Makefile line 99; `wc -l docs/design.md` is 1194, equal to the newest row. pre-commit on the changed files: 19 hooks passed, none failed.
+
+Dropped: codex's "remove the old install only after the new one works" (round 1 dropped it: after the merge the old editable install points at a deleted tree); codex's prototype.md history sentence and gemini's "verify a second decision-text mention" (the host kept the first; the search finds no second); gemini's CI required-check concern (main has no required status checks and no ruleset check).
+
+### Findings
+- [ ] (suggestion) ADR-0022's Context gains "(now `tools/repos-manifest`)": it passes ADR-0008's "how to tell" test but is not in ADR-0008's list (Status note, References, broken links or typos); the host asked for this form, so keep it or move the note to the Status line (gemini, Claude adversarial) — `docs/decisions/0022-a-part-owns-its-inside.md:36`
+- [ ] (suggestion) The note on the left-over `tools/ros-manifest/` describes a workspace checkout inside the tool's own README, while `docs/manifest/design.md:4` says the tool's documents do not mention the workspace; put that sentence in the PR description or the workspace's manifest docs (gemini) — `tools/repos-manifest/README.md:121`
+- [ ] (suggestion) Venv and stamps are shared from the main checkout, so worktrees on branches from before #497 lose `.venv/bin/ros-manifest` once main runs `make setup`, and their `make install-ros-manifest` fails (its pyproject prerequisite is gone from the main checkout); this branch's `install-repos-manifest` likewise fails until main has the rename. Say in the PR description that such branches merge main (Claude adversarial, codex) — `Makefile:207`
