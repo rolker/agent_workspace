@@ -154,3 +154,11 @@ His instruction on nesting, in his words (2026-11-18): "The excuses for sticking
 As put to him and accepted: the decision record puts no limit on levels of planning and design; one level is stated as what the checker follows today; and a pointer inside a sub-roadmap is listed as "not followed", not as a problem.
 
 He chose "Keep both" for the planner's two other choices: a part's lines do not count in the root's totals, and a pointer to a roadmap in another repo is deferred until there is a case.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 09:00 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-488/plan.md` at `05cd445e`
+
+Revision after the Plan Review and the owner's `revise`. The decision record sets no limit on levels; the checker follows one, and a nested pointer is "not-followed", not a problem. Anchor citations get a base per form (backtick from the root, link from the file), a scheme skip and a wider citer list and hook filter; the default sit-rep reports each part's next step by path (`--next-steps`, tested); Serves names README goals; the boundary rule is review only with a review-guide row, and the audit finds the 487 manifest-route bullet needs a trim; sub-roadmap `gh-issue` checks name work in flight, marked by the sub-roadmap path.
