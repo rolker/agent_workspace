@@ -38,3 +38,34 @@ Specialists: Claude adversarial (facts against source, governance), Gemini, Code
 - [x] (suggestion) docs/design.md reads as if source_path were required, and cites the part rule as settled (codex, adversarial) — `docs/design.md:447`
 - [x] (suggestion) The change-log row gives neither the section's size nor whether detail should move (adversarial) — `docs/design.md:1105`
 - [ ] (suggestion) The check for the Rolling instance is an issue closing, not a live validation (codex) — `docs/manifest/roadmap.md:33`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 10:44 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-487 at `60361bdd`
+**Base**: origin/main
+**Depth**: Standard (reason: docs only, governance file docs/design.md)
+**Must-fix**: 6 | **Suggestions**: 9
+**Round**: 2 | **Ship**: continue — 6 must-fix, down from 9
+
+Specialists: Claude adversarial (confirmed every statement about today's code against source), Gemini, Codex (all complete). All findings below were addressed in ecd6b71e, which no reviewer has read yet. Gemini's finding that the change-log line count was wrong was checked and is not a finding: the count was right.
+
+### Findings
+- [x] (must-fix) "The other guarantees are covered by the tool's design" is wrong for three: a failed resolve changing nothing, a reader not cut off, and the guarded transports and clones (adversarial, gemini, codex) — `docs/manifest/design.md:211`
+- [x] (must-fix) validate fails when the directory "was set up from something else", but the target keeps no second record to compare with (gemini, codex, adversarial) — `docs/manifest/design.md:204`
+- [x] (must-fix) The design forbids reading the tool's files yet needs its state, role, distros and resolved layers (gemini, adversarial) — `docs/manifest/design.md:224`
+- [x] (must-fix) The roadmap removes distro= before a session can say which distro it works on (gemini, adversarial) — `docs/manifest/roadmap.md:33`
+- [x] (must-fix) No way to retry a failed init, and the source keys and the route choice are not covered by the retirement (gemini) — `docs/manifest/design.md:189`
+- [x] (must-fix) No adapter path for adding a second distro to an instance (gemini) — `docs/manifest/design.md:189`
+- [x] (suggestion) Goals says the workspace records the manifest, role and distro, against "What the workspace records" (gemini) — `docs/manifest/design.md:18`
+- [x] (suggestion) The adapter's own fetch bound was not named (gemini, adversarial) — `docs/manifest/design.md:104`
+- [x] (suggestion) Only build said it is per distro; test was not covered (gemini) — `docs/manifest/design.md:184`
+- [x] (suggestion) validate also fails on a missing .resolved-from, a missing role, an unresolvable distro and a second source; its check passes over optional layers and accepts an empty directory (adversarial, codex) — `docs/manifest/design.md:80`
+- [x] (suggestion) docs/design.md's validate conditions disagreed with the part's design (gemini) — `docs/design.md:452`
+- [x] (suggestion) The roadmap spoke of separate Rolling and Jazzy instances; the #473 line had no check (gemini) — `docs/manifest/roadmap.md:35`
+- [x] (suggestion) A manifest that does not resolve can leave the manifest's clone moved forward (codex) — `docs/manifest/design.md:211`
+- [ ] (suggestion) Always passing --manifest-path rules out a raw-file URL as source (gemini); today's source URL is always a git repo, so nothing is lost — `docs/manifest/design.md:234`
+- [ ] (suggestion) The check for the Rolling line is an issue closing, not a live validation (codex, round 1) — `docs/manifest/roadmap.md:35`
