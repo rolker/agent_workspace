@@ -226,6 +226,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 |---|---|---|
 | `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
 | `init` | More than one `--distro` without `--distro-dirs`. | Add `--distro-dirs`. |
+| `init` | `--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form: a local path, or a URL with `--manifest-ref` and no `--manifest-path`. | Give the manifest in the git form, or leave the option out. |
 | `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs` and without `--distro`. |
 | `init` | No `--distro`, with a manifest that has `distros:`. | Name one with `--distro`. |
 | `init` | A `--distro` without `--distro-dirs`, with a manifest that has no `distros:`. | Set up without `--distro`. |
@@ -235,7 +236,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
 | `add-distro` | The distro is already recorded. | `sync --distro <name>`. |
 | `add-distro` | `<name>/` exists in the system directory. | Move it out of the way. |
-| `add-distro` | `--manifest-ref` is given and `manifest` is not given in the git form. | Run without `--manifest-ref`. |
+| `add-distro` | `--manifest-ref` is given and `manifest` is not given in the git form. | Leave `--manifest-ref` out. |
 | `add-distro` | The manifest read has no `distros:`. | None: there is no distro to add. |
 | `add-distro` | The manifest read has `distros:` and does not list the distro. | `--manifest-ref` for a version that lists it, or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
 
