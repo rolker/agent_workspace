@@ -453,3 +453,43 @@ Part 1 of 3, finished by the host on the owner's takeover answer. The dispatched
 - .github/workflows/validate.yml: the tool's test job, validate-repos-manifest, runs on Python 3.10 and 3.14 through a version matrix (fail-fast off, so one version's failure does not hide the other's), and its name gains "(Python <version>)". No other job is touched. The owner's words: "yes, add python 3.14 to CI" (2026-11-18).
 - Not run by the host: the tool suite. The dispatched pass ran it on Python 3.14.4 here (487 passed) and the adapter suite (1014 passed, 0 failed); Python 3.10 is checked by CI after the push. The full pre-commit pass runs before the push.
 - Left from the dispatched pass's report, for the review to weigh: nine readings it chose where the spec and the Checkpoints were silent (listed in its entry), the plan's Prior Art line on signals not corrected, and the tool's roadmap unchanged because no row is fully true until base is read.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 13:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `764f1195`
+**Base**: origin/main
+**Depth**: Deep (reason: input-safety checks and an output writer that deletes and replaces directories; 68 files, +3870 -169; touches .github/workflows)
+**Must-fix**: 7 | **Suggestions**: 11
+**Round**: 1 | **Ship**: continue — round 1: 7 must-fix; first round always re-reviews after fixes
+
+Part 1 only (one manifest, no `base`). Selection was checked against the spec rule by rule and by hand-written manifests (role, distro, extra groups, `absent` on the repo and under a distro, unlisted distro entries, several groups, the unnamed layer, no roles/distros/layers): no bug found. Old reader: its tests are untouched; behaviour unchanged apart from the 3.14 stat fix. CI diff is only the tool's job gaining a 3.10/3.14 matrix used by setup-python, and its name; YAML parses. Fixture: 43 public repos plus the made-up `example/site_config` (does not exist). New code parses with Python 3.10 grammar and uses no newer library feature found.
+
+Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests` gives `487 passed`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`. Python 3.10 not run here.
+
+Specialists: static analysis (no linter beyond pre-commit for these files; Python 3.10 grammar parse run), governance and plan drift (Claude subagent), Claude adversarial (subagent), cross-model gemini and codex (both completed, EXIT=0).
+
+Readings where the spec was silent: (1) distro entry with `version` and `absent: true` refused: right. (2) unknown distro-entry key warned: right, matches repo keys. (3) url host starting with `-` refused: right, the spec says so; the code's host extraction is wrong (must-fix 2). (4) scp form needs a user: matches the spec's text; `host:path` with an ssh alias is common, owner may widen. (5) a role with no value refused: right, the spec says a role is always a list. (6) symlinked `--out` refused: right. (7) BOM refused: right, U+FEFF is invisible; untested. (8) names differing only in case: layer names should be refused (they are file names in `--out` and directories later), and reserved layer names compared without case; repo keys can stay with the destination check; needs a spec line, owner to confirm. (9) `repositories: {}` accepted: right, an empty `.repos` is valid.
+
+### Findings
+- [ ] (must-fix) Invisible characters accepted, in comments and in keys/values: variation selectors U+FE00-FE0F/U+E0100-E01EF, Hangul fillers U+115F/U+1160/U+3164/U+FFA0, U+034F, U+2800, unassigned code points; `ok` and `"okㅤ"` resolve as two repos that look the same; refuse default-ignorable, Cn and Co characters — `tools/repos-manifest/src/repos_manifest/yamlload.py:148`
+- [ ] (must-fix) url host check takes the text after the first `@` across the whole url and ignores `[...]`: `ssh://a@b@-oProxyCommand=x/p`, `ssh://[-oProxyCommand=x]/p` and `git@[-o...]:p` pass, `https://example.org/repo@-v1.git` is refused; take the authority before the first `/`, the part after the last `@`, brackets stripped — `tools/repos-manifest/src/repos_manifest/manifest.py:195`
+- [ ] (must-fix) Ctrl-C between the two renames deletes the previous output and leaves no `--out`: SIGINT is not held, `except OSError` misses KeyboardInterrupt, and `finally` removes `old`; hold SIGINT too and remove `old` only once the new output is in place — `tools/repos-manifest/src/repos_manifest/output.py:44`
+- [ ] (must-fix) `roles: {}` is accepted and `validate` prints "valid" with no role checked, although `resolve` can never succeed; refuse it like `distros: []`, with a spec line and a test — `tools/repos-manifest/src/repos_manifest/manifest.py:242`
+- [ ] (must-fix) New tracked test names the private repo `ccomjhc_project11` (visibility PRIVATE), against the rule that new mentions name only public repos; take the old key from the old fixture's `site.repos` instead of spelling it — `tools/repos-manifest/tests/test_project11.py:44`
+- [ ] (must-fix) The third Checkpoint ordered the plan's Prior Art line on signal handling corrected; still says the process-group and signal machinery is rejected; also the stale optional.txt reason at line 38 — `.agent/work-plans/issue-498/plan.md:99`
+- [ ] (must-fix) The tool's design document names the workspace's ros2_colcon adapter; say it from a general user's view (a caller that needs `layers.txt` and `optional_layers.txt` passes `--layout manifest-dir`) — `tools/repos-manifest/docs/design.md:698`
+- [ ] (suggestion) A SIGTERM/SIGHUP held during the swap is delivered after it, and the CLI prints "nothing was written" although `--out` was replaced — `tools/repos-manifest/src/repos_manifest/cli.py:76`
+- [ ] (suggestion) A repo key starting with `#` (quoted) is written to optional.txt and read back as a comment; refuse it or define the encoding (owner, spec line) — `tools/repos-manifest/src/repos_manifest/output.py:88`
+- [ ] (suggestion) The sweep removes any marked `.<name>.new-*`/`.old-*` sibling: another run's live temp directory, or a real output whose name has that shape; tie leftovers to their destination or a lock — `tools/repos-manifest/src/repos_manifest/output.py:113`
+- [ ] (suggestion) A new-format file that does not parse (duplicate key, alias, syntax) or a missing file, given to `validate` without `--role`/`--distro`, reports "arguments are required: --role, --distro" instead of the read or parse error — `tools/repos-manifest/src/repos_manifest/cli.py:172`
+- [ ] (suggestion) Checks on `--out` run outside the OSError handler: an unreadable existing `--out` gives "internal error (PermissionError)" — `tools/repos-manifest/src/repos_manifest/output.py:144`
+- [ ] (suggestion) Refuse layer names that differ only in case (`Core`/`core` collide in `--out` on a case-insensitive disk) and compare reserved layer names without case (`Src`, `INSTALL`) — `tools/repos-manifest/src/repos_manifest/manifest.py:231`
+- [ ] (suggestion) The `::` check refuses valid IPv6 urls (`ssh://user@[::1]/repo`); match only a leading `<word>::` — `tools/repos-manifest/src/repos_manifest/manifest.py:189`
+- [ ] (suggestion) An ssh user or port starting with `-` is accepted (`ssh://-oX@host/p`, `ssh://host:-oX/p`); git blocks or ignores both, but the spec's "no value makes git run a program" argues for refusing — `tools/repos-manifest/src/repos_manifest/manifest.py:195`
+- [ ] (suggestion) No test pins readings 2 and 7 (unknown key in a distro entry warned; a BOM refused) — `tools/repos-manifest/tests/test_manifest_reading.py:165`
+- [ ] (suggestion) Job name still says "#267 prototype" though it now tests the new reader too; owner's call, mention in the PR — `.github/workflows/validate.yml:56`
+- [ ] (suggestion) `test_developer_gets_the_44_repos_of_the_earlier_fixture` reads `fixtures/p11`, which part 3 deletes; add it to part 3's list — `tools/repos-manifest/tests/test_project11.py:69`
