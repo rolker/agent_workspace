@@ -295,17 +295,19 @@ repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro 
 `--role` is given when the manifest has roles and `--distro` when it has distros, and not
 otherwise. `--with` names an extra group and may be given more than once.
 
-The output is replaced whole or not at all. The files are built and checked first, then
-written into a new hidden directory beside the output (`.<name>.new-<random>`), and that
+The output is replaced whole or not at all. The files are built and checked first, then written
+into a new hidden directory beside the output (`.<name>.new-<pid>-<random>`), and that
 directory is moved into place. An existing output directory is moved aside first and removed
 after, and put back if the move fails. A directory is only replaced when it is empty or holds
 the marker file `.repos-manifest-output` that `resolve` writes, so `--out .` cannot delete a
 person's files. A SIGTERM or SIGHUP while resolving ends the run and removes the hidden
 directory. SIGINT, SIGTERM and SIGHUP are held during the two moves and delivered after them,
-and an interrupt that still comes between them puts the previous output back, so the output
-is the previous one or the new one, never neither. A run killed outright can leave one behind; the next `resolve` to the same place
-removes hidden directories beside it that hold the marker or are empty. Two runs writing to
-the same place at once are not supported.
+and an interrupt that still comes between them puts the previous output back, so the output is
+the previous one or the new one, never neither. A run killed outright can leave one behind; the
+next `resolve` to the same place removes the hidden directories beside it that a process that
+has ended made, when they hold the marker or are empty; a run still going keeps its own, and an
+output named like them is refused. Two runs writing to the same place at once are not
+supported.
 
 `resolve` makes the checks of "Reading a manifest before using it" in the specification that
 can be made on the text. The check on the real destination, that a link on the disk or two

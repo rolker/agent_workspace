@@ -14,14 +14,17 @@ groups it came from. A reader of the two lists skips lines that start with ``#``
 
 The files are written into a new hidden directory beside ``--out`` and moved into place, so
 ``--out`` is replaced whole or not at all. An existing ``--out`` is replaced only when it is
-empty or holds the marker. Hidden directories a killed run left beside ``--out`` are removed
-at the start of the next run when they hold the marker or are empty.
+empty or holds the marker. The hidden directories are named ``.<name>.new-<pid>-<random>`` and
+``.<name>.old-<pid>-<random>``; the ones a killed run left beside ``--out`` are removed at the
+start of the next run when their process has ended and they hold the marker or are empty. An
+``--out`` named like them is refused.
 """
 
 from __future__ import annotations
 
 import errno
 import os
+import re
 import shutil
 import signal
 import tempfile
@@ -107,12 +110,39 @@ def _is_ours_or_empty(path: Path) -> bool:
     return (path / MARKER).is_file() or not any(path.iterdir())
 
 
+# The name of a temporary directory: `.<name>.new-<pid>-<random>` or `.<name>.old-...`, where
+# <pid> is the process that made it and <random> is what mkdtemp adds.
+_TEMP_SUFFIX = r"\.(?:new|old)-(?P<pid>[0-9]+)-[a-z0-9_]{8}"
+_TEMP_NAME = re.compile(r"\..+" + _TEMP_SUFFIX)
+
+
+def _temp_prefix(name: str, kind: str) -> str:
+    return f".{name}.{kind}-{os.getpid()}-"
+
+
+def _process_has_ended(pid: int) -> bool:
+    """True only when no process `pid` is running (on POSIX; elsewhere it is never known)."""
+    if os.name != "posix" or pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True  # an earlier run with the same id; this run has made none yet
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:  # PermissionError: it runs, as another user
+        return False
+    return False
+
+
 def _sweep_leftovers(parent: Path, name: str) -> None:
-    """Remove the hidden directories an earlier run that was killed left beside the output,
-    when they hold the marker or are empty. Nothing else is touched."""
-    prefixes = (f".{name}.new-", f".{name}.old-")
+    """Remove the hidden directories a run that was killed left beside this output: named for
+    this output, made by a process that has ended, and holding the marker or empty. Nothing
+    else is touched, a run still going included."""
+    leftover = re.compile(re.escape(f".{name}") + _TEMP_SUFFIX)
     for entry in parent.iterdir():
-        if entry.name.startswith(prefixes) and _is_ours_or_empty(entry):
+        match = leftover.fullmatch(entry.name)
+        if match and _process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
             shutil.rmtree(entry, ignore_errors=True)
 
 
@@ -144,6 +174,11 @@ def write_output(
     if out_abs.parent == out_abs:
         raise ManifestError(f"--out {out}: cannot be the root directory")
     parent, name = out_abs.parent, out_abs.name
+    if _TEMP_NAME.fullmatch(name):
+        raise ManifestError(
+            f"--out {out}: is named like the tool's temporary directories, which a later run"
+            " may remove; give it another name"
+        )
     if out_abs.is_symlink():
         raise ManifestError(f"--out {out}: is a symbolic link; give the directory itself")
     exists = out_abs.exists()
@@ -160,7 +195,7 @@ def write_output(
         except FileExistsError:  # a part of the path is a file
             raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR)) from None
         _sweep_leftovers(parent, name)
-        new = Path(tempfile.mkdtemp(prefix=f".{name}.new-", dir=parent))
+        new = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "new"), dir=parent))
     except OSError as exc:
         raise ManifestError(
             f"--out {out}: cannot be written ({exc.strerror or 'an OS error'})"
@@ -175,7 +210,7 @@ def write_output(
         for file_name, text in files.items():
             _write_text(new / file_name, text)
         if exists:
-            old = Path(tempfile.mkdtemp(prefix=f".{name}.old-", dir=parent))
+            old = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "old"), dir=parent))
         with _signals_held():
             if old is not None:
                 os.rename(out_abs, old)  # onto the empty directory mkdtemp made

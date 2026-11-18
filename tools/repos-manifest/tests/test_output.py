@@ -3,6 +3,9 @@ output, the head comment, writing whole or not at all, and the choice of reader.
 
 import os
 import signal
+import subprocess
+import sys
+import tempfile
 
 import pytest
 
@@ -201,25 +204,63 @@ def test_an_out_that_cannot_be_created_is_one_line(manifest, tmp_path, capsys):
     assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
 
 
+def _dead_pid():
+    """The process id of a process that has ended."""
+    child = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return int(child.stdout)
+
+
+def _leftover(parent, name, *, pid, kind="new", marked=True, files=()):
+    path = parent / f".{name}.{kind}-{pid}-abcd_123"
+    path.mkdir()
+    if marked:
+        (path / MARKER).write_text("")
+    for file_name in files:
+        (path / file_name).write_text("")
+    return path
+
+
 def test_leftovers_of_a_killed_run_are_swept_when_marked_or_empty(manifest, tmp_path):
-    marked = tmp_path / ".out.new-abc123"
-    marked.mkdir()
-    (marked / MARKER).write_text("")
-    (marked / "core.repos").write_text("")
-    empty = tmp_path / ".out.old-def456"
-    empty.mkdir()
-    unmarked = tmp_path / ".out.old-ghi789"
-    unmarked.mkdir()
-    (unmarked / "mine.txt").write_text("keep me")
-    other = tmp_path / ".other.new-abc123"
-    other.mkdir()
+    dead = _dead_pid()
+    _leftover(tmp_path, "out", pid=dead, files=("core.repos",))
+    _leftover(tmp_path, "out", pid=dead, kind="old", marked=False)
+    unmarked = _leftover(tmp_path, "out", pid=dead + 1, kind="old", marked=False, files=("x",))
+    other = _leftover(tmp_path, "other", pid=dead)
     assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
-    assert _names(tmp_path) == [
-        ".other.new-abc123",
-        ".out.old-ghi789",
-        "m.manifest.yaml",
-        "out",
-    ]
+    assert _names(tmp_path) == sorted([other.name, unmarked.name, "m.manifest.yaml", "out"])
+
+
+def test_the_temporary_directories_this_tool_makes_have_the_swept_shape(tmp_path):
+    for kind in ("new", "old"):
+        made = tempfile.mkdtemp(prefix=output._temp_prefix("out", kind), dir=tmp_path)
+        match = output._TEMP_NAME.fullmatch(os.path.basename(made))
+        assert match and int(match.group("pid")) == os.getpid()
+
+
+def test_the_temporary_directory_of_a_run_still_going_is_left_alone(manifest, tmp_path):
+    live = _leftover(tmp_path, "out", pid=os.getppid(), files=("core.repos",))
+    assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
+    assert _names(tmp_path) == sorted([live.name, "m.manifest.yaml", "out"])
+
+
+def test_a_directory_whose_name_only_looks_like_a_leftover_is_left_alone(manifest, tmp_path):
+    for name in (".out.new-abc123", ".out.old-x-abcd_123", ".out.new-12-abcd_123.keep"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / MARKER).write_text("")
+    assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
+    assert len(_names(tmp_path)) == 5
+
+
+def test_an_out_named_like_a_temporary_directory_is_refused(manifest, tmp_path, capsys):
+    out = tmp_path / ".out.new-123-abcd_123"
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    assert "is named like the tool's temporary directories" in capsys.readouterr().err
+    assert _names(tmp_path) == ["m.manifest.yaml"]
 
 
 def test_a_failed_second_rename_puts_the_previous_output_back(manifest, tmp_path, monkeypatch):
