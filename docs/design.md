@@ -578,7 +578,11 @@ Status: `decided`
   `worktrees/workspace`, so a workspace worktree never counts as a project's). Only a registered
   project has worktrees: an unregistered name is refused, and the `worktrees/project/<repo>/`,
   `.workspace-worktrees/` and `project/worktrees/` locations are no longer searched (#265 part 4).
-  Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
+  A project root need not be a git repository (a plain directory holding clones); each repository a
+  worktree is made of must be, and `worktree_create.sh` checks that before it makes anything, so a
+  single-repository project, whose one repository is its root, still needs one (issue 503).
+  Naming, the `.git/info/exclude` line the workspace adds to a project root that is a git
+  repository, and the `COLCON_IGNORE`
   marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
 - A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
   worktrees of the current repository and a project is a separate repository (`.agent/WORKTREE_GUIDE.md`,
@@ -1138,6 +1142,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Change log | Main merged into issue 488's branch after #487 landed (pull request 496): the rows of both sides are kept, #487's (already on main) before #488's, and their line counts are each side's own file at the time; this row's count is the merged file's | #488 | 1187 |
 | 2026-11-18 | Registry and adapters | The manifest-route bullet cites ADR-0022 for the rule for parts, now written, in place of "being written under #488", and links the manifest tool's own design (`tools/ros-manifest/docs/design.md`, its Commands section) as ADR-0022 decision 2 requires, with a section citation into `docs/manifest/design.md`; the roadmap's Direction section gains the pointer rows for both parts' roadmaps | #488 | 1193 |
 | 2026-11-18 | Documentation layers, Rules, Registry and adapters, Decision register | The manifest tool is renamed repos-manifest (path `tools/repos-manifest`, package, command, make target `install-repos-manifest`, stamp, environment variable, cache directory), with no change to what it does; `make setup` removes the old install on a machine that has it. Earlier rows keep the old name as history | #497 | 1194 |
+| 2026-11-18 | Worktrees | A project root need not be a git repository (issue 503 part 1A): `worktree_create.sh` requires the root to be a directory and checks each repository the worktree is made of before it makes anything; one sentence in the bullet on where project worktrees live, and the `.git/info/exclude` line is said to apply to a root that is a git repository. Registration of a root in no git repository is unchanged (part 1B) | #503 | 1199 |
 
 ## Glossary
 

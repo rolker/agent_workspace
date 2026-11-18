@@ -3996,6 +3996,89 @@ test_bootstrap_no_url_names_source() {
     assert_contains "names source=" "project_setting.sh set tiered source=<git URL or absolute path>" "$out"
 }
 
+# ---- A project root in no git repository (issue 503 part 1A) ----
+
+# The "tiered" project of make_colcon_project, in today's layout, but with
+# its root outside every git repository: <outer>/projects/tiered, where
+# <outer> is a sibling of the git-initialised workspace sandbox (both under
+# $SANDBOX, which is no repository), registered by its absolute path. Its
+# clones' origins are served from <outer>/fake_remotes (make_committed_pkg_repo).
+make_outside_git_colcon_project() {  # <sb>; prints the project dir
+    local sb="$1" outer proj mdir
+    outer="$(mktemp -d -p "$SANDBOX")"
+    proj="$outer/projects/tiered"
+    mdir="$proj/configs/manifest"
+    mkdir -p "$mdir/repos"
+    printf 'l1\nl2\nl3\n' > "$mdir/layers.txt"
+    printf 'l3\n' > "$mdir/optional_layers.txt"
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\ndistro: fakefox\n' \
+        > "$mdir/bootstrap.yaml"
+    write_repos_file "$mdir/repos/l1.repos" fakefox pkg_a pkg_b
+    write_repos_file "$mdir/repos/l2.repos" fakefox pkg_c
+    write_repos_file "$mdir/repos/l3.repos" fakefox pkg_priv
+    echo "tiered ros2_colcon $proj" >> "$sb/.agent/projects.local"
+    make_underlay "$sb"
+    echo "$proj"
+}
+
+test_worktree_create_package_root_outside_git() {
+    echo "TEST: a package worktree on a multi-repo root in no git repository is made (issue 503)"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_outside_git_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    assert_eq "precondition: the root is in no git repository" "outside" \
+        "$(git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 && echo inside || echo outside)"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#503 --type project --project tiered \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    wt="$proj/worktrees/issue-tiered-owner-pkg_a-503"
+    assert_eq "exit 0" "0" "$rc"
+    assert_not_contains "no refusal of the root" "project checkout is not a git repository" "$out"
+    assert_eq "worktree checked out on feature/issue-503" \
+        "feature/issue-503" "$(git -C "$wt/l1_ws/src/pkg_a" branch --show-current 2>/dev/null)"
+    assert_eq "the header records the pin as base=" \
+        "# project=tiered issue=owner/pkg_a#503 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos" 2>/dev/null)"
+    assert_eq "the owning branch starts at origin's fakefox" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" rev-parse refs/remotes/origin/fakefox)" \
+        "$(git -C "$wt/l1_ws/src/pkg_a" rev-parse HEAD 2>/dev/null)"
+    assert_eq "env.sh sources the underlay, the root's l1 install, then the worktree's" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/layers/main/l1_ws/install/local_setup.bash; fi
+if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/local_setup.bash; fi" \
+        "$(cat "$wt/env.sh" 2>/dev/null)"
+    assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
+    assert_eq "test.sh generated and executable" "true" "$([ -x "$wt/test.sh" ] && echo true || echo false)"
+    assert_eq "COLCON_IGNORE written in the root's worktrees/" "true" \
+        "$([ -f "$proj/worktrees/COLCON_IGNORE" ] && echo true || echo false)"
+}
+
+test_worktree_create_package_root_outside_git_repo_not_git_refused() {
+    echo "TEST: on a root in no git repository, a named repo that is no git repository is refused before anything is made (issue 503)"
+    local sb out rc=0 proj
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_outside_git_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    populate_layer "$proj" l1 pkg_b
+    assert_eq "precondition: the root is in no git repository" "outside" \
+        "$(git -C "$proj" rev-parse --git-dir >/dev/null 2>&1 && echo inside || echo outside)"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#504 --type project --project tiered \
+        --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
+    assert_eq "exits 1" "1" "$rc"
+    assert_contains "names the repo that is no git repository" "pkg_b" "$out"
+    assert_eq "no worktrees/ made under the root" "false" \
+        "$([ -e "$proj/worktrees" ] && echo true || echo false)"
+    assert_eq "no owning branch made" "false" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" show-ref --verify --quiet refs/heads/feature/issue-504 && echo true || echo false)"
+    assert_eq "no worktree added to pkg_a" "1" \
+        "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
@@ -4078,6 +4161,8 @@ test_repo_pin_not_found
 test_repo_pin_entry_without_version
 test_repo_pin_two_layers
 test_bootstrap_no_url_names_source
+test_worktree_create_package_root_outside_git
+test_worktree_create_package_root_outside_git_repo_not_git_refused
 mr_test test_mr_wrapper_runs_this_checkouts_resolver
 mr_test test_mr_setup_from_path_source
 mr_test test_mr_url_source_branch_tag_commit

@@ -542,7 +542,11 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             exit 1
         fi
     fi
-    if [ ! -d "$PROJECT_DIR" ] || ! git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
+    # The root need only be a directory: a root holding clones need not be a
+    # git repository itself (issue 503). Each repository the worktree is made
+    # of is checked once the list is resolved, before anything is made; for
+    # a single-repository project that is the root itself, with this message.
+    if [ ! -d "$PROJECT_DIR" ]; then
         echo "Error: project checkout is not a git repository: $PROJECT_DIR"
         [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"
         exit 1
@@ -716,6 +720,20 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
         echo "Error: worktree_repos returned no repos to worktree"
         exit 1
     fi
+    # Every repository the worktree is made of must be a git repository,
+    # checked here, before any directory, branch or worktree is made, so a
+    # refusal leaves nothing behind. The "." entry is the project root itself.
+    while IFS=$'\t' read -r WR_ORIGIN WR_REL _; do
+        [ -z "$WR_ORIGIN" ] && continue
+        git -C "$WR_ORIGIN" rev-parse --git-dir >/dev/null 2>&1 && continue
+        if [ "$WR_REL" = "." ]; then
+            echo "Error: project checkout is not a git repository: $PROJECT_DIR"
+            [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"
+        else
+            echo "ERROR: manifest entry is not a git repository: $WR_ORIGIN" >&2
+        fi
+        exit 1
+    done <<< "$REPO_LINES"
     # --base is the owning repository's base: without an entry on
     # $BRANCH_NAME it would be recorded for a branch this worktree does not
     # have.

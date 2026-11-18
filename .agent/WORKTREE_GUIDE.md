@@ -95,8 +95,12 @@ agent_workspace/
 source of truth for where a project's worktrees live: a registered name
 resolves to its own root (or its `worktrees=` override); an unregistered name
 is refused with the registration command (issue #265 part 4: only a registered
-project has worktrees). On first worktree creation under a
-registered root, the workspace appends `worktrees/` to that root's own
+project has worktrees). A project root need not be a git repository (a
+plain directory holding clones, issue 503); each repo a worktree is made of
+must be, and `worktree_create.sh` refuses one that is not before it makes
+anything (a single-repository project's one repo is its root). On first
+worktree creation under a registered root that is a git repository, the
+workspace appends `worktrees/` to that root's own
 `.git/info/exclude` (never a tracked file) so the worktree dir never shows up
 in the project's own `git status`. Type-specific markers are the adapter's
 job (ADR-0012): the `ros2_colcon` adapter's `worktree_env` verb writes an
