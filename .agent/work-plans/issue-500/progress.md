@@ -1,0 +1,136 @@
+---
+issue: 500
+---
+
+# Issue #500 — repos-manifest: init and sync set up and update a system directory
+
+## Issue Review
+**Status**: complete
+**When**: 2026-11-18 16:15 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Issue**: #500
+
+### Scope Assessment
+
+**Well-scoped?** Not as written; yes after a split — as written it is the whole system-directory machinery (init, layout, distro dirs, local manifest, a state file, per-repo update rules, optional repos, `--` passthrough) in one PR, and the owner's aim needs only part of it. Deliver in parts (see Recommendations).
+**Right repo?** Yes — `tools/repos-manifest` in the workspace repo.
+**Serves**: the manifest tool's goal of one system directory set up and kept in line from one manifest — `tools/repos-manifest/docs/design.md#the-system-directory`, `#sync`, `#more-than-one-distro`; root: the project-setup path in `docs/manifest/design.md` (read from `origin/feature/issue-495`, PR #508, not yet merged).
+**Design picture?** No change by this issue itself, but it builds on design text that is not on `main`: PR #508 (issue #495, the layout with `--distro-dirs`, `add-distro`, `layout` and `distros` in `config.yaml`) is open. Four questions are explicitly left to the building of `init` and `sync` (what `init` prints for several distros; a role or group missing from one distro's manifest; `sync`'s exit status when one distro is reported and the others go on; removing a distro). Each must be decided in the plan, and the decision written back into the design in the same change (ADR-0017).
+**Dependencies**: Issue #498 part 2 (reading `base`) is not on this branch; #499 `show` is open (init prints what `show` prints, and `show` is the code that reads a manifest from the three location forms); PR #508 (#495) is open and unmerged; #501 `build` follows. #498 part 1 (PR #506) is merged and is on this branch: `resolve`, `validate`, the reader (`yamlload.py`, `manifest.py`, `selection.py`) and the whole-or-nothing output writer (`output.py`).
+
+#### Statements in the issue that are stale, and the true ones
+
+| Issue says | True now |
+|---|---|
+| Design in `tools/ros-manifest/docs/design.md` (also the "Where this fits" paragraph, with `tools/ros-manifest/docs/spec.md` and `roadmap.md`) | The tool is `tools/repos-manifest/`; the docs are `tools/repos-manifest/docs/{design,spec,roadmap}.md`. |
+| "A directory per layer with `src/`; the unnamed first layer's `src/` directly in the system directory" | Correct only for a flat system. With `--distro-dirs` each distro has its own directory holding its layers (or a bare colcon workspace) and its own `setup.bash`; `.repos-manifest/resolved/<distro>/` holds that distro's resolved files. Also in the layout: `setup.bash` and `build/ install/ log/` (these last belong to #501). |
+| "A directory per distro. The design follow-up (#495) decides how ... build what that issue settles, and if it is not settled when this starts, raise it at the plan checkpoint." | Settled in PR #508 (open): flat by default; `init --distro-dirs` chosen once at `init` and never changed; a flat system cannot gain a distro; `add-distro <name> [--manifest-ref <ref>]` adds one later. The plan checkpoint question is answered; the remaining dependency is the PR merging. |
+| `init <manifest> --role <role> --distro <distro> [--with <group>]...` | Also `--distro-dirs` (one or more `--distro`), `--manifest-ref`, `--manifest-path` for the git form, `--yes`, and `-- <vcs import arguments>`. Without `--distro-dirs`, one `--distro` (none when the manifest has no `distros:`). |
+| "creates `.repos-manifest/` with the record of what it was given" | `.repos-manifest/` and `config.yaml` are made in one step (written aside and moved into place); before that nothing exists and `init` can be run again. `config.yaml` records `manifest`, `local_manifest`, `role`, `groups`, `layout` (`flat` / `distro-dirs`) and `distros` (a mapping; an entry may carry `manifest_version`). If the first sync fails or is interrupted, `sync` finishes it. |
+| "prints what `show` prints and asks before fetching" | Also prints, for a flat system with a distro, the one `Layout:` line that `--yes` does not skip. What `init` prints for several distros is an open question. |
+| Not in scope: "an `init` that can be run again ... They are part of the design follow-up (#495) and come after it." | `init` runs again until the `config.yaml` step, and refuses an already set-up directory, with the Refusals table (14 rows, 8 for `init`, checked in the listed order, fetch-free checks first). That is now part of `init` and needs tests. The lock, time limits, failed-resolve-changes-nothing and commit-named manifest are still not in the tool's design: see Recommendations. |
+| `sync`: "update the clone the local manifest is in ... resolve; clone what is missing; update what is there" | Per distro, in the order of `distros`; after step 1 the manifest read is checked against `config.yaml` and a distro it no longer lists (or a flat system whose manifest gained `distros:`) is reported and `sync` goes on with the others, changing nothing of that distro. A distro the manifest lists and the system does not record: nothing happens. `sync --distro <name>` (repeatable) selects distros. |
+| "Arguments after `--` passed to `vcs import`" | Passed to the `vcs import` of missing repos only; existing repos are handled one at a time with `git`. |
+| "the record of the version and commit last put on each repo, in `.repos-manifest/state.yaml`" | Correct, kept per distro; the inner shape is not fixed, and writing one distro's state must leave every other distro's as it was. A repo with no record is recorded and followed if on the manifest's version, and treated as moved by a person if not. |
+| "commits not on `origin` ... put back on top of what was fetched" | Add the failure rule: if they do not go on cleanly the repo is put back as it was and reported. |
+| "`local_manifest`: set by `init` when the manifest is a file in a git repo that the manifest lists" | Also a per-distro rule: with `--distro-dirs` it is a path inside each distro's directory, the same path in each; the copy read is the first of local copy then the `manifest` location at the distro's `manifest_version`. |
+
+#### `add-distro`: this issue or its own?
+Its own issue. It is a separate command with its own 6-row refusals table, `--manifest-ref` handling and its own read of the manifest (at the ref, not the local copy), and the owner's aim (one machine, ROS Rolling, a directory per distro) does not need it. It does share code with `init` (record a distro, sync one distro), so write `init`'s per-distro sync as a function that takes one distro. State this boundary in the plan. #495 deferred the "removing a distro" question; it stays out of both.
+
+#### Can it be built now?
+Yes in part. It can build on what is on this branch: the new reader, `resolve(manifest, role, distro, groups)`, `check_role_and_distro`, and `write_output` (the whole-or-nothing writer that already meets "a failed resolve changes nothing" for the resolved files). It has to wait for: PR #508 merging, so the layout and `config.yaml` shape it writes are the design on `main` (the plan can be written against the PR branch, but the merge should precede the code review); #499 for the "print what `show` prints" step and for reading a manifest from a URL or git repo (the new reader reads a file path only, and the old reader still holds the git/URL code until part 3 of #498); #498 part 2 only when the project11 manifest uses `base` — check this before planning (if the draft manifest has no `base`, no wait). For the owner's case with a local manifest file, #499 and #498 part 2 are avoidable.
+
+Suggested parts:
+1. `init` and first `sync`, one distro, flat and with `--distro-dirs`: the system directory, `config.yaml`, refusals, resolve to `.repos-manifest/resolved[/<distro>]/`, clone missing repos with `vcs import`, record `state.yaml`, `local_manifest`. This is the owner's aim.
+2. `sync` on a system that already has clones: the update rules (follow, moved branch, dirty, unpushed commits rebased, repo removed from manifest), the manifest-vs-config check, `--distro`, optional repos.
+3. `add-distro`.
+The risk-bearing part is 2; part 1 only clones, so part 1 can land and be used first. Part 1 still has to write `state.yaml` and clone through a function part 2 reuses.
+
+#### The cloning tool: vcstool or vcs2l
+This machine has `/usr/bin/vcs` from the Debian package `python3-vcstool` 0.3.0 (checked: `vcs --version` → `vcs 0.3.0`; `dpkg -l` shows `python3-vcstool 0.3.0-1` and `python3-vcstools 0.1.42-1`). There is no vcs2l in `.venv/bin` and `tools/repos-manifest/pyproject.toml` depends on `PyYAML` only. The design says `vcs`, "from vcs2l", and records its behaviours as tested on vcs2l 1.1.7. The issue should require a `vcs` command on `PATH` that provides `vcs import` with `--input`, `--skip-existing`, `--recursive`, `--shallow` and `--retry` (all present in 0.3.0), accept either vcstool or vcs2l (vcs2l is a maintained fork with the same command line), and not add either as a Python dependency (the design says the tools call `vcs` as a command). Detect it by `shutil.which("vcs")` and a run of `vcs --version` before anything is created (a missing tool is a refusal that changes nothing), and say how to install it. Two real risks: (a) the design's statement that `vcs import` is used only for missing repos was tested on vcs2l; the plan has to test the same two behaviours on vcstool 0.3.0 (it should not be relied on for existing repos at all, so this is mostly moot if `sync` only passes missing repos); (b) `vcs 0.3.0` prints a `pkg_resources` DeprecationWarning on every call, so output must not be parsed from stderr and the failure of one repo must be found from the exit status and a per-repo check, not by reading text. Also: "an optional repo that cannot be fetched is skipped and listed" needs a way to tell which repo failed, since one `vcs import` over a whole `.repos` file only gives a failing exit status; the plan should say how (import the optional repos in a call of their own, or check each path after the call). The design's "What the tools rely on" section should say vcstool is accepted if that is decided.
+
+#### What the workspace asks of the tool (from `docs/manifest/design.md`, "What the tool has to give")
+| Ask | Include in #500? |
+|---|---|
+| A failed resolve changes nothing | Include: `write_output` already replaces the output whole or not at all; `sync` must also say that the manifest is what failed and leave other repos as they were. Add an acceptance test. |
+| Protection against two runs at once | Include a minimal lock on `init`/`sync` or a separate issue before the adapter is made thin. It is the most likely to cause real damage because `sync` rebases and moves repos. I recommend a separate small issue that lands before part 2; at minimum, the plan states how part 1 behaves under two runs. |
+| Time limits on fetches | Separate issue (a time limit on `vcs import` and each `git fetch`, with `--retry`); not needed for the owner's aim. State "no limit yet" in the issue's Not-in-scope. |
+| A manifest named by a commit | Separate issue; the git form takes a branch or tag and the design says so. |
+| A status a script can read | Separate; that is #502. |
+All five are asked by the workspace for the adapter (#503); none of them is in the tool's design as a section yet, so putting them in #500 would make the issue build undesigned behaviour. The issue's Not-in-scope paragraph should list each by name and link to the issues that hold them, rather than point at #495.
+
+#### Risks to people's clones, against the issue's acceptance criteria
+| Promise in the design | Tested by the issue's acceptance list? |
+|---|---|
+| A repo still on the version with nothing local follows the manifest, and moves to a new version | Yes ("a version change followed"). |
+| A repo a person moved to another branch is left alone and reported | Yes, "each left-alone case", but not named: list it. |
+| Uncommitted changes: left alone and reported | Same: list it. Also untracked files and a mid-rebase or mid-merge state, which the design does not mention; decide and test. |
+| Commits not on `origin` are never switched to another version | Partly: "unpushed commits kept across a `sync`" does not test the manifest changing the version while commits are unpushed. Add it. |
+| While on the manifest's branch the unpushed commits are rebased on what was fetched | Not tested as a rebase. Add a test with new upstream commits and local commits. |
+| If the rebase does not go on cleanly the repo is put back as it was and reported | No. Add a conflicting-rebase test that checks HEAD, branch, index and working tree are byte-identical afterwards. |
+| A repo no longer in the manifest is left on disk and reported; nothing is deleted | Named in the text, no test. Add a test that the directory and its contents survive. |
+| A repo with no state record: followed if on the manifest's version, otherwise treated as moved | No. Add (matters when `state.yaml` is lost or after an interrupted first sync). |
+| URL of a repo changed: `vcs import` refuses; handled with `git` | No. Add the case (remote URL differs from the manifest's). |
+| Step 1 updates the manifest's own clone by the same rules; a developer editing the manifest gets the edited manifest | Partly ("local manifest winning once it exists"). Add a dirty-manifest-clone test. |
+| Writing one distro's state leaves the others as they were; a distro the manifest no longer lists is reported with nothing moved, and `sync` goes on | No (the issue predates this). Add, with a two-distro `--distro-dirs` fixture. |
+| An optional repo that cannot be fetched is skipped and listed every time; any other repo that cannot be fetched is an error | The first half is tested; the error for a non-optional repo is not. Add. |
+| An interrupted `init`: nothing exists, or `sync` finishes it | No. Add: kill after `config.yaml` is written and before the clone; `init` again gives the refusal and `sync` finishes. |
+| Refusals change nothing | No. A test per row of the `init` table, each asserting that the directory is unchanged. |
+The list "unpushed commits", "moved branch", "dirty" and "removed" are a data-loss class, so the issue should say that each case is tested against real local git repos and that no test accepts a deleted file or reset branch.
+
+#### Acceptance: the by-hand test
+Change it to the owner's case: `init --distro-dirs --distro rolling --role developer` from the project11 draft manifest on this machine (ROS Rolling, a directory per distro), a second `sync` changing nothing, and `git status` and `git log` of a repo with a local commit unchanged after a `sync`. Drop the "second machine" wording if it is a different machine. Recording the commands in the PR stays.
+
+### Principle Alignment
+
+| Principle | Status | Notes |
+|---|---|---|
+| Keep one current design | Action needed | The issue was written before PR #508; its layout, flags and `config.yaml` description are stale (table above). Update the issue's references (new tool path, `--distro-dirs`, `distros`/`layout` in `config.yaml`, the refusals, per-distro `sync`), decide the four open questions in the plan, and write the answers into `tools/repos-manifest/docs/design.md` in the same change (ADR-0017). Remove `init` and `add-distro` from "What is built". |
+| Only what's needed | Action needed | Split the issue: `init` + first `sync` for one distro (flat and `--distro-dirs`) first; existing-clone updates second; `add-distro` third (its own issue). The owner's aim needs only the first. |
+| A change is only done when its consequences are done | Action needed | Acceptance omits tests for most promises in the "never discard work" list and for the Refusals table (table above); add them. |
+| Verify before claiming | Watch | The design's claim on `vcs import` behaviour was tested on vcs2l 1.1.7; this machine has vcstool 0.3.0. The plan has to run the behaviours on the tool in use. |
+| Ask about what matters | Watch | Four design questions are left to this work; bring each to the owner at the plan checkpoint with the choices (what `init` prints for several distros; a role or group missing from one distro's manifest; `sync` exit status when one distro is reported and the rest go on; removing a distro, which can stay for a later issue). |
+
+### ADR Applicability
+
+| ADR | Triggered | Notes |
+|---|---|---|
+| ADR-0017 (design kept current) | Yes | Design sections change with the answers to the four open questions and the vcstool decision. |
+| ADR-0022 (a part with its own design) | Yes | Work is inside `tools/repos-manifest`; Serves names the root goal and the part's design sections. |
+| ADR-0009 (no bare pip install, `.venv`) | Watch | If vcs2l is wanted for tests, install it in `.venv`, not system-wide; the tool itself adds no dependency. |
+| ADR-0013 (progress timeline) | Yes | This entry. |
+
+### Consequences
+
+- `tools/repos-manifest/README.md` and the design's "What is built" and "What the tools rely on" sections change.
+- `docs/manifest/roadmap.md` and `tools/repos-manifest/docs/roadmap.md` need the split into parts and the new issue for `add-distro`.
+- Tests: a local-git-repo fixture for the update rules; a fixture with two distros under `--distro-dirs`.
+- `.agent/knowledge/` build/test page, if it lists the tool's runtime requirements (add `vcs`, `git`).
+
+### Recommendations
+
+- Correct the issue text before planning, per the stale-statements table: `tools/repos-manifest` paths; `--distro-dirs`, `--manifest-ref`, `--manifest-path`, `--yes`, `--` and `--distro` on `sync`; `config.yaml` with `layout` and `distros`; the Refusals table; per-distro `sync`; the distro-not-listed reports; `state.yaml` per distro. Do this as a new comment or an edit by the owner; this review does not change the body.
+- Split: keep #500 as `init` and the first `sync` for one distro (flat and `--distro-dirs`) with the clone-only path, open a second issue for `sync` against existing clones (the left-alone rules, rebase, per-distro report, optional repos), and a third for `add-distro`. If the owner prefers one PR, order the commits that way.
+- Write the plan against PR #508's design now but do not start implementation review until #508 merges; wait for #499 only if `init` must print what `show` prints on the same PR (otherwise print a short summary and replace it when #499 lands, noting it in the plan).
+- Check whether the project11 draft manifest uses `base`; if it does, #498 part 2 has to land first.
+- Require `vcs` from vcstool or vcs2l found on `PATH`; no Python dependency; check before creating anything; test the behaviours the design relies on on the installed tool; do not parse stderr.
+- Make a failed-resolve-changes-nothing check part of the acceptance (it comes with `write_output`); open separate issues for the lock between two runs, time limits on fetches and a manifest named by a commit, and name them in Not-in-scope; the script-readable status is #502.
+- Add the missing acceptance tests: one for each row of the risks table above, a per-row test of the `init` Refusals table that asserts nothing changed, an interrupted-`init` test, a two-distro state test.
+- Change the by-hand acceptance to `--distro-dirs --distro rolling --role developer` on this machine, and add a check that a repo with a local commit and a dirty file keeps both across `sync`.
+- Decide at the plan checkpoint the four questions the design left open, and write the answers into the design in the same change.
+
+### Actions
+- [ ] 
+- [ ] 
+- [ ] 
+- [ ] Correct the issue text before planning, per the stale-statements table: `tools/repos-manifest` paths; `--distro-dirs`, `--manifest-ref`, `--manifest-path`, `--yes`, `--` and `--distro` on `sync`; `config.yaml` with `layout` and `distros`; the Refusals table; per-distro `sync`; the distro-not-listed reports; `state.yaml` per distro. Do this as a new comment or an edit by the owner; this review does not change the body.
+- [ ] Split: keep #500 as `init` and the first `sync` for one distro (flat and `--distro-dirs`) with the clone-only path, open a second issue for `sync` against existing clones (the left-alone rules, rebase, per-distro report, optional repos), and a third for `add-distro`. If the owner prefers one PR, order the commits that way.
+- [ ] Write the plan against PR #508's design now but do not start implementation review until #508 merges; wait for #499 only if `init` must print what `show` prints on the same PR (otherwise print a short summary and replace it when #499 lands, noting it in the plan).
+- [ ] Check whether the project11 draft manifest uses `base`; if it does, #498 part 2 has to land first.
+- [ ] Require `vcs` from vcstool or vcs2l found on `PATH`; no Python dependency; check before creating anything; test the behaviours the design relies on on the installed tool; do not parse stderr.
+- [ ] Make a failed-resolve-changes-nothing check part of the acceptance (it comes with `write_output`); open separate issues for the lock between two runs, time limits on fetches and a manifest named by a commit, and name them in Not-in-scope; the script-readable status is #502.
+- [ ] Add the missing acceptance tests: one for each row of the risks table above, a per-row test of the `init` Refusals table that asserts nothing changed, an interrupted-`init` test, a two-distro state test.
+- [ ] Change the by-hand acceptance to `--distro-dirs --distro rolling --role developer` on this machine, and add a check that a repo with a local commit and a dirty file keeps both across `sync`.
+- [ ] Decide at the plan checkpoint the four questions the design left open, and write the answers into the design in the same change.
