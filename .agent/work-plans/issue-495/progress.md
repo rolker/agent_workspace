@@ -593,3 +593,12 @@ Scope: the round 4 findings and `git diff 9e1d191a..HEAD` (d8677aa7, 6e66e92e ch
 
 ### Findings
 None.
+
+## Checkpoint
+**When**: 2026-11-18 15:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 5 approved with no findings, and the full pre-commit pass passed at 23db6d0e)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on 23db6d0e. Published; the pull request closes the issue.
