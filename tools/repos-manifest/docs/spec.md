@@ -443,6 +443,8 @@ command that writes there.
     even one inside brackets. The host is what follows the last `@`, without the brackets of
     an IPv6 address. Inside the brackets, the text before the last `@` is a user too, and the
     text after the first `:` a port. The `path` of a location is relative and has no `..` in it.
+    A `version` that starts with `heads/` or `tags/` does not start with `-` after it either,
+    since vcstool takes that part off and passes the rest to `git`.
   - An address `git` hands to ssh, an `ssh://` url or the `[user@]host:path` form, holds no
     `%` anywhere, and a `[` and a `]` only as one pair around the host at its start (as in
     `ssh://user@[::1]:22/repo` or `[::1]:repo`); a `[` or a `]` anywhere else, the path

@@ -199,6 +199,19 @@ class _Checker:
             raise self.error(where, f"{value!r} starts with '-', which git would read as an option")
         return value
 
+    def version(self, value, where: str) -> str:
+        """A version that git cannot read as an option, as given or as vcstool passes it: it
+        takes a leading `heads/` or `tags/` off and checks out the rest."""
+        version = self.not_an_option(self.string(value, where), where)
+        for prefix in ("heads/", "tags/"):
+            if version.startswith(prefix) and version[len(prefix) :].startswith("-"):
+                raise self.error(
+                    where,
+                    f"{version!r} starts with '-' after {prefix!r}, which vcstool takes off;"
+                    " git would read the rest as an option",
+                )
+        return version
+
     def name(self, value, kind: str, where: str) -> str:
         if not isinstance(value, str) or not _NAME.fullmatch(value):
             raise self.error(where, f"{kind} name {value!r} is not allowed; a name is {_NAME_RULE}")
@@ -467,9 +480,7 @@ class _Checker:
             )
         repo = Repo(key=key, type=repo_type, url=self.url(entry["url"], f"{where}.url"))
         if "version" in entry:
-            repo.version = self.not_an_option(
-                self.string(entry["version"], f"{where}.version"), f"{where}.version"
-            )
+            repo.version = self.version(entry["version"], f"{where}.version")
         if "absent" in entry:
             repo.absent = self.boolean(entry["absent"], f"{where}.absent")
         if "optional" in entry:
@@ -512,10 +523,7 @@ class _Checker:
                     self.warn(f"{entry_where}: unknown key {name!r} is ignored")
             distro_entry = DistroEntry()
             if "version" in entry:
-                distro_entry.version = self.not_an_option(
-                    self.string(entry["version"], f"{entry_where}.version"),
-                    f"{entry_where}.version",
-                )
+                distro_entry.version = self.version(entry["version"], f"{entry_where}.version")
             if "absent" in entry:
                 distro_entry.absent = self.boolean(entry["absent"], f"{entry_where}.absent")
             if distro_entry.absent and distro_entry.version is not None:

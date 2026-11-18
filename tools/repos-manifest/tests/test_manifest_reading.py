@@ -324,6 +324,23 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
     _refused(_one_repo(extra, top="distros: [jazzy]\n"), "starts with '-'")
 
 
+# vcstool takes a leading `heads/` or `tags/` off a version (those two, and no other) and, in a
+# repo that is already there, runs `git checkout <the rest> --`.
+@pytest.mark.parametrize("version", ["heads/-f", "tags/-x", "heads/--orphan=x"])
+def test_a_version_starting_with_a_dash_after_heads_or_tags_is_refused(version):
+    _refused(_one_repo(f"    version: {version}\n"), "starts with '-' after")
+    extra = f"    distros:\n      jazzy:\n        version: {version}\n"
+    _refused(_one_repo(extra, top="distros: [jazzy]\n"), "starts with '-' after")
+
+
+@pytest.mark.parametrize("version", ["heads/main", "tags/v1.0", "feature/-x", "refs/heads/-x"])
+def test_a_version_with_heads_or_tags_and_no_dash_after_is_read(version):
+    assert _m(_one_repo(f"    version: {version}\n")).repositories["a"].version == version
+    extra = f"    distros:\n      jazzy:\n        version: {version}\n"
+    m = _m(_one_repo(extra, top="distros: [jazzy]\n"))
+    assert m.repositories["a"].distros["jazzy"].version == version
+
+
 @pytest.mark.parametrize(
     "url",
     [
