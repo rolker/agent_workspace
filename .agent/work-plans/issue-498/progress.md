@@ -248,3 +248,11 @@ The plan's ten open questions, answered:
 8. The head comment names the commit read for a base in a git repo.
 9. In the layout the adapter reads, "every repo in the layer is optional" counts the repos selected for the machine, with a warning on a mixed layer.
 10. Adding Python 3.14 to the CI job is the owner's to decide and has been put to him; until he answers, the plan leaves CI unchanged.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 13:15 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `090edff6` (revision answering the `revise` Checkpoint)
+
+Findings 1 to 12: resolve writes the per-layer files, `layers.txt` and `optional.txt` (repo keys) from part 1, and part 3's manifest-dir layout is a second writer over the same data; the adapter keeps its role and distro requirement (the tool's error passes through, no preflight code changes, comments and `docs/manifest/design.md` step 1 change, one new test, the plain-.repos adapter test dropped, the note says so); the git limit applies only with no terminal and ends the whole process group; `_rc_relabel_provenance`, its test and every cache use in the adapter and tests are listed with line numbers; the raw-text character check, `selection.py`, dispatch on parse failure, leftover sibling sweep, `--cache-dir` removed outright, baseline 333 tests, `developer` role in the end check, the `stat()` 3.14 fix, a test for unreadable location forms, `.` key part and redirect rules are in. The plan lists its additions with reasons. Questions 1 to 9 are carried as the host answered; question 10 (CI on 3.14) stays open with the plan written for either answer and nothing under `.github/` changed meanwhile.
