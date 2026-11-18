@@ -204,7 +204,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 | `build` | Builds each layer in order. |
 | `status` | Shows what the system directory holds against what the manifest says. |
 | `freeze` | Writes a manifest with the exact commit of every repo the machine has. |
-| `validate` | Checks a manifest against the specification without resolving it for a machine. |
+| `validate` | Checks a manifest against the specification and resolves it for every role and distro it lists, writing nothing. |
 
 After `init`, the other commands take no arguments in the common case. A person setting up a
 machine types:
@@ -704,7 +704,9 @@ A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 `resolve` and `validate` read the format in the specification for a manifest that stands on
 its own, given as a path on the local disk. `resolve` writes the files described under
 "resolve" into `--out`. `validate` checks the file and resolves it for every role and distro it
-lists. `base` is not read yet: a manifest with `base` is refused.
+lists, and writes nothing. `--role` or `--distro` limits the check to that role or distro, and
+`--with` switches on extra groups in each one. `base` is not read yet: a manifest with `base` is
+refused.
 
 A manifest without a top-level `repositories:` key, or a file that does not read as YAML,
 still goes to a prototype that reads an earlier shape of the format, where repos are nested
