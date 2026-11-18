@@ -60,11 +60,13 @@ repos:
       # docs commits stay fast (issue #354). Hook approved by the owner 2026-10-09.
       - id: check-design-anchors
         name: "Check docs/design.md anchors resolve (issue #335)"
+        # A part's design and roadmap in any directory are citers too, and
+        # the pointer table is read through sitrep_checks.sh (issue #488).
         entry: bash .agent/scripts/check_design_anchors.sh
         language: system
         pass_filenames: false
         # yamllint disable-line rule:line-length
-        files: ^(docs/design\.md$|README\.md$|docs/roadmap\.md$|\.agent/AGENT_ONBOARDING\.md$|docs/decisions/|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$|\.agent/scripts/check_design_anchors\.sh$)
+        files: ^((.*/)?(design|roadmap|ROADMAP)\.md$|README\.md$|\.agent/AGENT_ONBOARDING\.md$|docs/decisions/|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$|\.agent/scripts/(check_design_anchors|sitrep_checks)\.sh$)
 
       # AGENTS.md line budget (issue #259): AGENTS.md is loaded into every
       # session, so it stays at most 200 lines. Runs only when AGENTS.md, the
