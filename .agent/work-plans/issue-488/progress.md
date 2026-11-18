@@ -419,3 +419,20 @@ Suites run, each on its own from the worktree:
 - `test_sitrep_checks.sh` (names `check_design_anchors.sh`): `test_sitrep_checks: 252 passed, 0 failed`
 
 Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465); shellcheck ran in the hook on the script commit and passed (no local shellcheck binary outside pre-commit). The full pre-commit pass over the branch was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 11:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-488 at `53ab3d36`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff; whole diff 2080+/128- in 19 files with governance files)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round 3 findings and the fix diff `ee08e444..7aa09337` (commits `4ef7b511`, `7aa09337`). Specialists: static analysis (shellcheck --severity=warning clean on check_design_anchors.sh and test_design_anchors.sh), governance, plan drift, Claude adversarial; cross-model skipped (round-4 convergence check, per handoff). All four round 3 suggestions are done. Plan step 7 checked against the plan, ADR-0022 decisions 2, 4 and 6, and the issue's third acceptance bullet, on the real tree from the worktree: `sitrep_checks.sh --root .` exits 0 with two `part ... true read` rows (both pointers followed), 35 `subline` and 10 `subdeferral` rows, no `unknown` or `subformat` row; the tool's checks resolve under `tools/ros-manifest` (`file-exists docs/spec.md` true, and no `docs/spec.md` at the root; `file-exists src/repos_manifest/cli.py` false, the tree has `src/ros_manifest`), the manifest support's under `.` (`file-exists docs/manifest/design.md` true); `--summary-from` gives `lines 1/4 deferrals 4/7` (parts outside the root's totals); `--next-steps-from` gives one line for `(root)` (#430 line, false), one for `tools/ros-manifest/docs/roadmap.md` ("The tool and its code carry the name repos-manifest", false) and one for `docs/manifest/roadmap.md` (#495 line, false), so acceptance bullet 3 holds. `check_design_anchors.sh` exits 0; in a scratch clone with `#commands` and `#the-manifest-route-step-by-step` broken in docs/design.md it gives two findings naming `tools/ros-manifest/docs/design.md` and `docs/manifest/design.md`, exit 1. `wc -l docs/design.md` is 1193, the newest Change log row's count. Suites: test_design_anchors 82 passed, test_sitrep_checks 252 passed, 0 failed each. The sitrep skill's parts text (step 1 row kinds, `part` results, the totals rule, the `--- next steps` lines, step 5's per-part next step) matches what the checker prints for the real roadmaps. The adversarial reviewer also confirmed "reported once" for an unreadable part design that is only loaded through citations from several files (no test pins that order; h14 covers the citer case).
+
+### Findings
+- [ ] (suggestion) The angle-bracket handling covers inline links only: a reference definition `[r]: <my part/design.md#x>` still goes through the run scan, which cuts the path at the space and checks `part/design.md` (a valid link reported broken, a broken one passed when a decoy exists; reproduced). No file uses the form today; match `^ {0,3}\[[^]]+\]:[ \t]*<[^<>]*>` in the same loop, or name the limit in the header, with an h13-style test. — `.agent/scripts/check_design_anchors.sh:462`
