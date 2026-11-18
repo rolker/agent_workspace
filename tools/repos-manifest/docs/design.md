@@ -185,6 +185,8 @@ into place, so the folder and its record appear together. Before that step nothi
 system exists, and `init` can be run again. If the first sync after it fails or is
 interrupted, `sync` finishes it. Every command finds `.repos-manifest/` by walking up from the
 current directory, and one without a readable `config.yaml` is an error that names the file.
+`init` gives that error too, not the refusal for a system that is set up, and its next step
+is to repair or remove that `.repos-manifest/` folder.
 
 Before its question, `init` prints what `show` prints (see "show"). For a flat system with a
 distro it also prints one line, which `--yes` does not skip:
