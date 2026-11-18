@@ -228,6 +228,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 |---|---|---|
 | `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
 | `init` | More than one `--distro` without `--distro-dirs`. | Add `--distro-dirs`. |
+| `init` | Two `--distro` that differ only in case, with `--distro-dirs`, since a distro's name is a directory name. | Name one of them. |
 | `init` | `--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form: a local path, or a URL with `--manifest-ref` and no `--manifest-path`. | Give the manifest in the git form, or leave the option out. |
 | `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs` and without `--distro`. |
 | `init` | No `--distro`, with a manifest that has `distros:`. | Name one with `--distro`. |
