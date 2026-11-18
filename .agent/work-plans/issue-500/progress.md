@@ -605,4 +605,41 @@ Hand runs with local remotes: the owner's case (`--distro-dirs --distro rolling 
 - [x] (suggestion) A file where a layer or key directory belongs is found only after a full clone; check ancestors first (gemini) — `tools/repos-manifest/src/repos_manifest/sync.py:205`
 - [x] (suggestion) The repair advice for a broken config.yaml, "remove that .repos-manifest/ folder to set up again", leads to init's refusal for the existing src/ and setup.bash (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/system.py:133`
 - [x] (suggestion) design.md says init writes setup.bash; sync also re-creates a missing one: say so (Claude adversarial) — `tools/repos-manifest/docs/design.md:197`
-- [ ] (suggestion) Not worth doing, noted: rename over an empty directory made in the check-to-rename window (no RENAME_NOREPLACE in Python); a state write failing after the rename leaves an unrecorded clone that part 2's no-record rule heals; non-UTF-8 output or file names give internal error; URLs with credentials printed in the summary (codex, gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:227`
+- [x] (suggestion) Not worth doing, noted: rename over an empty directory made in the check-to-rename window (no RENAME_NOREPLACE in Python); a state write failing after the rename leaves an unrecorded clone that part 2's no-record rule heals; non-UTF-8 output or file names give internal error; URLs with credentials printed in the summary (codex, gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:227` (deferred: the review's own reason: not worth doing, only noted (no RENAME_NOREPLACE in Python; an unrecorded clone is healed by part 2's no-record rule; non-UTF-8 output and credentialed URLs are noted))
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 18:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `f2cdeb68`
+**Addressed**: Local Review (Pre-Push) at `03171755` (2026-11-18 17:52 -05:00)
+**Commits**: ef753c39, 6d1c12cb, 47f574e3, 30953239, c75cda13, 3d5aea1f, 1fee7f32, cbf4753d, 943da14b, 237f4412, 19fc7d6e, 874430e1, f2cdeb68
+
+Decisions on each finding are the host's (dispatch of round 2's fix pass), listed for the owner's veto.
+
+### Actions
+- [x] (must-fix) Shape checks, one rule per file: config.yaml and state.yaml are accepted only with exactly the shape this version writes. config.yaml: `manifest` (a path; the git form and a URL are refused), `layout`, and `role`, `groups`, `distros` when set, each of its type, each distro entry empty; any other key is an error naming the file and key ("is not read by this version"). state.yaml: `format: 1`, each distro `{repos: ...}`, each repo exactly `layer`, `version` (string or null), `commit` (string); unknown keys at any level named. design.md says each in one sentence; its config.yaml table marks `local_manifest`, `fetch_from`, `remotes` and the git/URL `manifest` as not read in this part — `system.py` `_check_keys`, `read_config`, `_read_state_data` (ef753c39)
+- [x] (must-fix) Refusals table: a note above it names the `init` row for `--manifest-ref`/`--manifest-path` and every `add-distro` row as not built in this part — `docs/design.md` "Refusals" (6d1c12cb)
+- [x] (must-fix) Optional repos, one rule at one decision point: `clone_repo` turns any failure of `_put_in_place` into skipped for an optional repo (never non-zero exit) and an error otherwise; the design states the rule once in "sync" — `sync.py` `clone_repo` (47f574e3)
+- [x] (suggestion 1) `GIT_NAMESPACE` is removed with the names `--local-env-vars` lists; a clone whose HEAD cannot be read is that repo's failure, not put in place; `RepoRecord.commit` is a string — `sync.py` `require_tools`, `_put_in_place` (30953239)
+- [x] (suggestion 2) setup.bash is created with one exclusive `open(..., "x")`, no temporary or hard link; a failure is an ERROR line with path and reason after that distro's report, the other distros go on, exit 1 — `sync.py` `create_setup` (c75cda13)
+- [x] (suggestion 3) A manifest that cannot be read: the message says its path is `manifest` in config.yaml, taken from the system directory, and names both — `sync.py` `resolve_all` (3d5aea1f)
+- [x] (suggestion 4) sync from inside the resolved files: "run `sync` from the system directory or from below it, outside .repos-manifest/"; `write_output` gains an `elsewhere` argument whose default keeps resolve's message — `output.py`, `sync.py` (1fee7f32)
+- [x] (suggestion 6) A removed current directory is "the current directory no longer exists; change to one that does and run it again" for init and sync — `system.py` `current_directory` (cbf4753d)
+- [x] (suggestion 5) The stop signals are caught from the first step of `init` and `sync`: one line, no traceback; sync says "nothing was changed" before it changes anything, init keeps its tested "nothing was created" until its system directory is made — `init.py` `run_init`, `sync.py` `run_sync` (943da14b)
+- [x] (suggestion 7) plan.md part 2 table: the destination check runs before a repo is treated as present — `.agent/work-plans/issue-500/plan.md` (237f4412)
+- [x] (suggestion 8) Done as one check in the existing destination check: `is_in_place` became `place_problem`, which also requires the nearest existing directory on the path to be a directory and returns the reason ("src/grp is on the way and is not a directory; not cloned"), so the file is found before the clone — `system.py` `place_problem` (19fc7d6e)
+- [x] (suggestion 9) Broken config.yaml advice: "repair the file, or, to set up again, move <system> aside and run `repos-manifest init` in an empty directory"; design matches — `system.py` `read_config` (874430e1)
+- [x] (suggestion 10) design.md says `sync` writes a missing setup.bash too — `docs/design.md` (f2cdeb68)
+- [x] (suggestion 11) Not worth doing, noted — (deferred: the review's own reason; no action)
+
+### Tests
+Each code fix has a test that failed before it (checked by running it against the unfixed source): test_system.py (shape cases), test_clone.py (optional one rule for link/file/appeared meanwhile; GIT_NAMESPACE; unreadable HEAD; file on the way found before the clone), test_sync.py (setup.bash with a file where the distro belongs and in a read-only directory; manifest after the system moved; sync inside resolved/; removed cwd), test_interrupted.py (Ctrl-C during `vcs --version` for init and sync, a real SIGINT to a child process).
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 1001 passed in 101.63s (vcs: /usr/bin/vcs, vcs 0.3.0, vcstool; Python 3.14)
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1014 passed, 0 failed, 0 skipped
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0
+- Hand check with local remotes: `fetch_from: x` in config.yaml gives "config.yaml: `fetch_from` is not read by this version; repair the file, ...", exit 1; an optional repo's place made a regular file gives "skipped src/b (optional): is there and is not a directory; left as it is", "optional, skipped (1): src/b", exit 0.
+- Hooks ran on every commit with `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
