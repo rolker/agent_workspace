@@ -9,6 +9,7 @@ the only thing this module removes is a temporary directory of its own name patt
 
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 import subprocess
@@ -169,6 +170,18 @@ def _head(path: Path, env: Env) -> Optional[str]:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
+def rename_failure(exc: OSError, system: Path, place: Path) -> str:
+    """Why a clone could not be renamed into place. Clones are made in `.repos-manifest/`, so a
+    distro or layer directory on another filesystem refuses every rename; that is said plainly,
+    and nothing is copied instead."""
+    if exc.errno == errno.EXDEV:
+        return (
+            f"{place}: the clone, made in {system / SYSTEM_DIR}, cannot be moved there because"
+            " the two are on different filesystems; a system directory must be on one filesystem"
+        )
+    return oserror_message(exc)
+
+
 def clone_repo(
     system: Path,
     src: Parts,
@@ -213,7 +226,7 @@ def clone_repo(
             try:
                 os.rename(temporary.joinpath(*key_parts), place)
             except OSError as exc:
-                return RepoResult(shown, FAILED, oserror_message(exc))
+                return RepoResult(shown, FAILED, rename_failure(exc, system, place))
             record(commit)
         return RepoResult(shown, CLONED, commit=commit)
     finally:

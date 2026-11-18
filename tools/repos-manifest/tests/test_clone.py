@@ -2,6 +2,7 @@
 real destination, a place filled while the clone ran, and the sweep of a dead run's
 temporaries."""
 
+import errno
 import os
 import stat
 import subprocess
@@ -11,7 +12,7 @@ import pytest
 import yaml
 
 from helpers import dead_pid, make_remote, repo, run, snapshot, temporaries, write_manifest
-from repos_manifest.sync import sweep_temporaries
+from repos_manifest.sync import rename_failure, sweep_temporaries
 from repos_manifest.system import is_in_place
 
 
@@ -250,3 +251,19 @@ def test_the_sweep_removes_only_a_dead_runs_temporaries(tmp_path):
         for path in directory.rglob("*"):
             if path.is_dir() and not path.is_symlink():
                 path.chmod(0o700)
+
+
+def test_a_clone_that_cannot_be_moved_to_another_filesystem_says_so(tmp_path):
+    # A distro or layer directory that is a separate mount: the rename from .repos-manifest/
+    # fails with EXDEV. No test here can mount one, so the message is checked on the error.
+    system = tmp_path / "sys"
+    place = system / "rolling" / "src" / "a"
+    temporary = system / ".repos-manifest" / ".repos-manifest-tmp-1-abcd_123" / "a"
+    exc = OSError(errno.EXDEV, os.strerror(errno.EXDEV), str(temporary), None, str(place))
+    assert rename_failure(exc, system, place) == (
+        f"{place}: the clone, made in {system / '.repos-manifest'}, cannot be moved there"
+        " because the two are on different filesystems; a system directory must be on one"
+        " filesystem"
+    )
+    other = OSError(errno.EACCES, os.strerror(errno.EACCES), str(temporary), None, str(place))
+    assert rename_failure(other, system, place) == f"{temporary} -> {place}: Permission denied"
