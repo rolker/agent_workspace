@@ -368,3 +368,37 @@ Writer's readings: `resolve` left unedited is not enough (must-fix 7); no third 
 - [x] (suggestion) The `setup` row sends the new distro's version to "Not decided", whose item names only how a session says its distro; add the version there — `docs/manifest/design.md:192,331`
 - [x] (suggestion) How `init` decides the manifest's repo "is one the manifest lists" (URL match across ssh and https forms) and which distro's path it records when the repo is absent on one distro — `tools/repos-manifest/docs/design.md:420-422`
 - [x] (suggestion) Style: "The smallest system, one repo on one distro with no layers and no roles, set up flat." is not a sentence — `tools/repos-manifest/docs/design.md:117`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-495 at `ab08db1e`
+**Addressed**: Local Review (Pre-Push) at `210a5621` (2026-11-18 15:32 -05:00)
+**Commits**: 647a797d, bad71794, 5598c188, 61dc1df1, 1a69daac, de50d573, bc48becc, 0236dfc9, ed644fc3, 98c9f61a, a0b98fca, 4c694232, 66608cf8, b074f407, 4f80cdc1, ab08db1e
+
+### Actions
+- [x] (must-fix 1) The first diagram is "the layout of a flat system, the default" — `tools/repos-manifest/docs/design.md:39`
+- [x] (must-fix 2) `init` writes `.repos-manifest/config.yaml` whole before it clones anything; a failed or interrupted first sync is finished with `sync`; `init` refuses a directory with `.repos-manifest/` and any directory inside an existing system (found by walking up), changing nothing, with a quoted message naming `sync` and `add-distro`; a missing or unreadable `config.yaml` is an error from every command that names the file and what is wrong, with no promised repair. The "Which distro" table row and the Commands row follow — `tools/repos-manifest/docs/design.md` "Setting up with init"
+- [x] (must-fix 3) Registering again over an incomplete record is tied to the ask "`init` can be run again"; today's tool design refuses — `docs/manifest/design.md` "A project instance is a system directory"
+- [x] (must-fix 4) `sync`'s check runs after step 1: the manifest's own clone has been updated, nothing else of that distro is changed (not resolved, no repo touched); the condition is "the manifest this distro reads no longer lists it" — `tools/repos-manifest/docs/design.md` "sync"
+- [x] (must-fix 5) `add-distro`, distro not listed: `--manifest-ref` as the next step when `manifest` is in git, "add it to the manifest's `distros:`" when it is a path or URL not in git; an existing `<name>/` that is not a recorded distro is a refusal naming the directory — `tools/repos-manifest/docs/design.md` "Adding a distro"
+- [x] (must-fix 6) "every distro reads the same file until its local copy exists" — `tools/repos-manifest/docs/design.md` "Which manifest a distro reads"
+- [x] (must-fix 7) One paragraph added at the end of the `resolve` section (its first lines, which pull request 506 rewrites, untouched): a distro's files go in `resolved/<distro>/`, resolving one distro never touches another's, pointer to "Where the resolved files and state go" — `tools/repos-manifest/docs/design.md` "resolve"
+- [x] (suggestion 1) Quoted messages with next steps for every `add-distro` refusal (already recorded points to `sync --distro`; no `distros:`; `--manifest-ref` on a non-git manifest); `init --distro-dirs` on a manifest with no `distros:` says to set up flat; `init` with distros the manifest lists only some of says to set up with those and `add-distro --manifest-ref` the rest — `tools/repos-manifest/docs/design.md`
+- [x] (suggestion 2) The local copy is the manifest's repo as the distro syncs it, at the version the manifest gives that repo on that distro, so per-branch copies are read from the second sync on — `tools/repos-manifest/docs/design.md` "Which manifest a distro reads"
+- [x] (suggestion 3) Cite "What resolving produces" in the specification; spec.md not changed — `tools/repos-manifest/docs/design.md` "sync"
+- [x] (suggestion 4) `layout` kept, called the system directory's layout, unrelated to `resolve --layout`; where `manifest_version` is introduced: it is what `add-distro --manifest-ref` records, as `init --manifest-ref` records `version` in `manifest` — `tools/repos-manifest/docs/design.md:83,199`
+- [x] (suggestion 5) "one distro, or none" in the Commands `init` row and the README — `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/README.md:54`
+- [x] (suggestion 6) "Not decided" names how a session gives the manifest version for a distro it adds — `docs/manifest/design.md` "Not decided"
+- [x] (suggestion 7) How `init` matches the manifest's repo by URL, and that a distro where it is absent has no local copy and reads the recorded location — `tools/repos-manifest/docs/design.md` "Where the manifest comes from"
+- [x] (suggestion 8) "The smallest system is one repo on one distro ..." — `tools/repos-manifest/docs/design.md:117`
+
+Host decisions applied as given (listed for the owner's veto): must-fix 2, 3, 4, 5, 7 and suggestions 4 and 7 as the handoff worded them.
+
+One addition beyond the host's wording, for the host's or owner's veto: suggestion 7's URL rule also reads the `:` after the host in an scp-style ssh URL (`git@host:team/system.git`) as `/`; without it an ssh URL and an https URL of one repo would not match, which was the review's point.
+
+Last commit `ab08db1e` is wording only: `init`'s refusal says "A system is already set up here: <system directory>" (it may be run from a subdirectory), and a line over the width is wrapped.
+
+Checks: the four documents grepped for "distro", "init" and "resolved", every changed hit read against the rules; "workspace" hits in the tool's documents are all "colcon workspace"; no mention of the adapter, `.agent/` or `ros2_colcon`; nothing claimed as built beyond `resolve` and `validate`. `bash .agent/scripts/check_design_anchors.sh` printed nothing and exited 0. Every commit ran the hooks with `SKIP=validate-script-tests`; no script changed, so no suite applies; the full pre-commit pass is left to the host.
