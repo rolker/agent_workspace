@@ -298,3 +298,122 @@ Revise the plan with every finding of the Plan Review. Host decisions where it l
 **Plan**: `.agent/work-plans/issue-500/plan.md` at `9afc4552`
 
 Revision after the plan review and its checkpoint. Part 1 is `init` and a clone-only first `sync` in four modules (signals, system, sync, init): each missing repo is cloned by `vcs import` into a temporary directory under the layer's `src/` and renamed into place on exit status 0, with the destination check, `.repos-manifest/` made aside and renamed, vcs2l in the test extra, and no change to `output.py` or `.github/`. Cut items are listed as moved to part 2; no open question remains for part 1.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 16:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #500 — repos-manifest: `init` and `sync` set up and update a system directory
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `9afc4552`
+**Branch**: `feature/issue-500`
+
+Second review, of the revised plan. Design read from `origin/feature/issue-495` at `657302b7` (pull request 508, still OPEN at this review); `spec.md`, `output.py` and `cli.py` from this branch.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | About 480 lines of code in four modules, one pull request. Each cut is listed with where it went. One more cut is possible (state.yaml, below) but the first checkpoint put state in part 1, so it is the host's call, not a finding. |
+| Issue alignment | Good | Every finding of the first review is answered (table below). Serves: "one system directory set up and kept in line from one manifest", under `tools/repos-manifest/docs/design.md#the-system-directory`, `#setting-up-with-init`, `#refusals`, `#sync`, and root `docs/manifest/design.md` ("What the tool has to give"). The anchors exist in 508's text. |
+| File targeting | Good | All the right files are listed, and `output.py` and `.github/` are left alone. |
+| Consequences | Good | README, both roadmaps, `build_and_test.md`, the design and `pyproject.toml` are covered. |
+| Principle alignment | Needs work (small) | "State a rule once": the sweep is run in four kinds of place and the destination check is written as two equalities. Both shrink if the temporary directory moves (findings 1 and 2). "Verify before claiming": two claims are wrong in their reasoning (findings 4 and 7). |
+| ADR compliance | Good | ADR-0017, 0022, 0009 and 0013 are handled. |
+| ROS conventions | N/A | Workspace tool. Checked anyway: colcon and rosdep skip hidden directories (finding 1). |
+
+### The first review's findings
+
+| # | Finding | Answered? |
+|---|---|---|
+| 1 | Temporary directory and rename; drop the debris rule and the incomplete-clone listing | Yes ("Cloning one missing repo", steps 1 to 7) |
+| 2 | Check on the real destination | Yes, with one wrong claim (finding 4) |
+| 3 | `.repos-manifest/` made with `mkdtemp` and one rename, not `write_output` | Yes (init step 8) |
+| 4 | No `add-distro` in refusals 1 and 7 | Yes. Also `--manifest-ref` in row 6, with a sentence for the design's table |
+| 5 | Cut `--local-manifest`, `--`, the listing; keep `setup.bash`; shrink the vcs tests | Yes ("Cut from part 1") |
+| 6 | Merge modules | Yes: signals, system, sync, init |
+| 7 | `OSError` reported with path and reason, with a test | Yes (`reporting_oserror`, the mode `0o500` test) |
+| 8 | vcs2l in the test extra; fail, not skip | Yes, but the PATH fixture keeps vcstool from being tested here (finding 3) |
+| 9 | By-hand commands: no `-e`, a tracked file, compare `git status` | Yes |
+| 10 | Owner-shape test; two-distro stop test | Yes. The plan rightly uses `fixtures/project11` (the new format, developer role, seven layers); the first review's `fixtures/p11` is the earlier format |
+| 11 | Q1, Q3 and layer change moved to part 2; Q2 answered from the design | Yes |
+
+Also answered: the state.yaml no-lock note and resolve called once.
+
+### What vcstool 0.3.0 does here (local repositories in the scratchpad, no network)
+
+Each try ran `vcs import T` with a one-repo text on stdin, `T` made by `mktemp -d` in `src/`, then `mv T/K src/K`.
+
+- A plain key on `main`, a nested key `grp/sub/b` on branch `dev`, a tag `v1`, and no version all exit 0. The clone is at `T/<key>`, and for the nested key `T/grp/sub` is made inside `T`. After the rename, `git status` is clean, it is on the branch or detached at the tag, and `origin` is the url given. `rev-parse --show-toplevel` is the new place. A git repository survives the rename because its `.git` holds no absolute paths. Submodule gitdirs are relative too.
+- A url that is not a repository exits 1 and leaves `T/bad` empty. A missing version exits 1 and leaves a full clone on `main` at `T/badv`. Both are inside `T` only, so removing `T` cleans them up. `T/grp/sub` stays in `T` after the nested rename, as the plan says.
+- Killing `vcs` does not kill its `git clone`. vcstool runs git as a child of its own. When the Python process ends with an exception, `subprocess.run` kills `vcs` only. The `git clone` was then orphaned (parent pid 1) and went on running in `T/<key>` (tried with a slow `git` wrapper and a SIGTERM delivered to the Python process only). A Ctrl-C at a terminal reaches the whole process group, so git stops in that case. A SIGTERM to the tool alone, or a `timeout`, leaves git writing into `T` while `finally` removes it. See finding 5.
+- colcon does not look in hidden directories: `colcon_recursive_crawl` 0.2.3 drops directory names that start with `.`. A `src/.repos-manifest-tmp-123-abcdefgh/pkg_a` beside `src/pkg_a` was not visited. catkin_pkg's `find_package_paths` (used by rosdep) also skips hidden directories. vcstool's own `find_repositories` (`vcs status src`, `vcs pull src`) does not skip them, so a killed run's `T` with a complete clone shows up there as an extra repo.
+
+### vcs2l 1.1.7's command line (wheel downloaded to the scratchpad, read, not installed or run)
+
+- `vcs import` has the same arguments as vcstool 0.3.0: `--input` with default `-` (stdin), and the positional path with `nargs='?'` ("Base path to clone repositories to"). `--force`, `--shallow`, `--recursive`, `--retry` and `--skip-existing` are the same. Its exit status is `1 if any_error else 0`, as in vcstool. The git client's `import_` differs only in passing `--retry` through. vcs2l also skips a repo whose entry is empty, which a one-repo text never has.
+- The plan's reason for Python 3.14 is wrong, though its conclusion holds. `vcs2l/commands/vcs.py` imports `vcs2l.commands.help` at the top, so every `vcs` call loads it, `vcs import` and `vcs --version` included. Its `pkg_resources` import is under a version guard and is used only on Python 3.5 and 3.6. From 3.8 on it uses `importlib.metadata`. No other removed module is imported.
+- The wheel also installs a top-level `vcstool` package, a deprecated shim that re-exports vcs2l. It is harmless in a venv.
+- Running the extracted vcs2l on this machine's Python 3.14 was denied by the permission system, so vcs2l's behaviour is checked by reading its source only. CI's first run is still the first execution, as the plan says.
+
+### Findings
+
+1. **[Approach] Medium. Put the clone's temporary directory in `.repos-manifest/`, not in the layer's `src/`.** Either place is on the same filesystem as the destination in practice, so the rename stays atomic. Inside `.repos-manifest/` is better:
+   - A killed run leaves nothing under any `src/`, so `vcs status src` and anything else that crawls `src/` never sees a half-made repo.
+   - Every temporary this tool makes after `init` is in one directory. That includes `replace_file`'s temporary files: `os.replace` from `.repos-manifest/` to `setup.bash` or `state.yaml` is atomic on one filesystem. So the sweep has one place: `.repos-manifest/`, swept once at the start of a `sync` or of `init`'s step 9. `init` keeps its own sweep of the system directory for its step 8 temporary.
+   - This replaces the list "`.repos-manifest/`, the distro's directory, each layer's `src/`, per distro". Sweeping once, before the run makes anything there, also makes the own-process rule of `_process_has_ended` safe by construction. With a sweep per distro it is safe only because of how the steps happen to be ordered.
+   - A destination on another filesystem (a person's mount point under the system directory) then gives `EXDEV`. That is reported by the `OSError` rule, and `T` is removed. No more is needed.
+   - Keep the hidden prefix anyway.
+2. **[State a rule once] Low. The destination check is one equality.** `realpath(parent of P) == join(realpath(system_dir), *parts, *key_dirs)` already fails when `S` or any directory on the way is a link. The plan's first equality (on `S`) is implied by it. Write it once. The tests listed (`src/grp` a link, the layer directory a link, a link inside `src/`, each destination type for `lexists`) are enough.
+3. **[Tests] Medium. As planned, vcstool 0.3.0 is never tested automatically.** The session fixture puts the directory of `sys.executable` *first* on `PATH`. With the extra installed in `.venv` on this machine, `.venv/bin/vcs` (vcs2l) then shadows `/usr/bin/vcs` (vcstool), and CI also has vcs2l only. The checkpoint asks for the behaviours to be re-tested on vcstool 0.3.0.
+   - Fix: *append* that directory to `PATH` instead. A `vcs` already on `PATH` wins, and the venv's is the fallback. This machine then tests vcstool and CI tests vcs2l.
+   - Add a `pytest_report_header` that prints `vcs --version` and its path, so every run says which `vcs` it tested.
+   - The three `test_vcs_behaviours.py` tests (exit 0 and the place, nested key, failing url) are what part 1 relies on. Add a missing version giving a non-zero exit: vcstool leaves a full clone on the wrong branch in that case, and part 1 depends on exit 1 for it.
+4. **[Verify before claiming] Low. Correct two claims.**
+   - (a) The vcs2l paragraph: `help.py` is loaded by every `vcs` call, and its `pkg_resources` import is dead code below 3.7. The conclusion stands.
+   - (b) "Two names the disk treats as one cannot both pass". `realpath` does not fold case. On a case-insensitive disk, keys `A` and `a/b` both pass the check, and `a/b` is cloned inside repo `A`. Keys `A` and `a` give "present" for the second without an error. The reader refuses layer names that differ only in case, but not keys. The owner is on ext4, so do not build anything for this. Say in the plan and in the design's "What is built" that case-folding disks are not checked in part 1, rather than claiming it.
+5. **[Approach] Low. Do not claim "`T` is not removed under a running clone".** It does not hold for a signal sent to the tool alone (tried, above). The cheap, true rule:
+   - Run `vcs` with `start_new_session=True` and send `os.killpg` to its group on an exception before `T` is removed. This is a `Popen` and about six lines.
+   - Or keep `subprocess.run`, make the `finally` removal of `T` a warning when it fails rather than an exception (which would also replace `Stopped` and lose the 128+n exit), and let the next sweep take it.
+   - Either way, the plan says which.
+6. **[Approach] Low. Progress.** Output of `vcs` is captured, and the result is printed only after each distro. With 18 network clones the person sees nothing for minutes. Print one line per repo as its clone starts (`cloning core/src/<key>`). That is one `print`.
+7. **[Tests] Low. Git config in tests.** `GIT_AUTHOR_*`/`GIT_COMMITTER_*` do not stop git from reading the global and system config, despite what the plan says. Set `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` in the same fixture, so that a person's `commit.gpgsign`, hooks path or url rewrite cannot break or change the tests. This machine has only `user.name` and `user.email`, but a contributor's may not.
+8. **[Approach] Low. Loose ends, one line each in the plan.**
+   - `init` step 8 sets `chmod 0o755`, but `output.py` uses `0o777 & ~umask`. Use the umask, one rule.
+   - Say that `sync` calls `require_tools()` before phase two.
+   - A rename refused because the target is not empty (two runs at once) is that repo's error, and the others go on, like "appeared meanwhile". It should not end the run through the `OSError` rule. As written, the plan says both.
+   - The owner-shape test makes 44 remotes. Build one remote per distinct version and point the urls at those, or build them once per session. Otherwise that one test costs about 10 seconds of remote-making on top of about 9 seconds of `vcs` calls.
+
+### Sweep, destination check, `.repos-manifest/` aside
+
+- **Sweep.** It can remove only an entry whose whole name is `.repos-manifest-tmp-<digits>-<8 of [a-z0-9_]>` (Python's `mkdtemp` alphabet, checked), that is not a link, and whose process has ended. Nothing a person names that way is likely. It is a different rule from `output.py`'s sweep, which also needs the marker or an empty directory, and reuses only `_process_has_ended`, by import. That is not a second copy. Import `output._make_writable` the same way rather than writing "as output.py does" again. The two patterns cannot match each other's names (`.new-`/`.old-` against `-tmp-`).
+- **Destination check.** It is the spec's rule ("Reading a manifest before using it": the check on the real destination), apart from finding 4b.
+- **`.repos-manifest/` aside.** The aside is `mkdtemp` in the system directory: the same directory, so the same filesystem. Its name is not `.repos-manifest`, so `find_system` never takes a half-made one for a system. A leftover from a killed step 8 leaves no `.repos-manifest`, so `init` runs again and sweeps it. `sync` finds no system and says `init`. A rename onto a `.repos-manifest` that another `init` made in the meantime fails `ENOTEMPTY`, because it holds `config.yaml`, and is reported.
+
+### Refusal messages and the design's table
+
+The plan's edits keep the table true: row 1 gives `sync`, rows 6 and 7 give "add the distro to its `distros:`" (always true in part 1, since no manifest is in the git form yet), a sentence under the table says the `add-distro` and `--manifest-ref` steps come once they are built, and a new row covers `vcs`/`git`. The one helper that checks every refusal's text for unbuilt command names is the right structural check.
+
+### 508
+
+Nothing in the code depends on 508's text, only the design edits do. Implementation can start now. The plan's route is sound: merge `origin/main` into `feature/issue-500` after 508 merges, and make the design edits on top as the last commit of the part. 508 does not touch `spec.md`, and the roadmap it changes is merged before the plan's roadmap edit.
+
+### Optional further cut (host's call)
+
+`state.yaml` could move to part 2 without making part 1 wrong. Part 2's no-record rule ("followed if on the manifest's version") already covers repos cloned before any state exists. Moving it would drop `read_state`/`put_distro_state`, the state assertions and the state half of the two-distro stop test, about 40 lines of code and 60 of tests. The first checkpoint put "writes the resolved files and state" in part 1, so this is not a finding.
+
+### Summary
+
+The revision answers every finding, and part 1 is now the right size and shape. The clone steps work as the plan says on vcstool 0.3.0, and vcs2l 1.1.7's command line is the same. None of the findings blocks implementation: each is a sentence or a few lines, and can be taken in the implementation without another plan round. The ones worth doing are moving `T` into `.repos-manifest/` with a single sweep (finding 1) and appending, not prepending, the venv to `PATH` so vcstool is really tested here (finding 3).
+
+### Recommended Actions
+
+- [ ] Make `T` (and `replace_file`'s temporary) in `.repos-manifest/`; sweep `.repos-manifest/` once per run; `init` keeps its system-directory sweep for step 8 (finding 1).
+- [ ] State the destination check as one equality (finding 2).
+- [ ] Append, not prepend, the venv's directory to `PATH`; print the `vcs` tested in the report header; add the missing-version test (finding 3).
+- [ ] Correct the vcs2l/`pkg_resources` reasoning and the case-folding claim; list case-folding disks as not checked (finding 4).
+- [ ] Choose process-group kill or a non-raising `finally` for `T`, and say which (finding 5).
+- [ ] Print one line per repo as its clone starts (finding 6).
+- [ ] `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` in the test fixture (finding 7).
+- [ ] umask mode; `sync` calls `require_tools`; a refused rename is that repo's error; cheaper remotes for the 44-repo test (finding 8).
