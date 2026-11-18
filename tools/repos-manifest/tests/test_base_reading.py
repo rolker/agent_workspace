@@ -328,3 +328,22 @@ def test_resolve_reports_a_problem_in_a_parent_with_the_parents_name(tmp_path, c
     assert main(["resolve", "--manifest", str(leaf), "--out", str(tmp_path / "out")]) == 1
     assert capsys.readouterr().err.startswith(f"ERROR: {_real(parent)}: repositories.a.type:")
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.parametrize(
+    "text,is_url",
+    [
+        ("C:foo", True),
+        ("host:path", True),
+        ("a:b/c.yaml", True),
+        ("https://example.org/m.yaml", True),
+        ("./a:b.yaml", False),
+        ("a/b:c.yaml", False),
+        ("p.yaml", False),
+    ],
+)
+def test_one_rule_tells_a_url_from_a_path_for_url_and_base(text, is_url):
+    # The url check and `base` share it: a ':' before the first '/' makes a URL.
+    from repos_manifest.manifest import _colon_before_slash
+
+    assert _colon_before_slash(text) is is_url

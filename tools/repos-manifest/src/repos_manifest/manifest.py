@@ -57,6 +57,13 @@ _URL_RULE = (
 )
 
 
+def _colon_before_slash(text: str) -> bool:
+    """A ':' before the first '/' (or with no '/') makes `text` a URL, not a path: a scheme, or
+    git's `[user@]host:path` form. `./a:b` is a path."""
+    colon = text.find(":")
+    return colon >= 0 and "/" not in text[:colon]
+
+
 def _bracketed_host(address: str) -> Optional[Tuple[int, int]]:
     """Where the '[' and the ']' of a host in brackets are in `address`: a '[' at the start, or
     after a user and an '@' (a user with no '/' or ':'), and the first ']' after it. None when
@@ -279,8 +286,7 @@ class _Checker:
                 url, authority, _bracketed_host(authority), where, ssh=scheme == "ssh://"
             )
             return url
-        colon = url.find(":")
-        if "://" not in url and colon >= 0 and "/" not in url[:colon]:
+        if "://" not in url and _colon_before_slash(url):
             # git's scp-like form, `[user@]host:path`: the host ends at the first ':' after it.
             brackets = self.ssh_address(url, url, where)
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
@@ -474,8 +480,7 @@ class _Checker:
                     f" {_BASE_PATH_ONLY}",
                 )
             path = self.string(location, where)
-            colon = path.find(":")
-            if colon >= 0 and "/" not in path[:colon]:
+            if _colon_before_slash(path):
                 raise self.error(where, f"{path!r} is a URL, not a path; {_BASE_PATH_ONLY}")
             result.append((where, path))
         return result
