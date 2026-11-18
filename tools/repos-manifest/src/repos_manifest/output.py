@@ -106,11 +106,17 @@ def strip_head_comment(text: str) -> str:
     return "".join(lines[index:])
 
 
+def _has_marker(path: Path) -> bool:
+    """`path` holds the marker as a file of its own; a link named like it does not count."""
+    marker = path / MARKER
+    return marker.is_file() and not marker.is_symlink()
+
+
 def _is_ours_or_empty(path: Path) -> bool:
     """A directory (not a link) that is empty or holds the marker."""
     if path.is_symlink() or not path.is_dir():
         return False
-    return (path / MARKER).is_file() or not any(path.iterdir())
+    return _has_marker(path) or not any(path.iterdir())
 
 
 # The name of a temporary directory: `.<name>.new-<pid>-<random>` or `.<name>.old-...`, where
@@ -226,7 +232,7 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
             match
             and _process_has_ended(int(match.group("pid")))
             and not entry.is_symlink()
-            and (entry / MARKER).is_file()
+            and _has_marker(entry)
         ):
             found.append((entry.stat().st_mtime, entry))
     if found:

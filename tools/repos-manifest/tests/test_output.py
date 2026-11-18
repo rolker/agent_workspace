@@ -314,6 +314,24 @@ def test_leftovers_of_a_killed_run_are_swept_when_marked_or_empty(manifest, tmp_
     assert _names(tmp_path) == sorted([other.name, unmarked.name, "m.manifest.yaml", "out"])
 
 
+def test_a_marker_that_is_a_link_does_not_count(manifest, tmp_path, capsys):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "mine.txt").write_text("keep me")
+    (out / MARKER).symlink_to(out / "mine.txt")
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    assert "was not written by repos-manifest; it is left as it is" in capsys.readouterr().err
+    assert _names(out) == sorted([MARKER, "mine.txt"])
+
+
+def test_an_aside_copy_whose_marker_is_a_link_is_not_put_back(manifest, tmp_path):
+    aside = _leftover(tmp_path, "out", pid=_dead_pid(), kind="old", marked=False, files=("x",))
+    (aside / MARKER).symlink_to(aside / "x")
+    assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
+    assert _names(aside) == sorted([MARKER, "x"])
+    assert (tmp_path / "out" / "layers.txt").is_file()
+
+
 def test_after_a_kill_between_the_renames_the_next_run_puts_the_previous_output_back(
     manifest, tmp_path, monkeypatch
 ):
