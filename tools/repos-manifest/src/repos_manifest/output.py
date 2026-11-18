@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -273,10 +274,15 @@ def write_output(
         ) from None
     old = None
     try:
-        # mkdtemp makes a private directory; the output gets the mode a plain mkdir would.
-        umask = os.umask(0)
-        os.umask(umask)
-        os.chmod(new, 0o777 & ~umask)
+        # mkdtemp makes a private directory. The output keeps the mode of the one it replaces,
+        # or gets the mode a plain mkdir would.
+        if exists:
+            mode = stat.S_IMODE(os.stat(out_abs).st_mode)
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o777 & ~umask
+        os.chmod(new, mode)
         _write_text(new / MARKER, _MARKER_TEXT)
         for file_name, text in files.items():
             _write_text(new / file_name, text)

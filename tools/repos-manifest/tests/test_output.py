@@ -3,6 +3,7 @@ output, the head comment, writing whole or not at all, and the choice of reader.
 
 import os
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -170,6 +171,24 @@ def test_an_existing_output_is_replaced_whole(manifest, tmp_path):
     assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
     assert not (out / "ui.repos").exists()
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+@pytest.mark.parametrize("mode", [0o700, 0o750, 0o2775])
+def test_a_replaced_output_keeps_the_mode_of_the_one_it_replaces(mode, manifest, tmp_path):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    out.chmod(mode)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert stat.S_IMODE(out.stat().st_mode) == mode
+
+
+def test_a_new_output_gets_the_mode_mkdir_would_give(manifest, tmp_path):
+    umask = os.umask(0o027)
+    try:
+        assert _resolve(manifest, tmp_path / "out", "--role", "dev", "--distro", "jazzy") == 0
+    finally:
+        os.umask(umask)
+    assert stat.S_IMODE((tmp_path / "out").stat().st_mode) == 0o750
 
 
 def test_an_existing_empty_directory_is_replaced(manifest, tmp_path):

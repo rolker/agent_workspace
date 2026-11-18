@@ -298,7 +298,7 @@ otherwise. `--with` names an extra group and may be given more than once.
 The output is replaced whole or not at all. The files are built and checked first, then written
 into a new hidden directory beside the output (`.<name>.new-<pid>-<random>`), and that
 directory is moved into place. An existing output directory is moved aside first and removed
-after, and put back if the move fails. A directory is only replaced when it is empty or holds
+after, and put back if the move fails; the new one keeps its mode. A directory is only replaced when it is empty or holds
 the marker file `.repos-manifest-output` that `resolve` writes, so it cannot delete a person's
 files. `--out` is found on the disk before it is checked, as the system finds it (a link
 followed by `..` leads beside the link's target), and the paths `resolve` prints are the ones
