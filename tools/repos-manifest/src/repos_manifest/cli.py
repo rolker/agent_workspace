@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 from . import manifest as new_manifest
@@ -20,6 +19,7 @@ from .extends import resolve_chain
 from .merge import merge_chain
 from .schema import ManifestError
 from .selectors import select_repos
+from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .validate import build_validation_table, check_dependencies
 
 
@@ -44,56 +44,15 @@ def _require_old_flags(args: argparse.Namespace) -> None:
         args.parser.error("--with is for a manifest in the format of docs/spec.md")
 
 
-class Stopped(BaseException):
-    """SIGINT, SIGTERM or SIGHUP arrived while resolving."""
-
-    def __init__(self, signum: int):
-        super().__init__(signum)
-        self.signum = signum
-
-
-@contextmanager
-def _signals_end_the_run():
-    """While resolving, SIGINT, SIGTERM and SIGHUP end the run through an exception, so that the
-    `finally` blocks that remove temporary output run, and the run reports how far it got. A
-    signal that was ignored stays ignored."""
-    previous = {}
-
-    def on_signal(signum, _frame):
-        raise Stopped(signum)
-
-    for name in ("SIGINT", "SIGTERM", "SIGHUP"):
-        sig = getattr(signal, name, None)
-        if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
-            continue
-        try:
-            previous[sig] = signal.signal(sig, on_signal)
-        except ValueError:  # not the main thread: signals cannot be caught here
-            pass
-    try:
-        yield
-    finally:
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
-
-
 def _stopped(exc: Stopped, replaced_out=None) -> int:
     """`replaced_out` is the `--out` the new output had replaced when the signal came, if it
     had: a signal held during the swap is delivered after it."""
-    name = signal.Signals(exc.signum).name
+    name = signal_name(exc)
     if replaced_out is None:
-        print(f"ERROR: stopped by {name}; nothing was written", file=sys.stderr)
-    else:
-        print(
-            f"ERROR: stopped by {name} after --out {replaced_out} was replaced by the new output",
-            file=sys.stderr,
-        )
-    # The previous handlers are back: the signal is delivered again, to end the process as it
-    # would have or to run the caller's own handler. Python's own SIGINT handler would raise
-    # KeyboardInterrupt and print a traceback; the message above says it all.
-    if signal.getsignal(exc.signum) is not signal.default_int_handler:
-        signal.raise_signal(exc.signum)
-    return 128 + exc.signum
+        return stop_exit(exc, f"stopped by {name}; nothing was written")
+    return stop_exit(
+        exc, f"stopped by {name} after --out {replaced_out} was replaced by the new output"
+    )
 
 
 def _load_new(args: argparse.Namespace) -> new_manifest.Manifest:
@@ -113,7 +72,7 @@ def cmd_resolve_new(args: argparse.Namespace) -> int:
         raise ManifestError("--cache-dir is for a manifest in the earlier format")
     replaced = []
     try:
-        with _signals_end_the_run():
+        with signals_end_the_run():
             loaded = _load_new(args)
             resolved = selection.resolve(loaded, args.role, args.distro, args.with_groups or [])
             written = output.write_output(
