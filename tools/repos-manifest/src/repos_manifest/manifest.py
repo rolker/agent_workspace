@@ -229,12 +229,16 @@ class _Checker:
                 # As git reads it, the part with the user, host and port runs to the first
                 # '/' after the host; not to a '?' or a '#'.
                 slash = rest.find("/", brackets[1] + 1 if brackets else 0)
+                if slash < 0:
+                    raise self.error(where, f"{url!r}: an ssh url has no path after the host")
             else:
                 # Not handed to ssh: the user, host and port run to the first '/', and a '%',
                 # '[' or ']' after it is the path's business.
                 slash = rest.find("/")
             authority = rest if slash < 0 else rest[:slash]
-            self.authority(url, authority, _bracketed_host(authority), where)
+            self.authority(
+                url, authority, _bracketed_host(authority), where, ssh=scheme == "ssh://"
+            )
             return url
         colon = url.find(":")
         if "://" not in url and colon >= 0 and "/" not in url[:colon]:
@@ -243,7 +247,10 @@ class _Checker:
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
                 raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
-            self.authority(url, url[:sep], brackets, where)
+            self.authority(url, url[:sep], brackets, where, ssh=True)
+            if url[sep + 1] == "-":
+                # git refuses such a path ("strange pathname") rather than hand it to ssh.
+                raise self.error(where, f"{url!r}: the path starts with '-'")
             return url
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
@@ -268,12 +275,18 @@ class _Checker:
         return brackets
 
     def authority(
-        self, url: str, text: str, brackets: Optional[Tuple[int, int]], where: str
+        self,
+        url: str,
+        text: str,
+        brackets: Optional[Tuple[int, int]],
+        where: str,
+        *,
+        ssh: bool,
     ) -> None:
         """Check the user, host and port in `text`, the part of a url before the path, with
         `brackets` where the brackets of its host are: no '%' (git decodes it in a url with
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
-        an option."""
+        an option. In an address handed to ssh (`ssh`), the host is not empty."""
         if "%" in text:
             raise self.error(where, f"{url!r}: a '%' in the user, host or port is refused")
         if brackets:
@@ -288,10 +301,11 @@ class _Checker:
             # Inside the brackets, ssh still reads a user before the last '@', and git a port
             # after a ':'.
             user, _, host_port = inner.rpartition("@")
+            host = host_port
             parts = [
                 ("user", outer_user),
                 ("user", user),
-                ("host", host_port),
+                ("host", host),
                 ("port", host_port.partition(":")[2]),
                 ("port", rest[1:]),
             ]
@@ -299,6 +313,8 @@ class _Checker:
             user, _, host_port = text.rpartition("@")
             host, _, port = host_port.partition(":")
             parts = [("user", user), ("host", host), ("port", port)]
+        if ssh and not host:
+            raise self.error(where, f"{url!r}: the host is empty")
         for part, value in parts:
             if value.startswith("-"):
                 raise self.error(where, f"{url!r}: the {part} starts with '-'")

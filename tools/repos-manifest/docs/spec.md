@@ -448,6 +448,9 @@ command that writes there.
     `ssh://user@[::1]:22/repo` or `[::1]:repo`); a `[` or a `]` anywhere else, the path
     included, is refused. `git` decodes `%` escapes in an ssh address and looks for a host
     in brackets anywhere in it, so the format allows neither there.
+  - An address `git` hands to ssh has a host that is not empty (`[]:repo` is refused), an
+    `ssh://` url has a path after the host, and the path of the `[user@]host:path` form does
+    not start with `-`. `git` cannot use an address without them.
   - In an `https`, `http` or `file` url, the user, the host and the port hold no `%`, so a
     `%2d` cannot stand for a `-` there; a `%`, a `[` or a `]` in the path is accepted.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the

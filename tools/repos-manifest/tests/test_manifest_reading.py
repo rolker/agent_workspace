@@ -346,6 +346,7 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
         "example.org:a.git",
         "myrobot:repos/a.git",
         "[::1]:a.git",
+        "example.org:a-b/-c.git",
         "[git@example.org:22]:a.git",
         # A '?' or '#' in the path is the path's business; so are a '%', a '[' and a ']' in
         # the path of a url not handed to ssh.
@@ -433,6 +434,25 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("ssh://h/p]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
         ("ssh://[::1]/p[x]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
         ("[::1]:p]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        # Addresses git cannot use: an ssh url with no path, an ssh address with an empty
+        # host, and a path in the [user@]host:path form that starts with '-'.
+        ("ssh://h", "an ssh url has no path after the host"),
+        ("ssh://git@example.org", "an ssh url has no path after the host"),
+        ("ssh://[::1]:22", "an ssh url has no path after the host"),
+        ("ssh://h?x", "an ssh url has no path after the host"),
+        ("ssh://[]/r", "the host is empty"),
+        ("ssh://u@[]/r", "the host is empty"),
+        ("ssh:///r", "the host is empty"),
+        ("ssh://u@/r", "the host is empty"),
+        ("ssh://:22/r", "the host is empty"),
+        ("[]:r", "the host is empty"),
+        ("u@[]:r", "the host is empty"),
+        ("[u@]:r", "the host is empty"),
+        ("u@:r", "the host is empty"),
+        ("h:-x", "the path starts with '-'"),
+        ("u:-x@h:p", "the path starts with '-'"),
+        ("git@example.org:-oProxyCommand=x", "the path starts with '-'"),
+        ("[::1]:-x", "the path starts with '-'"),
         ("ssh://h[x]/p", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
         # In brackets, ssh still reads a user before the last '@', and git a port after a ':'.
         ("[a@-oProxyCommand=x]:p", "the host starts with '-'"),
