@@ -630,3 +630,14 @@ None.
 None.
 
 Nothing remains open in this pull request before the owner's merge decision. Outside it: the three issue-text items above, and a resolution of the one conflict with 506 by whichever merges second.
+
+## Checkpoint
+**When**: 2026-11-18 16:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+The owner chose "Resolve, re-check, merge (Recommended)" in a dialog (2026-11-18). The option as shown to him: a background agent merges main into the branch and resolves the one conflict as described (in docs/manifest/design.md, "What the tool has to give": keep the sentence pull request 506 wrote for "A failed resolve changes nothing", drop the "init can be run again" bullet this branch removes), a short review checks the result and CI runs again, and then the host merges without asking him again, provided the review finds nothing and CI is green; if anything else turns up, the host comes back to him.
+
+The finding to address: pull request 508 conflicts with main since pull request 506 merged (4d319d9d). Merge origin/main into feature/issue-495 and resolve that conflict as stated; resolve nothing else by judgment.
