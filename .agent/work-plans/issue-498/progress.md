@@ -945,3 +945,18 @@ Nothing remains open before the owner's merge decision, apart from the two CI jo
 **Decision**: merge
 
 The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18): merge pull request 506 (part 1 of 3), re-run the tool's install in the main checkout, then start init and sync (issue 500) alongside part 2 of this issue (reading base).
+
+## Checkpoint
+**When**: 2026-11-18 16:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan file changed after its last review, at 62d137f8, so proceed is not open; the owner chose "Merge and carry on" at the merge of part 1, which names part 2)
+**After**: plan
+**Decision**: revise
+
+Pull request 506 (part 1: one new-format manifest, no base) merged on 2026-11-18. The issue stays open: parts 2 (base) and 3 (the adapter reads the new format, the old reader goes) remain. Refresh the plan for part 2 against what part 1 actually built and the rules its seven review rounds settled, then review it.
+
+Instructions for the revision:
+- Part 1 is delivered: mark it so, and correct anything in parts 2 and 3 that part 1's code or decisions changed (module and function names, the output writer, the reading checks, the structural rule for ssh addresses, the tests' layout, the Python 3.10 and 3.14 matrix).
+- Part 2 reads base as the spec defines it, and nothing else. Every check part 1 applies to a manifest applies to each manifest read through base; a location given in base passes the same url rules as a repo url.
+- Carry part 1's lessons into the plan so they are not found again one review round at a time: state each rule once and structurally instead of case by case; say in the documents exactly what the code does; no test patches an os function reached through pathlib; nothing needs a Python newer than 3.10; fetching anything over the network is covered by tests that use local git repositories and local files, never the network.
+- Keep it as small as the spec allows. Where the spec leaves a choice open for base, list it as a question with a recommendation instead of deciding it silently.
