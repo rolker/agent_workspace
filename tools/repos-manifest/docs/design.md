@@ -226,7 +226,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 |---|---|---|
 | `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
 | `init` | More than one `--distro` without `--distro-dirs`. | Add `--distro-dirs`. |
-| `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs`. |
+| `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs` and without `--distro`. |
 | `init` | No `--distro`, with a manifest that has `distros:`. | Name one with `--distro`. |
 | `init` | A `--distro` without `--distro-dirs`, with a manifest that has no `distros:`. | Set up without `--distro`. |
 | `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists, or give the version of the manifest that lists it with `--manifest-ref`. |
