@@ -2,6 +2,7 @@
 output, the head comment, writing whole or not at all, and the choice of reader."""
 
 import os
+import shutil
 import signal
 import stat
 import subprocess
@@ -372,11 +373,8 @@ def test_a_failed_second_rename_puts_the_previous_output_back(manifest, tmp_path
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
 
 
-def test_a_removal_cut_short_leaves_the_marker_for_the_next_run(manifest, tmp_path, monkeypatch):
-    # The previous output is removed after the swap; if that is cut short, what is left still
-    # holds the marker, so a later run sweeps it.
-    out = tmp_path / "out"
-    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+def _cut_short_removal(monkeypatch):
+    """Make every removal of a file but the marker fail; returns the function that undoes it."""
     real_unlink = os.unlink
 
     def unlink(path, *args, **kwargs):
@@ -385,12 +383,62 @@ def test_a_removal_cut_short_leaves_the_marker_for_the_next_run(manifest, tmp_pa
         return real_unlink(path, *args, **kwargs)
 
     monkeypatch.setattr(output.os, "unlink", unlink)
+    return lambda: monkeypatch.setattr(output.os, "unlink", real_unlink)
+
+
+def test_a_removal_cut_short_leaves_the_marker_for_the_next_run(
+    manifest, tmp_path, monkeypatch, capsys
+):
+    # The previous output is removed after the swap; if that is cut short, what is left still
+    # holds the marker, so a later run sweeps it, and the failure is reported.
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    undo = _cut_short_removal(monkeypatch)
+    capsys.readouterr()
     assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
-    monkeypatch.setattr(output.os, "unlink", real_unlink)
-    left = [p for p in tmp_path.iterdir() if ".out.old-" in p.name]
+    undo()
+    assert capsys.readouterr().err == (
+        f"WARNING: --out {out}: the previous output, moved aside beside it, could not be"
+        " removed (Input/output error); a later resolve to the same place tries again\n"
+    )
+    left = [p for p in tmp_path.iterdir() if p.name.startswith(".out.")]
     assert len(left) == 1 and (left[0] / MARKER).is_file()
     assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+def test_a_removal_cut_short_is_never_put_back_as_the_output(manifest, tmp_path, monkeypatch):
+    # The previous output is renamed to a name the put-back never restores before it is
+    # removed: with `--out` deleted afterwards, a failing run leaves no output, not the partial
+    # copy.
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    undo = _cut_short_removal(monkeypatch)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    undo()
+    left = [p for p in tmp_path.iterdir() if p.name.startswith(".out.")]
+    assert len(left) == 1 and ".out.new-" in left[0].name
+    shutil.rmtree(out)
+
+    def fail(path, text):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(output, "_write_text", fail)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    assert _names(tmp_path) == ["m.manifest.yaml"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a read-only directory")
+def test_a_read_only_output_is_replaced_and_keeps_its_mode(manifest, tmp_path):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    out.chmod(0o555)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert stat.S_IMODE(out.stat().st_mode) == 0o555
+    assert "# role: robot\n" in (out / "layers.txt").read_text()
+    # The read-only previous copy is removed too.
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+    out.chmod(0o755)
 
 
 def test_a_failure_while_writing_leaves_nothing_behind(manifest, tmp_path, monkeypatch):

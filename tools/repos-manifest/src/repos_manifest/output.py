@@ -29,6 +29,7 @@ import re
 import shutil
 import signal
 import stat
+import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -139,11 +140,13 @@ def _process_has_ended(pid: int) -> bool:
     return False
 
 
-def _remove_ours(path: Path) -> None:
+def _remove_ours(path: Path) -> Optional[str]:
     """Remove a directory this tool made, its marker last, so that a removal cut short leaves a
-    directory that still holds the marker, which a later run sweeps. Errors are left: what is
+    directory that still holds the marker, which a later run sweeps. It is made writable first,
+    so a read-only copy is removed too. Returns why it could not be removed, or None; what is
     left is still marked."""
     try:
+        os.chmod(path, stat.S_IRWXU)
         for entry in list(path.iterdir()):
             if entry.name == MARKER:
                 continue
@@ -153,8 +156,25 @@ def _remove_ours(path: Path) -> None:
                 entry.unlink()
         (path / MARKER).unlink(missing_ok=True)
         path.rmdir()
-    except OSError:
-        pass
+    except OSError as exc:
+        return exc.strerror or "an OS error"
+    return None
+
+
+def _discard_previous_output(old: Path, parent: Path, name: str) -> Optional[str]:
+    """Remove the previous output, aside in `old` after a good swap. It is first renamed to a
+    `.new-` name, which a later run sweeps but never puts back, so a removal cut short can never
+    come back as the output. Returns why it could not be removed, or None."""
+    try:
+        doomed = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "new"), dir=parent))
+    except OSError as exc:
+        return exc.strerror or "an OS error"
+    try:
+        os.rename(old, doomed)  # onto the empty directory mkdtemp made
+    except OSError as exc:
+        _remove_ours(doomed)
+        return exc.strerror or "an OS error"
+    return _remove_ours(doomed)
 
 
 def _sweep_leftovers(parent: Path, name: str) -> None:
@@ -282,10 +302,11 @@ def write_output(
             umask = os.umask(0)
             os.umask(umask)
             mode = 0o777 & ~umask
-        os.chmod(new, mode)
         _write_text(new / MARKER, _MARKER_TEXT)
         for file_name, text in files.items():
             _write_text(new / file_name, text)
+        # After the files are written, so that a read-only mode does not stop the writing.
+        os.chmod(new, mode)
         if exists:
             old = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "old"), dir=parent))
         with _signals_held():
@@ -310,5 +331,11 @@ def write_output(
         if new.exists():
             _remove_ours(new)
         if old is not None and old.exists():
-            _remove_ours(old)
+            problem = _discard_previous_output(old, parent, name)
+            if problem is not None:
+                print(
+                    f"WARNING: --out {out}: the previous output, moved aside beside it, could"
+                    f" not be removed ({problem}); a later resolve to the same place tries again",
+                    file=sys.stderr,
+                )
     return [out_abs / file_name for file_name in files]
