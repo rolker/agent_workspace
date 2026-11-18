@@ -267,3 +267,34 @@ def test_a_clone_that_cannot_be_moved_to_another_filesystem_says_so(tmp_path):
     )
     other = OSError(errno.EACCES, os.strerror(errno.EACCES), str(temporary), None, str(place))
     assert rename_failure(other, system, place) == f"{temporary} -> {place}: Permission denied"
+
+
+@pytest.mark.parametrize("what", ["link on the way", "file on the way", "appeared meanwhile"])
+@pytest.mark.parametrize("optional", [False, True])
+def test_whatever_stops_a_repo_skips_it_when_optional_and_fails_it_otherwise(
+    setup, tmp_path, monkeypatch, capsys, what, optional
+):
+    # One rule: an optional repo that cannot be put in place is skipped and listed with the
+    # reason, and the exit status stays 0; any other repo is an error and the status is 1.
+    system, add = setup
+    add("grp/c", optional=optional)
+    if what == "link on the way":
+        (tmp_path / "outside").mkdir()
+        (system / "src" / "grp").symlink_to(tmp_path / "outside")
+    elif what == "file on the way":
+        (system / "src" / "grp").write_text("a person's file\n")
+    else:
+        place = system / "src" / "grp" / "c"
+        _stub_vcs(tmp_path, monkeypatch, f'cat >/dev/null; mkdir -p "$2/grp/c" "{place}"')
+    capsys.readouterr()
+    assert run(system, "sync") == (0 if optional else 1)
+    out = capsys.readouterr().out
+    if optional:
+        assert "skipped src/grp/c (optional): " in out
+        assert "optional, skipped (1): src/grp/c" in out
+        assert "ERROR" not in out and "Some repos" not in out
+    else:
+        assert "ERROR: src/grp/c: " in out
+        assert "failed (1): src/grp/c" in out
+    assert _recorded(system) == {"a"}
+    assert temporaries(system) == []

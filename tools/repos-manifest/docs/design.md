@@ -610,10 +610,9 @@ is not resolved, and none of its repos is touched.
   is created.
 
 A distro whose manifest does not resolve is reported in the same way, and a repo that cannot
-be fetched is that repo's error; the other distros go on. `sync` exits with 1 when a distro
-was reported, or when a repo that is not optional could not
-be cloned or is in the way, and with 0 otherwise. A repo left as it is and an optional repo
-skipped are listed and do not change it. A stop signal ends it with that signal.
+be fetched is reported for that repo; the other distros go on. `sync` exits with 1 when a distro
+was reported or a repo was an error (below), and with 0 otherwise; a repo that is there and
+left as it is does not change it. A stop signal ends it with that signal.
 
 Each missing repo is cloned by a `vcs import` of its own, given that one repo, into a
 temporary directory `.repos-manifest-tmp-<pid>-<random>` in `.repos-manifest/`. Only when
@@ -621,7 +620,7 @@ temporary directory `.repos-manifest-tmp-<pid>-<random>` in `.repos-manifest/`. 
 into its place. The stop signals are held over that rename and the writing of the repo's
 record in `state.yaml`. So a path under a layer's `src/` is a whole clone or something a person
 put there; a repo whose clone failed leaves nothing there. A place that is there is not
-written into, and one that is there and is not a directory is that repo's error. The
+written into, and one that is there and is not a directory stops that repo. The
 temporaries make a limit: a system directory is on one filesystem. Where a distro or layer
 directory is a separate mount, the rename fails, and the message says so and names both
 places. Each run first removes the temporaries in `.repos-manifest/` whose process has ended.
@@ -667,8 +666,11 @@ person has moved if it is not.
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
 submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
 
-An optional repo that cannot be fetched is skipped and reported. Any other repo that cannot
-be fetched is an error. A skipped repo is listed every time, by `sync` and by `status`, so
+Whatever stops a repo from being put in place (it cannot be fetched, a link is on the way,
+its place is taken by something that is not a directory or is filled meanwhile, a directory
+cannot be made, the rename fails) skips an optional repo, which is listed with the reason and
+never makes the exit status non-zero; for any other repo it is an error, and the exit status
+is 1. A skipped repo is listed every time, by `sync` and by `status`, so
 that a repo missing because the network was down is not mistaken for one the machine has no
 access to.
 

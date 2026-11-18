@@ -190,17 +190,33 @@ def clone_repo(
     env: Env,
     record: Callable[[Optional[str]], None],
 ) -> RepoResult:
-    """Clone one repo to `src/<key>` unless something is there. `record` is given the clone's
-    commit and writes it to the state; the stop signals are held over the rename into place
-    and the record together, so a stop never leaves a clone in place that is not recorded."""
+    """Clone one repo to `src/<key>` unless something is there. Whatever stops a repo from
+    being put in place makes an optional repo skipped and any other repo failed; this is the
+    one place that decides it."""
+    result = _put_in_place(system, src, repo, text, env, record)
+    if result.outcome == FAILED and repo.optional:
+        result.outcome = SKIPPED
+    return result
+
+
+def _put_in_place(
+    system: Path,
+    src: Parts,
+    repo: Selected,
+    text: str,
+    env: Env,
+    record: Callable[[Optional[str]], None],
+) -> RepoResult:
+    """`record` is given the clone's commit and writes it to the state; the stop signals are
+    held over the rename into place and the record together, so a stop never leaves a clone in
+    place that is not recorded."""
     key_parts = tuple(repo.key.split("/"))
     parts = src + key_parts
     place = system.joinpath(*parts)
     shown = "/".join(parts)
-    failed = SKIPPED if repo.optional else FAILED
     if os.path.lexists(place):
         if not place.is_dir():
-            return RepoResult(shown, failed, "is there and is not a directory; left as it is")
+            return RepoResult(shown, FAILED, "is there and is not a directory; left as it is")
         return RepoResult(shown, PRESENT)
     if not is_in_place(system, parts):
         return RepoResult(shown, FAILED, "a link on the way leads outside its place; not cloned")
@@ -212,7 +228,7 @@ def clone_repo(
         status, printed = vcs_import(temporary, text, env)
         if status != 0:
             detail = f"vcs import exited {status}:\n{printed.rstrip()}"
-            return RepoResult(shown, failed, detail, fetch=True)
+            return RepoResult(shown, FAILED, detail, fetch=True)
         if not is_in_place(system, parts):
             return RepoResult(shown, FAILED, "a link on the way leads outside its place")
         if os.path.lexists(place):
