@@ -457,7 +457,16 @@ command that writes there.
   covers the characters a text shows as nothing (Unicode's default-ignorable code points, such
   as zero-width spaces, variation selectors and the Hangul fillers), every space but the ASCII
   one and other characters that show only as a blank, and private-use and unassigned code
-  points. The only control characters a file holds are newline, carriage return and tab.
+  points. The only control characters a file holds are newline, tab, and a carriage return
+  just before a newline (a file with Windows line ends). Alone, a carriage return sends a
+  terminal back to the start of the line, so what follows it can hide what came before.
+- This rule takes in some characters that are not meant to deceive. An emoji written with a
+  variation selector (such as the warning sign followed by `U+FE0F`) or joined to another by a zero-width joiner is refused,
+  and so are the zero-width joiner and non-joiner that some scripts, Persian and the Indic
+  scripts among them, use inside words. That holds in a comment too. Which characters
+  count as unassigned depends on the Unicode tables of the Python running the tool, so a
+  character newer than those tables is refused. The message names the character's code
+  point (`U+200D`), its line and its column, so it can be found when it cannot be seen.
 
 Those are all the checks. A message about a manifest may print a value from it, and a
 credential in a `url` is not looked for: the manifest is as trusted as the code it names.

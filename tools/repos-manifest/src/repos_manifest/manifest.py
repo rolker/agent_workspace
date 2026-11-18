@@ -102,8 +102,11 @@ def read_problem(path: Path, source: Optional[str] = None) -> Optional[str]:
 
 
 def _read_text(path: Path, label: str) -> str:
+    # newline="": the text as it is on the disk, so a carriage return is not turned into a
+    # newline before the check on the text sees it.
     try:
-        return path.read_text(encoding="utf-8")
+        with open(path, encoding="utf-8", newline="") as file:
+            return file.read()
     except FileNotFoundError:
         raise ManifestError(f"{label}: not found") from None
     except UnicodeDecodeError:

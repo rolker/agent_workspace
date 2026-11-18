@@ -67,17 +67,23 @@ def has_unsafe_char(text: str) -> bool:
     return any(not (" " <= ch <= "~") and _is_unsafe(ch) for ch in text)
 
 
-# What a whole file's text may hold that a value may not: the ends of lines and a tab.
-_TEXT_ALLOWED = frozenset("\n\r\t")
+# What a whole file's text may hold that a value may not: newline and tab, and a carriage
+# return just before a newline.
+_TEXT_ALLOWED = frozenset("\n\t")
 
 
 def first_unsafe_in_text(text: str):
     """The first character of a whole file's text, comments included, that is a control
     character, invisible or changes the direction of text, as ``(line, column, code point)``;
-    None if there is none. Newline, carriage return and tab are allowed here."""
+    None if there is none. Newline and tab are allowed here, and a carriage return only as
+    part of CRLF: alone, a terminal goes back to the start of the line at it, so what follows
+    can hide what came before."""
     line, column = 1, 1
-    for ch in text:
-        if ch not in _TEXT_ALLOWED and has_unsafe_char(ch):
+    for index, ch in enumerate(text):
+        if ch == "\r":
+            if text[index + 1 : index + 2] != "\n":
+                return line, column, "U+000D"
+        elif ch not in _TEXT_ALLOWED and has_unsafe_char(ch):
             return line, column, f"U+{ord(ch):04X}"
         if ch == "\n":
             line, column = line + 1, 1

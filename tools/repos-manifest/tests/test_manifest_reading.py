@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from repos_manifest.manifest import parse_manifest
+from repos_manifest.manifest import load_manifest, parse_manifest
 from repos_manifest.yamlload import ManifestError, has_unsafe_char
 
 REPO = "    type: git\n    url: https://example.org/a.git\n"
@@ -511,3 +511,40 @@ def test_visible_text_outside_ascii_is_accepted_in_a_comment(text):
 def test_a_tab_and_crlf_line_ends_are_accepted():
     text = "#\ta comment\r\n" + _one_repo().replace("\n", "\r\n")
     assert list(_m(text).repositories) == ["a"]
+
+
+@pytest.mark.parametrize("text", ["# a\r# url: b\n", "# a\r", "# a\r\r\n"])
+def test_a_carriage_return_is_allowed_only_before_a_newline(text):
+    # At a lone carriage return a terminal goes back to the start of the line, so what
+    # follows can hide what came before.
+    _refused(text + _one_repo(), "line 1, column 4: the file holds U\\+000D")
+
+
+def test_a_lone_carriage_return_in_a_file_is_refused(tmp_path):
+    # Read from the disk, the text is checked before a carriage return becomes a newline.
+    path = tmp_path / "m.yaml"
+    path.write_bytes(_one_repo().replace("type: git", "type: git\r# x").encode())
+    with pytest.raises(ManifestError, match="line 3, column 14: the file holds U\\+000D"):
+        load_manifest(path)
+
+
+def test_a_file_with_crlf_line_ends_is_accepted(tmp_path):
+    path = tmp_path / "m.yaml"
+    path.write_bytes(_one_repo().replace("\n", "\r\n").encode())
+    assert load_manifest(path).repositories["a"].type == "git"
+
+
+@pytest.mark.parametrize(
+    "comment,code,column",
+    [
+        ("# \u26a0\ufe0f\n", "U+FE0F", 4),
+        ("# \U0001f468\u200d\U0001f4bb\n", "U+200D", 4),
+        ("# \u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\n", "U+200C", 5),
+    ],
+)
+def test_an_emoji_with_a_selector_or_a_joiner_is_refused_and_the_message_finds_it(
+    comment, code, column
+):
+    # The rule holds in comments too; the message names the code point, the line and the
+    # column, so a person can find a character they cannot see.
+    _refused(_one_repo() + comment, f"line 5, column {column}: the file holds {re.escape(code)},")
