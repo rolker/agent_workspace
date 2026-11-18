@@ -450,6 +450,11 @@ review.
 repo is one the manifest lists: the local copy is the same file in that repo's clone.
 Otherwise it is given with `--local-manifest`, or left out.
 
+`init` takes the manifest's repo as listed when the manifest has a repo whose `url` names the
+same repo once the scheme, any `user@`, a trailing `.git` and a trailing `/` are set aside,
+and the `:` after the host in an ssh URL such as `git@host:team/system.git` is read as `/`.
+A distro on which that repo is absent has no local copy, and reads the recorded location.
+
 A manifest that is not in any of the system's repos needs no `local_manifest`. It stays where
 it is, on a disk or at a URL.
 
