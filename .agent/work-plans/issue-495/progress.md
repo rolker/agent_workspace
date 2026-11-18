@@ -559,3 +559,18 @@ Scope: the round 3 findings and `git diff 4084a9e5..HEAD` (eight commits plus th
 **Decision**: address
 
 Make the two text fixes of the round 4 review: the refusal for --distro-dirs on a manifest with no distros says to set up without --distro-dirs and without --distro, so that two refusals do not send a person back and forth; and the two unlisted-distro rows also give the next step for a manifest that is not given in the git form. Nothing else. This is the host's second address answer at this checkpoint in a row; the next answer here is publish or the owner's.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:58 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-495 at `6e66e92e`
+**Addressed**: Local Review (Pre-Push) at `a139997a` (2026-11-18 15:58 -05:00)
+**Commits**: d8677aa7, 6e66e92e
+
+### Actions
+- [x] (must-fix) `--distro-dirs` with no `distros:` row now says "Set up without `--distro-dirs` and without `--distro`", ending the loop with the more-than-one-`--distro` row — `tools/repos-manifest/docs/design.md:228-229`
+- [x] (suggestion) The two unlisted-`--distro` rows now also say to add the distro to the manifest's `distros:` when `manifest` is not given in the git form — `tools/repos-manifest/docs/design.md:232-233`
+
+Table re-read: no `init` row's next step lands on a refusal that sends the person back. `check_design_anchors.sh` printed nothing, exit 0. Documents only; no suites run; full pass left to the host.
