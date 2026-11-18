@@ -36,6 +36,10 @@ my_system/
   setup.bash         sources the layers that are built
 ```
 
+This is the layout of a flat system, the default. A system set up with a directory per
+distro puts each distro's layers and setup file in a directory of its own; see "More than one
+distro".
+
 A manifest without layers gives an ordinary colcon workspace: `src/`, `build/`, `install/`
 and `log/` directly in the system directory, with `.repos-manifest/` beside them. For a
 small project the tools then do little more than `vcs` and `colcon` do.
@@ -60,7 +64,9 @@ manifest: https://raw.githubusercontent.com/CCOMJHC/unh_marine_autonomy/jazzy/pr
 local_manifest: core/src/unh_marine_autonomy/project11.manifest.yaml
 role: developer
 groups: [ben-hardware]
-distro: jazzy
+layout: flat
+distros:
+  jazzy: {}
 fetch_from:
   prefix: https://github.com/rolker/
   fallback: true
@@ -70,65 +76,221 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is. See "Where the manifest comes from". |
-| `local_manifest` | Optional. A path inside the system directory that is used instead, once that file exists. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". |
+| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
-| `distro` | The distro of this system, if the manifest has distros. |
-| `distros` | In place of `distro`, when the system directory holds more than one. See "More than one distro". |
+| `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
+| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
 | `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
 
-`role`, `groups` and `distro` are facts about the machine, which is why they are recorded
-here and not in the manifest.
+`role`, `groups`, `layout` and `distros` are facts about the machine, which is why they are
+recorded here and not in the manifest.
 
 ### More than one distro
 
-A development machine often carries two distros of the same system at once, for example the
-current release and the next one. The system directory can then have one directory per
-distro, each holding its own layers and its own setup file:
+A distro is a build environment the system is built in, apart from the others, such as a ROS
+distribution or an operating system release (see "Distros" in the specification). A
+development machine often carries two distros of the same system at once, for example the
+current release and the next one.
+
+The layout is chosen at `init` and cannot be changed afterwards. By default a system is flat:
+it holds one distro, or none when the manifest has no `distros:`, laid out as in the first
+diagram. A flat system cannot gain a second distro in place, because the first distro's
+directories would have to move; several distros need a new directory set up with
+`init --distro-dirs` and a fresh clone of the repos.
+
+With `init --distro-dirs` each distro has a directory of its own from the first distro on,
+holding that distro's layers, or an ordinary colcon workspace when the manifest has no
+layers, and its own `setup.bash`. A distro is added later with `add-distro`, and nothing of
+the distros already there is moved. The cost is one more level of directories, so a person
+who may want a second distro later sets up with `--distro-dirs` from the start. A manifest
+with no `distros:` always gives a flat system.
+
+The smallest system is one repo on one distro with no layers and no roles, set up flat. The
+tools do little more here than `vcs` and `colcon`. The two trees below are abridged and show
+only what the layout changes:
 
 ```
 my_system/
   .repos-manifest/
-    config.yaml
+    config.yaml        manifest: ./system.manifest.yaml, layout: flat, distros: {jazzy: {}}
+    state.yaml
+    resolved/
+      _unnamed.repos
+  src/
+    my_repo/
+  build/  install/  log/
+  setup.bash
+```
+
+The same system set up with `--distro-dirs`, after `repos-manifest add-distro rolling`.
+`rolling/` and `resolved/rolling/` are new; nothing of `jazzy/` or `resolved/jazzy/` is
+touched:
+
+```
+my_system/
+  .repos-manifest/
+    config.yaml        layout: distro-dirs, distros: {jazzy: {}, rolling: {}}
     state.yaml
     resolved/
       jazzy/
+        _unnamed.repos
       rolling/
+        _unnamed.repos
   jazzy/
-    underlay/
-    core/
+    src/
+      my_repo/
+    build/  install/  log/
     setup.bash
   rolling/
-    underlay/
-    core/
-    setup.bash
+    src/  build/  install/  log/  setup.bash
 ```
 
-`config.yaml` lists the distros in place of naming one:
+`distros` in `config.yaml` maps each distro's name to its settings, with the same shape for
+one distro or several, so adding a distro adds an entry and changes nothing else. A flat
+system has one entry, and the key is absent when the manifest has no distros. The only setting an entry may carry is `manifest_version`, the
+branch or tag that distro reads the manifest at, in place of the one `manifest` gives; it is
+what `add-distro --manifest-ref` records. A system on a manifest kept on a branch per distro
+looks like this; with one manifest for all, `rolling` is `{}` too:
 
 ```yaml
-distros: [jazzy, rolling]
+manifest:
+  url: git@git.example.org:team/system.git
+  version: jazzy
+  path: system.manifest.yaml
+local_manifest: core/src/system/system.manifest.yaml
+role: developer
+layout: distro-dirs
+distros:
+  jazzy: {}
+  rolling:
+    manifest_version: rolling
 ```
 
-Everything else in `config.yaml` applies to each distro. `local_manifest` is then a path
-inside the distro's directory, so each distro uses the copy of the manifest in its own
-checkout once it exists. The copies may differ, as the copies on a project's distro branches
-may.
+Everything else in `config.yaml` applies to every distro. `local_manifest` is then a path
+inside each distro's directory, the same path in each; the copies there may differ, as the
+copies on a project's distro branches may. Each distro is built in its own environment, which
+the person sets up before building, for example by sourcing that distro's setup file, so one
+shell can build only one of them.
 
-A command run inside a distro's directory acts on that distro. Run at the top of the system
-directory, `sync` and `status` act on every distro in turn, or on the ones named with
-`--distro`.
+#### Setting up with init
 
-`build` acts on one distro at a time: the one whose directory it is run in, or the one named
-with `--distro`. Each distro is built in its own environment, which the person sets up
-before building, for example by sourcing that distro's setup file, so one shell can build
-only one of them.
+`init` sets up the current directory. Without `--distro-dirs` it takes one `--distro`, or
+none when the manifest has no `distros:`; with it, one or more. It refuses as listed under
+"Refusals", before anything is created.
 
-The layout is chosen at `init`. A system directory set up for one distro has no distro
-directories, as in the first diagram. A manifest without layers gives each distro directory
-an ordinary colcon workspace.
+`init` makes `.repos-manifest/` with its `config.yaml` in one step, written aside and moved
+into place, so the folder and its record appear together. Before that step nothing of the
+system exists, and `init` can be run again. If the first sync after it fails or is
+interrupted, `sync` finishes it. Every command finds `.repos-manifest/` by walking up from the
+current directory, and one without a readable `config.yaml` is an error that names the file.
+`init` gives that error too, not the refusal for a system that is set up, and its next step
+is to repair or remove that `.repos-manifest/` folder.
+
+Before its question, `init` prints what `show` prints (see "show"). For a flat system with a
+distro it also prints one line, which `--yes` does not skip:
+
+```
+Layout: one directory for the system, with no directory per distro. A distro cannot be added to this system later. To be able to add one, set up with --distro-dirs.
+```
+
+#### Adding a distro
+
+```
+repos-manifest add-distro <name> [--manifest-ref <ref>] [--yes] [-- <vcs import arguments>]
+```
+
+`add-distro` adds a distro to a system set up with `--distro-dirs`. It reads the new distro's
+manifest, prints what `show` prints for it and asks before it goes on, which `--yes` skips.
+It then adds the distro's entry to `distros`, with `manifest_version` when `--manifest-ref`
+was given, and syncs that distro only; a sync that fails part way is finished with `sync`.
+The role, the groups, `fetch_from`, `remotes` and `local_manifest` are shared by every distro
+and changed by editing `config.yaml`. `add-distro` replaces `config.yaml` whole, written aside and moved into
+place, as `init` writes it.
+
+A system on a manifest kept on a branch per distro is set up and grown like this, which gives
+the `config.yaml` example above:
+
+```
+repos-manifest init git@git.example.org:team/system.git --manifest-ref jazzy \
+    --manifest-path system.manifest.yaml --role developer --distro jazzy --distro-dirs
+repos-manifest add-distro rolling --manifest-ref rolling
+```
+
+#### Refusals
+
+A refusal changes nothing. Each command checks the conditions below in the order listed and
+gives the first that applies, with its next step. The checks that need no fetch come first.
+
+| Command | Condition | Next step the message gives |
+|---|---|---|
+| `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
+| `init` | More than one `--distro` without `--distro-dirs`. | Add `--distro-dirs`. |
+| `init` | Two `--distro` that differ only in case, with `--distro-dirs`, since a distro's name is a directory name. | Name one of them. |
+| `init` | `--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form: a local path, or a URL with `--manifest-ref` and no `--manifest-path`. | Give the manifest in the git form, or leave the option out. |
+| `init` | `--distro-dirs` with a manifest that has no `distros:`. | Set up without `--distro-dirs` and without `--distro`. |
+| `init` | No `--distro`, with a manifest that has `distros:`. | Name one with `--distro`. |
+| `init` | A `--distro` without `--distro-dirs`, with a manifest that has no `distros:`. | Set up without `--distro`. |
+| `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists; or, when the manifest is given in the git form, give with `--manifest-ref` a version of it that lists the distro; or, when it is not, add the distro to its `distros:`. |
+| `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Name distros it lists; or set up with the ones it lists and add each other one afterwards: with `add-distro <name> --manifest-ref <ref>` when `manifest` is given in the git form, or, when it is not, by adding the distro to its `distros:` and then `add-distro <name>`. |
+| `init` | A directory or file it would create already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
+| `add-distro` | `<name>` is not a name by the rule for names in "Reading a manifest before using it" in the specification, or differs only in case from a recorded distro, since a distro's name is a directory name. | Use another name. |
+| `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
+| `add-distro` | The distro is already recorded. | `sync --distro <name>`. |
+| `add-distro` | `<name>/` exists in the system directory. | Move it out of the way. |
+| `add-distro` | `--manifest-ref` is given and `manifest` is not given in the git form. | Leave `--manifest-ref` out. |
+| `add-distro` | The manifest read has no `distros:`. | None: there is no distro to add. |
+| `add-distro` | The manifest read has `distros:` and does not list the distro. | When `manifest` is given in the git form, `--manifest-ref` for a version that lists it; when it is not, add the distro to its `distros:`. |
+
+#### Where the resolved files and state go
+
+In a flat system the resolved files are in `.repos-manifest/resolved/`. With a directory per
+distro, each distro's are in `.repos-manifest/resolved/<distro>/`.
+
+The version and commit `sync` last put each repo on are kept in `.repos-manifest/state.yaml`,
+for each distro. Its inner shape is not fixed here. What the design needs of it is that
+writing one distro's state leaves every other distro's as it was.
+
+#### Which distro a command uses
+
+A flat system has one distro, or none, and every command uses it.
+
+In a system with a directory per distro, a command uses the distro named with `--distro`,
+which wins over the current directory. When none is named, it uses the distro whose directory
+the current directory is inside; anywhere else in the system directory counts as the top:
+
+| Command | At the top of a system with a directory per distro |
+|---|---|
+| `sync`, `status` | Every distro, in the order of `distros`. `--distro`, given once or more, names some of them. |
+| `show`, `resolve`, `build`, `freeze` | The system's only distro, when it has one. With several, an error that lists them. |
+| `validate` | Every distro the system records, in the order of `distros`; it writes nothing, so checking them all does no harm. `--distro` names one. |
+| `add-distro` | The distro named as its argument. |
+
+A `--distro` that the system does not record is an error for every command, a flat system
+included. Outside a system directory, `show`, `resolve` and `validate` take the distro as an
+argument.
+
+#### Which manifest a distro reads
+
+Every time a distro reads its manifest, it reads the first of these that exists:
+
+1. its local copy: the file at `local_manifest` inside that distro's directory (the system
+   directory when it is flat);
+2. the location in `manifest`, at the distro's own `manifest_version` when its entry has one.
+
+The local copy is in the clone of the manifest's repo that the distro syncs, at the version
+the manifest gives that repo on that distro. So where the manifest gives its own repo a
+branch per distro, each distro reads the copy on its own branch from its second sync on.
+
+A distro can have its own version of the manifest and nothing else of its own: a distro whose
+manifest is at another URL or path is not supported. A manifest that is not given in the git
+form has no version, and every distro reads the same file until its local copy exists.
+
+`build` reads no manifest; it uses the distro's resolved files. `init` reads the location on
+its command line, and `add-distro` the location in `manifest` at `--manifest-ref` when it is
+given, since a new distro has no local copy yet.
 
 ## Where the manifest comes from
 
@@ -170,7 +332,8 @@ supported. A person can copy the file by hand and give its path.
 
 Often the manifest lives in one of the repos it lists. Before the first sync that repo is not
 on the machine, so the manifest is read from its URL. After the first sync there is a copy in
-the system directory, and `local_manifest` says where. From then on the local copy is the one
+the system directory, or in each distro's directory when there is one per distro, and
+`local_manifest` says where. From then on the local copy is the one
 that counts: a developer can edit it, try it, and send the change through the repo's normal
 review.
 
@@ -178,16 +341,23 @@ review.
 repo is one the manifest lists: the local copy is the same file in that repo's clone.
 Otherwise it is given with `--local-manifest`, or left out.
 
+`init` takes the manifest's repo as listed when the manifest has a repo whose `url` names the
+same repo once the scheme, any `user@`, a trailing `.git` and a trailing `/` are set aside,
+and in the scp form `host:path`, such as `git@host:team/system.git`, the `:` is read as `/`.
+A distro on which that repo is absent has no local copy, and reads the recorded location.
+
 A manifest that is not in any of the system's repos needs no `local_manifest`. It stays where
 it is, on a disk or at a URL.
 
 `manifest` and `local_manifest` can be changed after `init`, by editing `config.yaml`. A
 project that has no manifest yet can be set up from one written in a scratch directory. When
 the manifest is later added to one of the project's repos, `local_manifest` is set to its
-place in the checkout.
+place in the checkout. A change to `manifest` reaches every distro, except that a distro with
+its own `manifest_version` keeps reading that version.
 
-Only the checkout in the system directory counts as the local copy. A copy in another clone
-or another branch of the same repo is not looked at.
+Only the checkout in the system directory counts as the local copy, and with a directory per
+distro only the checkout in that distro's own directory. A distro never reads another
+distro's copy. A copy in another clone or another branch of the same repo is not looked at.
 
 The same rule applies to `base`. Each parent is a location of one of the three kinds, and
 a relative path is taken from the manifest that names it. A local manifest that builds on a
@@ -197,7 +367,8 @@ parent next to it in the same repo reads the parent from the local disk too.
 
 | Command | What it does |
 |---|---|
-| `init` | Records the manifest, role and distro in a new system directory, then syncs. |
+| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro, or none, and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
+| `add-distro` | Adds a distro to a system set up with `--distro-dirs`, then syncs it. |
 | `show` | Prints what a manifest comes to for a role and distro, without cloning the system's repos or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
 | `sync` | Resolves, then fetches and updates the repos of each layer. |
@@ -222,9 +393,29 @@ repos-manifest sync
 repos-manifest build
 ```
 
+A person who may want a second distro later sets up with a directory per distro, and adds
+the distro when it is wanted:
+
+```
+repos-manifest init <manifest> --role robot --distro jazzy --distro-dirs
+repos-manifest build
+source jazzy/setup.bash
+```
+
+and later, in a new shell with the other distro's environment:
+
+```
+repos-manifest add-distro rolling
+cd rolling
+repos-manifest build
+source setup.bash
+```
+
 `show`, `resolve` and `validate` also work outside a system directory, with the manifest,
 role and distro given as arguments. That is the form a CI job or another tool uses, and the
-way to look at a manifest before setting anything up.
+way to look at a manifest before setting anything up. Inside a system directory the distro is
+chosen as under "Which distro a command uses": `validate` at the top checks every distro the
+system records, or the one `--distro` names.
 
 ### show
 
@@ -257,7 +448,7 @@ left out
 For each repo it shows the layer, the version and the URL it will be fetched from. It says
 which manifest an entry came from when that is not the first in the chain, and it lists the
 repos that are left out with the reason. Inside a system directory it uses what `config.yaml`
-records, so it also shows the effect of `fetch_from`.
+records and that distro's manifest, so it also shows the effect of `fetch_from`.
 
 `show` does not clone the system's repos. It does read every manifest in the chain, which
 for one in a git repo means fetching it, and with a `fetch_from` fallback it asks the other
@@ -333,21 +524,45 @@ clone the repos there.
 Beyond the specification, `resolve` refuses a distro entry that gives both a `version` and
 `absent: true`, and an output directory that is a symbolic link.
 
+In a system with a directory per distro, a distro's files go in
+`.repos-manifest/resolved/<distro>/`, and resolving one distro never touches another's; see
+"Where the resolved files and state go".
+
 ### sync
 
-1. Update the clone that `local_manifest` points into, by the same rules as any other repo
-   (below).
+For each distro it acts on:
+
+1. Update the clone that the distro's `local_manifest` points into, by the same rules as any
+   other repo (below).
 2. Resolve.
 3. For each layer in order, bring the layer's `src/` in line with its `.repos` file: clone
    the repos that are missing, and update the ones that are there.
 
 Repos are only ever brought in line with the current manifest. On the first `sync` there is
-no clone yet, and the manifest is read from the location given to `init`. A manifest on a
-local disk or at a URL has no clone to update, and step 1 does nothing for it.
+no clone yet, and the manifest is read from the location recorded for that distro (see
+"Which manifest a distro reads"). A manifest on a local disk or at a URL has no clone to
+update, and step 1 does nothing for it.
 
 Step 1 follows the same rules as every other update: a clone that a person has moved to
 another branch, or that has local work, is left as it is. A developer who is editing the
 manifest in its checkout gets that edited manifest.
+
+After step 1, the manifest read for a distro is checked against what `config.yaml` records.
+Where they disagree, `sync` reports it for that distro and goes on with the other distros. By
+then step 1 has updated the manifest's own clone; nothing else of that distro is changed: it
+is not resolved, and none of its repos is touched.
+
+- The manifest this distro reads no longer lists it, or lists no distros at all. The
+  message names the distro and says that nothing has been moved or removed. Nothing is
+  deleted, and the distro stays recorded until the manifest lists it again or a person edits
+  `config.yaml`.
+- A flat system records no distro, because its manifest had none, and the manifest now has
+  `distros:`. Resolving for no distro is then an error, since a distro is given where the
+  manifest has them (see "What resolving produces" in the specification).
+  The message says that nothing has been moved, and that a system with distros is set up in a
+  new directory with `init`, and with `--distro-dirs` to hold more than one distro.
+- The manifest lists a distro the system does not record. Nothing happens: a distro is added
+  only with `add-distro`.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
@@ -360,7 +575,7 @@ has updated it. A parent in another git repo or at a URL is fetched afresh.
 
 Sync does not discard work, and it tells a change in the manifest from a change a person
 made. It records the version and the commit it last put each repo on, in
-`.repos-manifest/state.yaml`, for each distro when there is more than one. The version is
+`.repos-manifest/state.yaml`, for each distro. The version is
 what the rules below compare against; the commit lets `status` show what has changed since
 the last sync. A repo it has no
 record for is recorded and followed if it is on the manifest's version, and treated as one a
@@ -380,7 +595,7 @@ person has moved if it is not.
   delete it.
 
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
-submodules.
+submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
 
 An optional repo that cannot be fetched is skipped and reported. Any other repo that cannot
 be fetched is an error. A skipped repo is listed every time, by `sync` and by `status`, so
@@ -395,7 +610,7 @@ it sourced. `colcon` is given the paths of the repos the resolved files list for
 of the system for this machine, because a group was switched off or the manifest dropped it,
 is not built. What an earlier build of it installed stays in the layer's `install/` until
 that layer is built afresh, and `build` says so. Then write `setup.bash` in the system directory, or in the distro's directory
-when the system directory holds more than one distro. It sources the setup file of
+when there is one per distro. It sources the setup file of
 the last layer, in the manifest's order, that has been built, whichever layers this run
 built.
 
@@ -422,15 +637,14 @@ skipped as optional, is skipped.
 
 ### status
 
-Shows the manifest in use, the role and the distro, and for each repo whether it matches the
-manifest: on the expected version, on a different one, with local changes, missing, skipped
-as optional, or present but no longer in the manifest.
+Shows, for each distro it acts on, the manifest in use, the role and the distro, and for each
+repo whether it matches the manifest: on the expected version, on a different one, with local
+changes, missing, skipped as optional, or present but no longer in the manifest.
 
 ### freeze
 
 Writes a manifest that records the exact commit of every repo the machine has, for one
-distro. With more than one distro in the system directory it acts on one at a time, as
-`build` does.
+distro. It acts on one distro, chosen as for `build` (see "Which distro a command uses").
 
 It is one complete manifest that builds on no other. Everything the manifest in use and its
 parents say is merged in, and then:
@@ -591,7 +805,7 @@ and a private repo marked optional.
 ```
 repos-manifest init https://github.com/example/system.git --manifest-ref rolling \
     --manifest-path system.manifest.yaml --role developer --distro jazzy --distro rolling \
-    --fetch-from https://github.com/developer/ --fetch-fallback \
+    --distro-dirs --fetch-from https://github.com/developer/ --fetch-fallback \
     --remote field=git@git.example.org:field/
 ```
 
@@ -599,7 +813,10 @@ Besides the manifest's location, `config.yaml` then holds:
 
 ```yaml
 role: developer
-distros: [jazzy, rolling]
+layout: distro-dirs
+distros:
+  jazzy: {}
+  rolling: {}
 fetch_from:
   prefix: https://github.com/developer/
   fallback: true
@@ -607,7 +824,8 @@ remotes:
   field: git@git.example.org:field/
 ```
 
-The developer role switches on `simulation` and `ui`. Each distro has its own directory.
+The developer role switches on `simulation` and `ui`. Each distro has its own directory, and
+another can be added later with `add-distro`.
 Repos the developer has forked come from the fork, with the published repo as `upstream`;
 the rest come from the published URL. The private repo is fetched because this developer has
 access to it. Every clone has a `field` remote for deploying to and collecting from field
@@ -628,13 +846,16 @@ Besides the manifest's location, `config.yaml` holds:
 ```yaml
 role: robot
 groups: [echoboat-hardware]
-distro: jazzy
+layout: flat
+distros:
+  jazzy: {}
 fetch_from:
   prefix: git@git.example.org:field/
   fallback: false
 ```
 
-The robot role leaves `simulation` and `ui` off. A layer that holds only such repos is empty
+The system directory is flat: it has no directory per distro, and the layers are directly in
+it. The robot role leaves `simulation` and `ui` off. A layer that holds only such repos is empty
 and is not built. The one hardware group brings in the drivers for this platform and no other.
 Every repo, and the manifest itself, comes from the private server. Fixes made on the machine
 are committed on the manifest's branches and pushed to the server, and `sync` keeps them.
@@ -700,8 +921,9 @@ A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 
 - Package dependencies and system packages. For ROS projects `rosdep` covers these, run by
   the person or the script that sets up the machine.
-- Running a distro the host OS does not support, in a container or otherwise. `distro` is
-  recorded, and the commands assume the environment they run in can build it.
+- Running a distro the host OS does not support, in a container or otherwise. The distros
+  are recorded, and the commands assume the environment they run in can build the distro
+  they act on.
 - Leaving out some packages of a repo. Groups and roles select whole repos. A person can
   pass `colcon` its own options for skipping packages through `build`.
 - Content that is not in a git repo, such as models or data downloaded at build time.
@@ -728,8 +950,8 @@ as optional, where the design marks repos. And when it fetches a parent manifest
 repo it never lets git or ssh ask for a password, where the design lets them ask at a
 terminal.
 
-`show`, `init`, `sync`, `build`, `status`, `freeze`, the system directory, fetching from
-another place and extra remotes are not built.
+`show`, `init`, `sync`, `build`, `status`, `freeze`, `add-distro`, the system directory,
+fetching from another place and extra remotes are not built.
 
 ## Open questions
 
@@ -737,8 +959,17 @@ another place and extra remotes are not built.
   directory has to move. `sync` could move it, or say what to move.
 - With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
   for every repo on every sync costs a network call per repo.
-- With more than one distro, whether a distro needs its own settings, such as a different
-  `manifest` URL for its first sync or a different role.
+- With a directory per distro, whether a distro needs more settings of its own than a
+  `manifest_version`: a different role or groups, or a `local_manifest` path that differs
+  between distros. A distro's own manifest version is settled: it is used whenever the distro
+  reads the recorded location.
+- How a distro is removed from a system with a directory per distro.
+- What `init` prints for several distros.
+- What a distro's manifest that lacks the system's role or one of its groups gives, at
+  `add-distro` and at `sync`.
+- `sync`'s exit status when one distro is reported and the others go on, and whether it goes
+  on with the other distros when one distro's manifest does not resolve or one of its required
+  repos cannot be fetched.
 - Whether `build` should stop at the first layer that fails or carry on with layers that do
   not depend on it. The manifest does not say which layers depend on which, only their
   order, so stopping is the safe rule.

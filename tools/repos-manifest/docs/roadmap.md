@@ -37,7 +37,7 @@ are relative to the tool's own directory.
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |
-| A system directory can hold more than one distro, each in its own directory | |
+| A system set up with a directory per distro holds more than one distro, and gains another later without moving the first | |
 | Project11 is described by a manifest in one of its repos and set up from it | |
 | A short set of instructions gets someone project11 running in the simulator, including installing the tool | |
 | Project11's CI fetches and builds with the tools | |

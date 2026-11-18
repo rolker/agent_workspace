@@ -124,14 +124,11 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 
 ## The design we are working towards
 
-Nothing in this section is built. It depends on three things outside the workspace's own
+Nothing in this section is built. It depends on two things outside the workspace's own
 code:
 
-- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`), which
-  the tool's roadmap has;
-- a change to the tool's design that is not made yet: a directory per distro from the first
-  distro on, and adding a distro later (#495). The tool's design today gives a system set up
-  for one distro no distro directories;
+- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`,
+  `add-distro`), which the tool's roadmap has;
 - some of what the adapter relies on today, which the tool's design does not promise yet. It
   is listed under "What the tool has to give".
 
@@ -162,10 +159,11 @@ What has to happen behind that request:
 3. The session shows what the manifest comes to for a role and that distro
    (`repos-manifest show`) and asks before fetching the project's repos. Reading the
    manifest and its parents, which `show` needs, happens before the question.
-4. `repos-manifest init` sets the directory up with one directory per distro, holding the
-   first distro only.
+4. `repos-manifest init --distro-dirs` sets the directory up with one directory per distro,
+   holding the first distro only.
 5. The distro is built, and the project is onboarded as any other.
-6. Later, another distro is added to the same directory, without moving the first.
+6. Later, `repos-manifest add-distro` adds another distro to the same directory, without
+   moving the first.
 
 ### A project instance is a system directory
 
@@ -173,7 +171,8 @@ The tool sets a system up in one directory, with a `.repos-manifest/` folder tha
 the manifest, the role, the distros and where repos are fetched from. A project instance of
 type `ros2_colcon` is such a directory, and it is the root a session is started in. It holds
 every distro of the project the machine has, each in its own directory from the first distro
-on, so that adding a distro later moves nothing:
+on. `setup` passes `--distro-dirs` to `init` whenever the project has a distro, even for the
+first one alone, so that adding a distro later moves nothing:
 
 ```
 ~/project11/
@@ -190,7 +189,7 @@ instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init` for a directory that is not set up yet, or for a distro the instance does not have yet (#495); `repos-manifest sync` for a distro that is set up, which clones what is missing |
+| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init`, with `--distro-dirs` when the project has a distro, for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
 | `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
@@ -206,17 +205,18 @@ Which route an instance is on is decided in this order, until the older routes a
 2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
 3. Otherwise: the bootstrap route.
 
-The test is the tool answering, not the `.repos-manifest/` folder being there, because an
-`init` that was interrupted can leave the folder without a complete record. A `status` that
-reports a missing repo has answered: the instance is on the tool, and `validate` fails. The tool's
-design has `init` record what it was given and then sync, so a first sync that fails part
-way is finished with `sync`. A directory whose record is not complete is set up by running
-registration again.
+The test is the tool answering, not the `.repos-manifest/` folder being there: a folder whose
+record cannot be read is an error from the tool. That error counts as the tool not
+answering, so the instance is not treated as set up. A `status` that reports a missing repo has
+answered: the instance is on the tool, and `validate` fails. The tool's design has `init`
+make the folder and its record in one step and then sync, so an interrupted `init` leaves
+either nothing, and registration is run again, or a system whose first sync is finished
+with `sync`.
 
 An existing instance is not converted in place. Its layout is `layers/main/<layer>_ws`, the
-tool's is `<distro>/<layer>/`, and its checkouts may hold work. It is moved by setting up a
-new directory with the tool, after work in the old checkouts has been pushed, and it keeps
-working on its current route until then.
+tool's, with a directory per distro, is `<distro>/<layer>/`, and its checkouts may hold work.
+It is moved by setting up a new directory with the tool, after work in the old checkouts has
+been pushed, and it keeps working on its current route until then.
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
@@ -241,14 +241,14 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
   before it resolves, so a manifest that does not resolve can leave that clone moved
   forward; the resolved output and every other repo have to stay as they were, and `sync`
   has to say that the manifest is what failed.
-- **`init` can be run again.** Run over a directory it did not finish setting up, it
-  completes the record instead of refusing.
 - **A manifest named by a commit.** `source_ref` may be a commit today. The tool's git form
   takes a branch or a tag. An instance pinned to a commit stays on today's route until the
   tool takes a commit, or is registered again with a branch or tag.
 
-Two of today's guarantees are covered by the tool's design as it is: it reads the manifest
-again on every `sync`, and its `sync` deletes nothing and leaves local work alone.
+Three of today's guarantees are covered by the tool's design as it is: it reads the manifest
+again on every `sync`, its `sync` deletes nothing and leaves local work alone, and an
+interrupted `init` leaves either nothing, in which case registration is run again, or a
+system whose first sync `sync` finishes.
 
 One is given up on purpose. Today's route refuses plain `http` and a URL that carries
 credentials, and clones a parent manifest's repo with none of the user's git configuration,
@@ -299,8 +299,8 @@ checkout, in the way the tool's design gives for changing them after `init`.
 - Keeping generated directories, the `configs/manifest-resolved` link and its lock, and
   `.resolved-from`. The tool's `.repos-manifest/` folder takes their place.
 - Reading `.repos` files with its own parser to update repos one at a time.
-- The `layers/main/<layer>_ws` layout. The tool's layout is `<distro>/<layer>/` in the
-  instance's directory.
+- The `layers/main/<layer>_ws` layout. The tool's layout, with a directory per distro, is
+  `<distro>/<layer>/` in the instance's directory.
 
 ### What stays in the workspace
 
@@ -329,7 +329,9 @@ no user and is removed, with `bootstrap_url` and `configs/manifest`.
 
 ## Not decided
 
-- How a session says which distro it is working on, when its root holds several. Today a
+- How a session says which distro it is working on, when its root holds several, and how it
+  gives the version of the manifest for a distro it adds whose manifest is on a branch of its
+  own (`add-distro --manifest-ref`). Today a
   distro is recorded once per instance, on the registry line, and a worktree's environment
   script is written for that one distro.
 - Which distro runs on the host and which in a container. That is a fact about a machine. It
