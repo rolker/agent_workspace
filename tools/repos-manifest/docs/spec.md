@@ -119,8 +119,8 @@ Two things follow from the key being a path:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `type` | yes | As in a `.repos` file. The format takes any type a `.repos` file takes; the tools here read `git` only and refuse a manifest with another. |
-| `url` | yes | Where to fetch from. |
+| `type` | yes, where the repo's key first appears | As in a `.repos` file. The format takes any type a `.repos` file takes; the tools here read `git` only and refuse a manifest with another. |
+| `url` | yes, where the repo's key first appears | Where to fetch from. |
 | `version` | no | The default branch, tag or commit. The remote's default branch if left out. |
 | `absent` | no | `true` if the repo is not part of the system unless a distro says so. `false` if left out. |
 | `layer` | no | The layer the repo belongs to. The unnamed first layer if left out. |
@@ -387,18 +387,20 @@ repositories:
     url: https://github.com/rolker/unh_marine_navigation.git
 ```
 
-Only the first manifest in a chain, one with no `base`, has to be complete. An entry in a
-later one may leave out the required keys when an earlier manifest gives them, and a later
-manifest that adds no repo needs no `repositories:` at all. An entry whose key matches
-nothing read before it is a new repo and has to be complete; this catches a misspelt key.
+A repo's entry has `type` and `url` in the manifest where its key first appears in the order
+of reading; a later manifest may then change any key of it, and leave out the keys it does
+not change. A manifest that brings in a key with only part of an entry is refused, and the
+message names that manifest, whatever a later manifest adds. A manifest with no `base` is no
+exception: every key it has that no manifest read before it has is new there. This also
+catches a misspelt key, which matches nothing read before it. A manifest with `base` that
+adds no repo needs no `repositories:` at all.
 
-The rules that read more than one part of a manifest are judged on the combination: that a
-repo has `type` and `url`, that its `layer` is in `layers:` and its groups and a role's groups
-are in `groups:`, that a repo's `distros:` key has a `distros:` list to go with it, that no
-repo key is inside another and that no two layer names differ only in case. So "`distros:` is
-absent" means absent from every manifest of the chain. A message about one of these names the
-manifest that gave the value. Every other rule is checked on each manifest as it is read,
-parents included.
+The other rules that read more than one part of a manifest are judged on the combination:
+that a repo's `layer` is in `layers:` and its groups and a role's groups are in `groups:`,
+that a repo's `distros:` key has a `distros:` list to go with it, that no repo key is inside
+another and that no two layer names differ only in case. So "`distros:` is absent" means
+absent from every manifest of the chain. A message about one of these names the manifest that
+gave the value. Every other rule is checked on each manifest as it is read, parents included.
 
 Adding a repo to a group of the published manifest works the same way as adding it to a
 layer: the new repo names the group.

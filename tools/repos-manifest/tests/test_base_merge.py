@@ -214,6 +214,51 @@ def test_a_misspelt_key_is_a_new_entry_and_is_refused(tmp_path):
     )
 
 
+def test_an_entry_is_complete_where_its_key_first_appears_not_after_a_later_manifest(tmp_path):
+    # The parent brings `n` with no `type`; the leaf giving it does not make the parent valid.
+    _refused(
+        tmp_path,
+        [
+            PUBLISHED,
+            "repositories:\n  n:\n    url: https://example.org/n.git\n",
+            "repositories:\n  n:\n    type: git\n",
+        ],
+        1,
+        "repositories.n: has no `type`; a repo that no manifest read before it has is new",
+    )
+
+
+def _overlay(tmp_path, overlay):
+    (tmp_path / "full.yaml").write_text(PUBLISHED)
+    (tmp_path / "overlay.yaml").write_text(overlay)
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [full.yaml, overlay.yaml]\n")
+    return leaf
+
+
+def test_an_overlay_with_no_base_may_change_repos_an_earlier_manifest_brought(tmp_path):
+    # The overlay is read after `full`, so its entries are changes, not new repos.
+    leaf = _overlay(tmp_path, "repositories:\n  nav:\n    version: from_overlay\n")
+    m = load_manifest(leaf)
+    assert m.repositories["nav"].version == "from_overlay"
+    assert m.repositories["nav"].url == "https://example.org/nav.git"
+
+
+@pytest.mark.parametrize(
+    "entry,missing",
+    [("    url: https://example.org/n.git\n", "type"), ("    type: git\n", "url")],
+)
+def test_an_overlay_with_no_base_that_brings_a_new_repo_gives_it_whole(tmp_path, entry, missing):
+    leaf = _overlay(tmp_path, "repositories:\n  n:\n" + entry)
+    overlay = os.path.realpath(tmp_path / "overlay.yaml")
+    with pytest.raises(
+        ManifestError,
+        match=f"^{re.escape(overlay)}: repositories.n: has no `{missing}`; a repo that no"
+        " manifest read before it has is new",
+    ):
+        load_manifest(leaf)
+
+
 # --- The diamond -----------------------------------------------------------------------------
 
 

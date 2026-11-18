@@ -429,7 +429,7 @@ class _Checker:
         repos: Dict[str, Dict[str, object]] = {}
         if "repositories" not in raw:
             if not base:
-                # The first manifest of a chain has the repos; a later one may add none.
+                # A manifest that builds on none has the repos; one with `base` may add none.
                 raise self.error("", "has no `repositories:`")
         else:
             repos_raw = raw["repositories"]
@@ -502,8 +502,9 @@ class _Checker:
         return key
 
     def repo(self, key: str, entry) -> Dict[str, object]:
-        """The keys a repo entry gives, each checked. Whether the entry is complete, and whether
-        its layer, groups and distros are declared, is judged on the combination."""
+        """The keys a repo entry gives, each checked. Whether the entry is complete is judged
+        where its key first appears in the order of reading, and whether its layer, groups and
+        distros are declared on the combination; both are in ``combine.py``."""
         where = f"repositories.{key}"
         if not isinstance(entry, dict):
             raise self.error(where, f"must be a mapping with type and url, got {_type_name(entry)}")

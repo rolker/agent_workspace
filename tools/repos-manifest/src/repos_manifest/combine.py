@@ -42,6 +42,7 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
     roles: Optional[Dict[str, _Given]] = None
     repos: Dict[str, Dict[str, _Given]] = {}
     first: Dict[str, int] = {}  # repo key -> index of the part it first appears in
+    brought: Dict[str, List[str]] = {}  # repo key -> the keys of its entry where it first appears
     warnings: List[str] = []
 
     for index, part in enumerate(parts):
@@ -60,6 +61,7 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
             if key not in repos:
                 repos[key] = {}
                 first[key] = index
+                brought[key] = list(given)
             for name, value in given.items():
                 repos[key][name] = _Given(value, part.source)
 
@@ -70,7 +72,8 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
             _check_declared(role.value, group_list, role.source, f"roles.{name}")
     repositories: Dict[str, Repo] = {}
     for key, given in repos.items():
-        repositories[key] = _repo(key, given, parts[first[key]].source, first[key] > 0)
+        _check_complete(key, brought[key], parts[first[key]].source, first[key] > 0)
+        repositories[key] = _repo(key, given)
         _check_repo(key, given, distros, layer_list, group_list, len(parts) > 1)
     _check_no_key_inside_another(repos, first, parts)
 
@@ -111,19 +114,24 @@ def _check_declared(names: List[str], groups: List[str], source: str, where: str
             )
 
 
-def _repo(key: str, given: Dict[str, _Given], first_source: str, has_earlier: bool) -> Repo:
-    """The merged entry as a `Repo`. An entry that first appears in a manifest is new there and
-    is complete."""
-    where = f"repositories.{key}"
+def _check_complete(key: str, brought: List[str], source: str, has_earlier: bool) -> None:
+    """A repo's entry has `type` and `url` in the manifest where its key first appears in
+    reading order, `source`; a later manifest may then change any key. `brought` is the keys
+    that manifest gave."""
     for required in ("type", "url"):
-        if required not in given:
+        if required not in brought:
             hint = (
                 "; a repo that no manifest read before it has is new and needs it: is the key"
                 " misspelt?"
                 if has_earlier
                 else ""
             )
-            raise _error(first_source, where, f"has no `{required}`{hint}")
+            raise _error(source, f"repositories.{key}", f"has no `{required}`{hint}")
+
+
+def _repo(key: str, given: Dict[str, _Given]) -> Repo:
+    """The merged entry as a `Repo`; `_check_complete` has passed, and a later manifest cannot
+    take a key away."""
     values = {name: g.value for name, g in given.items()}
     return Repo(
         key=key,
