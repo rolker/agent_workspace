@@ -1,0 +1,297 @@
+"""The system directory: finding it, `config.yaml`, where each part of it is, `state.yaml`, and
+reading the manifest a system was set up from.
+
+Layout (``docs/design.md``, "The system directory" and "More than one distro"): a flat system
+holds one distro, or none, directly in the system directory; with ``--distro-dirs`` each distro
+has a directory of its own. In either, the unnamed first layer's repos are in ``src/`` and a
+named layer's in ``<layer>/src/``.
+
+Every temporary this tool makes in a system, after ``init``'s first step, is in
+``.repos-manifest/`` and is named ``.repos-manifest-tmp-<pid>-<8 characters>``.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import sys
+import tempfile
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import yaml
+
+from .manifest import UNNAMED_LAYER, Manifest, load_manifest
+from .yamlload import ManifestError
+
+SYSTEM_DIR = ".repos-manifest"
+CONFIG_FILE = "config.yaml"
+STATE_FILE = "state.yaml"
+RESOLVED_DIR = "resolved"
+SETUP_FILE = "setup.bash"
+LAYOUT_FLAT = "flat"
+LAYOUT_DISTRO_DIRS = "distro-dirs"
+NO_DISTRO = "_unnamed"  # the state's key for a system whose manifest has no distros
+STATE_FORMAT = 1
+
+TEMP_PREFIX = ".repos-manifest-tmp-"
+TEMP_NAME = re.compile(re.escape(TEMP_PREFIX) + r"(?P<pid>[0-9]+)-[a-z0-9_]{8}")
+
+SETUP_TEXT = (
+    "# Written by repos-manifest init. Nothing is built here yet.\n"
+    'echo "repos-manifest: nothing is built here yet" >&2\n'
+    "return 1 2>/dev/null || exit 1\n"
+)
+
+Parts = Tuple[str, ...]
+
+
+class Refusal(ManifestError):
+    """A command refuses to go on; nothing was changed. The message gives the next step."""
+
+    def __init__(self, condition: str, next_step: str):
+        super().__init__(f"{condition}. {next_step}")
+
+
+def oserror_message(exc: OSError) -> str:
+    """An error on the disk as one line: the path, a second path if there was one, and why."""
+    where = " -> ".join(str(name) for name in (exc.filename, exc.filename2) if name is not None)
+    reason = exc.strerror or type(exc).__name__
+    return f"{where}: {reason}" if where else reason
+
+
+@contextmanager
+def reporting_oserror():
+    """An `OSError` from the disk ends the command with a message naming its path and reason."""
+    try:
+        yield
+    except OSError as exc:
+        raise ManifestError(oserror_message(exc)) from None
+
+
+def warn(message: str) -> None:
+    print(f"WARNING: {message}", file=sys.stderr)
+
+
+def default_mode(full: int) -> int:
+    """The mode a plain `mkdir` (0o777) or `open` (0o666) would give under the umask."""
+    umask = os.umask(0)
+    os.umask(umask)
+    return full & ~umask
+
+
+# --- config.yaml ----------------------------------------------------------------------------
+
+
+@dataclass
+class Config:
+    manifest: str  # as given to init; a relative path is taken from the system directory
+    role: Optional[str]
+    groups: List[str]
+    layout: str
+    distros: Optional[List[str]]  # in order; None when the manifest has no distros
+
+    @property
+    def distro_keys(self) -> List[Optional[str]]:
+        return list(self.distros) if self.distros is not None else [None]
+
+
+def config_text(config: Config) -> str:
+    data: Dict[str, object] = {"manifest": config.manifest}
+    if config.role is not None:
+        data["role"] = config.role
+    if config.groups:
+        data["groups"] = list(config.groups)
+    data["layout"] = config.layout
+    if config.distros is not None:
+        data["distros"] = {name: {} for name in config.distros}
+    return yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
+
+
+def read_config(system: Path) -> Config:
+    path = system / SYSTEM_DIR / CONFIG_FILE
+
+    def bad(why: str) -> ManifestError:
+        return ManifestError(
+            f"{path}: {why}; repair it, or remove that {SYSTEM_DIR}/ folder to set up again"
+        )
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise bad("not found") from None
+    except OSError as exc:
+        raise bad(f"cannot be read ({exc.strerror or type(exc).__name__})") from None
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise bad("does not read as YAML") from None
+    if not isinstance(data, dict) or not isinstance(data.get("manifest"), str):
+        raise bad("is not a mapping with a `manifest`")
+    layout = data.get("layout")
+    if layout not in (LAYOUT_FLAT, LAYOUT_DISTRO_DIRS):
+        raise bad(f"`layout` is {layout!r}, not {LAYOUT_FLAT} or {LAYOUT_DISTRO_DIRS}")
+    distros = data.get("distros")
+    return Config(
+        manifest=data["manifest"],
+        role=data.get("role"),
+        groups=list(data.get("groups") or []),
+        layout=layout,
+        distros=list(distros) if distros is not None else None,
+    )
+
+
+def find_system(start: Path) -> Optional[Path]:
+    """The system directory: `start` or the nearest directory above it that holds
+    `.repos-manifest`."""
+    for directory in [start, *start.parents]:
+        if os.path.lexists(directory / SYSTEM_DIR):
+            return directory
+    return None
+
+
+def distros_for(
+    system: Path, config: Config, named: Sequence[str], cwd: Path
+) -> List[Optional[str]]:
+    """The distros a command acts on ("Which distro a command uses"): those named, which must be
+    recorded; else the distro whose directory `cwd` is inside; else every one, in order."""
+    if named:
+        recorded = config.distros or []
+        for name in named:
+            if name not in recorded:
+                listed = ", ".join(recorded) if recorded else "none"
+                raise ManifestError(
+                    f"--distro {name}: this system does not record it (it records: {listed})"
+                )
+        return list(dict.fromkeys(named))
+    if config.layout == LAYOUT_DISTRO_DIRS:
+        for name in config.distros or []:
+            inside = system / name
+            if cwd == inside or inside in cwd.parents:
+                return [name]
+    return config.distro_keys
+
+
+# --- Where each part is ---------------------------------------------------------------------
+
+
+def distro_parts(layout: str, distro: Optional[str]) -> Parts:
+    """The distro's directory below the system directory: none in a flat system."""
+    return (distro,) if layout == LAYOUT_DISTRO_DIRS else ()
+
+
+def layer_src_parts(layout: str, distro: Optional[str], layer: str) -> Parts:
+    layer_dir = () if layer == UNNAMED_LAYER else (layer,)
+    return distro_parts(layout, distro) + layer_dir + ("src",)
+
+
+def resolved_parts(layout: str, distro: Optional[str]) -> Parts:
+    return (SYSTEM_DIR, RESOLVED_DIR) + distro_parts(layout, distro)
+
+
+def setup_parts(layout: str, distro: Optional[str]) -> Parts:
+    return distro_parts(layout, distro) + (SETUP_FILE,)
+
+
+def paths_init_creates(layout: str, distro: Optional[str], layers: Sequence[str]) -> List[Parts]:
+    """The paths directly below the system directory, or the distro's directory, that `init`
+    creates for one distro, other than `.repos-manifest`."""
+    if layout == LAYOUT_DISTRO_DIRS:
+        return [distro_parts(layout, distro)]
+    tops = [layer_src_parts(layout, distro, layer)[:1] for layer in layers]
+    return list(dict.fromkeys(tops + [setup_parts(layout, distro)]))
+
+
+def is_in_place(system: Path, parts: Parts) -> bool:
+    """The check on the real destination: the directory that will hold `parts` is, with every
+    link resolved, the system directory's real path joined with the parts above it. A link on
+    the way, a layer directory or a directory of a repo's key, fails it."""
+    target = system.joinpath(*parts)
+    expected = os.path.join(os.path.realpath(system), *parts[:-1])
+    return os.path.realpath(target.parent) == expected
+
+
+# --- Files in .repos-manifest/ --------------------------------------------------------------
+
+
+def replace_file(system: Path, path: Path, text: str) -> None:
+    """Write `path` whole: a temporary file in `.repos-manifest/`, then one rename."""
+    handle, temporary = tempfile.mkstemp(
+        prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system / SYSTEM_DIR
+    )
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as file:
+            file.write(text)
+        os.chmod(temporary, default_mode(0o666))
+        os.replace(temporary, path)
+    finally:
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+
+
+@dataclass
+class RepoRecord:
+    layer: str
+    version: Optional[str]
+    commit: Optional[str]
+
+
+@dataclass
+class DistroState:
+    repos: Dict[str, RepoRecord] = field(default_factory=dict)
+
+
+def state_key(distro: Optional[str]) -> str:
+    return distro if distro is not None else NO_DISTRO
+
+
+def _read_state_data(system: Path) -> dict:
+    path = system / SYSTEM_DIR / STATE_FILE
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"format": STATE_FORMAT, "distros": {}}
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise ManifestError(f"{path}: does not read as YAML; repair or remove it") from None
+    if not isinstance(data, dict) or not isinstance(data.get("distros"), dict):
+        raise ManifestError(f"{path}: is not a mapping with `distros`; repair or remove it")
+    return data
+
+
+def read_state(system: Path, distro: Optional[str]) -> DistroState:
+    entry = _read_state_data(system)["distros"].get(state_key(distro)) or {}
+    repos = {
+        key: RepoRecord(record.get("layer"), record.get("version"), record.get("commit"))
+        for key, record in (entry.get("repos") or {}).items()
+    }
+    return DistroState(repos)
+
+
+def put_distro_state(system: Path, distro: Optional[str], state: DistroState) -> None:
+    """Replace one distro's entry; every other distro's is written back as it was read."""
+    data = _read_state_data(system)
+    data["distros"][state_key(distro)] = {
+        "repos": {
+            key: {"layer": record.layer, "version": record.version, "commit": record.commit}
+            for key, record in state.repos.items()
+        }
+    }
+    text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
+    replace_file(system, system / SYSTEM_DIR / STATE_FILE, text)
+
+
+# --- The manifest ---------------------------------------------------------------------------
+
+
+def read_manifest(location: str, base: Path) -> Manifest:
+    """Read the manifest at `location`, a path taken from `base` when relative; the one place
+    a command reads a manifest. Its warnings go to stderr."""
+    path = base / location
+    if "://" in location and not os.path.lexists(path):
+        raise ManifestError(
+            f"{location}: only a manifest given as a file path is read in this version"
+        )
+    loaded = load_manifest(path, source=location)
+    for warning in loaded.warnings:
+        warn(warning)
+    return loaded

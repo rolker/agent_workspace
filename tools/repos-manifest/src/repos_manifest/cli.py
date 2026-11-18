@@ -20,6 +20,7 @@ from .merge import merge_chain
 from .schema import ManifestError
 from .selectors import select_repos
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
+from .system import read_manifest
 from .validate import build_validation_table, check_dependencies
 
 
@@ -56,10 +57,7 @@ def _stopped(exc: Stopped, replaced_out=None) -> int:
 
 
 def _load_new(args: argparse.Namespace) -> new_manifest.Manifest:
-    loaded = new_manifest.load_manifest(Path(args.manifest), source=args.manifest)
-    for warning in loaded.warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-    return loaded
+    return read_manifest(args.manifest, Path("."))
 
 
 def cmd_resolve_new(args: argparse.Namespace) -> int:
