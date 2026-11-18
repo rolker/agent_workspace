@@ -258,11 +258,21 @@ A `--distro` that the manifest does not list is the resolver's error (see "Distr
 specification). `init` reports it when it prints what the manifest comes to, before it asks
 to go on.
 
-`init` only sets up a new system directory. It refuses a directory that already has
-`.repos-manifest/`, and changes nothing. The message says to use `sync` to update the system,
-or `add-distro` to add a distro to a system set up with `--distro-dirs`. This includes a
-directory where an earlier `init` stopped part way; what `init` should do there is not
-designed yet.
+`init` only sets up a new system directory. It writes its record, `.repos-manifest/config.yaml`,
+whole before it clones anything, so a record is either there and complete or not there at
+all. If the first sync then fails or is interrupted, `sync` finishes it.
+
+`init` refuses a directory that already has `.repos-manifest/`, and refuses to run inside an
+existing system, one found by walking up from the current directory. It changes nothing, and
+the message is:
+
+```
+This directory is already set up as a system: <system directory>. Nothing has been changed. To update it, run repos-manifest sync. To add a distro to a system set up with --distro-dirs, run repos-manifest add-distro <name>.
+```
+
+A `.repos-manifest/` whose `config.yaml` is missing or cannot be read has been damaged by
+hand. Every command, `init` included, stops with an error that names the file and says what
+is wrong with it.
 
 Before its question, `init` prints what `show` prints (see "show"). For a flat system with a
 named distro it also prints one line about the layout:
@@ -336,7 +346,7 @@ the top of the system directory, or inside `.repos-manifest/`:
 | `sync`, `status` | Every distro, in the order of `distros`. `--distro`, given once or more, names some of them. |
 | `show`, `resolve`, `build`, `freeze` | The system's only distro, when it has one. With several, an error that lists them. |
 | `add-distro` | The distro named as its argument. The current directory plays no part. |
-| `init` | Not run in a system directory. |
+| `init` | Refused, as it is anywhere inside a system. See "Setting up with init". |
 
 `--distro` wins over the directory the command is run in. A `--distro` that the system does
 not record is an error for every command, a flat system included.
@@ -442,7 +452,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 
 | Command | What it does |
 |---|---|
-| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro and cannot gain another. Refuses a directory that is already set up. |
+| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
 | `add-distro` | Adds a distro to a system set up with `--distro-dirs`, then syncs it. |
 | `show` | Prints what a manifest comes to for a role and distro, without cloning the system's repos or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
