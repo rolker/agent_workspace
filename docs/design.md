@@ -480,11 +480,16 @@ Status: `decided`
   path that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set
   source=...` runs `setup`); `source` does not choose the type, and onboarding an empty session folder
   from a source is #473's.
-  Manifest support is a part with its own design (the rule for parts is being written under #488):
+  Manifest support is a part with its own design (ADR-0022, the rule for parts):
   how the route fetches, resolves, locks and keeps its generated directory, and the design it is
   moving to (the adapter calling the manifest tool's own commands, with a project instance as one of
-  the tool's system directories), are in [manifest/design.md](manifest/design.md); the order of that
-  work is in [manifest/roadmap.md](manifest/roadmap.md) (#487).
+  the tool's system directories), are in [manifest/design.md](manifest/design.md), the route step by
+  step under [its own section](manifest/design.md#the-manifest-route-step-by-step); the order of that
+  work is in [manifest/roadmap.md](manifest/roadmap.md) (#487). The resolver is the manifest tool in
+  `tools/ros-manifest`, a part too: its format, its commands and what it relies on are in its own
+  design, [tools/ros-manifest/docs/design.md](../tools/ros-manifest/docs/design.md) (the commands
+  under [Commands](../tools/ros-manifest/docs/design.md#commands)), and its order of work in its own
+  roadmap (#486). The roadmap's Direction section points at both parts' roadmaps.
 - The active project is resolved in this order: `--project`, then the cwd (or `--from`) inside a
   registered hosting directory (longest match); nothing else (`adapter` header, "Multi-tenant
   resolution"; the legacy `project/` step went in #265 part 4).
@@ -1131,6 +1136,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Registry and adapters | The manifest-route bullet keeps what crosses the boundary (the settings keys, the resolver call for the recorded role and distro, what `validate` refuses, the worktree `env.sh` note, registration) and points at `docs/manifest/design.md` for the route's mechanics (fetch, lock, generated directory, the `extends` clone) and for the design it is moving to, and at `docs/manifest/roadmap.md`, the workspace's first sub-roadmap. The section is 159 lines, past about 60: the manifest route's detail moved to the part's design in this change, and what remains is the registry, the settings file and the adapter contract, which other sections cite | #487 | 1160 |
 | 2026-11-18 | Documentation layers, Rules, Decision register | Parts with their own documents (#488, ADR-0022): a part owns its inside; the Direction row adds the `Sub-roadmap \| Root` pointer, each part's next step in every run and a part's sub-roadmap path as a third kind of focus; a Now paragraph gives the boundary, the citation form, the one level the checker follows and the totals rule; the Target relates parts to OQ-1 without answering it; two Rules rows (the part-citation check, `hook`; the boundary, `review only`); register row 0022. Documentation layers is about 75 lines, past the 60-line prompt: the pointer and citation mechanics are in the `sitrep_checks.sh` and `check_design_anchors.sh` headers, and the section keeps what two parts must agree on | #488 | 1191 |
 | 2026-11-18 | Change log | Main merged into issue 488's branch after #487 landed (pull request 496): the rows of both sides are kept, #487's (already on main) before #488's, and their line counts are each side's own file at the time; this row's count is the merged file's | #488 | 1187 |
+| 2026-11-18 | Registry and adapters | The manifest-route bullet cites ADR-0022 for the rule for parts, now written, in place of "being written under #488", and links the manifest tool's own design (`tools/ros-manifest/docs/design.md`, its Commands section) as ADR-0022 decision 2 requires, with a section citation into `docs/manifest/design.md`; the roadmap's Direction section gains the pointer rows for both parts' roadmaps | #488 | 1193 |
 
 ## Glossary
 

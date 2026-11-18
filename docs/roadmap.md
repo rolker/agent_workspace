@@ -114,6 +114,15 @@ problems, and keeps the steps that do.
 | Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
 | The orchestrator design session with the design for the home-directory work managers (#398); the fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
+The parts with a roadmap of their own (ADR-0022): the manifest tool,
+whose checks are relative to its own directory, and the workspace's
+manifest support, whose checks are relative to this root.
+
+| Sub-roadmap | Root |
+|-------------|------|
+| `tools/ros-manifest/docs/roadmap.md` | `tools/ros-manifest` |
+| `docs/manifest/roadmap.md` | . |
+
 Things set aside for good are under [Decided Against](#decided-against).
 
 ## User Scenarios
