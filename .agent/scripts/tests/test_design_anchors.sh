@@ -583,12 +583,16 @@ expect "h: a link resolves from its file only (docs/docs/manifest is missing)" 1
 printf 'See `docs/manifest/design.md#route`.\n' > "$R/docs/roadmap.md"
 run_checker "$R"
 expect "h: a backtick path with no file beside the citer falls back to the root" 0
-printf '[x](../../../outside/docs/design.md#a)\n' > "$R/docs/roadmap.md"
+# UP is `../`, so the fixture text holds no doubled parent step (which the
+# hook-scope suite's root-derivation scan would read as this suite
+# deriving a real repository root; it reads only its sandbox).
+UP='../'
+printf '[x](%s%s%soutside/docs/design.md#a)\n' "$UP" "$UP" "$UP" > "$R/docs/roadmap.md"
 run_checker "$R"
 expect "h: a path whose .. leaves the root is an error" 1 "leaves the root"
 : > "$R/docs/roadmap.md"
 
-printf '# Manifest\n\nSee [tool](../../tools/t/docs/design.md#only-part) and [bad](../../tools/t/docs/design.md#nope).\n\n## Route\n' > "$R/docs/manifest/design.md"
+printf '# Manifest\n\nSee [tool](%s%stools/t/docs/design.md#only-part) and [bad](%s%stools/t/docs/design.md#nope).\n\n## Route\n' "$UP" "$UP" "$UP" "$UP" > "$R/docs/manifest/design.md"
 run_checker "$R"
 expect "h: a link from one part's design to another resolves from its directory" 1 \
     "docs/manifest/design.md:3:" "#nope" "check_design_anchors: 1 finding(s)"
