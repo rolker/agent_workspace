@@ -93,3 +93,29 @@ Specialists: Claude adversarial, scoped to the round 2 findings and the fix diff
 - [x] (suggestion) A relative parent comes from an updated clone only when the naming manifest is the local copy — `tools/ros-manifest/docs/design.md:301`
 - [x] (suggestion) A repo with no record is never tracked again — `tools/ros-manifest/docs/design.md:306`
 - [x] (suggestion) "before any repo is cloned" is looser than the later paragraph — `tools/ros-manifest/docs/design.md:233`
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 10:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Verdict**: approved
+
+**PR**: #494 at `ff8cee31`
+**Depth**: Deep (reason: post-push cross-model review requested by the owner, then a narrow check of its fixes)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Sources: Codex reviewed the pull request at 14d133ed and reported seven findings; all seven were fixed in cf769426. A Claude reviewer then checked cf769426 alone: four findings resolved, three partly, one new must-fix (a roadmap line contradicting its neighbours) and four suggestions. Those were fixed in ff8cee31, which no reviewer has read. One of them is a design choice the owner has not yet seen: sync puts unpushed commits back on top of what it fetched (as git pull --rebase does), which is what the ros2_colcon adapter's sync does today.
+
+### Findings
+- [x] (must-fix) Containment is checked on path text only; a link already on disk or names differing by case can collide (codex) — `tools/ros-manifest/docs/spec.md:402`
+- [x] (must-fix) Two parents sharing a parent: reading order and precedence unspecified (codex) — `tools/ros-manifest/docs/spec.md:339`
+- [x] (must-fix) sync step 1 moved the manifest's clone on whatever branch it was on (codex) — `tools/ros-manifest/docs/design.md:285`
+- [x] (must-fix) Recording only the version cannot tell local commits on the same branch from a managed checkout (codex) — `tools/ros-manifest/docs/design.md:307`
+- [x] (must-fix) build builds repos left on disk that are no longer selected (codex) — `tools/ros-manifest/docs/design.md:353`
+- [x] (must-fix) freeze keeps the floating version of a skipped optional repo (codex; stated as a limit) — `tools/ros-manifest/docs/design.md:378`
+- [x] (must-fix) The roadmap has no step for moving from the prototype's format, command and output (codex) — `tools/ros-manifest/docs/roadmap.md:34`
+- [x] (must-fix) The first wording of that roadmap line contradicted the lines beside it (check of the fixes) — `tools/ros-manifest/docs/roadmap.md:29`
+- [x] (suggestion) A repo only ahead of its remote was said to be both left alone and updated; a field machine with an unpushed commit would get nobody else's commits (check of the fixes) — `tools/ros-manifest/docs/design.md:320`
+- [x] (suggestion) "The remote" was ambiguous with fetch_from and extra remotes (check of the fixes) — `tools/ros-manifest/docs/design.md:318`
+- [x] (suggestion) "The later one wins" needed qualifying for shared parents (check of the fixes) — `tools/ros-manifest/docs/spec.md:303`
+- [x] (suggestion) A dropped repo's earlier build stays in install/ (check of the fixes) — `tools/ros-manifest/docs/design.md:337`
