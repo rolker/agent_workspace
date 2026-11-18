@@ -48,6 +48,12 @@ def stop_exit(exc: Stopped, message: str) -> int:
     """Print `message` and end the run as the signal would: called after the context above has
     put the previous handlers back. Returns the exit status, 128 + the signal."""
     print(f"ERROR: {message}", file=sys.stderr)
+    # Output to a file or a pipe is buffered, and the signal's default action does not flush it.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):  # closed, or a broken pipe: nothing more can be written
+            pass
     # The previous handlers are back: the signal is delivered again, to end the process as it
     # would have or to run the caller's own handler. Python's own SIGINT handler would raise
     # KeyboardInterrupt and print a traceback; the message above says it all.

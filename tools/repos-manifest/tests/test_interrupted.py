@@ -15,7 +15,7 @@ import yaml
 from helpers import dead_pid, make_remote, repo, run, snapshot, temporaries, write_manifest
 import repos_manifest
 from repos_manifest import init, sync
-from repos_manifest.signals import Stopped
+from repos_manifest.signals import Stopped, stop_exit
 
 
 @pytest.fixture
@@ -206,3 +206,19 @@ def test_inits_sweep_removes_an_empty_aside(manifest, tmp_path):
     leftover.mkdir()
     assert run(system, *INIT) == 0
     assert not leftover.exists()
+
+
+def test_output_is_flushed_before_the_stop_signal_ends_the_process(monkeypatch):
+    # Output to a file or a pipe is buffered, and a signal's default action ends the process
+    # without flushing it: what was printed is written out first.
+    written = io.BytesIO()
+    stdout = io.TextIOWrapper(written, encoding="utf-8")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    print("distro jazzy:")
+    seen = []
+    previous = signal.signal(signal.SIGTERM, lambda *_: seen.append(written.getvalue()))
+    try:
+        assert stop_exit(Stopped(signal.SIGTERM), "stopped") == 128 + signal.SIGTERM
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert seen == [b"distro jazzy:\n"]
