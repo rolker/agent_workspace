@@ -212,3 +212,28 @@ def test_a_resolved_directory_that_cannot_be_written_is_named_without_resolves_o
     err = capsys.readouterr().err
     assert f"the resolved files' directory {resolved}: " in err, err
     assert "--out" not in err and "resolve" not in err.replace("resolved", ""), err
+
+
+@pytest.mark.parametrize(
+    "file,text",
+    [
+        ("config.yaml", "manifest: ../m.manifest.yaml\nlayout: distro-dirs\n"),
+        ("config.yaml", "manifest: ../m.manifest.yaml\nlayout: distro-dirs\ndistros: {}\n"),
+        ("config.yaml", "manifest: ../m.manifest.yaml\nlayout: flat\ndistros: {}\n"),
+        ("config.yaml", "manifest: ../m.manifest.yaml\ngroups: abc\nlayout: distro-dirs\n"),
+        ("state.yaml", "format: 1\ndistros: {rolling: 5}\n"),
+        ("state.yaml", "format: 1\ndistros: {rolling: {repos: {a: x}}}\n"),
+    ],
+)
+def test_a_config_or_state_of_the_wrong_shape_is_an_error_that_names_it(
+    two_distros, capsys, file, text
+):
+    system, _, _ = two_distros
+    (system / ".repos-manifest" / file).write_text(text)
+    before = snapshot(system)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    assert snapshot(system) == before
+    err = capsys.readouterr().err
+    assert f"ERROR: {system}/.repos-manifest/{file}: " in err, err
+    assert "internal error" not in err

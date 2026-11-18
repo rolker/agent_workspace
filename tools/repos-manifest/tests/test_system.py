@@ -86,6 +86,25 @@ def test_config_is_written_and_read_back(tmp_path):
         ("- a\n", "is not a mapping with a `manifest`"),
         ("layout: flat\n", "is not a mapping with a `manifest`"),
         ("manifest: m.yaml\nlayout: tall\n", "`layout` is 'tall'"),
+        ("manifest: [m.yaml]\nlayout: flat\n", "is not a mapping with a `manifest`"),
+        ("manifest: m.yaml\nrole: [a]\nlayout: flat\n", "`role` is a list, not a name"),
+        ("manifest: m.yaml\ngroups: abc\nlayout: flat\n", "`groups` is a string, not a list"),
+        ("manifest: m.yaml\ngroups: [a, [b]]\nlayout: flat\n", "`groups` holds a list"),
+        ("manifest: m.yaml\nlayout: flat\ndistros: jazzy\n", "`distros` is a string, not"),
+        ("manifest: m.yaml\nlayout: flat\ndistros: [jazzy]\n", "`distros` is a list, not"),
+        ("manifest: m.yaml\nlayout: flat\ndistros: {}\n", "`distros` is empty"),
+        ("manifest: m.yaml\nlayout: distro-dirs\n", "`layout` is distro-dirs and there is"),
+        ("manifest: m.yaml\nlayout: distro-dirs\ndistros:\n", "`layout` is distro-dirs and"),
+        (
+            "manifest: m.yaml\nlayout: flat\ndistros: {jazzy: {}, rolling: {}}\n",
+            "`layout` is flat and there are 2 distros",
+        ),
+        ("manifest: m.yaml\nlayout: flat\ndistros: {1: {}}\n", "`distros` has 1 as a name"),
+        ("manifest: m.yaml\nlayout: flat\ndistros: {jazzy: 3}\n", "`distros.jazzy` is an int"),
+        (
+            "manifest: m.yaml\nlayout: flat\ndistros: {jazzy: {manifest_version: j}}\n",
+            "`distros.jazzy.manifest_version` is not read in this version",
+        ),
     ],
 )
 def test_a_config_that_cannot_be_used_names_the_file(tmp_path, text, why):
@@ -123,3 +142,34 @@ def test_a_missing_state_is_empty_and_one_that_does_not_parse_names_the_file(tmp
     (tmp_path / ".repos-manifest/state.yaml").write_text("distros: [\n")
     with pytest.raises(ManifestError, match=r"\.repos-manifest/state.yaml: does not read as YAML"):
         read_state(tmp_path, "jazzy")
+
+
+@pytest.mark.parametrize(
+    "text,why",
+    [
+        ("- a\n", "is not a mapping with `distros`"),
+        ("distros: []\n", "is not a mapping with `distros`"),
+        ("distros: {jazzy: 5}\n", "`distros.jazzy` is an int, not a mapping"),
+        ("distros: {jazzy: {repos: [a]}}\n", "`distros.jazzy.repos` is a list, not a mapping"),
+        ("distros: {jazzy: {repos: {a: x}}}\n", "`distros.jazzy.repos.a` is a string, not a"),
+        (
+            "distros: {jazzy: {repos: {a: {layer: [x]}}}}\n",
+            "`distros.jazzy.repos.a.layer` is a list, not a string",
+        ),
+        (
+            "distros: {jazzy: {repos: {a: {layer: core, commit: 5}}}}\n",
+            "`distros.jazzy.repos.a.commit` is an int, not a string",
+        ),
+    ],
+)
+def test_a_state_that_cannot_be_used_names_the_file_and_what_is_wrong(tmp_path, text, why):
+    (tmp_path / ".repos-manifest").mkdir()
+    (tmp_path / ".repos-manifest/state.yaml").write_text(text)
+    for call in (
+        lambda: read_state(tmp_path, "rolling"),
+        lambda: put_distro_state(tmp_path, "rolling", DistroState()),
+    ):
+        with pytest.raises(ManifestError) as raised:
+            call()
+        assert str(raised.value).startswith(f"{tmp_path}/.repos-manifest/state.yaml: {why}")
+        assert str(raised.value).endswith("; repair or remove it")

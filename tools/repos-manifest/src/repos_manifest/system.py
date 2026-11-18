@@ -110,7 +110,21 @@ def config_text(config: Config) -> str:
     return yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
 
 
+def _kind(value) -> str:
+    """What a YAML value is, for a message about a file's shape."""
+    if value is None:
+        return "empty"
+    for kind, name in ((bool, "a boolean"), (dict, "a mapping"), (list, "a list")):
+        if isinstance(value, kind):
+            return name
+    for kind, name in ((str, "a string"), (int, "an int"), (float, "a number")):
+        if isinstance(value, kind):
+            return name
+    return f"a {type(value).__name__}"
+
+
 def read_config(system: Path) -> Config:
+    """`config.yaml`, read and checked whole: each error names the file and what is wrong."""
     path = system / SYSTEM_DIR / CONFIG_FILE
 
     def bad(why: str) -> ManifestError:
@@ -128,14 +142,40 @@ def read_config(system: Path) -> Config:
         raise bad("does not read as YAML") from None
     if not isinstance(data, dict) or not isinstance(data.get("manifest"), str):
         raise bad("is not a mapping with a `manifest`")
+    role = data.get("role")
+    if role is not None and not isinstance(role, str):
+        raise bad(f"`role` is {_kind(role)}, not a name")
+    groups = data.get("groups")
+    if groups is not None and not isinstance(groups, list):
+        raise bad(f"`groups` is {_kind(groups)}, not a list of names")
+    for group in groups or []:
+        if not isinstance(group, str):
+            raise bad(f"`groups` holds {_kind(group)}, not a name")
     layout = data.get("layout")
     if layout not in (LAYOUT_FLAT, LAYOUT_DISTRO_DIRS):
         raise bad(f"`layout` is {layout!r}, not {LAYOUT_FLAT} or {LAYOUT_DISTRO_DIRS}")
     distros = data.get("distros")
+    if distros is None:
+        if layout == LAYOUT_DISTRO_DIRS:
+            raise bad(f"`layout` is {LAYOUT_DISTRO_DIRS} and there is no `distros`")
+    else:
+        if not isinstance(distros, dict):
+            raise bad(f"`distros` is {_kind(distros)}, not a mapping of each distro's settings")
+        if not distros:
+            raise bad("`distros` is empty; a system with distros records at least one")
+        if layout == LAYOUT_FLAT and len(distros) > 1:
+            raise bad(f"`layout` is {LAYOUT_FLAT} and there are {len(distros)} distros")
+        for name, settings in distros.items():
+            if not isinstance(name, str):
+                raise bad(f"`distros` has {name!r} as a name")
+            if settings is not None and not isinstance(settings, dict):
+                raise bad(f"`distros.{name}` is {_kind(settings)}, not a mapping")
+            for key in settings or {}:
+                raise bad(f"`distros.{name}.{key}` is not read in this version")
     return Config(
         manifest=data["manifest"],
-        role=data.get("role"),
-        groups=list(data.get("groups") or []),
+        role=role,
+        groups=list(groups or []),
         layout=layout,
         distros=list(distros) if distros is not None else None,
     )
@@ -246,15 +286,36 @@ def state_key(distro: Optional[str]) -> str:
 
 
 def _read_state_data(system: Path) -> dict:
+    """`state.yaml`, read and checked whole: each error names the file and what is wrong."""
     path = system / SYSTEM_DIR / STATE_FILE
+
+    def bad(why: str) -> ManifestError:
+        return ManifestError(f"{path}: {why}; repair or remove it")
+
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {"format": STATE_FORMAT, "distros": {}}
     except (yaml.YAMLError, UnicodeDecodeError):
-        raise ManifestError(f"{path}: does not read as YAML; repair or remove it") from None
+        raise bad("does not read as YAML") from None
     if not isinstance(data, dict) or not isinstance(data.get("distros"), dict):
-        raise ManifestError(f"{path}: is not a mapping with `distros`; repair or remove it")
+        raise bad("is not a mapping with `distros`")
+    for distro, entry in data["distros"].items():
+        where = f"distros.{distro}"
+        if entry is None:
+            continue
+        if not isinstance(entry, dict):
+            raise bad(f"`{where}` is {_kind(entry)}, not a mapping")
+        repos = entry.get("repos")
+        if repos is not None and not isinstance(repos, dict):
+            raise bad(f"`{where}.repos` is {_kind(repos)}, not a mapping")
+        for key, record in (repos or {}).items():
+            if not isinstance(record, dict):
+                raise bad(f"`{where}.repos.{key}` is {_kind(record)}, not a mapping")
+            for name in ("layer", "version", "commit"):
+                value = record.get(name)
+                if value is not None and not isinstance(value, str):
+                    raise bad(f"`{where}.repos.{key}.{name}` is {_kind(value)}, not a string")
     return data
 
 
