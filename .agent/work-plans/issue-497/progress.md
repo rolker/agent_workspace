@@ -356,3 +356,24 @@ The host, running /orchestrator, read the round 2 review (approved, ship recomme
 1. ADR-0022's Context keeps the "(now tools/repos-manifest)" note where the host asked for it. It passes ADR-0008's test for an edit that does not change the record; moving it to the Status line is a wording choice that can be made later.
 2. The README sentence about a left-over ignored directory stays in the tool's README: it speaks of "a checkout", not of the workspace. The pull request description repeats it.
 3. The pull request description says that branches made before this change need main merged in, because every worktree shares the main checkout's venv and stamps: after main runs make setup, the old command is gone.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 12:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #505 at `15ae26bf`
+**Sources**: 2 (Local Review (Pre-Push) R2 @ `4fcdbdb` (covers 15ae26b via bookkeeping), CI rollup); no GitHub review, no conversation comment, no Copilot reviewer attached
+**Cross-source confirmations**: 0
+**CI**: pending
+
+CI at `15ae26bf` (two runs, 44360789949 and 44360799803, same jobs): `repos-manifest tests (#267 prototype)` pass in both, so the renamed `validate-repos-manifest` job installs from `tools/repos-manifest[test]` and its pytest suite runs; `Validate Documentation` pass in both; `Validate Adapter Contract` (the other job that installs from `tools/repos-manifest` and runs `repos-manifest --help`) and `Lint (pre-commit)` still pending. Main has no branch protection and no ruleset with required status checks, so the renamed job name breaks no required check. The caller re-checks CI before the merge checkpoint.
+
+The three round 2 suggestions were all handled at the publish Checkpoint; each was checked against the code and the PR body and is closed here:
+
+### Findings
+- [x] (suggestion, Local Review R2 @ `4fcdbdb`) ADR-0022 Context's "(now `tools/repos-manifest`)" note — kept where the host asked for it; it is a non-substantive pointer that passes ADR-0008's test, and moving it to the Status line is a wording choice, not a defect — `docs/decisions/0022-a-part-owns-its-inside.md:36`
+- [x] (suggestion, Local Review R2 @ `4fcdbdb`) README note on the left-over ignored `tools/ros-manifest/` — kept: the sentence (README:119-122) speaks of "a checkout that had the old tool installed", not the workspace, so it does not contradict `docs/manifest/design.md:4`; the PR description repeats it (body line 13) — `tools/repos-manifest/README.md:121`
+- [x] (suggestion, Local Review R2 @ `4fcdbdb`) Branches made before #497 lose the old command once main runs `make setup` (shared venv and stamps) — the PR description now says such branches need main merged in (body line 12) — `Makefile:207`
+
+### False positives
