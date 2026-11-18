@@ -134,3 +134,25 @@ Change it to the owner's case: `init --distro-dirs --distro rolling --role devel
 - [ ] Add the missing acceptance tests: one for each row of the risks table above, a per-row test of the `init` Refusals table that asserts nothing changed, an interrupted-`init` test, a two-distro state test.
 - [ ] Change the by-hand acceptance to `--distro-dirs --distro rolling --role developer` on this machine, and add a check that a repo with a local commit and a dirty file keeps both across `sync`.
 - [ ] Decide at the plan checkpoint the four questions the design left open, and write the answers into the design in the same change.
+
+## Checkpoint
+**When**: 2026-11-18 16:11 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions correct stale text and order the work; none narrows what the owner asked for. He started this drive on 2026-11-18: "do 1 and 2", then "Merge and carry on")
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning, with these instructions for the plan.
+
+What the owner wants first, in his words: "test the tool to build the project directory tree" for his project on this machine, on ROS Rolling. So the plan is in parts, one pull request each, and the first is the smallest thing that does that.
+
+- Part 1: init and the first sync, clone only. One distro flat, and one or more with --distro-dirs. It writes .repos-manifest/ with config.yaml in one step, resolves with the reader and output writer that part 1 of issue 498 put on main, clones each layer's repos with vcs import, writes the resolved files and state, and gives setup.bash where the design says so. Every init refusal in the design's table is built and tested. A sync on a system whose repos all exist reports and changes nothing in this part.
+- Part 2: sync against clones that exist: following a version change, the rules for leaving a repo alone, rebasing unpushed commits, a repo removed from the manifest, per-distro reports, optional repos. This is where a person's work is at risk, so it has its own pull request and the tests the review lists.
+- add-distro is not in this issue. The host will propose a separate issue to the owner. Part 1's per-distro sync is one function that takes a distro, so add-distro can reuse it.
+- The design basis is pull request 508 (issue 495), branch origin/feature/issue-495, not yet merged: plan against it and say what changes if it changes. The issue's own text is stale where the review says so; the review's corrections stand in for it.
+- The manifest location in part 1 is a local file path only. The owner's draft manifest uses no base and can be given as a file. The git form and URL form of a location, and base, come with part 2 of issue 498, which adds the fetching; the plan says how init takes them up once that lands, without building a second fetcher here.
+- vcs: the tool calls a vcs command found on PATH, from vcstool or vcs2l, and refuses before creating anything when there is none. This machine has vcstool 0.3.0: the plan re-tests on it every vcs import behaviour the design relies on, and the tool never parses vcs's stderr.
+- The four questions the design leaves to this issue (what init prints for several distros; a role or group missing from one distro's manifest; sync's exit status when one distro is reported and the others go on; removing a distro) and the two the review found uncovered (untracked files; a repo in the middle of a rebase) are answered in the plan where they are mechanism, and listed for the owner with a recommendation where they change what a person's clone ends up as.
+- Of the things the workspace asks of the tool, this issue includes only "a failed resolve changes nothing", with its test. The lock, fetch time limits and a manifest named by a commit stay out and are named as out of scope.
+- The design documents are updated in the same change as the code (ADR-0017), and "What is built" says what is.
+- Lessons from the resolver's part 1, to plan for from the start: state each rule once and structurally; documents say exactly what the code does; tests use local git repositories, never the network; no test patches an os function reached through pathlib; nothing needs a Python newer than 3.10; do not harden against inputs nobody writes.
