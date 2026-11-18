@@ -1827,6 +1827,17 @@ printf '%s\n' "$OUT" > "$SB/rows-sub"
 RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$S" == *$'docs/part/roadmap.md\tnone open'* && "$S" != *deeper* ]] \
     && pass "(sub l) the not-followed pointer has no next-step line" || fail "(sub l) '$S'"
+echo "TEST: a sub-roadmap whose only table is a nested pointer table is unchecked, not an all-clear"
+{ printf '# Part\n\n## Direction\n\n'
+  printf '| Sub-roadmap | Root |\n|---|---|\n| `docs/deeper/roadmap.md` | . |\n'; } > "$SB/root/docs/part/roadmap.md"
+run_rm "$(pointers '| docs/part/roadmap.md | . |')"
+[[ "$(row 'docs/part/roadmap.md' | cut -f1,3,4)" == $'part\tunchecked\tno Line or Deferral table' \
+    && "$(row 'docs/part/roadmap.md: docs/deeper/roadmap.md' | cut -f3)" == not-followed ]] \
+    && pass "(sub g) a part with only a nested pointer: unchecked (no Line or Deferral table), the pointer still listed" || fail "(sub g) only nested: $OUT"
+printf '%s\n' "$OUT" > "$SB/rows-sub"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" != *"docs/part/roadmap.md"* ]] \
+    && pass "(sub g) it gives no 'none open' next step" || fail "(sub g) next steps: '$S'"
 rm -rf "$SB/root/docs/part" "$SB/root/docs/deeper" "$SB/root/tools"
 
 echo "TEST: a section with only a pointer table has no section row"
@@ -1835,6 +1846,13 @@ sub "$SB/root/docs/part/roadmap.md" '| P | file-exists docs/notes.md |'
 run_rm "$(printf '# R\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| docs/part/roadmap.md | . |\n')"
 [[ "$OUT" != *section* && "$(res 'docs/part/roadmap.md: P')" == true ]] \
     && pass "(sub) a pointer-only section reads the part and prints no section row" || fail "(sub) pointer-only: $OUT"
+run_rm "$(printf '# R\n\n## Direction\n\n| Sub-roadmap | Root |\n|---|---|\n| docs/part/roadmap.md | . |\n')" --no-follow
+[[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == $'section\t(no Line or Deferral table)\tunchecked' ]] \
+    && pass "(sub) --no-follow on a pointer-only section: one section row, never an empty output" || fail "(sub) no-follow pointer-only: rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-nf"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-nf" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 0/0 deferrals 0/0" ]] \
+    && pass "(sub) --summary-from takes those rows (0/0), not 'no rows'" || fail "(sub) no-follow summary: rc=$RC '$S'"
 rm -rf "$SB/root/docs/part"
 
 echo "TEST: usage"

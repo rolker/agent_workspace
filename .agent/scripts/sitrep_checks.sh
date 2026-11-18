@@ -35,8 +35,11 @@
 #              part's rows (below) never enter the root's totals.
 #   --no-follow
 #              read the root's roadmap only: no `Sub-roadmap | Root` table
-#              is followed and no `part` row is printed. `--summary` never
-#              follows (it counts the root's rows only).
+#              is followed and no `part` row is printed. The pointer table
+#              is then ignored like any other table, so a section that
+#              holds only pointers gives the `(no Line or Deferral table)`
+#              section row. `--summary` never follows (it counts the
+#              root's rows only).
 #   --next-steps-from <rows-file>
 #              the next step of the root and of each part, from rows saved
 #              by an earlier run (no roadmap is read, no check runs, so it
@@ -81,7 +84,10 @@
 #                                already followed (a cycle or a repeat),
 #                                or a sub-roadmap with nothing to check
 #                                (no Direction section, no Line or
-#                                Deferral table, no rows)
+#                                Deferral table, no rows; a nested
+#                                pointer table is not a Line or Deferral
+#                                table, so a sub-roadmap holding only
+#                                one is unchecked too)
 #                  not-followed  a pointer table inside a sub-roadmap
 #                                (check `nested pointer`); item is
 #                                `<sub-roadmap>: <cell 1>`. Not a
@@ -121,8 +127,9 @@
 # `(roadmap not found: <path>)`, `(no Direction section)`, `(no Line or
 # Deferral table)` for a section that has none of the three tables (an
 # empty section included), or `(no rows in the Line or Deferral tables)`
-# for tables with a header and nothing under it (a pointer row counts as a
-# row: a root whose section only points at parts has no section row). A roadmap that exists but cannot be read
+# for tables with a header and nothing under it (a followed pointer row
+# counts as a row: a root whose section only points at parts has no section
+# row, except under --no-follow). A roadmap that exists but cannot be read
 # (no permission, not a regular file, under a directory that cannot be
 # entered) gives `(roadmap not readable: <path>)`, result `unknown`, never
 # a "no Direction section". Every run prints at least one row. Rows
@@ -672,8 +679,11 @@ unwrap() {
 # subline/subdeferral/subformat. Pointer rows of the root are collected in
 # POINTERS (one "<cell 1>\t<cell 2>\t<cell count>" each, unless --no-follow);
 # in a sub-roadmap they print `part` rows, `not-followed` (one level). Sets
-# SCAN_SECTION and SCAN_TABLE (true|false) and SCAN_ROWS (rows emitted, and
-# pointer rows seen).
+# SCAN_SECTION and SCAN_TABLE (true|false) and SCAN_ROWS: the line,
+# deferral and format rows emitted, plus the root's pointer rows when they
+# are followed. A nested pointer, or a pointer under --no-follow, is not
+# content: a sub-roadmap whose only table points further is "no Line or
+# Deferral table", never a part read with nothing open.
 scan_roadmap() {
     local file="$1" part="$2" kpre="" ipre="" raw run item cell extra x result
     local in_section=false in_fence=false fence_char="" fence_len=0
@@ -681,7 +691,7 @@ scan_roadmap() {
     local prev_table_line=false
     local after_header=false   # the last table line was a header (the delimiter row is next)
     local prev_para=false # the line before was paragraph text (a setext underline may follow)
-    local start_rows="${#ROWS[@]}" pointers=0
+    local start_rows="${#ROWS[@]}" pointers=0 nested=0
     if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
     SCAN_SECTION=false
     SCAN_TABLE=false
@@ -726,7 +736,14 @@ scan_roadmap() {
                     case "${CELLS[0],,}|${CELLS[1],,}" in
                         "line|check") table=line; SCAN_TABLE=true ;;
                         "deferral|revisit check") table=deferral; SCAN_TABLE=true ;;
-                        "sub-roadmap|root") table=pointer; SCAN_TABLE=true ;;
+                        # A pointer table makes the section something to
+                        # read only where it is followed: in the root's
+                        # roadmap without --no-follow. Under --no-follow it
+                        # is ignored, and in a sub-roadmap it is a nested
+                        # pointer, listed but not content (issue #488).
+                        "sub-roadmap|root")
+                            table=pointer
+                            [ -n "$part" ] || [ "$FOLLOW" = false ] || SCAN_TABLE=true ;;
                     esac
                 fi
                 prev_table_line=true
@@ -743,10 +760,11 @@ scan_roadmap() {
                 if [ "$after_header" = true ]; then
                     after_header=false
                 elif [ "$table" = pointer ]; then
-                    pointers=$((pointers + 1))
                     if [ -n "$part" ]; then
+                        nested=$((nested + 1))
                         emit part "$ipre(empty row in the Sub-roadmap table: $(trim "$raw"))" not-followed "nested pointer"
                     elif [ "$FOLLOW" = true ]; then
+                        pointers=$((pointers + 1))
                         POINTERS+=($'\t\t2')
                     fi
                 else
@@ -759,10 +777,11 @@ scan_roadmap() {
             item="${CELLS[0]:-}"
             cell="${CELLS[1]:-}"
             if [ "$table" = pointer ]; then
-                pointers=$((pointers + 1))
                 if [ -n "$part" ]; then
+                    nested=$((nested + 1))
                     emit part "$ipre$(unwrap "$item")" not-followed "nested pointer"
                 elif [ "$FOLLOW" = true ]; then
+                    pointers=$((pointers + 1))
                     POINTERS+=("${item//$'\t'/ }"$'\t'"${cell//$'\t'/ }"$'\t'"${#CELLS[@]}")
                 fi
                 continue
@@ -801,7 +820,7 @@ scan_roadmap() {
             emit "${kpre}format" "$ipre${BASH_REMATCH[1]}" unchecked ""
         fi
     done < "$file"
-    SCAN_ROWS=$(( ${#ROWS[@]} - start_rows + pointers ))
+    SCAN_ROWS=$(( ${#ROWS[@]} - start_rows - nested + pointers ))
 }
 
 # real_path <absolute path>: the path with its directory resolved, and the
