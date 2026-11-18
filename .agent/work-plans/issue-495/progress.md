@@ -574,3 +574,22 @@ Make the two text fixes of the round 4 review: the refusal for --distro-dirs on 
 - [x] (suggestion) The two unlisted-`--distro` rows now also say to add the distro to the manifest's `distros:` when `manifest` is not given in the git form — `tools/repos-manifest/docs/design.md:232-233`
 
 Table re-read: no `init` row's next step lands on a refusal that sends the person back. `check_design_anchors.sh` printed nothing, exit 0. Documents only; no suites run; full pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 15:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-495 at `ef2e3335`
+**Base**: main
+**Depth**: Standard (reason: round 5 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 5 | **Ship**: recommended — no must-fix findings
+
+Scope: the round 4 findings and `git diff 9e1d191a..HEAD` (d8677aa7, 6e66e92e changing three cells of the Refusals table in tools/repos-manifest/docs/design.md, plus the checkpoint and implementation entries). Because the diff is three table cells, the reviewer did the governance, plan-drift and adversarial reads itself instead of dispatching subagents; cross-model skipped (round-5 convergence check, per handoff). Static: `check_design_anchors.sh` exit 0; every Refusals table line splits into the same 3 cells (16 lines, 5 `|`-fields each), no stray `|`. Plan drift: only design.md and progress.md changed; the progress.md removals are the two round 4 boxes ticked. Governance: no departure from the Checkpoint decisions.
+
+`init` combinations walked (first applying row, next step, until allowed): no `distros:` — 0 flat allowed; 0 dirs → row 3 → allowed; 1 flat → row 5 → allowed; 1 dirs → row 3 → allowed; 2+ flat → row 2 → (2+ dirs) row 3 → allowed; 2+ dirs → row 3 → allowed. With `distros:` — 0 flat/dirs → row 4 → named distro: listed allowed, unlisted → row 6 or 7; listed 1 flat or 1+ dirs allowed; 2+ flat → row 2 → 2+ dirs; unlisted flat → row 6 (name a listed one, `--manifest-ref`, or edit `distros:`) → allowed; unlisted dirs → row 7 (set up with listed ones, then `add-distro`, or edit `distros:`) → allowed. No chain returns to a refusal it came from; the round 4 loop (rows 2 and 3) ends at row 3 since it now drops `--distro` too. The two unlisted rows' new clause matches the `add-distro` row's wording ("when `manifest` is not given in the git form, add the distro to its `distros:`").
+
+### Findings
+None.
