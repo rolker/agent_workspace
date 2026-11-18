@@ -279,6 +279,28 @@ def test_a_setup_bash_in_a_read_only_directory_is_reported_with_its_reason(two_d
     assert "distro rolling:" in out
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGXFSZ"), reason="needs RLIMIT_FSIZE")
+def test_a_setup_bash_that_cannot_be_written_whole_is_not_left_behind(tmp_path):
+    # A file-size limit below the stub's size makes the write fail part way, as a full disk
+    # does; what the call created is removed, and the failure is reported.
+    resource = pytest.importorskip("resource")
+    path = tmp_path / "setup.bash"
+    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+    previous = signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (16, hard))
+    try:
+        failure = sync.create_setup(tmp_path, ("setup.bash",))
+    finally:
+        resource.setrlimit(resource.RLIMIT_FSIZE, (soft, hard))
+        signal.signal(signal.SIGXFSZ, previous)
+    assert failure is not None and failure.startswith(f"{path}: cannot be created: ")
+    assert not os.path.lexists(path)
+    # One that is there is never touched, even when it is not a whole stub.
+    path.write_text("# Written")
+    assert sync.create_setup(tmp_path, ("setup.bash",)) is None
+    assert path.read_text() == "# Written"
+
+
 def test_a_manifest_not_found_after_the_system_moved_says_where_its_path_comes_from(
     two_distros, tmp_path, capsys
 ):

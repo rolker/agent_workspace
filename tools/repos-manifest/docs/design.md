@@ -197,7 +197,8 @@ other key is named with the words that this version does not read it.
 
 Until `build` is built, `init` writes a `setup.bash` that says nothing is built yet and fails
 when sourced, and `sync` writes it for a distro whose `setup.bash` is missing. It is created in one step only where no file is, so one made meanwhile is left
-as it is. One that cannot be created is reported for that distro, with its path and the
+as it is, and one that cannot be written whole is removed, never left empty or partial. One
+that cannot be created is reported for that distro, with its path and the
 reason, after that distro's report; the other distros go on, and the exit status is 1.
 
 Before its question, `init` prints a summary until `show` is built, and then what `show`

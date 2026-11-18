@@ -303,7 +303,9 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
 
 def create_setup(system: Path, parts: Parts) -> Optional[str]:
     """Create `setup.bash` where nothing is, in one exclusive create, so that a file made
-    meanwhile is left as it is. Returns why it could not be created, or None."""
+    meanwhile is left as it is. Returns why it could not be created, or None. The stop signals
+    are held over the create and the write, and a file this call created but could not write
+    whole is removed, so no empty or partial `setup.bash` is left."""
     path = system.joinpath(*parts)
     if os.path.lexists(path):
         return None
@@ -312,11 +314,17 @@ def create_setup(system: Path, parts: Parts) -> Optional[str]:
         return f"{path}: cannot be created: {problem}"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(path, "x", encoding="utf-8", newline="\n") as handle:
-                handle.write(SETUP_TEXT)
-        except FileExistsError:
-            pass  # made meanwhile, and left as it is
+        with signals_held():
+            try:
+                handle = open(path, "x", encoding="utf-8", newline="\n")
+            except FileExistsError:
+                return None  # made meanwhile, and left as it is
+            try:
+                with handle:
+                    handle.write(SETUP_TEXT)
+            except OSError:
+                path.unlink()
+                raise
     except OSError as exc:
         return f"{path}: cannot be created: {oserror_message(exc)}"
     return None
