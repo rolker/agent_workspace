@@ -495,3 +495,17 @@ Scope: the round 2 findings and `git diff b3438aba..HEAD`. Specialists: static (
 - [ ] (suggestion) "A flat system has one entry, or none": say the key is absent, as the table at line 84 does — `tools/repos-manifest/docs/design.md:152`
 - [ ] (suggestion) The ordering sentence: say the row "a directory it would create already exists" is checked after the manifest is read — `tools/repos-manifest/docs/design.md:220-221,229`
 - [ ] (suggestion) The "directory it would create" row: say whether an existing `setup.bash` or other file at a path `init` writes is refused too — `tools/repos-manifest/docs/design.md:229`
+
+## Checkpoint
+**When**: 2026-11-18 15:52 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 left three located text fixes and no design question; the reviewer says to fix and publish)
+**After**: rounds
+**Decision**: address
+
+Fix the three must-fix findings and the five suggestions of the round 3 review, then publish.
+
+Host decisions (owner may veto):
+- docs/manifest/design.md: the ask "init can be run again" leaves the list of things the tool's design does not give yet, because the tool's design now gives what it was for: init makes the settings folder and its record in one step, so an interrupted init leaves either nothing, and registration is run again, or a system whose first sync is finished by sync. It moves to the guarantees the workspace relies on. docs/manifest/roadmap.md's mention of it is corrected in the same change. Undoing it: put the bullet back.
+- init with no --distro on a manifest that has distros is refused, with the next step "name one with --distro".
+- The tool's error for a settings folder whose config.yaml cannot be read tells the person to repair or remove the folder; for the workspace, that error counts as the tool not answering, so the instance is not treated as set up.
