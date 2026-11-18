@@ -95,3 +95,17 @@ Does not block #500: the text for adding a second distro with its commands, what
 - [ ] Settle the per-distro settings question at the smallest size the first case needs (a per-distro `manifest` ref and `local_manifest` path), or leave it open with a sentence saying that a second distro reuses the first one's `manifest` and `role`; do not leave `local_manifest` as one string.
 - [ ] Open a separate issue for the six asks in `docs/manifest/design.md#what-the-tool-has-to-give`, make it depend on this one for the `init`-in-an-existing-directory rule only, and change #500's "part of the design follow-up (#495)" wording to point there.
 - [ ] Correct `tools/ros-manifest/...` to `tools/repos-manifest/...` in this issue and #500.
+
+## Checkpoint
+**When**: 2026-11-18 15:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions narrow nothing the owner asked for; the owner started this drive on 2026-11-18 with "do 1 and 2")
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning, with these instructions for the plan:
+- Scope stays the tool's documents under tools/repos-manifest/ (the issue's tools/ros-manifest paths are the old name). The plan lists every place the layout rule touches: "More than one distro", the config.yaml table, the "Three machines" examples, "What is built", the README, and the roadmap line.
+- The plan puts first, and marks as what init and sync (issue 500) wait for: the layout rule from the first distro on; what config.yaml holds; the init flags and what init does in a directory that already exists; where state.yaml and resolved/ go.
+- The owner's requirement, in his words: several distros in one project root, "starting with one, adding more", without moving the first. He also said a small project should be able to start as little more than vcs and colcon and grow later, so the plan says what the smallest system looks like under the new rule and does not make one repo on one distro heavier than it has to be.
+- Choices that change the design and are hard to undo are listed in the plan as open questions for the owner at the plan checkpoint, each with a recommendation: distro directories always or only on request; distros always a list in config.yaml; local_manifest per distro; a manifest version per distro; what happens to a system made without distro directories.
+- The six things the workspace asks of the tool (docs/manifest/design.md, "What the tool has to give") are not in this issue, except the one overlap: what init does in an existing directory. A separate issue for the rest is the owner's to open; the host will propose it.
