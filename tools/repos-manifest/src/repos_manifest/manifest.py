@@ -38,8 +38,11 @@ UNNAMED_LAYER = "_unnamed"
 
 # The transports a `url` may use: they only fetch.
 _URL_SCHEMES = ("https://", "http://", "ssh://", "file://")
-# git's scp-like form, `user@host:path`: no '/' before the ':'.
-_SCP_FORM = re.compile(r"[^/:@]+@[^/:]+:.+")
+# git's scp-like form, `user@host:path`: a ':' before any '/'. The user runs to the last '@'
+# before the host; a host in brackets may hold ':' (an IPv6 address).
+_SCP_FORM = re.compile(r"(?:(?P<user>[^/:\[\]]*)@)?(?P<host>\[[^\]/]*\]|[^/:@\[\]]+):(?P<path>.+)")
+# git's <transport>::<address> form: a word at the start, then '::'.
+_TRANSPORT_FORM = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*::")
 _URL_RULE = (
     "a url uses https, http, ssh, file, the user@host:path form or an absolute path on the"
     " local disk"
@@ -186,23 +189,45 @@ class _Checker:
 
     def url(self, value, where: str) -> str:
         url = self.not_an_option(self.string(value, where), where)
-        if "::" in url:
+        if _TRANSPORT_FORM.match(url):
             raise self.error(
                 where, f"{url!r}: the <transport>::<address> form is refused; {_URL_RULE}"
             )
         scheme = next((s for s in _URL_SCHEMES if url.startswith(s)), None)
         if scheme is not None:
-            host = url[len(scheme) :].split("@", 1)[-1]
-            if host.startswith("-"):
-                raise self.error(where, f"{url!r}: the host starts with '-'")
+            # The authority runs to the first '/', '?' or '#'; the host follows its last '@'.
+            authority = re.split(r"[/?#]", url[len(scheme) :], maxsplit=1)[0]
+            user, _, host_port = authority.rpartition("@")
+            if host_port.startswith("["):
+                close = host_port.find("]")
+                if close < 0:
+                    raise self.error(where, f"{url!r}: the host has an unclosed '['")
+                host, rest = host_port[1:close], host_port[close + 1 :]
+                if rest and not rest.startswith(":"):
+                    raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+                port = rest[1:]
+            else:
+                host, _, port = host_port.partition(":")
+            self.url_parts_not_options(url, where, user=user, host=host, port=port)
             return url
-        if "://" not in url and _SCP_FORM.fullmatch(url):
-            if url.split("@", 1)[1].startswith("-"):
-                raise self.error(where, f"{url!r}: the host starts with '-'")
-            return url
+        if "://" not in url:
+            scp = _SCP_FORM.fullmatch(url)
+            if scp and scp.group("user") is not None:
+                host = scp.group("host")
+                if host.startswith("["):
+                    host = host[1:-1]
+                self.url_parts_not_options(url, where, user=scp.group("user"), host=host)
+                return url
         if url.startswith("/"):
             return url
         raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+
+    def url_parts_not_options(self, url: str, where: str, **parts: Optional[str]) -> None:
+        """No part of a url's authority starts with '-', where ssh would read it as an
+        option."""
+        for part, text in parts.items():
+            if text and text.startswith("-"):
+                raise self.error(where, f"{url!r}: the {part} starts with '-'")
 
     # --- the manifest ---------------------------------------------------------------------
 

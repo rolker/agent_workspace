@@ -431,11 +431,14 @@ command that writes there.
     directories of the unnamed layer.
 - No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
-    read one as an option, and nor does the host of a `url`. The `path` of a location is
-    relative and has no `..` in it.
+    read one as an option, and nor do the user, the host or the port of a `url`. The host is
+    what follows the last `@` before the first `/` (in the `user@host:path` form, before the
+    `:`), without the brackets of an IPv6 address. The `path` of a location is relative and
+    has no `..` in it.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the
     `user@host:path` form, or an absolute path on the local disk. Anything else is refused,
-    and so is every `name::address` form; `git` has transports that run a command.
+    and so is every `name::address` form (a word at the start, then `::`); `git` has
+    transports that run a command.
   - These apply to a repo and to a location named under `base:` alike.
 - The file has no invisible characters and none that change the direction of text, in a
   comment or anywhere else. They can make a file read differently from what it does. That

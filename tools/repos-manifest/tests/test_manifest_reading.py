@@ -301,6 +301,15 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
         "file:///srv/git/a.git",
         "git@github.com:example/a.git",
         "/srv/git/a.git",
+        # An '@' after the host is part of the path, not a user.
+        "https://example.org/repo@-v1.git",
+        "ssh://git@example.org/a@-b.git",
+        # IPv6 hosts: their '::' is not the <transport>::<address> form.
+        "ssh://user@[::1]/repo",
+        "ssh://[::1]:22/repo",
+        "https://[2001:db8::1]/a.git",
+        "git@[::1]:repo",
+        "ssh://git@example.org:22/a.git",
     ],
 )
 def test_the_transports_that_only_fetch_are_accepted(url):
@@ -321,6 +330,21 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("example.org:a.git", "is refused"),
         ("ssh://-oProxyCommand=x/a", "the host starts with '-'"),
         ("git@-oProxyCommand=x:a", "the host starts with '-'"),
+        # The host is what follows the last '@' of the part before the first '/', brackets
+        # taken off.
+        ("ssh://a@b@-oProxyCommand=x/p", "the host starts with '-'"),
+        ("ssh://[-oProxyCommand=x]/p", "the host starts with '-'"),
+        ("https://[-oProxyCommand=x]:443/p", "the host starts with '-'"),
+        ("git@[-oProxyCommand=x]:p", "the host starts with '-'"),
+        ("a@b@-oProxyCommand=x:p", "the host starts with '-'"),
+        ("ssh://[::1/p", "an unclosed '\\['"),
+        ("ssh://[::1]x/p", "is refused"),
+        # A user or a port that starts with '-'.
+        ("ssh://-oProxyCommand=x@host/p", "the user starts with '-'"),
+        ("-oProxyCommand=x@host:p", "starts with '-'"),
+        ("ssh://host:-oProxyCommand=x/p", "the port starts with '-'"),
+        # Only a leading <word>:: is the transport form.
+        ("ext+x.y-z::cmd", "<transport>::<address> form is refused"),
     ],
 )
 def test_other_transports_are_refused(url, match):
