@@ -602,3 +602,31 @@ None.
 **Decision**: publish
 
 The full pass (every hook, no SKIP, over the files the branch changes) passed on 23db6d0e. Published; the pull request closes the issue.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 16:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #508 at `85c3ed05`
+**Sources**: 2 (Local Review (Pre-Push) round 5 @ `ef2e3335`, covers `85c3ed05` via bookkeeping; CI rollup at `85c3ed05`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No hosted review: `fetch_pr_reviews.sh --pr 508` found 0 reviews, 0 inline comments and 0 conversation comments, and a second look after CI settled (16:13) found the same; Copilot has not reviewed. `review_progress.sh sources` at `85c3ed05` returned no local findings, no dropped entries and no candidates. CI at `85c3ed05`, both runs (push 44396846340 and pull_request 44396855944): Lint (pre-commit) pass (8m44s, 13m5s), Validate Adapter Contract pass, Validate Documentation pass, repos-manifest tests pass.
+
+Earlier open boxes. Every finding of the five pre-push rounds is ticked. Boxes left unticked are in the Issue Review (8) and the two Plan Reviews (8 and 7): those are action lists the loop answers with a plan revision and a Checkpoint, not by ticking. Checked against the documents: each Plan Review action is carried out (the `manifest_version`-only distro entry, "passes `--distro-dirs`", the "two things" bullet, the unrecorded-`--distro` error, a distro never reading another's local copy), or overridden by the owner's three answers. Three Issue Review actions are outside this pull request and still open: the text of issues 495 and 500 names `tools/ros-manifest/` (the PR body says so); no separate issue has been opened for the workspace's asks of the tool (the Checkpoint at 15:05 leaves that to the owner, the host to propose); issue 500's "part of the design follow-up (#495)" bullet still lists "an `init` that can be run again", which this branch drops as an ask.
+
+For the owner's merge decision, two host decisions recorded for veto: `setup` passes `--distro-dirs` whenever the project has a distro (Checkpoint 15:22; the second Plan Review called this the owner's choice), and "`init` can be run again" moved from the asks to the guarantees (Checkpoint 15:52).
+
+Pull request 506 (`feature/issue-498` at `9356877e`): `git merge-tree --write-tree` gives one conflict, in `docs/manifest/design.md`, "What the tool has to give": 506 rewrites the "A failed resolve changes nothing" bullet (the tool's `resolve` now replaces its output whole), and this branch removes the next bullet, "`init` can be run again". Adjacent edits, not a contradiction: the resolution keeps 506's bullet and drops the `init` bullet. `tools/repos-manifest/docs/design.md` and `README.md` merge cleanly, and the merged text agrees: 506's "writes into `.repos-manifest/resolved/`" and `--out` outside a system directory, with this branch's `resolved/<distro>/` for a directory per distro; "What is built" carries both. The merged tool documents pass 506's `test_documents.py` rule (no match for its patterns).
+
+Cross-model: not needed before merge. The outside models saw round 2; rounds 3 to 5 changed refusals-table cells, one guarantee sentence and wording, each re-read by a full review that walked every `init` combination. A pass on the Refusals table and the interrupted-`init` guarantee is optional if the owner wants a second reader.
+
+### Findings
+None.
+
+### False positives
+None.
+
+Nothing remains open in this pull request before the owner's merge decision. Outside it: the three issue-text items above, and a resolution of the one conflict with 506 by whichever merges second.
