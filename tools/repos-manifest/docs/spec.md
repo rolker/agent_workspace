@@ -437,11 +437,12 @@ command that writes there.
 - No value in a manifest makes `git` run a program.
   - A `url`, a `version` and the `path` of a location do not start with `-`, so `git` cannot
     read one as an option, and nor do the user, the host or the port of a `url`. They are read
-    as `git` reads them. They run to the first `/` after the host, so a `?` or a `#` before
-    it is part of them (in the `[user@]host:path` form, to the first `:` after the host). The
-    host is what follows the last `@`, without the brackets of an IPv6 address. Inside the
-    brackets, the text before the last `@` is a user too, and the text after the first `:` a
-    port. The `path` of a location is relative and has no `..` in it.
+    as `git` reads them. In an `ssh://` url they run to the first `/` after the host, so a
+    `?` or a `#` before it is part of them; in the `[user@]host:path` form, to the first `:`
+    after the host; in an `https`, `http` or `file` url, to the first `/` after the `://`,
+    even one inside brackets. The host is what follows the last `@`, without the brackets of
+    an IPv6 address. Inside the brackets, the text before the last `@` is a user too, and the
+    text after the first `:` a port. The `path` of a location is relative and has no `..` in it.
   - An address `git` hands to ssh, an `ssh://` url or the `[user@]host:path` form, holds no
     `%` anywhere, and a `[` and a `]` only as one pair around the host at its start (as in
     `ssh://user@[::1]:22/repo` or `[::1]:repo`); a `[` or a `]` anywhere else, the path
