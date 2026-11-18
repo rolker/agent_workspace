@@ -15,12 +15,12 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
 from . import selection
-from .output import make_writable, output_files, process_has_ended, write_output
+from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -168,8 +168,17 @@ def _head(path: Path, env: Env) -> Optional[str]:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def clone_repo(system: Path, src: Parts, repo: Selected, text: str, env: Env) -> RepoResult:
-    """Clone one repo to `src/<key>` unless something is there."""
+def clone_repo(
+    system: Path,
+    src: Parts,
+    repo: Selected,
+    text: str,
+    env: Env,
+    record: Callable[[Optional[str]], None],
+) -> RepoResult:
+    """Clone one repo to `src/<key>` unless something is there. `record` is given the clone's
+    commit and writes it to the state; the stop signals are held over the rename into place
+    and the record together, so a stop never leaves a clone in place that is not recorded."""
     key_parts = tuple(repo.key.split("/"))
     parts = src + key_parts
     place = system.joinpath(*parts)
@@ -191,12 +200,18 @@ def clone_repo(system: Path, src: Parts, repo: Selected, text: str, env: Env) ->
             return RepoResult(shown, FAILED, "a link on the way leads outside its place")
         if os.path.lexists(place):
             return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
+        commit = _head(temporary.joinpath(*key_parts), env)
         try:
             place.parent.mkdir(parents=True, exist_ok=True)
-            os.rename(temporary.joinpath(*key_parts), place)
         except OSError as exc:
             return RepoResult(shown, FAILED, oserror_message(exc))
-        return RepoResult(shown, CLONED, commit=_head(place, env))
+        with signals_held():
+            try:
+                os.rename(temporary.joinpath(*key_parts), place)
+            except OSError as exc:
+                return RepoResult(shown, FAILED, oserror_message(exc))
+            record(commit)
+        return RepoResult(shown, CLONED, commit=commit)
     finally:
         _remove_temporary(temporary)
 
@@ -221,24 +236,21 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
         resolved_dir, files, label=f"the resolved files' directory {resolved_dir}", again="sync"
     )
     result = DistroResult(distro)
-    added = False
-    try:
-        for layer in resolved.layers:
-            src = layer_src_parts(config.layout, distro, layer.name)
-            for repo in layer.repos:
-                text = one_repo_text(files[f"{layer.name}.repos"], repo.key)
-                done = clone_repo(system, src, repo, text, env)
-                result.repos.append(done)
-                if done.outcome == FAILED:
-                    print(f"ERROR: {done.path}: {done.detail}", flush=True)
-                elif done.outcome == SKIPPED:
-                    print(f"skipped {done.path} (optional): {done.detail}", flush=True)
-                elif done.outcome == CLONED:
-                    state.repos[repo.key] = RepoRecord(layer.name, repo.version, done.commit)
-                    added = True
-    finally:
-        if added:
-            put_distro_state(system, distro, state)
+    for layer in resolved.layers:
+        src = layer_src_parts(config.layout, distro, layer.name)
+        for repo in layer.repos:
+
+            def record(commit, layer=layer.name, repo=repo):
+                state.repos[repo.key] = RepoRecord(layer, repo.version, commit)
+                put_distro_state(system, distro, state)
+
+            text = one_repo_text(files[f"{layer.name}.repos"], repo.key)
+            done = clone_repo(system, src, repo, text, env, record)
+            result.repos.append(done)
+            if done.outcome == FAILED:
+                print(f"ERROR: {done.path}: {done.detail}", flush=True)
+            elif done.outcome == SKIPPED:
+                print(f"skipped {done.path} (optional): {done.detail}", flush=True)
     setup = setup_parts(config.layout, distro)
     if not os.path.lexists(system.joinpath(*setup)) and is_in_place(system, setup):
         system.joinpath(*setup).parent.mkdir(parents=True, exist_ok=True)

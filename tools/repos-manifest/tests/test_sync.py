@@ -176,10 +176,10 @@ def test_a_sync_stopped_in_the_second_distro_keeps_what_it_finished(
     real = sync.clone_repo
     calls = []
 
-    def stop_at_the_second_new_repo_of_rolling(system_, src, repo_, text, env):
+    def stop_at_the_second_new_repo_of_rolling(system_, src, repo_, text, env, record):
         if src[0] == "rolling" and repo_.key == "d":
             raise Stopped(signal.SIGINT)
-        result = real(system_, src, repo_, text, env)
+        result = real(system_, src, repo_, text, env, record)
         calls.append((src[0], repo_.key, result.outcome))
         return result
 

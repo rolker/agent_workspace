@@ -4,12 +4,16 @@ is swept by the next run."""
 
 import io
 import os
+import shutil
 import signal
+import subprocess
+import sys
 
 import pytest
 import yaml
 
 from helpers import dead_pid, make_remote, repo, run, temporaries, write_manifest
+import repos_manifest
 from repos_manifest import init, sync
 from repos_manifest.signals import Stopped
 
@@ -133,3 +137,44 @@ def test_a_killed_runs_clone_temporary_is_swept_by_sync(manifest, tmp_path):
     (leftover / "b" / ".git").mkdir(parents=True)
     assert run(system, "sync") == 0
     assert temporaries(system) == []
+
+
+def test_a_killed_run_loses_at_most_the_repo_in_progress(manifest, tmp_path):
+    # A `vcs` in front of the real one kills the run (SIGKILL, which nothing can hold) while it
+    # clones b: a, cloned before it, is recorded.
+    real = shutil.which("vcs")
+    stub = tmp_path / "bin" / "vcs"
+    stub.parent.mkdir()
+    stub.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" != import ]; then exec "$REAL_VCS" "$@"; fi\n'
+        "text=$(cat)\n"
+        'case "$text" in *"  b:"*) kill -9 "$PPID"; sleep 5; exit 1;; esac\n'
+        'printf "%s\\n" "$text" | exec "$REAL_VCS" "$@"\n'
+    )
+    stub.chmod(0o755)
+    system = _system(tmp_path)
+    env = {
+        **os.environ,
+        "PATH": os.pathsep.join([str(stub.parent), os.environ["PATH"]]),
+        "REAL_VCS": real,
+        "PYTHONPATH": os.path.dirname(os.path.dirname(repos_manifest.__file__)),
+    }
+    done = subprocess.run(
+        [sys.executable, "-c", "import sys; from repos_manifest.cli import main; sys.exit(main())"]
+        + list(INIT),
+        cwd=system,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == -signal.SIGKILL, done.stderr
+    state = yaml.safe_load((system / ".repos-manifest/state.yaml").read_text())
+    assert set(state["distros"]["jazzy"]["repos"]) == {"a"}
+    assert (system / "underlay/src/a/README").is_file()
+    assert not os.path.lexists(system / "core/src/b")
+    assert run(system, "sync") == 0
+    state = yaml.safe_load((system / ".repos-manifest/state.yaml").read_text())
+    assert set(state["distros"]["jazzy"]["repos"]) == {"a", "b", "c"}
