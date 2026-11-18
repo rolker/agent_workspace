@@ -471,3 +471,27 @@ Host decisions applied as given (listed for the owner's veto): suggestions 1 to 
 Readings for the reviewer: `init`'s refusal for an unlisted `--distro` keeps round 1's next step (set up with the distros listed, add the others with `add-distro --manifest-ref`). The "Which distro" table no longer has an `init` row; `init` anywhere in a system is the first Refusals row. `show`'s pointer to the layout line was removed (the text there is back to main's). The ask "`init` can be run again" under "What the tool has to give" in docs/manifest/design.md is not edited (outside the named sentences); with the folder and record made together its case no longer arises, which the host may want to settle.
 
 Checks: the four documents grepped for "distro", "init" and "resolved", every hit read against the rules; no workspace, adapter, `.agent/` or `ros2_colcon` in the tool's documents; nothing claimed as built beyond `resolve` and `validate`; the `resolve` section's first lines untouched. `bash .agent/scripts/check_design_anchors.sh` printed nothing and exited 0. Commits ran the hooks with `SKIP=validate-script-tests`; no script changed, so no suite applies; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 15:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-495 at `bbb18d04`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 3 | **Ship**: continue — round 3: 3 must-fix is high (falling from 5); all three are located text fixes, none a design question
+
+Scope: the round 2 findings and `git diff b3438aba..HEAD`. Specialists: static (no linter profile for .md; `check_design_anchors.sh` printed nothing, exit 0), governance (ADR-0017: both designs edited with the change; no departure from the owner's three answers), plan drift (no new files; the host's cut is not drift) and Claude adversarial completed; cross-model skipped (round-3 convergence check, per handoff). All five round 2 must-fix are fixed as stated. The cut keeps what issue 500 needs for config.yaml in both layouts, the per-distro tree, which manifest is read on first and later syncs, which distro a command uses, and where resolved files and state go; the gaps are in the `init` rows of the Refusals table. Fixer's notes: (a) the ask now contradicts the route paragraph (must-fix 1); (b) the ordering rule holds, since rows are checked in listed order and the "a directory it would create" row needs the manifest in the flat case; (c) nothing is lost: `init` anywhere in a system is the first Refusals row, and the layout line is in "Setting up with init".
+
+### Findings
+- [ ] (must-fix) The ask "`init` can be run again ... completes the record instead of refusing" is listed as "not in the tool's design yet", while lines 210-213 say the tool's design now gives it (folder and record in one step); drop the bullet, make "Two of today's guarantees" three with "an interrupted `init` leaves nothing, so registration is run again, or a system whose first sync `sync` finishes", and drop "an `init` that can be run again" from docs/manifest/roadmap.md:27 — `docs/manifest/design.md:243-244,249`
+- [ ] (must-fix) `init` with no `--distro` (with or without `--distro-dirs`) on a manifest that has `distros:` has no Refusals row; line 179 only implies it is wrong; add a row before the unlisted-distro row: "No `--distro`, with a manifest that has `distros:`" / "Name one with `--distro`" — `tools/repos-manifest/docs/design.md:179-181,228`
+- [ ] (must-fix) The unlisted-`--distro` row's next step ("add each other one with `add-distro`") is false for a flat `init`, which `add-distro` refuses, and meaningless for a manifest with no `distros:`; give the `add-distro` part only with `--distro-dirs`, and for a manifest with no `distros:` "set up without `--distro`" — `tools/repos-manifest/docs/design.md:228`
+- [ ] (suggestion) `.repos-manifest/` with an unreadable `config.yaml` above or here: say `init` gives that error (not the "system is set up" row) and its next step, repair or remove the folder — `tools/repos-manifest/docs/design.md:186,225`
+- [ ] (suggestion) Route test: say that the tool's error for an unreadable record does not count as answering (or does), so the adapter knows which route a damaged instance takes — `docs/manifest/design.md:208-209`
+- [ ] (suggestion) "A flat system has one entry, or none": say the key is absent, as the table at line 84 does — `tools/repos-manifest/docs/design.md:152`
+- [ ] (suggestion) The ordering sentence: say the row "a directory it would create already exists" is checked after the manifest is read — `tools/repos-manifest/docs/design.md:220-221,229`
+- [ ] (suggestion) The "directory it would create" row: say whether an existing `setup.bash` or other file at a path `init` writes is refused too — `tools/repos-manifest/docs/design.md:229`
