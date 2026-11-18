@@ -446,3 +446,20 @@ Scope: the round 3 findings and the fix diff `ee08e444..7aa09337` (commits `4ef7
 **Decision**: publish
 
 The owner chose "Publish now" after the round 4 review (approved, no must-fix, one suggestion). The open suggestion, that a reference-style link definition with a space inside angle brackets has its path cut at the space, is noted in the pull request as a known limit of a link form no file uses.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 11:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #504 at `a47b1c5`
+**Sources**: 2 (Local Review (Pre-Push) @ `53ab3d3` (covers a47b1c5 via bookkeeping), CI rollup); no GitHub review, no conversation comment, no Copilot reviewer attached
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Rounds 1 to 3 of the local review are closed (every box ticked by the fix rounds); round 4 approved with one suggestion, which the owner deferred at the publish checkpoint and the pull request names as a known limit. CI at a47b1c5: Validate Documentation and ros-manifest tests passed; Lint (pre-commit) and Validate Adapter Contract still running.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `53ab3d3`, deferred by the owner at publish) A reference-style link definition with a space inside angle brackets, `[r]: <my part/design.md#x>`, goes through the run scan and has its path cut at the space (checks `part/design.md`); the inline `](<...>)` form is handled. Confirmed in the code at this head (the angle-bracket loop matches only `](<`), and `git grep` finds no tracked Markdown file using the form, so no current check result is wrong. Fix when taken up: match `^ {0,3}\[[^]]+\]:[ \t]*<[^<>]*>` in the same loop, with an h13-style test, or name the limit in the header. Not must-fix. — `.agent/scripts/check_design_anchors.sh:462`
+
+### False positives
