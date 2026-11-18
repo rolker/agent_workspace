@@ -245,3 +245,29 @@ Seven commits (plan steps 1 to 6; step 7 left out, see below):
 Step 7 is left out. Neither part is on `main`: `git ls-tree origin/main` shows `tools/ros-manifest/docs/` holding only `west-variant.md`, `docs/manifest` is absent, pull request 494 (#486) is open, and #487 is a local branch. So the real pointer rows are not added, and acceptance bullet 3 stays open on the issue. The synthetic tests of steps 2, 4 and 6 are the acceptance that does not depend on them.
 
 Final run: `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, with no SKIP, passed every hook. `validate-script-tests` ran all 52 suites and all passed. The first run had failed `test_script_tests_hook_scope.sh`, fixed in the last commit.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 10:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-488 at `db157fde`
+**Base**: origin/main
+**Depth**: Deep (reason: 1604 changed lines in 19 files, with governance files: ADR, skills, .pre-commit-config.yaml)
+**Must-fix**: 5 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 5 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean on the 7 changed scripts; the anchor check passes on the worktree), governance, plan drift, Claude adversarial, and cross-model gemini and codex (both completed). Reproduced in fixtures: findings 1 and 2. Confirmed by reading the code: findings 3, 4 and 9. Four suites pass: test_design_anchors, test_sitrep_checks, test_sitrep_root and test_update_roadmap.
+
+### Findings
+- [ ] (must-fix) A backtick or prose citation of a missing part design in a file under docs/ falls back to the root and passes silently. Example: `manifest/design.md#gone` in docs/roadmap.md exits 0. Keep the file-relative target when the root fallback is not a design either, and add a test. Found by gemini, codex and the lead. — `.agent/scripts/check_design_anchors.sh:450`
+- [ ] (must-fix) `--no-follow` on a Direction section that holds only pointers counts the pointers it suppressed in SCAN_ROWS. The run prints one blank line, and `--summary-from` then exits 2 ("no rows"). Found by gemini, codex and the lead. — `.agent/scripts/sitrep_checks.sh:803`
+- [ ] (must-fix) A sub-roadmap whose only table is a nested pointer table stays `part ... true read`, and `--next-steps-from` says "none open", a false all-clear. The header says this case is `unchecked` ("no Line or Deferral table"). For a part, count only line and deferral content. Found by the adversarial reviewer and gemini. — `.agent/scripts/sitrep_checks.sh:727`
+- [ ] (must-fix) `next_steps` uses an empty item as its "none chosen yet" marker, so an open line with an empty Line cell is overwritten by a later one. Test `fres` instead, and add a test. Found by the adversarial reviewer, gemini and codex. — `.agent/scripts/sitrep_checks.sh:269`
+- [ ] (must-fix) PART_RE checks only a design under a docs/ directory. ADR-0022 decision 6, docs/design.md and the three review skills define `<path>` as any design file's directory, and sitrep_checks.sh follows a sub-roadmap anywhere. So a `tools/x/design.md#x` citation, or the design beside a followed `tools/x/ROADMAP.md`, is never checked, and the hook's `files:` filter does not fire for it. Either check the design beside every followed sub-roadmap, or state the docs/ requirement in the ADR, the design and the skills and report a pointer outside it. Found by the adversarial reviewer and gemini. — `.agent/scripts/check_design_anchors.sh:327`
+- [ ] (suggestion) The pointer-table parser in the anchor check differs from the one in sitrep_checks.sh. It does not strip CR (a CRLF roadmap gives no pointers), it does not stop at Setext headings, it does not require the 2-cell header, it does not normalise or deduplicate pointer paths (`./docs/x` and `docs/x`), and it does not check that a target stays inside the root. Found by the adversarial reviewer, gemini and codex. — `.agent/scripts/check_design_anchors.sh:398`
+- [ ] (suggestion) The URL skip treats any `word:` prefix as a scheme, so `main:docs/design.md#broken` is never checked. Require `://` or a known scheme. Found by gemini. — `.agent/scripts/check_design_anchors.sh:435`
+- [ ] (suggestion) A pointer whose target sits in a nested git repository or submodule is followed, although ADR-0022 decision 8 says a pointer into another repository is not supported. A bare `gh-issue N` there queries the nested repository's origin. Report it as `unchecked`. Found by codex. — `.agent/scripts/sitrep_checks.sh:847`
+- [ ] (suggestion) `named_part` tries the bare, then owner/repo, then project matches across all parts. It does not pick the first followed sub-roadmap, which is what the header at line 132 says. Found by gemini; the lead confirmed it by reading the code. — `.agent/scripts/sitrep_root.sh:559`
+- [ ] (suggestion) #486 is now on main (merged in db157fde), and the real `tools/ros-manifest/docs/roadmap.md` is followed correctly (checked with a temporary pointer row). Step 7's #486 half can land now: add the pointer row, and add the root design's link to `tools/ros-manifest/docs/design.md`, which ADR-0022 decision 2 requires and which docs/design.md:474 lacks. Also correct the ADR context's "conforms as it stands". Otherwise record why both halves wait for #487. Found by plan drift and the lead. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:31`
