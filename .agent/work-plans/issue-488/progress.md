@@ -212,3 +212,13 @@ The revision resolves all five findings of the earlier review and follows the ow
 - [ ] Use `unknown` for an unreadable sub-roadmap in both the Mechanism decisions and step 2.
 - [ ] Step 4: state, or remove, the different bases for relative backtick citations in a `docs/` citer.
 - [ ] Step 1: write the sub-roadmap path as a focus in the closing question into the Direction row of `docs/design.md#documentation-layers`, and say how a sub-roadmap's own Paths paragraph is treated.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 09:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The owner chose "Proceed to implementation" after the second Plan Review (verdict ready, five minor findings), with those five findings handed to the implementer as instructions: find part designs among tracked files only, with a test; have --next-steps work from the saved rows; give an unreadable sub-roadmap the result unknown in both places; state one rule for a backtick path inside a file under docs/; and write the third kind of focus (work marked by a sub-roadmap's path) into the design text.
