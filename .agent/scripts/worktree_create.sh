@@ -546,6 +546,10 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     # git repository itself (issue 503). Each repository the worktree is made
     # of is checked once the list is resolved, before anything is made; for
     # a single-repository project that is the root itself, with this message.
+    if [ ! -e "$PROJECT_DIR" ]; then
+        echo "Error: project root does not exist: $PROJECT_DIR"
+        exit 1
+    fi
     if [ ! -d "$PROJECT_DIR" ]; then
         echo "Error: project checkout is not a git repository: $PROJECT_DIR"
         [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"

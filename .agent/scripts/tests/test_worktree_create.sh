@@ -992,6 +992,21 @@ else
 fi
 
 echo
+echo "=== A project root that does not exist is reported as not existing (issue 503) ==="
+SB7="$SANDBOX/ws7"
+make_ws_repo "$SB7"
+P7="$(mktemp -d -p "$SANDBOX")/gone"
+printf 'gone single_project %s\n' "$P7" >> "$SB7/.agent/projects.local"
+OUT="$(cd "$SB7" && PATH="$SB7/stubbin:$PATH" "$SB7/.agent/scripts/worktree_create.sh" --issue 53 --type project --project gone 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: project root does not exist: $P7"* \
+      && "$OUT" != *"not a git repository"* && ! -e "$P7" && ! -e "$SB7/worktrees/project" ]]; then
+    pass "missing project root: exit $RC, says it does not exist, with the path; nothing made"
+else
+    fail "missing project root: rc=$RC: ${OUT:0:600}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
