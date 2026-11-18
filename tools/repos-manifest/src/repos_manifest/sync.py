@@ -175,13 +175,14 @@ def _head(path: Path, env: Env) -> Optional[str]:
 def rename_failure(exc: OSError, system: Path, place: Path) -> str:
     """Why a clone could not be renamed into place. Clones are made in `.repos-manifest/`, so a
     distro or layer directory on another filesystem refuses every rename; that is said plainly,
-    and nothing is copied instead."""
+    and nothing is copied instead. The message names the place, not the temporary, which is
+    removed by the time it is read."""
     if exc.errno == errno.EXDEV:
         return (
             f"{place}: the clone, made in {system / SYSTEM_DIR}, cannot be moved there because"
             " the two are on different filesystems; a system directory must be on one filesystem"
         )
-    return oserror_message(exc)
+    return f"{place}: {exc.strerror or type(exc).__name__}"
 
 
 def clone_repo(

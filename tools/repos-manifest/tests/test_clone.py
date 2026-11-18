@@ -275,7 +275,8 @@ def test_a_clone_that_cannot_be_moved_to_another_filesystem_says_so(tmp_path):
         " filesystem"
     )
     other = OSError(errno.EACCES, os.strerror(errno.EACCES), str(temporary), None, str(place))
-    assert rename_failure(other, system, place) == f"{temporary} -> {place}: Permission denied"
+    # The temporary is gone by the time the message is read, so it names only the place.
+    assert rename_failure(other, system, place) == f"{place}: Permission denied"
 
 
 @pytest.mark.parametrize("what", ["link on the way", "file on the way", "appeared meanwhile"])
