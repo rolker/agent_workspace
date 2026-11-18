@@ -697,10 +697,11 @@ lists. `base` is not read yet: a manifest with `base` is refused.
 
 A manifest without a top-level `repositories:` key, or a file that does not read as YAML,
 still goes to a prototype that reads an earlier shape of the format, where repos are nested
-under their layer and the version key is `ref`. The ros2_colcon adapter uses that reader,
-with `--layout manifest-dir`. It also has three things this design drops: a `packages:`
-section with package dependencies, roles defined by starting packages, and a cache of
-fetched parent manifests that is kept between runs.
+under their layer and the version key is `ref`. A caller that needs `repos/<layer>.repos`,
+`layers.txt` and `optional_layers.txt` uses that reader, with `--layout manifest-dir`. The
+prototype also has three things this design drops: a `packages:` section with package
+dependencies, roles defined by starting packages, and a cache of fetched parent manifests that
+is kept between runs.
 
 Two things in the prototype differ from this design in smaller ways. It marks whole layers
 as optional, where the design marks repos. And when it fetches a parent manifest from a git
