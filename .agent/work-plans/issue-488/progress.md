@@ -72,3 +72,19 @@ What the two real cases show that the issue text does not say (read from `origin
 - [ ] Decide, and test, how a broken or circular pointer is reported by the sit-rep, and how the sub-roadmap's next step is marked (by its own path name) in the report.
 - [ ] State whether sub-roadmap lines count toward the root's run-record totals.
 - [ ] Make the third acceptance bullet conditional on #486 and #487 merging, and say in the issue or plan that the synthetic tests are the acceptance that does not depend on them.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 08:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+The owner answered three questions put to him at this checkpoint, each by choosing the first option offered:
+
+- Q1, where the boundary sits between the root's design and a part's design: "Part owns its inside". As the option was described to him: the root's design describes a part only by what crosses its boundary and points at the part's design, which is the one current picture of that part. It applies to both manifest examples as written.
+- Q2, where the boundary rule is written down: "A new decision record". As described: a new ADR beside ADR-0017 states the rule for parts, for the workspace and for projects.
+- Q3, whether to go on to planning with those answers and with the review's remaining actions as instructions to the planner: "Proceed to planning".
+
+The remaining actions of the Issue Review are instructions for the plan, not owner decisions: fix the pointer format first and have it name the sub-roadmap's root; define how a part's design is cited and test the anchor check against it; decide how a broken or circular pointer is reported; say whether sub-roadmap lines count in the root's totals; make the acceptance that depends on the two manifest pull requests conditional.
