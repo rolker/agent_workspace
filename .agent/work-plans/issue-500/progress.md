@@ -545,3 +545,30 @@ origin/main (`0a1502b4`, with pull request 508's layout design) merged cleanly a
 - Hand run (scratchpad, local remotes, two layers, an optional repo with no remote): `init ../m.manifest.yaml --distro-dirs --distro rolling --role developer --yes` exit 0, cloned 2, optional skipped; `sync` exit 0, optional retried and skipped, "present, not touched (2)"; tree, config.yaml and state.yaml as the design says. Removed afterwards.
 
 Left open: none from this review. The manifest reader's acceptance of distro names differing only in case is for the reader's owner.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 17:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `5310062f`
+**Commits**: `1ace9a41` (merge of origin/main, with pull request 511's `base`), `5310062f`
+
+Main brought in again before the next review: pull request 511 made the tool read `base` and moved the manifest loader from `manifest.py` to `base.py`.
+
+### Actions
+- [x] Merge of origin/main as `1ace9a41` (a merge commit, no rebase). Two conflicts, as expected, nothing else:
+  - `tools/repos-manifest/src/repos_manifest/cli.py` `_load_new`: kept this branch's `read_manifest(args.manifest, Path("."))`, the one place a manifest is read; main's unused `base` import dropped. Nothing main prints is lost: `read_manifest` calls `base.load_manifest(path, source=location)` and prints each warning as `WARNING: ...` to stderr as main did; `validate`'s `base:` lines and the head comment's `# base:` lines come from the returned manifest's `bases`, which is unchanged.
+  - `tools/repos-manifest/README.md` "What works today": main's sentence on `base` read from local paths kept; its "Nothing fetches, syncs or builds yet" dropped, since `init` and `sync` now clone (this branch's paragraph already says nothing builds yet).
+- [x] `system.py` imports `load_manifest` from `.base` (and `UNNAMED_LAYER`, `Manifest` still from `.manifest`); `read_manifest`'s docstring says it reads the chain. No import cycle: `base.py` imports `combine`, `manifest`, `yamlload` only. No other moved name (`parse_manifest`, `has_repositories_key`, `UNNAMED_LAYER`, `Manifest`) is used by this branch's modules or tests.
+- [x] `init` and `sync` with `base` simply work: the resolved result is the merged chain, a relative `base` is taken from the manifest's own directory (`base.py` follows links, then joins). Test `test_a_manifest_with_base_sets_up_the_merged_chain` in `tests/test_init.py` (`5310062f`): a leaf in `manifests/` builds on `parent.manifest.yaml` beside it; `init ../manifests/leaf.manifest.yaml` from the system directory clones both manifests' repos into their layers, state.yaml records both, `layers.txt` carries `# base: <parent>`, and `sync` then clones nothing.
+- [x] `tools/repos-manifest/docs/design.md` merged without conflict; "What is built", "resolve", "Where the manifest comes from" and the `base` sentences read together without a contradiction ("What is built" says `base` is read from local paths and `init`/`sync` are built to part 1's extent). No edit.
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 962 passed; vcs: /usr/bin/vcs (vcs 0.3.0), vcstool. No test from either side edited; one test added.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: Results: 1014 passed, 0 failed, 0 skipped.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0, no output.
+- Hand run (scratchpad, leaf with `base: parent.yaml`): `validate` printed `base: <parent>`, the role/distro line and `valid`, exit 0; `resolve --out` wrote the three files with `# base: <parent>` in the head comment, exit 0. Removed afterwards.
+- black and flake8 by the commit hooks. Full pre-commit pass left to the host.
+
+Left open: none.
