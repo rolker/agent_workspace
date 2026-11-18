@@ -358,3 +358,23 @@ Suites run, each on its own from the worktree:
 - `test_skill_paths.sh` (skill text changed): `test_skill_paths: 163 passed, 0 failed`
 
 `check_design_anchors.sh` on the worktree exits 0. Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465). The full pre-commit pass over the branch was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 11:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-488 at `ee08e444`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff 1927+/125- in 19 files with governance files)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round 2 findings, the fix diff `45b2d243..6c323166` and the merge of main (`ee08e444`). Specialists: static analysis (shellcheck --severity=warning clean on check_design_anchors.sh, test_design_anchors.sh, test_update_roadmap.sh), governance, plan drift, Claude adversarial; cross-model skipped (round-3 convergence check, per handoff). All seven round 2 findings are fixed; the adversarial reviewer ran the new section (h) tests against the script at `45b2d243`: 4 fail there (unreadable citer, `a=b` path, design read once, angle-bracket link with no root fallback), the h11 cases and the first h12 case pin existing behaviour. Merge checks: `wc -l docs/design.md` is 1187, the count in the merge's Change log row; both sides' rows are kept; `check_design_anchors.sh` exits 0 on the merged tree and does read `docs/manifest/design.md` as a citer (a broken anchor added to it in a scratch copy gave 2 findings); on the merged tree test_design_anchors 76, test_sitrep_checks 252, test_sitrep_root 65, test_update_roadmap 16 and test_skill_paths 163 pass, 0 failed each.
+
+### Findings
+- [ ] (suggestion) The merged manifest-route bullet says "the rule for parts is being written under #488"; on this branch it is written. Cite ADR-0022 instead. — `docs/design.md:483`
+- [ ] (suggestion) The deferral of plan step 7 waited for #487, which is now merged into the branch: the pointer rows for `docs/manifest/roadmap.md` and `tools/ros-manifest/docs/roadmap.md` and the root design's link to `tools/ros-manifest/docs/design.md` (ADR-0022 decision 2) can land now, or the deferral can be restated with a new reason. Acceptance bullet 3 stays open until then. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:36`
+- [ ] (suggestion) An unreadable part design is reported twice (once by `load_design`, once by the citer scan), and the `design_records` redirect leaks a bare bash "Permission denied" to stderr, unlike `citations 2>/dev/null`. Reproduced with `chmod 000` on a tracked `tools/t/docs/design.md`: "2 finding(s)" for one fault. — `.agent/scripts/check_design_anchors.sh:285`
+- [ ] (suggestion) The header now names `](<path#x>)` as a link, but the citation token excludes spaces, the main reason for the angle-bracket form: `[x](<my part/design.md#route>)` becomes the non-link token `part/design.md#route` and is resolved as prose. Recognise spaces inside `](<...>)` or narrow the header. Reproduced. — `.agent/scripts/check_design_anchors.sh:446`
