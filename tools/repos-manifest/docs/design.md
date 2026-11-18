@@ -318,8 +318,15 @@ It refuses, and changes nothing, when:
   one distro, set up a new directory with `repos-manifest init <manifest> --distro <d>
   --distro <d2> --distro-dirs`."
 - the distro is already in `distros`;
-- the manifest it reads does not list the distro. The message says to give the branch or tag
-  of the manifest that lists it, with `--manifest-ref`;
+- the manifest it reads does not list the distro. When `manifest` is in a git repo, the
+  message is: "The manifest read for <name> does not list it. Nothing has been changed. Give
+  the branch or tag of the manifest that lists <name> with `--manifest-ref <ref>`." When
+  `manifest` is a path or a URL that is not in a git repo, it is: "The manifest at
+  <location> does not list <name>. Nothing has been changed. Add <name> to its `distros:`,
+  then run `add-distro` again.";
+- a directory `<name>/` is already in the system directory and is not a recorded distro. The
+  message is: "<system directory>/<name> already exists and is not a distro of this system.
+  Nothing has been changed. Move it out of the way, then run `add-distro` again.";
 - the manifest has no `distros:`;
 - `--manifest-ref` is given and `manifest` is not in a git repo, since a path on the disk or a
   URL has no version.
