@@ -1046,3 +1046,22 @@ The merge design is right and complete against the spec, the per-file/combined s
 - [ ] State that part 1's messages and tests are unchanged for a manifest with no `base` (finding 4).
 - [ ] Use `cat-file --batch-check` (finding 5), the simpler http deadline (finding 6), relative paths taken from the real path (finding 8), no rename (finding 9), `--bare` (finding 10), end git by pid at a terminal (finding 11).
 - [ ] Part 3: convert or truthfully explain the removed hooks/filters test (finding 12); diamond test asserts A's change survives (finding 13).
+
+## Checkpoint
+**When**: 2026-11-18 16:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is ready with no high finding; the plan is unchanged since that review and names parts not yet delivered; the owner chose "Merge and carry on" at the merge of part 1)
+**After**: plan
+**Decision**: proceed
+
+Proceed, with part 2 delivered as two pull requests, as the Plan Review recommends. Where this entry and the plan differ, this entry wins.
+
+This pull request is part 2a ("Part of #498"): base read from local paths only.
+- In scope: the base key read and checked; a location that is a local path, relative to the directory of the manifest that names it; each manifest read as its own part keeping only the keys it gave; the merge rules of the spec, one at a time, each with its test; the reading order (parents then self; the diamond C, A, B, leaf), each manifest read once, a manifest building on itself or a cycle refused; every part 1 check applied to each manifest read; error messages that name which manifest a problem is in; the head comment's base lines and validate's output; the documents.
+- Out of scope, for part 2b: the http(s) and git forms of a location. In 2a a base entry in either form is refused with a message that says this version reads a path only. No fetch.py, no network code, no time limits, no temporary clones.
+- Plan Review findings to apply in 2a: 3 (a parent in the old format is refused by one check written in the per-file pass, which part 3 reuses; old-format manifests were already ruled refused); 4 (for a manifest with no base, every part 1 message and test is unchanged apart from import lines, and load_manifest(path) still works with a path alone); 8 (the real path is used both to join a relative base and for identity); 9 (widen has_repositories_key instead of renaming it); 13 (the diamond test also checks that what A changes in C stays changed unless B changes it again).
+- A cap of 64 on the length of a chain of bases, as mechanism.
+
+Left for part 2b's own plan checkpoint, not decided now: whether a manifest fetched from the network may name a file on the local disk; whether git's and an http server's error text is printed (with unsafe characters replaced) or only a status; findings 2, 5, 6, 7, 10, 11 and the added question 8.
+
+Part 3 stays as planned, with finding 12.
