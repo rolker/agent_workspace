@@ -38,7 +38,9 @@
 #         anchors it at the root;
 #       - a Markdown link target, `[..](<path>#x)` or `[..](<<path>#x>)`,
 #         resolves from the directory of the file that holds it, as GitHub
-#         resolves it
+#         resolves it. In the angle-bracket form the path may hold spaces
+#         (`[..](<my part/design.md#x>)` is `my part/design.md`); the
+#         other forms end the path at a space
 #         (`manifest/design.md#x` in docs/roadmap.md is docs/manifest/...;
 #         `../../tools/t/docs/design.md#x` in docs/manifest/design.md);
 #       - any other citation (in backticks or prose) is tried from the
@@ -124,7 +126,9 @@
 # to the root.
 # A pointer table that sitrep_checks.sh cannot read (the script missing or
 # failing) is a finding on the roadmap, never a silent skip; so is a citer
-# that cannot be read, and the citers after it are still checked.
+# that cannot be read, and the citers after it are still checked. A part's
+# design that cannot be read is one finding, however many files cite it,
+# and nothing is printed to stderr for it but the closing count.
 # Exit codes:
 #   0  no findings
 #   1  one or more findings
@@ -350,12 +354,18 @@ done
 is_part_design() { [[ "$1" != "$DESIGN" && ( "$1" == design.md || "$1" == */design.md ) ]]; }
 declare -A PSLUGS=()
 declare -A LOADED=()
+# A part's design that cannot be read is reported once, here: the citer
+# scan skips it, and a citation of it is not also reported as a broken
+# anchor. stderr is dropped (the shell's own "Permission denied" line)
+# because the finding says it.
+declare -A UNREADABLE=()
 load_design() {  # <file relative to the root>
     local f="$1" recs kind a b c rec frag
     local -a plinks=()
     [[ -z "${LOADED[$f]+x}" ]] || return 0
     LOADED["$f"]=1
-    if ! recs="$(design_records "$f")"; then
+    if ! recs="$(design_records "$f" 2>/dev/null)"; then
+        UNREADABLE["$f"]=1
         finding "$f" 1 "could not read headings and links from $f"
         return 0
     fi
@@ -439,12 +449,27 @@ done
 
 # Citation forms (see the header): every `<path>design.md#<fragment>` run in
 # the citer on stdin, with whether it is a Markdown link target (`](` or
-# `](<` before it). The file is read through a redirect, never as an awk
-# operand, so a path holding `=` is not taken for an awk assignment.
+# `](<` before it). An angle-bracket destination, `](<...>)`, is taken
+# whole first, so a path in it may hold spaces (`](<my part/design.md#x>)`
+# is `my part/design.md#x`, a link); it is then blanked so the run scan
+# below does not read a piece of it again. The file is read through a
+# redirect, never as an awk operand, so a path holding `=` is not taken for
+# an awk assignment.
 citations() {
     awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t" }
     {
         line = $0; off = 0
+        while (match(substr(line, off + 1), /\]\(<[^<>]*>/)) {
+            s = off + RSTART
+            dest = substr(line, s + 3, RLENGTH - 4)
+            if (match(dest, /design\.md#[A-Za-z0-9_-]*/))
+                print FNR, 1, substr(dest, 1, RSTART + RLENGTH - 1)
+            len = length(dest)
+            blank = ""; for (i = 0; i < len; i++) blank = blank " "
+            line = substr(line, 1, s + 2) blank substr(line, s + 3 + len)
+            off = s + 3 + len
+        }
+        off = 0
         while (match(substr(line, off + 1), re)) {
             s = off + RSTART
             tok = substr(line, s, RLENGTH)
@@ -460,6 +485,7 @@ citations() {
 # finding: one failed read must not end the scan of the citers after it,
 # nor leave the hook exiting 0 (never a silent skip).
 for file in ${CITERS[@]+"${CITERS[@]}"}; do
+    [[ -z "${UNREADABLE[$file]+x}" ]] || continue              # reported once
     if ! CITES="$(citations 2>/dev/null <"$file")"; then
         finding "$file" 1 "could not read $file, so its citations are not checked"
         continue
@@ -515,6 +541,7 @@ for file in ${CITERS[@]+"${CITERS[@]}"}; do
                 continue
             fi
             load_design "$target"
+            [[ -z "${UNREADABLE[$target]+x}" ]] || continue       # reported once
             check_anchor "$file" "$line" "$frag" "$target"
         fi
     done <<<"$CITES"

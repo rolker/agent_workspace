@@ -24,7 +24,8 @@
 #       design, part designs and followed sub-roadmaps as citers; untracked
 #       copies ignored; a part's design in any directory; a missing file
 #       is an error from either base; only `://` makes a URL; pointers read
-#       through sitrep_checks.sh --list-pointers
+#       through sitrep_checks.sh --list-pointers; an angle-bracket link
+#       whose path holds a space; an unreadable part design reported once
 #   usage and root selection, including the default root: a sandbox copy of
 #       the checker run with no argument through a `scripts/` symlink checks
 #       its own repository, not the repository's parent
@@ -756,6 +757,53 @@ expect "h: an angle-bracket link destination resolves from its file" 0
 printf 'See [x](<docs/manifest/design.md#route>).\n' > "$R/docs/roadmap.md"
 run_checker "$R"
 expect "h: ... and never falls back to the root" 1 "no such design file 'docs/docs/manifest/design.md'"
+
+# An angle-bracket destination may hold spaces: the whole path is the
+# citation, a link resolved from its file, never the non-link tail
+# `part/design.md#route` resolved from the root.
+R="$(part_root h13)"
+mkdir -p "$R/docs/my part" "$R/part"
+printf '# Spaced\n\n## Route\n' > "$R/docs/my part/design.md"
+printf '# Decoy\n\n## Other\n' > "$R/part/design.md"
+printf 'See [x](<my part/design.md#route>).\n' > "$R/docs/roadmap.md"
+git -C "$R" add -A
+run_checker "$R"
+expect "h: an angle-bracket destination with a space resolves the whole path from its file" 0
+printf 'See [x](<my part/design.md#gone-spaced>).\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: ... and its fragment is checked against that file's headings" 1 \
+    "docs/roadmap.md:1: broken anchor '#gone-spaced' (no such heading in docs/my part/design.md)" \
+    "check_design_anchors: 1 finding(s)"
+printf 'See [x](<my part/design.md#route>) and `part/design.md#other`.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: ... and a backtick citation after it on the same line is still read" 0
+printf 'See [x](<my part/design.md#route>) and `part/design.md#gone-after`.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "h: ... (a broken one there fails)" 1 "broken anchor '#gone-after' (no such heading in part/design.md)" \
+    "check_design_anchors: 1 finding(s)"
+
+# A part's design that cannot be read is one finding, not one from loading
+# it and one from scanning it as a citer, nor a broken anchor for each
+# citation of it; no bare shell "Permission denied" line reaches stderr.
+if [[ "$(id -u)" -ne 0 ]]; then
+    R="$(part_root h14)"
+    printf 'Cites `tools/t/docs/design.md#only-part`.\n' > "$R/README.md"
+    git -C "$R" add -A
+    chmod 000 "$R/tools/t/docs/design.md"
+    run_checker "$R"
+    chmod 644 "$R/tools/t/docs/design.md"
+    expect "h: an unreadable part design is one finding" 1 \
+        "tools/t/docs/design.md:1: could not read headings and links from tools/t/docs/design.md" \
+        "check_design_anchors: 1 finding(s)"
+    if grep -qi 'permission denied' <<<"$OUT"; then
+        fail "h: ... with no bare 'Permission denied' line"
+        echo "    output: ${OUT//$'\n'/$'\n            '}"
+    else
+        pass "h: ... with no bare 'Permission denied' line"
+    fi
+else
+    echo "  SKIP: h: an unreadable part design (running as root, which reads a mode-000 file)"
+fi
 
 # ------------------------------------------------------- usage and root
 echo "== usage and root selection =="
