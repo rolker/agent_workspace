@@ -681,28 +681,18 @@ else
 fi
 
 echo
-echo "=== The parent reference never points at the wrong repository (issue 503) ==="
+echo "=== Parent reference outside a git repository: only from owner/repo#N (issue 503) ==="
+# Inside a git repository the parent reference is as before (the tests
+# above); outside one it is added only for a WORKTREE_ISSUE of the form
+# owner/repo#N, and nothing is taken from a remote.
 run503w() {  # <WORKTREE_ISSUE> <cwd> <args...>: as run503, with WORKTREE_ISSUE set
     local wi="$1" cwd="$2"
     shift 2
-    rm -f "$ARGV_LOG"
+    rm -f "$ARGV_LOG" "$BODY_CAPTURE"
     OUT503=$(cd "$cwd" && WORKTREE_ISSUE="$wi" TMPDIR="$R503" \
         bash "$WS503/.agent/scripts/gh_create_issue.sh" "$@" 2>&1)
     RC503=$?
 }
-run503w 7 "$WS503" -R ws-owner/ws --title T --body B --no-signature
-if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of #7' "$ARGV_LOG" \
-   && ! grep -q 'ws-owner/ws#7' "$ARGV_LOG"; then
-    pass "parent ref, same repository (-R the worktree's own): bare Part of #7"
-else
-    fail "parent ref, same repository: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
-fi
-run503w 7 "$WS503" -R pkg-owner/pkg --title T --body B --no-signature
-if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
-    pass "parent ref, inside git, -R another repository: qualified Part of ws-owner/ws#7"
-else
-    fail "parent ref, inside git, other repository: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
-fi
 run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
 if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
     pass "parent ref, outside git, qualified WORKTREE_ISSUE: Part of ws-owner/ws#7"
@@ -717,10 +707,70 @@ else
 fi
 run503w 7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
 if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG" \
-   && [[ "$OUT503" == *"Parent issue #7: its repository cannot be told here, so no parent reference was added"* ]]; then
-    pass "parent ref, outside git, bare WORKTREE_ISSUE: none added, one-line warning"
+   && [[ "$OUT503" == *'Parent issue #7: no parent reference added, as its repository is not known outside a git repository; write "Part of owner/repo#7" in the body to add one'* ]] \
+   && [[ "$OUT503" != *"WORKTREE_ISSUE="* ]] && [[ "$(grep -c 'Parent issue' <<< "$OUT503")" -eq 1 ]]; then
+    pass "parent ref, outside git, bare WORKTREE_ISSUE: none added, one-line warning naming the body"
 else
     fail "parent ref, outside git, bare: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG" && [[ "$OUT503" != *"Parent issue"* ]]; then
+    pass "parent ref, outside git, WORKTREE_ISSUE unset: none added, no warning"
+else
+    fail "parent ref, outside git, unset: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body "See ws-owner/ws#7." --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG"; then
+    pass "parent ref, outside git, body already names owner/repo#N: not added again"
+else
+    fail "parent ref, outside git, already named: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body "Fixes #7 here." --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, body names the target's own #N: the qualified reference is still added"
+else
+    fail "parent ref, outside git, target's #N in body: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+BODYF503="$R503/body503.md"
+printf 'From a file\n' > "$BODYF503"
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body-file "$BODYF503" --no-signature
+if [[ "$RC503" -eq 0 ]] && grep -qx 'Part of ws-owner/ws#7' "$BODY_CAPTURE" 2>/dev/null \
+   && [[ "$(cat "$BODYF503")" == "From a file" ]]; then
+    pass "parent ref, outside git, --body-file: appended to the copy, the caller's file untouched"
+else
+    fail "parent ref, outside git, body file: rc=$RC503 out=${OUT503:0:300}"
+fi
+rm -f "$BODYF503"
+
+# PARENT_REF in the environment with WORKTREE_ISSUE unset is ignored, as on
+# main (the round-2 rewrite read it outside its block and crashed under set -u).
+rm -f "$ARGV_LOG"
+OUT503=$(cd "$WS503" && env -u WORKTREE_ISSUE PARENT_REF='#9' TMPDIR="$R503" \
+    bash "$WS503/.agent/scripts/gh_create_issue.sh" --title T --body B --no-signature 2>&1)
+RC503=$?
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG"; then
+    pass "PARENT_REF exported without WORKTREE_ISSUE: ignored, gh reached"
+else
+    fail "PARENT_REF exported without WORKTREE_ISSUE: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+# Labels outside git: the workspace's list is used only for an owner/repo
+# slug of its GitHub origin. A non-GitHub origin (an SSH host alias) gives
+# none, so even a -R spelled like that origin is validated by GitHub.
+WS503A="$R503/wsalias"
+mkdir -p "$WS503A/.agent/scripts"
+cp "$WS503/.agent/scripts/"*.sh "$WS503A/.agent/scripts/"
+cp "$WS503/.agent/github_metadata.json" "$WS503/.agent/projects.local" "$WS503A/.agent/"
+git -C "$WS503A" init -q -b main
+git -C "$WS503A" remote add origin git@gh-work:ws-owner/ws.git
+rm -f "$ARGV_LOG"
+OUT503=$(cd "$ROOT503" && env -u WORKTREE_ISSUE TMPDIR="$R503" bash "$WS503A/.agent/scripts/gh_create_issue.sh" \
+    -R git@gh-work:ws-owner/ws --title T --body B --label nope --no-signature 2>&1)
+RC503=$?
+if [[ "$RC503" -eq 0 ]] && gh_called && [[ "$OUT503" == *"Labels will be validated by GitHub."* ]]; then
+    pass "outside git, workspace origin not on GitHub: no local label list, GitHub validates"
+else
+    fail "outside git, workspace origin an SSH alias: rc=$RC503 out=${OUT503:0:300}"
 fi
 
 echo

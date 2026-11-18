@@ -35,17 +35,18 @@
 #     to be added; missing vars hard-fail (exit 2) before any gh call. Set via:
 #     source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 #   - No body flag at all (interactive editor mode) means nothing is signed.
-#   - Outside a git repository (a project root that is a plain directory
-#     holding clones) -R / --repo must name the repository. Labels are
-#     validated against a local list only when it is the target's own:
-#     inside a git repository, that repository's .agent/github_metadata.json;
-#     outside one, the workspace checkout's, only when -R names the
-#     workspace's own repository. For any other target GitHub validates them.
-#   - With WORKTREE_ISSUE set, "Part of #N" is added when the issue is in the
-#     parent's repository, "Part of owner/repo#N" when the parent's
-#     repository is known and differs (a WORKTREE_ISSUE of the form
-#     owner/repo#N names it), and nothing, with a warning, when it cannot be
-#     known (outside a git repository with a bare WORKTREE_ISSUE).
+#   - Inside a git repository labels are validated against that checkout's
+#     .agent/github_metadata.json, also with -R. Outside a git repository (a
+#     project root that is a plain directory holding clones) -R / --repo
+#     must name the repository; labels are validated against the workspace
+#     checkout's list only when -R names the workspace's own repository,
+#     otherwise GitHub validates them.
+#   - With WORKTREE_ISSUE set, a parent reference is added. Outside a git
+#     repository only a WORKTREE_ISSUE of the form owner/repo#N gives one
+#     ("Part of #N" when owner/repo is the -R target, "Part of owner/repo#N"
+#     otherwise); a bare number gives none, with a one-line warning. From a
+#     package worktree WORKTREE_ISSUE is a bare number, so outside git no
+#     parent reference is added there and the person writes it in the body.
 #   - A --body-file is read once into a temporary copy (under TMPDIR,
 #     removed on exit), which is what gets signed and what gh reads: a
 #     pipe, FIFO or process substitution is signed like a regular file,
@@ -91,6 +92,8 @@ _UT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_UT_SCRIPT_DIR/_project_registry.sh"
 registry_require_root "$(cd "$_UT_SCRIPT_DIR/../.." && pwd)" || exit 1
 
+METADATA_FILE="$REPO_ROOT/.agent/github_metadata.json"
+
 # Check for required dependencies
 if ! command -v gh &> /dev/null; then
     echo "❌ Error: 'gh' (GitHub CLI) is not installed or not in PATH"
@@ -113,25 +116,22 @@ fi
 source "$_UT_SCRIPT_DIR/_gh_create_args.sh"
 gh_create_parse issue "$@" || exit 2
 
-# Outside a git repository gh cannot tell which repository is meant.
-if [ -z "$REPO_ROOT" ] && [ -z "$GH_REPO" ]; then
-    echo "❌ Error: Not in a git repository: pass -R <owner/repo> to name the repository the issue is for" >&2
-    exit 2
-fi
-
-# A label list describes one repository. Inside a git repository it is that
-# repository's own; outside one, the workspace checkout's list is read only
-# when -R names the workspace's own repository. Any other -R target outside
-# git has no local list (METADATA_FILE empty): GitHub validates its labels.
-_WS_CHECKOUT="$(cd "$_UT_SCRIPT_DIR/../.." && pwd)"
-_WS_OWN_SLUG=$(git -C "$_WS_CHECKOUT" remote get-url origin 2>/dev/null \
-    | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//') || _WS_OWN_SLUG=""
-if [ -n "$REPO_ROOT" ]; then
-    METADATA_FILE="$REPO_ROOT/.agent/github_metadata.json"
-elif [ -n "$_WS_OWN_SLUG" ] && [ "$GH_REPO" = "$_WS_OWN_SLUG" ]; then
-    METADATA_FILE="$_WS_CHECKOUT/.agent/github_metadata.json"
-else
+# Outside a git repository gh cannot tell which repository is meant, and
+# there is no checkout's own label list: the workspace checkout's is read
+# only when -R names the workspace's own repository (an owner/repo slug of
+# its GitHub origin); for any other target GitHub validates the labels.
+if [ -z "$REPO_ROOT" ]; then
+    if [ -z "$GH_REPO" ]; then
+        echo "❌ Error: Not in a git repository: pass -R <owner/repo> to name the repository the issue is for" >&2
+        exit 2
+    fi
+    _WS_CHECKOUT="$(cd "$_UT_SCRIPT_DIR/../.." && pwd)"
+    _WS_OWN_SLUG=$(git -C "$_WS_CHECKOUT" remote get-url origin 2>/dev/null \
+        | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//') || _WS_OWN_SLUG=""
     METADATA_FILE=""
+    if [[ "$_WS_OWN_SLUG" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && [ "$GH_REPO" = "$_WS_OWN_SLUG" ]; then
+        METADATA_FILE="$_WS_CHECKOUT/.agent/github_metadata.json"
+    fi
 fi
 
 # --- Mutually exclusive body sources -----------------------------------------
@@ -237,55 +237,26 @@ if [ -z "$GH_REPO" ]; then
     fi
 fi
 
-# Auto-inject parent issue reference when $WORKTREE_ISSUE is set. The
-# reference is bare (#N) only when the new issue is in the parent's
-# repository, qualified (owner/repo#N) when the parent's repository is known
-# and differs from the target, and left out, with a warning, when the
-# parent's repository cannot be known (a bare WORKTREE_ISSUE outside git, or
-# inside git with -R and no GitHub origin): never a link into the wrong repo.
-if [ -n "${WORKTREE_ISSUE:-}" ]; then
-    _PARENT_NUM="$WORKTREE_ISSUE"
-    _PARENT_SLUG=""
-    _PARENT_QUALIFIED=false
-    if [[ "$WORKTREE_ISSUE" =~ ^([^/#[:space:]]+/[^/#[:space:]]+)#([0-9]+)$ ]]; then
-        _PARENT_SLUG="${BASH_REMATCH[1]}"
-        _PARENT_NUM="${BASH_REMATCH[2]}"
-        _PARENT_QUALIFIED=true
-    elif [ -n "$REPO_ROOT" ]; then
-        # The worktree's own repository is the parent's.
-        WORKSPACE_ROOT="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
-        if [ -n "$WORKSPACE_ROOT" ] && git -C "$WORKSPACE_ROOT" remote get-url origin &>/dev/null; then
-            _WS_URL=$(git -C "$WORKSPACE_ROOT" remote get-url origin)
-            _PARENT_SLUG=$(echo "$_WS_URL" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-        fi
+# Auto-inject parent issue reference when $WORKTREE_ISSUE is set
+if [ -n "$REPO_ROOT" ] && [ -n "${WORKTREE_ISSUE:-}" ]; then
+    # Determine the correct issue reference format (cross-repo vs same-repo)
+    PARENT_REF="#${WORKTREE_ISSUE}"
+    CURRENT_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
+    WORKSPACE_REPO_SLUG=""
+    WORKSPACE_ROOT="$(git -C "$REPO_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")"
+    if [ -n "$WORKSPACE_ROOT" ] && git -C "$WORKSPACE_ROOT" remote get-url origin &>/dev/null; then
+        _WS_URL=$(git -C "$WORKSPACE_ROOT" remote get-url origin)
+        WORKSPACE_REPO_SLUG=$(echo "$_WS_URL" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
     fi
-    # The repository the issue is created in: -R, else the one gh resolves.
-    CURRENT_REPO_SLUG="$GH_REPO"
-    if [ -z "$CURRENT_REPO_SLUG" ]; then
-        CURRENT_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
+    if [ -n "$CURRENT_REPO_SLUG" ] && [ -n "$WORKSPACE_REPO_SLUG" ] && [ "$CURRENT_REPO_SLUG" != "$WORKSPACE_REPO_SLUG" ]; then
+        PARENT_REF="${WORKSPACE_REPO_SLUG}#${WORKTREE_ISSUE}"
     fi
-    PARENT_REF=""
-    if [ -n "$_PARENT_SLUG" ]; then
-        if [ -n "$CURRENT_REPO_SLUG" ] && [ "$CURRENT_REPO_SLUG" != "$_PARENT_SLUG" ]; then
-            PARENT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
-        elif [ -z "$CURRENT_REPO_SLUG" ] && [ "$_PARENT_QUALIFIED" = true ]; then
-            PARENT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
-        else
-            PARENT_REF="#${_PARENT_NUM}"
-        fi
-    elif [ -n "$REPO_ROOT" ] && [ -z "$GH_REPO" ]; then
-        # gh targets the worktree's own repository, the parent's.
-        PARENT_REF="#${_PARENT_NUM}"
-    else
-        echo "⚠️  Parent issue #${_PARENT_NUM}: its repository cannot be told here, so no parent reference was added (set WORKTREE_ISSUE=<owner/repo>#${_PARENT_NUM} to add one)"
-    fi
-fi
-if [ -n "${PARENT_REF:-}" ]; then
+
     # Check if body already references the parent issue. Word-boundary
     # regex avoids substring false positives (e.g., #12 matching #123); a
     # bash match, not a pipe, so a long body cannot cut the check short.
     NEEDS_INJECTION=true
-    _PARENT_PATTERN="(^|[^0-9])#${_PARENT_NUM}([^0-9]|$)"
+    _PARENT_PATTERN="(^|[^0-9])#${WORKTREE_ISSUE}([^0-9]|$)"
     if [ "$GH_BODY_INDEX" -ge 0 ]; then
         [[ "${GH_ARGS[$GH_BODY_INDEX]}" =~ $_PARENT_PATTERN ]] && NEEDS_INJECTION=false
     elif [ -n "$GH_BODY_COPY" ]; then
@@ -306,6 +277,43 @@ Part of ${PARENT_REF}"
         else
             echo "⚠️  No --body or --body-file provided; cannot auto-inject parent reference (Part of ${PARENT_REF})"
         fi
+    fi
+elif [ -n "${WORKTREE_ISSUE:-}" ]; then
+    # Outside a git repository the parent's repository is known only from a
+    # WORKTREE_ISSUE of the form owner/repo#N (nothing is taken from a
+    # remote): "#N" when that repository is the -R target, "owner/repo#N"
+    # otherwise. A bare number names no repository: no reference is added.
+    if [[ "$WORKTREE_ISSUE" =~ ^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+)$ ]]; then
+        _PARENT_SLUG="${BASH_REMATCH[1]}"
+        _PARENT_NUM="${BASH_REMATCH[2]}"
+        if [ "$GH_REPO" = "$_PARENT_SLUG" ]; then
+            _OUT_REF="#${_PARENT_NUM}"
+            _OUT_PATTERN="(^|[^0-9])#${_PARENT_NUM}([^0-9]|$)"
+        else
+            _OUT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
+            _OUT_PATTERN="(^|[^A-Za-z0-9_./-])${_PARENT_SLUG//./\\.}#${_PARENT_NUM}([^0-9]|$)"
+        fi
+        _OUT_NEEDED=true
+        if [ "$GH_BODY_INDEX" -ge 0 ]; then
+            [[ "${GH_ARGS[$GH_BODY_INDEX]}" =~ $_OUT_PATTERN ]] && _OUT_NEEDED=false
+        elif [ -n "$GH_BODY_COPY" ]; then
+            grep -Eq -- "$_OUT_PATTERN" "$GH_BODY_COPY" && _OUT_NEEDED=false
+        fi
+        if [ "$_OUT_NEEDED" = true ]; then
+            if [ "$GH_BODY_INDEX" -ge 0 ]; then
+                GH_ARGS[GH_BODY_INDEX]="${GH_ARGS[$GH_BODY_INDEX]}
+
+Part of ${_OUT_REF}"
+                echo "ℹ️  Auto-added parent reference: Part of ${_OUT_REF}"
+            elif [ -n "$GH_BODY_COPY" ]; then
+                printf '\n\nPart of %s\n' "$_OUT_REF" >> "$GH_BODY_COPY"
+                echo "ℹ️  Auto-added parent reference: Part of ${_OUT_REF}"
+            else
+                echo "⚠️  No --body or --body-file provided; cannot auto-inject parent reference (Part of ${_OUT_REF})"
+            fi
+        fi
+    elif [[ "$WORKTREE_ISSUE" =~ ^[0-9]+$ ]]; then
+        echo "⚠️  Parent issue #${WORKTREE_ISSUE}: no parent reference added, as its repository is not known outside a git repository; write \"Part of owner/repo#${WORKTREE_ISSUE}\" in the body to add one"
     fi
 fi
 
