@@ -240,14 +240,14 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
   `sync` updates the manifest's own clone before it resolves, so a manifest that does not
   resolve can leave that clone moved forward; the resolved output and every other repo have
   to stay as they were, and `sync` has to say that the manifest is what failed.
-- **`init` can be run again.** Run over a directory it did not finish setting up, it
-  completes the record instead of refusing.
 - **A manifest named by a commit.** `source_ref` may be a commit today. The tool's git form
   takes a branch or a tag. An instance pinned to a commit stays on today's route until the
   tool takes a commit, or is registered again with a branch or tag.
 
-Two of today's guarantees are covered by the tool's design as it is: it reads the manifest
-again on every `sync`, and its `sync` deletes nothing and leaves local work alone.
+Three of today's guarantees are covered by the tool's design as it is: it reads the manifest
+again on every `sync`, its `sync` deletes nothing and leaves local work alone, and an
+interrupted `init` leaves either nothing, in which case registration is run again, or a
+system whose first sync `sync` finishes.
 
 One is given up on purpose. Today's route refuses plain `http` and a URL that carries
 credentials, and clones a parent manifest's repo with none of the user's git configuration,
