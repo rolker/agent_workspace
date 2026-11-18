@@ -417,3 +417,24 @@ The revision answers every finding, and part 1 is now the right size and shape. 
 - [ ] Print one line per repo as its clone starts (finding 6).
 - [ ] `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1` in the test fixture (finding 7).
 - [ ] umask mode; `sync` calls `require_tools`; a refused rename is that repo's error; cheaper remotes for the 44-repo test (finding 8).
+
+## Checkpoint
+**When**: 2026-11-18 16:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review says the plan is ready to build and that none of its new findings needs another plan round; the owner started this drive: "do 1 and 2", "Merge and carry on")
+**After**: plan
+**Decision**: proceed
+
+Build part 1 ("Part of #500": init and a first sync that clones what is missing). Apply the second Plan Review's findings while building; where this entry and the plan differ, this entry wins.
+
+1. Temporaries: every temporary directory the tool makes after init sits in .repos-manifest/, with the hidden prefix the plan gives: the clone's temporary directory and the aside copy for replacing a file. One sweep, once per run, before the run makes anything, removes leftovers there by the plan's rule (the name pattern, not a link, the process in the name has ended). Nothing is ever made under a src/ except by the final rename.
+2. The destination check is one equality: the real path of the destination's parent equals the system directory's real path joined with the expected parts. The design says that names a case-insensitive disk treats as one are not checked in this part.
+3. vcs in the tests: an existing vcs on PATH wins, and the test environment's own directory is appended, so this machine tests vcstool and CI tests vcs2l. The pytest header prints which vcs was used. A test shows a missing version gives a failure.
+4. Correct the two claims the review names (how vcs2l loads pkg_resources; names differing only in case).
+5. A stopped run: no process-group handling in this part. vcs runs in the tool's own process group, so a Ctrl-C at a terminal reaches git and a password prompt works. If removing the temporary directory fails because a clone is still writing into it, that is a warning, the next run's sweep removes it, and the run's exit status stays the stop's (128 + the signal). Say so in the design.
+6. One line is printed per repo as its clone starts.
+7. The test fixture sets GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1.
+8. .repos-manifest/ gets its mode from the umask; sync checks for vcs and git as init does; a rename refused because the place was filled meanwhile is that repo's error and the others go on; the 44-repo test uses few distinct remotes.
+9. state.yaml stays in part 1: it is small, and it records the exact commit each repo was put on.
+
+Design documents: the code does not depend on pull request 508's text. Build first. The design edits are the last commit, made after 508 has merged and origin/main has been merged into this branch; if 508 has not merged when the code is done, the implementation is recorded complete for the code with the design edits listed as the one step left, and the host brings main in.
