@@ -310,8 +310,10 @@ directory, says whether the output had been replaced, and then ends the process 
 and an interrupt that still comes between them puts the previous output back, so the output is
 the previous one or the new one, never neither. A run killed outright can leave one behind; the
 next `resolve` to the same place removes the hidden directories beside it that a process that
-has ended made, when they hold the marker or are empty; a run still going keeps its own, and an
-output named like them is refused. A run killed between the two moves leaves no output and the
+has ended made, when they hold the marker or are empty, and warns about one it cannot remove; a
+run still going keeps its own, and an output named like them is refused. Every directory in a
+copy being removed is made writable first, so a read-only one inside it does not stop the
+removal. A run killed between the two moves leaves no output and the
 previous one aside (`.<name>.old-<pid>-<random>`, marked): the next `resolve` moves it back
 into place before it does anything else.
 

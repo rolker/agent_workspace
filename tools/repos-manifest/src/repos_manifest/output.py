@@ -140,13 +140,29 @@ def _process_has_ended(pid: int) -> bool:
     return False
 
 
+def _make_writable(path: Path) -> None:
+    """Give the owner full access to `path` and every directory below it, so that a read-only
+    directory anywhere in the tree does not stop its removal. A link is not followed, and the
+    mode of what it points to is left as it is."""
+    os.chmod(path, stat.S_IRWXU)
+
+    def fail(exc: OSError) -> None:
+        raise exc
+
+    for top, directories, _files in os.walk(path, onerror=fail):
+        for directory in directories:
+            below = os.path.join(top, directory)
+            if stat.S_ISDIR(os.lstat(below).st_mode):
+                os.chmod(below, stat.S_IRWXU)
+
+
 def _remove_ours(path: Path) -> Optional[str]:
     """Remove a directory this tool made, its marker last, so that a removal cut short leaves a
-    directory that still holds the marker, which a later run sweeps. It is made writable first,
-    so a read-only copy is removed too. Returns why it could not be removed, or None; what is
-    left is still marked."""
+    directory that still holds the marker, which a later run sweeps. It and every directory in
+    it are made writable first, so a read-only copy is removed too. Returns why it could not be
+    removed, or None; what is left is still marked."""
     try:
-        os.chmod(path, stat.S_IRWXU)
+        _make_writable(path)
         for entry in list(path.iterdir()):
             if entry.name == MARKER:
                 continue
@@ -177,15 +193,23 @@ def _discard_previous_output(old: Path, parent: Path, name: str) -> Optional[str
     return _remove_ours(doomed)
 
 
-def _sweep_leftovers(parent: Path, name: str) -> None:
+def _sweep_leftovers(parent: Path, name: str, out: Path) -> None:
     """Remove the hidden directories a run that was killed left beside this output: named for
     this output, made by a process that has ended, and holding the marker or empty. Nothing
-    else is touched, a run still going included."""
+    else is touched, a run still going included. One that cannot be removed is named in a
+    warning (`out` as it was given) and left, still marked, for a later run."""
     leftover = re.compile(re.escape(f".{name}") + _TEMP_SUFFIX)
     for entry in parent.iterdir():
         match = leftover.fullmatch(entry.name)
         if match and _process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
-            _remove_ours(entry)
+            problem = _remove_ours(entry)
+            if problem is not None:
+                print(
+                    f"WARNING: --out {out}: {entry.name}, left beside it by an earlier run, could"
+                    f" not be removed ({problem}); a later resolve to the same place tries again,"
+                    " or remove it by hand",
+                    file=sys.stderr,
+                )
 
 
 def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
@@ -286,7 +310,7 @@ def write_output(
             parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:  # a part of the path is a file
             raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR)) from None
-        _sweep_leftovers(parent, name)
+        _sweep_leftovers(parent, name, out)
         new = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "new"), dir=parent))
     except OSError as exc:
         raise ManifestError(

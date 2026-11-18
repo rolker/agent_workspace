@@ -458,6 +458,81 @@ def test_a_read_only_output_is_replaced_and_keeps_its_mode(manifest, tmp_path):
     out.chmod(0o755)
 
 
+def _writable_again(top):
+    """Make every directory under `top` writable again, so a failed test leaves nothing that
+    pytest cannot remove."""
+    for root, directories, _files in os.walk(top):
+        for directory in directories:
+            below = os.path.join(root, directory)
+            if not os.path.islink(below):
+                os.chmod(below, 0o755)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a read-only directory")
+@pytest.mark.parametrize("mode", [0o555, 0o000], ids=["r-x", "none"])
+def test_a_read_only_directory_inside_the_previous_output_does_not_stop_its_removal(
+    mode, manifest, tmp_path, capsys
+):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    (out / "sub" / "deeper").mkdir(parents=True)
+    (out / "sub" / "deeper" / "f").write_text("")
+    (out / "sub" / "deeper").chmod(mode)
+    (out / "sub").chmod(mode)
+    try:
+        assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    finally:
+        _writable_again(tmp_path)
+    assert "WARNING" not in capsys.readouterr().err
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+def test_removing_a_copy_does_not_change_the_mode_of_what_a_link_in_it_points_to(
+    manifest, tmp_path
+):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir(mode=0o750)
+    elsewhere.chmod(0o750)
+    (out / "link").symlink_to(elsewhere, target_is_directory=True)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert stat.S_IMODE(elsewhere.stat().st_mode) == 0o750
+    assert _names(tmp_path) == ["elsewhere", "m.manifest.yaml", "out"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes into a read-only directory")
+def test_a_leftover_with_a_read_only_directory_is_swept(manifest, tmp_path):
+    left = _leftover(tmp_path, "out", pid=_dead_pid(), files=("core.repos",))
+    (left / "sub").mkdir()
+    (left / "sub" / "f").write_text("")
+    (left / "sub").chmod(0o555)
+    try:
+        assert _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy") == 0
+    finally:
+        _writable_again(tmp_path)
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
+def test_a_leftover_the_sweep_cannot_remove_is_named_in_a_warning(
+    manifest, tmp_path, monkeypatch, capsys
+):
+    left = _leftover(tmp_path, "out", pid=_dead_pid(), files=("core.repos",))
+    out = tmp_path / "out"
+    undo = _cut_short_removal(monkeypatch)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    undo()
+    assert capsys.readouterr().err == (
+        f"WARNING: --out {out}: {left.name}, left beside it by an earlier run, could not be"
+        " removed (Input/output error); a later resolve to the same place tries again, or"
+        " remove it by hand\n"
+    )
+    assert (left / MARKER).is_file()
+    # The next run sweeps it.
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 def test_a_failure_while_writing_leaves_nothing_behind(manifest, tmp_path, monkeypatch):
     def write_text(path, text):
         if path.name == "layers.txt":
