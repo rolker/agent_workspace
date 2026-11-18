@@ -251,6 +251,8 @@ def test_the_count_takes_in_every_manifest_read_not_only_one_line(tmp_path):
             "repositories:\n  a/../b:\n" + REPO.format(name="a"),
             "repositories: 'a/../b': a repo key",
         ),
+        # The key is checked before its entry.
+        ("repositories:\n  ../x: 5\n", "repositories: '../x': a repo key has no '..' part"),
         ("repositories:\n  a:\n    type: svn\n", "repositories.a.type: is 'svn'"),
         ("repositories:\n  a:\n    url: 'ext::sh'\n", "repositories.a.url: 'ext::sh'"),
         (
@@ -277,6 +279,21 @@ def test_a_parent_in_the_earlier_format_is_refused(tmp_path, keys):
     path = _write(tmp_path, "p.yaml", keys)
     leaf = _write(tmp_path, "m.yaml", "base: p.yaml\n" + _repos("m"))
     with pytest.raises(ManifestError, match=f"^{re.escape(_real(path))}: is in the earlier format"):
+        load_manifest(leaf)
+
+
+def test_a_manifest_with_no_base_names_a_bad_repo_key_before_its_entry(tmp_path):
+    # As part 1 does: the key's error, not the entry's.
+    leaf = _write(tmp_path, "m.yaml", "repositories:\n  ../x: 5\n")
+    with pytest.raises(ManifestError, match=r"repositories: '\.\./x': a repo key has no '\.\.'"):
+        load_manifest(leaf)
+
+
+def test_the_old_project11_fixture_as_a_parent_is_refused_as_the_earlier_format(tmp_path):
+    # Its `roles:` and `layers:` are in the earlier shape too; the format is named first.
+    old = os.path.join(os.path.dirname(__file__), "fixtures", "p11", "manifest.yaml")
+    leaf = _write(tmp_path, "m.yaml", f"base: {old}\n" + _repos("m"))
+    with pytest.raises(ManifestError, match=f"^{re.escape(_real(old))}: is in the earlier format"):
         load_manifest(leaf)
 
 

@@ -363,6 +363,17 @@ class _Checker:
     def part(self, raw: dict) -> Part:
         """Check everything that can be checked on this manifest alone, and keep only the keys
         it gives. The checks that read the combination of a chain are in ``combine.py``."""
+        if "repositories" not in raw:
+            # Before anything else: the earlier format's other keys have other shapes too.
+            old = [key for key in _EARLIER_FORMAT_KEYS if key in raw]
+            if old:
+                raise self.error(
+                    "",
+                    f"is in the earlier format (it has {', '.join(f'`{k}:`' for k in old)} and no"
+                    " `repositories:`); this tool reads it only in the format of the"
+                    " specification",
+                )
+
         for key in raw:
             if key not in _TOP_LEVEL_KEYS:
                 self.warn(f"unknown top-level key {key!r} is ignored")
@@ -417,14 +428,6 @@ class _Checker:
 
         repos: Dict[str, Dict[str, object]] = {}
         if "repositories" not in raw:
-            old = [key for key in _EARLIER_FORMAT_KEYS if key in raw]
-            if old:
-                raise self.error(
-                    "",
-                    f"is in the earlier format (it has {', '.join(f'`{k}:`' for k in old)} and no"
-                    " `repositories:`); this tool reads it only in the format of the"
-                    " specification",
-                )
             if not base:
                 # The first manifest of a chain has the repos; a later one may add none.
                 raise self.error("", "has no `repositories:`")
@@ -435,7 +438,8 @@ class _Checker:
                     "repositories", f"must be a mapping of repos, got {_type_name(repos_raw)}"
                 )
             for key, entry in repos_raw.items():
-                repos[self.repo_key(key)] = self.repo(key, entry)
+                key = self.repo_key(key)  # the key before its entry, as part 1 does
+                repos[key] = self.repo(key, entry)
 
         return Part(
             source=self.source,
