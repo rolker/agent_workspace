@@ -738,3 +738,12 @@ Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-ma
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**When**: 2026-11-18 18:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 approved with no findings, and the full pre-commit pass passed at e06bebd6)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on e06bebd6. Published as part 1: the pull request says "Part of #500" and does not close the issue. Part 2 (sync against clones that exist) remains, with three questions held for the owner at its plan checkpoint.
