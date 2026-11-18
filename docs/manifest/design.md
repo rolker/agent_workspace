@@ -189,7 +189,7 @@ instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init --distro-dirs` for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
+| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init`, with `--distro-dirs` when the project has a distro, for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
 | `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
@@ -205,14 +205,12 @@ Which route an instance is on is decided in this order, until the older routes a
 2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
 3. Otherwise: the bootstrap route.
 
-The test is the tool answering, not the `.repos-manifest/` folder being there, because an
-`init` that was interrupted can leave the folder without a complete record. A `status` that
-reports a missing repo has answered: the instance is on the tool, and `validate` fails. The tool's
-design has `init` record what it was given and then sync, so a first sync that fails part
-way is finished with `sync`. A directory whose record is not complete would be set up by
-running registration again, which needs the ask "`init` can be run again" under "What the
-tool has to give". The tool's design does not give that yet: its `init` refuses a directory
-that has `.repos-manifest/`.
+The test is the tool answering, not the `.repos-manifest/` folder being there: a folder whose
+record cannot be read is an error from the tool. A `status` that reports a missing repo has
+answered: the instance is on the tool, and `validate` fails. The tool's design has `init`
+make the folder and its record in one step and then sync, so an interrupted `init` leaves
+either nothing, and registration is run again, or a system whose first sync is finished
+with `sync`.
 
 An existing instance is not converted in place. Its layout is `layers/main/<layer>_ws`, the
 tool's, with a directory per distro, is `<distro>/<layer>/`, and its checkouts may hold work.
