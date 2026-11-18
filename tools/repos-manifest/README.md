@@ -118,7 +118,9 @@ It needs Python 3.10 or later and PyYAML.
 The settings under the old name are ignored since the rename: set
 `REPOS_MANIFEST_GIT_TIMEOUT` in place of `ROS_MANIFEST_GIT_TIMEOUT`, and an old
 `.ros-manifest-cache` directory can be deleted (the default cache is now
-`.repos-manifest-cache`).
+`.repos-manifest-cache`). A checkout that had the old tool installed can keep an
+ignored `tools/ros-manifest/` directory after pulling (its egg-info and
+`__pycache__`, which git does not remove); it can be deleted too.
 
 ## Development
 
