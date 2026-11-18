@@ -10,10 +10,14 @@ What must be true for the acceptance case, each line with a check that says whet
 true today, where one exists yet. This section holds no status and no dates. Paths in the
 checks are relative to the workspace's root.
 
-**Acceptance case.** Project11's Rolling instance on the second machine is registered from a
-manifest in the new format, set up and built through the adapter, and `adapter validate`
-passes. This is the acceptance of the issue that started the adapter's manifest route
-(#436).
+**Acceptance cases.** Two things work:
+
+1. Project11's Rolling instance on the second machine is registered from a manifest in the
+   new format, set up and built through the adapter, and `adapter validate` passes. This is
+   the acceptance of the issue that started the adapter's manifest route (#436).
+2. An interactive session started in a new, empty directory sets project11 up and onboards
+   it for several distros, starting with rolling, asking for what it needs along the way,
+   such as where the manifest is. The owner's example of 2026-11-18 is in the design.
 
 | Line | Check |
 |---|---|

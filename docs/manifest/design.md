@@ -78,6 +78,22 @@ After that:
   path has changed since it was resolved, and names checkouts the manifest no longer lists.
   It fetches nothing and removes nothing.
 
+What the route guarantees, and how:
+
+- **Never silently stale.** A git `source` is fetched afresh by each `setup` and `sync`, and
+  no clone is kept. Every `extends` base is cloned afresh too.
+- **A failed run changes nothing.** If the fetch or the resolve fails, the previous generated
+  directory stays the one in use.
+- **One run at a time.** The fetch and resolve hold a lock on `configs/.lock.source`, which
+  is never removed. Without `flock` on the machine, the run is unlocked.
+- **A reader is not cut off.** Every verb reads one generated directory from start to end,
+  and a directory is not removed while a run reads it. Without `flock`, the one before the
+  live one is kept instead.
+- **Bounded and guarded fetches.** The adapter's fetch allows the https, ssh and file
+  transports only. The resolver's clone of an `extends` base runs no user hook or filter
+  driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`.
+- **Nothing is deleted.** The adapter removes no checkout and edits no ignore file.
+
 ### Worktrees
 
 For issue work in a package repo, the adapter makes a worktree of that repo and writes an
@@ -98,9 +114,10 @@ yet (`init`, `show`, `sync`, `build`, `status`); the tool's roadmap has them.
 
 ### The case it is designed for
 
-The owner's description of how setting up a project should go (2026-11-18): make a
-directory, start a session in it, and ask for the project to be set up and onboarded from
-the repo it lives in, for more than one distro, starting with one.
+The owner's example of how setting up a project could start (2026-11-18): make a directory,
+start a session in it, and ask for the project to be set up and onboarded from the repo it
+lives in, for more than one distro, starting with one. It is an interactive session, and the
+agent asks for what the request leaves out.
 
 ```
 mkdir ~/project11
@@ -114,7 +131,11 @@ What has to happen behind that request:
 
 1. The session is in a directory that is not registered. The workspace offers to register
    it as a project root.
-2. The manifest is found in the named repo, on the branch for the first distro.
+2. The agent asks where the manifest is, if the request does not say. The owner
+   (2026-11-18): "At first, it might be a local file or not even exist, then once it gets
+   added, it would be from github probably." So the answer may be a file on the local disk,
+   a file in the named repo, or that there is none yet, in which case one is written in a
+   scratch place first.
 3. The session shows what the manifest comes to for a role and that distro
    (`repos-manifest show`) and asks before fetching.
 4. `repos-manifest init` sets the directory up with one directory per distro, holding the
@@ -202,9 +223,6 @@ no user and is removed, with `bootstrap_url` and `configs/manifest`.
 - How a session says which distro it is working on, when its root holds several. Today a
   distro is recorded once per instance, on the registry line, and a worktree's environment
   script is written for that one distro.
-- How the manifest is found when only a repo is named. The tool is given a repo, a branch
-  and a path. A convention for the path, or a search of the repo's top directory, would
-  remove the need to name it.
 - Which distro runs on the host and which in a container. That is a fact about a machine. It
   would be recorded with the instance, and the adapter would use it to decide where `build`
   runs.
