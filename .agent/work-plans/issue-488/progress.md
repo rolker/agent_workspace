@@ -271,3 +271,38 @@ Specialists: static analysis (shellcheck clean on the 7 changed scripts; the anc
 - [x] (suggestion) A pointer whose target sits in a nested git repository or submodule is followed, although ADR-0022 decision 8 says a pointer into another repository is not supported. A bare `gh-issue N` there queries the nested repository's origin. Report it as `unchecked`. Found by codex. — `.agent/scripts/sitrep_checks.sh:847`
 - [x] (suggestion) `named_part` tries the bare, then owner/repo, then project matches across all parts. It does not pick the first followed sub-roadmap, which is what the header at line 132 says. Found by gemini; the lead confirmed it by reading the code. — `.agent/scripts/sitrep_root.sh:559`
 - [x] (suggestion) #486 is now on main (merged in db157fde), and the real `tools/ros-manifest/docs/roadmap.md` is followed correctly (checked with a temporary pointer row). Step 7's #486 half can land now: add the pointer row, and add the root design's link to `tools/ros-manifest/docs/design.md`, which ADR-0022 decision 2 requires and which docs/design.md:474 lacks. Also correct the ADR context's "conforms as it stands". Otherwise record why both halves wait for #487. Found by plan drift and the lead. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:31` (deferred: no pointer row in this pull request (host): the plan makes step 7 conditional on #486 and #487, and #487 (pull request 496) edits the same docs/roadmap.md rows; both rows and the root design's link to tools/ros-manifest/docs/design.md wait for #487. The ADR context is corrected in this commit)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 10:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-488 at `4402b3db`
+**Addressed**: Local Review (Pre-Push) at `db157fde` (2026-11-18 10:41 -05:00)
+**Commits**: `86ea0b84`, `6cd7bae3`, `5b3b5b9d`, `64c89ea1`, `484c0eb1`, `99135314`, `81abb9d6`, `4402b3db`
+
+Host guidance for this round (mechanism choices within what the owner approved, recorded as the host's): must-fix 5 is fixed in the code to match ADR-0022, docs/design.md and the review skills (a part's design in any directory), not by narrowing the documents to docs/; suggestion 5 adds no pointer row in this pull request, and the ADR context is corrected to what is true on origin/main.
+
+Each fix has a test that fails on the script before the fix (checked by running the suite against the previous version).
+
+### Actions
+- [x] (must-fix 1) A backtick citation whose file exists neither beside the citer nor from the root is now an error naming both paths, never a silent fallback (`manifest/design.md#gone` in docs/roadmap.md fails) — `.agent/scripts/check_design_anchors.sh` (`99135314`)
+- [x] (must-fix 2) `--no-follow` ignores the pointer table, so a pointer-only section prints the `(no Line or Deferral table)` section row and `--summary-from` counts 0/0 — `.agent/scripts/sitrep_checks.sh` scan_roadmap (`6cd7bae3`)
+- [x] (must-fix 3) A nested pointer is not content: a sub-roadmap whose only table points further is `part unchecked` "no Line or Deferral table", and `--next-steps-from` gives it no "none open" — `.agent/scripts/sitrep_checks.sh` scan_roadmap (`6cd7bae3`)
+- [x] (must-fix 4) `next_steps` marks "chosen" by the result, so an open line with an empty Line cell keeps its place — `.agent/scripts/sitrep_checks.sh` next_steps (`86ea0b84`)
+- [x] (must-fix 5) Any file named design.md other than the root's is a part's design: the one beside every followed sub-roadmap, wherever it is, is read and its links checked, and any citation of it is checked; the hook's `files:` filter takes any `design.md`, `roadmap.md` or `ROADMAP.md`; docs/design.md and the script reference say any directory. Two #335 cases in test (b) change with the rule: `../design.md#` from docs/ and a bare `design.md#` in README.md name the root-level design.md, an error when missing — `.agent/scripts/check_design_anchors.sh`, `.pre-commit-config.yaml` (`99135314`)
+- [x] (suggestion 1) One pointer parser: `sitrep_checks.sh --list-pointers` prints the sub-roadmaps it would follow without running a check, and the anchor check reads the table through it (CRLF, Setext end, 2-cell header, `./` dedupe, inside the root, same repository); a failed call is a finding — `.agent/scripts/check_design_anchors.sh`, `.agent/scripts/sitrep_checks.sh` (`484c0eb1`)
+- [x] (suggestion 2) Only `://` or a leading `//` makes a URL; `main:docs/design.md#broken` is resolved and fails — `.agent/scripts/check_design_anchors.sh` (`81abb9d6`)
+- [x] (suggestion 3) A target or Root in a nested git repository or submodule is `part unchecked` "in another repository", not read, no gh call — `.agent/scripts/sitrep_checks.sh` follow_pointer (`5b3b5b9d`)
+- [x] (suggestion 4) `named_part` takes, of the parts each rule finds, the one followed first — `.agent/scripts/sitrep_root.sh` (`64c89ea1`)
+- [x] (suggestion 5) ADR-0022's context corrected: on origin/main the root design names the tool only at its boundary but has no link to `tools/ros-manifest/docs/design.md`, which decision 2 requires; that link comes with the tool's pointer row — `docs/decisions/0022-a-part-owns-its-inside.md` (`4402b3db`) (deferred: no pointer row in this pull request, per the host; plan step 7 is conditional on #486 and #487, and #487, pull request 496, edits the same `docs/roadmap.md` rows, so both pointer rows and the design link wait for #487; acceptance bullet 3 stays open)
+
+### Checks
+Suites run, each on its own from the worktree:
+- `test_design_anchors.sh`: `test_design_anchors: 69 passed, 0 failed`
+- `test_sitrep_checks.sh`: `test_sitrep_checks: 252 passed, 0 failed`
+- `test_sitrep_root.sh`: `test_sitrep_root: 65 passed, 0 failed`
+- `test_skill_paths.sh`: `test_skill_paths: 163 passed, 0 failed`
+- `test_update_roadmap.sh`: `test_update_roadmap:16 passed, 0 failed`
+
+`check_design_anchors.sh` on the worktree exits 0. Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465). The full pre-commit pass over the branch was left to the host.
