@@ -394,6 +394,41 @@ def test_a_failed_second_rename_puts_the_previous_output_back(manifest, tmp_path
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
 
 
+def test_a_previous_output_that_cannot_be_put_back_is_named_and_put_back_next_run(
+    manifest, tmp_path, monkeypatch, capsys
+):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    before = {name: (out / name).read_text() for name in _names(out)}
+    real_rename = os.rename
+
+    def rename(src, dst):
+        if ".new-" in str(src) or ".old-" in str(src):
+            raise OSError(28, "No space left on device")
+        return real_rename(src, dst)
+
+    monkeypatch.setattr(output.os, "rename", rename)
+    capsys.readouterr()
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    monkeypatch.setattr(output.os, "rename", real_rename)
+    aside = [p for p in tmp_path.iterdir() if p.name.startswith(".out.old-")]
+    assert len(aside) == 1 and not out.exists()
+    assert capsys.readouterr().err == (
+        f"WARNING: --out {out}: is now missing; the previous output is in {aside[0]}, and the"
+        " next resolve to the same place puts it back\n"
+        f"ERROR: --out {out}: cannot be written (No space left on device)\n"
+    )
+
+    # The next run puts it back before anything else, so a failure later in it keeps it.
+    def fail(path, text):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(output, "_write_text", fail)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    assert {name: (out / name).read_text() for name in _names(out)} == before
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 def _cut_short_removal(monkeypatch):
     """Make every removal of a file but the marker fail; returns the function that undoes it.
 

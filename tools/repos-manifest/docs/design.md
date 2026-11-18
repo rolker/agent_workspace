@@ -309,7 +309,9 @@ it wrote. The current directory and its parents are refused, since replacing one
 the shell in a deleted directory. A SIGINT, SIGTERM or SIGHUP while resolving ends the run, removes the hidden
 directory, says whether the output had been replaced, and then ends the process by that signal, so a shell loop over `resolve` stops on a Ctrl-C. The three are held during the two moves and delivered after them,
 and an interrupt that still comes between them puts the previous output back, so the output is
-the previous one or the new one, never neither. A run killed outright can leave one behind; the
+the previous one or the new one, never neither. The one exception is a failure to move the
+previous output back: the run then says that the output is missing, names the hidden directory
+the previous one is in, and the next `resolve` to the same place moves it back. A run killed outright can leave one behind; the
 next `resolve` to the same place removes the hidden directories beside it that a process that
 has ended made, when they hold the marker or are empty, and warns about one it cannot remove; a
 run still going keeps its own, and an output named like them is refused. Every directory in a

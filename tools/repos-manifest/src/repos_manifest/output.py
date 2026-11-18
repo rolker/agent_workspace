@@ -363,7 +363,13 @@ def write_output(
             try:
                 os.rename(old, out_abs)
             except OSError:
-                old = None  # it stays where it is, marked, and is not removed by this run
+                # It stays where it is, marked, and is not removed by this run.
+                print(
+                    f"WARNING: --out {out}: is now missing; the previous output is in {old}, and"
+                    " the next resolve to the same place puts it back",
+                    file=sys.stderr,
+                )
+                old = None
         if new.exists():
             _remove_ours(new)
         if old is not None and old.exists():
