@@ -466,6 +466,15 @@ wts "$R/proj" "$SB/rows-sub.tsv"
     && "$(field 13 named_part)" == "" && "$(field 20 named_part)" == "" ]] \
     && pass "named_part: a part's gh-issue names own and other work by the part's path; a root line still sets named; rows after an unfollowed part row and a part's deferrals name nothing" \
     || fail "named_part: 4='$(field 4 named)/$(field 4 named_part)' 3='$(field 3 named_part)' 12='$(field 12 named)/$(field 12 named_part)' 13='$(field 13 named_part)' 20='$(field 20 named_part)'"
+printf '%s\n' \
+    $'part\tdocs/a/roadmap.md\ttrue\tread\t2026-11-18' \
+    $'subline\tdocs/a/roadmap.md: A names acme/proj#12\tfalse\tgh-issue acme/proj#12 closed\t2026-11-18' \
+    $'part\tdocs/b/roadmap.md\ttrue\tread\t2026-11-18' \
+    $'subline\tdocs/b/roadmap.md: B names 12\tfalse\tgh-issue 12 closed\t2026-11-18' > "$SB/rows-order.tsv"
+wts "$R/proj" "$SB/rows-order.tsv"
+[[ "$(field 12 named_part)" == docs/a/roadmap.md ]] \
+    && pass "named_part: the first followed part that names the work wins, whichever form names it" \
+    || fail "named_part order: 12='$(field 12 named_part)'"
 wts "$R/proj"
 [[ "$(field 4 named_part)" == "(absent)" ]] && pass "named_part: absent without a rows file" || fail "named_part without rows: '$(field 4 named_part)'"
 

@@ -437,6 +437,7 @@ root_git = os.environ["ROOT_GIT"]
 have_rows = bool(os.environ["ROWS"])
 named_bare, named_issues, named_projects = set(), set(), set()
 part_bare, part_issues, part_projects = {}, {}, {}
+part_order = {}
 if have_rows:
     parts = []
     with open(os.environ["ROWS"], encoding="utf-8", errors="replace") as fh:
@@ -444,6 +445,7 @@ if have_rows:
             f = row.rstrip("\n").split("\t")
             if len(f) >= 3 and f[0] == "part" and f[2] == "true":
                 parts.append(f[1])
+                part_order.setdefault(f[1], len(part_order))
                 continue
             if len(f) < 4 or f[0] not in ("line", "subline"):
                 continue
@@ -556,14 +558,17 @@ for w in entries:
             or (bool(s) and ("%s#%s" % (s.lower(), issue)) in named_issues))
         named = named or (t == "project" and (w.get("repo") or "") in named_projects)
         w["named"] = "yes" if named else "no"
-        np = ""
-        if issue is not None and own:
-            np = part_bare.get(str(issue), "")
-        if not np and issue is not None and s:
-            np = part_issues.get("%s#%s" % (s.lower(), issue), "")
-        if not np and t == "project":
-            np = part_projects_r.get(w.get("repo") or "", "")
-        w["named_part"] = np
+        # Every rule that matches gives the first part that names the work
+        # that way; of those, the part followed first wins, whichever rule
+        # matched (the header: "the first followed sub-roadmap").
+        cands = []
+        if issue is not None and own and str(issue) in part_bare:
+            cands.append(part_bare[str(issue)])
+        if issue is not None and s and ("%s#%s" % (s.lower(), issue)) in part_issues:
+            cands.append(part_issues["%s#%s" % (s.lower(), issue)])
+        if t == "project" and (w.get("repo") or "") in part_projects_r:
+            cands.append(part_projects_r[w.get("repo") or ""])
+        w["named_part"] = min(cands, key=part_order.get) if cands else ""
     kept.append(w)
 print(json.dumps({"worktrees": kept}))
 PY
