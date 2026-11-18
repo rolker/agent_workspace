@@ -20,8 +20,11 @@
 # [A-Za-z0-9_-] after the '#'.
 #       - an empty run (the literal `docs/design.md#<section>` placeholder) is
 #         not a citation and is ignored;
-#       - a path with a scheme (`https://...`) or starting with `//` is a URL,
-#         never a citation of a local file: not checked, not an error;
+#       - a path with a scheme and `://` (`https://...`) or starting with
+#         `//` is a URL, never a citation of a local file: not checked, not
+#         an error. A `word:` prefix without `//` (`main:docs/design.md#x`)
+#         is not a URL; the path is resolved like any other, so it fails
+#         as a missing file;
 #       - a path whose last step is not exactly `design.md` (`other-design.md`)
 #         is not a citation;
 #       - any other fragment must match [a-z0-9][a-z0-9_-]*, otherwise it is a
@@ -439,7 +442,7 @@ if [[ ${#CITERS[@]} -gt 0 ]]; then
         frag="${tok##*#}"
         path="${tok%#*}"
         [[ -n "$frag" ]] || continue                              # placeholder
-        [[ "$path" =~ ^[A-Za-z][A-Za-z0-9+.-]*: || "$path" == //* ]] && continue   # a URL
+        [[ "$path" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// || "$path" == //* ]] && continue   # a URL
         [[ "$path" == design.md || "$path" == */design.md ]] || continue
         anchored=false
         if [[ "$path" =~ ^\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)/(.*)$ ]]; then

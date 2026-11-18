@@ -23,7 +23,7 @@
 #       backtick from its file then the root); URLs skipped; the root's
 #       design, part designs and followed sub-roadmaps as citers; untracked
 #       copies ignored; a part's design in any directory; a missing file
-#       is an error from either base; pointers read
+#       is an error from either base; only `://` makes a URL; pointers read
 #       through sitrep_checks.sh --list-pointers
 #   usage and root selection, including the default root: a sandbox copy of
 #       the checker run with no argument through a `scripts/` symlink checks
@@ -666,6 +666,13 @@ run_checker "$R"
 expect "h: a missing part design cited in backticks from docs/ is an error, not a fallback that passes" 1 \
     "docs/roadmap.md:1: no such design file 'docs/manifest/design.md' or 'manifest/design.md' for '#gone'" \
     "docs/roadmap.md:1: no such design file 'docs/docs/manifest/design.md' or 'docs/manifest/design.md' for '#route'"
+
+# Only a path with `://` (or `//`) is a URL: `main:docs/design.md#x` is not.
+R="$(part_root h6)"
+printf 'Compare main:docs/design.md#broken with https://example.com/docs/design.md#ok.\n' > "$R/README.md"
+run_checker "$R"
+expect "h: a word: prefix without :// is not a URL; the citation is checked" 1 \
+    "README.md:1: no such design file 'main:docs/design.md'" "check_design_anchors: 1 finding(s)"
 
 # The pointer table is read by sitrep_checks.sh --list-pointers: CRLF line
 # ends, ./ paths deduplicated, a Setext heading ends the section, a target
