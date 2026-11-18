@@ -766,3 +766,31 @@ Read every test file the branch adds or changes (test_output.py, test_manifest_r
 - `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests` (Python 3.14.4): 718 passed in 11.69s
 - `bash .agent/scripts/tests/test_ros2_colcon.sh`: === Results: 1014 passed, 0 failed, 0 skipped ===
 - Commits ran every hook but `validate-script-tests` (black and flake8 passed). The full pre-commit pass is left to the host; Python 3.10 itself was not run here (not installed) and is left to CI.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 15:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #506 at `1c32487`
+**Depth**: Deep (reason: input-safety checks on urls and an output writer that replaces and deletes directories on the user's disk; 70 files, +5376 -177)
+**Must-fix**: 0 | **Suggestions**: 8
+
+PR-mode review, round 1 (first PR-mode review), on the whole pull-request diff. Specialists: static analysis (flake8 and yamllint, from the pre-commit cache, on the changed .py and YAML files: clean; pylint's files pattern covers only `.agent/`), governance and plan drift inline, Claude adversarial (fresh subagent: no must-fix, four suggestions), cross-model (`cross_model_review.sh --pr 506 --issue 498 --agents gemini,codex`; `--issue` was needed because the body says "Part of #498"): Codex completed (5 rows marked must-fix, 2 suggestions; checked below), Gemini failed twice, the same way each time ("empty response; 1 tool action auto-denied in headless mode (Bash)"), so no Gemini review of the code after fbaca8b4 exists.
+
+Codex's must-fix rows, checked against the code: the gap between the two renames is the plan's choice (renameat2 rejected, a reader runs after `resolve`, not during it): not a finding. The old reader's stricter character check is a host decision listed in the PR body: not a finding. The umask, the failed put-back and the non-strict realpath are real but need an unlikely path to matter: suggestions 1-3. The drive-letter keys (Windows) and the CI row (owner-approved; the repo's ruleset requires no status checks, so the job rename blocks nothing): dropped.
+
+Checked by running: `--out regular-file/../out` and `--out missing/../out2` both write `./out` and `./out2` (exit 0) where `ls regular-file/../out` gives "Not a directory". The adversarial subagent ran urls against git 2.53 with a GIT_SSH that prints its arguments: no accepted url hands ssh an option or runs a program (a leading space gets past the `::` regex, but git then gives ssh a host starting with a space, which ssh refuses). It also checked links inside a replaced output (outside targets keep their content and mode), signals during writing and during the swap (the process ends by the signal: -2, -15, -1; no leftovers), and the YAML and selection rules against the spec.
+
+CI at 1c32487b, push and pull_request runs: "repos-manifest tests (#267 prototype) (Python 3.10)" pass, "(Python 3.14)" pass, Lint (pre-commit) pass, Validate Adapter Contract pass, Validate Documentation pass. Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` gives `718 passed in 11.82s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+
+### Findings
+- [ ] (suggestion) `_on_disk` resolves the parent with non-strict realpath, so `--out regular-file/../out` and `--out missing/../out` write `./out` where the system refuses the path; design.md's "found on the disk ... as the system finds it" does not hold for them (only a marked or empty directory can be replaced). Use strict resolution of the existing part — `tools/repos-manifest/src/repos_manifest/output.py:259` (Codex, confirmed by lead)
+- [ ] (suggestion) When putting the previous output back fails, the error says only "cannot be written"; it does not say `--out` is now missing and the previous copy is in `.<name>.old-…` (the next run puts it back). Name it in the message — `tools/repos-manifest/src/repos_manifest/output.py:352` (Codex)
+- [ ] (suggestion) The mode is found by setting the process umask to 0 and back. A Stopped between the two calls leaves umask 0 for an in-process `main()` caller. Read it without changing it — `tools/repos-manifest/src/repos_manifest/output.py:326` (Codex)
+- [ ] (suggestion) `ssh://u:p@[::1]/r` is refused because `_bracketed_host` refuses a user with `:`. spec.md says the text before the last `@` is a user, and git accepts this url. Allow it or state the limit — `tools/repos-manifest/src/repos_manifest/manifest.py:57` (Claude adversarial)
+- [ ] (suggestion) The cleanup in write_output's `finally` and the steps just after each `mkdtemp` are not shielded from a second signal. Ctrl-C twice leaves a marked `.<name>.new-…` (swept by the next run), against design.md's "removes the hidden directory". Hold the signals during the cleanup or say so — `tools/repos-manifest/src/repos_manifest/output.py:346` (Claude adversarial)
+- [ ] (suggestion) A `version` of `heads/-x` or `tags/-x` passes the "no leading `-`" rule, but vcstool strips the prefix and runs `git checkout -x --`. No program runs, but spec.md's "so git cannot read one as an option" is not true for it. Refuse `-` after a leading `heads/` or `tags/` — `tools/repos-manifest/docs/spec.md:438` (Claude adversarial)
+- [ ] (suggestion) A leftover's liveness is judged by its pid alone, and `pid == os.getpid()` counts as ended. Runs on one disk from different PID namespaces (containers on a bind mount, two of them as PID 1) can sweep or put back each other's live directories. It fails closed, but design.md should state the assumption — `tools/repos-manifest/src/repos_manifest/output.py:126` (Claude adversarial)
+- [ ] (suggestion) `_make_writable` stops the whole removal when it cannot chmod a directory it does not own, for example an empty root-owned subdirectory that rmtree alone could remove. It ends in a WARNING and a leftover. Ignore EPERM on a subdirectory chmod — `tools/repos-manifest/src/repos_manifest/output.py:156` (lead)
