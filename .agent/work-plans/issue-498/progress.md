@@ -356,3 +356,32 @@ The revision carries all twelve earlier findings and all ten host answers. Its c
 - [ ] Tests: an undeclared group on a repo and in a role; the part 2 list-merge rules and moving a repo's layer (finding 5).
 - [ ] `docs/manifest/design.md` lines 237–240 in part 1; lines 108–109 and 235, and adapter comment 576–582, in part 3 (finding 6).
 - [ ] Part 2/3: what the header prints for a base next to a URL source, and a test for it (finding 7).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-18 13:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review's verdict is ready; it says its two medium and five low findings can be passed on as instructions without a third planning round)
+**After**: plan
+**Decision**: proceed
+
+The host, running /orchestrator, read the second Plan Review (verdict ready). The plan is implemented one part at a time, each part its own pull request; this proceed starts part 1 only. Instructions for the implementer of each part, from the review's findings:
+
+Part 1 (the reader for one new-format manifest):
+- Signals (finding 2). While resolving, SIGTERM and SIGHUP end the run through an exception, and a finally block removes the temporary output directory, so a cancelled run leaves nothing behind. One test. Correct the plan's Prior Art line that says signal handling was dropped: only the old reader's detailed handling goes with the old reader. (The part that ends git's process group belongs to part 2, where git is first called by the new reader.)
+- Tests the plan does not name (finding 5): an undeclared group on a repo, and in a role.
+- docs/manifest/design.md lines that go stale in part 1 are corrected in part 1 (finding 6), not left for part 3.
+- The additions table: the reason given for writing optional.txt in the adapter's layout is wrong; the default layout is what init and sync (issue 500) will read (finding 8).
+- CI: nothing under .github/ changes. The owner has been asked whether the tool's test job should also run on Python 3.14 and has not answered.
+
+Part 2 (base):
+- Dispatch between the readers (finding 3): a manifest with a top-level repositories: or base: goes to the new reader; a manifest that has only base: is valid.
+- With no terminal, git runs in its own session; when the tool itself is signalled, the finally block also ends git's process group and removes the clone (finding 2).
+- Tests for the merge rules for lists (finding 5): a role replaced by name, groups: and layers: appended, distros: replaced, a repo's layer moved.
+- What the head comment prints for a relative base beside a manifest read from a URL, with a test (finding 7).
+- docs/manifest/design.md lines that go stale in part 2 are corrected in part 2.
+
+Part 3 (the switch):
+- The adapter's locked sweep also removes marked or empty leftover temporary directories of the tool beside its generated directories, with a test (finding 1).
+- The converted adapter fixture lists the distros the adapter's tests pass (finding 4).
+- The adapter comment that says every remote call has a time limit is corrected: at a terminal there is none (finding 6).
