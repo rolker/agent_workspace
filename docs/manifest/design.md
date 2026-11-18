@@ -160,7 +160,8 @@ What has to happen behind that request:
    a file in the named repo, or that there is none yet, in which case one is written in a
    scratch place first.
 3. The session shows what the manifest comes to for a role and that distro
-   (`repos-manifest show`) and asks before fetching.
+   (`repos-manifest show`) and asks before fetching the project's repos. Reading the
+   manifest and its parents, which `show` needs, happens before the question.
 4. `repos-manifest init` sets the directory up with one directory per distro, holding the
    first distro only.
 5. The distro is built, and the project is onboarded as any other.
@@ -198,11 +199,23 @@ instance's directory, for one distro.
 `setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: the
 one the session is working on. How a session says which is not decided yet.
 
-An instance is on the tool when its directory has a `.repos-manifest/` folder. That is how
-the adapter tells it from an instance still on the bootstrap route, until that route is
-removed. The tool's design has `init` record what it was given and then sync, so a first
-sync that fails part way is finished with `sync`; if `init` fails before it has recorded
-anything, registration is run again.
+Which route an instance is on is decided in this order, until the older routes are removed:
+
+1. The tool answers `repos-manifest status` in the instance's directory: the instance is on
+   the tool.
+2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
+3. Otherwise: the bootstrap route.
+
+The test is the tool answering, not the `.repos-manifest/` folder being there, because an
+`init` that was interrupted can leave the folder without a complete record. The tool's
+design has `init` record what it was given and then sync, so a first sync that fails part
+way is finished with `sync`. A directory whose record is not complete is set up by running
+registration again.
+
+An existing instance is not converted in place. Its layout is `layers/main/<layer>_ws`, the
+tool's is `<distro>/<layer>/`, and its checkouts may hold work. It is moved by setting up a
+new directory with the tool, after work in the old checkouts has been pushed, and it keeps
+working on its current route until then.
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
@@ -227,6 +240,11 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
   `sync` updates the manifest's own clone before it resolves, so a manifest that does not
   resolve can leave that clone moved forward; the resolved output and every other repo have
   to stay as they were, and `sync` has to say that the manifest is what failed.
+- **`init` can be run again.** Run over a directory it did not finish setting up, it
+  completes the record instead of refusing.
+- **A manifest named by a commit.** `source_ref` may be a commit today. The tool's git form
+  takes a branch or a tag. An instance pinned to a commit stays on today's route until the
+  tool takes a commit, or is registered again with a branch or tag.
 
 Two of today's guarantees are covered by the tool's design as it is: it reads the manifest
 again on every `sync`, and its `sync` deletes nothing and leaves local work alone.
@@ -264,7 +282,7 @@ Today's settings keys map onto the manifest's location in its git form:
 
 | Today | Target, as given to `init` |
 |---|---|
-| `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself |
+| `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself |
 | `source` (a path) | The manifest as a path on the local disk |
 | `role=` and `distro=` on the registry line | `--role` and `--distro` |
 | nothing | `--with`, `--fetch-from`, `--remote` |

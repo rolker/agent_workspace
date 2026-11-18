@@ -450,7 +450,7 @@ Status: `decided`
   `make install-ros-manifest`, called by CLI only; every verb reads the resulting directory the same way
   on both routes. One source only: `source` beside any other bootstrap source is a hard error that
   names it. `validate` fails when the directory was resolved from another source, ref, path, role or
-  distro, or when a checkout the manifest calls for is missing.
+  distro, or when a checkout the manifest calls for is missing (a layer marked optional is passed over).
   Network is needed at `setup` and `sync` and for the resolver's install. A package worktree's `env.sh`
   is not rewritten when `sync` changes the layers; `sync` says to recreate it. Registration works for a
   path that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set

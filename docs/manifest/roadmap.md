@@ -24,7 +24,7 @@ checks are relative to the workspace's root.
 | The tool has its own goals, format and design, written down (#486) | `gh-issue 486 closed` |
 | The workspace's design for using the tool is written down (#487) | `file-exists docs/manifest/design.md` |
 | The tool's design covers starting with one distro in a directory of its own and adding a distro later (#495) | `gh-issue 495 closed` |
-| The tool's design gives what the adapter relies on today: a status a script can read with an exit status, protection against two runs at once, time limits on fetches, and a resolve that changes nothing when it fails | |
+| The tool's design gives what the adapter relies on today: a status a script can read with an exit status, protection against two runs at once, time limits on fetches, a resolve that changes nothing when it fails, an `init` that can be run again, and a manifest named by a commit | |
 | The tool has the commands the adapter calls: `show`, `init`, `sync`, `build` and `status` | |
 | Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
 | Registration passes the manifest's location, role, distro and fetch settings to `init` | |
@@ -32,7 +32,7 @@ checks are relative to the workspace's root.
 | A worktree of a package repo builds against an instance in the tool's layout | |
 | A session says which distro of its root it is working on | |
 | The workspace keeps no copy of what the instance records: the registry line's `role=` and `distro=` and the settings file's `source`, `source_ref` and `source_path` are gone | |
-| Project11's root on the second machine is set up for Rolling from that manifest and `adapter validate` passes (#436) | `gh-issue 436 closed` |
+| Project11's root on the second machine is set up and built for Rolling from that manifest and `adapter validate` passes; the result is recorded on the issue before it is closed (#436) | `gh-issue 436 closed` |
 | A session started in an empty directory sets up and onboards a project from the repo that holds its manifest (#473) | `gh-issue 473 closed` |
 | Jazzy is set up from the manifest too, as a second distro of the same root or by moving today's Jazzy instance | |
 | The bootstrap route is removed | |
