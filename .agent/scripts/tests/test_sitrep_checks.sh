@@ -1747,6 +1747,10 @@ RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-sub" 2>&1)" || RC=$?
 printf 'line\tA\ttrue\tnone\t2026-11-18\n' > "$SB/rows-done"
 RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-done" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$S" == $'(root)\tnone open' ]] && pass "(sub j) a root with nothing open says none open" || fail "(sub j) '$S'"
+printf 'line\t\tfalse\tnone\t2026-11-18\nline\tLater\tfalse\tnone\t2026-11-18\n' > "$SB/rows-emptyitem"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-emptyitem" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'(root)\t\tfalse' ]] \
+    && pass "(sub j) an open line with an empty Line cell is the next step, not overwritten by a later one" || fail "(sub j) empty item: '$S'"
 printf 'section\t(roadmap not found: x)\tunchecked\tnone\t2026-11-18\n' > "$SB/rows-nr"
 RC=0; bash "$SITREP" --next-steps-from "$SB/rows-nr" >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 3 ]] && pass "(sub j) --next-steps-from exits 3 when the roadmap was not read" || fail "(sub j) rc=$RC"

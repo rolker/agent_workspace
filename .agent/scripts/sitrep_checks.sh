@@ -266,7 +266,9 @@ next_steps() {
     local -a parts=()
     for r in "${ROWS[@]}"; do
         fields "$r"
-        if [ "$F_K" = line ] && [ "$F_R" != true ] && [ -z "$first" ]; then
+        # fres, not the item, marks "chosen": an item (the Line cell) may be
+        # empty, and a result never is.
+        if [ "$F_K" = line ] && [ "$F_R" != true ] && [ -z "$fres" ]; then
             first="$F_I"; fres="$F_R"
         fi
         [ "$F_K" = part ] && [ "$F_R" = true ] && parts+=("$F_I")
