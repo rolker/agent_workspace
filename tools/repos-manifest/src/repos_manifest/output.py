@@ -137,6 +137,24 @@ def _process_has_ended(pid: int) -> bool:
     return False
 
 
+def _remove_ours(path: Path) -> None:
+    """Remove a directory this tool made, its marker last, so that a removal cut short leaves a
+    directory that still holds the marker, which a later run sweeps. Errors are left: what is
+    left is still marked."""
+    try:
+        for entry in list(path.iterdir()):
+            if entry.name == MARKER:
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+        (path / MARKER).unlink(missing_ok=True)
+        path.rmdir()
+    except OSError:
+        pass
+
+
 def _sweep_leftovers(parent: Path, name: str) -> None:
     """Remove the hidden directories a run that was killed left beside this output: named for
     this output, made by a process that has ended, and holding the marker or empty. Nothing
@@ -145,7 +163,7 @@ def _sweep_leftovers(parent: Path, name: str) -> None:
     for entry in parent.iterdir():
         match = leftover.fullmatch(entry.name)
         if match and _process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
-            shutil.rmtree(entry, ignore_errors=True)
+            _remove_ours(entry)
 
 
 @contextmanager
@@ -238,7 +256,7 @@ def write_output(
             except OSError:
                 old = None  # it stays where it is, marked, and is not removed by this run
         if new.exists():
-            shutil.rmtree(new, ignore_errors=True)
+            _remove_ours(new)
         if old is not None and old.exists():
-            shutil.rmtree(old, ignore_errors=True)
+            _remove_ours(old)
     return [Path(out) / file_name for file_name in files]

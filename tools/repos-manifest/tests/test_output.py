@@ -304,6 +304,27 @@ def test_a_failed_second_rename_puts_the_previous_output_back(manifest, tmp_path
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
 
 
+def test_a_removal_cut_short_leaves_the_marker_for_the_next_run(manifest, tmp_path, monkeypatch):
+    # The previous output is removed after the swap; if that is cut short, what is left still
+    # holds the marker, so a later run sweeps it.
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    real_unlink = os.unlink
+
+    def unlink(path, *args, **kwargs):
+        if os.path.basename(path) != MARKER:
+            raise OSError(5, "Input/output error")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(output.os, "unlink", unlink)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    monkeypatch.setattr(output.os, "unlink", real_unlink)
+    left = [p for p in tmp_path.iterdir() if ".out.old-" in p.name]
+    assert len(left) == 1 and (left[0] / MARKER).is_file()
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 def test_a_failure_while_writing_leaves_nothing_behind(manifest, tmp_path, monkeypatch):
     def write_text(path, text):
         if path.name == "layers.txt":
