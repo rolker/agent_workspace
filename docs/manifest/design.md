@@ -206,7 +206,8 @@ Which route an instance is on is decided in this order, until the older routes a
 3. Otherwise: the bootstrap route.
 
 The test is the tool answering, not the `.repos-manifest/` folder being there: a folder whose
-record cannot be read is an error from the tool. A `status` that reports a missing repo has
+record cannot be read is an error from the tool. That error counts as the tool not
+answering, so the instance is not treated as set up. A `status` that reports a missing repo has
 answered: the instance is on the tool, and `validate` fails. The tool's design has `init`
 make the folder and its record in one step and then sync, so an interrupted `init` leaves
 either nothing, and registration is run again, or a system whose first sync is finished
