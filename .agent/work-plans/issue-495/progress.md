@@ -747,3 +747,28 @@ Specialists: static (no linter profile for .md), governance (no departure from t
 - [x] (suggestion) "a system with distros is set up in a new directory with `init`, and with `--distro-dirs` to hold more than one distro." — `tools/repos-manifest/docs/design.md:562-563` ("sync")
 
 Refusals table walked for a manifest given as a local path, as an http URL and in the git form: 19 lines, 5 `|`-fields each. No `init` or `add-distro` next step leads to a refusal that sends the person back. Local path and http URL: the `--manifest-ref` options are now offered only for the git form, so R7/R8 lead to naming a listed distro or editing `distros:`; R8's later `add-distro <name>` has no `--manifest-ref`, so A5 does not apply and A7 passes once the distro is listed; A7 leads to editing `distros:`. Git form: the `--manifest-ref` options reach a new read; the `init` row for `--manifest-ref` without the git form never applies. The new case row leads to one `--distro`, which no later row refuses for that reason. Checks: `test_documents.py` 11 passed; `check_design_anchors.sh` exit 0. No script changed, so no script suite ran; the full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 17:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #508 at `5c5e88b9`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the round 2 PR-mode review's findings (1 must-fix, 3 suggestions) and `git diff deeaa651..HEAD`: design.md Refusals rows :236, :237, :245, the new row :231, and the `sync` sentence :562-563; the rest is progress.md. Nothing else changed.
+
+Refusals walk (R1-R10 `init` in table order, A1-A7 `add-distro`). Local path and http URL: R7 offers a listed distro or editing `distros:`; `--manifest-ref` is offered only for the git form, so R7 no longer leads to R3. R8 offers listed distros, or setting up with them, editing `distros:` and `add-distro <name>` without `--manifest-ref`: A1-A4 pass for a new name, A5 does not apply, A6 does not (the manifest has `distros:`), A7 passes once listed. A7 offers editing `distros:` only, so A7 no longer leads to A5. Git form: R3 and A5 never apply; the `--manifest-ref` steps of R7, R8 and A7 reach a new read, which either lists the distro or gives another row (R6 for no `distros:`), never one passed. No chain returns to a refusal it passed. The round 2 loops R7→R3→R7 and A7→A5→A7 are gone.
+
+New row R3 (case-only twins with `--distro-dirs`): no fetch, placed after R2 and before the first row that reads the manifest (R4 onward), as the table's order rule asks. Disjoint from R2 (that needs no `--distro-dirs`). Where R4 also applies (no `distros:`), the person gets "Name one of them" first and R4 next; that follows the stated order and the next step is not wrong. Its next step leads to one `--distro` per name, which no later row refuses for case.
+
+`sync` sentence: agrees with the layout rule (:98-109): flat by default with one distro, `--distro-dirs` for several; a new directory because the layout is chosen at `init` and not changed.
+
+Checks: Refusals table 19 rows, 5 `|`-fields each; `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests/test_documents.py` 11 passed; `check_design_anchors.sh` exit 0. CI at `5c5e88b9`, both runs (44405539443, 44405551837): Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14 all pass. mergeable MERGEABLE.
+
+Specialists: governance, plan drift and adversarial reads done by the lead, not dispatched (the diff is three cells, one row and one sentence); static: no linter profile for .md; cross-model: skipped (round-3 convergence check, per handoff).
+
+### Findings
+- [ ] No issues found. LGTM.
