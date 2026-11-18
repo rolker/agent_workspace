@@ -234,6 +234,7 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists, or give the version of the manifest that lists it with `--manifest-ref`, or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
 | `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Set up with the distros it lists, and add each other one with `add-distro <name> --manifest-ref <ref>` or, when `manifest` is not given in the git form, add the distro to its `distros:`. |
 | `init` | A directory or file it would create already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
+| `add-distro` | `<name>` is not a name by the rule for names in "Reading a manifest before using it" in the specification, or differs only in case from a recorded distro, since a distro's name is a directory name. | Use another name. |
 | `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
 | `add-distro` | The distro is already recorded. | `sync --distro <name>`. |
 | `add-distro` | `<name>/` exists in the system directory. | Move it out of the way. |
