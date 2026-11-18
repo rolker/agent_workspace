@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import selection
-from .output import _signals_held
+from .output import signals_held
 from .selection import Resolved
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, require_tools, sync_distros, sweep_temporaries
@@ -135,7 +135,7 @@ def make_system_dir(system: Path, config: Config, on_made: Callable[[], None]) -
             raise ManifestError(
                 f"{system / SYSTEM_DIR}: appeared while init was running; nothing was set up"
             )
-        with _signals_held():
+        with signals_held():
             os.rename(aside, system / SYSTEM_DIR)
             on_made()
     finally:

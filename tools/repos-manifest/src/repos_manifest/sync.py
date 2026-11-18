@@ -19,8 +19,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from . import output, selection
-from .output import output_files, write_output
+from . import selection
+from .output import make_writable, output_files, process_has_ended, write_output
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -107,7 +107,7 @@ def sweep_temporaries(directory: Path) -> None:
         match = TEMP_NAME.fullmatch(entry.name)
         if match is None or entry.is_symlink():
             continue
-        if output._process_has_ended(int(match.group("pid"))):
+        if process_has_ended(int(match.group("pid"))):
             _remove_temporary(entry)
 
 
@@ -116,7 +116,7 @@ def _remove_temporary(path: Path) -> None:
     writing into it) is a warning: the next run's sweep removes it."""
     try:
         if path.is_dir() and not path.is_symlink():
-            output._make_writable(path)
+            make_writable(path)
             shutil.rmtree(path)
         else:
             path.unlink()

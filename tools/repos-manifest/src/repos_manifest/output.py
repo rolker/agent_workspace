@@ -129,7 +129,7 @@ def _temp_prefix(name: str, kind: str) -> str:
     return f".{name}.{kind}-{os.getpid()}-"
 
 
-def _process_has_ended(pid: int) -> bool:
+def process_has_ended(pid: int) -> bool:
     """True only when no process `pid` is running (on POSIX; elsewhere it is never known)."""
     if os.name != "posix" or pid <= 0:
         return False
@@ -146,7 +146,7 @@ def _process_has_ended(pid: int) -> bool:
     return False
 
 
-def _make_writable(path: Path) -> None:
+def make_writable(path: Path) -> None:
     """Give the owner full access to `path` and every directory below it, so that a read-only
     directory anywhere in the tree does not stop its removal. A link is not followed, and the
     mode of what it points to is left as it is."""
@@ -168,7 +168,7 @@ def _remove_ours(path: Path) -> Optional[str]:
     it are made writable first, so a read-only copy is removed too. Returns why it could not be
     removed, or None; what is left is still marked."""
     try:
-        _make_writable(path)
+        make_writable(path)
         for entry in list(path.iterdir()):
             if entry.name == MARKER:
                 continue
@@ -207,7 +207,7 @@ def _sweep_leftovers(parent: Path, name: str, where: str, again: str) -> None:
     leftover = re.compile(re.escape(f".{name}") + _TEMP_SUFFIX)
     for entry in parent.iterdir():
         match = leftover.fullmatch(entry.name)
-        if match and _process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
+        if match and process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
             problem = _remove_ours(entry)
             if problem is not None:
                 print(
@@ -230,7 +230,7 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
         match = aside.fullmatch(entry.name)
         if (
             match
-            and _process_has_ended(int(match.group("pid")))
+            and process_has_ended(int(match.group("pid")))
             and not entry.is_symlink()
             and _has_marker(entry)
         ):
@@ -240,7 +240,7 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
 
 
 @contextmanager
-def _signals_held():
+def signals_held():
     """Hold SIGINT, SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run
     between them; a held signal is delivered when the renames are done."""
     if not hasattr(signal, "pthread_sigmask") or not _SWAP_SIGNALS:
@@ -348,7 +348,7 @@ def write_output(
         os.chmod(new, mode)
         if exists:
             old = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "old"), dir=parent))
-        with _signals_held():
+        with signals_held():
             if old is not None:
                 os.rename(out_abs, old)  # onto the empty directory mkdtemp made
             os.rename(new, out_abs)
