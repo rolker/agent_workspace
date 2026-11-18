@@ -402,3 +402,36 @@ One addition beyond the host's wording, for the host's or owner's veto: suggesti
 Last commit `ab08db1e` is wording only: `init`'s refusal says "A system is already set up here: <system directory>" (it may be run from a subdirectory), and a line over the width is wrapped.
 
 Checks: the four documents grepped for "distro", "init" and "resolved", every changed hit read against the rules; "workspace" hits in the tool's documents are all "colcon workspace"; no mention of the adapter, `.agent/` or `ros2_colcon`; nothing claimed as built beyond `resolve` and `validate`. `bash .agent/scripts/check_design_anchors.sh` printed nothing and exited 0. Every commit ran the hooks with `SKIP=validate-script-tests`; no script changed, so no suite applies; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 15:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-495 at `486400a9`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff, 1295 changed lines in 6 files, documents and timeline only; fix-round rule)
+**Must-fix**: 5 | **Suggestions**: 12
+**Round**: 2 | **Ship**: continue — round 2: 5 must-fix is high (falling from 7); all five are located text fixes
+
+Specialists: static (no linter profile for .md; `check_design_anchors.sh` printed nothing, exit 0), governance, plan drift (files match the plan's table; no drift) and Claude adversarial completed; cross-model gemini and codex completed (EXIT=0). Every round 1 finding is fixed as the Implementation entry states. The owner's three answers are carried out; no departure. Nothing is claimed as built beyond `resolve` and `validate`; the tool's documents name no workspace, adapter, `.agent/` or `ros2_colcon`. Fixer's choices: the scp-style `:` rule is right (say it is the scp form only, not `ssh://host:port/`); "A system is already set up here: <system directory>" is right; the docs/manifest sentence "an `init` that was interrupted can leave the folder without a complete record" now disagrees with the tool's design (must-fix 1). Quoted messages: trim to condition, what changes and next step; keep only the layout line quoted (suggestion).
+
+### Findings
+- [ ] (must-fix) An interrupted `init` can leave `.repos-manifest/` without `config.yaml` (folder made before the record), which the design calls "damaged by hand", and for that directory two rules give `init` two different messages; say the folder and its record appear together (written aside, moved into place), which message `init` gives in a damaged directory and its next step; and change docs/manifest/design.md's "an `init` that was interrupted can leave the folder without a complete record" to match — `tools/repos-manifest/docs/design.md:266-280`, `docs/manifest/design.md:207-208` (codex, Claude adversarial, lead)
+- [ ] (must-fix) "A distro's own manifest version is settled, and used on every read" contradicts "Which manifest a distro reads": the local copy wins once it exists; say "used whenever the distro reads the recorded location" — `tools/repos-manifest/docs/design.md:1010` (Claude adversarial)
+- [ ] (must-fix) `add-distro` refusals overlap ("has no `distros:`" is also "does not list the distro") and have no order; say they are checked in the listed order, first match wins, the ones needing no fetch before the manifest is read, and "has `distros:` and does not list it" — `tools/repos-manifest/docs/design.md:319-341` (Claude adversarial, lead)
+- [ ] (must-fix) Which distro a command uses from a subdirectory of a per-distro system that is in no distro's directory (`<system>/notes`, an unrecorded `rolling/`) is not said; treat it as the top — `tools/repos-manifest/docs/design.md:356-365` (codex, Claude adversarial)
+- [ ] (must-fix) `add-distro` "takes nothing else" shuts out arguments after `--`, so a distro with submodule repos cannot be cloned `--recursive` (later syncs update existing repos with `git`, not `vcs import`); say `add-distro` and `init` pass arguments after `--` to their sync — `tools/repos-manifest/docs/design.md:308-311,653-654` (Claude adversarial)
+- [ ] (suggestion) Quoted refusal messages: a design gives the condition, that nothing changes, and the next step; full message text (six times "Nothing has been changed") belongs with the code and its tests; keep the layout line quoted — `tools/repos-manifest/docs/design.md:274-286,321-341` (lead)
+- [ ] (suggestion) The scp-style rule: say it applies to the `host:path` form only, so `ssh://host:22/x` is not read as `host/22/x` — `tools/repos-manifest/docs/design.md:454-456` (lead, Claude adversarial)
+- [ ] (suggestion) "Not in a git repo" in the `add-distro` refusals: say "not given in the git form", since a local path may sit in a git working tree — `tools/repos-manifest/docs/design.md:327-341` (Claude adversarial)
+- [ ] (suggestion) `init` with an unlisted `--distro`: say it stops without asking, and the message when none of the given distros is listed — `tools/repos-manifest/docs/design.md:260-264` (Claude adversarial)
+- [ ] (suggestion) What `init` prints for several distros (one `show` block per distro?) — `tools/repos-manifest/docs/design.md:282` (Claude adversarial)
+- [ ] (suggestion) Say `init` sets up the current directory and what it does with what is already there (an existing `src/` or `jazzy/`), against `add-distro` refusing an existing `<name>/` — `tools/repos-manifest/docs/design.md:266` (lead, Claude adversarial)
+- [ ] (suggestion) A role or group the new distro's manifest lacks, at `add-distro` and at `sync`: resolver error or per-distro report — `tools/repos-manifest/docs/design.md:313,606-621` (Claude adversarial)
+- [ ] (suggestion) The shared `local_manifest` path may never exist on a distro whose manifest puts the repo in another layer or key; say that distro then reads the recorded location — `tools/repos-manifest/docs/design.md:241-244,457` (Claude adversarial)
+- [ ] (suggestion) Relative `manifest: ./system.manifest.yaml` in `config.yaml`: relative to the system directory? — `tools/repos-manifest/docs/design.md:123,206` (Claude adversarial)
+- [ ] (suggestion) `sync`'s exit status when one distro is reported and the others go on — `tools/repos-manifest/docs/design.md:606-609` (Claude adversarial)
+- [ ] (suggestion) The `setup` row says `init --distro-dirs` with no condition; add "when the project has a distro", as line 174 says — `docs/manifest/design.md:192` (Claude adversarial)
+- [ ] (suggestion) Style: "A distro never reads another distro's ... copy" said twice; short wrapped line "one entry, or none when the" — `tools/repos-manifest/docs/design.md:200-202,384,469` (lead, Claude adversarial)
