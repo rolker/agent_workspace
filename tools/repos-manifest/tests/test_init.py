@@ -212,6 +212,33 @@ def test_the_resolved_files_are_what_resolve_writes(remotes, tmp_path, system):
     assert snapshot(out) == snapshot(system / ".repos-manifest/resolved")
 
 
+def test_a_manifest_with_base_sets_up_the_merged_chain(remotes, tmp_path, system, capsys):
+    """`base` is taken from the manifest's own directory, not from where `init` runs."""
+    shared = tmp_path / "manifests"
+    shared.mkdir()
+    parent = {"format": 1, "layers": ["underlay", "core"]}
+    parent["repositories"] = {"a": repo(remotes["a"], "jazzy", "underlay")}
+    parent = write_manifest(shared / "parent.manifest.yaml", parent)
+    leaf = {"format": 1, "base": "parent.manifest.yaml"}
+    leaf["repositories"] = {"b": repo(remotes["b"], "v1", "core")}
+    write_manifest(shared / "leaf.manifest.yaml", leaf)
+    assert run(system, "init", "../manifests/leaf.manifest.yaml", "--yes") == 0
+    assert sorted(os.listdir(system)) == [".repos-manifest", "core", "setup.bash", "underlay"]
+    assert branch(system / "underlay/src/a") == "jazzy"
+    assert head(system / "core/src/b") == git("rev-parse", "v1", cwd=remotes["b"])
+    assert config(system) == {"manifest": "../manifests/leaf.manifest.yaml", "layout": "flat"}
+    recorded = state(system)["distros"]["_unnamed"]["repos"]
+    assert recorded == {
+        "a": {"layer": "underlay", "version": "jazzy", "commit": head(system / "underlay/src/a")},
+        "b": {"layer": "core", "version": "v1", "commit": head(system / "core/src/b")},
+    }
+    resolved = (system / ".repos-manifest/resolved/layers.txt").read_text()
+    assert f"# base: {os.path.realpath(parent)}\n" in resolved
+    capsys.readouterr()
+    assert run(system, "sync") == 0
+    assert "cloning" not in capsys.readouterr().out
+
+
 def test_setup_bash_says_nothing_is_built_and_fails_when_sourced(remotes, tmp_path, system):
     plain(tmp_path, remotes)
     assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
