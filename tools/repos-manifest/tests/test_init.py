@@ -287,6 +287,30 @@ def test_a_directory_that_cannot_be_written_names_it_and_the_reason(
     assert "Permission denied" in err
 
 
+def test_git_variables_naming_another_repository_do_not_reach_the_clones(
+    remotes, tmp_path, system, monkeypatch
+):
+    # As in a git hook or `git submodule foreach`: every git the tool runs would otherwise act
+    # on that repository, and state.yaml would record its commit for every repo.
+    layered(tmp_path, remotes)
+    other = make_remote(tmp_path, "other")
+    other_before = snapshot(other)
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(other / ".git" / "index"))
+    rc = run(system, "init", "../m.manifest.yaml", "--distro", "jazzy", "--role", "full", "--yes")
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+        monkeypatch.delenv(name)
+    assert rc == 0
+    assert snapshot(other) == other_before
+    recorded = state(system)["distros"]["jazzy"]["repos"]
+    for key, place in (("a", "underlay/src/a"), ("b", "core/src/b"), ("grp/c", "core/src/grp/c")):
+        assert (system / place / ".git").is_dir(), place
+        assert (system / place / "README").is_file(), place
+        assert recorded[key]["commit"] == head(system / place), key
+    assert head(system / "underlay/src/a") == git("rev-parse", "jazzy", cwd=remotes["a"])
+
+
 def _project11_with_local_remotes(tmp_path):
     """The project11 fixture with every url pointing at one local remote that has a branch for
     each version the fixture names."""

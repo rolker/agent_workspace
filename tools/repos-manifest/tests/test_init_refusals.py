@@ -281,6 +281,22 @@ def test_9_vcs_but_no_git_on_path(tmp, capsys, monkeypatch):
     )
 
 
+def test_9_a_git_that_cannot_list_its_local_variables(tmp, capsys, monkeypatch):
+    manifest(tmp)
+    system = _system(tmp)
+    _stub(tmp, "vcs", "exit 0")
+    monkeypatch.setenv("PATH", str(_stub(tmp, "git", "exit 1")))
+    refused(
+        system,
+        capsys,
+        "../m.manifest.yaml",
+        "--distro",
+        "jazzy",
+        "--yes",
+        expect="rev-parse --local-env-vars` does not run. Repair or reinstall git",
+    )
+
+
 def test_10_input_not_a_terminal_without_yes(tmp, capsys, monkeypatch):
     manifest(tmp)
     monkeypatch.setattr("sys.stdin", io.StringIO("y\n"))

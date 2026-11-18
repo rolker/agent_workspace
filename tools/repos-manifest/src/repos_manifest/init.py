@@ -185,7 +185,7 @@ def run_init(
                         f"{system.joinpath(*parts)}: exists, and init would create it",
                         "Move it out of the way, or set up in another directory",
                     )
-        require_tools()
+        env = require_tools()
         if not yes and not sys.stdin.isatty():
             raise Refusal(
                 "the input is not a terminal, so init cannot ask before it sets up",
@@ -201,7 +201,7 @@ def run_init(
                 make_system_dir(system, config, lambda: made.append(True))
                 try:
                     with reporting_oserror():
-                        status = sync_distros(system, config, plan)
+                        status = sync_distros(system, config, plan, env)
                 except ManifestError as exc:
                     raise ManifestError(f"{exc}; the system is set up: {FINISH}") from None
         except Stopped as exc:

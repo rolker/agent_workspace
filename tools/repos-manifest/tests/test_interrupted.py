@@ -98,11 +98,11 @@ def test_stopped_during_a_clone_leaves_no_path_and_sync_finishes(
     system = _system(tmp_path)
     real = sync.vcs_import
 
-    def vcs_import(directory, text):
+    def vcs_import(directory, text, env):
         if "  b:" in text:
             (directory / "b" / ".git").mkdir(parents=True)  # a clone half made
             raise Stopped(signal.SIGINT)
-        return real(directory, text)
+        return real(directory, text, env)
 
     monkeypatch.setattr(sync, "vcs_import", vcs_import)
     assert run(system, *INIT) == 128 + signal.SIGINT

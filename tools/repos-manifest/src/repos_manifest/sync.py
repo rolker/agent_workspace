@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -52,8 +52,14 @@ from .system import (
 FINISH = "run `repos-manifest sync` to finish"
 
 
-def require_tools() -> None:
-    """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read."""
+Env = Dict[str, str]
+
+
+def require_tools() -> Env:
+    """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read.
+    Returns the environment every `vcs` and `git` of the run is given: this process's, without
+    the variables that point git at a repository (those `git rev-parse --local-env-vars`
+    names), so that a run from a git hook or `git submodule foreach` acts on its own clones."""
     vcs = shutil.which("vcs")
     if vcs is None:
         raise Refusal("`vcs` is not found on PATH", "Install vcs2l or vcstool, which provide it")
@@ -72,8 +78,23 @@ def require_tools() -> None:
         works = False
     if not works:
         raise Refusal(f"`{vcs} --version` does not run", "Repair or reinstall vcs2l or vcstool")
-    if shutil.which("git") is None:
+    git = shutil.which("git")
+    if git is None:
         raise Refusal("`git` is not found on PATH", "Install git")
+    try:
+        done = subprocess.run(
+            [git, "rev-parse", "--local-env-vars"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        done = None
+    if done is None or done.returncode != 0:
+        raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
+    local = set(done.stdout.split())
+    return {name: value for name, value in os.environ.items() if name not in local}
 
 
 def sweep_temporaries(directory: Path) -> None:
@@ -120,7 +141,7 @@ def one_repo_text(layer_text: str, key: str) -> str:
     return yaml.safe_dump({"repositories": {key: entry}}, default_flow_style=False, width=4096)
 
 
-def vcs_import(directory: Path, text: str) -> Tuple[int, str]:
+def vcs_import(directory: Path, text: str, env: Env) -> Tuple[int, str]:
     """`vcs import <directory>` with `text` on stdin; its exit status and what it printed. A
     prompt of git or ssh goes to the terminal."""
     done = subprocess.run(
@@ -130,22 +151,24 @@ def vcs_import(directory: Path, text: str) -> Tuple[int, str]:
         stderr=subprocess.STDOUT,
         text=True,
         check=False,
+        env=env,
     )
     return done.returncode, done.stdout
 
 
-def _head(path: Path) -> Optional[str]:
+def _head(path: Path, env: Env) -> Optional[str]:
     done = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "HEAD"],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def clone_repo(system: Path, src: Parts, repo: Selected, text: str) -> RepoResult:
+def clone_repo(system: Path, src: Parts, repo: Selected, text: str, env: Env) -> RepoResult:
     """Clone one repo to `src/<key>` unless something is there."""
     key_parts = tuple(repo.key.split("/"))
     parts = src + key_parts
@@ -161,7 +184,7 @@ def clone_repo(system: Path, src: Parts, repo: Selected, text: str) -> RepoResul
         tempfile.mkdtemp(prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system / SYSTEM_DIR)
     )
     try:
-        status, printed = vcs_import(temporary, text)
+        status, printed = vcs_import(temporary, text, env)
         if status != 0:
             return RepoResult(shown, failed, f"vcs import exited {status}:\n{printed.rstrip()}")
         if not is_in_place(system, parts):
@@ -173,7 +196,7 @@ def clone_repo(system: Path, src: Parts, repo: Selected, text: str) -> RepoResul
             os.rename(temporary.joinpath(*key_parts), place)
         except OSError as exc:
             return RepoResult(shown, FAILED, oserror_message(exc))
-        return RepoResult(shown, CLONED, commit=_head(place))
+        return RepoResult(shown, CLONED, commit=_head(place, env))
     finally:
         _remove_temporary(temporary)
 
@@ -187,7 +210,7 @@ class DistroResult:
         return [r for r in self.repos if r.outcome == outcome]
 
 
-def sync_distro(system: Path, config: Config, resolved: Resolved) -> DistroResult:
+def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> DistroResult:
     """Bring one distro in line with what it resolved to: write its resolved files, clone what
     is missing, record what was cloned. A repo that is there is not touched."""
     distro = resolved.distro
@@ -204,7 +227,7 @@ def sync_distro(system: Path, config: Config, resolved: Resolved) -> DistroResul
             src = layer_src_parts(config.layout, distro, layer.name)
             for repo in layer.repos:
                 text = one_repo_text(files[f"{layer.name}.repos"], repo.key)
-                done = clone_repo(system, src, repo, text)
+                done = clone_repo(system, src, repo, text, env)
                 result.repos.append(done)
                 if done.outcome == FAILED:
                     print(f"ERROR: {done.path}: {done.detail}", flush=True)
@@ -235,13 +258,13 @@ def report(result: DistroResult) -> None:
         print(f"  present, not touched ({present}); updating a repo that is there is not built yet")
 
 
-def sync_distros(system: Path, config: Config, plan: Sequence[Resolved]) -> int:
+def sync_distros(system: Path, config: Config, plan: Sequence[Resolved], env: Env) -> int:
     """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro.
     Exit status 1 when a repo that is not optional failed."""
     sweep_temporaries(system / SYSTEM_DIR)
     status = 0
     for resolved in plan:
-        result = sync_distro(system, config, resolved)
+        result = sync_distro(system, config, resolved, env)
         report(result)
         if result.of(FAILED):
             status = 1
@@ -272,10 +295,10 @@ def run_sync(named_distros: Sequence[str]) -> int:
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
         plan = resolve_all(system, config, distros)
-        require_tools()
+        env = require_tools()
         try:
             with signals_end_the_run():
-                status = sync_distros(system, config, plan)
+                status = sync_distros(system, config, plan, env)
         except Stopped as exc:
             return stop_exit(exc, f"stopped by {signal_name(exc)}; {FINISH}")
     if status:
