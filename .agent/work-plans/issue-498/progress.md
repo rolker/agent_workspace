@@ -1274,3 +1274,12 @@ Timeline: `review_progress.sh sources` at this head returns one open local findi
 
 ### Summary
 Nothing remains open before the owner's merge decision: no must-fix, no hosted comment, CI all-pass on Python 3.10 and 3.14, and the one suggestion ruled no action by the host. The pull request is ready for the merge decision; `merge_pr.sh` also needs a `## Decision summary` in the pull request body or a comment.
+
+## Checkpoint
+**When**: 2026-11-18 17:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 511 (part 2a: base read from local paths): merge it and re-run the tool's install in the main checkout. The issue stays open: parts 2b and 3 remain.
