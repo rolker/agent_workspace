@@ -279,3 +279,84 @@ Revise the plan with every finding of the Plan Review. Host decisions (owner may
 **Plan**: `.agent/work-plans/issue-503/plan.md` at `3f2dae10`
 
 Revision applying the Plan Review's findings under the Checkpoint's decisions. Finding 1: the path from `/run-issue` to a merged package pull request was read and tabled for a root in no git repository; only `worktree_create.sh` 545–549 (now: root must be a directory, each worktree_repos origin checked to be a repository before anything is made, the `.` entry keeping today's message) and start-task step 1 (now: outside git, go on when `session_root.sh` accepts the cwd as a root) refuse, and both are relaxed generically; everything else works unchanged. Finding 2: tool roots are siblings of the sandbox under `mktemp -d` (outside git here and in CI), with an absolute registry path and a precondition assert; `test_tool_package_worktree` fails at line 545 without the fix. Finding 3 corrected: `merge_pr.sh`'s package path already fast-forwards the root's clone when clean and on the base, so by hand is the layer rebuild (and a pull only on "fetched only"). Findings 5–8 applied (stderr note in `worktree_env`, part 3 names the two-cwd inconsistency, physical paths in rule 1, `--continue-on-error` by hand). Finding 4: the `AGENTS.md` line 11 sentence as an approval-gated last commit, one line for one. The acceptance gives the port's pattern (one issue per repo, bottom-up, #415 as tracker) with `rolker/marine_control` and `rolker/manda_coverage` in `core` as the first two. Open for the owner: the `AGENTS.md` sentence, and confirming the port pattern.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 18:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #503 — ros2_colcon adapter: call the manifest tool's commands, and register a project from a manifest
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `3f2dae10`
+**Branch**: `feature/issue-503`
+**Serves**: Easy to use and Modular (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, `docs/manifest/design.md#a-project-instance-is-a-system-directory` (checked: present, and the work serves them)
+
+### The eight findings and the Checkpoint
+
+All eight are answered, and the Checkpoint's decisions are carried out as written: the two refusals are relaxed with no type name (steps 11, 12); fixtures sit outside git with an absolute registry path and a precondition assert; the AGENTS.md line is a last commit gated on the owner's yes; the `worktree_env` stderr note; part 3 names the two-cwd inconsistency; rule 1 compares physical paths; `--continue-on-error` by hand; the port's pattern is put to the owner. Finding 3 departs from the Checkpoint's "no code, git pull by hand" on a fact, and the fact is right: `merge_pr.sh` lines 2267–2308 already fast-forward the owning clone when it is clean and on the PR's base, else fetch only and say why.
+
+### The table of git-root assumptions, row by row
+
+Read at the lines named; every row holds, with two wording corrections.
+- `session_root.sh`: holds (171: only a subdirectory of a root in no repository is refused).
+- `skill_prefix.sh`: holds (101: `agent-workspace:`); the plugin is enabled at user scope here (`~/.claude/settings.json`), so `/agent-workspace:run-issue` resolves.
+- `dispatch_phase.sh base` from the root: holds (`ROOT_DIR` from the script's own checkout, 162; project by registry prefix of `$PWD`).
+- start-task step 1: holds (refuses today).
+- start-task 2a, 3; `worktree_enter.sh` 268 and 338: hold (338's title lookup is guarded by `rev-parse` on the root and skips quietly).
+- `worktree_create.sh` 545–549: holds (refuses today). 553–605: holds (slug falls back to the registry name). 698: holds, with its own message, so step 11's text should not list a skill worktree among the `.` entries that get today's 545 message.
+- `wt_ensure_exclusion` 171: holds (git exclude skipped; `COLCON_IGNORE` is written by the adapter's `worktree_env`, 1676–1683).
+- 861–913 and hook preflight 1333–1352: hold (per entry).
+- 788 `cd "$ROOT_DIR"`: holds.
+- `dispatch_phase.sh` `where`/`next`/handoff: holds; handoff's identity check (574) only needs `AGENT_NAME`/`AGENT_EMAIL` exported.
+- `_resolve_work_plans_dir.sh`, `progress_append.sh`, `review_progress.sh persist`: hold in effect, but the row's "all `git -C <owning checkout>`" is inexact: `persist` (351) and `resolve_work_plans_dir` (507, 528) use the cwd's `git rev-parse --show-toplevel`, which is the owning checkout because every phase starts its chains with `cd <worktree>`. A chain that lost its `cd` runs at `~/project11` and fails loudly ("not in a git repository"), which is safer than at a git root, where it would act on the root's repository. Same for `cross_model_review.sh` without `--work-dir` (resolves through `resolve_work_plans_dir`, exit 4 outside git).
+- `set_git_identity_env.sh`: holds, run here in a fresh directory under `/tmp` (outside git): sources with exit 0, derives `<local>+claude-code@<domain>` from the global address, `git var GIT_AUTHOR_IDENT` succeeds. The host sources it in `cd <dir> &&` chains (the owning checkout) for every dispatch; at the root only for step 11, where `merge_pr.sh`'s gate commit (1342) needs it.
+- run-issue step 2 probe, step 7 push, step 8 `check_branch_updates.sh`, `fetch_pr_reviews.sh`: hold (all in `<dir>`).
+- `gh_create_pr.sh -R`: holds (73 `REPO_ROOT` is the owning checkout; `registry_require_root` passes by path; `-R` skips repo safety).
+- step 11 `merge_pr.sh --pr owner/repo#M`: holds. Walked to the end: `ROOT_DIR` from the script's checkout (212); `registry_require_root` passes at the root; a qualified `--pr` sets `REPO_ARG`, so the `PJ_REPO_ROOT` block (327–358) is skipped and no `.git` guard is reached; the package worktree is found by scanning `.worktree-repos` under every registered worktree dir (581–688); roadmap step skipped for a package PR (721); gate reads the owning checkout's committed timeline; after the merge, the remote branch is deleted, the owning clone (`_OWN_ORIGIN`, the root's `<root>/<d>/<L>/src/<R>`) is fast-forwarded by `pull --ff-only origin <base>` only when it is on the base branch and `status --porcelain` is empty (2275–2296), else fetched with the reason printed (2297–2307) and repeated in the last line (2520); then `cd "$ROOT_DIR"`, `worktree_remove.sh`, and `branch -d` of the local feature branch in that clone. Step 6's cwd `git pull` is on the other branch of the `if`, never reached.
+- `worktree_remove.sh`, hooks: hold.
+
+**Missed rows.** On the `/run-issue` path: none found. On the port's working pattern, one: `gh_create_issue.sh` line 68 exits 3, "Not in a git repository", before anything else, so the plan's two example `gh_create_issue.sh -R ...` commands fail from a session at `~/project11` (finding 1).
+
+### merge_pr.sh and the tool's state.yaml
+
+The fast-forward is right to do, and should only be reported, not changed. It moves a clean clone along the same branch the manifest names, which is what the tool's own design says `sync` will do to such a repo ("A repo that is still on that version, with nothing local in it, follows the manifest: it is updated"; `tools/repos-manifest/docs/design.md` on `feature/issue-500`). The `version` in `state.yaml` stays true; only its `commit` lags, which is what `status` is meant to show ("the commit lets `status` show what has changed since the last sync"). It is the change the port needs in the clone before the layer is rebuilt. The plan's Risks line says this; the tool-route section of `docs/manifest/design.md` should say it too, and part 4 should note that `status` reads a clone ahead of its recorded commit on the recorded branch as expected (finding 5).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | 15 files (adapter, conf, dispatcher, register, worktree_create, start-task, 4 suites, 4 documents, AGENTS.md), past the skill's 10-file line; the generic non-git-root part is independent of #500 and splits cleanly (finding 4) |
+| Issue alignment | Needs work | The `/run-issue` path is now complete; the working pattern's first commands fail (finding 1) |
+| File targeting | Needs work | Missing `gh_create_issue.sh` (finding 1); `register_session_root.sh` header and `script_reference.md` become stale (finding 2) |
+| Consequences | Good | merge_pr's fast-forward found and used; one documentation line for the tool route (finding 5) |
+| Principle alignment | Good | Generic fixes with no type name; fixtures outside git; start-task's rule can live in one tested script at no cost (finding 3) |
+| ADR compliance | Good | 0011, 0012, 0016/0018/0020 (sessions at the root only), 0021, 0017, 0022 as the plan says; ADR-0021's "named gap" (lines 92–96) is narrowed, not closed; the design text says so, the ADR stays as written |
+| ROS conventions | Good | `--base-paths src` only on the tool route; overlay order unchanged |
+
+### Findings
+
+1. **[Issue alignment, medium]** `gh_create_issue.sh` refuses outside git at line 68 (`REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 3`), before the `-R` check that would make the repository irrelevant. The plan's example commands (Acceptance, "The first two") fail from `~/project11`. Resolution: generic, about six lines: outside git, require `-R` (refuse without it, as today, naming `-R`), take `.agent/github_metadata.json` from the workspace checkout, and skip the repo-safety block (already skipped by `-R`); a test in its suite run from a directory outside git. `gh_create_pr.sh` line 73 has the same check but is only run from the owning checkout; leave it. The by-hand alternative, running the command from inside the root's clone of that repository, works today but is a workaround.
+2. **[File targeting, low]** Two more texts become untrue for a `ros2_colcon` root and are not in Files to Change: `register_session_root.sh` header lines 54–57 ("A folder in no git repository: register_project.sh's gate ... refuses it ... registration needs a git repository today") and `.agent/knowledge/script_reference.md` line 29 (the same sentence). The Consequences row "`script_reference.md`: no usage changes, No" should become yes for that sentence. The reviser's claim holds: `register_session_root.sh` has no git check of its own for a folder outside git (only 159–170, for a folder inside one), and the gate it hands over to has none beyond `adapter validate` (`registration_verify.sh` 168 is guarded by `-e .git`; 76–77 and `register_project.sh` 313–314 read the workspace's own repository). So a tool root registers from its own session once the tool route's `validate` passes, and the planned `test_register_session_root.sh` case is the right check.
+3. **[Principle alignment, low]** start-task step 1: no new script is needed to make the rule testable. Step 2a already runs `session_root.sh`, which refuses a directory outside git unless it is a registered root itself (171) and refuses a directory under no root (151); `test_session_root.sh` covers both. So step 1's new branch can be "outside git, there is no linked worktree to refuse; step 2a decides", with no second `session_root.sh` call and no message of its own. The rule then lives in one tested script; only the skip is untested skill text, and the Manual verification check 6 covers it.
+4. **[Scope, medium]** Recommend splitting into two pull requests, both "Part of #503". A, first: a project root need not be a git repository: `worktree_create.sh` steps 11, start-task step 12 (as in finding 3), `gh_create_issue.sh` (finding 1), the `docs/design.md#worktrees` sentence, `WORKTREE_GUIDE.md`'s line, and tests: a package worktree through `worktree_create.sh` on a `ros2_colcon` root in today's manifest-route layout placed outside git (this fails without the fix at line 545, and needs no tool route), plus the `single_project` guard. About 40 lines of code and 80 of tests; it does not wait for #500 and can merge now. B: the tool route (adapter, dispatcher, registration, its documents, the AGENTS.md commit), merging after #500. The owner's aim needs both; A first loses nothing and makes B's review the adapter alone. `test_tool_package_worktree` stays in B.
+5. **[Consequences, low]** Say in `docs/manifest/design.md`'s tool-route text that after a package pull request merges, `merge_pr.sh` fast-forwards the root's clone (clean and on the base) ahead of the commit `state.yaml` recorded, as the tool's own `sync` would; and in part 4's outline that `status` treats that as expected.
+6. **[Accuracy, info]** Wording only: the table row for `_resolve_work_plans_dir.sh`/`progress_append.sh`/`review_progress.sh persist` should say they resolve from the cwd (the phase's `cd <worktree>`), `progress_append.sh` alone taking `-C`; and step 11 should not list a skill worktree among the `.` entries given today's 545 message (it is refused earlier, at 698, with its own).
+7. **[Info]** Checked and fine: the sandbox layout (`SANDBOX="$(mktemp -d)"`; `TMPDIR` unset here and `/tmp` is a tmpfs outside every repository, `git rev-parse` stops at the filesystem boundary; CI `runs-on: ubuntu-latest` with no `TMPDIR` in `.github/workflows/validate.yml`); `make_worktree_sandbox` runs `git init` in `$sb`, so `$(mktemp -d -p "$SANDBOX")/p11` is a sibling outside it; `fakessh` walks up from git's cwd and finds `fake_remotes/` in `$(dirname "$root")`; `test_tool_package_worktree` fails without step 11 (line 545). Moving the origin check before line 755 is safe for today's package worktrees: `ros2_colcon`'s `worktree_repos` already requires each `src/<repo>` to be a repository top, no test asserts the 868 message, and refusing before the first `git worktree add` needs no rollback; `single_project`'s `worktree_repos` (184) makes no git check, so the root's own `.` entry gets today's message, with nothing made before it (`wt_ensure_exclusion` and `mkdir` come after).
+
+### Owner's decisions
+
+- Already with him: the AGENTS.md sentence; the port's working pattern.
+- Mechanism, for the host to decide and list for veto: the split (finding 4); fixing `gh_create_issue.sh` rather than documenting a `cd` into the clone (finding 1); leaving `merge_pr.sh`'s fast-forward as it is.
+
+### Summary
+
+The `/run-issue` path from `~/project11` to a merged package pull request is now complete: every row of the table holds against the code, and none is missing. Outside that path, the plan's own example commands for opening the port's issues fail on `gh_create_issue.sh`'s git check, and two stale texts are not listed. With those added, and the generic part split off first, the plan meets the owner's aim.
+
+### Recommended Actions
+
+- [ ] Add `gh_create_issue.sh`: outside git, require `-R` and read the label metadata from the workspace checkout; a test outside git (finding 1)
+- [ ] Add `register_session_root.sh` header 54–57 and `script_reference.md` line 29 to Files to Change; Consequences row for `script_reference.md` to yes (finding 2)
+- [ ] start-task step 1 outside git: skip to step 2a, no second `session_root.sh` call (finding 3)
+- [ ] Split: PR A, a project root need not be a git repository (now); PR B, the tool route (after #500) (finding 4)
+- [ ] Tool-route text in `docs/manifest/design.md` and part 4's outline: the fast-forward after a merge, ahead of `state.yaml`'s commit (finding 5)
+- [ ] Wording of the table row and step 11 (finding 6)
