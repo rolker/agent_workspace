@@ -274,3 +274,20 @@ def test_a_setup_bash_in_a_read_only_directory_is_reported_with_its_reason(two_d
     assert f"ERROR: {setup}: cannot be created: {setup}: Permission denied" in out
     assert not os.path.lexists(setup)
     assert "distro rolling:" in out
+
+
+def test_a_manifest_not_found_after_the_system_moved_says_where_its_path_comes_from(
+    two_distros, tmp_path, capsys
+):
+    system, _, _ = two_distros
+    moved = tmp_path / "elsewhere" / "sys"
+    moved.parent.mkdir()
+    system.rename(moved)
+    capsys.readouterr()
+    assert run(moved, "sync") == 1
+    err = capsys.readouterr().err
+    assert "the manifest is what failed; nothing was changed: ../m.manifest.yaml" in err
+    assert (
+        f"(the manifest's path is `manifest` in {moved / '.repos-manifest/config.yaml'}, taken"
+        f" from the system directory {moved})\n"
+    ) in err

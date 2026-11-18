@@ -26,6 +26,7 @@ from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
 from .system import (
+    CONFIG_FILE,
     SETUP_TEXT,
     SYSTEM_DIR,
     TEMP_NAME,
@@ -355,13 +356,21 @@ def closing(results: Sequence[DistroResult]) -> int:
 def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Resolved]:
     """Phase one: read the manifest and resolve each distro in memory. A failure here changes
     nothing."""
+    failed = "the manifest is what failed; nothing was changed"
     try:
         manifest = read_manifest(config.manifest, system)
+    except ManifestError as exc:
+        recorded = system / SYSTEM_DIR / CONFIG_FILE
+        raise ManifestError(
+            f"{failed}: {exc} (the manifest's path is `manifest` in {recorded}, taken from the"
+            f" system directory {system})"
+        ) from None
+    try:
         return [
             selection.resolve(manifest, config.role, distro, config.groups) for distro in distros
         ]
     except ManifestError as exc:
-        raise ManifestError(f"the manifest is what failed; nothing was changed: {exc}") from None
+        raise ManifestError(f"{failed}: {exc}") from None
 
 
 def run_sync(named_distros: Sequence[str]) -> int:
