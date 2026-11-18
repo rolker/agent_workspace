@@ -347,12 +347,18 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
         "myrobot:repos/a.git",
         "[::1]:a.git",
         "[git@example.org:22]:a.git",
-        # A '%', '?' or '#' in the path is the path's business.
+        # A '?' or '#' in the path is the path's business; so are a '%', a '[' and a ']' in
+        # the path of a url not handed to ssh.
         "https://example.org/a%20b.git",
-        "ssh://git@example.org/%2da.git",
+        "https://example.org/a%20b/repo@-v1.git",
+        "https://h/x@[y",
+        "file:///abs/p%20q",
         "https://example.org/a.git?x=1#y",
         "ssh://git@example.org/a?b@-c#d.git",
-        "git@example.org:a%2db?c#d.git",
+        "git@example.org:a?c#d.git",
+        "ssh://git@host:2222/owner/repo.git",
+        "host:path",
+        "[::1]:repo",
     ],
 )
 def test_the_transports_that_only_fetch_are_accepted(url):
@@ -386,7 +392,7 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("https://[-oProxyCommand=x]:443/p", "the host starts with '-'"),
         ("git@[-oProxyCommand=x]:p", "the host starts with '-'"),
         ("a@b@-oProxyCommand=x:p", "the host starts with '-'"),
-        ("ssh://[::1/p", "an unclosed '\\['"),
+        ("ssh://[::1/p", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
         ("ssh://[::1]x/p", "is refused"),
         # A user or a port that starts with '-'.
         ("ssh://-oProxyCommand=x@host/p", "the user starts with '-'"),
@@ -395,21 +401,39 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         # Only a leading <word>:: is the transport form.
         ("ext+x.y-z::cmd", "<transport>::<address> form is refused"),
         # git decodes a '%' in a url with '://', so a '%' in the user, host or port is refused.
-        ("ssh://%2doProxyCommand=x/p", "a '%' in the user, host or port is refused"),
-        ("ssh://h:%2d1/p", "a '%' in the user, host or port is refused"),
-        ("ssh://%2do@h/p", "a '%' in the user, host or port is refused"),
+        ("ssh://%2doProxyCommand=x/p", "a '%' in an ssh address is refused"),
+        ("ssh://h:%2d1/p", "a '%' in an ssh address is refused"),
+        ("ssh://%2do@h/p", "a '%' in an ssh address is refused"),
         ("https://%2dh/a.git", "a '%' in the user, host or port is refused"),
         ("file://%2dh/a.git", "a '%' in the user, host or port is refused"),
-        ("%2dh:a.git", "a '%' in the user, host or port is refused"),
-        ("u%40v@h:a.git", "a '%' in the user, host or port is refused"),
+        ("%2dh:a.git", "a '%' in an ssh address is refused"),
+        ("u%40v@h:a.git", "a '%' in an ssh address is refused"),
         # For git, the host runs to the first '/', not to a '?' or a '#'.
         ("ssh://h?x@-oProxyCommand=y/p", "the host starts with '-'"),
         ("ssh://h#x@-oProxyCommand=y/p", "the host starts with '-'"),
         ("https://h?x@-y/p", "the host starts with '-'"),
         ("h?x@-oProxyCommand=y:p", "the host starts with '-'"),
-        # git looks for a host in brackets after the first '@[', even past a '/' or a ':'.
-        ("ssh://x/@[-oProxyCommand=y]/p", "the host starts with '-'"),
-        ("h:p@[-oProxyCommand=y]:q", "the host starts with '-'"),
+        # git decodes an ssh address and looks for a host in brackets anywhere in it, so a '%'
+        # is refused anywhere in one, and a '[' or a ']' anywhere but around the host.
+        (
+            "ssh://x/@[-oProxyCommand=y]/p",
+            "in an ssh address, '\\[' and '\\]' are allowed only around the host",
+        ),
+        (
+            "h:p@[-oProxyCommand=y]:q",
+            "in an ssh address, '\\[' and '\\]' are allowed only around the host",
+        ),
+        ("ssh://host/x%40[-oProxyCommand=y]/p", "a '%' in an ssh address is refused"),
+        ("ssh://host/x@%5b-oProxyCommand=y]/p", "a '%' in an ssh address is refused"),
+        ("ssh://host/x%40%5b-oProxyCommand=y%5d/p", "a '%' in an ssh address is refused"),
+        ("ssh://git@example.org/%2da.git", "a '%' in an ssh address is refused"),
+        ("git@example.org:a%2db.git", "a '%' in an ssh address is refused"),
+        ("ssh://h/p@[x", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        ("git@h:p@[x", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        ("ssh://h/p]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        ("ssh://[::1]/p[x]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        ("[::1]:p]", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
+        ("ssh://h[x]/p", "in an ssh address, '\\[' and '\\]' are allowed only around the host"),
         # In brackets, ssh still reads a user before the last '@', and git a port after a ':'.
         ("[a@-oProxyCommand=x]:p", "the host starts with '-'"),
         ("[-oProxyCommand=x@h]:p", "the user starts with '-'"),

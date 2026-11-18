@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .yamlload import ManifestError, _load_yaml, _refuse_unsafe_chars, first_unsafe_in_text
 
@@ -44,6 +44,20 @@ _URL_RULE = (
     "a url uses https, http, ssh, file, the [user@]host:path form or an absolute path on the"
     " local disk"
 )
+
+
+def _bracketed_host(address: str) -> Optional[Tuple[int, int]]:
+    """Where the '[' and the ']' of a host in brackets are in `address`: a '[' at the start, or
+    after a user and an '@' (a user with no '/' or ':'), and the first ']' after it. None when
+    the address does not start that way."""
+    start = address.find("[")
+    if start < 0:
+        return None
+    user = address[:start]
+    if user and (not user.endswith("@") or "/" in user or ":" in user):
+        return None
+    close = address.find("]", start + 1)
+    return None if close < 0 else (start, close)
 
 
 @dataclass
@@ -209,49 +223,66 @@ class _Checker:
             )
         scheme = next((s for s in _URL_SCHEMES if url.startswith(s)), None)
         if scheme is not None:
-            # As git reads it, the part with the user, host and port runs to the first '/'
-            # after the host; not to a '?' or a '#'.
             rest = url[len(scheme) :]
-            slash = rest.find("/", self.host_end(url, rest, where))
-            self.authority(url, rest if slash < 0 else rest[:slash], where)
+            if scheme == "ssh://":
+                brackets = self.ssh_address(url, rest, where)
+                # As git reads it, the part with the user, host and port runs to the first
+                # '/' after the host; not to a '?' or a '#'.
+                slash = rest.find("/", brackets[1] + 1 if brackets else 0)
+            else:
+                # Not handed to ssh: the user, host and port run to the first '/', and a '%',
+                # '[' or ']' after it is the path's business.
+                slash = rest.find("/")
+            authority = rest if slash < 0 else rest[:slash]
+            self.authority(url, authority, _bracketed_host(authority), where)
             return url
         colon = url.find(":")
         if "://" not in url and colon >= 0 and "/" not in url[:colon]:
             # git's scp-like form, `[user@]host:path`: the host ends at the first ':' after it.
-            sep = url.find(":", self.host_end(url, url, where))
+            brackets = self.ssh_address(url, url, where)
+            sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
                 raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
-            self.authority(url, url[:sep], where)
+            self.authority(url, url[:sep], brackets, where)
             return url
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url
         raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
 
-    def host_end(self, url: str, text: str, where: str) -> int:
-        """Where the host ends in `text`, as git's host_end() finds it: just after the ']' of a
-        host in brackets, which git looks for at the start of `text` or after its first '@['
-        wherever that is; 0 when there is no such host."""
-        at = text.find("@[")
-        start = at + 1 if at >= 0 else 0
-        if text[start : start + 1] != "[":
-            return 0
-        close = text.find("]", start + 1)
-        if close < 0:
-            raise self.error(where, f"{url!r}: the host has an unclosed '['")
-        return close + 1
+    def ssh_address(self, url: str, address: str, where: str) -> Optional[Tuple[int, int]]:
+        """Check an address git hands to ssh (after `ssh://`, or the scp form), and return
+        where the brackets of its host are. git decodes '%' escapes in it and looks for a host
+        in brackets anywhere in it, so neither is allowed outside the host: no '%' at all, and
+        a '[' and a ']' only as one pair around the host at the start of the address."""
+        if "%" in url:
+            raise self.error(where, f"{url!r}: a '%' in an ssh address is refused")
+        brackets = _bracketed_host(address)
+        allowed = brackets or ()
+        for index, char in enumerate(address):
+            if char in "[]" and index not in allowed:
+                raise self.error(
+                    where,
+                    f"{url!r}: in an ssh address, '[' and ']' are allowed only around the host",
+                )
+        return brackets
 
-    def authority(self, url: str, text: str, where: str) -> None:
-        """Check the user, host and port in `text`, the part of a url git hands to ssh: no '%'
-        (git decodes it in a url with '://', so a '%2d' would be a '-'), and none starts with
-        '-', where ssh would read it as an option."""
+    def authority(
+        self, url: str, text: str, brackets: Optional[Tuple[int, int]], where: str
+    ) -> None:
+        """Check the user, host and port in `text`, the part of a url before the path, with
+        `brackets` where the brackets of its host are: no '%' (git decodes it in a url with
+        '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
+        an option."""
         if "%" in text:
             raise self.error(where, f"{url!r}: a '%' in the user, host or port is refused")
-        at = text.find("@[")
-        start = at + 1 if at >= 0 else 0
-        if text[start : start + 1] == "[":
-            close = text.index("]", start + 1)
-            outer_user, inner, rest = text[: max(at, 0)], text[start + 1 : close], text[close + 1 :]
+        if brackets:
+            start, close = brackets
+            outer_user, inner, rest = (
+                text[: max(start - 1, 0)],
+                text[start + 1 : close],
+                text[close + 1 :],
+            )
             if rest and not rest.startswith(":"):
                 raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
             # Inside the brackets, ssh still reads a user before the last '@', and git a port

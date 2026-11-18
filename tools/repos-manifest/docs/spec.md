@@ -439,13 +439,16 @@ command that writes there.
     read one as an option, and nor do the user, the host or the port of a `url`. They are read
     as `git` reads them. They run to the first `/` after the host, so a `?` or a `#` before
     it is part of them (in the `[user@]host:path` form, to the first `:` after the host). The
-    host is what follows the last `@`, without the brackets of an IPv6 address; `git` takes
-    a host in brackets wherever it finds `@[`, even after a `/`. Inside the brackets, the
-    text before the last `@` is a user too, and the text after the first `:` a port. The
-    `path` of a location is relative and has no `..` in it.
-  - The user, the host and the port of a `url` hold no `%`. `git` decodes `%` escapes in a
-    url with `://`, so `%2d` would be a `-`; refusing `%` there is simpler than decoding,
-    and a real url does not need it. A `%` in the path is accepted.
+    host is what follows the last `@`, without the brackets of an IPv6 address. Inside the
+    brackets, the text before the last `@` is a user too, and the text after the first `:` a
+    port. The `path` of a location is relative and has no `..` in it.
+  - An address `git` hands to ssh, an `ssh://` url or the `[user@]host:path` form, holds no
+    `%` anywhere, and a `[` and a `]` only as one pair around the host at its start (as in
+    `ssh://user@[::1]:22/repo` or `[::1]:repo`); a `[` or a `]` anywhere else, the path
+    included, is refused. `git` decodes `%` escapes in an ssh address and looks for a host
+    in brackets anywhere in it, so the format allows neither there.
+  - In an `https`, `http` or `file` url, the user, the host and the port hold no `%`, so a
+    `%2d` cannot stand for a `-` there; a `%`, a `[` or a `]` in the path is accepted.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the
     `[user@]host:path` form (the user may be left out, as with an ssh host alias), or an
     absolute path on the local disk. A path with a `/` before its first `:`, or with no `:`,
