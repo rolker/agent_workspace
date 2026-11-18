@@ -132,8 +132,8 @@ code:
 - a change to the tool's design that is not made yet: a directory per distro from the first
   distro on, and adding a distro later (#495). The tool's design today gives a system set up
   for one distro no distro directories;
-- three things the adapter relies on today that the tool's design does not promise yet. They
-  are listed under "What the tool has to give".
+- some of what the adapter relies on today, which the tool's design does not promise yet. It
+  is listed under "What the tool has to give".
 
 ### The case it is designed for
 
@@ -200,8 +200,9 @@ one the session is working on. How a session says which is not decided yet.
 
 An instance is on the tool when its directory has a `.repos-manifest/` folder. That is how
 the adapter tells it from an instance still on the bootstrap route, until that route is
-removed. `init` records what it was given before it fetches anything, so a first fetch that
-fails is finished with `sync`; if `init` fails before that, registration is run again.
+removed. The tool's design has `init` record what it was given and then sync, so a first
+sync that fails part way is finished with `sync`; if `init` fails before it has recorded
+anything, registration is run again.
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
@@ -255,8 +256,8 @@ remotes. After that the tool's record in `.repos-manifest/` is the one record. T
 asks the tool for the role and the distros when it needs them, through `status`, and keeps no
 second copy that could disagree. The one thing it reads from `.repos-manifest/` directly is
 the resolved `.repos` files and layer order, which are the tool's stated output. Until the
-adapter's verbs have moved to the tool they still read `role=` and `distro=` from the registry
-line, so those stay until then, and so do `source`, `source_ref` and `source_path` in the settings
+adapter's verbs have moved to the tool, and a session can say which distro it works on, they
+still read `role=` and `distro=` from the registry line, so those stay until then, and so do `source`, `source_ref` and `source_path` in the settings
 file. All five go together.
 
 Today's settings keys map onto the manifest's location in its git form:
