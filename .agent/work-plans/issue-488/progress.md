@@ -162,3 +162,53 @@ He chose "Keep both" for the planner's two other choices: a part's lines do not 
 **Plan**: `.agent/work-plans/issue-488/plan.md` at `05cd445e`
 
 Revision after the Plan Review and the owner's `revise`. The decision record sets no limit on levels; the checker follows one, and a nested pointer is "not-followed", not a problem. Anchor citations get a base per form (backtick from the root, link from the file), a scheme skip and a wider citer list and hook filter; the default sit-rep reports each part's next step by path (`--next-steps`, tested); Serves names README goals; the boundary rule is review only with a review-guide row, and the audit finds the 487 manifest-route bullet needs a trim; sub-roadmap `gh-issue` checks name work in flight, marked by the sub-roadmap path.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 09:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #488 — Sub-roadmaps: a part of a root carries its own goals, design and roadmap, for the workspace and for projects
+**Plan**: `.agent/work-plans/issue-488/plan.md` at `05cd445e`
+**Branch**: `feature/issue-488`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Unchanged in size: seven commits over three scripts, four skills, the ADR, design and roadmap text and four test files. The order the Issue Review asked for is kept, and the split point (steps 2 and 3 to a sub-issue) is named. Acceptable with that fallback. |
+| Issue alignment | Good | Follows the owner's decisions: "Part owns its inside", a new ADR-0022 beside ADR-0017 for the workspace and for projects, no limit on levels in the record with one level named as the checker's, a nested pointer as `not-followed` (not a problem), part lines out of the root's totals, cross-repo pointers deferred. Every Issue Review action is covered, and acceptance bullet 3 is now met in a default run (`--next-steps`, step 3, checked in step 7). Serves as checked: `README.md#trust-control-and-information`; for project work `README.md#light-touch-on-projects` — falls under `docs/design.md#documentation-layers`. Both goal headings exist (`README.md` lines 50 and 80) and the design anchor resolves (line 87). |
+| File targeting | Good | Right set. Part designs and followed sub-roadmaps are now citers, and the hook filter is widened. One discovery rule needs narrowing (finding 1). |
+| Consequences | Good | Adds the manifest-route trim, named work through sub-roadmap `gh-issue` checks, the review-guide row and the hook filter. The Paths marking is the one gap (finding 5). |
+| Principle alignment | Good | The boundary rule is `review only` with a review-guide row, and the audit is done rather than asserted. I checked it: `main`'s `docs/design.md` names the resolver only at the CLI boundary (lines 451-465), and on `feature/issue-487` the manifest-route bullet (lines 402-430) mixes boundary facts with route mechanics (the flock on `configs/.lock.source`, the relinked directory, what `validate` compares, `env.sh`) that `docs/manifest/design.md` also gives. Prior art and Design Picture are stated. |
+| ADR compliance | Good | ADR-0022 scopes ADR-0017 without editing it (ADR-0008); 0022 is still free (highest is 0021, and no branch carries a 0022); the ADR-0018 delivery copy is checked in step 5. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Earlier findings (Plan Review at `505e7106`)
+
+1. Anchor check forms and citer scope: **resolved**. Each form has a base (backtick from the root, Markdown link from the file), a scheme is skipped first, the citers now include `docs/design.md`'s part links, followed sub-roadmaps and part designs, the hook filter is widened, and the tests named in the finding are listed. Findings 1 and 4 below are smaller points in the same area.
+2. Part's next step in a default run: **resolved**. Every run reports each followed part's first line that is not true, by sub-roadmap path, from `--next-steps`, tested in step 2 (j) and checked in step 7. Finding 2 below concerns how the skill calls it.
+3. Serves: **resolved**. It names two `README.md#workspace-goals` sections, and both anchors exist. The Issue Review's own Serves line stays as written because it is history.
+4. Rules row and boundary audit: **resolved**. There are two named rows: the part-citation check (`hook`) and the boundary rule (`review only`, with a new review-guide row under "Keep one current design"). The audit was done and matches the branch: the 486 text conforms, and the 487 bullet needs a trim, done here or recorded on #487.
+5. Named work through `gh-issue` in sub-roadmap lines, and the `<path>` wording: **resolved**. `subline` rows feed the `named` match, test (k) and the step 6 project case cover it, and `<path>` is now the design file's directory. Finding 5 below covers the Paths side of the marking.
+
+### Findings
+
+1. **[File targeting] Minor** — "Any `docs/**/design.md` below the root" sweeps untracked trees. The main checkout holds `worktrees/` (git-ignored, `.gitignore:15`), and today that contains `worktrees/workspace/issue-workspace-486/tools/ros-manifest/docs/design.md`, `.../issue-workspace-487/docs/manifest/design.md` and every worktree's `docs/design.md`. If this is built as written, a `make lint` or a `script check_design_anchors.sh` sit-rep check run in the main checkout would check stale drafts of other branches. A `.venv` or a project checkout inside the root could do the same. Resolution: list part designs with `git ls-files` (tracked files only, the same regex as the widened hook filter), in addition to the design beside each followed sub-roadmap, and add a test with an untracked `worktrees/x/docs/design.md` holding a broken link that is not reported.
+2. **[Approach] Minor** — `--next-steps` as described runs the checks again. The skill already runs the checks once, saves the rows and counts from them (`--summary-from`), so a second run doubles the `gh` calls and can disagree with the rows shown. Since `subline` items carry the sub-roadmap path, derive the next steps from saved rows (for example `--next-steps-from <rows-file>`, with the same exit-2 and exit-3 rules as `--summary-from`), and test that it agrees with the rows.
+3. **[Approach] Minor** — The plan is inconsistent about an unreadable target. The Mechanism decisions list it with the broken pointers (result `unchecked`), but step 2 gives it `unknown`, which matches the checker's existing roadmap-not-readable rule. Pick `unknown` in both places. Step 3 already sends both to Problems.
+4. **[Approach] Minor** — Relative backtick citations will behave in a way that surprises writers. In a `docs/` citer, a backtick `design.md#x` keeps today's meaning (the root's design, so in effect file-relative), but a backtick `manifest/design.md#x` in the same file is root-relative and fails as a missing file, which test 4 expects. Either say this in the script header and the `docs/roadmap.md` Format paragraph, with the message for that case naming the two working forms, or make backtick citations in a `docs/` citer resolve file-relative first, so both readings agree.
+5. **[Consequences] Minor** — The plan changes the meaning of Paths but leaves that out of the design text. The skill marks named work `Path 1` today (`.claude/skills/sitrep/SKILL.md` line 427), and the Direction row in `docs/design.md#documentation-layers` says a Paths paragraph names "the two paths the owner runs in parallel" and that work is marked with the path it serves. The plan marks work named through a sub-roadmap with the sub-roadmap's path and offers that in the closing question "beside the root's Paths", which is a third kind of focus. Say this in the Direction row's design text (step 1). Also say what happens to a sub-roadmap's own Paths paragraph: ignored, or shown under the part.
+
+### Summary
+
+The revision resolves all five findings of the earlier review and follows the owner's nesting instruction exactly: the record sets no limit on levels, the checker follows one, and a nested pointer is `not-followed`, not a problem. The five new findings are small and can be fixed in the step they belong to without another plan round. The one most likely to cause harm if built as written is finding 1 (the part-design glob sweeping git-ignored worktrees).
+
+### Recommended Actions
+
+- [ ] Step 4: find part designs with `git ls-files` plus the designs beside followed sub-roadmaps, not a filesystem glob; test that an untracked `worktrees/` copy is ignored.
+- [ ] Step 2: derive `--next-steps` from saved rows, not from a second run of the checks; test that it agrees with the rows.
+- [ ] Use `unknown` for an unreadable sub-roadmap in both the Mechanism decisions and step 2.
+- [ ] Step 4: state, or remove, the different bases for relative backtick citations in a `docs/` citer.
+- [ ] Step 1: write the sub-roadmap path as a focus in the closing question into the Direction row of `docs/design.md#documentation-layers`, and say how a sub-roadmap's own Paths paragraph is treated.
