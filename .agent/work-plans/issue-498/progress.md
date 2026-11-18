@@ -105,3 +105,113 @@ The existing user (part 3). The adapter keeps reading layers.txt, optional_layer
 **Plan**: `.agent/work-plans/issue-498/plan.md` at `b9ed981a`
 
 Three pull requests: (1) a reader for one new-format manifest with its per-layer output, validate, the project11 fixture (private repo renamed) and the 3.14 fix, beside the old reader; (2) base in its three location forms with reading order and merge; (3) the manifest-dir layout, converted adapter fixtures, removal of the old reader and the note on moving. Ten open questions for the owner are listed in the plan, each with a default.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 13:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #498 — repos-manifest: the resolver reads the format in the spec
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `b9ed981a`
+**Branch**: `feature/issue-498`
+**Serves**: Goal: Modular (`README.md#modular`; the tool is a module the workspace uses, and the owner's aim is to exercise the new design on project11). Design: `tools/repos-manifest/docs/design.md#resolve` and `#what-is-built`; the format is `tools/repos-manifest/docs/spec.md`; adapter route `docs/manifest/design.md` "The manifest route, step by step". Checked: `README.md` has `### Modular` (line 71); the tool's design has `### resolve` and `## What is built`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three PRs, as the Checkpoint ordered. Each part is additive until part 3, and old and new manifests are told apart by a top-level `repositories:` key, which no old manifest can have (the old `schema.py` refuses an unknown top-level key). |
+| Issue alignment | Needs work | Almost every spec rule has a part and a test (table below). Not covered: the issue's and the spec's "the layer order" and "which repos are optional" as resolve output (finding 1). The Issue Review's actions and the Checkpoint's eleven settled gaps are all taken up. |
+| File targeting | Needs work | Part 3 misses `_rc_relabel_provenance` and its test, the adapter's role/distro preflight and validate checks, and the `.cache` names in the adapter's sweep and cleanup (findings 2, 3, 6). |
+| Consequences | Needs work | The adapter's role and distro are required today and the distro is the ROS distro, so "pass `--role`/`--distro` only when recorded" cannot work for a manifest with no `distros:` (finding 2). |
+| Principle alignment | Needs work | "Test what breaks" is well served. "Only what's needed": keeping `--cache-dir` defined only so it can be refused contradicts the plan's own "No option is kept dead" (finding 9). "Keep one current design": design#resolve says resolve writes the layer order and which repos are optional, and parts 1 and 2 would leave that false (finding 1). |
+| ADR compliance | Good | ADR-0022, 0017, 0011, 0009 and 0013 are named and followed. No other ADR is triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+How the spec's rules map to the plan, checked one by one against `tools/repos-manifest/docs/spec.md`:
+
+- What a manifest is (a `.repos` file is a manifest; one variant, one layer): part 1 step 6 plus a test. Q2 (refusing a `type` other than `git`) goes against this for an hg or svn `.repos` file. See Q2 below.
+- Top-level keys (`format` higher is refused, an unknown key is warned about, `repositories` required in the first manifest): part 1 step 3 and part 2 step 4, each with a test.
+- Repo keys (unique, a path, matched by the whole key in `base`): unique comes from the moved loader's duplicate-key refusal. Matching by key is in part 2's merge tests.
+- Repo fields (`type`, `url` required; `version`, `absent`, `layer`, `groups`, `distros`, `optional`): part 1 step 3. A test for each type rule is in step 8.
+- Versions and distros (no `version` gives no line, per-distro `version`/`absent`, `absent: true` on the repo, an empty entry counts): part 1 step 4. Step 8 tests all four cases of `absent`.
+- Optional repos: read and checked, but never written out by resolve (finding 1). Reporting a repo that failed to fetch belongs to `sync` (#500).
+- Distros (a distro outside the list is an error, a repo entry for such a distro is ignored, no `distros:` means no distro is given): steps 3, 4 and 8. With `base` this is judged on the merged chain (part 2 step 4).
+- Layers (order, the unnamed layer first, a `layer:` not in the list is an error): steps 4 and 5. In the default layout the order is not written (finding 1).
+- Groups and roles (every group off unless switched on, any group on selects the repo, every name declared, a role required only when `roles:` exists): steps 3, 4 and 8.
+- Base: the location forms, reading order, read once, cycles, merge key by key, completeness: all in part 2, each with a test. "A tool that meets a location it cannot read says so and stops" has no test (a mapping with keys other than `url`/`version`/`path`, or a string that is neither a path nor an http(s) URL). Add one.
+- What resolving produces: finding 1.
+- Reading before using:
+  - safe load: covered;
+  - key and name rules, reserved layer names: covered;
+  - the check on the real destination: left to `init`/`sync`, as the Checkpoint says;
+  - a leading `-`: covered;
+  - transports: covered, `git://` and `ext::` included;
+  - invisible and bidirectional characters: covered only if the check reads the raw text (finding 4).
+
+### Findings
+
+1. **[Issue alignment / Keep one current design] High.** The issue's "The output" bullet, the spec's "What resolving produces" and design.md#resolve all say resolve writes three things: one `.repos` file per layer, the layer order, and which repos are optional. In the default layout, parts 1 and 2 write only the per-layer files. Names like `<layer>.repos` lose the order, and the optional repos go nowhere (Q1 default: only `validate` prints them). Part 3's manifest-dir layout writes the order, but only a layer-level optional list, and per the Checkpoint a mixed layer is not expressible there. So the per-repo "which repos are optional" is met in no part, and the design text that part 1 edits would stay false. Resolution: in part 1, write both in the default layout. One small file is enough, for example `layers.txt` (in order, `_unnamed` included) and `optional.txt` (repo keys), each with the head comment. Test it in part 1 and record it in design#resolve. This is also what `sync` (#500) will read. Part 3 then derives `optional_layers.txt` from the same data.
+
+2. **[Consequences] High.** Part 3 step 3, "pass `--role`/`--distro` only when recorded (a manifest with no `roles:` takes none)", does not fit the adapter. `_rc_manifest_prepare` (adapter.sh about line 1125) refuses to run without `role=`. `_rc_distro` (line 242) refuses without `distro=`. `validate` (line 1224) fails with no role. `docs/manifest/design.md` step 1 says "Check that a role and a distro are recorded". And the distro is always needed, because it is the ROS distro behind `/opt/ros/<distro>`. With the Q5 default (`--distro` given to a manifest with no `distros:` is an error), the adapter's own test "a plain `.repos` file as `source`" fails: the recorded `--distro jazzy` is refused, and so is the required role. Resolution: state the rule in the plan. Two possible rules: (a) the resolver accepts `--distro`/`--role` for a manifest that has no `distros:`/`roles:` and ignores them with a note, an owner call against the spec's "no distro is given"; (b) the adapter learns from the resolver whether the manifest has distros and roles (for example a `validate` output line) and passes them only then. Either way, list the changes to the preflight, the `validate` check and `docs/manifest/design.md` step 1.
+
+3. **[File targeting] Medium.** For a URL source, the adapter's `_rc_relabel_provenance` (adapter.sh about line 1020) rewrites every `#` line in the resolver's output, replacing the literal `--manifest` path it passed with `url#ref:path@commit`. `test_mr_provenance_names_the_source` asserts the result. Part 2 identifies a local manifest by `Path.resolve()`, and the head comment lists manifests by that identity. If the head comment prints the resolved path rather than the string given, the awk replacement silently finds nothing (for example when the project root has a symlink in its path). Also, the adapter's comment "name it as the resolver names an extends base, url#ref:path@commit" stops being true once part 2 names a git base `url version path`. Resolution: say that the head comment prints the leaf location as given. Add `_rc_relabel_provenance`, its comment and `test_mr_provenance_names_the_source` to part 3's list.
+
+4. **[Principle alignment: Test what breaks] Medium.** The spec says "The file has no invisible characters and none that change the direction of text", which covers comments, where hidden text tricks usually sit. The plan "reuses `has_unsafe_char`". The existing `_refuse_unsafe_chars` walks the parsed data, so comments are never checked. `has_unsafe_char` on the raw text would refuse every newline, because `Cc` includes `\n`. Resolution: run the check on the raw text with newline allowed (and decide about tab), and add a test with a bidirectional override inside a comment.
+
+5. **[Consequences] Medium (Q7).** Part 2 runs git under `subprocess` with a timeout and leaves the terminal to git and ssh. On timeout, `subprocess` kills git only. An ssh that git started and that is waiting at a passphrase prompt stays alive, holding the terminal with echo off. A process-group kill cannot simply come back: a child in its own process group cannot read the terminal (SIGTTIN), and a new session has no terminal at all. Also, a fixed 60 s races a person who is typing. Resolution: put this to the owner with Q7 (see below), and in either case say what happens to git's children when the limit ends git.
+
+6. **[File targeting] Low.** Part 3 drops `--cache-dir` and `rm -rf "$tmp.cache"`, but `.cache` also appears in `_rc_resolve_cleanup` (line 1041), in the sweep patterns `(\.cache|\.link|\.src)?` (lines 1084 and 1106), in the header comments around lines 865 to 868, and in the tests `mr_no_temp`, `test_mr_interrupt_cleans_up` (its stub resolver parses `--cache-dir`) and `test_mr_swap_interrupt_and_sweep` (a `gen-Ab12Cd.cache` fixture). Decide whether the sweep keeps removing `.cache` leftovers of older runs, then change all of these together. The plan's grep for `--cache-dir` finds only some of them.
+
+7. **[Scope] Low.** The dispatch rule should be explicit: "new reader only when the file reads, parses and has a top-level `repositories:`; any read or parse failure goes down the old path unchanged". Otherwise existing tests change. `test_cli_any_other_exception_is_one_fixed_line` passes a missing `m.yaml` and patches `cli.resolve_chain`. The leaf-path tests in `test_untrusted_input.py` (a long path, a symlink loop) expect the old reader's messages.
+
+8. **[Principle alignment] Low.** Leftover `.<out>.new-*` and `.<out>.old-*` siblings after a SIGKILL are never removed by anyone: they are dot-prefixed precisely so the adapter's sweep skips them. Either have the tool remove stale siblings that carry its marker, or say in design#resolve that they can be left behind.
+
+9. **[Principle alignment: Only what's needed] Low.** Part 3 keeps `--cache-dir` defined only to refuse it with a message naming the change. That is an option kept dead, which the self-check rules out. Note also that argparse's own "unrecognized arguments" (exit 2) is what the adapter's stale-resolver check matches on, and only together with `--layout`. Pick one approach and say why.
+
+10. **[Verify before claiming] Low.** The baseline is "2 failed, 331 passed" (333 tests), not "fail 2 of 331". I ran it here on Python 3.14.4. Part 3's end check "seven layers and `optional_layers.txt` with `site`" holds only for a role that selects every layer. Name `developer` there.
+
+11. **[File targeting] Low.** `select.py` shadows the standard library's `select` (which `subprocess` and `selectors` import) whenever the package directory is on `sys.path[0]`, as in `python src/repos_manifest/cli.py`. The old `selectors.py` already has this problem. A name like `selection.py` avoids it at no cost.
+
+12. **[Issue alignment] Note.** The plan does not mark its additions as a list. These are the ones beyond the spec and the Checkpoint, with my view on each:
+    - the marker file and refusing a non-empty unmarked `--out`: justified, because replacing an output directory whole could otherwise delete a person's directory;
+    - dot-prefixed temporary siblings: justified, but see finding 8;
+    - `type` must be `git`: see Q2;
+    - refusing `a//b`, `./`, a trailing `/` and a backslash: justified, because they would get round the no-key-inside-another rule. Add a `.` component;
+    - `distros: []` refused: justified;
+    - the http(s) limits: justified, but add redirects to non-http(s) schemes (urllib follows to `ftp`);
+    - the commit in the head comment: justified;
+    - a warning for a mixed layer: justified, rather than silence;
+    - `--cache-dir` as a named error: finding 9;
+    - `validate` resolving every role and distro: justified, as the design's "checks against the specification".
+
+The 3.14 fix. Keeping the old reader's test until part 3 and making the old code meet it is sound. Deleting the test now (which the Checkpoint would allow) would let 3.10 and 3.14 behave differently in a reader still in use, with nothing to show it. A smaller form of the same fix than the plan's: in `_resolve_one`, replace `candidate.is_file()` with `candidate.stat()`. Raise the "not found" message on `FileNotFoundError` (and on a non-regular file), and let any other `OSError` go to `resolve_chain`'s existing "its extends cannot be followed (<strerror>)" handler. `stat` already raises `ENAMETOOLONG` for both parametrizations (a single name of over 5,000 characters, and components of over 300). The `pathconf(PC_NAME_MAX)` branch is not needed, and `test_a_symlink_loop_is_a_message` still gets one ERROR line (ELOOP).
+
+### Open questions
+
+- **Q1. Wrong.** It contradicts design#resolve ("which repos are optional") and the issue's output bullet. Write it in part 1 (finding 1).
+- **Q2. Acceptable, but it contradicts spec "A `.repos` file is already a valid manifest" for hg/svn entries.** If kept, record it in spec.md as a settled point (owner-visible), not only in code.
+- **Q3. Right.** Add a `.` component. A leading `/` is already "not relative".
+- **Q4. Right.**
+- **Q5. Right for the tool, per the spec, but it collides with the adapter (finding 2).** The plan must resolve that collision.
+- **Q6. Right.** Also refuse a redirect to any scheme but http(s).
+- **Q7. As written, it fits the Checkpoint's words but goes against the design's intent ("When a command is run at a terminal and git or ssh needs a password, it asks"), and it leaves an ssh holding the terminal on timeout (finding 5).** Suggested default for the owner: the limit applies when there is no terminal (where the design says git fails and does not wait); at a terminal there is no limit, and Ctrl-C reaches git and ssh together.
+- **Q8. Right.**
+- **Q9. Right.** The adapter acts on what was selected for the machine, and warning on a mixed layer is better than silence.
+- **Q10. The plan correctly leaves CI unchanged** and asks first, as AGENTS.md requires. Until the owner answers, 3.14 is checked only locally. Note that the CI job's name still says "#267 prototype"; renaming it is the same ask-first change.
+
+### Summary
+
+The plan is thorough, follows the Checkpoint, and its factual claims about the code and fixtures hold. Checked: the draft has 44 repos in the same per-layer order as the old `p11/expected/jazzy`; jazzy and rolling differ only in `unh_marine_autonomy`; the adapter's call and layer-name rule; the `test_mr_*` names; the two `prototype.md` links. Two gaps need fixing before part 1 starts or before part 3 is planned in detail: resolve output without the layer order or the optional repos, and the adapter's required role and ROS distro against a manifest with neither. The rest are smaller. Not ready as written.
+
+### Recommended Actions
+
+- [ ] Part 1 writes the layer order and the optional repo keys in the default layout, tests them, and records the format in design#resolve (finding 1, Q1).
+- [ ] State how the adapter's always-recorded ROS distro and required role meet a manifest with no `distros:`/`roles:`, and list the preflight, `validate` and `docs/manifest/design.md` step 1 changes (finding 2).
+- [ ] Add `_rc_relabel_provenance`, its comment and `test_mr_provenance_names_the_source` to part 3, and print the leaf location as given in the head comment (finding 3).
+- [ ] Run the invisible-character check on the raw file text, newline allowed, and test a bidirectional character inside a comment (finding 4).
+- [ ] Put Q7 to the owner with the orphan-ssh consequence, and say what happens to git's children on timeout (finding 5).
+- [ ] List every `.cache` use in the adapter and its tests and change them together (finding 6). Make the dispatch-on-failure rule explicit (finding 7).
+- [ ] Smaller items: leftover siblings (8), `--cache-dir` (9), baseline count and the `developer` role in the end check (10), the `select.py` name (11), a test for a location form the tool cannot read, a `.` key component, non-http(s) redirects.
+- [ ] 3.14 fix: use `stat()` in place of `is_file()` in `_resolve_one`, with no `pathconf` branch.
