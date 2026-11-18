@@ -829,3 +829,19 @@ Item 6 checked by running, in a scratch directory with a local bare repository (
 **Decision**: address
 
 Fix the three open findings of the Integrated Review: an --out whose parent is not a directory is refused as the system refuses it; the message when the previous output cannot be put back names where it is and says the next resolve restores it, and the design says so; a version of heads/-x or tags/-x is refused, with the spec line. The five the triage ruled no action stay as ruled.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 15:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #506 at `ee6683a`
+**Addressed**: Integrated Review at `42e2663` (2026-11-18 15:32 -05:00)
+**Commits**: 61ac9c5, 3c48fca, ee6683a
+
+### Actions
+- [x] A `version` (repo and per-distro entry) whose text after a leading `heads/` or `tags/` starts with `-` is refused; vcstool 0.3.0 (`/usr/lib/python3/dist-packages/vcstool/clients/git.py`, `import_` and `_check_version_type`) strips those two prefixes and no other. One spec line; tests for `heads/-f`, `tags/-x`, `heads/--orphan=x` refused and `heads/main`, `tags/v1.0`, `feature/-x`, `refs/heads/-x` read — `tools/repos-manifest/src/repos_manifest/manifest.py` (`version`), `tools/repos-manifest/docs/spec.md`
+- [x] An `--out` that goes through something that is not a directory (`a-file/../out`, `a-file/../sub/out`, `a-file/..`) is refused with "cannot be written (Not a directory)"; a part that does not exist yet (`missing/../out`) is written as before. design.md says so; tests for both — `tools/repos-manifest/src/repos_manifest/output.py` (`_on_disk`, `write_output`), `tools/repos-manifest/docs/design.md`
+- [x] When moving the previous output back fails, a WARNING says `--out` is now missing, names the `.old-` directory the previous output is in and says the next `resolve` to the same place puts it back; design.md states the one exception to "never neither". Test with the rename patches, including the next run putting it back — `tools/repos-manifest/src/repos_manifest/output.py` (`write_output` finally), `tools/repos-manifest/docs/design.md`
+
+Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests`: 730 passed in 11.65s. `bash .agent/scripts/tests/test_ros2_colcon.sh`: === Results: 1014 passed, 0 failed, 0 skipped ===. Commits carry SKIP=validate-script-tests per the dispatched-pass hook rule; the full pre-commit pass is left to the host. The five findings ruled no action were not touched.
