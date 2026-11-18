@@ -936,3 +936,12 @@ Timeline: `review_progress.sh sources` returns no open local findings at this he
 - (Local Review @ `c76b990` (Claude adversarial), noted and not raised) The WARNING's "the previous output is kept in <dir>" does not itself say that the next run's sweep removes that copy if `--out` was made again by hand. No action. The WARNING (output.py:362-364) makes the put-back conditional in its own words ("puts it back if --out is still missing"), so it promises nothing for the case where `--out` exists again. design.md:311-317 states both halves: the put-back happens only if the output is still missing, and the next `resolve` removes marked hidden directories left by an ended process. This is the wording round 2 offered as a fix (Local Review @ `0d062ef`, suggestion 4). The copy is removed only after a person made `--out` again by hand following two failed renames in a row.
 
 Nothing remains open before the owner's merge decision, apart from the two CI jobs pending on the progress-only head (both passed at `c76b990`); `merge_pr.sh` gates on CI either way.
+
+## Checkpoint
+**When**: 2026-11-18 16:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18): merge pull request 506 (part 1 of 3), re-run the tool's install in the main checkout, then start init and sync (issue 500) alongside part 2 of this issue (reading base).
