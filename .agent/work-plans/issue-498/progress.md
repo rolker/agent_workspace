@@ -641,7 +641,7 @@ Specialists: static analysis (3.10 grammar parse; pre-commit covers the rest), g
 - [x] (suggestion) The kept mode is applied to the new directory before its files are written, so an existing `--out` with mode 0555 can no longer be replaced ("cannot be written (Permission denied)"); chmod after writing. With a read-only old copy, `_remove_ours(old)` also fails silently and leaves a marked `.old` each later sweep fails on — `tools/repos-manifest/src/repos_manifest/output.py:285`
 - [x] (suggestion) An `@[` with no `]` is refused as "the host has an unclosed '['" where git takes no bracketed host: `ssh://h/p@[x`, `git@h:p@[x`, `https://h/x@[y`; follow git (no bracketed host) — `tools/repos-manifest/src/repos_manifest/manifest.py:241`
 - [x] (suggestion) If a removal of the old copy after a good swap is cut short (marker kept, files partly gone) and the person then deletes `--out`, the next run puts the partial copy back as the output, and it stays if that run fails; remove `old` by first renaming it to a `.new-` name, which is swept but never put back — `tools/repos-manifest/src/repos_manifest/output.py:171`
-- [ ] (suggestion) design.md: "the new one keeps its mode" reads as the new hidden directory; say "the new output keeps the mode of the one it replaces" — `tools/repos-manifest/docs/design.md:301`
+- [x] (suggestion) design.md: "the new one keeps its mode" reads as the new hidden directory; say "the new output keeps the mode of the one it replaces" — `tools/repos-manifest/docs/design.md:301`
 
 ## Checkpoint
 **When**: 2026-11-18 14:34 -05:00
