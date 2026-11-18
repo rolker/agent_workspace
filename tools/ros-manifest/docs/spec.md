@@ -301,7 +301,8 @@ base:
 ### How manifests combine
 
 The parents are read first, in the order given, then the manifest itself. Where the same
-name appears more than once, the later one wins:
+name appears more than once, the one read later wins (the exact order of reading, when
+parents share a parent, is given further down):
 
 - A repo entry is merged with the earlier entry of the same name, key by key. A key the later
   entry gives replaces the earlier value of that key as a whole; a key it does not give keeps

@@ -307,18 +307,22 @@ has updated it. A parent in another git repo or at a URL is fetched afresh.
 
 Sync does not discard work, and it tells a change in the manifest from a change a person
 made. It records the version and the commit it last put each repo on, in
-`.repos-manifest/state.yaml`, for each distro when there is more than one. A repo it has no
+`.repos-manifest/state.yaml`, for each distro when there is more than one. The version is
+what the rules below compare against; the commit lets `status` show what has changed since
+the last sync. A repo it has no
 record for is recorded and followed if it is on the manifest's version, and treated as one a
 person has moved if it is not.
 
 - A repo that is still on that version, with nothing local in it, follows the manifest: it
   is updated, and moved to a new version when the manifest names one.
 - A repo that a person has moved to another branch is left as it is and reported.
-- A repo with local work is left as it is and reported. Local work is uncommitted changes,
-  or commits that are not on the remote. Such a repo is not switched to another version, so
-  commits made on a machine are never left out of what is built without a person deciding.
-  A repo that is only ahead of its remote on the manifest's branch is still updated when
-  that loses nothing, as described under "Work done on a field machine".
+- A repo with uncommitted changes is left as it is and reported.
+- A repo with commits that are not on `origin`, the place it was fetched from, is never
+  switched to another version, so commits made on a machine are not left out of what is
+  built without a person deciding. While it stays on the manifest's branch it is still
+  updated: what was fetched comes first and the local commits are put back on top of it, as
+  `git pull --rebase` does. If they do not go on cleanly, the repo is put back as it was and
+  reported.
 - A repo that is no longer in the manifest is left on disk and reported; `sync` does not
   delete it.
 
@@ -336,7 +340,8 @@ For each layer in order, run `colcon build` in the layer's directory with the la
 it sourced. `colcon` is given the paths of the repos the resolved files list for the layer
 (`--base-paths`), not the whole of `src/`. A repo that is still on disk but no longer part
 of the system for this machine, because a group was switched off or the manifest dropped it,
-is not built. Then write `setup.bash` in the system directory, or in the distro's directory
+is not built. What an earlier build of it installed stays in the layer's `install/` until
+that layer is built afresh, and `build` says so. Then write `setup.bash` in the system directory, or in the distro's directory
 when the system directory holds more than one distro. It sources the setup file of
 the last layer, in the manifest's order, that has been built, whichever layers this run
 built.
@@ -480,9 +485,10 @@ whatever workflow the project has.
 A field machine is where fixes are made under time pressure, directly on the branch the
 manifest names, and pushed to the private server. The tools have to fit that:
 
-- `sync` keeps local commits. On a repo that is on the manifest's branch, it fetches and
-  moves the branch forward only if that loses nothing. A branch that has gone a different
-  way from its remote is reported and left for a person.
+- `sync` keeps local commits. On a repo that is on the manifest's branch, it fetches, and
+  puts commits that have not been pushed yet back on top of what it fetched. So a machine
+  with a fix it has not pushed still gets the other machines' fixes. If the two do not fit
+  together cleanly, the repo is put back as it was, reported, and left for a person.
 - `status` shows repos with commits that are not on the remote yet, so nothing made in the
   field is forgotten there.
 - A manifest that names exact commits or tags leaves each repo without a local branch. That
