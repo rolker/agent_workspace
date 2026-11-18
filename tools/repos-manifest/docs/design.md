@@ -304,7 +304,7 @@ files. `--out` is found on the disk before it is checked, as the system finds it
 followed by `..` leads beside the link's target), and the paths `resolve` prints are the ones
 it wrote. The current directory and its parents are refused, since replacing one would leave
 the shell in a deleted directory. A SIGINT, SIGTERM or SIGHUP while resolving ends the run, removes the hidden
-directory and says whether the output had been replaced. The three are held during the two moves and delivered after them,
+directory, says whether the output had been replaced, and then ends the process by that signal, so a shell loop over `resolve` stops on a Ctrl-C. The three are held during the two moves and delivered after them,
 and an interrupt that still comes between them puts the previous output back, so the output is
 the previous one or the new one, never neither. A run killed outright can leave one behind; the
 next `resolve` to the same place removes the hidden directories beside it that a process that

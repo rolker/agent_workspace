@@ -276,5 +276,23 @@ def main(argv=None) -> int:
         return 1
 
 
+_STOP_SIGNALS = tuple(
+    getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, name)
+)
+
+
+def run() -> None:
+    """The command's entry point. A run stopped by a signal has printed its message and removed
+    its temporary output; the process then ends by that signal, as a tool does, so that a shell
+    loop over `resolve` stops on a Ctrl-C. (For SIGTERM and SIGHUP `_stopped` has delivered it
+    already; Python's own SIGINT handler would raise KeyboardInterrupt instead.)"""
+    code = main()
+    signum = code - 128
+    if signum in _STOP_SIGNALS:
+        signal.signal(signum, signal.SIG_DFL)
+        signal.raise_signal(signum)
+    sys.exit(code)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    run()

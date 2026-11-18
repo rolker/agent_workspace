@@ -486,6 +486,37 @@ def test_ctrl_c_while_resolving_says_nothing_was_written(manifest, tmp_path, mon
     assert _names(tmp_path) == ["m.manifest.yaml"]
 
 
+@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
+def test_the_command_ends_by_the_signal_that_stopped_it(manifest, tmp_path, signum):
+    # The process ends by the signal after its message and its cleanup, so a shell loop over
+    # `resolve` stops on a Ctrl-C.
+    script = (
+        "import os, runpy, sys\n"
+        "from repos_manifest import output\n"
+        "real = output._write_text\n"
+        "def write_text(path, text):\n"
+        "    real(path, text)\n"
+        "    if path.name == 'core.repos':\n"
+        f"        os.kill(os.getpid(), {int(signum)})\n"
+        "output._write_text = write_text\n"
+        "sys.argv[1:] = sys.argv[2:]\n"
+        "runpy.run_module('repos_manifest.cli', run_name='__main__', alter_sys=True)\n"
+    )
+    out = tmp_path / "out"
+    proc = subprocess.run(
+        [sys.executable, "-c", script, "-", "resolve", "--manifest", str(manifest)]
+        + ["--out", str(out), "--role", "robot", "--distro", "jazzy"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        check=False,
+    )
+    assert proc.returncode == -signum
+    name = signal.Signals(signum).name
+    assert proc.stderr == f"ERROR: stopped by {name}; nothing was written\n"
+    assert _names(tmp_path) == ["m.manifest.yaml"]
+
+
 def test_an_interrupt_between_the_renames_puts_the_previous_output_back(
     manifest, tmp_path, monkeypatch
 ):
