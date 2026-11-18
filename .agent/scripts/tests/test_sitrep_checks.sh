@@ -833,6 +833,8 @@ n_gh="$(grep -c . "$MARK/gh" 2>/dev/null || true)"
 [[ "$n_gh" == 1 ]] && pass "(skill 1) gh called once for one gh row" || fail "(skill 1) gh called ${n_gh:-0} times: $OUT"
 [[ "$OUT" == *"lines 2/2 deferrals 0/1"* && -n "$rows_file" && -f "$rows_file" ]] \
     && pass "(skill 1) summary shown, rows saved" || fail "(skill 1) '$OUT'"
+[[ "$OUT" == *$'--- next steps\n(root)\tnone open\nrows_file='* ]] \
+    && pass "(skill 1) next steps from the saved rows, before rows_file" || fail "(skill 1) next steps '$OUT'"
 
 echo "TEST: sit-rep step 1 with a failed run keeps no rows file and says so"
 mv "$WS/.agent/scripts/sitrep_checks.sh" "$SB/sitrep_checks.real"
@@ -1076,6 +1078,13 @@ RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkpp" 2>&1)" || RC=$?
     && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
 [[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)\tPath 1' ]] \
     && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
+printf 'part\tdocs/part/roadmap.md\ttrue\tread\t2026-11-18\nsubline\tdocs/part/roadmap.md: P validates\tfalse\tscript adapter --project p validate\t2026-11-18\n' > "$SB/rows-part"
+blkpart="${blk//<rows_file printed in step 1>/$SB/rows-part}"
+reset_marks
+echo "Package title" > "$SB/gh_state"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkpart" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT" | cut -f7)" == docs/part/roadmap.md ]] \
+    && pass "(skill 3) work only a sub-roadmap's line names is marked with the sub-roadmap's path (issue #488)" || fail "(skill 3) part '$OUT'"
 
 echo "TEST: sit-rep step 3 reads a package worktree's title and timeline from the issue's repository only"
 # pkg4: issue 14 of acme/pkg_b; acme/pkg_a, listed first, has its own

@@ -405,6 +405,27 @@ printf 'line\tW\tfalse\tgh-issue ACME/proj#12 closed\t2026-11-09\n' > "$SB/rows-
 wts "$WSC" "$SB/rows-wc.tsv"
 [[ "$OUT" == *"project proj 12 no"* ]] && pass "(b): gh-issue ACME/proj#12 keeps acme/proj's worktree 12" || fail "(b) case: '$OUT'"
 
+echo "TEST: --worktrees: a followed sub-roadmap's lines name work, marked by the sub-roadmap's path (issue #488)"
+printf '%s\n' \
+    $'line\tRoot names 12\tfalse\tgh-issue 12 closed\t2026-11-18' \
+    $'part\tdocs/part/roadmap.md\ttrue\tread\t2026-11-18' \
+    $'subline\tdocs/part/roadmap.md: Part names 4 and 12\tfalse\tgh-issue 4 closed ; gh-issue 12 closed\t2026-11-18' \
+    $'subline\tdocs/part/roadmap.md: Part names workspace 3\tfalse\tgh-issue acme/ws#3 closed\t2026-11-18' \
+    $'part\tdocs/gone/roadmap.md\tunchecked\tnot found\t2026-11-18' \
+    $'subline\tdocs/gone/roadmap.md: Orphan\tfalse\tgh-issue 13 closed\t2026-11-18' \
+    $'subdeferral\tdocs/part/roadmap.md: Later\tfalse\tgh-issue 20 closed\t2026-11-18' > "$SB/rows-sub.tsv"
+wts "$R/proj" "$SB/rows-sub.tsv"
+[[ $RC -eq 0 && "$OUT" == *"workspace workspace 3 no"* ]] \
+    && pass "sub-roadmap: a gh-issue <owner/repo>#N in a part's line keeps that worktree" || fail "sub keep: rc=$RC '$OUT'"
+[[ "$(field 4 named)" == no && "$(field 4 named_part)" == docs/part/roadmap.md \
+    && "$(field 3 named_part)" == docs/part/roadmap.md \
+    && "$(field 12 named)" == yes && "$(field 12 named_part)" == docs/part/roadmap.md \
+    && "$(field 13 named_part)" == "" && "$(field 20 named_part)" == "" ]] \
+    && pass "named_part: a part's gh-issue names own and other work by the part's path; a root line still sets named; rows after an unfollowed part row and a part's deferrals name nothing" \
+    || fail "named_part: 4='$(field 4 named)/$(field 4 named_part)' 3='$(field 3 named_part)' 12='$(field 12 named)/$(field 12 named_part)' 13='$(field 13 named_part)' 20='$(field 20 named_part)'"
+wts "$R/proj"
+[[ "$(field 4 named_part)" == "(absent)" ]] && pass "named_part: absent without a rows file" || fail "named_part without rows: '$(field 4 named_part)'"
+
 echo "TEST: a package worktree whose checkouts of its repository disagree on the branch"
 wts "$R/proj"
 [[ "$(field 25 own)" == yes && "$(field 25 pr_branch)" == "" && "$(field 25 branch)" == "feature/issue-25,feature/issue-25-b" ]] \

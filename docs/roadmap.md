@@ -61,8 +61,23 @@ problems, and keeps the steps that do.
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
-- Two tables, picked by their header: `| Line | Check |` and
-  `| Deferral | Revisit check |`. Any other table here is ignored.
+- Three tables, picked by their header: `| Line | Check |`,
+  `| Deferral | Revisit check |` and `| Sub-roadmap | Root |`. Any other
+  table here is ignored.
+- A `Sub-roadmap | Root` row points at the roadmap of a part with goals,
+  design and roadmap of its own (ADR-0022): the sub-roadmap file and the
+  directory its checks' paths are relative to, both relative to this
+  repository's root (an empty Root is `.`). The sit-rep follows each
+  pointer one level, reports each part's next step by the sub-roadmap's
+  path, and keeps a part's lines out of this roadmap's counts; a broken
+  pointer is reported, and a pointer inside a sub-roadmap is listed as not
+  followed. A prose link to a part's roadmap is for the reader; the table
+  row is what the sit-rep reads. A part's design is cited by its path,
+  `<path>/design.md#<section>`. A Markdown link resolves from the file
+  holding it; a citation in backticks or prose resolves from that file's
+  directory when the file is there, else from the repository root, so in
+  this file `manifest/design.md#<section>` names `docs/manifest/` either
+  way and `docs/design.md#<section>` the root's design.
 - A check starts with its kind: `file-exists <path>`,
   `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
   under the file's `## Status` heading starts with that word),

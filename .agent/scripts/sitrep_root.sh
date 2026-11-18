@@ -80,8 +80,9 @@
 #             wt_workspace_base); for a project root, a `project` entry
 #             under the worktree directory of the root or of one of its
 #             instances (registry_worktree_dir), or
-#         (b) one of this root's own Direction lines names it, read from the
-#             `line` rows of <file> (the rows the sit-rep's step 1 saved):
+#         (b) one of this root's own Direction lines, or a line of a
+#             sub-roadmap it follows, names it, read from the `line` and
+#             `subline` rows of <file> (the rows the sit-rep's step 1 saved):
 #             an `adapter --project <name>` check keeps that project's
 #             worktrees (`repo` equal to <name> as the adapter resolves it,
 #             registry_resolve_project_arg: a parent root is its default
@@ -127,6 +128,14 @@
 #             "repository" and issue; `adapter --project <name>` for a
 #             project entry whose `repo` is <name> as resolved in (b)),
 #             else "no".
+#         "named_part": only with a readable <file>: the path of the first
+#             followed sub-roadmap (a `part` row with result `true`) whose
+#             lines (`subline` rows) name the work by the same rules, else
+#             "" (issue #488). Set whatever "named" is; the sit-rep marks
+#             work a root line names as Path 1 first. A bare number in a
+#             sub-roadmap names the root's own work: a sub-roadmap's Root
+#             lies inside the root (a part in a repository of its own is
+#             not yet supported, ADR-0022).
 #       An error from worktree_list.sh (a non-zero exit, or output that is
 #       not its JSON) is passed through on stderr with a non-zero exit;
 #       it is never printed as an empty list.
@@ -399,7 +408,7 @@ if [[ -n "$ROWS" ]]; then
 out = set()
 for row in open(sys.argv[1], encoding="utf-8", errors="replace"):
     f = row.rstrip("\n").split("\t")
-    if len(f) >= 4 and f[0] == "line":
+    if len(f) >= 4 and f[0] in ("line", "subline"):
         out |= names_of(f[1], f[3])[2]
 print("\n".join(sorted(out)))' "$ROWS")
 fi
@@ -422,22 +431,42 @@ own_dirs = [d for d in os.environ["OWN_DIRS"].splitlines() if d]
 root_git = os.environ["ROOT_GIT"]
 
 # (b) and "named": what this root's Direction lines name, from step 1's
-# line rows (kind, item, result, check, date).
+# line rows (kind, item, result, check, date). "named_part": what a
+# followed sub-roadmap's lines name (subline rows, item "<path>: <item>",
+# after the part row that read <path>), mapped to the first such path.
 have_rows = bool(os.environ["ROWS"])
 named_bare, named_issues, named_projects = set(), set(), set()
+part_bare, part_issues, part_projects = {}, {}, {}
 if have_rows:
+    parts = []
     with open(os.environ["ROWS"], encoding="utf-8", errors="replace") as fh:
         for row in fh:
             f = row.rstrip("\n").split("\t")
-            if len(f) < 4 or f[0] != "line":
+            if len(f) >= 3 and f[0] == "part" and f[2] == "true":
+                parts.append(f[1])
                 continue
-            b, i, p = names_of(f[1], f[3])
-            named_bare |= b
-            named_issues |= i
-            named_projects |= p
+            if len(f) < 4 or f[0] not in ("line", "subline"):
+                continue
+            if f[0] == "line":
+                b, i, p = names_of(f[1], f[3])
+                named_bare |= b
+                named_issues |= i
+                named_projects |= p
+                continue
+            owner = max((q for q in parts if f[1].startswith(q + ": ")), key=len, default="")
+            if not owner:
+                continue
+            b, i, p = names_of(f[1][len(owner) + 2:], f[3])
+            for k, src in ((part_bare, b), (part_issues, i), (part_projects, p)):
+                for x in src:
+                    k.setdefault(x, owner)
 # Each through the registry, as the adapter resolves it (PROJECT_MAP).
 resolved = dict(l.split("\t", 1) for l in os.environ["PROJECT_MAP"].splitlines() if "\t" in l)
 named_projects = {resolved[p] for p in named_projects if p in resolved}
+part_projects_r = {}
+for p, owner in part_projects.items():
+    if p in resolved:
+        part_projects_r.setdefault(resolved[p], owner)
 
 memo = {}
 def repository(path):
@@ -500,11 +529,12 @@ for w in entries:
                 own = bool(c) and os.path.realpath(c) == root_git
     issue = w.get("issue")
     keep = part_a
-    if not keep and t == "project" and (w.get("repo") or "") in named_projects:
+    if not keep and t == "project" and (w.get("repo") or "") in (named_projects | set(part_projects_r)):
         keep = True
-    if not keep and issue is not None and named_issues:
+    if not keep and issue is not None and (named_issues or part_issues):
         s = repository(path)[0]
-        keep = bool(s) and ("%s#%s" % (s.lower(), issue)) in named_issues
+        keep = bool(s) and (("%s#%s" % (s.lower(), issue)) in named_issues
+                            or ("%s#%s" % (s.lower(), issue)) in part_issues)
     if not keep:
         continue
     s, dirs, why, branch = repository(path)
@@ -526,6 +556,14 @@ for w in entries:
             or (bool(s) and ("%s#%s" % (s.lower(), issue)) in named_issues))
         named = named or (t == "project" and (w.get("repo") or "") in named_projects)
         w["named"] = "yes" if named else "no"
+        np = ""
+        if issue is not None and own:
+            np = part_bare.get(str(issue), "")
+        if not np and issue is not None and s:
+            np = part_issues.get("%s#%s" % (s.lower(), issue), "")
+        if not np and t == "project":
+            np = part_projects_r.get(w.get("repo") or "", "")
+        w["named_part"] = np
     kept.append(w)
 print(json.dumps({"worktrees": kept}))
 PY

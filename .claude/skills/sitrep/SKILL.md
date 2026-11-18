@@ -128,6 +128,9 @@ else
         cat "$rows"
         echo "---"
         if "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"; then
+            echo "--- next steps"
+            "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --next-steps-from "$rows" \
+                || echo "next steps: could not be read from the rows (reason above)"
             echo "rows_file=$rows"
         else
             rm -f -- "$rows"
@@ -145,9 +148,24 @@ Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
 `line`, `deferral`, `format` (a checklist item in the section, which breaks
 the section's rules; report it), `section` (nothing to check, and why: no
 roadmap file, a roadmap that could not be read, no Direction section, or a
-section with neither table). After `---` comes the summary, `lines
-<true>/<total> deferrals <true>/<total>`, then `rows_file=`, which step 4
-needs. When the block prints `checks failed` or `no summary` instead,
+section with no table). A root's Direction section may point at the
+roadmaps of its parts (a `| Sub-roadmap | Root |` table, ADR-0022); each
+is followed one level, and its rows come after the root's: a `part` row
+for the pointer, then `subline`, `subdeferral` and `subformat` rows whose
+item starts with the sub-roadmap's path (`tools/ros-manifest/docs/
+roadmap.md: <line>`). Show a part's rows under its path, never mixed with
+the root's. A `part` row whose result is `unchecked` (a broken pointer:
+missing, outside the root, circular or repeated, or a sub-roadmap with
+nothing to check) or `unknown` (not readable) goes under Problems with
+its `check` text as the reason; one whose result is `not-followed` (a
+pointer inside a sub-roadmap, which the checker does not follow) goes on
+a separate "Not followed" line, never under Problems. After `---` comes
+the summary, `lines <true>/<total> deferrals <true>/<total>`: the root's
+own lines only, since a part's progress is the part's (the run record
+keeps the root's counts). Then `--- next steps`: one line for the root,
+`(root)` with its first line not true and that line's result, or `(root)
+none open`, and one per followed part, by its sub-roadmap path, the same
+way; step 5 uses them. Then `rows_file=`, which step 4 needs. When the block prints `checks failed` or `no summary` instead,
 report that the Direction lines were not checked this run, with the reason
 printed, and that the run record was not written, and skip step 4.
 
@@ -319,9 +337,10 @@ while IFS= read -r w; do
     # only: work plans are written at the issue's checkout, and another
     # repository can have its own issue <N>. "named" is "yes" when one of
     # the root's own Direction lines names this work (Path 1), and is
-    # absent when step 1 saved no rows.
+    # absent when step 1 saved no rows. "named_part" is the path of a
+    # followed sub-roadmap whose lines name it (issue #488).
     slug="$(field repository)"; dirs="$(field repository_dirs)"; why="$(field repository_why)"
-    named="$(field named)"
+    named="$(field named)"; npart="$(field named_part)"
     cache="$(head -n1 <<< "$dirs")"; latest="no progress record yet"
     [ -n "$slug" ] || [ ! -f "$path/.worktree-repos" ] || latest="unknown (no repository to read it from)"
     title="unknown ($why)"
@@ -422,7 +441,8 @@ except ValueError:
               else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
               else if (index(tolower(s), "a safeguard has to earn its cost")) print "path3"
               else print "goal" }' "$f")"
-    if [ "$haspaths" != yes ]; then wpath=""
+    if [ -n "$named" ] && [ "$named" != yes ] && [ -n "$npart" ]; then wpath="$npart"
+    elif [ "$haspaths" != yes ]; then wpath=""
     elif [ -z "$named" ]; then wpath="path unknown (steps not checked)"
     elif [ "$named" = yes ]; then wpath="Path 1"
     elif { [ "$serves" = goal ] || [ "$serves" = path3 ]; } && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
@@ -437,7 +457,12 @@ done
 
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
-reads `(no branch)`. The path is empty when the root's Direction section
+reads `(no branch)`. Work that no root line names but a line of a
+followed sub-roadmap does (its `gh-issue` check, by the same rules,
+`named_part`) is marked with that sub-roadmap's path, such as
+`tools/ros-manifest/docs/roadmap.md`, whether or not the root has Paths
+paragraphs: the path stands for the part (issue #488). Otherwise the path
+is empty when the root's Direction section
 has no Paths paragraph (the last block of this step prints `paths=none`):
 no path word is printed then. Otherwise it is `Path 1` (`named` is
 `yes`: a Direction line names the issue, in its own cells, or a check
@@ -630,6 +655,14 @@ the lines are an ordered chain and a line that cannot be checked is
 still in the way. When step 1 printed no rows (`checks failed`, `no
 summary`), there is no next line; skip this step and say so in the
 report.
+
+In every run, beside the root's next step, report each followed part's
+next step: the `--- next steps` lines of step 1, one per sub-roadmap
+path (a part whose lines are all true says "nothing open"). They come
+from the saved rows, so they agree with the rows shown; they are never
+left out because the root still has lines open, and never stand in for
+the root's next step. A part that was not followed has no line there:
+its `part` row is under Problems or Not followed (step 1).
 
 Look up what that line's own cells name: the title of each issue it names,
 and the branch of the root's own worktree and the open pull request for
@@ -1027,6 +1060,10 @@ Not yet: <first unmet line, as written> — <its result in words>.
 Next: <the line's text as an action>.
 Running: <branch>: <its state>.
 
+<one line per followed part, from step 1's next steps:>
+<sub-roadmap path>: Not yet: <its first unmet line> — <its result in words>.
+<sub-roadmap path>: nothing open.
+
 **In flight**:
 
 - Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
@@ -1049,6 +1086,12 @@ Running: <branch>: <its state>.
   a malformed Direction section, a step whose check could not run, a
   check skipped for a file this root does not have, worktrees that
   could not be listed>
+- Part: <sub-roadmap path as written>: <its part row's check, as the
+  reason> (one per `part` row that is `unchecked` or `unknown`).
+
+<only when a part row is not-followed:>
+Not followed: <path>, a pointer inside a part's roadmap; the sit-rep
+follows one level.
 
 **Steps**: <t> of <n> done.
 
@@ -1147,7 +1190,9 @@ Rules for the report:
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
-    `Path 3`, `no path` or one of its "path unknown (...)" labels; nothing when
+    `Path 3`, a sub-roadmap path (work a part's line names, e.g.
+    `tools/ros-manifest/docs/roadmap.md`), `no path` or one of its
+    "path unknown (...)" labels; nothing when
     step 3 printed an empty path (the root's Direction section has no
     Paths paragraph). A branch with only a
     pull request has no timeline here, so no Serves line was read: with
@@ -1189,7 +1234,11 @@ Rules for the report:
   changes the most. The suggestion proposes an action; the question asks
   the owner to decide something. By default it is the focus: one of the
   paths step 3 printed, or several, each named as step 3's last block
-  printed it (its number, name and first sentence). The owner decides the focus when he asks for
+  printed it (its number, name and first sentence). Beside them, each
+  followed part is a focus of its own, named by its sub-roadmap path:
+  the work step 3 marked with that path, and the part's next step. A
+  sub-roadmap's own Paths paragraphs are not read; the part is one
+  focus. The owner decides the focus when he asks for
   a sit-rep, and it is never stored. Ask something else only when the
   owner already named the focus in this session, or when step 3 printed
-  `paths=none`.
+  `paths=none` and no part was followed.
