@@ -288,3 +288,36 @@ The host, running /orchestrator, read the round 1 review (approved, no must-fix,
 5. The tool's README note on what the rename leaves behind: say that an ignored tools/ros-manifest/ directory (egg-info, __pycache__) can remain in a checkout after pulling, and can be deleted.
 
 Not taken, as the review already dropped them: a fallback or warning for the old environment variable (the owner decided no fallback), rewording the history sentence in prototype.md, and quoting in a CI line outside what the owner approved.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 12:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-497 at `0f268ac8`
+**Addressed**: Local Review (Pre-Push) at `1c0c0659` (2026-11-18 12:18 -05:00)
+**Commits**: bf7263ac, 17aa9e0a, efa5d181, 1a2e0d0a, 0f268ac8
+
+### Actions
+- [x] ADR-0022 Context: line 36 reverted to `tools/ros-manifest/docs/design.md`, with "(now `tools/repos-manifest`)" added there once; the Decision's citation example (line 76) stays renamed — `docs/decisions/0022-a-part-owns-its-inside.md:36` (bf7263ac)
+- [x] Makefile cleanup no longer hides a real pip failure: `|| true` and the `>/dev/null 2>&1` dropped, `pip uninstall -qq -y ros-manifest` (`-qq` hides pip's "Skipping ... not installed" warning, keeps errors), comment says why — `Makefile:209` (17aa9e0a)
+- [x] Placeholder wording removed from the description and the docstring (the docstring now says the owner chose the name in #497) — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:3` (efa5d181)
+- [x] The `setup` row cites `Makefile` line 99 (`setup:` is line 99 after the Makefile change, which added lines only below it); `wc -l docs/design.md` is 1194, equal to the #497 change-log row — `docs/design.md:531` (1a2e0d0a)
+- [x] README note: an ignored `tools/ros-manifest/` (egg-info, `__pycache__`) can remain after pulling and can be deleted; checked that the main checkout has exactly those two ignored paths (`git status --ignored`) — `tools/repos-manifest/README.md:121` (0f268ac8)
+
+### Makefile check
+Scratch clone of the branch under the session scratchpad (the main checkout's `.venv` untouched), `tools/ros-manifest` restored from origin/main, a bare venv, `.make/setup-dev.done` touched, the old tool pip-installed editable and `.make/ros-manifest.done` touched, then `make install-repos-manifest` with the final recipe:
+- A, old install present: rc=0; `.make` = repos-manifest.done, setup-dev.done; `.venv/bin` has only `repos-manifest`; `pip show ros-manifest` rc=1.
+- B, run again: "Nothing to be done for 'install-repos-manifest'", rc=0.
+- C, stamp removed, old install absent: rc=0, no output past the banner (with `--quiet` alone an earlier try printed "WARNING: Skipping ros-manifest as it is not installed.", hence `-qq`); stamp written.
+- D, old install present and site-packages made read-only: pip's `PermissionError` printed, `make: *** [Makefile:209: .../repos-manifest.done] Error 2`, rc=2, no `repos-manifest.done` stamp.
+Sandbox removed afterwards.
+
+### Acceptance search
+`git grep -n -i 'ros-manifest\|ros_manifest\|ROS_MANIFEST' -- . ':!.agent/work-plans'`: Makefile:202,204,209 (the cleanup's comment and command); ADR-0022:17,31,33,36 (Context history); docs/design.md:1072,1110,1129,1133,1139 (earlier change-log rows); README:6 (the "was called" sentence), 119,120,122 (the left-behind note); prototype.md:3 (history).
+
+### Checks
+- test_fresh_clone_no_project.sh (after committing): `=== Results: 26 passed, 0 failed ===`
+- test_ros2_colcon.sh: `=== Results: 1014 passed, 0 failed, 0 skipped ===`
+- test_design_anchors.sh: `test_design_anchors: 82 passed, 0 failed`; `check_design_anchors.sh` rc=0
+- The tool's pytest suite was not rerun (only the docstring and the pyproject description changed). The full pre-commit pass is left to the host.
