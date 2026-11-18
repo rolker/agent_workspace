@@ -12,7 +12,7 @@ import sys
 import pytest
 import yaml
 
-from helpers import dead_pid, make_remote, repo, run, temporaries, write_manifest
+from helpers import dead_pid, make_remote, repo, run, snapshot, temporaries, write_manifest
 import repos_manifest
 from repos_manifest import init, sync
 from repos_manifest.signals import Stopped
@@ -178,3 +178,31 @@ def test_a_killed_run_loses_at_most_the_repo_in_progress(manifest, tmp_path):
     assert run(system, "sync") == 0
     state = yaml.safe_load((system / ".repos-manifest/state.yaml").read_text())
     assert set(state["distros"]["jazzy"]["repos"]) == {"a", "b", "c"}
+
+
+@pytest.mark.parametrize("what", ["another file", "a subdirectory", "a file of that name"])
+def test_inits_sweep_leaves_what_it_did_not_make_and_says_so(manifest, tmp_path, capsys, what):
+    system = _system(tmp_path)
+    leftover = system / f".repos-manifest-tmp-{dead_pid()}-abcd_123"
+    if what == "a file of that name":
+        leftover.write_text("a person's file\n")
+    else:
+        leftover.mkdir()
+        (leftover / "config.yaml").write_text("manifest: x\n")
+        if what == "another file":
+            (leftover / "notes.txt").write_text("a person's notes\n")
+        else:
+            (leftover / "work").mkdir()
+    before = snapshot(leftover) if leftover.is_dir() else leftover.read_text()
+    assert run(system, *INIT) == 0
+    assert (snapshot(leftover) if leftover.is_dir() else leftover.read_text()) == before
+    err = capsys.readouterr().err
+    assert f"WARNING: {leftover}: named like a temporary of repos-manifest, but" in err, err
+
+
+def test_inits_sweep_removes_an_empty_aside(manifest, tmp_path):
+    system = _system(tmp_path)
+    leftover = system / f".repos-manifest-tmp-{dead_pid()}-abcd_123"
+    leftover.mkdir()
+    assert run(system, *INIT) == 0
+    assert not leftover.exists()

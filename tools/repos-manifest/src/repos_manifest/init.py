@@ -16,16 +16,17 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import selection
-from .output import signals_held
+from .output import process_has_ended, signals_held
 from .selection import Resolved
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
-from .sync import FINISH, require_tools, sync_distros, sweep_temporaries
+from .sync import FINISH, require_tools, sync_distros
 from .yamlload import ManifestError
 from .system import (
     CONFIG_FILE,
     LAYOUT_DISTRO_DIRS,
     LAYOUT_FLAT,
     SYSTEM_DIR,
+    TEMP_NAME,
     TEMP_PREFIX,
     Config,
     Refusal,
@@ -36,7 +37,9 @@ from .system import (
     paths_init_creates,
     read_config,
     read_manifest,
+    oserror_message,
     reporting_oserror,
+    warn,
 )
 
 FLAT_LAYOUT_LINE = (
@@ -122,10 +125,35 @@ def ask(question: str) -> bool:
     return reply.strip().lower() in ("y", "yes")
 
 
+def sweep_asides(system: Path) -> None:
+    """Remove what an ended `init` left in the person's directory: a directory of the aside's
+    name, not a link, whose process has ended, that is empty or holds only `config.yaml`.
+    Anything else of that name is left, and named in a warning."""
+    for entry in system.iterdir():
+        match = TEMP_NAME.fullmatch(entry.name)
+        if match is None or entry.is_symlink():
+            continue
+        if not process_has_ended(int(match.group("pid"))):
+            continue
+        config = entry / CONFIG_FILE
+        ours = entry.is_dir() and all(child == config for child in entry.iterdir())
+        if not ours or config.is_symlink() or (os.path.lexists(config) and not config.is_file()):
+            warn(
+                f"{entry}: named like a temporary of repos-manifest, but not what init leaves;"
+                " left as it is"
+            )
+            continue
+        try:
+            config.unlink(missing_ok=True)
+            entry.rmdir()
+        except OSError as exc:
+            warn(f"{oserror_message(exc)}; a temporary of this tool, left for the next init")
+
+
 def make_system_dir(system: Path, config: Config, on_made: Callable[[], None]) -> None:
     """`.repos-manifest/` with its `config.yaml`, in one rename from a directory made aside.
     `on_made` is called right after the rename, before a stop signal held over it arrives."""
-    sweep_temporaries(system)
+    sweep_asides(system)
     aside = Path(tempfile.mkdtemp(prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system))
     try:
         (aside / CONFIG_FILE).write_text(config_text(config), encoding="utf-8")
