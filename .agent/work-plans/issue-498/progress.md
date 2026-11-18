@@ -1113,3 +1113,31 @@ Hand run on a diamond (c; a and b build on c; m builds on [a, b]), head comment 
 ```
 
 Not built, in scope: none. Out of scope by the Checkpoint: the http(s) and git readers (2b). Not done from the plan: the `project11_split` fixture test (the plan's part 2 list; the 2a Checkpoint does not name it); a separate commit for the `validate` line (it went in with the reading commit, tested in the next).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 16:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `8a40db04`
+**Base**: origin/main
+**Depth**: Standard (reason: about 1150 lines over 14 files in one tool; no enforcement or governance file; Deep triggers absent)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Scope: part 2a of #498 (base read from local paths), against spec.md and the 16:21 Checkpoint. Specialists: lead (static analysis not run: black and flake8 are not installed here, the commit hooks ran them per the Implementation entry; governance; plan drift; hand probes on manifests in the session scratchpad, compared with origin/main's source), Claude adversarial subagent (complete), cross-model gemini and codex (both complete, EXIT=0). Suites: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` 815 passed (Python 3.14); `bash .agent/scripts/tests/test_ros2_colcon.sh` `=== Results: 1014 passed, 0 failed, 0 skipped ===`; `tests/test_documents.py` 11 passed. Part 1 tests: only the two import lines changed. Old reader (schema.py, extends.py, merge.py) and the adapter untouched. All new files parse with the Python 3.10 grammar.
+
+Held by hand: a diamond with key-by-key merge, `distros: {}`, `absent: false`, `optional: false`, a role replaced, groups and layers appended keeping place, top-level `distros:` replaced, a repo moved to another layer, A's change in C kept past B, and selection for two distros with `--with` all match a hand calculation; reading order C, A, B, leaf; one file by `sub/../`, `./`, a symlink and an absolute path read once; relative paths from the real directory; self and three-step cycles name the chain; cap exact at 64 deep and wide; `C:foo`, `a:b/c.yaml`, `host:path`, `file:///x`, `https://` and the mapping refused with the path-only message, `./a:b.yaml` and `a/b:c.yaml` read as paths; missing, directory and unreadable parents name the manifest and `base` entry that named them; part 1 checks (bad url, U+200B, `type: hg`, format 2) apply to parents; combined checks (layer case, group declared by a parent, key inside another, repo `distros:` with no list anywhere, misspelt key) name the manifest that gave the value.
+
+### Findings
+- [ ] (must-fix) A new repo is checked for `type` and `url` on the final merge, not where its key first appears: `mid.yaml` adds `n: {url: ...}`, the leaf adds `type: git`, and the chain is `valid` (a parent invalid on its own passes once something builds on it). Check completeness on the keys known at first appearance; make spec.md say one rule (its "Only the first manifest in a chain, one with no `base`, has to be complete" is false for `base: [full, overlay]` where a base-less overlay gives a partial entry, and the combination paragraph lists `type`/`url` as judged on the combination) (lead, adversarial, gemini, codex) — `tools/repos-manifest/src/repos_manifest/combine.py:154,195-207`, `tools/repos-manifest/docs/spec.md:390-401`
+- [ ] (must-fix) The earlier-format refusal runs after `distros`/`layers`/`groups`/`roles` are checked, so the old project11 fixture as a parent fails with "roles.dev: must be a list ... got a mapping" instead of "is in the earlier format" (the very case Plan Review finding 3 named); move the check to the start of `part()` (gemini, confirmed by lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:419`
+- [ ] (must-fix) `repos[self.repo_key(key)] = self.repo(key, entry)` evaluates the entry before the key, so for a manifest with no `base`, `repositories: {../x: 5}` now reports "must be a mapping" where main reported "a repo key has no '..' part"; check the key first (gemini, confirmed against main by lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:438`
+- [ ] (suggestion) A parent is labelled by its real path in `# base:` and `validate` (reading 3); plan step 5 had the path as joined. Output then differs between machines and directories; no test or adapter code compares it today, but in part 3 a leaf fetched into the adapter's temporary directory would put that directory in `# base:` lines that `_rc_relabel_provenance` does not rewrite. Decide the label in part 3's plan, not here (lead, gemini) — `tools/repos-manifest/src/repos_manifest/base.py:78`
+- [ ] (suggestion) The rule "a `:` before the first `/`" is written twice (url check and `base_locations`); one helper would state it once (lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:283,473`
+- [ ] (suggestion) Reading 7: for a manifest with no `base` and one per-file and one combined fault, the first error differs from main (`layers: [Core, core]` plus `ext::` url; `{type: svn}` with no url); still refused, each message unchanged. Not worth changing; say it in the pull request (lead, adversarial) — `tools/repos-manifest/src/repos_manifest/combine.py:147-156`
+- [ ] (suggestion) `os.path.realpath` collapses `missing/../p.yaml` to `p.yaml`, which the OS would not open; not worth doing (codex) — `tools/repos-manifest/src/repos_manifest/base.py:64`
+- [ ] (suggestion) `validate` prints `base:` lines without the unsafe-character guard `head_comment` applies; only a parent path with a control character reaches it; not worth doing (codex) — `tools/repos-manifest/src/repos_manifest/cli.py:138`
+
+Dropped: the http(s)/git readers and the 1 MiB limit missing (codex 1-2, gemini 6-7: out of 2a by the 16:21 Checkpoint); relative path from the real directory (codex 4, gemini 5 first half: Checkpoint finding 8); newline injection into the head comment (gemini 4: the existing guard refuses it).
