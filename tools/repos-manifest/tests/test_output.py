@@ -197,6 +197,23 @@ def test_an_out_that_is_a_link_is_refused(manifest, tmp_path, capsys):
     assert _names(tmp_path / "real") == []
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+def test_an_existing_out_that_cannot_be_read_is_one_line(manifest, tmp_path, capsys):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "mine.txt").write_text("keep me")
+    out.chmod(0)
+    try:
+        assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    finally:
+        out.chmod(0o755)
+    assert capsys.readouterr().err == (
+        f"ERROR: --out {out}: cannot be checked (Permission denied)\n"
+    )
+    assert _names(out) == ["mine.txt"]
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 def test_an_out_that_cannot_be_created_is_one_line(manifest, tmp_path, capsys):
     (tmp_path / "a-file").write_text("")
     out = tmp_path / "a-file" / "out"

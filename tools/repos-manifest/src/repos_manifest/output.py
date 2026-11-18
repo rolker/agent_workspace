@@ -179,16 +179,21 @@ def write_output(
             f"--out {out}: is named like the tool's temporary directories, which a later run"
             " may remove; give it another name"
         )
-    if out_abs.is_symlink():
-        raise ManifestError(f"--out {out}: is a symbolic link; give the directory itself")
-    exists = out_abs.exists()
-    if exists and not out_abs.is_dir():
-        raise ManifestError(f"--out {out}: exists and is not a directory")
-    if exists and not _is_ours_or_empty(out_abs):
+    try:
+        if out_abs.is_symlink():
+            raise ManifestError(f"--out {out}: is a symbolic link; give the directory itself")
+        exists = out_abs.exists()
+        if exists and not out_abs.is_dir():
+            raise ManifestError(f"--out {out}: exists and is not a directory")
+        if exists and not _is_ours_or_empty(out_abs):
+            raise ManifestError(
+                f"--out {out}: exists, is not empty and was not written by repos-manifest; it is"
+                " left as it is"
+            )
+    except OSError as exc:
         raise ManifestError(
-            f"--out {out}: exists, is not empty and was not written by repos-manifest; it is left"
-            " as it is"
-        )
+            f"--out {out}: cannot be checked ({exc.strerror or 'an OS error'})"
+        ) from None
     try:
         try:
             parent.mkdir(parents=True, exist_ok=True)
