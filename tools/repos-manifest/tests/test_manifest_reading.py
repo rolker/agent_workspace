@@ -172,6 +172,13 @@ def test_an_unknown_repo_key_is_warned_about():
     ]
 
 
+def test_an_unknown_key_in_a_distro_entry_is_warned_about():
+    extra = "    distros:\n      jazzy:\n        version: j\n        colour: blue\n"
+    m = _m(_one_repo(extra, top="distros: [jazzy]\n"))
+    assert m.warnings == ["m.yaml: repositories.a.distros.jazzy: unknown key 'colour' is ignored"]
+    assert m.repositories["a"].distros["jazzy"].version == "j"
+
+
 def test_an_empty_distro_entry_is_an_entry():
     m = _m(_one_repo("    absent: true\n    distros:\n      jazzy:\n", top="distros: [jazzy]\n"))
     entry = m.repositories["a"].distros["jazzy"]
