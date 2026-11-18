@@ -562,6 +562,10 @@ into `.repos-manifest/resolved/`:
 
 Each file starts with a comment that says which manifest, role and distro it came from.
 
+In a system with a directory per distro, a distro's files go in
+`.repos-manifest/resolved/<distro>/`, and resolving one distro never touches another's; see
+"Where the resolved files and state go".
+
 ### sync
 
 For each distro it acts on:
