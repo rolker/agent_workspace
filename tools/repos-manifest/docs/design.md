@@ -149,7 +149,7 @@ my_system/
 
 `distros` in `config.yaml` maps each distro's name to its settings, with the same shape for
 one distro or several, so adding a distro adds an entry and changes nothing else. A flat
-system has one entry, or none. The only setting an entry may carry is `manifest_version`, the
+system has one entry, and the key is absent when the manifest has no distros. The only setting an entry may carry is `manifest_version`, the
 branch or tag that distro reads the manifest at, in place of the one `manifest` gives; it is
 what `add-distro --manifest-ref` records. A system on a manifest kept on a branch per distro
 looks like this; with one manifest for all, `rolling` is `{}` too:
