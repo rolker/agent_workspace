@@ -643,3 +643,32 @@ Each code fix has a test that failed before it (checked by running it against th
 - `bash .agent/scripts/check_design_anchors.sh`: exit 0
 - Hand check with local remotes: `fetch_from: x` in config.yaml gives "config.yaml: `fetch_from` is not read by this version; repair the file, ...", exit 1; an optional repo's place made a regular file gives "skipped src/b (optional): is there and is not a directory; left as it is", "optional, skipped (1): src/b", exit 0.
 - Hooks ran on every commit with `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 18:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-500 at `52656a19`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole-branch tier Deep, 4969 lines over 20 files)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Scope: the round 2 findings and `git diff b8e39507..HEAD`. Specialists: static (pre-commit on the fix round's files: black, flake8, design anchors and the rest passed), governance, plan drift, Claude adversarial. Cross-model: skipped (round-3 convergence check, per handoff).
+
+Suites: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` 1001 passed in 101.49s (vcs: /usr/bin/vcs, vcstool 0.3.0; Python 3.14, no 3.10 interpreter here; a grep of the fix diff found no 3.11+ feature); `bash .agent/scripts/tests/test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped. `git diff origin/main...HEAD -- .github` empty. No new test patches an os function reached through pathlib. Edits to earlier tests weaken nothing: they follow the renamed `place_problem`, the new advice text, and complete state fixtures (commit now required); resolve/validate/output/cli tests untouched.
+
+Round 2 must-fix: 1 (shape checks) fixed; 2 (Refusals table note) fixed; 3 (one optional rule) fixed.
+
+Hand runs with local remotes (the tool's entry point `cli.run`): init, then sync twice, exit 0 and no refusal of the tool's own files in every layout: flat with a distro, flat with no distro, distro-dirs with one and with two distros, role plus `--with`, a role with no extra groups, a manifest with `base`. `groups` is written only with `--with`. 30 hand-made config.yaml/state.yaml variants: each wrong one refused naming the file and key (fetch_from, local_manifest, remotes, git-form and URL manifest, missing keys, null role, distro settings, format 2/true/"1", extra keys, null commit, int version); version null and an unknown distro in state accepted. Obstacles (optional / required): nonexistent url, link on the way, file at the place, file where a parent directory belongs, empty remote: optional skipped with the reason, exit 0; required ERROR, exit 1; the other new repo cloned; the obstacle unchanged; no temporary left. Read-only src/: the optional skipped, required failed (the beside repo fails too, same src/). setup.bash: an existing file, link, dangling link, directory never replaced; read-only distro directory and a file where the distro directory belongs: ERROR after that distro's report, the other distro goes on, exit 1, as design.md says. Ctrl-C (SIGINT) with a FIFO manifest (init and sync), at init's prompt on a pseudo-terminal, during a clone (init and sync): one line, no traceback, process ended by SIGINT; "nothing was created/changed" before any change, "run sync to finish" after; no temporary left; the next sync finishes, exit 0. Messages: moved system, manifest a directory, missing `base`, sync inside resolved/, removed cwd, broken config.yaml: each true and actionable.
+
+### Findings
+- [ ] (must-fix) A clone whose HEAD cannot be read (an empty remote, no commits yet) is FAILED with fetch=False, so `closing` says "another sync will not change that: the ERROR lines above say what is in the way"; nothing is in the way and a later sync after a push clones it. Mark it fetch=True (or give it its own advice) and match design.md:639 (Claude adversarial; confirmed by run) — `tools/repos-manifest/src/repos_manifest/sync.py:241`
+- [ ] (suggestion) `SETUP_TEXT` says "# Written by repos-manifest init" though sync now writes a missing setup.bash too (Claude adversarial; confirmed by run) — `tools/repos-manifest/src/repos_manifest/system.py:44`
+- [ ] (suggestion) create_setup: a write failure (ENOSPC, EIO) or a stop signal between the exclusive open and the write leaves an empty or partial setup.bash, which later syncs leave as it is and which sources with 0; unlink what this call created on failure and hold the signals over open and write (Claude adversarial, read) — `tools/repos-manifest/src/repos_manifest/sync.py:313`
+- [ ] (suggestion) A failed rename names the temporary, removed by the time it is read ("…/.repos-manifest-tmp-…/zz -> …/core/src/zz: Permission denied"); now also on the optional "skipped" line. Pre-existing and tested, so outside round-3 scope; `place: reason` would do — `tools/repos-manifest/src/repos_manifest/sync.py:177`
+- [ ] (suggestion) setup.bash failure repeats its path: "jazzy/setup.bash: cannot be created: jazzy/setup.bash: Permission denied" — `tools/repos-manifest/src/repos_manifest/sync.py:319`
+- [ ] (suggestion) design.md config.yaml table: the `manifest` row's "A distro with its own `manifest_version` reads it at that version" and the `distros` row's "each with its settings" carry no "Not read in this part" mark, though a distro setting is refused; the optional-rule list at design.md:675 omits "a file where a directory on its path belongs" — `tools/repos-manifest/docs/design.md:79`
+- [ ] (suggestion) Not worth doing, noted: mkdtemp failing or vcs/git vanishing mid-run ends the whole run, outside the optional rule; a recorded `manifest` containing `://` whose file was removed is reported as a URL (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:227`
