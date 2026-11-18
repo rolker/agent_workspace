@@ -311,8 +311,12 @@ next `resolve` to the same place removes the hidden directories beside it that a
 has ended made, when they hold the marker or are empty; a run still going keeps its own, and an
 output named like them is refused. A run killed between the two moves leaves no output and the
 previous one aside (`.<name>.old-<pid>-<random>`, marked): the next `resolve` moves it back
-into place before it does anything else. Two runs writing to the same place at once are not
-supported.
+into place before it does anything else.
+
+Two runs writing to the same output at once are not supported. Each still leaves a whole
+output, the one or the other, but one of them may fail with a message about the directory
+that does not say another run was the cause. `resolve` takes no lock; a lock on the system
+directory belongs with `init` and `sync` (issue 500).
 
 `resolve` makes the checks of "Reading a manifest before using it" in the specification that
 can be made on the text. The check on the real destination, that a link on the disk or two
