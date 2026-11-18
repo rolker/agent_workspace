@@ -207,7 +207,8 @@ Which route an instance is on is decided in this order, until the older routes a
 3. Otherwise: the bootstrap route.
 
 The test is the tool answering, not the `.repos-manifest/` folder being there, because an
-`init` that was interrupted can leave the folder without a complete record. The tool's
+`init` that was interrupted can leave the folder without a complete record. A `status` that
+reports a missing repo has answered: the instance is on the tool, and `validate` fails. The tool's
 design has `init` record what it was given and then sync, so a first sync that fails part
 way is finished with `sync`. A directory whose record is not complete is set up by running
 registration again.
