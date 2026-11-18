@@ -747,3 +747,30 @@ Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-ma
 **Decision**: publish
 
 The full pass (every hook, no SKIP, over the files the branch changes) passed on e06bebd6. Published as part 1: the pull request says "Part of #500" and does not close the issue. Part 2 (sync against clones that exist) remains, with three questions held for the owner at its plan checkpoint.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 18:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #512 at `5d7a913`
+**Sources**: 2 (Local Review (Pre-Push) round 4 @ `32da65b5`, covering `5d7a913` through bookkeeping-only commits; CI rollup at `5d7a913`). No hosted reviews: 0 reviews, 0 inline comments, 0 conversation comments on the pull request when checked at 18:52.
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+CI, both runs (push 44422615292 and pull_request 44422618459), every job pass: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests (Python 3.10), repos-manifest tests (Python 3.14). This is the first run of the code on Python 3.10 and with vcs2l:
+- Python 3.10.22: pytest header `vcs: /opt/hostedtoolcache/Python/3.10.22/x64/bin/vcs (vcs 1.1.7)`, vcs2l 1.1.7 installed from the test extra; `1003 passed` in both runs, no skipped, no failed.
+- Python 3.14.10: header `vcs: /opt/hostedtoolcache/Python/3.14.10/x64/bin/vcs (vcs 1.1.7)`; `1003 passed` in both runs, no skipped, no failed.
+- 1003 is the local count (Python 3.14.4, vcstool 0.3.0), so every clone test and the RLIMIT_FSIZE test ran under vcs2l on both versions; none fell back to a skip.
+
+Timeline: `review_progress.sh sources` at this head found no open local finding and no dropped entry. Every finding of pre-push rounds 1 to 3 is ticked, closed by the fix rounds or, for the "not worth doing" notes (round 2 item 11, round 3 item 6), by the review's own reason and the host's Checkpoint. Round 4's only box is its "No issues found" line, not a finding. The open boxes in the Issue Review and both Plan Reviews were ruled by the Checkpoints after them. The pull request's host decisions are for the owner's veto and are not findings.
+
+Cross-model: the outside models (gemini, codex) last read this branch at round 2 (`03171755`). Since then two fix rounds changed code that decides what is created or removed on a person's disk: `create_setup` now unlinks a setup.bash it created when the write fails, `place_problem` replaced the destination check, and the optional-repo rule moved to one decision point; rounds 3 and 4 were Claude-only narrow checks. A narrow cross-model pass over `git diff 03171755..5d7a913 -- tools/repos-manifest/src` before merge is recommended; it is the owner's call, not an open finding.
+
+Open before the merge decision: no findings. The one thing outstanding is the optional cross-model pass above.
+
+### Findings
+None open.
+
+### False positives
+None (no hosted comments).
