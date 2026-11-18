@@ -114,7 +114,7 @@ later sets up with `--distro-dirs` from the start.
 
 A manifest with no `distros:` always gives a flat system, and has no distro to add.
 
-The smallest system, one repo on one distro with no layers and no roles, set up flat. The
+The smallest system is one repo on one distro with no layers and no roles, set up flat. The
 tools do little more here than `vcs` and `colcon`:
 
 ```

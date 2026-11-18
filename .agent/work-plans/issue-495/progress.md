@@ -367,4 +367,4 @@ Writer's readings: `resolve` left unedited is not enough (must-fix 7); no third 
 - [x] (suggestion) "holds one distro" / "holds a single distro" should read "one distro, or none" — `tools/repos-manifest/docs/design.md:445`, `tools/repos-manifest/README.md:54`
 - [x] (suggestion) The `setup` row sends the new distro's version to "Not decided", whose item names only how a session says its distro; add the version there — `docs/manifest/design.md:192,331`
 - [x] (suggestion) How `init` decides the manifest's repo "is one the manifest lists" (URL match across ssh and https forms) and which distro's path it records when the repo is absent on one distro — `tools/repos-manifest/docs/design.md:420-422`
-- [ ] (suggestion) Style: "The smallest system, one repo on one distro with no layers and no roles, set up flat." is not a sentence — `tools/repos-manifest/docs/design.md:117`
+- [x] (suggestion) Style: "The smallest system, one repo on one distro with no layers and no roles, set up flat." is not a sentence — `tools/repos-manifest/docs/design.md:117`
