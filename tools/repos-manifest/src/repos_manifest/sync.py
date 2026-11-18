@@ -38,7 +38,7 @@ from .system import (
     RepoRecord,
     distros_for,
     find_system,
-    is_in_place,
+    place_problem,
     layer_src_parts,
     oserror_message,
     put_distro_state,
@@ -220,8 +220,9 @@ def _put_in_place(
         if not place.is_dir():
             return RepoResult(shown, FAILED, "is there and is not a directory; left as it is")
         return RepoResult(shown, PRESENT)
-    if not is_in_place(system, parts):
-        return RepoResult(shown, FAILED, "a link on the way leads outside its place; not cloned")
+    problem = place_problem(system, parts)
+    if problem is not None:
+        return RepoResult(shown, FAILED, f"{problem}; not cloned")
     print(f"cloning {shown}", flush=True)
     temporary = Path(
         tempfile.mkdtemp(prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system / SYSTEM_DIR)
@@ -231,8 +232,9 @@ def _put_in_place(
         if status != 0:
             detail = f"vcs import exited {status}:\n{printed.rstrip()}"
             return RepoResult(shown, FAILED, detail, fetch=True)
-        if not is_in_place(system, parts):
-            return RepoResult(shown, FAILED, "a link on the way leads outside its place")
+        problem = place_problem(system, parts)
+        if problem is not None:
+            return RepoResult(shown, FAILED, problem)
         if os.path.lexists(place):
             return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
         commit = _head(temporary.joinpath(*key_parts), env)
@@ -303,8 +305,9 @@ def create_setup(system: Path, parts: Parts) -> Optional[str]:
     path = system.joinpath(*parts)
     if os.path.lexists(path):
         return None
-    if not is_in_place(system, parts):
-        return f"{path}: cannot be created: a link on the way leads outside its place"
+    problem = place_problem(system, parts)
+    if problem is not None:
+        return f"{path}: cannot be created: {problem}"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:

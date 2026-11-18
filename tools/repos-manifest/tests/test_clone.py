@@ -13,7 +13,7 @@ import yaml
 
 from helpers import dead_pid, head, make_remote, repo, run, snapshot, temporaries, write_manifest
 from repos_manifest.sync import rename_failure, sweep_temporaries
-from repos_manifest.system import is_in_place
+from repos_manifest.system import place_problem
 
 
 @pytest.fixture
@@ -163,12 +163,21 @@ def test_the_check_on_the_real_destination(tmp_path):
     system = tmp_path / "sys"
     (system / "src").mkdir(parents=True)
     (tmp_path / "out").mkdir()
-    assert is_in_place(system, ("src", "a"))
-    assert is_in_place(system, ("src", "grp", "sub", "a"))  # not made yet
+    link = "a link on the way leads outside its place"
+    assert place_problem(system, ("src", "a")) is None
+    assert place_problem(system, ("src", "grp", "sub", "a")) is None  # not made yet
     (system / "src" / "grp").symlink_to(tmp_path / "out")
-    assert not is_in_place(system, ("src", "grp", "a"))
+    assert place_problem(system, ("src", "grp", "a")) == link
     (system / "core").symlink_to(system / "src")  # a link that stays inside is refused too
-    assert not is_in_place(system, ("core", "src", "a"))
+    assert place_problem(system, ("core", "src", "a")) == link
+    (system / "src" / "file").write_text("x")  # a file where a directory belongs
+    assert place_problem(system, ("src", "file", "sub", "a")) == (
+        "src/file is on the way and is not a directory"
+    )
+    (system / "layer").write_text("x")
+    assert place_problem(system, ("layer", "src", "a")) == (
+        "layer is on the way and is not a directory"
+    )
 
 
 def _stub_vcs(tmp_path, monkeypatch, body):
@@ -328,3 +337,19 @@ def test_a_clone_whose_head_cannot_be_read_is_that_repos_failure(
     assert not os.path.lexists(system / "src" / "d")
     assert _recorded(system) == {"a"}
     assert temporaries(system) == []
+
+
+@pytest.mark.parametrize("where", ["src/grp", "core"])
+def test_a_file_where_a_directory_belongs_is_found_before_the_clone(
+    setup, tmp_path, monkeypatch, capsys, where
+):
+    system, add = setup
+    add("grp/c", layer="core" if where == "core" else None)
+    (system / where).write_text("a person's file\n")
+    _stub_vcs(tmp_path, monkeypatch, f'touch "{tmp_path}/cloned"; exit 1')
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert f": {where} is on the way and is not a directory; not cloned" in out
+    assert "cloning" not in out
+    assert not (tmp_path / "cloned").exists()

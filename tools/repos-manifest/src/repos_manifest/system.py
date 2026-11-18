@@ -281,13 +281,23 @@ def paths_init_creates(layout: str, distro: Optional[str], layers: Sequence[str]
     return list(dict.fromkeys(tops + [setup_parts(layout, distro)]))
 
 
-def is_in_place(system: Path, parts: Parts) -> bool:
-    """The check on the real destination: the directory that will hold `parts` is, with every
-    link resolved, the system directory's real path joined with the parts above it. A link on
-    the way, a layer directory or a directory of a repo's key, fails it."""
+def place_problem(system: Path, parts: Parts) -> Optional[str]:
+    """The check on the real destination, before a clone and again before its rename: why
+    `parts` cannot be put in place, or None. The directory that will hold it must be, with
+    every link resolved, the system directory's real path joined with the parts above it, so a
+    link on the way, a layer directory or a directory of a repo's key, fails it; and the
+    nearest of those directories that exists must be a directory, not a file."""
     target = system.joinpath(*parts)
     expected = os.path.join(os.path.realpath(system), *parts[:-1])
-    return os.path.realpath(target.parent) == expected
+    if os.path.realpath(target.parent) != expected:
+        return "a link on the way leads outside its place"
+    for depth in range(len(parts) - 1, 0, -1):
+        above = system.joinpath(*parts[:depth])
+        if os.path.lexists(above):
+            if not above.is_dir():
+                return f"{'/'.join(parts[:depth])} is on the way and is not a directory"
+            break
+    return None
 
 
 # --- Files in .repos-manifest/ --------------------------------------------------------------
