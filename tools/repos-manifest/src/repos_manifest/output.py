@@ -207,14 +207,37 @@ def _write_text(path: Path, text: str) -> None:
         handle.write(text)
 
 
+def _on_disk(out: Path) -> Path:
+    """`out` as the system finds it: the directory it is in resolved on the disk, so that a
+    link followed by '..' leads where the system takes it, and its last part kept as it is, so
+    that a link there is seen (and refused). A last part of '.' or '..' is resolved too."""
+    given = os.path.join(os.getcwd(), os.fspath(out)).rstrip(os.sep) or os.sep
+    head, tail = os.path.split(given)
+    if tail in ("", ".", ".."):
+        return Path(os.path.realpath(given))
+    return Path(os.path.realpath(head)) / tail
+
+
 def write_output(
     out: Path, files: Dict[str, str], on_replaced: Optional[Callable[[], None]] = None
 ) -> List[Path]:
-    """Write `files` as the whole content of `out`; returns the paths written. `on_replaced` is
-    called as soon as the new output is in place, before any held signal is delivered."""
-    out_abs = Path(os.path.abspath(out))
+    """Write `files` as the whole content of `out`; returns the paths written, as they are on
+    the disk. `on_replaced` is called as soon as the new output is in place, before any held
+    signal is delivered."""
+    try:
+        out_abs = _on_disk(out)
+        cwd = Path(os.path.realpath(os.getcwd()))
+    except OSError as exc:
+        raise ManifestError(
+            f"--out {out}: cannot be checked ({exc.strerror or 'an OS error'})"
+        ) from None
     if out_abs.parent == out_abs:
         raise ManifestError(f"--out {out}: cannot be the root directory")
+    if out_abs == cwd or out_abs in cwd.parents:
+        raise ManifestError(
+            f"--out {out}: is the current directory or one of its parents, which replacing it"
+            " would delete from under this shell; give a directory beside or below it"
+        )
     parent, name = out_abs.parent, out_abs.name
     if _TEMP_NAME.fullmatch(name):
         raise ManifestError(
@@ -282,4 +305,4 @@ def write_output(
             _remove_ours(new)
         if old is not None and old.exists():
             _remove_ours(old)
-    return [Path(out) / file_name for file_name in files]
+    return [out_abs / file_name for file_name in files]

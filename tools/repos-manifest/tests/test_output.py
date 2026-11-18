@@ -221,6 +221,33 @@ def test_an_out_that_cannot_be_created_is_one_line(manifest, tmp_path, capsys):
     assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
 
 
+@pytest.mark.parametrize("given,cwd", [(".", "out"), ("..", "out/sub"), ("../..", "out/a/b")])
+def test_the_current_directory_and_its_parents_are_refused(
+    given, cwd, manifest, tmp_path, capsys, monkeypatch
+):
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
+    (tmp_path / cwd).mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path / cwd)
+    capsys.readouterr()
+    assert _resolve(manifest, given, "--role", "dev", "--distro", "jazzy") == 1
+    assert "is the current directory or one of its parents" in capsys.readouterr().err
+    assert "# role: robot\n" in (out / "layers.txt").read_text()
+    assert (tmp_path / cwd).is_dir()
+
+
+def test_out_is_found_as_the_system_finds_it(manifest, tmp_path, capsys):
+    # link/../x is beside the link's target, not beside the link.
+    (tmp_path / "real" / "sub").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real" / "sub", target_is_directory=True)
+    given = tmp_path / "link" / ".." / "x"
+    assert _resolve(manifest, given, "--role", "robot", "--distro", "jazzy") == 0
+    assert (tmp_path / "real" / "x" / "layers.txt").is_file()
+    assert not (tmp_path / "x").exists()
+    printed = capsys.readouterr().out
+    assert f"wrote {tmp_path / 'real' / 'x' / 'layers.txt'}\n" in printed
+
+
 def _dead_pid():
     """The process id of a process that has ended."""
     child = subprocess.run(
