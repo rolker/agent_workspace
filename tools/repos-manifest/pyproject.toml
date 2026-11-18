@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
+    "vcs2l>=1.1.7",
 ]
 
 [project.scripts]
