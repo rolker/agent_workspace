@@ -381,6 +381,10 @@ This holds for every read, not only the first. A distro with a `manifest_version
 reads the location until its clone of the manifest's repo is in place, and its own clone from
 then on. A distro never reads another distro's local copy.
 
+That clone is the manifest's repo as the distro syncs it, at the version the manifest gives
+that repo on that distro. So with one manifest for all, where the manifest gives its own repo
+a branch per distro, each distro reads the copy on its own branch from its second sync on.
+
 A distro can have its own version of the manifest and nothing else of its own. The URL and
 the path in the repo are the same for every distro, and so is `local_manifest`; a distro whose
 manifest is at another URL or path is not supported. A manifest that is not in a git repo has
