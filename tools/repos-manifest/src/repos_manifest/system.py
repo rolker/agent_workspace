@@ -41,7 +41,7 @@ TEMP_PREFIX = ".repos-manifest-tmp-"
 TEMP_NAME = re.compile(re.escape(TEMP_PREFIX) + r"(?P<pid>[0-9]+)-[a-z0-9_]{8}")
 
 SETUP_TEXT = (
-    "# Written by repos-manifest init. Nothing is built here yet.\n"
+    "# Written by repos-manifest. Nothing is built here yet.\n"
     'echo "repos-manifest: nothing is built here yet" >&2\n'
     "return 1 2>/dev/null || exit 1\n"
 )

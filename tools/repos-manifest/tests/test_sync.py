@@ -256,7 +256,9 @@ def test_a_setup_bash_that_cannot_be_created_is_reported_and_the_other_distros_g
     jazzy, rolling = out.split("distro rolling:")
     assert f"ERROR: {system / 'jazzy' / 'setup.bash'}: cannot be created: " in jazzy
     assert jazzy.index("distro jazzy:") < jazzy.index("setup.bash: cannot be created")
-    assert (system / "rolling" / "setup.bash").read_text().startswith("# Written by")
+    # sync wrote it, so its first line names the tool, not `init`.
+    first = (system / "rolling" / "setup.bash").read_text().splitlines()[0]
+    assert first == "# Written by repos-manifest. Nothing is built here yet."
     assert (system / "jazzy").read_text() == "a person's file\n"
 
 
