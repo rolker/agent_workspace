@@ -196,7 +196,7 @@ with an empty entry for each distro) is the same error, naming the key and what 
 other key is named with the words that this version does not read it.
 
 Until `build` is built, `init` writes a `setup.bash` that says nothing is built yet and fails
-when sourced. It is created in one step only where no file is, so one made meanwhile is left
+when sourced, and `sync` writes it for a distro whose `setup.bash` is missing. It is created in one step only where no file is, so one made meanwhile is left
 as it is. One that cannot be created is reported for that distro, with its path and the
 reason, after that distro's report; the other distros go on, and the exit status is 1.
 
