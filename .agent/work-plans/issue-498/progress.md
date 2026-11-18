@@ -655,3 +655,26 @@ Round 3 (a convergence check) asked for two more fixes, so the limit of three ro
 Host decisions for this fix round (owner may veto):
 - The url rule stops following git's parser case by case. Three rounds each found another way to write an ssh address that git reads differently from the check. The owner's stated balance is that a manifest is read like a snippet of code from the internet and that unlikely corner cases should not take much time, so the rule becomes simple and structural: in an ssh:// url and in the scp form, a % is refused anywhere, and [ and ] are allowed only around the host at the start of the address. A path with % or brackets in an ssh address is refused; https and file urls keep % in the path. Undoing it: decode and search as git does.
 - Ctrl-C on resolve ends the process by the signal again, after the message, so a shell loop stops.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 14:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `3c2d0775`
+**Addressed**: Local Review (Pre-Push) at `304fded6` (2026-11-18 14:33 -05:00)
+**Commits**: 7f790c23, 8d54346c, 0a188846, 3c2d0775
+
+Third fix round, per the Checkpoint of 2026-11-18 14:34: the url rule for ssh addresses is now structural rather than following git's parser case by case. Each code fix has a test that fails on the code before it (run against a copy of the previous source: 20 url cases, the SIGINT exit, the three output cases).
+
+Check with git 2.53 itself (GIT_SSH set to a script that logs its arguments, GIT_SSH_VARIANT=ssh, `git ls-remote <url>`), 20 urls: the review's three encoded urls, `ssh://x/@[-oProxyCommand=y]/p`, `h:p@[-oProxyCommand=y]:q`, `ssh://h?x@-oProxyCommand=y/p`, `ssh://h:%2d1/p`, `ssh://[h]:-p/p` and `git@-oProxyCommand=x:a` are refused by the tool (git hands ssh hosts such as `host/x@-oProxyCommand=y` and `h:-1` for them); `ssh://git@host:2222/owner/repo.git`, `git@github.com:owner/repo.git`, `host:path`, `ssh://user@[::1]/repo`, `[::1]:repo`, `user@[::1]:repo`, `ssh://user@[::1]:22/p`, `ssh://git@example.org/a?b@-c#d.git`, `ssh://git@example.org/a@-b.git`, `ssh://a@b@[h]:22/p` and `[git@h:22]:a.git` are accepted, and for none of them does ssh get an argument starting with `-` other than git's own `-o SendEnv=GIT_PROTOCOL` and `-p <port>` (ports 2222 and 22).
+
+Suites on Python 3.14.4: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest tools/repos-manifest/tests` gives `695 passed in 11.76s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` gives `=== Results: 1014 passed, 0 failed, 0 skipped ===`. Changed .py files parse with the 3.10 grammar; Python 3.10 itself not run. Commits used `SKIP=validate-script-tests` (dispatched pass, #465); black, flake8 and pylint ran on each commit (black reformatted the first, then passed). The full pre-commit pass is left to the host. Nothing under .github/ changed.
+
+### Actions
+- [x] (must-fix) An ssh address (`ssh://` url or the scp form) now holds no `%` anywhere, and `[`/`]` only as one pair around the host at its start (after an optional `user@`); anything else is refused. The `@[`-anywhere search and the unclosed-bracket case are gone; https, http and file urls keep `%`, `[`, `]` in the path; spec.md states the rule and its reason; the review's three urls and earlier rounds' urls are tested refused, the ordinary forms accepted — `tools/repos-manifest/src/repos_manifest/manifest.py:218`, `tools/repos-manifest/docs/spec.md:446`
+- [x] (must-fix) The command's entry point `run()` (console script, now `repos_manifest.cli:run` in pyproject.toml, and `python -m`) ends the process by the signal after the message and cleanup: SIG_DFL then raise_signal, for SIGINT, SIGTERM and SIGHUP; `main()` still returns 128 + the signal for in-process callers. Test: the return code of a subprocess is `-signum` for all three (SIGINT was 130 before); design.md says so — `tools/repos-manifest/src/repos_manifest/cli.py:280`
+- [x] (suggestion) The kept mode is applied after the files are written, so a 0555 `--out` is replaced and keeps 0555; a directory is made writable before it is removed, and a failed removal of the previous copy is reported as a WARNING on stderr — `tools/repos-manifest/src/repos_manifest/output.py:142`
+- [x] (suggestion) Covered by must-fix 1's rule: a bracket outside the host position is refused in an ssh address (`ssh://h/p@[x`, `git@h:p@[x`), and in https and file urls a `[` in the path is no longer read as a bracketed host (`https://h/x@[y` accepted) — `tools/repos-manifest/src/repos_manifest/manifest.py:48`
+- [x] (suggestion) After a good swap the previous copy is renamed to a `.new-` name, which a later run sweeps but never puts back, before it is removed; test: a cut-short removal, `--out` deleted, a failing run leaves no output — `tools/repos-manifest/src/repos_manifest/output.py:162`
+- [x] (suggestion) design.md says "The new output keeps the mode of the one it replaces" — `tools/repos-manifest/docs/design.md:302`
