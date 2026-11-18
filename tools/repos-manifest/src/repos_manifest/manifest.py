@@ -1,12 +1,16 @@
-"""Reading and checking one manifest in the format of ``docs/spec.md``.
+"""Reading and checking each manifest of the format of ``docs/spec.md`` on its own.
 
-This reads a manifest that stands on its own: one with a `base` is refused for now. It checks
-everything "Reading a manifest before using it" in the specification says can be checked on
-the text: the file is loaded as data, repo keys are relative paths with no `..` or `.git` part
-and none inside another, names are single words, no layer has a reserved name, no `url`,
-`version` or location `path` starts with `-`, a `url` uses a transport that only fetches, and
-the file has no invisible or direction-changing character. The check on the real destination
-(links, names the disk treats as the same) belongs to the commands that write there.
+Each manifest is read as a `Part` that keeps only the keys it gives, so that a later manifest
+can be merged over an earlier one key by key (``combine.py``); ``base.py`` reads a manifest and
+the manifests it builds on. Here is everything "Reading a manifest before using it" in the
+specification says can be checked on the text of one file: the file is loaded as data, repo
+keys are relative paths with no `..` or `.git` part, names are single words, no layer has a
+reserved name, no `url` or `version` starts with `-`, a `url` uses a transport that only
+fetches, and the file has no invisible or direction-changing character. The checks that read
+the combination of a chain (a repo is complete, its layer and groups are declared, no repo key
+is inside another, no two layer names differ only in case) are in ``combine.py``. The check on
+the real destination (links, names the disk treats as the same) belongs to the commands that
+write there.
 
 An error message may print a value from the manifest.
 """
@@ -25,6 +29,13 @@ FORMAT = 1
 _TOP_LEVEL_KEYS = ("format", "base", "distros", "layers", "groups", "roles", "repositories")
 _REPO_KEYS = ("type", "url", "version", "absent", "layer", "groups", "distros", "optional")
 _DISTRO_ENTRY_KEYS = ("version", "absent")
+# Top-level keys of the earlier format that this one does not have.
+_EARLIER_FORMAT_KEYS = ("repos", "extends", "optional_layers", "packages")
+
+_BASE_PATH_ONLY = (
+    "this version of the tool reads a location in `base` given as a path only, not yet an"
+    " http or https URL or a file in a git repo"
+)
 
 # The name of a layer, a distro, a group or a role: a single word.
 _NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
@@ -91,17 +102,35 @@ class Manifest:
     roles: Optional[Dict[str, List[str]]]  # None: no `roles:`, one unnamed role
     repositories: Dict[str, Repo]  # in manifest order
     warnings: List[str] = field(default_factory=list)
+    bases: List[str] = field(default_factory=list)  # the manifests it builds on, in reading order
+
+
+@dataclass
+class Part:
+    """One manifest as read, checked on its own, with only the keys it gives. A repo entry is
+    the mapping of the keys it gives to their checked values (`distros` to a mapping of
+    `DistroEntry`)."""
+
+    source: str  # how the manifest is named in messages
+    format: int
+    base: List[Tuple[str, str]]  # (where in the manifest, the path as written)
+    distros: Optional[List[str]]  # None: not given
+    layers: List[str]
+    groups: List[str]
+    roles: Optional[Dict[str, List[str]]]  # None: not given
+    repos: Dict[str, Dict[str, object]]  # in manifest order
+    warnings: List[str] = field(default_factory=list)
 
 
 def has_repositories_key(path: Path) -> bool:
     """True if the file reads, parses as YAML and is a mapping with a top-level `repositories:`
-    key: a manifest in this format. Anything else, a file that does not read or parse
-    included, is for the earlier reader."""
+    or `base:` key: a manifest in this format (one that builds on others may give no repos).
+    Anything else, a file that does not read or parse included, is for the earlier reader."""
     try:
         data = _load_yaml(Path(path).read_text(encoding="utf-8"), str(path))
     except (ManifestError, OSError, UnicodeDecodeError, ValueError):
         return False
-    return isinstance(data, dict) and "repositories" in data
+    return isinstance(data, dict) and ("repositories" in data or "base" in data)
 
 
 def read_problem(path: Path, source: Optional[str] = None) -> Optional[str]:
@@ -129,15 +158,8 @@ def _read_text(path: Path, label: str) -> str:
         raise ManifestError(f"{label}: cannot be read ({exc.strerror or 'an OS error'})") from None
 
 
-def load_manifest(path: Path, source: Optional[str] = None) -> Manifest:
-    """Read and check the manifest at `path`. `source` names it in messages (default: the path
-    as given)."""
-    label = source if source is not None else str(path)
-    return parse_manifest(_read_text(Path(path), label), label)
-
-
-def parse_manifest(text: str, source: str) -> Manifest:
-    """Check one manifest's text and return it as a `Manifest`."""
+def parse_part(text: str, source: str) -> Part:
+    """Check one manifest's text on its own and return it as a `Part`."""
     bad = first_unsafe_in_text(text)
     if bad:
         line, column, code = bad
@@ -150,7 +172,7 @@ def parse_manifest(text: str, source: str) -> Manifest:
     if not isinstance(raw, dict):
         raise ManifestError(f"{source}: a manifest is a mapping of keys at the top level")
     _refuse_unsafe_chars(raw, source, "")
-    return _Checker(source).manifest(raw)
+    return _Checker(source).part(raw)
 
 
 def _type_name(value) -> str:
@@ -336,9 +358,11 @@ class _Checker:
             if value.startswith("-"):
                 raise self.error(where, f"{url!r}: the {part} starts with '-'")
 
-    # --- the manifest ---------------------------------------------------------------------
+    # --- one manifest, as read -------------------------------------------------------------
 
-    def manifest(self, raw: dict) -> Manifest:
+    def part(self, raw: dict) -> Part:
+        """Check everything that can be checked on this manifest alone, and keep only the keys
+        it gives. The checks that read the combination of a chain are in ``combine.py``."""
         for key in raw:
             if key not in _TOP_LEVEL_KEYS:
                 self.warn(f"unknown top-level key {key!r} is ignored")
@@ -351,8 +375,7 @@ class _Checker:
                 "format", f"is {fmt}; this tool reads format {FORMAT} and earlier versions"
             )
 
-        if "base" in raw:
-            raise self.error("base", "this version of the tool cannot read `base` yet")
+        base = self.base_locations(raw["base"]) if "base" in raw else []
 
         distros = None
         if "distros" in raw:
@@ -361,9 +384,6 @@ class _Checker:
                 raise self.error("distros", "is empty; leave it out for a manifest with no distros")
 
         layers = self.names(raw.get("layers", []), "layer", "layers")
-        # Layer names are file and directory names, and some disks treat names that differ
-        # only in case as one; so they are compared without case here.
-        by_case: Dict[str, str] = {}
         for layer in layers:
             if layer.lower() in RESERVED_LAYERS:
                 raise self.error(
@@ -371,13 +391,6 @@ class _Checker:
                     f"a layer cannot be named {layer!r}; {', '.join(RESERVED_LAYERS)} are the"
                     " directories of the unnamed layer, in any case",
                 )
-            if layer.lower() in by_case:
-                raise self.error(
-                    "layers",
-                    f"layers {by_case[layer.lower()]!r} and {layer!r} differ only in case; some"
-                    " disks treat them as one",
-                )
-            by_case[layer.lower()] = layer
 
         groups = self.names(raw.get("groups", []), "group", "groups")
 
@@ -400,39 +413,67 @@ class _Checker:
                         f"must be a list of the groups it switches on ([] for none), got"
                         f" {_type_name(role_groups)}",
                     )
-                roles[role] = self.declared_groups(role_groups, groups, where)
+                roles[role] = self.names(role_groups, "group", where)
 
+        repos: Dict[str, Dict[str, object]] = {}
         if "repositories" not in raw:
-            raise self.error("", "has no `repositories:`")
-        repos_raw = raw["repositories"]
-        if not isinstance(repos_raw, dict):
-            raise self.error(
-                "repositories", f"must be a mapping of repos, got {_type_name(repos_raw)}"
-            )
-        repositories: Dict[str, Repo] = {}
-        for key, entry in repos_raw.items():
-            repositories[key] = self.repo(key, entry, distros, layers, groups)
-        self.no_key_inside_another(list(repositories))
+            old = [key for key in _EARLIER_FORMAT_KEYS if key in raw]
+            if old:
+                raise self.error(
+                    "",
+                    f"is in the earlier format (it has {', '.join(f'`{k}:`' for k in old)} and no"
+                    " `repositories:`); this tool reads it only in the format of the"
+                    " specification",
+                )
+            if not base:
+                # The first manifest of a chain has the repos; a later one may add none.
+                raise self.error("", "has no `repositories:`")
+        else:
+            repos_raw = raw["repositories"]
+            if not isinstance(repos_raw, dict):
+                raise self.error(
+                    "repositories", f"must be a mapping of repos, got {_type_name(repos_raw)}"
+                )
+            for key, entry in repos_raw.items():
+                repos[self.repo_key(key)] = self.repo(key, entry)
 
-        return Manifest(
+        return Part(
             source=self.source,
             format=fmt,
+            base=base,
             distros=distros,
             layers=layers,
             groups=groups,
             roles=roles,
-            repositories=repositories,
+            repos=repos,
             warnings=self.warnings,
         )
 
-    def declared_groups(self, value, groups: List[str], where: str) -> List[str]:
-        names = self.names(value, "group", where)
-        for group in names:
-            if group not in groups:
+    def base_locations(self, value) -> List[Tuple[str, str]]:
+        """`base:` is one location or a list of them. Each is returned with where it is in the
+        manifest (`base`, or `base[i]` in a list). This version reads a location given as a
+        path; a string with a ':' before its first '/' is a URL, not a path."""
+        if isinstance(value, list):
+            if not value:
                 raise self.error(
-                    where, f"group {group!r} is not in the top-level `groups:` list {groups}"
+                    "base", "is empty; leave it out for a manifest that builds on none"
                 )
-        return names
+            located = [(f"base[{index}]", item) for index, item in enumerate(value)]
+        else:
+            located = [("base", value)]
+        result = []
+        for where, location in located:
+            if isinstance(location, dict):
+                raise self.error(
+                    where,
+                    f"{location!r} is a file in a git repo; {_BASE_PATH_ONLY}",
+                )
+            path = self.string(location, where)
+            colon = path.find(":")
+            if colon >= 0 and "/" not in path[:colon]:
+                raise self.error(where, f"{path!r} is a URL, not a path; {_BASE_PATH_ONLY}")
+            result.append((where, path))
+        return result
 
     def repo_key(self, key) -> str:
         if not isinstance(key, str) or key == "":
@@ -455,61 +496,40 @@ class _Checker:
                 raise self.error(where, f"a repo key has no {part!r} part")
         return key
 
-    def no_key_inside_another(self, keys: List[str]) -> None:
-        present = set(keys)
-        for key in keys:
-            parts = key.split("/")
-            for end in range(1, len(parts)):
-                outer = "/".join(parts[:end])
-                if outer in present:
-                    raise self.error(
-                        f"repositories: {key!r}",
-                        f"is inside repo {outer!r}; one repo is never cloned inside another",
-                    )
-
-    def repo(self, key, entry, distros, layers, groups) -> Repo:
-        key = self.repo_key(key)
+    def repo(self, key: str, entry) -> Dict[str, object]:
+        """The keys a repo entry gives, each checked. Whether the entry is complete, and whether
+        its layer, groups and distros are declared, is judged on the combination."""
         where = f"repositories.{key}"
         if not isinstance(entry, dict):
             raise self.error(where, f"must be a mapping with type and url, got {_type_name(entry)}")
         for name in entry:
             if name not in _REPO_KEYS:
                 self.warn(f"{where}: unknown key {name!r} is ignored and left out of the output")
-        for required in ("type", "url"):
-            if required not in entry:
-                raise self.error(where, f"has no `{required}`")
-        repo_type = self.string(entry["type"], f"{where}.type")
-        if repo_type != "git":
-            raise self.error(
-                f"{where}.type",
-                f"is {repo_type!r}; the format takes any type a .repos file takes, and these"
-                " tools read git repos only",
-            )
-        repo = Repo(key=key, type=repo_type, url=self.url(entry["url"], f"{where}.url"))
+        given: Dict[str, object] = {}
+        if "type" in entry:
+            repo_type = self.string(entry["type"], f"{where}.type")
+            if repo_type != "git":
+                raise self.error(
+                    f"{where}.type",
+                    f"is {repo_type!r}; the format takes any type a .repos file takes, and these"
+                    " tools read git repos only",
+                )
+            given["type"] = repo_type
+        if "url" in entry:
+            given["url"] = self.url(entry["url"], f"{where}.url")
         if "version" in entry:
-            repo.version = self.version(entry["version"], f"{where}.version")
+            given["version"] = self.version(entry["version"], f"{where}.version")
         if "absent" in entry:
-            repo.absent = self.boolean(entry["absent"], f"{where}.absent")
+            given["absent"] = self.boolean(entry["absent"], f"{where}.absent")
         if "optional" in entry:
-            repo.optional = self.boolean(entry["optional"], f"{where}.optional")
+            given["optional"] = self.boolean(entry["optional"], f"{where}.optional")
         if "layer" in entry:
-            layer = self.name(entry["layer"], "layer", f"{where}.layer")
-            if layer not in layers:
-                raise self.error(
-                    f"{where}.layer", f"{layer!r} is not in the top-level `layers:` list {layers}"
-                )
-            repo.layer = layer
+            given["layer"] = self.name(entry["layer"], "layer", f"{where}.layer")
         if "groups" in entry:
-            repo.groups = self.declared_groups(entry["groups"], groups, f"{where}.groups")
+            given["groups"] = self.names(entry["groups"], "group", f"{where}.groups")
         if "distros" in entry:
-            if distros is None:
-                raise self.error(
-                    f"{where}.distros",
-                    "the manifest has no top-level `distros:` list, so no repo may have"
-                    " a `distros:` key",
-                )
-            repo.distros = self.repo_distros(entry["distros"], f"{where}.distros")
-        return repo
+            given["distros"] = self.repo_distros(entry["distros"], f"{where}.distros")
+        return given
 
     def repo_distros(self, value, where: str) -> Dict[str, DistroEntry]:
         if not isinstance(value, dict):

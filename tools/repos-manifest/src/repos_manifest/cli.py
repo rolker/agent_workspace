@@ -1,7 +1,7 @@
 """`repos-manifest` CLI: resolve and validate.
 
-A manifest with a top-level `repositories:` key is read by the reader for the format in
-docs/spec.md (``manifest.py``); any other file, one that does not read or parse included, by
+A manifest with a top-level `repositories:` or `base:` key is read by the reader for the format
+in docs/spec.md (``base.py``); any other file, one that does not read or parse included, by
 the reader for the earlier shape (``schema.py`` and ``extends.py``).
 """
 
@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from . import manifest as new_manifest
-from . import output, selection
+from . import base, output, selection
 from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
 from .merge import merge_chain
@@ -97,7 +97,7 @@ def _stopped(exc: Stopped, replaced_out=None) -> int:
 
 
 def _load_new(args: argparse.Namespace) -> new_manifest.Manifest:
-    loaded = new_manifest.load_manifest(Path(args.manifest), source=args.manifest)
+    loaded = base.load_manifest(Path(args.manifest), source=args.manifest)
     for warning in loaded.warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     return loaded
@@ -134,6 +134,8 @@ def cmd_validate_new(args: argparse.Namespace) -> int:
     if args.cache_dir is not None:
         raise ManifestError("--cache-dir is for a manifest in the earlier format")
     loaded = _load_new(args)
+    for parent in loaded.bases:
+        print(f"base: {parent}")
     roles = sorted(loaded.roles) if loaded.roles is not None else [None]
     distros = loaded.distros if loaded.distros is not None else [None]
     if args.role is not None:
