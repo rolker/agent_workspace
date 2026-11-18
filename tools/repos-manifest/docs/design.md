@@ -197,7 +197,8 @@ whether there is one distro or several, so adding a distro adds an entry and cha
 else. The only setting an entry may carry is `manifest_version`: that distro reads the
 manifest from the location in `manifest`, at that branch or tag in place of the one `manifest`
 gives. `manifest_version` is what `add-distro --manifest-ref` records, as `init --manifest-ref`
-records the `version` in `manifest`. An entry without it is `{}`. A flat system has exactly one entry, or none when the
+records the `version` in `manifest`. An entry without it is `{}`. A flat system has exactly
+one entry, or none when the
 manifest has no distros. Three examples:
 
 ```yaml
@@ -271,7 +272,7 @@ existing system, one found by walking up from the current directory. It changes 
 the message is:
 
 ```
-This directory is already set up as a system: <system directory>. Nothing has been changed. To update it, run repos-manifest sync. To add a distro to a system set up with --distro-dirs, run repos-manifest add-distro <name>.
+A system is already set up here: <system directory>. Nothing has been changed. To update it, run repos-manifest sync. To add a distro to a system set up with --distro-dirs, run repos-manifest add-distro <name>.
 ```
 
 A `.repos-manifest/` whose `config.yaml` is missing or cannot be read has been damaged by
