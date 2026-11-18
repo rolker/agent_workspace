@@ -306,7 +306,9 @@ and an interrupt that still comes between them puts the previous output back, so
 the previous one or the new one, never neither. A run killed outright can leave one behind; the
 next `resolve` to the same place removes the hidden directories beside it that a process that
 has ended made, when they hold the marker or are empty; a run still going keeps its own, and an
-output named like them is refused. Two runs writing to the same place at once are not
+output named like them is refused. A run killed between the two moves leaves no output and the
+previous one aside (`.<name>.old-<pid>-<random>`, marked): the next `resolve` moves it back
+into place before it does anything else. Two runs writing to the same place at once are not
 supported.
 
 `resolve` makes the checks of "Reading a manifest before using it" in the specification that

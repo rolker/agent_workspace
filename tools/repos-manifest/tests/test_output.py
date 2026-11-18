@@ -252,6 +252,28 @@ def test_leftovers_of_a_killed_run_are_swept_when_marked_or_empty(manifest, tmp_
     assert _names(tmp_path) == sorted([other.name, unmarked.name, "m.manifest.yaml", "out"])
 
 
+def test_after_a_kill_between_the_renames_the_next_run_puts_the_previous_output_back(
+    manifest, tmp_path, monkeypatch
+):
+    # The state a kill between the two renames leaves: no --out, the previous output aside in
+    # a marked .old directory and the new one in a marked .new directory.
+    out = tmp_path / "out"
+    assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    before = {name: (out / name).read_text() for name in _names(out)}
+    dead = _dead_pid()
+    os.rename(out, tmp_path / f".out.old-{dead}-abcd_123")
+    _leftover(tmp_path, "out", pid=dead, files=("core.repos",))
+
+    def write_text(path, text):
+        raise OSError(28, "No space left on device")
+
+    # The next run fails: the previous output is in place all the same.
+    monkeypatch.setattr(output, "_write_text", write_text)
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 1
+    assert {name: (out / name).read_text() for name in _names(out)} == before
+    assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+
+
 def test_the_temporary_directories_this_tool_makes_have_the_swept_shape(tmp_path):
     for kind in ("new", "old"):
         made = tempfile.mkdtemp(prefix=output._temp_prefix("out", kind), dir=tmp_path)

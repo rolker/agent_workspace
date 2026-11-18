@@ -16,8 +16,9 @@ The files are written into a new hidden directory beside ``--out`` and moved int
 ``--out`` is replaced whole or not at all. An existing ``--out`` is replaced only when it is
 empty or holds the marker. The hidden directories are named ``.<name>.new-<pid>-<random>`` and
 ``.<name>.old-<pid>-<random>``; the ones a killed run left beside ``--out`` are removed at the
-start of the next run when their process has ended and they hold the marker or are empty. An
-``--out`` named like them is refused.
+start of the next run when their process has ended and they hold the marker or are empty; if
+``--out`` is missing and the previous output is aside in a marked ``.old`` one, it is moved back
+first. An ``--out`` named like them is refused.
 """
 
 from __future__ import annotations
@@ -166,6 +167,27 @@ def _sweep_leftovers(parent: Path, name: str) -> None:
             _remove_ours(entry)
 
 
+def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
+    """A run killed between the two renames leaves no `--out`, and the previous output aside in
+    a marked `.<name>.old-<pid>-<random>` directory. Move it back into place before anything
+    else, so that it is not lost if this run fails too; the newest, if there are several."""
+    if os.path.lexists(out) or not parent.is_dir():
+        return
+    aside = re.compile(re.escape(f".{name}") + r"\.old-(?P<pid>[0-9]+)-[a-z0-9_]{8}")
+    found = []
+    for entry in parent.iterdir():
+        match = aside.fullmatch(entry.name)
+        if (
+            match
+            and _process_has_ended(int(match.group("pid")))
+            and not entry.is_symlink()
+            and (entry / MARKER).is_file()
+        ):
+            found.append((entry.stat().st_mtime, entry))
+    if found:
+        os.rename(max(found)[1], out)
+
+
 @contextmanager
 def _signals_held():
     """Hold SIGINT, SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run
@@ -200,6 +222,7 @@ def write_output(
             " may remove; give it another name"
         )
     try:
+        _put_back_the_previous_output(parent, name, out_abs)
         if out_abs.is_symlink():
             raise ManifestError(f"--out {out}: is a symbolic link; give the directory itself")
         exists = out_abs.exists()
