@@ -399,3 +399,24 @@ Tests, appended only (`git diff origin/main -- .agent/scripts/tests`: 236 lines 
 Suites, each run with `bash` on the final tree: test_worktree_create 84 passed 0 failed; test_session_root 71/0; test_ros2_colcon 1030 passed 0 failed 0 skipped; test_register_project 201/0; test_gh_create_issue 78/0; test_gh_create_pr 113/0; test_skill_paths 163/0; test_user_tier_guard 64/0; test_merge_pr 170/0; test_merge_pr_skill 132/0; test_package_issue_loop 220/0; test_precommit_hook_path 19/0; test_project_registry 425/0; test_records_write_gate 68/0; test_user_tier_install 276/0; test_validate_workspace_stale 126/0; `check_design_anchors.sh` exit 0. shellcheck (hook) passed. Full pre-commit pass left to the host.
 
 Left for part 1B, unchanged here because 1A does not make them false: the `register_session_root.sh` header (lines 54-57) and `script_reference.md`'s register_session_root row (registration's gate still refuses a folder in no git repository), `docs/design.md`'s "Registration needs a git repository today" (Registry and adapters) and the onboarding bullet's "known gap" (Sessions and roots), and the AGENTS.md sentence.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 18:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `510f24f1`
+**Base**: origin/main
+**Depth**: Deep (reason: 291+16 changed lines outside work-plans, over 200; skill and knowledge files are override triggers)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Scope: part 1A per the 18:09 Checkpoint. Verified: worktree_create.sh creates nothing before the new per-repo check; a package worktree made from a root outside git is created, re-entered (worktree_enter.sh) and removed (worktree_remove.sh, with --project and from the root cwd) in a sandboxed probe; merge_pr.sh's package path reads only the manifest entries and guards the root sync with `-e .git`; `-R x/y`, `--repo x/y`, `--repo=x/y`, `-Rx/y` all reach gh as `--repo x/y`; the new tests fail against origin/main's scripts (test_worktree_create 1, test_gh_create_issue 4, test_ros2_colcon 10). No ADR contradicted (0012, 0016 decision 2, 0018, 0020, 0021's "cannot be registered this way yet" all still true). Suites: test_worktree_create, test_ros2_colcon 1030/0, test_gh_create_issue, test_session_root 71/0, test_register_project 201/0, test_merge_pr 170/0, test_package_issue_loop 220/0, test_skill_paths 163/0; check_design_anchors exit 0; shellcheck clean.
+
+### Findings
+- [ ] (must-fix) Outside git, labels for any `-R` target are validated against the workspace's own list: a label that exists in the target (a package repo) is refused with exit 1, and a workspace-only label passes then fails at gh; use the workspace list only when `-R` names the workspace's slug, else skip with the existing "validated by GitHub" warning (adversarial, gemini, codex; conflicts with the Checkpoint's wording, which said to read the workspace's list: owner call) — `.agent/scripts/gh_create_issue.sh:88`
+- [ ] (must-fix) Outside git with `WORKTREE_ISSUE` set (the ordinary case in a package worktree's container on a root outside git), the parent reference is injected as a bare `Part of #N` into the `-R` repository, linking that repo's #N; newly reachable (exited 3 before); qualify it when the parent's repo is known, else skip with a warning (adversarial, codex; reproduced) — `.agent/scripts/gh_create_issue.sh:221-233`
+- [ ] (suggestion) The per-repo check `git -C <origin> rev-parse --git-dir` passes a plain directory inside an enclosing repository (and the single-repo "." entry of a plain root nested in one), so a worktree of the enclosing repo is made; pre-existing in the old root check; compare `--show-toplevel` with the path as the skill branch does (gemini, codex, adversarial) — `.agent/scripts/worktree_create.sh:726-729`
+- [ ] (suggestion) A root that does not exist is refused as "project checkout is not a git repository"; say it is not a directory (gemini, adversarial) — `.agent/scripts/worktree_create.sh:549-550`
+- [ ] (suggestion) Step 3's recovery note says to run `git worktree list` and look under `worktrees/<type>/`; from a root outside git that fails, and project worktrees live under `<root>/worktrees/` (adversarial) — `.claude/skills/start-task/SKILL.md` step 3
