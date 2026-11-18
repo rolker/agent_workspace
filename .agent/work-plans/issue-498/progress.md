@@ -1212,3 +1212,28 @@ Dropped: newline in a parent's real path (gemini 1, codex 3: round 1 suggestion,
 Suggestions 1 to 3 were decided by the host (listed for the owner's veto).
 
 Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests/test_documents.py`: `11 passed in 0.01s`. Full pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 16:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-498 at `a652e368`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole branch diff 16 files, +1686 -244)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the one suggestion is a wording choice for the host
+
+Scope: the round 2 review's findings (1 must-fix, 3 suggestions) and the fix diff `9c18cc61..HEAD`: one sentence in `tools/repos-manifest/docs/design.md` (line 338) plus progress.md record commits; nothing else changed. Cross-model: skipped (round-3 convergence check, per handoff). The diff is one sentence, so the lead did the governance, plan-drift and adversarial reads itself; no subagents were dispatched.
+
+Round 2 must-fix: fixed. design.md:338 now says a manifest in the earlier format is refused "before any check on its keys". Order in the code: `base._read_text` (file read, UTF-8) and then `manifest.parse_part`: (1) `first_unsafe_in_text` on the raw text (invisible, control or direction-changing characters), (2) `_load_yaml` (YAML parse), (3) the top level must be a mapping, (4) `yamlload._refuse_unsafe_chars` on every parsed string, keys and values (catches characters written as YAML escapes), then `_Checker.part()`: (5) the earlier-format check (no `repositories:` and one of `repos`, `extends`, `optional_layers`, `packages`), (6) unknown top-level keys warned, `format`, `base`, and the other keys. `load_manifest` and `_Reader.visit` both go through `parse_part`, so a parent in a chain gets the same order. Step 4 was not in the round 2 finding's list; it is a character check on every string, the parsed form of step 1, not a check of which keys a manifest has or what they hold, so the sentence holds as written; see the suggestion. A hand probe of an earlier-format file with an escaped character was denied by the permission system and not run.
+
+Round 2 suggestions: all three answered by host decision with no code change (deferred to the owner; no action; no action in 2a). Not findings.
+
+Governance and plan drift: a one-sentence documentation correction that makes design.md state what the code does (Verify before claiming); no ADR triggered; no plan item touched.
+
+Suites (Python 3.14.4): `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` `829 passed in 11.92s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+
+### Findings
+- [ ] (suggestion) The per-string character check (`_refuse_unsafe_chars`, which also looks at every key's characters) runs before the earlier-format refusal; if "any check on its keys" might be read to include it, "before any check of what its keys are or hold" would be exact. Host's call; the sentence is not false as it stands — `tools/repos-manifest/docs/design.md:338`, `tools/repos-manifest/src/repos_manifest/manifest.py:181`
