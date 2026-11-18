@@ -1,0 +1,29 @@
+repositories:
+  manda_coverage:
+    type: git
+    url: https://github.com/rolker/manda_coverage.git
+    version: jazzy
+  marine_ais:
+    type: git
+    url: https://github.com/rolker/marine_ais.git
+    version: jazzy
+  marine_control:
+    type: git
+    url: https://github.com/rolker/marine_control.git
+    version: jazzy
+  udp_bridge:
+    type: git
+    url: https://github.com/rolker/udp_bridge.git
+    version: jazzy
+  unh_marine_navigation:
+    type: git
+    url: https://github.com/rolker/unh_marine_navigation.git
+    version: jazzy
+  s57_tools:
+    type: git
+    url: https://github.com/rolker/s57_tools.git
+    version: jazzy
+  unh_marine_autonomy:
+    type: git
+    url: https://github.com/rolker/unh_marine_autonomy.git
+    version: jazzy

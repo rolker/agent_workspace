@@ -1,0 +1,5 @@
+repositories:
+  site_config:
+    type: git
+    url: git@github.com:example/site_config.git
+    version: jazzy

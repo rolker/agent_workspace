@@ -53,8 +53,12 @@ jobs:
         run: bash .agent/scripts/tests/test_ros2_colcon.sh
 
   validate-repos-manifest:
-    name: repos-manifest tests (#267 prototype)
+    name: repos-manifest tests (#267 prototype) (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.14']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,7 +66,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
 
       - name: Install repos-manifest (editable, with test extras)
         run: pip install -e tools/repos-manifest[test]

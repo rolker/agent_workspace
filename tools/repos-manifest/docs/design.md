@@ -204,7 +204,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 | `build` | Builds each layer in order. |
 | `status` | Shows what the system directory holds against what the manifest says. |
 | `freeze` | Writes a manifest with the exact commit of every repo the machine has. |
-| `validate` | Checks a manifest against the specification without resolving it for a machine. |
+| `validate` | Checks a manifest against the specification and resolves it for every role and distro it lists, writing nothing. |
 
 After `init`, the other commands take no arguments in the common case. A person setting up a
 machine types:
@@ -268,16 +268,70 @@ scripts.
 
 ### resolve
 
-Reads the manifest and everything it builds on, applies the role and the distro, and writes
-into `.repos-manifest/resolved/`:
+Reads the manifest and everything it builds on, applies the role, the distro and the extra
+groups, and writes into `.repos-manifest/resolved/`:
 
-- one `.repos` file per layer, with `type`, `url` and `version` for each repo. A named
-  layer's file is `<layer>.repos`; the unnamed layer's is `_unnamed.repos`. A layer with no
-  repos for this machine gets no file;
-- the order of the layers;
-- which repos are optional.
+- one `.repos` file per layer, with `type`, `url` and `version` for each repo (no `version`
+  for a repo that names none). A named layer's file is `<layer>.repos`; the unnamed layer's
+  is `_unnamed.repos`, a name no layer can have, since a name starts with a letter. A layer
+  with no repos for this machine gets no file;
+- `layers.txt`, the order of the layers: one name per line, `_unnamed` first when it has
+  repos, only the layers that got a file;
+- `optional.txt`, which repos are optional: the keys of the selected repos marked
+  `optional: true`, one per line, in layer order and then in the order of the manifest. It is
+  empty when there are none.
 
-Each file starts with a comment that says which manifest, role and distro it came from.
+Each file starts with `#` comment lines that say which manifest, role, distro and extra groups
+it came from. The manifest is named as it was given, not as a resolved path. A reader of the
+two lists skips lines that start with `#`.
+
+Outside a system directory the same files go to the directory given with `--out`:
+
+```
+repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy \
+    --with ben-hardware --out resolved
+```
+
+`--role` is given when the manifest has roles and `--distro` when it has distros, and not
+otherwise. `--with` names an extra group and may be given more than once.
+
+The output is replaced whole or not at all. The files are built and checked first, then written
+into a new hidden directory beside the output (`.<name>.new-<pid>-<random>`), and that
+directory is moved into place. An existing output directory is moved aside first and removed
+after, and put back if the move fails; it is renamed to a `.new-` name before it is removed,
+so that a removal cut short is never put back as the output, and a removal that fails is
+reported. The new output keeps the mode of the one it replaces. A directory is only replaced when it is empty or holds
+the marker file `.repos-manifest-output` that `resolve` writes, so it cannot delete a person's
+files. `--out` is made absolute, and the directory it is in is passed through Python's
+`os.path.realpath`, which resolves the links that exist and folds `..` parts; that directory is then made as
+`mkdir -p` would, and the paths `resolve` prints are the ones it wrote. The current directory and its parents are refused, since replacing one would leave
+the shell in a deleted directory. A SIGINT, SIGTERM or SIGHUP while resolving ends the run, removes the hidden
+directory, says whether the output had been replaced, and then ends the process by that signal, so a shell loop over `resolve` stops on a Ctrl-C. The three are held during the two moves and delivered after them,
+and an interrupt that still comes between them puts the previous output back, so the output is
+the previous one or the new one, never neither. The one exception is a failure to move the
+previous output back: the run then says that the output is missing, names the hidden directory
+the previous one is kept in, and the next `resolve` to the same place moves it back if the
+output is still missing. A run killed outright can leave one behind; the
+next `resolve` to the same place removes the hidden directories beside it that a process that
+has ended made, when they hold the marker or are empty, and warns about one it cannot remove; a
+run still going keeps its own, and an output named like them is refused. Every directory in a
+copy being removed is made writable first, so a read-only one inside it does not stop the
+removal. A run killed between the two moves leaves no output and the
+previous one aside (`.<name>.old-<pid>-<random>`, marked): the next `resolve` moves it back
+into place before it does anything else.
+
+Two runs writing to the same output at once are not supported. Each still leaves a whole
+output, the one or the other, but one of them may fail with a message about the directory
+that does not say another run was the cause. `resolve` takes no lock; a lock on the system
+directory belongs with `init` and `sync` (issue 500).
+
+`resolve` makes the checks of "Reading a manifest before using it" in the specification that
+can be made on the text. The check on the real destination, that a link on the disk or two
+names the disk treats as one cannot send a repo elsewhere, is made by `init` and `sync`, which
+clone the repos there.
+
+Beyond the specification, `resolve` refuses a distro entry that gives both a `version` and
+`absent: true`, and an output directory that is a symbolic link.
 
 ### sync
 
@@ -654,10 +708,20 @@ A manifest's `base` is resolved by the resolver. `vcs` does not know the key.
 
 ## What is built
 
-A prototype has `resolve` and `validate` for an earlier shape of the format, where repos are
-nested under their layer and the version key is `ref`. It also has three things this design
-drops: a `packages:` section with package dependencies, roles defined by starting packages,
-and a cache of fetched parent manifests that is kept between runs.
+`resolve` and `validate` read the format in the specification for a manifest that stands on
+its own, given as a path on the local disk. `resolve` writes the files described under
+"resolve" into `--out`. `validate` checks the file and resolves it for every role and distro it
+lists, and writes nothing. `--role` or `--distro` limits the check to that role or distro, and
+`--with` switches on extra groups in each one. `base` is not read yet: a manifest with `base` is
+refused.
+
+A manifest without a top-level `repositories:` key, or a file that does not read as YAML,
+still goes to a prototype that reads an earlier shape of the format, where repos are nested
+under their layer and the version key is `ref`. A caller that needs `repos/<layer>.repos`,
+`layers.txt` and `optional_layers.txt` uses that reader, with `--layout manifest-dir`. The
+prototype also has three things this design drops: a `packages:` section with package
+dependencies, roles defined by starting packages, and a cache of fetched parent manifests that
+is kept between runs.
 
 Two things in the prototype differ from this design in smaller ways. It marks whole layers
 as optional, where the design marks repos. And when it fetches a parent manifest from a git

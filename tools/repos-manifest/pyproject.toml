@@ -19,7 +19,7 @@ test = [
 ]
 
 [project.scripts]
-repos-manifest = "repos_manifest.cli:main"
+repos-manifest = "repos_manifest.cli:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]

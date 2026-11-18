@@ -1,5 +1,8 @@
 # What the prototype does
 
+The resolver now reads the format in [spec.md](spec.md) for a manifest with `repositories:`;
+see [design.md](design.md#what-is-built). This page describes the reader still used for the rest.
+
 This describes the code as it is today. It was written under the name `ros-manifest` and
 reads an earlier shape of the format than the one in [spec.md](spec.md): repos are nested
 under their layer, the version key is `ref`, and a manifest that extends another may only add

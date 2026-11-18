@@ -235,12 +235,12 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
 - **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its
   clones of parent manifests. The tool's design sets no limit on `sync`.
 - **A failed resolve changes nothing.** The adapter keeps the previous generated directory
-  when a fetch or a resolve fails, and swaps the new one in whole. The tool's design says
-  where `resolve` writes and not what a failure leaves behind. Its resolved output has to be
-  replaced whole or not at all, which also keeps a reader from seeing half of it. The tool's
-  `sync` updates the manifest's own clone before it resolves, so a manifest that does not
-  resolve can leave that clone moved forward; the resolved output and every other repo have
-  to stay as they were, and `sync` has to say that the manifest is what failed.
+  when a fetch or a resolve fails, and swaps the new one in whole. The tool's `resolve`
+  replaces its output whole or not at all, which also keeps a reader from seeing half of it
+  (the tool's design, under "resolve"). The tool's `sync` updates the manifest's own clone
+  before it resolves, so a manifest that does not resolve can leave that clone moved
+  forward; the resolved output and every other repo have to stay as they were, and `sync`
+  has to say that the manifest is what failed.
 - **`init` can be run again.** Run over a directory it did not finish setting up, it
   completes the record instead of refusing.
 - **A manifest named by a commit.** `source_ref` may be a commit today. The tool's git form
