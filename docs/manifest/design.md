@@ -36,8 +36,9 @@ This section describes the code as it is. It was checked against
   instance, its type and its path, and may carry `role=` and `distro=`.
 - The settings file, `.agent/projects.d/<name>`, holds one `key=value` per line. Three keys
   name a manifest: `source` (an absolute path, or an `https://` or `file:///` URL of a git
-  repo), `source_ref` (required for a URL) and `source_path` (the file in the repo,
-  `manifest.yaml` if left out).
+  repo; plain `http://` and a URL that carries credentials are refused), `source_ref`
+  (required for a URL) and `source_path` (the file in the repo, `manifest.yaml` if left
+  out). Work on a manifest that is on the local disk uses the path form.
 - `register_project.sh` writes both, with `--role`, `--distro` and `--set source=...`.
 
 ### Two routes
@@ -61,7 +62,8 @@ The `ros2_colcon` adapter has two routes to the list of repos, chosen by one fac
 3. Fetch the manifest. A path is read in place. A URL is fetched afresh every time with the
    adapter's own git code, into a directory that is removed afterwards; no clone is kept.
 4. Run the resolver:
-   `ros-manifest resolve --manifest <file> --role <role> --distro <distro> --out <dir> --layout manifest-dir`.
+   `ros-manifest resolve --manifest <file> --role <role> --distro <distro> --out <dir> --layout manifest-dir --cache-dir <dir>.cache`.
+   The cache directory is new each time and removed afterwards.
 5. Write the result into a new directory, `configs/manifest-resolved.gen-XXXXXX`, record
    where it came from in `.resolved-from`, and move the link `configs/manifest-resolved` to
    point at it.
@@ -70,25 +72,35 @@ After that:
 
 - `setup` runs `vcs import --skip-existing` for each layer into
   `layers/main/<layer>_ws/src`.
-- `sync` goes through the repos one at a time: `git pull --rebase` for a repo that is clean
-  and on its branch, `git fetch` otherwise.
+- `sync` goes through the repos one at a time. A repo with uncommitted changes is skipped
+  and nothing is fetched for it. A clean repo on the branch the manifest names gets
+  `git pull --rebase`. A clean repo on another branch, or on no branch, gets `git fetch`.
 - `build` runs `colcon build` in each layer in order, with `/opt/ros/<distro>` and the
   layers before it sourced.
-- `validate` compares `.resolved-from` with what is recorded now, warns when a manifest at a
-  path has changed since it was resolved, and names checkouts the manifest no longer lists.
-  It fetches nothing and removes nothing.
+- `validate` fails, with a non-zero exit status, when `.resolved-from` does not match the
+  source, ref, path, role or distro recorded now, or when a checkout or a layer file the
+  manifest calls for is missing. It warns when a manifest at a path has changed since it was
+  resolved, and names checkouts the manifest no longer lists. It fetches nothing and removes
+  nothing.
 
-What the route guarantees, and how:
+Network is needed at `setup` and `sync`, for the source, for the host of every `extends`
+base and for the host of every package repo, and for installing the resolver.
+
+What the route guarantees, and how far each guarantee goes:
 
 - **Never silently stale.** A git `source` is fetched afresh by each `setup` and `sync`, and
-  no clone is kept. Every `extends` base is cloned afresh too.
-- **A failed run changes nothing.** If the fetch or the resolve fails, the previous generated
-  directory stays the one in use.
-- **One run at a time.** The fetch and resolve hold a lock on `configs/.lock.source`, which
-  is never removed. Without `flock` on the machine, the run is unlocked.
+  no clone is kept (the owner's decision of 2026-11-13). Every `extends` base is cloned
+  afresh too.
+- **A failed fetch or resolve changes nothing.** The previous generated directory stays the
+  one in use. This covers the fetch and the resolve only: once the new directory is in use,
+  an import that fails part way leaves it in use, with some repos checked out and some not.
+- **One fetch and resolve at a time.** They hold a lock on `configs/.lock.source`, which is
+  never removed. The lock is released before repos are imported or updated, so two runs can
+  overlap there. Without `flock` on the machine, nothing is locked.
 - **A reader is not cut off.** Every verb reads one generated directory from start to end,
-  and a directory is not removed while a run reads it. Without `flock`, the one before the
-  live one is kept instead.
+  and a directory is not removed while a run reads it. Without `flock` the adapter cannot
+  tell, and keeps the directory before the live one instead; two later runs can then remove
+  a directory a long run is still reading.
 - **Bounded and guarded fetches.** The adapter's fetch allows the https, ssh and file
   transports only. The resolver's clone of an `extends` base runs no user hook or filter
   driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`.
@@ -109,8 +121,16 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 
 ## The design we are working towards
 
-Nothing in this section is built. It depends on tool commands that are themselves not built
-yet (`init`, `show`, `sync`, `build`, `status`); the tool's roadmap has them.
+Nothing in this section is built. It depends on three things outside the workspace's own
+code:
+
+- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`), which
+  the tool's roadmap has;
+- a change to the tool's design that is not made yet: a directory per distro from the first
+  distro on, and adding a distro later (#495). The tool's design today gives a system set up
+  for one distro no distro directories;
+- three things the adapter relies on today that the tool's design does not promise yet. They
+  are listed under "What the tool has to give".
 
 ### The case it is designed for
 
@@ -146,21 +166,53 @@ What has to happen behind that request:
 ### A project instance is a system directory
 
 The tool sets a system up in one directory, with a `.repos-manifest/` folder that records
-the manifest, the role, the distro and where repos are fetched from. A project instance of
+the manifest, the role, the distros and where repos are fetched from. A project instance of
 type `ros2_colcon` is such a directory, and it is the root a session is started in. It holds
-every distro of the project the machine has, each in its own directory, from the first
-distro on, so that adding a distro later moves nothing. The adapter becomes thin: each of its verbs calls
-one of the tool's commands in the instance's directory.
+every distro of the project the machine has, each in its own directory from the first distro
+on, so that adding a distro later moves nothing:
+
+```
+~/project11/
+  .repos-manifest/
+  rolling/
+    underlay/  core/  ...
+    setup.bash
+  jazzy/
+    ...
+```
+
+The adapter becomes thin: each of its verbs calls one of the tool's commands in the
+instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer | `repos-manifest init`, with what was given at registration |
+| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init` for a directory that is not set up yet; `repos-manifest sync` for one that is, which clones what is missing |
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
-| `build` | `colcon build` per layer | `repos-manifest build`, with the distro's environment sourced first |
-| `validate` | Compare `.resolved-from` with the settings | Read `repos-manifest status` |
+| `build` | `colcon build` per layer | `repos-manifest build` for the distro, with that distro's environment sourced first |
+| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail on the same conditions, read from `repos-manifest status` |
 
 A person can run the same commands by hand in the instance's directory and get the same
 result as an agent going through the adapter.
+
+### What the tool has to give
+
+Three things the adapter gives today are not in the tool's design yet. The adapter cannot
+become thin without them, and they are asked of the tool, not rebuilt in the adapter:
+
+- **A status a script can read.** `validate` fails with an exit status today. The tool's
+  `status` is described as something a person reads. It needs a form a script can read and
+  an exit status that says a repo the manifest calls for is missing or the system directory
+  was set up from something else.
+- **Protection against two runs at once.** The adapter locks its fetch and resolve. The
+  tool's design has no lock.
+- **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its
+  clones of parent manifests. The tool's design sets no limit on `sync`.
+
+The other guarantees listed under "What exists today" are covered by the tool's design: it
+reads the manifest again on every `sync`, it allows only transports that fetch, and its
+`sync` deletes nothing and leaves local work alone. The order in which `sync` updates the
+manifest and the repos, and how it knows what it last put each repo on, are the tool's and
+are in its design.
 
 ### What the workspace records
 
@@ -168,39 +220,44 @@ The registry line keeps what the workspace needs to find an instance and start a
 it: its name, its type and its path.
 
 Everything about the manifest is given once, at registration, and passed to `init`: the
-manifest's location, the role, the distro, extra groups, where to fetch from and extra
-remotes. After that the tool's `.repos-manifest/config.yaml` is the one record. The
-workspace reads the role and the distro from it when it needs them, and does not keep a
-second copy that could disagree.
+manifest's location, the role, the first distro, extra groups, where to fetch from and extra
+remotes. After that the tool's record in `.repos-manifest/` is the one record. The workspace
+asks the tool for the role and the distros when it needs them, through a command, and does
+not read the tool's files or keep a second copy that could disagree. Until the adapter's
+verbs have moved to the tool they still read `role=` and `distro=` from the registry line,
+so those stay until then.
 
 Today's settings keys map onto the manifest's location in its git form:
 
 | Today | Target, as given to `init` |
 |---|---|
-| `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` and `--manifest-path` |
+| `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself |
 | `source` (a path) | The manifest as a path on the local disk |
 | `role=` and `distro=` on the registry line | `--role` and `--distro` |
 | nothing | `--with`, `--fetch-from`, `--remote` |
 
 Starting a project that has no manifest yet needs nothing more: the instance is registered
-with a manifest at a scratch path, and when the manifest is later added to one of the
-project's repos, `local_manifest` in `config.yaml` is set to its place in the checkout.
+with a manifest at a scratch path. When the manifest is later added to one of the project's
+repos, the recorded location is changed to the file in that repo and its place in the
+checkout, in the way the tool's design gives for changing them after `init`.
 
 ### What the adapter stops doing
 
 - Fetching the manifest with its own git code, afresh on every `setup` and `sync`.
 - Keeping generated directories, the `configs/manifest-resolved` link and its lock, and
   `.resolved-from`. The tool's `.repos-manifest/` folder takes their place.
-- Reading `.repos` files with its own parser, and updating repos one at a time.
-- The `layers/main/<layer>_ws` layout. The tool's layout is `<layer>/` in the instance's
-  directory.
+- Reading `.repos` files with its own parser to update repos one at a time.
+- The `layers/main/<layer>_ws` layout. The tool's layout is `<distro>/<layer>/` in the
+  instance's directory.
 
 ### What stays in the workspace
 
 - **Worktrees.** Issue work in a package repo is done in a worktree of that repo, never in
   the instance's own checkouts. The environment script for a worktree keeps its order: the
   distro, the layers below, the instance's copy of the same layer, then the worktree's own
-  build. It changes to read the layers from the tool's layout and layer order.
+  build. It changes to take the layers, their order and the repos in each from the tool's
+  resolved output, for the distro the worktree is for. `sync` goes on saying when a
+  worktree's environment script no longer matches the layers.
 - **The distro's environment.** The tool builds in the environment it is run in. The adapter
   sources the distro's setup file before it calls `build`, as it does today.
 - **Sessions, issues and reviews.** Nothing about them changes.

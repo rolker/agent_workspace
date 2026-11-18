@@ -444,8 +444,8 @@ Status: `decided`
   and the distro rule.
 - `ros2_colcon` has two routes to that directory (#436), chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
-  new format, is named by `source` (an absolute path, or a git repository with `source_ref` and
-  `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
+  new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
+  if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
   workspace-installed resolver, `<main checkout>/.venv/bin/ros-manifest` from
   `make install-ros-manifest`, called by CLI only; every verb reads the resulting directory the same way
   on both routes. One source only: `source` beside any other bootstrap source is a hard error that
@@ -455,11 +455,11 @@ Status: `decided`
   path that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set
   source=...` runs `setup`); `source` does not choose the type, and onboarding an empty session folder
   from a source is #473's.
-  Manifest support is a part with its own design (a part owns its inside, #488): how the route fetches,
-  resolves, locks and keeps its generated directory, and the design it is moving to (the adapter
-  calling the manifest tool's own commands, with a project instance as one of the tool's system
-  directories), are in [manifest/design.md](manifest/design.md); the order of that work is in
-  [manifest/roadmap.md](manifest/roadmap.md) (#487).
+  Manifest support is a part with its own design (the rule for parts is being written under #488):
+  how the route fetches, resolves, locks and keeps its generated directory, and the design it is
+  moving to (the adapter calling the manifest tool's own commands, with a project instance as one of
+  the tool's system directories), are in [manifest/design.md](manifest/design.md); the order of that
+  work is in [manifest/roadmap.md](manifest/roadmap.md) (#487).
 - The active project is resolved in this order: `--project`, then the cwd (or `--from`) inside a
   registered hosting directory (longest match); nothing else (`adapter` header, "Multi-tenant
   resolution"; the legacy `project/` step went in #265 part 4).
@@ -1102,7 +1102,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-13 | Registry and adapters | The resolver's clone of an `extends` base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT` (owner's decision on pull request 480: in the resolver). One clause in the manifest-route bullet; the rules live in the `ros2_colcon/adapter.sh` header and the `tools/ros-manifest` README | #436 | 1094 |
 | 2026-11-15 | Merge gate, Rules, Worktrees, Registry and adapters | Skill pull requests go through `merge_pr.sh` (issue 478, owner's choice G1): report-only like a project pull request, condition (a) always unmet, the record on the pull request, the roadmap step a stated no-op, the worktree removed by its path (`worktree_remove.sh --path`, the one on the head branch); every pull request's remote branch is deleted by one rule (`delete_remote_branch`: already gone counts, any other failure is said and marks the cleanup incomplete), no more silent `|| true` on the workspace and project path; the Rules row, Table 1's `merge_pr.sh` and `worktree_remove.sh` rows, the Records bullet and mechanism 1 citations are refreshed. Merge gate grows by 15 lines to 73, past the 60-line prompt: the two new bullets state what crosses the scripts (gate treatment, cleanup rule) and the mechanics stay in the `merge_pr.sh` header and `delete_remote_branch`, so no detail moves. After the pre-push review rounds: `--path` names a package entry and the repository check, a pull request from a fork touches no branch or worktree, and every `merge_pr.sh` and `worktree_remove.sh` line citation (Table 1, the Records bullet, mechanism 1) is refreshed | #478 | 1118 |
 | 2026-11-17 | Sessions and roots, Registry and adapters, Worktrees, ADR register | The registry is the only link from a session to a project (#265 part 4): Discovery becomes registry-only moves from Target to Now; a call that names no project and runs in no registered root refuses with one sentence (`registry_no_project_message`), `sync` excepted (it syncs the workspace alone); the `worktrees/project/<name>/`, `.workspace-worktrees/` and `project/worktrees/` locations are not searched; a registry entry needs its path; a project's commands and URLs come from its settings file alone (the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are read by no adapter; `ROS_ROOT_DIR` comes from the environment); a retired-shape report names what is left on disk; the main-checkout lookup's separate-git-dir fallback is said (PR 454's F1, F2). What changes on a machine like the owner's first one: every call that named no project used to resolve to the `project` symlink (worktree creation, `session_root.sh`, the adapter for `make build`, `make test` and `make install`, `merge_pr.sh`, `gh_create_*`, `pr_status.sh`, `discover_governance.sh`, `configure_git_identity.sh`); each now refuses, naming the registered projects and `--project <name>`, except `make sync`, which syncs the workspace alone. `make install` for a project whose install command was in the shared `project_config.sh` refuses until it is moved to the settings file, and a `ros2_colcon` instance whose distro was only in its `.sh` stops with "cannot resolve the ROS distro"; `make validate` names both. ADR register rows 0002 and 0011 restated (no ADR edited) | #265 | 1143 |
-| 2026-11-18 | Registry and adapters | The manifest-route bullet keeps what crosses the boundary (the settings keys, the resolver call for the recorded role and distro, what `validate` refuses, the worktree `env.sh` note, registration) and points at `docs/manifest/design.md` for the route's mechanics (fetch, lock, generated directory, the `extends` clone) and for the design it is moving to, and at `docs/manifest/roadmap.md`, the workspace's first sub-roadmap | #487 | 1159 |
+| 2026-11-18 | Registry and adapters | The manifest-route bullet keeps what crosses the boundary (the settings keys, the resolver call for the recorded role and distro, what `validate` refuses, the worktree `env.sh` note, registration) and points at `docs/manifest/design.md` for the route's mechanics (fetch, lock, generated directory, the `extends` clone) and for the design it is moving to, and at `docs/manifest/roadmap.md`, the workspace's first sub-roadmap. The section is 159 lines, past about 60: the manifest route's detail moved to the part's design in this change, and what remains is the registry, the settings file and the adapter contract, which other sections cite | #487 | 1159 |
 
 ## Glossary
 

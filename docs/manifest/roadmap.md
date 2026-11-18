@@ -17,20 +17,23 @@ checks are relative to the workspace's root.
    the acceptance of the issue that started the adapter's manifest route (#436).
 2. An interactive session started in a new, empty directory sets project11 up and onboards
    it for several distros, starting with rolling, asking for what it needs along the way,
-   such as where the manifest is. The owner's example of 2026-11-18 is in the design.
+   such as where the manifest is. The owner's example is in the design.
 
 | Line | Check |
 |---|---|
 | The tool has its own goals, format and design, written down (#486) | `gh-issue 486 closed` |
 | The workspace's design for using the tool is written down (#487) | `file-exists docs/manifest/design.md` |
-| The tool has the commands the adapter calls: `init`, `sync`, `build` and `status` | |
-| Registration passes the manifest's location, role, distro and fetch settings to `init`, and the workspace keeps no second copy | |
 | The tool's design covers starting with one distro in a directory of its own and adding a distro later (#495) | `gh-issue 495 closed` |
-| A session started in an empty directory sets up and onboards a project from the repo that holds its manifest (#473) | |
+| The tool's design gives what the adapter relies on today: a status a script can read with an exit status, protection against two runs at once, and time limits on fetches | |
+| The tool has the commands the adapter calls: `show`, `init`, `sync`, `build` and `status` | |
+| Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
+| Registration passes the manifest's location, role, distro and fetch settings to `init` | |
 | The adapter's `setup`, `sync`, `build` and `validate` call the tool, and its own manifest fetch and generated directories are removed | |
 | A worktree of a package repo builds against an instance in the tool's layout | |
-| Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
+| The workspace keeps no copy of the role and distro: the registry line's `role=` and `distro=` are gone | |
+| A session says which distro of its root it is working on | |
 | The Rolling instance on the second machine is registered from that manifest and `adapter validate` passes (#436) | `gh-issue 436 closed` |
+| A session started in an empty directory sets up and onboards a project from the repo that holds its manifest (#473) | |
 | The Jazzy instance is moved to the manifest | |
 | The bootstrap route is removed | |
 
