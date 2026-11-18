@@ -45,7 +45,7 @@ def _require_old_flags(args: argparse.Namespace) -> None:
 
 
 class Stopped(BaseException):
-    """SIGTERM or SIGHUP arrived while resolving."""
+    """SIGINT, SIGTERM or SIGHUP arrived while resolving."""
 
     def __init__(self, signum: int):
         super().__init__(signum)
@@ -54,14 +54,15 @@ class Stopped(BaseException):
 
 @contextmanager
 def _signals_end_the_run():
-    """While resolving, SIGTERM and SIGHUP end the run through an exception, so that the
-    `finally` blocks that remove temporary output run. A signal that was ignored stays ignored."""
+    """While resolving, SIGINT, SIGTERM and SIGHUP end the run through an exception, so that the
+    `finally` blocks that remove temporary output run, and the run reports how far it got. A
+    signal that was ignored stays ignored."""
     previous = {}
 
     def on_signal(signum, _frame):
         raise Stopped(signum)
 
-    for name in ("SIGTERM", "SIGHUP"):
+    for name in ("SIGINT", "SIGTERM", "SIGHUP"):
         sig = getattr(signal, name, None)
         if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
             continue
@@ -88,8 +89,10 @@ def _stopped(exc: Stopped, replaced_out=None) -> int:
             file=sys.stderr,
         )
     # The previous handlers are back: the signal is delivered again, to end the process as it
-    # would have or to run the caller's own handler.
-    signal.raise_signal(exc.signum)
+    # would have or to run the caller's own handler. Python's own SIGINT handler would raise
+    # KeyboardInterrupt and print a traceback; the message above says it all.
+    if signal.getsignal(exc.signum) is not signal.default_int_handler:
+        signal.raise_signal(exc.signum)
     return 128 + exc.signum
 
 

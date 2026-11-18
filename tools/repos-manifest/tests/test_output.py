@@ -407,14 +407,37 @@ def test_sigint_is_held_during_the_swap(manifest, tmp_path, monkeypatch):
     assert held and {signal.SIGINT, signal.SIGTERM, signal.SIGHUP} <= held[0]
 
 
-def test_ctrl_c_during_the_swap_leaves_the_new_output(manifest, tmp_path, monkeypatch):
+def test_ctrl_c_during_the_swap_leaves_the_new_output_and_says_so(
+    manifest, tmp_path, monkeypatch, capsys
+):
+    # Held during the swap, SIGINT is reported as SIGTERM is: no KeyboardInterrupt, no traceback.
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
     out = tmp_path / "out"
     assert _resolve(manifest, out, "--role", "dev", "--distro", "jazzy") == 0
+    capsys.readouterr()
     _swap_with(monkeypatch, lambda: os.kill(os.getpid(), signal.SIGINT))
-    with pytest.raises(KeyboardInterrupt):
-        _resolve(manifest, out, "--role", "robot", "--distro", "jazzy")
+    assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 128 + signal.SIGINT
+    assert capsys.readouterr().err == (
+        f"ERROR: stopped by SIGINT after --out {out} was replaced by the new output\n"
+    )
     assert "# role: robot\n" in (out / "layers.txt").read_text()
     assert _names(tmp_path) == ["m.manifest.yaml", "out"]
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def test_ctrl_c_while_resolving_says_nothing_was_written(manifest, tmp_path, monkeypatch, capsys):
+    real_write_text = output._write_text
+
+    def write_text(path, text):
+        real_write_text(path, text)
+        if path.name == "core.repos":
+            os.kill(os.getpid(), signal.SIGINT)
+
+    monkeypatch.setattr(output, "_write_text", write_text)
+    rc = _resolve(manifest, tmp_path / "out", "--role", "robot", "--distro", "jazzy")
+    assert rc == 128 + signal.SIGINT
+    assert capsys.readouterr().err == "ERROR: stopped by SIGINT; nothing was written\n"
+    assert _names(tmp_path) == ["m.manifest.yaml"]
 
 
 def test_an_interrupt_between_the_renames_puts_the_previous_output_back(

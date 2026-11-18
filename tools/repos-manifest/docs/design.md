@@ -300,8 +300,8 @@ into a new hidden directory beside the output (`.<name>.new-<pid>-<random>`), an
 directory is moved into place. An existing output directory is moved aside first and removed
 after, and put back if the move fails. A directory is only replaced when it is empty or holds
 the marker file `.repos-manifest-output` that `resolve` writes, so `--out .` cannot delete a
-person's files. A SIGTERM or SIGHUP while resolving ends the run and removes the hidden
-directory. SIGINT, SIGTERM and SIGHUP are held during the two moves and delivered after them,
+person's files. A SIGINT, SIGTERM or SIGHUP while resolving ends the run, removes the hidden
+directory and says whether the output had been replaced. The three are held during the two moves and delivered after them,
 and an interrupt that still comes between them puts the previous output back, so the output is
 the previous one or the new one, never neither. A run killed outright can leave one behind; the
 next `resolve` to the same place removes the hidden directories beside it that a process that
