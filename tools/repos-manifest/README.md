@@ -115,6 +115,11 @@ python3 -m venv .venv
 
 It needs Python 3.10 or later and PyYAML.
 
+The settings under the old name are ignored since the rename: set
+`REPOS_MANIFEST_GIT_TIMEOUT` in place of `ROS_MANIFEST_GIT_TIMEOUT`, and an old
+`.ros-manifest-cache` directory can be deleted (the default cache is now
+`.repos-manifest-cache`).
+
 ## Development
 
 ```bash
