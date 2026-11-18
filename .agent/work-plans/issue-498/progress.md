@@ -1237,3 +1237,12 @@ Suites (Python 3.14.4): `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -
 
 ### Findings
 - [ ] (suggestion) The per-string character check (`_refuse_unsafe_chars`, which also looks at every key's characters) runs before the earlier-format refusal; if "any check on its keys" might be read to include it, "before any check of what its keys are or hold" would be exact. Host's call; the sentence is not false as it stands — `tools/repos-manifest/docs/design.md:338`, `tools/repos-manifest/src/repos_manifest/manifest.py:181`
+
+## Checkpoint
+**When**: 2026-11-18 17:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix, and the full pre-commit pass passed at 8441df5d)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on 8441df5d. Published as part 2a: the pull request says "Part of #498" and does not close the issue. Parts 2b (a parent read from an http(s) URL or a git repo) and 3 (the adapter reads the new format, the old reader goes) remain. The owner's decision of 2026-11-18, "yes, warn on layer order", is for part 2b's plan.
