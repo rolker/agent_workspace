@@ -1051,6 +1051,58 @@ else
 fi
 
 echo
+echo "=== A root outside git: a bare --issue is not looked up in the workspace's repository (issue 503) ==="
+# The workspace has a GitHub origin and gh, stubbed, records every call and
+# would answer for the workspace's repository (a title, and "a pull
+# request"). A single-repository root outside git is refused with today's
+# message as the first line, before any gh call; a multi-repository one
+# makes no gh call for a bare --issue and says why it was not looked up.
+SB10="$SANDBOX/ws10"
+make_ws_repo "$SB10"
+gitq -C "$SB10" remote add origin https://github.com/ws-owner/ws.git
+GH_LOG10="$SANDBOX/gh10.log"
+cat > "$SB10/stubbin/gh" <<GH10_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GH_LOG10"
+case "\$1 \$2" in
+    "issue view") echo "A workspace issue"; exit 0 ;;
+    "pr view") echo "OPEN"; exit 0 ;;
+esac
+exit 1
+GH10_EOF
+chmod +x "$SB10/stubbin/gh"
+P10="$(mktemp -d -p "$SANDBOX")/plain"
+mkdir -p "$P10"
+printf 'plain10 single_project %s\n' "$P10" >> "$SB10/.agent/projects.local"
+rm -f "$GH_LOG10"
+OUT="$(cd "$SB10" && PATH="$SB10/stubbin:$PATH" "$SB10/.agent/scripts/worktree_create.sh" --issue 61 --type project --project plain10 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$(head -n1 <<< "$OUT")" == "Error: project checkout is not a git repository: $P10" \
+      && "$OUT" == *$'\n'"Clone the project there or fix .agent/projects.local"* && ! -s "$GH_LOG10" ]]; then
+    pass "single-repository root outside git, bare --issue: today's refusal first, gh not called"
+else
+    fail "single-repository root outside git, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG10" 2>/dev/null)] out=${OUT:0:600}"
+fi
+mkdir -p "$SB10/.agent/project_types/twofold"
+cp "$SB6/.agent/project_types/twofold/adapter.sh" "$SB10/.agent/project_types/twofold/"
+P10M="$(mktemp -d -p "$SANDBOX")/multi"
+for r in a b; do
+    mkdir -p "$P10M/$r"
+    gitq -C "$P10M/$r" init -q -b main
+    gitq -C "$P10M/$r" commit -q --allow-empty -m "$r init"
+done
+printf 'multi10 twofold %s\n' "$P10M" >> "$SB10/.agent/projects.local"
+rm -f "$GH_LOG10"
+OUT="$(cd "$SB10" && PATH="$SB10/stubbin:$PATH" "$SB10/.agent/scripts/worktree_create.sh" --issue 62 --type project --project multi10 2>&1)"
+RC=$?
+if [[ ! -s "$GH_LOG10" && "$OUT" == *"Issue #62 not looked up: the project root is not a git repository"* \
+      && "$OUT" != *"A workspace issue"* && "$OUT" != *"is a pull request"* ]]; then
+    pass "multi-repository root outside git, bare --issue: not looked up, gh not called"
+else
+    fail "multi-repository root outside git, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG10" 2>/dev/null)] out=${OUT:0:600}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"
