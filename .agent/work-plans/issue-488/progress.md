@@ -374,10 +374,10 @@ Suites run, each on its own from the worktree:
 Scope: the round 2 findings, the fix diff `45b2d243..6c323166` and the merge of main (`ee08e444`). Specialists: static analysis (shellcheck --severity=warning clean on check_design_anchors.sh, test_design_anchors.sh, test_update_roadmap.sh), governance, plan drift, Claude adversarial; cross-model skipped (round-3 convergence check, per handoff). All seven round 2 findings are fixed; the adversarial reviewer ran the new section (h) tests against the script at `45b2d243`: 4 fail there (unreadable citer, `a=b` path, design read once, angle-bracket link with no root fallback), the h11 cases and the first h12 case pin existing behaviour. Merge checks: `wc -l docs/design.md` is 1187, the count in the merge's Change log row; both sides' rows are kept; `check_design_anchors.sh` exits 0 on the merged tree and does read `docs/manifest/design.md` as a citer (a broken anchor added to it in a scratch copy gave 2 findings); on the merged tree test_design_anchors 76, test_sitrep_checks 252, test_sitrep_root 65, test_update_roadmap 16 and test_skill_paths 163 pass, 0 failed each.
 
 ### Findings
-- [ ] (suggestion) The merged manifest-route bullet says "the rule for parts is being written under #488"; on this branch it is written. Cite ADR-0022 instead. — `docs/design.md:483`
-- [ ] (suggestion) The deferral of plan step 7 waited for #487, which is now merged into the branch: the pointer rows for `docs/manifest/roadmap.md` and `tools/ros-manifest/docs/roadmap.md` and the root design's link to `tools/ros-manifest/docs/design.md` (ADR-0022 decision 2) can land now, or the deferral can be restated with a new reason. Acceptance bullet 3 stays open until then. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:36`
-- [ ] (suggestion) An unreadable part design is reported twice (once by `load_design`, once by the citer scan), and the `design_records` redirect leaks a bare bash "Permission denied" to stderr, unlike `citations 2>/dev/null`. Reproduced with `chmod 000` on a tracked `tools/t/docs/design.md`: "2 finding(s)" for one fault. — `.agent/scripts/check_design_anchors.sh:285`
-- [ ] (suggestion) The header now names `](<path#x>)` as a link, but the citation token excludes spaces, the main reason for the angle-bracket form: `[x](<my part/design.md#route>)` becomes the non-link token `part/design.md#route` and is resolved as prose. Recognise spaces inside `](<...>)` or narrow the header. Reproduced. — `.agent/scripts/check_design_anchors.sh:446`
+- [x] (suggestion) The merged manifest-route bullet says "the rule for parts is being written under #488"; on this branch it is written. Cite ADR-0022 instead. — `docs/design.md:483`
+- [x] (suggestion) The deferral of plan step 7 waited for #487, which is now merged into the branch: the pointer rows for `docs/manifest/roadmap.md` and `tools/ros-manifest/docs/roadmap.md` and the root design's link to `tools/ros-manifest/docs/design.md` (ADR-0022 decision 2) can land now, or the deferral can be restated with a new reason. Acceptance bullet 3 stays open until then. — `docs/roadmap.md` Direction; `docs/decisions/0022-a-part-owns-its-inside.md:36`
+- [x] (suggestion) An unreadable part design is reported twice (once by `load_design`, once by the citer scan), and the `design_records` redirect leaks a bare bash "Permission denied" to stderr, unlike `citations 2>/dev/null`. Reproduced with `chmod 000` on a tracked `tools/t/docs/design.md`: "2 finding(s)" for one fault. — `.agent/scripts/check_design_anchors.sh:285`
+- [x] (suggestion) The header now names `](<path#x>)` as a link, but the citation token excludes spaces, the main reason for the angle-bracket form: `[x](<my part/design.md#route>)` becomes the non-link token `part/design.md#route` and is resolved as prose. Recognise spaces inside `](<...>)` or narrow the header. Reproduced. — `.agent/scripts/check_design_anchors.sh:446`
 
 ## Checkpoint
 **Status**: complete
@@ -388,3 +388,34 @@ Scope: the round 2 findings, the fix diff `45b2d243..6c323166` and the merge of 
 **Decision**: address
 
 The owner chose "Fix all four first" over publishing now as a first part. The four are the round 3 review's suggestions: land plan step 7 now that #487 is merged (the pointer rows for docs/manifest/roadmap.md and tools/ros-manifest/docs/roadmap.md in the main roadmap, and the root design's link to tools/ros-manifest/docs/design.md); have the manifest text in docs/design.md cite ADR-0022 where it says the rule for parts is being written; report an unreadable part design once, with no stray line on stderr; and resolve a link target with a space inside angle brackets correctly.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 11:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-488 at `7aa09337`
+**Addressed**: Local Review (Pre-Push) at `ee08e444` (2026-11-18 11:24 -05:00), per the Checkpoint of 2026-11-18 11:24 -05:00 ("Fix all four first")
+**Commits**: `4ef7b511`, `7aa09337`
+
+### Actions
+- [x] (suggestion 1) The manifest-route bullet cites ADR-0022 in place of "being written under #488"; one Change log row — `docs/design.md:483` (`4ef7b511`)
+- [x] (suggestion 2) Plan step 7 landed: the Direction section of `docs/roadmap.md` has a `| Sub-roadmap | Root |` table with `tools/ros-manifest/docs/roadmap.md` (Root `tools/ros-manifest`) and `docs/manifest/roadmap.md` (Root `.`); `docs/design.md`'s manifest-route bullet links `tools/ros-manifest/docs/design.md` (ADR-0022 decision 2) with section citations into both parts' designs (`#commands`, `#the-manifest-route-step-by-step`); ADR-0022's context no longer says the link waits for #487. No real file tripped a check, so nothing in either sub-roadmap or design needed fixing. Acceptance bullet 3 of the issue is met (see Checks) — `docs/roadmap.md` Direction, `docs/design.md:483`, `docs/decisions/0022-a-part-owns-its-inside.md:35` (`4ef7b511`)
+- [x] (suggestion 3) An unreadable part design is one finding: `load_design` marks it, the citer scan and each citation of it skip it, and its read's stderr is dropped; two tests (one finding; no "Permission denied" in the output) — `.agent/scripts/check_design_anchors.sh:285` (`7aa09337`)
+- [x] (suggestion 4) An angle-bracket destination `](<...>)` is taken whole before the run scan, so a path in it may hold spaces; header says so; four tests (resolves the whole path, its fragment is checked against `docs/my part/design.md`, a backtick citation after it on the line is still read, and fails when broken) — `.agent/scripts/check_design_anchors.sh:446` (`7aa09337`)
+
+### Checks
+Real files, from the worktree:
+- `.agent/scripts/sitrep_checks.sh --root . > rows` exit 0; it follows both pointers: `part	tools/ros-manifest/docs/roadmap.md	true	read` with 20 `subline` and 5 `subdeferral` rows (`The format is written down	true	file-exists docs/spec.md`, resolved under `tools/ros-manifest`), and `part	docs/manifest/roadmap.md	true	read` with 15 `subline` and 5 `subdeferral` rows; no `unknown` row, no `subformat` row. Row tally: line 1 true / 3 false, deferral 4 true / 3 false, part 2 true, subline 3 true / 4 false / 28 unchecked, subdeferral 10 unchecked. `--summary-from rows`: `lines 1/4 deferrals 4/7` (parts kept out of the root's totals).
+- `sitrep_checks.sh --next-steps-from rows` exit 0:
+  `(root)	The workspace installs on the second machine from a clean clone, user tier included (#430)	false`
+  `tools/ros-manifest/docs/roadmap.md	The tool and its code carry the name repos-manifest	false`
+  `docs/manifest/roadmap.md	The tool's design covers starting with one distro in a directory of its own and adding a distro later (#495)	false`
+- `.agent/scripts/check_design_anchors.sh` exit 0. It reads both parts' designs: with `#commands` changed to `#commandz` and `#the-manifest-route-step-by-step` to `...-stepz` in a scratch edit of `docs/design.md` (restored after), it printed `docs/design.md:487: broken anchor '#the-manifest-route-step-by-stepz' (no such heading in docs/manifest/design.md)`, `docs/design.md:491: broken anchor '#commandz' (no such heading in tools/ros-manifest/docs/design.md)`, `check_design_anchors: 2 finding(s)`, exit 1.
+- `wc -l docs/design.md` is 1193, the newest Change log row's count.
+
+Suites run, each on its own from the worktree:
+- `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed` (the six new cases fail against the script at `4ef7b511`: 76 passed, 6 failed)
+- `test_sitrep_checks.sh` (names `check_design_anchors.sh`): `test_sitrep_checks: 252 passed, 0 failed`
+
+Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465); shellcheck ran in the hook on the script commit and passed (no local shellcheck binary outside pre-commit). The full pre-commit pass over the branch was left to the host.
