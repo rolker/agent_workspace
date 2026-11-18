@@ -32,6 +32,7 @@ import hashlib
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -402,7 +403,15 @@ def _resolve_one(
             raise ManifestError(
                 f"extends path '{ext.path}' escapes its declaring directory {base}: {candidate}"
             )
-        if not candidate.is_file():
+        # stat(), not is_file(): is_file() reads every OSError as "no such file", and since
+        # Python 3.13 resolve() no longer raises for a name too long, so that error would print
+        # the manifest's path value. Only a missing file is "not found"; any other OSError (a
+        # name too long, a symlink loop, no permission) goes to resolve_chain's handler.
+        try:
+            is_regular = stat.S_ISREG(candidate.stat().st_mode)
+        except FileNotFoundError:
+            is_regular = False
+        if not is_regular:
             raise ManifestError(f"extends path not found: {candidate}")
         # Inside a clone, the escape check keeps it in the same clone: same origin.
         return candidate, declaring_origin
