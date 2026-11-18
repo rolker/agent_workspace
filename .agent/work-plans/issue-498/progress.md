@@ -945,3 +945,341 @@ Nothing remains open before the owner's merge decision, apart from the two CI jo
 **Decision**: merge
 
 The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18): merge pull request 506 (part 1 of 3), re-run the tool's install in the main checkout, then start init and sync (issue 500) alongside part 2 of this issue (reading base).
+
+## Checkpoint
+**When**: 2026-11-18 16:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan file changed after its last review, at 62d137f8, so proceed is not open; the owner chose "Merge and carry on" at the merge of part 1, which names part 2)
+**After**: plan
+**Decision**: revise
+
+Pull request 506 (part 1: one new-format manifest, no base) merged on 2026-11-18. The issue stays open: parts 2 (base) and 3 (the adapter reads the new format, the old reader goes) remain. Refresh the plan for part 2 against what part 1 actually built and the rules its seven review rounds settled, then review it.
+
+Instructions for the revision:
+- Part 1 is delivered: mark it so, and correct anything in parts 2 and 3 that part 1's code or decisions changed (module and function names, the output writer, the reading checks, the structural rule for ssh addresses, the tests' layout, the Python 3.10 and 3.14 matrix).
+- Part 2 reads base as the spec defines it, and nothing else. Every check part 1 applies to a manifest applies to each manifest read through base; a location given in base passes the same url rules as a repo url.
+- Carry part 1's lessons into the plan so they are not found again one review round at a time: state each rule once and structurally instead of case by case; say in the documents exactly what the code does; no test patches an os function reached through pathlib; nothing needs a Python newer than 3.10; fetching anything over the network is covered by tests that use local git repositories and local files, never the network.
+- Keep it as small as the spec allows. Where the spec leaves a choice open for base, list it as a question with a recommendation instead of deciding it silently.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-18 16:15 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `88caddab`
+
+Revision after part 1 (#506) merged: part 1 marked delivered; part 2 (base) planned as new fetch.py, base.py, combine.py plus a Part/PartRepo split in manifest.py, with per-file checks separated from combined checks; six open questions with recommendations; part 3 corrected (output.py/cli.py names, URL-sourced relative base, sweep, head lines); lessons from part 1 added.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 16:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #498 — repos-manifest: the resolver reads the format in the spec
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `88caddab`
+**Branch**: `feature/issue-498`
+
+Scope of this review: part 2 (`base`) of the revised plan, and part 3's corrections. Read: the plan, every Checkpoint and the newest Plan Authored entry in progress.md, spec.md (Locations, How manifests combine, Reading a manifest before using it), design.md (Where the manifest comes from, What is built), manifest.py, cli.py, the part 1 tests' use of the loader, extends.py, and issue 510. No command was run to check git's behaviour (a scratch check was denied); the statement about `cat-file -s` below is from git's documented behaviour.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | One pull request of about 600 lines of source and 900 of tests. It falls into two halves that fail in different ways: the merge (pure data, settled by the spec) and the fetchers (subprocess, signals, timing, http). Splitting them is recommended (finding 1). |
+| Issue alignment | Good | Every merge rule in the spec has a step and a test: key-by-key, a role replaces, `groups:`/`layers:` append, `distros:` replaces, read once, parents then self, the diamond `C, A, B, leaf`, self-reference and a two-step cycle, `distros: {}`, `absent: false`/`optional: false`, a later manifest with no `repositories:`, a new entry must be complete. Serves (checked): "Goal: Modular (`README.md#modular`) ... Design: `tools/repos-manifest/docs/design.md#resolve`, `#what-is-built` and 'Where the manifest comes from'". The part 2 instructions of the 13:21 Checkpoint (dispatch on `base:`, git in its own session and the `finally`, list-merge tests, the head line for a relative base beside a URL manifest, stale lines of docs/manifest/design.md) are all carried. |
+| File targeting | Good | `fetch.py`, `base.py`, `combine.py` new; `manifest.py`, `cli.py`, `output.py`/`selection.py` (the `chain` field only). The rename of `has_repositories_key` is churn (finding 9). |
+| Consequences | Good | Import changes in the two test files and the documents that say "`base` is not read yet" are named. Part 1's message texts for a manifest with no `base` are not stated as kept (finding 4). |
+| Principle alignment | Needs work | "State a rule once" is followed for locations (one `checked()`), the url rules (part 1's function reused) and the per-file/combined split. Two rules are wider than they need to be: git's error text is never printed (finding 2), and the http deadline as written reaches into urllib (finding 6). |
+| ADR compliance | Good | ADR-0022/0017 (the tool's own design and spec change in the same part), ADR-0011 (adapter suite at the end of each part), ADR-0009, ADR-0013. |
+| ROS conventions | N/A | Workspace tool plan. |
+
+### Judgment on the representation
+
+A `Part` whose repo entries keep only the keys they gave, merged by `dict.update` in reading order, is the simplest structure that gets "a key not given keeps the earlier value" right: a dataclass with defaults cannot tell "not given" from "given as the default", and `distros: {}` and `absent: false` must count as given. Putting the per-file checks on each `Part` and running the cross-reference checks once on the merged result is the right single split; the plan lists the combined checks in one place (step 4) and everything else stays per-file. For a manifest with no `base`, `merge_parts([part])` must reproduce part 1 exactly, which the plan implies but does not state (finding 4).
+
+### Judgment on fetching
+
+- Local path: `open` plus `os.path.realpath` for identity. Correct and simplest. One inconsistency: a relative base is joined to the naming manifest's path as opened while identity uses the real path (finding 8).
+- http(s): `urllib` with the 60 s and 1 MiB limits and the redirect rule, all three answered by the 13:13 Checkpoint (question 6), so not new hardening. The "socket timeout is the remaining time" detail is the one piece nobody asked for and the one that needs urllib internals (finding 6).
+- Git form: a shallow clone with no checkout and `cat-file blob` is the simplest correct choice. A checkout (the old reader's route) would run filters the remote's `.gitattributes` selects from the person's config (git-lfs, for one), which is why the old reader needed its guards. `git archive --remote` is not served by GitHub. A partial clone adds a second round trip (question 6). Against the old reader: no cache, no `reset --hard`, no hook/filter/fsmonitor flags, no `GIT_TERMINAL_PROMPT=0`; all right given the 2026-11-17 owner decision and the fact that nothing is checked out. `--bare` would say "no work tree" more directly than `--no-checkout` (finding 10).
+- What a manifest can make git do: the url rules of part 1 plus `--` before the url, `GIT_ALLOW_PROTOCOL=https:http:ssh:file` (which overrides `protocol.*.allow` config), `version` never starting with `-`, and `path` only inside the `HEAD:<path>` argument. No hook fires (no checkout, and a remote cannot ship hooks or config); `core.fsmonitor` and filters come only from the person's own config and are not reached by `cat-file blob`; `GIT_CONFIG_PARAMETERS`/`GIT_CONFIG_COUNT` are the person's. Nothing found that lets a manifest run a program. `file://` and absolute paths named by a network manifest only read the person's own disk and print to the person's own terminal (question 1).
+- Password prompts. At a terminal: git stays in the tool's process group with the terminal, ssh and git's https credential prompt read `/dev/tty`, and Ctrl-C reaches both. With no terminal: git starts in its own session, so it has no controlling terminal; git's https prompt fails at once ("could not read Username"), and ssh fails at once unless `SSH_ASKPASS` and `DISPLAY` are set, in which case a desktop password dialog may appear and the 60 s limit ends it. That matches design.md ("when there is no terminal ... it fails with a message and does not wait") and is not scope creep: the first Checkpoint kept the time limit on git calls and the 13:13 Checkpoint (answer 7) set it to "no terminal only". Issue 510 is about the repos `init`/`sync` fetch and asks for a settable limit; part 2's limit for a base is already decided. Write the process handling as one small function so 510 can reuse it rather than redo it (finding 11).
+
+### Findings
+
+1. **[Scope]** (medium) Split part 2 into two pull requests. 2a: `Part`, `combine.merge_parts`, reading order, identity, cycles, the chain cap, head and `validate` lines, documents, with local paths only; a string with an http(s) scheme or the git form is refused with "this version reads a path only", as part 1 refused `base` (about 350 lines of source, 500 of tests, no subprocess or timing). 2b: `fetch.py`'s http and git readers, their limits, process handling and cleanup. Part 1's seven rounds split between the reading checks (url, characters) and the output writer (`--out` paths, put-back, signals); a must-fix in one half sent the whole change round again. A reader/writer split in part 1 would have let each half converge on its own; the same split here keeps the timing and Python 3.10 subprocess findings away from the merge rules.
+2. **[Principle alignment]** (medium) "Text from a remote is never printed": git's stderr is discarded and a failure gives only the exit status. The common failures (branch or tag not found, repository not found, `Permission denied (publickey)`, host key not trusted) all exit 128 and become the same message, which is close to a silent failure. It also contradicts step 2's promise that a commit given as `version` gets a message saying a branch or tag is meant: the tool cannot tell that case from exit status alone. Under the owner's balance (a message may print a manifest value), print git's stderr with the unsafe characters replaced (the character check of `yamlload.py` already exists), and make the commit-as-version hint part of every clone failure's message. This is a design choice to list for the owner (see added question 7).
+3. **[Issue alignment]** (medium) Question 5's reasoning is wrong: the old-format check is not "written twice". Write it once in the per-file pass in part 2 (a manifest with `repos:`, `extends:` or `optional_layers:` and no `repositories:` is refused as "in the earlier format"); part 3 then reuses it for the leaf when the dispatch goes. Under A, a new-format leaf over the old published project11 manifest (likely while both formats exist) fails with "new entry has no `type`, misspelt key?", which points at the wrong file and the wrong cause. The 13:00 Checkpoint already decided old-format manifests are refused, so this is mechanism, not an owner question. Recommend B.
+4. **[Consequences]** (low) State that for a manifest with no `base` every part 1 message is unchanged and part 1's tests pass with only their import lines changed. Two things can move: the "has no `type`/`url`" text if the combined check adds a misspelt-key hint (give the hint only when the chain has a parent), and which of two errors is reported first, since the combined checks now run after all per-file checks. Name any part 1 test that changes. Keep `load_manifest(path)` callable with a path alone (test_manifest_reading.py lines 606 and 612 call it that way).
+5. **[File targeting]** (low) `git cat-file -s HEAD:<dir>` succeeds and prints the tree's size, so it does not tell a directory from a file; and with stderr discarded a missing path and a directory give the same exit status. One call, `git cat-file --batch-check='%(objecttype) %(objectsize)'` on `HEAD:<path>`, gives missing, tree, or blob with its size, then `cat-file blob` reads it.
+6. **[Principle alignment]** (low) "The socket timeout is the remaining time" needs reaching into the response's socket mid-read. Simpler, and enough for the Checkpoint's "60 second limit": `urlopen(timeout=HTTP_SECONDS)`, then `read1` in a loop checking the deadline between reads. The worst case is then the deadline plus one socket timeout; say that in design.md and test the drip server against it.
+7. **[Principle alignment]** (low) Question 1: the stated harm is overstated. A local file named by a network manifest is read and its error printed only on the person's own terminal; nothing goes back over the network. Either answer is defensible; under the owner's balance A (a sentence in the spec) is the smaller one. It is a design choice and rightly asked.
+8. **[Principle alignment]** (low) A relative base is joined to the naming manifest's path as opened, but identity is the real path. If one file is reached by two spellings through a symlink, "read once" keeps whichever came first, and its relative parents then depend on that order. Take the relative path from the same real path used for identity, one rule, and say so in the spec.
+9. **[File targeting]** (low) Renaming `has_repositories_key` to `is_new_format` is churn for a function part 3 deletes: widen the existing function to `repositories:` or `base:` and update its docstring. Moving `parse_manifest`/`load_manifest` to `base.py` is justified (no function in `manifest.py` should read a manifest and ignore its `base`) and costs two import lines.
+10. **[Approach]** (low) `git clone --bare --depth 1` instead of `--no-checkout`: no work tree is ever made, and `git --git-dir <dir>` needs no `/.git`.
+11. **[Approach]** (low) At a terminal git is in the tool's process group, so the `finally` must end git by its pid, not by `killpg` (that would signal the tool itself); say which in the plan. Put "start git, end it on time limit or exit" in one function so issue 510 can reuse it.
+12. **[Consequences]** (low, part 3) `test_mr_extends_base_no_user_hooks_or_filters` is removed with the reason "the resolver no longer disables user hooks or filters". With no checkout, a smudge filter or a post-checkout hook from the person's config still does not run, so the test may pass as converted. Convert it to show that nothing runs, or give a reason that is true.
+13. **[Issue alignment]** (low) The diamond test checks that each file is opened once. Also assert the spec's sentence "what `A` changes in `C` stays changed unless `B` changes it again": a value A sets on C's repo survives B.
+
+### Open questions: view on each
+
+1. Network manifest naming the local disk: an owner's design choice, rightly asked. Lean A (finding 7); B is acceptable.
+2. Chain cap: mechanism, just decide. Agree B (64): one constant, and it bounds an endless chain from a server when nobody is at the terminal.
+3. http limits fixed or settable: already answered by the 13:13 Checkpoint (60 s, 1 MiB). Mechanism. Agree A.
+4. `version` to `--branch` as written: mechanism. Agree A; the spec says a branch or tag, and the message (with finding 2) says so.
+5. Old-format parent: mechanism already decided by the 13:00 Checkpoint. Disagree with A; recommend B (finding 3).
+6. Shallow against partial clone: mechanism. Agree A.
+
+Missing from the list:
+7. Whether git's and the http server's error text is printed (sanitised) or only the exit status and HTTP status (finding 2). A design choice for the owner; recommend printing git's stderr with unsafe characters replaced.
+8. (Mention only.) The same file in a git repo named once with no `version` and once with its default branch by name is two identities and is read twice; the second read undoes what came between. One sentence in the spec is enough; no code.
+
+### Summary
+
+The merge design is right and complete against the spec, the per-file/combined split states each rule once, and the git reader (no-checkout clone, read a blob) is the simplest correct mechanism and lets a manifest run nothing. The no-terminal-only time limit was decided by Checkpoints and is sound. Ready for implementation, with these as instructions; the open choices are whether to split part 2 (recommended) and whether git's error text is printed.
+
+### Recommended Actions
+
+- [ ] Decide the split of part 2 into 2a (merge with local paths) and 2b (http and git readers) (finding 1).
+- [ ] Put question 7 (print git's error text, sanitised) to the owner; fix step 2's commit-as-version message either way (finding 2).
+- [ ] Answer question 5 with B and write the old-format check once in the per-file pass (finding 3).
+- [ ] State that part 1's messages and tests are unchanged for a manifest with no `base` (finding 4).
+- [ ] Use `cat-file --batch-check` (finding 5), the simpler http deadline (finding 6), relative paths taken from the real path (finding 8), no rename (finding 9), `--bare` (finding 10), end git by pid at a terminal (finding 11).
+- [ ] Part 3: convert or truthfully explain the removed hooks/filters test (finding 12); diamond test asserts A's change survives (finding 13).
+
+## Checkpoint
+**When**: 2026-11-18 16:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is ready with no high finding; the plan is unchanged since that review and names parts not yet delivered; the owner chose "Merge and carry on" at the merge of part 1)
+**After**: plan
+**Decision**: proceed
+
+Proceed, with part 2 delivered as two pull requests, as the Plan Review recommends. Where this entry and the plan differ, this entry wins.
+
+This pull request is part 2a ("Part of #498"): base read from local paths only.
+- In scope: the base key read and checked; a location that is a local path, relative to the directory of the manifest that names it; each manifest read as its own part keeping only the keys it gave; the merge rules of the spec, one at a time, each with its test; the reading order (parents then self; the diamond C, A, B, leaf), each manifest read once, a manifest building on itself or a cycle refused; every part 1 check applied to each manifest read; error messages that name which manifest a problem is in; the head comment's base lines and validate's output; the documents.
+- Out of scope, for part 2b: the http(s) and git forms of a location. In 2a a base entry in either form is refused with a message that says this version reads a path only. No fetch.py, no network code, no time limits, no temporary clones.
+- Plan Review findings to apply in 2a: 3 (a parent in the old format is refused by one check written in the per-file pass, which part 3 reuses; old-format manifests were already ruled refused); 4 (for a manifest with no base, every part 1 message and test is unchanged apart from import lines, and load_manifest(path) still works with a path alone); 8 (the real path is used both to join a relative base and for identity); 9 (widen has_repositories_key instead of renaming it); 13 (the diamond test also checks that what A changes in C stays changed unless B changes it again).
+- A cap of 64 on the length of a chain of bases, as mechanism.
+
+Left for part 2b's own plan checkpoint, not decided now: whether a manifest fetched from the network may name a file on the local disk; whether git's and an http server's error text is printed (with unsafe characters replaced) or only a status; findings 2, 5, 6, 7, 10, 11 and the added question 8.
+
+Part 3 stays as planned, with finding 12.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-498 at `56826780`
+
+Part 2a of #498 ("Part of #498"): `base` read from local paths only, as the newest Checkpoint (16:21) scopes it.
+
+- `f2fe58cd` read base and merge the chain.
+  - `manifest.py`: `_Checker.manifest` becomes `_Checker.part`, returning a `Part` that keeps only the keys each manifest and each repo entry gives (a repo entry is a mapping of given keys to checked values). New `_Checker.base_locations`: one location or a non-empty list; a mapping is refused as the git form, a string with a `:` before its first `/` as a URL, both with "this version of the tool reads a location in `base` given as a path only". A manifest with no `repositories:` and an earlier-format key (`repos`, `extends`, `optional_layers`, `packages`) is refused in the per-file pass (Plan Review finding 3). `has_repositories_key` widened to `repositories:` or `base:`, not renamed (finding 9). `parse_part` replaces `parse_manifest` here.
+  - `base.py` (new): `load_manifest(path, source=None)`, `parse_manifest(text, source)` (refuses `base`: no file to take a relative path from), `_Reader.visit` (depth first, parents then self, each manifest once, identity and join both on `os.path.realpath`, finding 8), `MAX_MANIFESTS = 64`.
+  - `combine.py` (new): `merge_parts(parts, bases)`, the merge rules, and the checks on the combination (`_check_layer_case`, `_check_declared`, `_repo`, `_check_repo`, `_check_no_key_inside_another`), each naming the manifest that gave the value.
+  - `cli.py`: `_load_new` calls `base.load_manifest`; `validate` prints `base: <path>` per parent.
+  - Tests: `test_base_reading.py`, `test_base_merge.py`. Part 1 tests changed only in their import lines (`test_manifest_reading.py`, `test_selection.py`, now from `repos_manifest.base`).
+- `1f8f3c88` the head comment's `# base: <real path>` lines, in reading order, between `# manifest:` and `# role:` (`selection.Resolved.bases`, `output.head_comment`); `test_base_output.py`.
+- `2911a19f` the message for a mapping in `base` says it is the git form's shape.
+- `56826780` documents: `spec.md` (status line, path only for now, a `:` before the first `/` makes a URL, relative path after links, identity, groups keep their place, repo order, "first manifest" is one with no `base`, the rules judged on the combination), `design.md` (`# base:` lines, the 64 limit, the earlier-shape refusal, "What is built"), `README.md`. `roadmap.md` unchanged: its resolver line is not fully true until `base` is read from a URL and a git repo.
+
+Merge rules and their tests (`test_base_merge.py` unless noted): key by key, `dict` of given keys updated in reading order (`test_a_repo_entry_merges_key_by_key`, `test_a_key_the_later_entry_gives_replaces_the_earlier_value_whole`, `test_a_new_version_without_distros_keeps_the_earlier_per_distro_entries`); `distros: {}` clears (`test_an_empty_distros_block_clears_the_inherited_per_distro_entries`, `test_an_empty_distros_block_drops_an_inherited_absent_true`); `absent: false`/`optional: false` (`test_absent_false_undoes_an_earlier_absent_true`, `test_optional_false_undoes_an_earlier_optional_true`); layer moved (`test_a_later_manifest_moves_a_repo_to_another_layer`); repo order (`test_the_order_of_repos_is_where_each_first_appears`); a role replaces (`test_a_role_replaces_the_earlier_one_of_the_same_name_and_a_new_role_goes_on_the_end`); groups and layers append (`test_groups_add_to_the_earlier_list`, `test_layers_add_to_the_earlier_list_and_a_listed_layer_keeps_its_place`); top-level `distros:` replaces (`test_top_level_distros_replaces_the_earlier_list`); no `repositories:` in a later manifest (`test_a_later_manifest_may_have_no_repositories`); a new entry complete (`test_a_new_entry_must_be_complete`, `test_a_misspelt_key_is_a_new_entry_and_is_refused`); the diamond (`test_what_a_changes_in_c_stays_changed_unless_b_changes_it_again`, and in `test_base_reading.py` `test_the_diamond_is_read_c_a_b_then_the_manifest_each_once` with a counter on `base._read_text`, finding 13); cycles and the cap (`test_a_manifest_that_builds_on_itself_is_refused`, `..._through_others_is_refused_with_the_chain`, `test_more_than_64_manifests_are_refused`, `test_the_count_takes_in_every_manifest_read_not_only_one_line`).
+
+Readings where the spec and Checkpoints were silent:
+1. "Required in the first manifest of a chain" is read as: a manifest with no `base` has `repositories:`. Recorded in the spec.
+2. The cap of 64 counts every manifest read in one run, the leaf included, not only the depth of one line.
+3. A parent is named in messages, the head comment and `validate` by its real path (the identity), not the path as written; the leaf keeps the `--manifest` string.
+4. A string location with a `:` before its first `/` is a URL; `./a:b.yaml` names such a file. Recorded in the spec.
+5. `base: []` is refused ("is empty"), as `distros: []` and `roles: {}` are.
+6. The `distros:` message on a chain says "no manifest of the chain has a top-level `distros:` list"; the misspelt-key hint is added only when a manifest was read before the one that brought the entry (finding 4). For a manifest with no `base` every part 1 message is unchanged; `base.parse_manifest` keeps refusing `base` on text, so part 1's `test_base_is_refused_for_now` is untouched.
+7. All per-file checks of every manifest run before any combined check, so for a single manifest with two faults of the two kinds the reported one may differ from part 1; no part 1 test has such a case.
+
+Suites:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` (Python 3.14): `815 passed` (736 before, none changed but two import lines).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+- Python 3.10 not run here; CI runs it. black and flake8 ran in the commit hooks; the full pre-commit pass is left to the host.
+
+Hand run on a diamond (c; a and b build on c; m builds on [a, b]), head comment of `core.repos`:
+```
+# Generated by repos-manifest resolve; resolve again rather than editing.
+# manifest: m.yaml
+# base: <scratchpad>/diamond/c.yaml
+# base: <scratchpad>/diamond/a.yaml
+# base: <scratchpad>/diamond/b.yaml
+# role: dev
+# distro: jazzy
+# extra groups: (none)
+```
+
+Not built, in scope: none. Out of scope by the Checkpoint: the http(s) and git readers (2b). Not done from the plan: the `project11_split` fixture test (the plan's part 2 list; the 2a Checkpoint does not name it); a separate commit for the `validate` line (it went in with the reading commit, tested in the next).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 16:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `8a40db04`
+**Base**: origin/main
+**Depth**: Standard (reason: about 1150 lines over 14 files in one tool; no enforcement or governance file; Deep triggers absent)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Scope: part 2a of #498 (base read from local paths), against spec.md and the 16:21 Checkpoint. Specialists: lead (static analysis not run: black and flake8 are not installed here, the commit hooks ran them per the Implementation entry; governance; plan drift; hand probes on manifests in the session scratchpad, compared with origin/main's source), Claude adversarial subagent (complete), cross-model gemini and codex (both complete, EXIT=0). Suites: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` 815 passed (Python 3.14); `bash .agent/scripts/tests/test_ros2_colcon.sh` `=== Results: 1014 passed, 0 failed, 0 skipped ===`; `tests/test_documents.py` 11 passed. Part 1 tests: only the two import lines changed. Old reader (schema.py, extends.py, merge.py) and the adapter untouched. All new files parse with the Python 3.10 grammar.
+
+Held by hand: a diamond with key-by-key merge, `distros: {}`, `absent: false`, `optional: false`, a role replaced, groups and layers appended keeping place, top-level `distros:` replaced, a repo moved to another layer, A's change in C kept past B, and selection for two distros with `--with` all match a hand calculation; reading order C, A, B, leaf; one file by `sub/../`, `./`, a symlink and an absolute path read once; relative paths from the real directory; self and three-step cycles name the chain; cap exact at 64 deep and wide; `C:foo`, `a:b/c.yaml`, `host:path`, `file:///x`, `https://` and the mapping refused with the path-only message, `./a:b.yaml` and `a/b:c.yaml` read as paths; missing, directory and unreadable parents name the manifest and `base` entry that named them; part 1 checks (bad url, U+200B, `type: hg`, format 2) apply to parents; combined checks (layer case, group declared by a parent, key inside another, repo `distros:` with no list anywhere, misspelt key) name the manifest that gave the value.
+
+### Findings
+- [x] (must-fix) A new repo is checked for `type` and `url` on the final merge, not where its key first appears: `mid.yaml` adds `n: {url: ...}`, the leaf adds `type: git`, and the chain is `valid` (a parent invalid on its own passes once something builds on it). Check completeness on the keys known at first appearance; make spec.md say one rule (its "Only the first manifest in a chain, one with no `base`, has to be complete" is false for `base: [full, overlay]` where a base-less overlay gives a partial entry, and the combination paragraph lists `type`/`url` as judged on the combination) (lead, adversarial, gemini, codex) — `tools/repos-manifest/src/repos_manifest/combine.py:154,195-207`, `tools/repos-manifest/docs/spec.md:390-401`
+- [x] (must-fix) The earlier-format refusal runs after `distros`/`layers`/`groups`/`roles` are checked, so the old project11 fixture as a parent fails with "roles.dev: must be a list ... got a mapping" instead of "is in the earlier format" (the very case Plan Review finding 3 named); move the check to the start of `part()` (gemini, confirmed by lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:419`
+- [x] (must-fix) `repos[self.repo_key(key)] = self.repo(key, entry)` evaluates the entry before the key, so for a manifest with no `base`, `repositories: {../x: 5}` now reports "must be a mapping" where main reported "a repo key has no '..' part"; check the key first (gemini, confirmed against main by lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:438`
+- [x] (suggestion) A parent is labelled by its real path in `# base:` and `validate` (reading 3); plan step 5 had the path as joined. Output then differs between machines and directories; no test or adapter code compares it today, but in part 3 a leaf fetched into the adapter's temporary directory would put that directory in `# base:` lines that `_rc_relabel_provenance` does not rewrite. Decide the label in part 3's plan, not here (lead, gemini) — `tools/repos-manifest/src/repos_manifest/base.py:78` (deferred: host decision: no change in 2a; the label is decided in part 3's plan, where the adapter relabels these lines (line added to plan.md part 3, step 3))
+- [x] (suggestion) The rule "a `:` before the first `/`" is written twice (url check and `base_locations`); one helper would state it once (lead) — `tools/repos-manifest/src/repos_manifest/manifest.py:283,473`
+- [x] (suggestion) Reading 7: for a manifest with no `base` and one per-file and one combined fault, the first error differs from main (`layers: [Core, core]` plus `ext::` url; `{type: svn}` with no url); still refused, each message unchanged. Not worth changing; say it in the pull request (lead, adversarial) — `tools/repos-manifest/src/repos_manifest/combine.py:147-156` (deferred: host decision: no action; the manifest is still refused and each message is unchanged; the pull request body says the first error can differ)
+- [x] (suggestion) `os.path.realpath` collapses `missing/../p.yaml` to `p.yaml`, which the OS would not open; not worth doing (codex) — `tools/repos-manifest/src/repos_manifest/base.py:64` (deferred: host decision: no action; a path nobody writes)
+- [x] (suggestion) `validate` prints `base:` lines without the unsafe-character guard `head_comment` applies; only a parent path with a control character reaches it; not worth doing (codex) — `tools/repos-manifest/src/repos_manifest/cli.py:138` (deferred: host decision: no action; only a control character in a parent's path reaches it)
+
+Dropped: the http(s)/git readers and the 1 MiB limit missing (codex 1-2, gemini 6-7: out of 2a by the 16:21 Checkpoint); relative path from the real directory (codex 4, gemini 5 first half: Checkpoint finding 8); newline injection into the head comment (gemini 4: the existing guard refuses it).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `c984dd8d`
+**Addressed**: Local Review (Pre-Push) at `8a40db04` (2026-11-18 16:40 -05:00)
+**Commits**: `5aa038c9`, `b8fbf5a4`, `c8bf0b91`, `c984dd8d`
+
+### Actions
+- [x] (must-fix) A repo's entry is complete where its key first appears: `merge_parts` records the keys the manifest that first brings a key gave (`brought`), and `_check_complete` checks `type` and `url` on those, naming that manifest; `_repo` no longer checks the merged entry. It runs where the old check ran (after the layer-case and role checks), so the order among combined checks is main's. spec.md states the one rule (the "Only the first manifest ... has to be complete" paragraph rewritten, `type`/`url` dropped from the combination paragraph, the Repos table says "yes, where the repo's key first appears"). Tests: `test_an_entry_is_complete_where_its_key_first_appears_not_after_a_later_manifest` (the review's repro, failed before), `test_an_overlay_with_no_base_may_change_repos_an_earlier_manifest_brought`, `test_an_overlay_with_no_base_that_brings_a_new_repo_gives_it_whole[type,url]`; `test_a_misspelt_key_is_a_new_entry_and_is_refused` unchanged and passing — `b8fbf5a4` `tools/repos-manifest/src/repos_manifest/combine.py`, `tools/repos-manifest/docs/spec.md`
+- [x] (must-fix) The earlier-format refusal is the first check of `part()`, before the warnings and `format`; design.md says "before any other check on that manifest". Test: `test_the_old_project11_fixture_as_a_parent_is_refused_as_the_earlier_format` (tests/fixtures/p11/manifest.yaml as a parent; failed before with "roles.dev: must be a list") — `5aa038c9` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (must-fix) The repo key is checked before its entry. Tests: `test_a_manifest_with_no_base_names_a_bad_repo_key_before_its_entry` and a `../x: 5` case in `test_every_check_on_one_manifest_applies_to_a_parent` (both failed before). Comparing every per-file check of `part()` with main's `manifest()`: no other order changed without need. The remaining differences are the checks that moved to the combination (layer case, a role's and a repo's groups declared, a repo's layer declared, repo `distros:` with no top-level list, completeness), which is suggestion 3's case, and the earlier-format refusal, a check main does not have (main reports the old fixture by its `roles:` error; this branch, by host decision, by its format) — `5aa038c9` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (suggestion) A parent's label in `# base:` and `validate` (deferred: host decision, no change in 2a; one line added to plan.md part 3, step 3, saying the label is decided there) — `c984dd8d` `.agent/work-plans/issue-498/plan.md`
+- [x] (suggestion) The rule "a `:` before the first `/` makes a URL" is stated once, in `_colon_before_slash`, used by `url` and `base_locations` (host decision). Test: `test_one_rule_tells_a_url_from_a_path_for_url_and_base` (failed before: no helper) — `c8bf0b91` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (suggestion) First error for a manifest with a per-file and a combined fault at once (deferred: host decision, no action; the manifest is still refused and each message is unchanged). The pull request body should say that the first error reported can differ from main when one manifest has a per-file fault and a combined fault at once — `tools/repos-manifest/src/repos_manifest/combine.py`
+- [x] (suggestion) `os.path.realpath` collapsing `missing/../p.yaml` (deferred: host decision, no action; a path nobody writes) — `tools/repos-manifest/src/repos_manifest/base.py`
+- [x] (suggestion) `validate`'s `base:` lines without the unsafe-character guard (deferred: host decision, no action; only a control character in a parent's path reaches it) — `tools/repos-manifest/src/repos_manifest/cli.py`
+
+Suggestions 1 to 5 were decided by the host (listed for the owner's veto).
+
+Suites:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` (Python 3.14): `829 passed` (822 tests plus 7 parametrized helper cases; 818 after the order fixes, 822 after completeness). `tests/test_documents.py`: `11 passed`.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+- No part 1 test changed (`test_manifest_reading.py`, `test_selection.py` still differ from main only in their import lines). Nothing new needs a Python newer than 3.10; no test patches an `os` function. Commits made with `SKIP=validate-script-tests`; black and flake8 ran in the hooks; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 16:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `2e13d4ec`
+**Base**: origin/main
+**Depth**: Deep (reason: whole branch diff 1641 changed lines over 16 files; fix round classified as a first review)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Scope: part 2a of #498 after the fix round (5aa038c9, b8fbf5a4, c8bf0b91, c984dd8d). Specialists: lead (hand probes, governance, plan drift; no linter beyond the commit hooks for these files; all changed .py files parse with the Python 3.10 grammar), Claude adversarial subagent (complete), cross-model gemini and codex (both complete, EXIT=0).
+
+Round 1 must-fixes: all three fixed. (1) Completeness where the key first appears, by hand: the repro (parent `b: {url}`, leaf adds `type`) refused naming the parent; `base: [full, overlay]` with the overlay changing `full`'s repo valid, merged url from the overlay; `base: [overlay, full]` refused naming the overlay; an overlay bringing a new incomplete key refused naming the overlay with the misspelt-key hint; a diamond with the key first in C valid (B's version wins), and C partial completed by A refused naming C; siblings A and B both bringing the key: A is first, B is a change (B's url wins), B partial after A valid, B partial before A refused naming B; a key first appearing with only `absent: true` refused (spec's Repos table requires `type` and `url` where the key first appears; `absent` makes no exception; code and spec agree); a misspelt key refused naming the leaf, with the hint only when a manifest was read before it. Spec's rewritten paragraph states what the code does; no sentence in spec.md, design.md or README.md contradicts it (grep for complete, first manifest, combination). (2) Earlier-format refusal first in `part()`: an old-format parent, and one with `repos`/`extends` plus other faults, refused as the earlier format; `parse_manifest` and `load_manifest` given an old file refuse it the same way; the CLI still sends `tests/fixtures/p11/manifest.yaml` to the old reader: `validate` and `resolve --role dev --distro jazzy` give identical stdout and output files on main and the branch; the new-format project11 fixture also identical. (3) Repo key before entry: `../a: 5` reports the key on both. The implementer's claim checked on 10 two-fault manifests with no `base` against main's source: 3 identical, 7 differ, every one a combined check (layer case, a role's, repo's or layer's declaration, repo `distros:` with no list, completeness) now reported after a per-file fault; no other per-file order changed. Claim holds; this is round 1's suggestion 3, a host decision. The `_colon_before_slash` helper: 23 hand urls give identical results on main and the branch; `-k url` tests 155 passed.
+
+Suites (Python 3.14.4; no 3.10 interpreter here): `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` `829 passed`; `bash .agent/scripts/tests/test_ros2_colcon.sh` `=== Results: 1014 passed, 0 failed, 0 skipped ===`. The only monkeypatch in the new tests is on `base._read_text`, no `os` function.
+
+### Findings
+- [x] (must-fix) design.md says the earlier-shape refusal comes "before any other check on that manifest"; the invisible-character check, the YAML parse and the top-level-mapping check run first (necessarily). Reword to "before any check on its keys" (lead, adversarial) — `tools/repos-manifest/docs/design.md:338`
+- [x] (suggestion) Owner call, spec on main, not this diff: "A later manifest cannot put a layer below an earlier one ... It does not need to for the build to be correct" is false for a diamond where B gives `layers: [y, x]` and A, read first, gave `x`: the merged order is `x, y`, silently. Code keeps the spec; a warning when a manifest's own `layers:` order disagrees with the combined order would catch it (adversarial) — `tools/repos-manifest/docs/spec.md:329`, `tools/repos-manifest/src/repos_manifest/combine.py:52` (deferred: host decision: deferred to the owner; no change in this pull request)
+- [x] (suggestion) A manifest with no `base` and no `repositories:` used as an overlay (`base: [full, overlay]`) that only changes roles or layers needs `repositories: {}`; this is what the spec's table says, so no change unless the spec changes (gemini) — `tools/repos-manifest/src/repos_manifest/manifest.py:436` (deferred: host decision: no action; it is what the spec's table says)
+- [x] (suggestion) A banned transport in `base` (`ext::...`) gets the "path only, not yet an http(s) URL or git" message, which reads as if it might be read later; part 2b's URL check is the place for the proper refusal; not worth doing in 2a (gemini) — `tools/repos-manifest/src/repos_manifest/manifest.py:484` (deferred: host decision: no action in 2a; the proper refusal comes with part 2b's reading of URLs)
+
+Dropped: newline in a parent's real path (gemini 1, codex 3: round 1 suggestion, host decision; `resolve` already refuses it in the head comment); relative path from the real directory and real-path labels (gemini 2: Checkpoint finding 8, label left to part 3); http(s)/git readers (gemini 3: out of 2a); `has_repositories_key` not renamed (gemini 7: Checkpoint finding 9); duplicate layers in one list (gemini 6: still refused, "names layer 'core' twice"); `base:` lines printed before flag checks (gemini 8: true lines, exit 1); a credential echoed in a refused base URL (codex 1: the module's stated policy is that a message may print a manifest value, as repo url messages on main do); `missing/../p.yaml` (codex 2: round 1, host decision); `base: [p, ./p]` accepted silently (adversarial 4: harmless, read once).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:57 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-498 at `4b4d35af`
+**Addressed**: Local Review (Pre-Push) at `2e13d4ec` (2026-11-18 16:55 -05:00)
+**Commits**: `4b4d35af`
+
+### Actions
+- [x] (must-fix) design.md: the earlier-format refusal now reads "before any check on its keys"; the phrase "any other check" appears nowhere else in tools/repos-manifest (spec.md, README.md checked) — `tools/repos-manifest/docs/design.md:338`
+- [x] (suggestion) A later manifest's `layers:` order can differ from the combined order in a diamond — `tools/repos-manifest/docs/spec.md:329` (deferred: host decision: deferred to the owner; no change in this pull request)
+- [x] (suggestion) An overlay with no `base` that only changes roles or layers needs `repositories: {}` — `tools/repos-manifest/src/repos_manifest/manifest.py:436` (deferred: host decision: no action; it is what the spec's table says)
+- [x] (suggestion) A banned transport in `base` gets the "path only" message — `tools/repos-manifest/src/repos_manifest/manifest.py:484` (deferred: host decision: no action in 2a; the proper refusal comes with part 2b's reading of URLs)
+
+Suggestions 1 to 3 were decided by the host (listed for the owner's veto).
+
+Checks: `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests/test_documents.py`: `11 passed in 0.01s`. Full pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 16:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-498 at `a652e368`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole branch diff 16 files, +1686 -244)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the one suggestion is a wording choice for the host
+
+Scope: the round 2 review's findings (1 must-fix, 3 suggestions) and the fix diff `9c18cc61..HEAD`: one sentence in `tools/repos-manifest/docs/design.md` (line 338) plus progress.md record commits; nothing else changed. Cross-model: skipped (round-3 convergence check, per handoff). The diff is one sentence, so the lead did the governance, plan-drift and adversarial reads itself; no subagents were dispatched.
+
+Round 2 must-fix: fixed. design.md:338 now says a manifest in the earlier format is refused "before any check on its keys". Order in the code: `base._read_text` (file read, UTF-8) and then `manifest.parse_part`: (1) `first_unsafe_in_text` on the raw text (invisible, control or direction-changing characters), (2) `_load_yaml` (YAML parse), (3) the top level must be a mapping, (4) `yamlload._refuse_unsafe_chars` on every parsed string, keys and values (catches characters written as YAML escapes), then `_Checker.part()`: (5) the earlier-format check (no `repositories:` and one of `repos`, `extends`, `optional_layers`, `packages`), (6) unknown top-level keys warned, `format`, `base`, and the other keys. `load_manifest` and `_Reader.visit` both go through `parse_part`, so a parent in a chain gets the same order. Step 4 was not in the round 2 finding's list; it is a character check on every string, the parsed form of step 1, not a check of which keys a manifest has or what they hold, so the sentence holds as written; see the suggestion. A hand probe of an earlier-format file with an escaped character was denied by the permission system and not run.
+
+Round 2 suggestions: all three answered by host decision with no code change (deferred to the owner; no action; no action in 2a). Not findings.
+
+Governance and plan drift: a one-sentence documentation correction that makes design.md state what the code does (Verify before claiming); no ADR triggered; no plan item touched.
+
+Suites (Python 3.14.4): `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` `829 passed in 11.92s`; `bash .agent/scripts/tests/test_ros2_colcon.sh` `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+
+### Findings
+- [ ] (suggestion) The per-string character check (`_refuse_unsafe_chars`, which also looks at every key's characters) runs before the earlier-format refusal; if "any check on its keys" might be read to include it, "before any check of what its keys are or hold" would be exact. Host's call; the sentence is not false as it stands — `tools/repos-manifest/docs/design.md:338`, `tools/repos-manifest/src/repos_manifest/manifest.py:181`
+
+## Checkpoint
+**When**: 2026-11-18 17:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix, and the full pre-commit pass passed at 8441df5d)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on 8441df5d. Published as part 2a: the pull request says "Part of #498" and does not close the issue. Parts 2b (a parent read from an http(s) URL or a git repo) and 3 (the adapter reads the new format, the old reader goes) remain. The owner's decision of 2026-11-18, "yes, warn on layer order", is for part 2b's plan.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 17:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #511 at `51eb72d7`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `a652e368` (covers `51eb72d7` via bookkeeping), CI rollup; no hosted reviews and no conversation comments on the pull request)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+CI at `51eb72d7`, two runs (44407300719 and 44407314771), every job finished and passed in both: Lint (pre-commit) (11m0s, 13m38s), Validate Adapter Contract, Validate Documentation, repos-manifest tests on Python 3.10 and on Python 3.14. This is the first run of this code on Python 3.10; it passed.
+
+Hosted reviews: `fetch_pr_reviews.sh --pr 511` found 0 reviews, 0 inline comments, 0 conversation comments. Nothing to classify.
+
+Timeline: `review_progress.sh sources` at this head returns one open local finding (round 3's suggestion) and no dropped entries. The open boxes of this pull request's Plan Review (16:20) were ruled by the 16:21 Checkpoint (split into 2a and 2b; findings 3, 4, 8, 9, 13 applied in 2a; findings 2, 5, 6, 7, 10, 11 and question 8 left for part 2b's plan checkpoint; finding 12 for part 3). Rounds 1 and 2 of the pre-push review are all closed by fix rounds or host decisions. Round 2's layer-order suggestion went to the owner, who answered "yes, warn on layer order" for part 2b's plan (17:00 Checkpoint). Open boxes before the merge of part 1 belong to pull request 506 and are not re-listed.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `a652e368`, covers `51eb72d7` via bookkeeping) design.md's "before any check on its keys" could read "before any check of what its keys are or hold", since the per-string character check (`_refuse_unsafe_chars`) runs first. Checked: `manifest.parse_part` runs `first_unsafe_in_text`, `_load_yaml`, the top-level mapping check and `_refuse_unsafe_chars` before `_Checker.part()`, whose first step is the earlier-format refusal; the reviewer judged the sentence true as written (deferred: host decision: no action) — `tools/repos-manifest/docs/design.md:338`
+
+### False positives
+(none)
+
+### Information for the host: overlap with feature/issue-500 (not a finding)
+`git merge-tree --write-tree HEAD feature/issue-500` (merge base `4d319d9d`, issue-500 at `bee08a84`): one file conflicts, `tools/repos-manifest/src/repos_manifest/cli.py`, one hunk in `_load_new` (this branch: `base.load_manifest(...)` and print the warnings; issue-500: `return read_manifest(args.manifest, Path("."))`). No other file conflicts. After a merge, issue-500's `system.py` line 26 `from .manifest import UNNAMED_LAYER, Manifest, load_manifest` fails with an ImportError: this branch moves `load_manifest` to `base.py` and `manifest.py` no longer defines it (`UNNAMED_LAYER` and `Manifest` stay in `manifest.py`). The call itself, `load_manifest(path, source=location)` in `read_manifest`, keeps the same signature, so only the import changes: `load_manifest` comes from `.base` (no import cycle: `base` imports `manifest`, not `system`). Resolving the cli.py hunk in issue-500's favour (through `read_manifest`) keeps this branch's behaviour, since `read_manifest` also loads through the loader and prints the warnings, provided its import comes from `.base`. No test that issue-500 adds imports `load_manifest` or `parse_manifest` from `repos_manifest.manifest`.
+
+### Summary
+Nothing remains open before the owner's merge decision: no must-fix, no hosted comment, CI all-pass on Python 3.10 and 3.14, and the one suggestion ruled no action by the host. The pull request is ready for the merge decision; `merge_pr.sh` also needs a `## Decision summary` in the pull request body or a comment.
+
+## Checkpoint
+**When**: 2026-11-18 17:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 511 (part 2a: base read from local paths): merge it and re-run the tool's install in the main checkout. The issue stays open: parts 2b and 3 remain.

@@ -9,7 +9,7 @@ that has no entry for it. Layers come in order, the unnamed first layer before e
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
 from .manifest import UNNAMED_LAYER, Manifest, Repo
@@ -43,6 +43,7 @@ class Resolved:
     distro: Optional[str]
     extra_groups: List[str]
     layers: List[Layer]
+    bases: List[str] = field(default_factory=list)  # the manifests it builds on, reading order
 
     @property
     def optional(self) -> List[str]:
@@ -122,4 +123,4 @@ def resolve(
         for name, repos in by_layer.items()
         if repos
     ]
-    return Resolved(manifest.source, role, distro, list(extra_groups), layers)
+    return Resolved(manifest.source, role, distro, list(extra_groups), layers, list(manifest.bases))
